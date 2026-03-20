@@ -58,10 +58,22 @@ func runServe(configPath string) error {
 	proxyCfg := &ports.ProxyConfig{
 		ListenAddr:   fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port),
 		UpstreamAddr: fmt.Sprintf("%s:%d", cfg.Upstream.Host, cfg.Upstream.Port),
+		Version:      version,
 		TLS: ports.TLSConfig{
 			Enabled:  cfg.TLS.Enabled,
 			Domain:   cfg.TLS.Domain,
 			AutoCert: cfg.TLS.Provider == "letsencrypt",
+		},
+		SecurityHeaders: ports.SecurityHeadersConfig{
+			Enabled:               cfg.SecurityHeaders.Enabled,
+			HSTSMaxAge:            cfg.SecurityHeaders.HSTSMaxAge,
+			HSTSIncludeSubDomains: cfg.SecurityHeaders.HSTSIncludeSubDomains,
+			HSTSPreload:           cfg.SecurityHeaders.HSTSPreload,
+			ContentTypeNosniff:    cfg.SecurityHeaders.ContentTypeNosniff,
+			FrameOption:           cfg.SecurityHeaders.FrameOption,
+			ContentSecurityPolicy: cfg.SecurityHeaders.ContentSecurityPolicy,
+			ReferrerPolicy:        cfg.SecurityHeaders.ReferrerPolicy,
+			PermissionsPolicy:     cfg.SecurityHeaders.PermissionsPolicy,
 		},
 	}
 

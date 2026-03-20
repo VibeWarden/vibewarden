@@ -44,8 +44,27 @@ func BuildCaddyConfig(cfg *ports.ProxyConfig) (map[string]any, error) {
 	// Add reverse proxy as final handler
 	handlers = append(handlers, reverseProxyHandler)
 
-	// Build routes
+	// Build the health check route (must come before the catch-all proxy route)
+	healthBody := fmt.Sprintf(`{"status":"ok","version":%q}`, cfg.Version)
+	healthRoute := map[string]any{
+		"match": []map[string]any{
+			{"path": []string{"/_vibewarden/health"}},
+		},
+		"handle": []map[string]any{
+			{
+				"handler": "static_response",
+				"headers": map[string][]string{
+					"Content-Type": {"application/json"},
+				},
+				"body":        healthBody,
+				"status_code": 200,
+			},
+		},
+	}
+
+	// Build routes — health check first, then catch-all proxy route
 	routes := []map[string]any{
+		healthRoute,
 		{
 			"handle": handlers,
 		},
