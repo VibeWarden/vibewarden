@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"crypto/tls"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -8,7 +9,16 @@ import (
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
 
-func TestSecurityHeaders_HSTS(t *testing.T) {
+// tlsRequest returns an *http.Request that simulates an HTTPS connection by
+// populating the TLS field with a non-nil *tls.ConnectionState.
+func tlsRequest(t *testing.T) *http.Request {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodGet, "https://example.com/", nil)
+	req.TLS = &tls.ConnectionState{}
+	return req
+}
+
+func TestSecurityHeaders_HSTS_OverHTTPS(t *testing.T) {
 	tests := []struct {
 		name     string
 		cfg      ports.SecurityHeadersConfig
@@ -42,7 +52,7 @@ func TestSecurityHeaders_HSTS(t *testing.T) {
 			wantHSTS: "max-age=31536000; includeSubDomains; preload",
 		},
 		{
-			name: "zero max-age disables HSTS",
+			name: "zero max-age disables HSTS even over HTTPS",
 			cfg: ports.SecurityHeadersConfig{
 				Enabled:    true,
 				HSTSMaxAge: 0,
@@ -59,7 +69,7 @@ func TestSecurityHeaders_HSTS(t *testing.T) {
 				w.WriteHeader(http.StatusOK)
 			})
 
-			req := httptest.NewRequest(http.MethodGet, "/", nil)
+			req := tlsRequest(t)
 			w := httptest.NewRecorder()
 
 			mw(next).ServeHTTP(w, req)
@@ -67,6 +77,51 @@ func TestSecurityHeaders_HSTS(t *testing.T) {
 			got := w.Header().Get("Strict-Transport-Security")
 			if got != tt.wantHSTS {
 				t.Errorf("Strict-Transport-Security = %q, want %q", got, tt.wantHSTS)
+			}
+		})
+	}
+}
+
+func TestSecurityHeaders_HSTS_NotSentOverHTTP(t *testing.T) {
+	tests := []struct {
+		name string
+		cfg  ports.SecurityHeadersConfig
+	}{
+		{
+			name: "max-age set but request is plain HTTP",
+			cfg: ports.SecurityHeadersConfig{
+				Enabled:    true,
+				HSTSMaxAge: 31536000,
+			},
+		},
+		{
+			name: "all HSTS flags set but request is plain HTTP",
+			cfg: ports.SecurityHeadersConfig{
+				Enabled:               true,
+				HSTSMaxAge:            31536000,
+				HSTSIncludeSubDomains: true,
+				HSTSPreload:           true,
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mw := SecurityHeaders(tt.cfg)
+
+			next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(http.StatusOK)
+			})
+
+			// Plain HTTP request — r.TLS is nil.
+			req := httptest.NewRequest(http.MethodGet, "http://example.com/", nil)
+			w := httptest.NewRecorder()
+
+			mw(next).ServeHTTP(w, req)
+
+			got := w.Header().Get("Strict-Transport-Security")
+			if got != "" {
+				t.Errorf("Strict-Transport-Security must not be set over HTTP, got %q", got)
 			}
 		})
 	}

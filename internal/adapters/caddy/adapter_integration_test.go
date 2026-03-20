@@ -145,6 +145,86 @@ func TestAdapter_Integration_GracefulShutdown(t *testing.T) {
 	}
 }
 
+func TestAdapter_Integration_SecurityHeadersInProxiedResponse(t *testing.T) {
+	// Start a minimal upstream that returns a plain 200.
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer upstream.Close()
+
+	listenPort := findFreePort(t)
+	listenAddr := fmt.Sprintf("127.0.0.1:%d", listenPort)
+
+	cfg := &ports.ProxyConfig{
+		ListenAddr:   listenAddr,
+		UpstreamAddr: upstream.Listener.Addr().String(),
+		SecurityHeaders: ports.SecurityHeadersConfig{
+			Enabled:               true,
+			ContentTypeNosniff:    true,
+			FrameOption:           "DENY",
+			ContentSecurityPolicy: "default-src 'self'",
+			ReferrerPolicy:        "strict-origin-when-cross-origin",
+			// HSTSMaxAge intentionally omitted: the proxy is HTTP-only in this
+			// test, so HSTS must not be set regardless of config.
+			HSTSMaxAge: 31536000,
+		},
+	}
+
+	adapter := NewAdapter(cfg, slog.Default())
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	startErr := make(chan error, 1)
+	go func() {
+		startErr <- adapter.Start(ctx)
+	}()
+
+	proxyURL := fmt.Sprintf("http://%s", listenAddr)
+	if err := waitForServer(proxyURL, 5*time.Second); err != nil {
+		cancel()
+		t.Fatalf("proxy server did not start: %v", err)
+	}
+
+	resp, err := http.Get(proxyURL + "/")
+	if err != nil {
+		t.Fatalf("GET through proxy: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("status code = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+
+	// Verify non-HSTS security headers are present in the proxied response.
+	wantHeaders := map[string]string{
+		"X-Content-Type-Options":  "nosniff",
+		"X-Frame-Options":         "DENY",
+		"Content-Security-Policy": "default-src 'self'",
+		"Referrer-Policy":         "strict-origin-when-cross-origin",
+	}
+	for header, want := range wantHeaders {
+		got := resp.Header.Get(header)
+		if got != want {
+			t.Errorf("header %q = %q, want %q", header, got, want)
+		}
+	}
+
+	// HSTS must NOT be present on a plain HTTP connection.
+	if hsts := resp.Header.Get("Strict-Transport-Security"); hsts != "" {
+		t.Errorf("Strict-Transport-Security must not be set over HTTP, got %q", hsts)
+	}
+
+	cancel()
+
+	stopCtx, stopCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer stopCancel()
+
+	if err := adapter.Stop(stopCtx); err != nil {
+		t.Errorf("Stop() error: %v", err)
+	}
+}
+
 // waitForServer polls the given URL until it returns a 2xx response or times out.
 func waitForServer(url string, timeout time.Duration) error {
 	client := &http.Client{Timeout: 500 * time.Millisecond}

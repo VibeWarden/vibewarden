@@ -324,26 +324,41 @@ func TestBuildCaddyConfig_HealthRoute(t *testing.T) {
 
 func TestBuildSecurityHeadersHandler(t *testing.T) {
 	tests := []struct {
-		name        string
-		cfg         ports.SecurityHeadersConfig
-		wantHeaders map[string]string
+		name           string
+		cfg            ports.SecurityHeadersConfig
+		tlsEnabled     bool
+		wantHeaders    map[string]string
+		absentHeaders  []string
 	}{
 		{
-			name: "HSTS with all options",
+			name: "HSTS with all options over TLS",
 			cfg: ports.SecurityHeadersConfig{
 				HSTSMaxAge:            31536000,
 				HSTSIncludeSubDomains: true,
 				HSTSPreload:           true,
 			},
+			tlsEnabled: true,
 			wantHeaders: map[string]string{
 				"Strict-Transport-Security": "max-age=31536000; includeSubDomains; preload",
 			},
 		},
 		{
-			name: "HSTS without subdomains and preload",
+			name: "HSTS not included when TLS disabled",
+			cfg: ports.SecurityHeadersConfig{
+				HSTSMaxAge:            31536000,
+				HSTSIncludeSubDomains: true,
+				HSTSPreload:           true,
+			},
+			tlsEnabled:    false,
+			wantHeaders:   map[string]string{},
+			absentHeaders: []string{"Strict-Transport-Security"},
+		},
+		{
+			name: "HSTS without subdomains and preload over TLS",
 			cfg: ports.SecurityHeadersConfig{
 				HSTSMaxAge: 3600,
 			},
+			tlsEnabled: true,
 			wantHeaders: map[string]string{
 				"Strict-Transport-Security": "max-age=3600",
 			},
@@ -353,6 +368,7 @@ func TestBuildSecurityHeadersHandler(t *testing.T) {
 			cfg: ports.SecurityHeadersConfig{
 				ContentTypeNosniff: true,
 			},
+			tlsEnabled: false,
 			wantHeaders: map[string]string{
 				"X-Content-Type-Options": "nosniff",
 			},
@@ -362,6 +378,7 @@ func TestBuildSecurityHeadersHandler(t *testing.T) {
 			cfg: ports.SecurityHeadersConfig{
 				FrameOption: "DENY",
 			},
+			tlsEnabled: false,
 			wantHeaders: map[string]string{
 				"X-Frame-Options": "DENY",
 			},
@@ -371,6 +388,7 @@ func TestBuildSecurityHeadersHandler(t *testing.T) {
 			cfg: ports.SecurityHeadersConfig{
 				ContentSecurityPolicy: "default-src 'self'",
 			},
+			tlsEnabled: false,
 			wantHeaders: map[string]string{
 				"Content-Security-Policy": "default-src 'self'",
 			},
@@ -380,6 +398,7 @@ func TestBuildSecurityHeadersHandler(t *testing.T) {
 			cfg: ports.SecurityHeadersConfig{
 				ReferrerPolicy: "strict-origin-when-cross-origin",
 			},
+			tlsEnabled: false,
 			wantHeaders: map[string]string{
 				"Referrer-Policy": "strict-origin-when-cross-origin",
 			},
@@ -389,6 +408,7 @@ func TestBuildSecurityHeadersHandler(t *testing.T) {
 			cfg: ports.SecurityHeadersConfig{
 				PermissionsPolicy: "camera=(), microphone=()",
 			},
+			tlsEnabled: false,
 			wantHeaders: map[string]string{
 				"Permissions-Policy": "camera=(), microphone=()",
 			},
@@ -397,7 +417,7 @@ func TestBuildSecurityHeadersHandler(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			handler := buildSecurityHeadersHandler(tt.cfg)
+			handler := buildSecurityHeadersHandler(tt.cfg, tt.tlsEnabled)
 
 			if handler["handler"] != "headers" {
 				t.Errorf("handler type = %v, want 'headers'", handler["handler"])
@@ -421,6 +441,12 @@ func TestBuildSecurityHeadersHandler(t *testing.T) {
 				}
 				if len(values) == 0 || values[0] != wantValue {
 					t.Errorf("header %q = %v, want %q", headerName, values, wantValue)
+				}
+			}
+
+			for _, headerName := range tt.absentHeaders {
+				if _, found := setHeaders[headerName]; found {
+					t.Errorf("header %q must not be present when TLS is disabled", headerName)
 				}
 			}
 		})

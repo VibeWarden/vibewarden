@@ -36,9 +36,11 @@ func BuildCaddyConfig(cfg *ports.ProxyConfig) (map[string]any, error) {
 	// Build route handlers (middleware chain + reverse proxy)
 	handlers := []map[string]any{}
 
-	// Add security headers handler if enabled
+	// Add security headers handler if enabled.
+	// TLS enabled state is passed so that HSTS is only included over HTTPS.
 	if cfg.SecurityHeaders.Enabled {
-		handlers = append(handlers, buildSecurityHeadersHandler(cfg.SecurityHeaders))
+		tlsEnabled := cfg.TLS.Enabled && !isLocal
+		handlers = append(handlers, buildSecurityHeadersHandler(cfg.SecurityHeaders, tlsEnabled))
 	}
 
 	// Add reverse proxy as final handler
@@ -111,11 +113,13 @@ func BuildCaddyConfig(cfg *ports.ProxyConfig) (map[string]any, error) {
 }
 
 // buildSecurityHeadersHandler creates the Caddy headers handler for security headers.
-func buildSecurityHeadersHandler(cfg ports.SecurityHeadersConfig) map[string]any {
+// tlsEnabled must be true for the HSTS header to be included; HSTS must not be sent
+// over plain HTTP connections.
+func buildSecurityHeadersHandler(cfg ports.SecurityHeadersConfig, tlsEnabled bool) map[string]any {
 	headers := map[string][]string{}
 
-	// HSTS
-	if cfg.HSTSMaxAge > 0 {
+	// HSTS — only over HTTPS
+	if cfg.HSTSMaxAge > 0 && tlsEnabled {
 		hsts := fmt.Sprintf("max-age=%d", cfg.HSTSMaxAge)
 		if cfg.HSTSIncludeSubDomains {
 			hsts += "; includeSubDomains"
