@@ -1,0 +1,57 @@
+# VibeWarden Configuration
+# Copy this file to vibewarden.yaml and customize as needed.
+# Environment variables can override any setting using VIBEWARDEN_ prefix.
+# Example: VIBEWARDEN_SERVER_PORT=9090 overrides server.port
+
+# Server settings
+server:
+  # Host to bind to (use 0.0.0.0 to expose externally)
+  host: "127.0.0.1"
+  # Port to listen on
+  port: 8080
+
+# Upstream application being protected
+upstream:
+  # Host of your application
+  host: "127.0.0.1"
+  # Port of your application
+  port: 3000
+
+# TLS configuration
+tls:
+  # Enable TLS (set to true in production)
+  enabled: false
+  # Domain for certificate (required if enabled)
+  domain: ""
+  # Provider: "letsencrypt", "self-signed", or "external"
+  provider: "self-signed"
+
+# Ory Kratos (identity/auth) settings
+kratos:
+  # Kratos public API (user-facing flows)
+  public_url: "http://127.0.0.1:4433"
+  # Kratos admin API (internal use)
+  admin_url: "http://127.0.0.1:4434"
+
+# Rate limiting
+rate_limit:
+  # Enable rate limiting
+  enabled: true
+  # Requests per second per client
+  requests_per_second: 100
+  # Maximum burst size
+  burst_size: 50
+
+# Logging
+log:
+  # Level: debug, info, warn, error
+  level: "info"
+  # Format: json (recommended) or text
+  format: "json"
+
+# Admin API (for user management, metrics, etc.)
+admin:
+  # Enable admin API
+  enabled: false
+  # Bearer token for authentication (use env var VIBEWARDEN_ADMIN_TOKEN in production)
+  token: ""

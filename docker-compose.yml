@@ -1,0 +1,63 @@
+version: "3.8"
+
+services:
+  postgres:
+    image: postgres:18-alpine
+    container_name: vibewarden-postgres
+    environment:
+      POSTGRES_USER: vibewarden
+      POSTGRES_PASSWORD: vibewarden
+      POSTGRES_DB: vibewarden
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vibewarden -d vibewarden"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  kratos-migrate:
+    image: oryd/kratos:v25.4.0
+    container_name: vibewarden-kratos-migrate
+    environment:
+      DSN: postgres://vibewarden:vibewarden@postgres:5432/vibewarden?sslmode=disable
+    volumes:
+      - ./dev/kratos:/etc/config/kratos:ro
+    command: migrate sql -e --yes
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  kratos:
+    image: oryd/kratos:v25.4.0
+    container_name: vibewarden-kratos
+    environment:
+      DSN: postgres://vibewarden:vibewarden@postgres:5432/vibewarden?sslmode=disable
+      SERVE_PUBLIC_BASE_URL: http://127.0.0.1:4433/
+      SERVE_ADMIN_BASE_URL: http://127.0.0.1:4434/
+    ports:
+      - "4433:4433"
+      - "4434:4434"
+    volumes:
+      - ./dev/kratos:/etc/config/kratos:ro
+    command: serve --config /etc/config/kratos/kratos.yml --dev --watch-courier
+    depends_on:
+      kratos-migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:4434/admin/health/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  mailslurper:
+    image: oryd/mailslurper:latest-smtps
+    container_name: vibewarden-mailslurper
+    ports:
+      - "4436:4436"  # SMTP
+      - "4437:4437"  # Web UI
+
+volumes:
+  postgres_data:
