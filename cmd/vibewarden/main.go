@@ -29,6 +29,9 @@ Zero-to-secure in minutes.`,
 	// Configure version template
 	rootCmd.SetVersionTemplate("vibewarden {{.Version}}\n")
 
+	// Register subcommands
+	rootCmd.AddCommand(newServeCmd())
+
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
