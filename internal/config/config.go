@@ -31,6 +31,9 @@ type Config struct {
 
 	// Admin API configuration
 	Admin AdminConfig `mapstructure:"admin"`
+
+	// Security headers configuration
+	SecurityHeaders SecurityHeadersConfig `mapstructure:"security_headers"`
 }
 
 // ServerConfig holds server-related settings.
@@ -94,6 +97,34 @@ type AdminConfig struct {
 	Token string `mapstructure:"token"`
 }
 
+// SecurityHeadersConfig holds security header settings.
+type SecurityHeadersConfig struct {
+	// Enabled toggles security headers middleware (default: true)
+	Enabled bool `mapstructure:"enabled"`
+
+	// HSTSMaxAge is the Strict-Transport-Security max-age in seconds (default: 31536000 = 1 year)
+	HSTSMaxAge int `mapstructure:"hsts_max_age"`
+	// HSTSIncludeSubDomains includes the includeSubDomains directive (default: true)
+	HSTSIncludeSubDomains bool `mapstructure:"hsts_include_subdomains"`
+	// HSTSPreload includes the preload directive (default: false — requires manual submission)
+	HSTSPreload bool `mapstructure:"hsts_preload"`
+
+	// ContentTypeNosniff sets X-Content-Type-Options: nosniff (default: true)
+	ContentTypeNosniff bool `mapstructure:"content_type_nosniff"`
+
+	// FrameOption sets X-Frame-Options value: "DENY", "SAMEORIGIN", or "" to disable (default: "DENY")
+	FrameOption string `mapstructure:"frame_option"`
+
+	// ContentSecurityPolicy sets Content-Security-Policy value (default: "default-src 'self'")
+	ContentSecurityPolicy string `mapstructure:"content_security_policy"`
+
+	// ReferrerPolicy sets Referrer-Policy value (default: "strict-origin-when-cross-origin")
+	ReferrerPolicy string `mapstructure:"referrer_policy"`
+
+	// PermissionsPolicy sets Permissions-Policy value (default: "")
+	PermissionsPolicy string `mapstructure:"permissions_policy"`
+}
+
 // Load reads configuration from file and environment variables.
 // Config file path can be specified; defaults to "./vibewarden.yaml".
 // Environment variables override file values using VIBEWARDEN_ prefix.
@@ -117,6 +148,15 @@ func Load(configPath string) (*Config, error) {
 	v.SetDefault("log.format", "json")
 	v.SetDefault("admin.enabled", false)
 	v.SetDefault("admin.token", "")
+	v.SetDefault("security_headers.enabled", true)
+	v.SetDefault("security_headers.hsts_max_age", 31536000)
+	v.SetDefault("security_headers.hsts_include_subdomains", true)
+	v.SetDefault("security_headers.hsts_preload", false)
+	v.SetDefault("security_headers.content_type_nosniff", true)
+	v.SetDefault("security_headers.frame_option", "DENY")
+	v.SetDefault("security_headers.content_security_policy", "default-src 'self'")
+	v.SetDefault("security_headers.referrer_policy", "strict-origin-when-cross-origin")
+	v.SetDefault("security_headers.permissions_policy", "")
 
 	// Config file
 	if configPath != "" {
