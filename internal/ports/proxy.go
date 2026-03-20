@@ -28,6 +28,9 @@ type ProxyConfig struct {
 	// UpstreamAddr is the address of the upstream application (e.g., "127.0.0.1:3000")
 	UpstreamAddr string
 
+	// Version is the binary version string, used in health check responses.
+	Version string
+
 	// TLS configuration
 	TLS TLSConfig
 

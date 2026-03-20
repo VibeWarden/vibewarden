@@ -137,13 +137,14 @@ func TestBuildCaddyConfig_SecurityHeaders(t *testing.T) {
 	if !ok {
 		t.Fatal("routes not found in server config")
 	}
-	if len(routes) == 0 {
-		t.Fatal("expected at least one route")
+	// routes[0] = health check, routes[1] = catch-all proxy route
+	if len(routes) < 2 {
+		t.Fatalf("expected at least 2 routes (health + proxy), got %d", len(routes))
 	}
 
-	handlers, ok := routes[0]["handle"].([]map[string]any)
+	handlers, ok := routes[1]["handle"].([]map[string]any)
 	if !ok {
-		t.Fatal("handle not found in route")
+		t.Fatal("handle not found in proxy route")
 	}
 
 	// First handler should be security headers when enabled
@@ -176,13 +177,14 @@ func TestBuildCaddyConfig_NoSecurityHeaders(t *testing.T) {
 	if !ok {
 		t.Fatal("routes not found in server config")
 	}
-	if len(routes) == 0 {
-		t.Fatal("expected at least one route")
+	// routes[0] = health check, routes[1] = catch-all proxy route
+	if len(routes) < 2 {
+		t.Fatalf("expected at least 2 routes (health + proxy), got %d", len(routes))
 	}
 
-	handlers, ok := routes[0]["handle"].([]map[string]any)
+	handlers, ok := routes[1]["handle"].([]map[string]any)
 	if !ok {
-		t.Fatal("handle not found in route")
+		t.Fatal("handle not found in proxy route")
 	}
 
 	// Only the reverse proxy handler when security headers disabled
@@ -211,9 +213,13 @@ func TestBuildCaddyConfig_ReverseProxyUpstream(t *testing.T) {
 	if !ok {
 		t.Fatal("routes not found in server config")
 	}
-	handlers, ok := routes[0]["handle"].([]map[string]any)
+	// routes[0] = health check, routes[1] = catch-all proxy route
+	if len(routes) < 2 {
+		t.Fatalf("expected at least 2 routes (health + proxy), got %d", len(routes))
+	}
+	handlers, ok := routes[1]["handle"].([]map[string]any)
 	if !ok {
-		t.Fatal("handle not found in route")
+		t.Fatal("handle not found in proxy route")
 	}
 
 	// Find reverse proxy handler
@@ -235,6 +241,84 @@ func TestBuildCaddyConfig_ReverseProxyUpstream(t *testing.T) {
 
 	if upstreams[0]["dial"] != "127.0.0.1:3000" {
 		t.Errorf("upstream dial = %v, want '127.0.0.1:3000'", upstreams[0]["dial"])
+	}
+}
+
+func TestBuildCaddyConfig_HealthRoute(t *testing.T) {
+	tests := []struct {
+		name        string
+		cfg         *ports.ProxyConfig
+		wantVersion string
+	}{
+		{
+			name: "health route uses version from config",
+			cfg: &ports.ProxyConfig{
+				ListenAddr:   "127.0.0.1:8080",
+				UpstreamAddr: "127.0.0.1:3000",
+				Version:      "v1.2.3",
+			},
+			wantVersion: "v1.2.3",
+		},
+		{
+			name: "health route with empty version",
+			cfg: &ports.ProxyConfig{
+				ListenAddr:   "127.0.0.1:8080",
+				UpstreamAddr: "127.0.0.1:3000",
+				Version:      "",
+			},
+			wantVersion: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := BuildCaddyConfig(tt.cfg)
+			if err != nil {
+				t.Fatalf("BuildCaddyConfig() unexpected error: %v", err)
+			}
+
+			server := extractServer(t, result)
+			routes, ok := server["routes"].([]map[string]any)
+			if !ok {
+				t.Fatal("routes not found in server config")
+			}
+			if len(routes) < 2 {
+				t.Fatalf("expected at least 2 routes (health + proxy), got %d", len(routes))
+			}
+
+			// routes[0] must be the health check route
+			healthRoute := routes[0]
+
+			matchers, ok := healthRoute["match"].([]map[string]any)
+			if !ok || len(matchers) == 0 {
+				t.Fatal("match not found in health route")
+			}
+
+			paths, ok := matchers[0]["path"].([]string)
+			if !ok || len(paths) == 0 {
+				t.Fatal("path not found in health route matcher")
+			}
+			if paths[0] != "/_vibewarden/health" {
+				t.Errorf("health route path = %q, want %q", paths[0], "/_vibewarden/health")
+			}
+
+			handlers, ok := healthRoute["handle"].([]map[string]any)
+			if !ok || len(handlers) == 0 {
+				t.Fatal("handle not found in health route")
+			}
+
+			if handlers[0]["handler"] != "static_response" {
+				t.Errorf("health handler type = %v, want 'static_response'", handlers[0]["handler"])
+			}
+
+			body, ok := handlers[0]["body"].(string)
+			if !ok {
+				t.Fatal("body not found in health route handler")
+			}
+			if tt.wantVersion != "" && body == "" {
+				t.Error("expected non-empty body in health route handler")
+			}
+		})
 	}
 }
 
