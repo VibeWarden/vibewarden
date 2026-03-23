@@ -55,3 +55,25 @@ admin:
   enabled: false
   # Bearer token for authentication (use env var VIBEWARDEN_ADMIN_TOKEN in production)
   token: ""
+
+# Security headers added to all proxied responses
+security_headers:
+  # Enable security headers middleware (recommended: true)
+  enabled: true
+  # Strict-Transport-Security max-age in seconds (default: 31536000 = 1 year)
+  # HSTS is only sent over HTTPS connections — ignored on plain HTTP
+  hsts_max_age: 31536000
+  # Include the includeSubDomains directive in HSTS
+  hsts_include_subdomains: true
+  # Include the preload directive (requires manual submission to browser preload lists)
+  hsts_preload: false
+  # Set X-Content-Type-Options: nosniff
+  content_type_nosniff: true
+  # Set X-Frame-Options: "DENY", "SAMEORIGIN", or "" to disable
+  frame_option: "DENY"
+  # Content-Security-Policy value (empty string disables the header)
+  content_security_policy: "default-src 'self'"
+  # Referrer-Policy value (empty string disables the header)
+  referrer_policy: "strict-origin-when-cross-origin"
+  # Permissions-Policy value (empty string disables the header)
+  permissions_policy: ""

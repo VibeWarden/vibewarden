@@ -9,19 +9,21 @@ import (
 
 // SecurityHeaders creates a middleware that adds security headers to responses.
 // Headers are set before calling the next handler so they appear on all responses.
+// HSTS is only applied when the connection is over TLS (r.TLS != nil).
 func SecurityHeaders(cfg ports.SecurityHeadersConfig) func(next http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			setSecurityHeaders(w, cfg)
+			setSecurityHeaders(w, r, cfg)
 			next.ServeHTTP(w, r)
 		})
 	}
 }
 
 // setSecurityHeaders applies all configured security headers to the response writer.
-func setSecurityHeaders(w http.ResponseWriter, cfg ports.SecurityHeadersConfig) {
-	// Strict-Transport-Security (HSTS)
-	if cfg.HSTSMaxAge > 0 {
+// HSTS is only set when the request was received over TLS (r.TLS != nil).
+func setSecurityHeaders(w http.ResponseWriter, r *http.Request, cfg ports.SecurityHeadersConfig) {
+	// Strict-Transport-Security (HSTS) — must not be sent over plain HTTP
+	if cfg.HSTSMaxAge > 0 && r.TLS != nil {
 		hsts := fmt.Sprintf("max-age=%d", cfg.HSTSMaxAge)
 		if cfg.HSTSIncludeSubDomains {
 			hsts += "; includeSubDomains"
