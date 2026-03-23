@@ -61,8 +61,8 @@ func runServe(configPath string) error {
 		Version:      version,
 		TLS: ports.TLSConfig{
 			Enabled:  cfg.TLS.Enabled,
+			Provider: ports.TLSProvider(cfg.TLS.Provider),
 			Domain:   cfg.TLS.Domain,
-			AutoCert: cfg.TLS.Provider == "letsencrypt",
 		},
 		SecurityHeaders: ports.SecurityHeadersConfig{
 			Enabled:               cfg.SecurityHeaders.Enabled,

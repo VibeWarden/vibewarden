@@ -4,6 +4,7 @@ package caddy
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"io"
 	"log/slog"
@@ -226,9 +227,94 @@ func TestAdapter_Integration_SecurityHeadersInProxiedResponse(t *testing.T) {
 	}
 }
 
+// TestAdapter_Integration_SelfSignedTLS starts Caddy with a self-signed certificate
+// and verifies that HTTPS connections succeed (using a TLS client that accepts
+// self-signed certificates for testing purposes).
+func TestAdapter_Integration_SelfSignedTLS(t *testing.T) {
+	// Start a minimal upstream that returns a plain 200.
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprint(w, "ok")
+	}))
+	defer upstream.Close()
+
+	httpsPort := findFreePort(t)
+	listenAddr := fmt.Sprintf("127.0.0.1:%d", httpsPort)
+
+	cfg := &ports.ProxyConfig{
+		ListenAddr:   listenAddr,
+		UpstreamAddr: upstream.Listener.Addr().String(),
+		TLS: ports.TLSConfig{
+			Enabled:  true,
+			Provider: ports.TLSProviderSelfSigned,
+		},
+	}
+
+	adapter := NewAdapter(cfg, slog.Default())
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	startErr := make(chan error, 1)
+	go func() {
+		startErr <- adapter.Start(ctx)
+	}()
+
+	// Use an HTTP client that accepts self-signed (untrusted) certificates.
+	insecureClient := &http.Client{
+		Timeout: 500 * time.Millisecond,
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec // intentional in test
+		},
+	}
+
+	proxyURL := fmt.Sprintf("https://%s", listenAddr)
+	if err := waitForServerWithClient(insecureClient, proxyURL, 10*time.Second); err != nil {
+		cancel()
+		t.Fatalf("HTTPS proxy server did not start: %v", err)
+	}
+
+	resp, err := insecureClient.Get(proxyURL + "/")
+	if err != nil {
+		t.Fatalf("GET through HTTPS proxy: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("status code = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+
+	// Verify the connection was indeed TLS.
+	if resp.TLS == nil {
+		t.Error("expected a TLS connection, got plain HTTP")
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("reading response body: %v", err)
+	}
+	if string(body) != "ok" {
+		t.Errorf("response body = %q, want %q", string(body), "ok")
+	}
+
+	cancel()
+
+	stopCtx, stopCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer stopCancel()
+
+	if err := adapter.Stop(stopCtx); err != nil {
+		t.Errorf("Stop() error: %v", err)
+	}
+}
+
 // waitForServer polls the given URL until it returns a 2xx response or times out.
 func waitForServer(url string, timeout time.Duration) error {
-	client := &http.Client{Timeout: 500 * time.Millisecond}
+	return waitForServerWithClient(&http.Client{Timeout: 500 * time.Millisecond}, url, timeout)
+}
+
+// waitForServerWithClient polls the given URL using the provided client until it
+// returns a 2xx response or the timeout elapses.
+func waitForServerWithClient(client *http.Client, url string, timeout time.Duration) error {
 	deadline := time.Now().Add(timeout)
 
 	for time.Now().Before(deadline) {

@@ -38,24 +38,47 @@ type ProxyConfig struct {
 	SecurityHeaders SecurityHeadersConfig
 }
 
+// TLSProvider identifies how TLS certificates are provisioned.
+// Use the TLSProvider* constants for valid values.
+type TLSProvider string
+
+const (
+	// TLSProviderLetsEncrypt provisions certificates automatically via ACME (Let's Encrypt).
+	TLSProviderLetsEncrypt TLSProvider = "letsencrypt"
+
+	// TLSProviderSelfSigned instructs Caddy to generate a self-signed certificate.
+	// Intended for local development and testing only.
+	TLSProviderSelfSigned TLSProvider = "self-signed"
+
+	// TLSProviderExternal means the operator supplies the certificate and key files.
+	// Use CertPath and KeyPath to specify the file paths.
+	TLSProviderExternal TLSProvider = "external"
+)
+
 // TLSConfig holds TLS-specific settings.
 type TLSConfig struct {
-	// Enabled toggles TLS termination
+	// Enabled toggles TLS termination.
 	Enabled bool
 
-	// Domain for certificate provisioning (required if Enabled && AutoCert)
+	// Provider selects how certificates are provisioned.
+	// Valid values: "letsencrypt", "self-signed", "external".
+	// Defaults to "self-signed" when empty and Enabled is true.
+	Provider TLSProvider
+
+	// Domain is the hostname for certificate provisioning.
+	// Required when Provider is TLSProviderLetsEncrypt.
 	Domain string
 
-	// AutoCert enables automatic certificate provisioning via ACME (Let's Encrypt)
-	AutoCert bool
-
-	// CertPath is the path to a custom certificate file (if not using AutoCert)
+	// CertPath is the path to a PEM-encoded certificate file.
+	// Required when Provider is TLSProviderExternal.
 	CertPath string
 
-	// KeyPath is the path to the private key file (if not using AutoCert)
+	// KeyPath is the path to a PEM-encoded private key file.
+	// Required when Provider is TLSProviderExternal.
 	KeyPath string
 
-	// StoragePath is where Caddy stores certificates (default: system-specific)
+	// StoragePath is where Caddy stores ACME certificates on disk.
+	// Uses the Caddy default when empty (applicable to TLSProviderLetsEncrypt only).
 	StoragePath string
 }
 

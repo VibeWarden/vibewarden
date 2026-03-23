@@ -19,12 +19,39 @@ upstream:
 
 # TLS configuration
 tls:
-  # Enable TLS (set to true in production)
+  # Enable TLS termination (set to true in production).
+  # When enabled, HTTP requests on port 80 are automatically redirected to HTTPS.
   enabled: false
-  # Domain for certificate (required if enabled)
-  domain: ""
-  # Provider: "letsencrypt", "self-signed", or "external"
+
+  # Provider selects how TLS certificates are obtained. Valid values:
+  #
+  #   letsencrypt  — Automatic ACME certificate via Let's Encrypt.
+  #                  Requires a public domain and open port 443.
+  #                  Also requires the "domain" field to be set.
+  #
+  #   self-signed  — Caddy generates an internal self-signed certificate.
+  #                  Suitable for local development and internal services.
+  #                  Browsers will show a security warning.
+  #
+  #   external     — You supply the certificate and key files.
+  #                  Requires "cert_path" and "key_path" to be set.
+  #                  Use this when TLS is already managed by Cloudflare,
+  #                  your registrar, AWS ACM, or another tool.
   provider: "self-signed"
+
+  # Domain for certificate provisioning.
+  # Required when provider is "letsencrypt".
+  # Optional for "self-signed" (scopes the certificate to that hostname).
+  domain: ""
+
+  # Certificate and key paths — required when provider is "external".
+  cert_path: ""
+  key_path: ""
+
+  # Directory where Caddy stores ACME certificates.
+  # Uses the Caddy default (~/.local/share/caddy) when empty.
+  # Only applies when provider is "letsencrypt".
+  storage_path: ""
 
 # Ory Kratos (identity/auth) settings
 kratos:
