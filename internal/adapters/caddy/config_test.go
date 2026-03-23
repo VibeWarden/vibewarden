@@ -58,23 +58,7 @@ func TestBuildCaddyConfig_AutomaticHTTPS(t *testing.T) {
 		wantDisableAH bool
 	}{
 		{
-			name: "localhost disables automatic HTTPS",
-			cfg: &ports.ProxyConfig{
-				ListenAddr:   "127.0.0.1:8080",
-				UpstreamAddr: "127.0.0.1:3000",
-			},
-			wantDisableAH: true,
-		},
-		{
-			name: "localhost keyword disables automatic HTTPS",
-			cfg: &ports.ProxyConfig{
-				ListenAddr:   "localhost:8080",
-				UpstreamAddr: "localhost:3000",
-			},
-			wantDisableAH: true,
-		},
-		{
-			name: "TLS disabled also disables automatic HTTPS",
+			name: "TLS disabled disables automatic HTTPS",
 			cfg: &ports.ProxyConfig{
 				ListenAddr:   "0.0.0.0:8080",
 				UpstreamAddr: "127.0.0.1:3000",
@@ -83,6 +67,17 @@ func TestBuildCaddyConfig_AutomaticHTTPS(t *testing.T) {
 				},
 			},
 			wantDisableAH: true,
+		},
+		{
+			name: "TLS enabled enables automatic HTTPS",
+			cfg: &ports.ProxyConfig{
+				ListenAddr:   "127.0.0.1:8080",
+				UpstreamAddr: "127.0.0.1:3000",
+				TLS: ports.TLSConfig{
+					Enabled: true,
+				},
+			},
+			wantDisableAH: false,
 		},
 	}
 
@@ -448,33 +443,6 @@ func TestBuildSecurityHeadersHandler(t *testing.T) {
 				if _, found := setHeaders[headerName]; found {
 					t.Errorf("header %q must not be present when TLS is disabled", headerName)
 				}
-			}
-		})
-	}
-}
-
-func TestIsLocalAddress(t *testing.T) {
-	tests := []struct {
-		name string
-		addr string
-		want bool
-	}{
-		{"loopback IP with port", "127.0.0.1:8080", true},
-		{"loopback IP without port", "127.0.0.1", true},
-		{"localhost with port", "localhost:8080", true},
-		{"localhost without port", "localhost", true},
-		{"empty", "", true},
-		{"public IP", "1.2.3.4:8080", false},
-		{"public IP without port", "1.2.3.4", false},
-		{"all interfaces", "0.0.0.0:8080", false},
-		{"IPv6 loopback", "::1", true},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := isLocalAddress(tt.addr)
-			if got != tt.want {
-				t.Errorf("isLocalAddress(%q) = %v, want %v", tt.addr, got, tt.want)
 			}
 		})
 	}

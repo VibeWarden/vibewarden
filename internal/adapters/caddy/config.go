@@ -3,8 +3,6 @@ package caddy
 
 import (
 	"fmt"
-	"net"
-	"strings"
 
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
@@ -22,9 +20,6 @@ func BuildCaddyConfig(cfg *ports.ProxyConfig) (map[string]any, error) {
 		return nil, fmt.Errorf("upstream address is required")
 	}
 
-	// Determine if this is a local address (skip TLS for localhost)
-	isLocal := isLocalAddress(cfg.UpstreamAddr) || isLocalAddress(cfg.ListenAddr)
-
 	// Build the reverse proxy handler
 	reverseProxyHandler := map[string]any{
 		"handler": "reverse_proxy",
@@ -37,10 +32,8 @@ func BuildCaddyConfig(cfg *ports.ProxyConfig) (map[string]any, error) {
 	handlers := []map[string]any{}
 
 	// Add security headers handler if enabled.
-	// TLS enabled state is passed so that HSTS is only included over HTTPS.
 	if cfg.SecurityHeaders.Enabled {
-		tlsEnabled := cfg.TLS.Enabled && !isLocal
-		handlers = append(handlers, buildSecurityHeadersHandler(cfg.SecurityHeaders, tlsEnabled))
+		handlers = append(handlers, buildSecurityHeadersHandler(cfg.SecurityHeaders, cfg.TLS.Enabled))
 	}
 
 	// Add reverse proxy as final handler
@@ -78,8 +71,8 @@ func BuildCaddyConfig(cfg *ports.ProxyConfig) (map[string]any, error) {
 		"routes": routes,
 	}
 
-	// Configure TLS if enabled and not local
-	if cfg.TLS.Enabled && !isLocal {
+	// Configure TLS if enabled
+	if cfg.TLS.Enabled {
 		server["tls_connection_policies"] = buildTLSPolicy(cfg.TLS)
 
 		// Enable automatic HTTPS
@@ -87,7 +80,7 @@ func BuildCaddyConfig(cfg *ports.ProxyConfig) (map[string]any, error) {
 			"disable": false,
 		}
 	} else {
-		// Disable automatic HTTPS for local development
+		// Disable automatic HTTPS when TLS is not configured
 		server["automatic_https"] = map[string]any{
 			"disable": true,
 		}
@@ -103,7 +96,7 @@ func BuildCaddyConfig(cfg *ports.ProxyConfig) (map[string]any, error) {
 	}
 
 	// Configure TLS automation if enabled
-	if cfg.TLS.Enabled && cfg.TLS.AutoCert && !isLocal {
+	if cfg.TLS.Enabled && cfg.TLS.AutoCert {
 		apps["tls"] = buildTLSAutomation(cfg.TLS)
 	}
 
@@ -200,23 +193,3 @@ func buildTLSAutomation(cfg ports.TLSConfig) map[string]any {
 	return automation
 }
 
-// isLocalAddress checks if the address is localhost or a loopback address.
-func isLocalAddress(addr string) bool {
-	host, _, err := net.SplitHostPort(addr)
-	if err != nil {
-		host = addr
-	}
-
-	host = strings.ToLower(host)
-
-	if host == "localhost" || host == "" {
-		return true
-	}
-
-	ip := net.ParseIP(host)
-	if ip == nil {
-		return false
-	}
-
-	return ip.IsLoopback()
-}
