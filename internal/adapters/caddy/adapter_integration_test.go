@@ -164,8 +164,9 @@ func TestAdapter_Integration_SecurityHeadersInProxiedResponse(t *testing.T) {
 			FrameOption:           "DENY",
 			ContentSecurityPolicy: "default-src 'self'",
 			ReferrerPolicy:        "strict-origin-when-cross-origin",
-			// HSTSMaxAge intentionally omitted: the proxy is HTTP-only in this
-			// test, so HSTS must not be set regardless of config.
+			// HSTSMaxAge is set to verify HSTS is NOT added to the response:
+			// the proxy is HTTP-only in this test, so HSTS must not be present
+			// regardless of config value.
 			HSTSMaxAge: 31536000,
 		},
 	}
