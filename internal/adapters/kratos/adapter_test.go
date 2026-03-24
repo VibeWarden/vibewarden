@@ -1,0 +1,290 @@
+package kratos_test
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"log/slog"
+	"net"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"testing"
+	"time"
+
+	"github.com/vibewarden/vibewarden/internal/adapters/kratos"
+	"github.com/vibewarden/vibewarden/internal/ports"
+)
+
+// newTestLogger returns a discard logger suitable for tests.
+func newTestLogger() *slog.Logger {
+	return slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
+}
+
+// validSessionBody returns a minimal Kratos /sessions/whoami JSON payload.
+func validSessionBody() map[string]any {
+	return map[string]any{
+		"id":               "sess-001",
+		"active":           true,
+		"authenticated_at": "2026-03-24T10:00:00Z",
+		"expires_at":       "2026-03-25T10:00:00Z",
+		"identity": map[string]any{
+			"id": "id-abc-123",
+			"traits": map[string]any{
+				"email": "user@example.com",
+			},
+			"verifiable_addresses": []map[string]any{
+				{
+					"value":    "user@example.com",
+					"via":      "email",
+					"verified": true,
+				},
+			},
+		},
+	}
+}
+
+func TestCheckSession_ValidSession(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/sessions/whoami" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(validSessionBody())
+	}))
+	defer srv.Close()
+
+	adapter := kratos.NewAdapter(srv.URL, 0, newTestLogger())
+	session, err := adapter.CheckSession(context.Background(), "ory_kratos_session=abc123")
+
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if session == nil {
+		t.Fatal("expected session, got nil")
+	}
+	if session.ID != "sess-001" {
+		t.Errorf("session.ID = %q, want %q", session.ID, "sess-001")
+	}
+	if !session.Active {
+		t.Error("session.Active = false, want true")
+	}
+	if session.Identity.ID != "id-abc-123" {
+		t.Errorf("identity.ID = %q, want %q", session.Identity.ID, "id-abc-123")
+	}
+	if session.Identity.Email != "user@example.com" {
+		t.Errorf("identity.Email = %q, want %q", session.Identity.Email, "user@example.com")
+	}
+	if !session.Identity.EmailVerified {
+		t.Error("identity.EmailVerified = false, want true")
+	}
+	if session.AuthenticatedAt != "2026-03-24T10:00:00Z" {
+		t.Errorf("session.AuthenticatedAt = %q, want %q", session.AuthenticatedAt, "2026-03-24T10:00:00Z")
+	}
+	if session.ExpiresAt != "2026-03-25T10:00:00Z" {
+		t.Errorf("session.ExpiresAt = %q, want %q", session.ExpiresAt, "2026-03-25T10:00:00Z")
+	}
+}
+
+func TestCheckSession_EmailFallbackFromTraits(t *testing.T) {
+	// Kratos response with no verifiable_addresses — email comes from traits.
+	body := map[string]any{
+		"id":               "sess-002",
+		"active":           true,
+		"authenticated_at": "2026-03-24T10:00:00Z",
+		"expires_at":       "",
+		"identity": map[string]any{
+			"id": "id-xyz",
+			"traits": map[string]any{
+				"email": "traits@example.com",
+			},
+			"verifiable_addresses": []map[string]any{},
+		},
+	}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(body)
+	}))
+	defer srv.Close()
+
+	adapter := kratos.NewAdapter(srv.URL, 0, newTestLogger())
+	session, err := adapter.CheckSession(context.Background(), "ory_kratos_session=xyz")
+
+	if err != nil {
+		t.Fatalf("expected no error, got %v", err)
+	}
+	if session.Identity.Email != "traits@example.com" {
+		t.Errorf("identity.Email = %q, want %q", session.Identity.Email, "traits@example.com")
+	}
+	if session.Identity.EmailVerified {
+		t.Error("identity.EmailVerified = true, want false (no verifiable address)")
+	}
+}
+
+func TestCheckSession_InvalidSession(t *testing.T) {
+	tests := []struct {
+		name           string
+		statusCode     int
+		body           any
+		wantErr        error
+	}{
+		{
+			name:       "401 from kratos",
+			statusCode: http.StatusUnauthorized,
+			body:       map[string]any{"error": map[string]any{"message": "session not found"}},
+			wantErr:    ports.ErrSessionInvalid,
+		},
+		{
+			name:       "inactive session",
+			statusCode: http.StatusOK,
+			body: map[string]any{
+				"id":     "sess-inactive",
+				"active": false,
+				"identity": map[string]any{
+					"id":     "id-999",
+					"traits": map[string]any{},
+				},
+			},
+			wantErr: ports.ErrSessionInvalid,
+		},
+		{
+			name:       "unexpected 4xx status",
+			statusCode: http.StatusForbidden,
+			body:       map[string]any{"error": "forbidden"},
+			wantErr:    ports.ErrSessionInvalid,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(tt.statusCode)
+				_ = json.NewEncoder(w).Encode(tt.body)
+			}))
+			defer srv.Close()
+
+			adapter := kratos.NewAdapter(srv.URL, 0, newTestLogger())
+			_, err := adapter.CheckSession(context.Background(), "ory_kratos_session=bad")
+
+			if !errors.Is(err, tt.wantErr) {
+				t.Errorf("CheckSession() error = %v, want errors.Is(%v)", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+func TestCheckSession_EmptyCookie(t *testing.T) {
+	adapter := kratos.NewAdapter("http://localhost:4433", 0, newTestLogger())
+	_, err := adapter.CheckSession(context.Background(), "")
+
+	if !errors.Is(err, ports.ErrSessionNotFound) {
+		t.Errorf("CheckSession(\"\") error = %v, want ErrSessionNotFound", err)
+	}
+}
+
+func TestCheckSession_ProviderUnavailable(t *testing.T) {
+	tests := []struct {
+		name      string
+		setupAddr func() string
+	}{
+		{
+			name: "connection refused",
+			setupAddr: func() string {
+				// Pick a port that is guaranteed not to be listening.
+				return "http://127.0.0.1:1"
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			adapter := kratos.NewAdapter(tt.setupAddr(), 0, newTestLogger())
+			_, err := adapter.CheckSession(context.Background(), "ory_kratos_session=abc")
+
+			if !errors.Is(err, ports.ErrAuthProviderUnavailable) {
+				t.Errorf("CheckSession() error = %v, want ErrAuthProviderUnavailable", err)
+			}
+		})
+	}
+}
+
+func TestCheckSession_ServerError(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer srv.Close()
+
+	adapter := kratos.NewAdapter(srv.URL, 0, newTestLogger())
+	_, err := adapter.CheckSession(context.Background(), "ory_kratos_session=abc")
+
+	if !errors.Is(err, ports.ErrAuthProviderUnavailable) {
+		t.Errorf("CheckSession() on 500 error = %v, want ErrAuthProviderUnavailable", err)
+	}
+}
+
+func TestCheckSession_Timeout(t *testing.T) {
+	// Server that never responds within the timeout.
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(500 * time.Millisecond)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	// Very short timeout to trigger before the handler sleeps.
+	adapter := kratos.NewAdapter(srv.URL, 10*time.Millisecond, newTestLogger())
+	_, err := adapter.CheckSession(context.Background(), "ory_kratos_session=abc")
+
+	if !errors.Is(err, ports.ErrAuthProviderUnavailable) {
+		t.Errorf("CheckSession() timeout error = %v, want ErrAuthProviderUnavailable", err)
+	}
+}
+
+func TestCheckSession_ContextCancellation(t *testing.T) {
+	// Block until the test cancels the context.
+	started := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		close(started)
+		time.Sleep(200 * time.Millisecond)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+
+	adapter := kratos.NewAdapter(srv.URL, 5*time.Second, newTestLogger())
+
+	done := make(chan error, 1)
+	go func() {
+		<-started
+		cancel()
+	}()
+	go func() {
+		_, err := adapter.CheckSession(ctx, "ory_kratos_session=abc")
+		done <- err
+	}()
+
+	err := <-done
+	if !errors.Is(err, ports.ErrAuthProviderUnavailable) {
+		t.Errorf("CheckSession() context cancelled error = %v, want ErrAuthProviderUnavailable", err)
+	}
+}
+
+func TestCheckSession_NetworkError(t *testing.T) {
+	// Start a server then immediately close it so the connection is refused.
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("failed to listen: %v", err)
+	}
+	addr := ln.Addr().String()
+	ln.Close()
+
+	adapter := kratos.NewAdapter("http://"+addr, 0, newTestLogger())
+	_, checkErr := adapter.CheckSession(context.Background(), "ory_kratos_session=abc")
+
+	if !errors.Is(checkErr, ports.ErrAuthProviderUnavailable) {
+		t.Errorf("CheckSession() network error = %v, want ErrAuthProviderUnavailable", checkErr)
+	}
+}
