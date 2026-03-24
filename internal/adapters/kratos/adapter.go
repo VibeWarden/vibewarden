@@ -130,7 +130,7 @@ func (a *Adapter) CheckSession(ctx context.Context, sessionCookie string) (*port
 
 	var kratosResp kratosSessionResponse
 	if err := json.NewDecoder(resp.Body).Decode(&kratosResp); err != nil {
-		return nil, fmt.Errorf("decoding kratos response: %w", err)
+		return nil, fmt.Errorf("decoding kratos session response: %w: %w", err, ports.ErrAuthProviderUnavailable)
 	}
 
 	if !kratosResp.Active {

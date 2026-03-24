@@ -125,10 +125,10 @@ func TestCheckSession_EmailFallbackFromTraits(t *testing.T) {
 
 func TestCheckSession_InvalidSession(t *testing.T) {
 	tests := []struct {
-		name           string
-		statusCode     int
-		body           any
-		wantErr        error
+		name       string
+		statusCode int
+		body       any
+		wantErr    error
 	}{
 		{
 			name:       "401 from kratos",
@@ -286,5 +286,29 @@ func TestCheckSession_NetworkError(t *testing.T) {
 
 	if !errors.Is(checkErr, ports.ErrAuthProviderUnavailable) {
 		t.Errorf("CheckSession() network error = %v, want ErrAuthProviderUnavailable", checkErr)
+	}
+}
+
+func TestCheckSession_MalformedJSONResponse(t *testing.T) {
+	// Kratos returns 200 with a body that is not valid JSON (e.g. proxy injected HTML).
+	// The adapter must treat this as ErrAuthProviderUnavailable (fail-closed contract).
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`<html>bad gateway</html>`))
+	}))
+	defer srv.Close()
+
+	adapter := kratos.NewAdapter(srv.URL, 0, newTestLogger())
+	session, err := adapter.CheckSession(context.Background(), "ory_kratos_session=abc")
+
+	if session != nil {
+		t.Error("expected nil session on malformed JSON, got non-nil")
+	}
+	if err == nil {
+		t.Fatal("expected error on malformed JSON, got nil")
+	}
+	if !errors.Is(err, ports.ErrAuthProviderUnavailable) {
+		t.Errorf("CheckSession() malformed JSON error = %v, want errors.Is(ErrAuthProviderUnavailable)", err)
 	}
 }
