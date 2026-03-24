@@ -68,9 +68,19 @@ kratos:
   #        /.ory/kratos/public/*       → Ory canonical prefix (alias)
   #
   # Leave empty to disable authentication (not recommended in production).
+  #
+  # Local binary (running outside Docker):
   public_url: "http://127.0.0.1:4433"
   # Kratos admin API (internal use — not exposed to the internet).
   admin_url: "http://127.0.0.1:4434"
+  #
+  # Docker Compose dev environment:
+  # The VIBEWARDEN_KRATOS_PUBLIC_URL and VIBEWARDEN_KRATOS_ADMIN_URL environment
+  # variables in docker-compose.yml override these values so that the container
+  # resolves Kratos by its service name on the internal Docker network:
+  #
+  #   VIBEWARDEN_KRATOS_PUBLIC_URL: http://kratos:4433
+  #   VIBEWARDEN_KRATOS_ADMIN_URL:  http://kratos:4434
 
 # Auth middleware settings (requires kratos.public_url to be set)
 auth:
