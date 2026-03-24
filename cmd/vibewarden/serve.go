@@ -60,9 +60,12 @@ func runServe(configPath string) error {
 		UpstreamAddr: fmt.Sprintf("%s:%d", cfg.Upstream.Host, cfg.Upstream.Port),
 		Version:      version,
 		TLS: ports.TLSConfig{
-			Enabled:  cfg.TLS.Enabled,
-			Domain:   cfg.TLS.Domain,
-			AutoCert: cfg.TLS.Provider == "letsencrypt",
+			Enabled:     cfg.TLS.Enabled,
+			Provider:    ports.TLSProvider(cfg.TLS.Provider),
+			Domain:      cfg.TLS.Domain,
+			CertPath:    cfg.TLS.CertPath,
+			KeyPath:     cfg.TLS.KeyPath,
+			StoragePath: cfg.TLS.StoragePath,
 		},
 		SecurityHeaders: ports.SecurityHeadersConfig{
 			Enabled:               cfg.SecurityHeaders.Enabled,

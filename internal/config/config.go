@@ -56,10 +56,19 @@ type UpstreamConfig struct {
 type TLSConfig struct {
 	// Enabled toggles TLS (default: false for local dev)
 	Enabled bool `mapstructure:"enabled"`
-	// Domain for TLS certificate (required if enabled)
+	// Domain for TLS certificate (required if enabled with provider "letsencrypt")
 	Domain string `mapstructure:"domain"`
 	// Provider: "letsencrypt", "self-signed", or "external"
 	Provider string `mapstructure:"provider"`
+	// CertPath is the path to a PEM-encoded certificate file.
+	// Required when Provider is "external".
+	CertPath string `mapstructure:"cert_path"`
+	// KeyPath is the path to a PEM-encoded private key file.
+	// Required when Provider is "external".
+	KeyPath string `mapstructure:"key_path"`
+	// StoragePath is the directory where Caddy stores ACME certificates.
+	// Only applies when Provider is "letsencrypt".
+	StoragePath string `mapstructure:"storage_path"`
 }
 
 // KratosConfig holds Ory Kratos connection settings.
