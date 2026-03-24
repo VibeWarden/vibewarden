@@ -36,6 +36,9 @@ type ProxyConfig struct {
 
 	// SecurityHeaders configuration
 	SecurityHeaders SecurityHeadersConfig
+
+	// Auth configuration — controls Kratos session validation and flow proxying.
+	Auth AuthConfig
 }
 
 // TLSProvider identifies how TLS certificates are provisioned.

@@ -78,6 +78,16 @@ func runServe(configPath string) error {
 			ReferrerPolicy:        cfg.SecurityHeaders.ReferrerPolicy,
 			PermissionsPolicy:     cfg.SecurityHeaders.PermissionsPolicy,
 		},
+		Auth: ports.AuthConfig{
+			// Auth is enabled when a Kratos public URL is configured.
+			// The KratosPublicURL drives Kratos flow proxy route insertion.
+			Enabled:           cfg.Kratos.PublicURL != "",
+			KratosPublicURL:   cfg.Kratos.PublicURL,
+			KratosAdminURL:    cfg.Kratos.AdminURL,
+			PublicPaths:       cfg.Auth.PublicPaths,
+			SessionCookieName: cfg.Auth.SessionCookieName,
+			LoginURL:          cfg.Auth.LoginURL,
+		},
 	}
 
 	// Create Caddy adapter and proxy service.
