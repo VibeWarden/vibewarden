@@ -55,10 +55,42 @@ tls:
 
 # Ory Kratos (identity/auth) settings
 kratos:
-  # Kratos public API (user-facing flows)
+  # Kratos public API (user-facing flows). When set, VibeWarden automatically:
+  #   1. Validates session cookies against Kratos on every protected request.
+  #   2. Proxies all Kratos self-service flow paths to Kratos instead of the
+  #      upstream app. This includes:
+  #        /self-service/login/*       → Kratos login flow
+  #        /self-service/registration/*→ Kratos registration flow
+  #        /self-service/logout/*      → Kratos logout
+  #        /self-service/settings/*    → Kratos settings
+  #        /self-service/recovery/*    → Kratos recovery
+  #        /self-service/verification/*→ Kratos verification
+  #        /.ory/kratos/public/*       → Ory canonical prefix (alias)
+  #
+  # Leave empty to disable authentication (not recommended in production).
   public_url: "http://127.0.0.1:4433"
-  # Kratos admin API (internal use)
+  # Kratos admin API (internal use — not exposed to the internet).
   admin_url: "http://127.0.0.1:4434"
+
+# Auth middleware settings (requires kratos.public_url to be set)
+auth:
+  # List of URL path glob patterns that bypass authentication entirely.
+  # The /_vibewarden/* prefix is always public (health check etc.).
+  # Add your app's public routes here; supports * for single-segment wildcards.
+  # Example:
+  #   public_paths:
+  #     - "/static/*"
+  #     - "/favicon.ico"
+  #     - "/robots.txt"
+  public_paths: []
+
+  # Cookie name used by Kratos for session tokens.
+  # Only change this if you have customised your Kratos configuration.
+  session_cookie_name: "ory_kratos_session"
+
+  # URL to redirect unauthenticated users to.
+  # Defaults to /self-service/login/browser (Kratos browser login flow).
+  login_url: ""
 
 # Rate limiting
 rate_limit:

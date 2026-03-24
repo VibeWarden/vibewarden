@@ -857,6 +857,222 @@ func TestBuildSecurityHeadersHandler(t *testing.T) {
 	}
 }
 
+func TestBuildCaddyConfig_KratosFlowRoutes_Present(t *testing.T) {
+	cfg := &ports.ProxyConfig{
+		ListenAddr:   "127.0.0.1:8080",
+		UpstreamAddr: "127.0.0.1:3000",
+		Auth: ports.AuthConfig{
+			Enabled:         true,
+			KratosPublicURL: "http://127.0.0.1:4433",
+		},
+	}
+
+	result, err := BuildCaddyConfig(cfg)
+	if err != nil {
+		t.Fatalf("BuildCaddyConfig() unexpected error: %v", err)
+	}
+
+	server := extractServer(t, result)
+	routes, ok := server["routes"].([]map[string]any)
+	if !ok {
+		t.Fatal("routes not found in server config")
+	}
+
+	// Expect: health (index 0), Kratos flow route (index 1), catch-all proxy (index 2).
+	if len(routes) != 3 {
+		t.Fatalf("expected 3 routes (health + kratos + proxy), got %d", len(routes))
+	}
+
+	kratosRoute := routes[1]
+
+	// Verify the route has matchers for the self-service paths.
+	matchers, ok := kratosRoute["match"].([]map[string]any)
+	if !ok || len(matchers) == 0 {
+		t.Fatal("match not found in Kratos flow route")
+	}
+
+	paths, ok := matchers[0]["path"].([]string)
+	if !ok || len(paths) == 0 {
+		t.Fatal("path matcher not found in Kratos flow route")
+	}
+
+	// Verify all expected self-service paths are present.
+	wantPaths := map[string]bool{
+		"/self-service/login/*":         true,
+		"/self-service/registration/*":  true,
+		"/self-service/logout/*":        true,
+		"/self-service/settings/*":      true,
+		"/self-service/recovery/*":      true,
+		"/self-service/verification/*":  true,
+		"/.ory/kratos/public/*":         true,
+	}
+	for _, p := range paths {
+		delete(wantPaths, p)
+	}
+	if len(wantPaths) > 0 {
+		t.Errorf("missing Kratos flow paths: %v", wantPaths)
+	}
+
+	// Verify the route proxies to Kratos, not to the upstream.
+	handlers, ok := kratosRoute["handle"].([]map[string]any)
+	if !ok || len(handlers) == 0 {
+		t.Fatal("handle not found in Kratos flow route")
+	}
+
+	if handlers[0]["handler"] != "reverse_proxy" {
+		t.Errorf("Kratos flow route handler = %v, want reverse_proxy", handlers[0]["handler"])
+	}
+
+	upstreams, ok := handlers[0]["upstreams"].([]map[string]any)
+	if !ok || len(upstreams) == 0 {
+		t.Fatal("upstreams not found in Kratos flow route handler")
+	}
+
+	if upstreams[0]["dial"] != "127.0.0.1:4433" {
+		t.Errorf("Kratos upstream dial = %v, want 127.0.0.1:4433", upstreams[0]["dial"])
+	}
+}
+
+func TestBuildCaddyConfig_KratosFlowRoutes_AbsentWhenAuthDisabled(t *testing.T) {
+	tests := []struct {
+		name string
+		cfg  *ports.ProxyConfig
+	}{
+		{
+			name: "auth disabled",
+			cfg: &ports.ProxyConfig{
+				ListenAddr:   "127.0.0.1:8080",
+				UpstreamAddr: "127.0.0.1:3000",
+				Auth: ports.AuthConfig{
+					Enabled:         false,
+					KratosPublicURL: "http://127.0.0.1:4433",
+				},
+			},
+		},
+		{
+			name: "auth enabled but no KratosPublicURL",
+			cfg: &ports.ProxyConfig{
+				ListenAddr:   "127.0.0.1:8080",
+				UpstreamAddr: "127.0.0.1:3000",
+				Auth: ports.AuthConfig{
+					Enabled:         true,
+					KratosPublicURL: "",
+				},
+			},
+		},
+		{
+			name: "auth not configured",
+			cfg: &ports.ProxyConfig{
+				ListenAddr:   "127.0.0.1:8080",
+				UpstreamAddr: "127.0.0.1:3000",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := BuildCaddyConfig(tt.cfg)
+			if err != nil {
+				t.Fatalf("BuildCaddyConfig() unexpected error: %v", err)
+			}
+
+			server := extractServer(t, result)
+			routes, ok := server["routes"].([]map[string]any)
+			if !ok {
+				t.Fatal("routes not found in server config")
+			}
+
+			// Without auth, only health + catch-all = 2 routes.
+			if len(routes) != 2 {
+				t.Errorf("expected 2 routes (health + proxy), got %d", len(routes))
+			}
+		})
+	}
+}
+
+func TestBuildCaddyConfig_KratosRouteBeforeCatchAll(t *testing.T) {
+	cfg := &ports.ProxyConfig{
+		ListenAddr:   "127.0.0.1:8080",
+		UpstreamAddr: "127.0.0.1:3000",
+		Auth: ports.AuthConfig{
+			Enabled:         true,
+			KratosPublicURL: "http://127.0.0.1:4433",
+		},
+	}
+
+	result, err := BuildCaddyConfig(cfg)
+	if err != nil {
+		t.Fatalf("BuildCaddyConfig() unexpected error: %v", err)
+	}
+
+	server := extractServer(t, result)
+	routes, ok := server["routes"].([]map[string]any)
+	if !ok || len(routes) < 3 {
+		t.Fatalf("expected at least 3 routes, got %d", len(routes))
+	}
+
+	// Index 0 — health check: has a path matcher.
+	healthRoute := routes[0]
+	if _, hasMatcher := healthRoute["match"]; !hasMatcher {
+		t.Error("routes[0] (health) must have a path matcher")
+	}
+
+	// Index 1 — Kratos flow route: has a path matcher and proxies to Kratos.
+	kratosRoute := routes[1]
+	if _, hasMatcher := kratosRoute["match"]; !hasMatcher {
+		t.Error("routes[1] (Kratos flow) must have a path matcher")
+	}
+
+	// Index 2 — catch-all proxy: no path matcher (matches everything).
+	catchAll := routes[2]
+	if _, hasMatcher := catchAll["match"]; hasMatcher {
+		t.Error("routes[2] (catch-all) must not have a path matcher")
+	}
+}
+
+func TestURLToDialAddr(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{
+			name:  "http with explicit port",
+			input: "http://127.0.0.1:4433",
+			want:  "127.0.0.1:4433",
+		},
+		{
+			name:  "https with explicit port",
+			input: "https://kratos.example.com:8443",
+			want:  "kratos.example.com:8443",
+		},
+		{
+			name:  "http without port defaults to 80",
+			input: "http://kratos.local",
+			want:  "kratos.local:80",
+		},
+		{
+			name:  "https without port defaults to 443",
+			input: "https://kratos.local",
+			want:  "kratos.local:443",
+		},
+		{
+			name:  "url with path is stripped",
+			input: "http://127.0.0.1:4433/some/path",
+			want:  "127.0.0.1:4433",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := urlToDialAddr(tt.input)
+			if got != tt.want {
+				t.Errorf("urlToDialAddr(%q) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
 // extractServer is a helper to navigate the Caddy config structure to the server map.
 func extractServer(t *testing.T, result map[string]any) map[string]any {
 	t.Helper()

@@ -3,9 +3,24 @@ package caddy
 
 import (
 	"fmt"
+	"net"
+	"net/url"
 
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
+
+// kratosFlowPaths contains the URL path patterns that must be proxied to
+// the Kratos public API instead of the upstream application.
+// These paths are the Kratos self-service browser flows and the Ory canonical prefix.
+var kratosFlowPaths = []string{
+	"/self-service/login/*",
+	"/self-service/registration/*",
+	"/self-service/logout/*",
+	"/self-service/settings/*",
+	"/self-service/recovery/*",
+	"/self-service/verification/*",
+	"/.ory/kratos/public/*",
+}
 
 // BuildCaddyConfig constructs the Caddy JSON configuration from ProxyConfig.
 // Uses Caddy's native JSON config format (not Caddyfile).
@@ -16,6 +31,11 @@ import (
 //   - "external"     — operator-supplied certificate and key files
 //
 // When TLS is enabled an HTTP-to-HTTPS redirect server is added automatically.
+//
+// When auth is enabled (cfg.Auth.Enabled && cfg.Auth.KratosPublicURL != ""),
+// Kratos self-service flow routes are inserted between the health check route
+// and the catch-all proxy route. Requests to those paths are forwarded to the
+// Kratos public API transparently so browsers can complete self-service flows.
 func BuildCaddyConfig(cfg *ports.ProxyConfig) (map[string]any, error) {
 	if cfg == nil {
 		return nil, fmt.Errorf("proxy config is required")
@@ -70,13 +90,18 @@ func BuildCaddyConfig(cfg *ports.ProxyConfig) (map[string]any, error) {
 		},
 	}
 
-	// Build routes — health check first, then catch-all proxy route.
-	routes := []map[string]any{
-		healthRoute,
-		{
-			"handle": handlers,
-		},
+	// Build routes — health check first, then Kratos flow routes (when auth is
+	// configured), and finally the catch-all proxy route.
+	routes := []map[string]any{healthRoute}
+
+	if cfg.Auth.Enabled && cfg.Auth.KratosPublicURL != "" {
+		kratosRoute := buildKratosFlowRoute(cfg.Auth.KratosPublicURL)
+		routes = append(routes, kratosRoute)
 	}
+
+	routes = append(routes, map[string]any{
+		"handle": handlers,
+	})
 
 	// Build the main HTTPS (or plain HTTP) server configuration.
 	// Caddy's built-in automatic HTTPS negotiation is always disabled here;
@@ -274,6 +299,59 @@ func buildHTTPRedirectServer() map[string]any {
 		},
 		"automatic_https": map[string]any{"disable": true},
 	}
+}
+
+// buildKratosFlowRoute constructs a Caddy route that transparently proxies all
+// Kratos self-service flow paths and the Ory canonical prefix to the Kratos
+// public API. This route must be placed after the health check route and before
+// the catch-all reverse proxy route so that Kratos paths are never forwarded to
+// the upstream application.
+//
+// The kratosPublicURL must be a valid base URL (e.g. "http://127.0.0.1:4433").
+// The host:port portion is extracted and used as the Caddy upstream dial address.
+func buildKratosFlowRoute(kratosPublicURL string) map[string]any {
+	// Convert the full URL to a host:port dial address for Caddy.
+	// Caddy's reverse_proxy handler expects "host:port", not a full URL.
+	kratosAddr := urlToDialAddr(kratosPublicURL)
+
+	return map[string]any{
+		"match": []map[string]any{
+			{"path": kratosFlowPaths},
+		},
+		"handle": []map[string]any{
+			{
+				"handler": "reverse_proxy",
+				"upstreams": []map[string]any{
+					{"dial": kratosAddr},
+				},
+			},
+		},
+	}
+}
+
+// urlToDialAddr extracts the host:port dial address from a full URL string.
+// For example "http://127.0.0.1:4433" becomes "127.0.0.1:4433".
+// If the URL has no explicit port the scheme default is used: "80" for http,
+// "443" for https. Malformed URLs fall back to returning the original string.
+func urlToDialAddr(rawURL string) string {
+	u, err := url.Parse(rawURL)
+	if err != nil {
+		return rawURL
+	}
+
+	host := u.Hostname()
+	port := u.Port()
+
+	if port == "" {
+		switch u.Scheme {
+		case "https":
+			port = "443"
+		default:
+			port = "80"
+		}
+	}
+
+	return net.JoinHostPort(host, port)
 }
 
 // buildSecurityHeadersHandler creates the Caddy headers handler for security headers.

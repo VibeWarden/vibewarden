@@ -23,6 +23,9 @@ type Config struct {
 	// Kratos (identity) configuration
 	Kratos KratosConfig `mapstructure:"kratos"`
 
+	// Auth middleware configuration
+	Auth AuthMiddlewareConfig `mapstructure:"auth"`
+
 	// Rate limiting configuration
 	RateLimit RateLimitConfig `mapstructure:"rate_limit"`
 
@@ -77,6 +80,23 @@ type KratosConfig struct {
 	PublicURL string `mapstructure:"public_url"`
 	// AdminURL is the Kratos admin API URL
 	AdminURL string `mapstructure:"admin_url"`
+}
+
+// AuthMiddlewareConfig holds auth middleware settings.
+// Authentication is enabled automatically when Kratos.PublicURL is non-empty.
+type AuthMiddlewareConfig struct {
+	// PublicPaths is a list of URL path glob patterns that bypass auth.
+	// The /_vibewarden/* prefix is always public (added automatically).
+	// Supports * for single-segment wildcards (e.g. "/static/*").
+	PublicPaths []string `mapstructure:"public_paths"`
+
+	// SessionCookieName is the name of the Kratos session cookie.
+	// Defaults to "ory_kratos_session".
+	SessionCookieName string `mapstructure:"session_cookie_name"`
+
+	// LoginURL is the redirect destination for unauthenticated users.
+	// Defaults to "/self-service/login/browser" when empty.
+	LoginURL string `mapstructure:"login_url"`
 }
 
 // RateLimitConfig holds rate limiting settings.
@@ -150,6 +170,9 @@ func Load(configPath string) (*Config, error) {
 	v.SetDefault("tls.provider", "self-signed")
 	v.SetDefault("kratos.public_url", "http://127.0.0.1:4433")
 	v.SetDefault("kratos.admin_url", "http://127.0.0.1:4434")
+	v.SetDefault("auth.public_paths", []string{})
+	v.SetDefault("auth.session_cookie_name", "ory_kratos_session")
+	v.SetDefault("auth.login_url", "")
 	v.SetDefault("rate_limit.enabled", true)
 	v.SetDefault("rate_limit.requests_per_second", 100)
 	v.SetDefault("rate_limit.burst_size", 50)
