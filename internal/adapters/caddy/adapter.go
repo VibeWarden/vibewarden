@@ -37,14 +37,23 @@ func (a *Adapter) Start(ctx context.Context) error {
 		return fmt.Errorf("building caddy config: %w", err)
 	}
 
-	a.logger.Info("starting caddy proxy",
-		slog.String("listen", a.config.ListenAddr),
-		slog.String("upstream", a.config.UpstreamAddr),
-	)
-
 	if err := caddy.Load(cfgJSON, true); err != nil {
 		return fmt.Errorf("loading caddy config: %w", err)
 	}
+
+	a.logger.Info("proxy started",
+		slog.String("schema_version", "v1"),
+		slog.String("event_type", "proxy.started"),
+		slog.String("ai_summary", fmt.Sprintf("Reverse proxy listening on %s, forwarding to %s", a.config.ListenAddr, a.config.UpstreamAddr)),
+		slog.Group("payload",
+			slog.String("listen", a.config.ListenAddr),
+			slog.String("upstream", a.config.UpstreamAddr),
+			slog.Bool("tls_enabled", a.config.TLS.Enabled),
+			slog.String("tls_provider", string(a.config.TLS.Provider)),
+			slog.Bool("security_headers_enabled", a.config.SecurityHeaders.Enabled),
+			slog.String("version", a.config.Version),
+		),
+	)
 
 	// Block until context is cancelled.
 	<-ctx.Done()
