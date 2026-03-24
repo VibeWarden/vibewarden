@@ -265,7 +265,7 @@ func buildHTTPRedirectServer() map[string]any {
 					{
 						"handler": "static_response",
 						"headers": map[string][]string{
-							"Location": {"{http.request.uri.scheme}s://{http.request.host}{http.request.uri}"},
+							"Location": {"https://{http.request.host}{http.request.uri}"},
 						},
 						"status_code": 301,
 					},
