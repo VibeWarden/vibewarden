@@ -39,6 +39,9 @@ type ProxyConfig struct {
 
 	// Auth configuration — controls Kratos session validation and flow proxying.
 	Auth AuthConfig
+
+	// RateLimit configuration — controls per-IP and per-user rate limiting.
+	RateLimit RateLimitConfig
 }
 
 // TLSProvider identifies how TLS certificates are provisioned.

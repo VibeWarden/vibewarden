@@ -62,11 +62,21 @@ func BuildCaddyConfig(cfg *ports.ProxyConfig) (map[string]any, error) {
 	}
 
 	// Build route handlers (middleware chain + reverse proxy).
+	// Middleware order: SecurityHeaders → RateLimit → ReverseProxy
 	handlers := []map[string]any{}
 
 	// Add security headers handler if enabled.
 	if cfg.SecurityHeaders.Enabled {
 		handlers = append(handlers, buildSecurityHeadersHandler(cfg.SecurityHeaders, cfg.TLS.Enabled))
+	}
+
+	// Add rate limit handler if enabled.
+	if cfg.RateLimit.Enabled {
+		rlHandler, err := buildRateLimitHandlerJSON(cfg.RateLimit)
+		if err != nil {
+			return nil, fmt.Errorf("building rate limit handler config: %w", err)
+		}
+		handlers = append(handlers, rlHandler)
 	}
 
 	// Add reverse proxy as final handler.
@@ -107,8 +117,8 @@ func BuildCaddyConfig(cfg *ports.ProxyConfig) (map[string]any, error) {
 	// Caddy's built-in automatic HTTPS negotiation is always disabled here;
 	// we control TLS completely through the explicit provider-based configuration.
 	server := map[string]any{
-		"listen":         []string{cfg.ListenAddr},
-		"routes":         routes,
+		"listen":          []string{cfg.ListenAddr},
+		"routes":          routes,
 		"automatic_https": map[string]any{"disable": true},
 	}
 
