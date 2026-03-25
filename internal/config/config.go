@@ -103,10 +103,30 @@ type AuthMiddlewareConfig struct {
 type RateLimitConfig struct {
 	// Enabled toggles rate limiting (default: true)
 	Enabled bool `mapstructure:"enabled"`
-	// RequestsPerSecond is the default rate limit (default: 100)
-	RequestsPerSecond int `mapstructure:"requests_per_second"`
-	// BurstSize is the maximum burst size (default: 50)
-	BurstSize int `mapstructure:"burst_size"`
+
+	// PerIP configures per-IP rate limits applied to all requests.
+	PerIP RateLimitRuleConfig `mapstructure:"per_ip"`
+
+	// PerUser configures per-user rate limits applied to authenticated requests only.
+	PerUser RateLimitRuleConfig `mapstructure:"per_user"`
+
+	// TrustProxyHeaders enables reading X-Forwarded-For to determine the real client IP.
+	// Only enable when VibeWarden is behind a trusted reverse proxy.
+	TrustProxyHeaders bool `mapstructure:"trust_proxy_headers"`
+
+	// ExemptPaths is a list of glob patterns for paths that bypass rate limiting.
+	// The /_vibewarden/* prefix is always exempt and is added automatically.
+	ExemptPaths []string `mapstructure:"exempt_paths"`
+}
+
+// RateLimitRuleConfig holds the sustained rate and burst size for a rate limit.
+type RateLimitRuleConfig struct {
+	// RequestsPerSecond is the sustained request rate (default: 10 for IP, 100 for user).
+	RequestsPerSecond float64 `mapstructure:"requests_per_second"`
+
+	// Burst is the maximum number of requests allowed in a burst
+	// above the sustained rate (default: 20 for IP, 200 for user).
+	Burst int `mapstructure:"burst"`
 }
 
 // LogConfig holds logging settings.
@@ -174,8 +194,12 @@ func Load(configPath string) (*Config, error) {
 	v.SetDefault("auth.session_cookie_name", "ory_kratos_session")
 	v.SetDefault("auth.login_url", "")
 	v.SetDefault("rate_limit.enabled", true)
-	v.SetDefault("rate_limit.requests_per_second", 100)
-	v.SetDefault("rate_limit.burst_size", 50)
+	v.SetDefault("rate_limit.per_ip.requests_per_second", 10)
+	v.SetDefault("rate_limit.per_ip.burst", 20)
+	v.SetDefault("rate_limit.per_user.requests_per_second", 100)
+	v.SetDefault("rate_limit.per_user.burst", 200)
+	v.SetDefault("rate_limit.trust_proxy_headers", false)
+	v.SetDefault("rate_limit.exempt_paths", []string{})
 	v.SetDefault("log.level", "info")
 	v.SetDefault("log.format", "json")
 	v.SetDefault("admin.enabled", false)

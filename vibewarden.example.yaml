@@ -103,13 +103,47 @@ auth:
   login_url: ""
 
 # Rate limiting
+# VibeWarden enforces two independent token-bucket rate limits:
+#   per_ip   — applied to every request, keyed by client IP address.
+#   per_user — applied only to authenticated requests, keyed by user ID.
+#              Both limits must pass for a request to be forwarded to the upstream.
+#
+# Requests that exceed a limit receive a 429 Too Many Requests response with:
+#   - Retry-After header indicating seconds until the limit resets.
+#   - JSON body: {"error":"rate_limit_exceeded","retry_after_seconds":N}
 rate_limit:
-  # Enable rate limiting
+  # Enable rate limiting (recommended: true in production).
   enabled: true
-  # Requests per second per client
-  requests_per_second: 100
-  # Maximum burst size
-  burst_size: 50
+
+  # Per-IP rate limit — applied to ALL requests regardless of authentication.
+  per_ip:
+    # Sustained request rate allowed per IP address.
+    requests_per_second: 10
+    # Maximum burst: how many requests may arrive back-to-back before throttling.
+    # Should be >= requests_per_second.
+    burst: 20
+
+  # Per-user rate limit — applied only to authenticated requests.
+  # Higher limits than per_ip are typical because authenticated users are known.
+  per_user:
+    # Sustained request rate allowed per authenticated user.
+    requests_per_second: 100
+    # Maximum burst per user.
+    burst: 200
+
+  # Enable to read X-Forwarded-For for the real client IP.
+  # Only enable when VibeWarden sits behind a trusted reverse proxy (e.g. Nginx, Cloudflare).
+  # Leave false when VibeWarden is the outermost edge server to prevent IP spoofing.
+  trust_proxy_headers: false
+
+  # URL path glob patterns that bypass rate limiting entirely.
+  # The /_vibewarden/* prefix (health check etc.) is always exempt.
+  # Supports * for single-segment wildcards (e.g. "/static/*").
+  # Example:
+  #   exempt_paths:
+  #     - "/public/*"
+  #     - "/favicon.ico"
+  exempt_paths: []
 
 # Logging
 log:

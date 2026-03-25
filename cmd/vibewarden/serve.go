@@ -88,6 +88,19 @@ func runServe(configPath string) error {
 			SessionCookieName: cfg.Auth.SessionCookieName,
 			LoginURL:          cfg.Auth.LoginURL,
 		},
+		RateLimit: ports.RateLimitConfig{
+			Enabled:           cfg.RateLimit.Enabled,
+			TrustProxyHeaders: cfg.RateLimit.TrustProxyHeaders,
+			ExemptPaths:       cfg.RateLimit.ExemptPaths,
+			PerIP: ports.RateLimitRule{
+				RequestsPerSecond: cfg.RateLimit.PerIP.RequestsPerSecond,
+				Burst:             cfg.RateLimit.PerIP.Burst,
+			},
+			PerUser: ports.RateLimitRule{
+				RequestsPerSecond: cfg.RateLimit.PerUser.RequestsPerSecond,
+				Burst:             cfg.RateLimit.PerUser.Burst,
+			},
+		},
 	}
 
 	// Create Caddy adapter and proxy service.

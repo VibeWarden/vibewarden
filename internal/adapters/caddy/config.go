@@ -9,6 +9,7 @@ import (
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
 
+
 // kratosFlowPaths contains the URL path patterns that must be proxied to
 // the Kratos public API instead of the upstream application.
 // These paths are the Kratos self-service browser flows and the Ory canonical prefix.
@@ -62,11 +63,21 @@ func BuildCaddyConfig(cfg *ports.ProxyConfig) (map[string]any, error) {
 	}
 
 	// Build route handlers (middleware chain + reverse proxy).
+	// Middleware order: SecurityHeaders → RateLimit → ReverseProxy
 	handlers := []map[string]any{}
 
 	// Add security headers handler if enabled.
 	if cfg.SecurityHeaders.Enabled {
 		handlers = append(handlers, buildSecurityHeadersHandler(cfg.SecurityHeaders, cfg.TLS.Enabled))
+	}
+
+	// Add rate limit handler if enabled.
+	if cfg.RateLimit.Enabled {
+		rlHandler, err := buildRateLimitHandlerJSON(cfg.RateLimit)
+		if err != nil {
+			return nil, fmt.Errorf("building rate limit handler config: %w", err)
+		}
+		handlers = append(handlers, rlHandler)
 	}
 
 	// Add reverse proxy as final handler.
