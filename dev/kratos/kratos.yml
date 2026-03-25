@@ -1,19 +1,57 @@
-version: v25.4.0
+# Ory Kratos configuration for the VibeWarden local dev environment.
+#
+# This file is mounted read-only into the kratos container at:
+#   /etc/config/kratos/kratos.yml
+#
+# The DSN and serve.*.base_url values are overridden by environment variables
+# set in docker-compose.yml.  The values below are fallbacks used when running
+# Kratos outside of Docker (e.g. in adapter integration tests that spin up
+# Kratos via testcontainers).
+#
+# Self-service flow UI URLs point to localhost:8080 because those redirects
+# happen in the browser — the browser cannot reach the "vibewarden" container
+# hostname, but it can reach localhost:8080 which is the published VibeWarden
+# port.
 
+version: v1.3.1
+
+# DSN is overridden by the DSN environment variable in docker-compose.yml.
+# "memory" is the fallback for non-Docker usage (e.g. testcontainers tests).
 dsn: memory
 
 serve:
   public:
-    base_url: http://127.0.0.1:4433/
+    # In Docker the DSN env var overrides this via SERVE_PUBLIC_BASE_URL.
+    base_url: http://localhost:4433/
     cors:
       enabled: true
+      allowed_origins:
+        - http://localhost:8080
+        - http://localhost:3000
+      allowed_methods:
+        - GET
+        - POST
+        - PUT
+        - PATCH
+        - DELETE
+      allowed_headers:
+        - Authorization
+        - Cookie
+        - Content-Type
+      exposed_headers:
+        - Content-Type
+        - Set-Cookie
   admin:
-    base_url: http://127.0.0.1:4434/
+    # In Docker the DSN env var overrides this via SERVE_ADMIN_BASE_URL.
+    base_url: http://localhost:4434/
 
 selfservice:
-  default_browser_return_url: http://127.0.0.1:3000/
+  # After a successful login / registration the user is sent here.
+  # Points to the VibeWarden-proxied upstream on the host.
+  default_browser_return_url: http://localhost:8080/
   allowed_return_urls:
-    - http://127.0.0.1:3000
+    - http://localhost:8080
+    - http://localhost:3000
 
   methods:
     password:
@@ -22,21 +60,26 @@ selfservice:
   flows:
     registration:
       enabled: true
-      ui_url: http://127.0.0.1:3000/auth/registration
+      # UI served by the upstream app (through VibeWarden).
+      ui_url: http://localhost:8080/auth/registration
     login:
-      ui_url: http://127.0.0.1:3000/auth/login
+      ui_url: http://localhost:8080/auth/login
     logout:
       after:
-        default_browser_return_url: http://127.0.0.1:3000/
+        default_browser_return_url: http://localhost:8080/
+    settings:
+      ui_url: http://localhost:8080/auth/settings
     verification:
       enabled: true
-      ui_url: http://127.0.0.1:3000/auth/verification
+      ui_url: http://localhost:8080/auth/verification
     recovery:
       enabled: true
-      ui_url: http://127.0.0.1:3000/auth/recovery
+      use: code
+      ui_url: http://localhost:8080/auth/recovery
 
 log:
   level: debug
+  format: json
 
 identity:
   default_schema_id: default
@@ -46,4 +89,5 @@ identity:
 
 courier:
   smtp:
+    # mailslurper container on the internal Docker network.
     connection_uri: smtp://mailslurper:4436/?skip_ssl_verify=true

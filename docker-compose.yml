@@ -1,8 +1,30 @@
+# VibeWarden — Docker Compose dev environment
+#
+# Brings up the full local stack:
+#   postgres      — Kratos session/identity storage
+#   kratos-migrate — runs Kratos DB migrations once, then exits
+#   kratos         — Ory Kratos identity server (public :4433, admin :4434)
+#   mailslurper    — catches outbound Kratos emails (SMTP :4436, web UI :4437)
+#   vibewarden     — the security sidecar (proxies your upstream app on :8080)
+#
+# Usage:
+#   docker compose up -d          # start everything
+#   docker compose logs -f        # tail logs
+#   docker compose down           # stop and remove containers
+#   docker compose down -v        # also remove the postgres volume
+#
+# Secrets:
+#   Postgres password and DSN are hard-coded to simple dev values — never use
+#   these credentials outside of a local dev environment.
+
 version: "3.8"
 
 services:
+  # --------------------------------------------------------------------------
+  # Postgres — persistent storage for Ory Kratos
+  # --------------------------------------------------------------------------
   postgres:
-    image: postgres:18-alpine
+    image: postgres:17-alpine
     container_name: vibewarden-postgres
     environment:
       POSTGRES_USER: vibewarden
@@ -12,14 +34,19 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+    networks:
+      - vibewarden
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U vibewarden -d vibewarden"]
       interval: 5s
       timeout: 5s
       retries: 5
 
+  # --------------------------------------------------------------------------
+  # Kratos migrate — runs DB migrations once, then exits (service_completed_successfully)
+  # --------------------------------------------------------------------------
   kratos-migrate:
-    image: oryd/kratos:v25.4.0
+    image: oryd/kratos:v1.3.1
     container_name: vibewarden-kratos-migrate
     environment:
       DSN: postgres://vibewarden:vibewarden@postgres:5432/vibewarden?sslmode=disable
@@ -29,14 +56,30 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+    networks:
+      - vibewarden
 
+  # --------------------------------------------------------------------------
+  # Kratos — identity / session management
+  #
+  # Public API  (user-facing flows):  http://localhost:4433
+  # Admin API   (internal use only):  http://localhost:4434
+  #
+  # Kratos self-service flow UI URLs point to VibeWarden (vibewarden:8080) so
+  # that the browser redirects go through the sidecar as the proxy.
+  # --------------------------------------------------------------------------
   kratos:
-    image: oryd/kratos:v25.4.0
+    image: oryd/kratos:v1.3.1
     container_name: vibewarden-kratos
     environment:
+      # DSN is overridden here; the kratos.yml carries a fallback of "memory"
+      # which is only used for unit tests outside Docker.
       DSN: postgres://vibewarden:vibewarden@postgres:5432/vibewarden?sslmode=disable
-      SERVE_PUBLIC_BASE_URL: http://127.0.0.1:4433/
-      SERVE_ADMIN_BASE_URL: http://127.0.0.1:4434/
+      # Tell Kratos what public base URL browsers will use to reach it.
+      # VibeWarden proxies /.ory/kratos/public/* → Kratos public API, so the
+      # browser-visible base URL is the VibeWarden address.
+      SERVE_PUBLIC_BASE_URL: http://localhost:4433/
+      SERVE_ADMIN_BASE_URL: http://kratos:4434/
     ports:
       - "4433:4433"
       - "4434:4434"
@@ -46,18 +89,84 @@ services:
     depends_on:
       kratos-migrate:
         condition: service_completed_successfully
+    networks:
+      - vibewarden
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://127.0.0.1:4434/admin/health/ready"]
+      test: ["CMD", "wget", "-q", "--spider", "http://kratos:4434/admin/health/ready"]
       interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 10
+      start_period: 5s
 
+  # --------------------------------------------------------------------------
+  # Mailslurper — local SMTP sink for Kratos verification / recovery emails
+  #
+  # SMTP endpoint (used by Kratos): localhost:4436
+  # Web UI to read captured emails:  http://localhost:4437
+  # --------------------------------------------------------------------------
   mailslurper:
     image: oryd/mailslurper:latest-smtps
     container_name: vibewarden-mailslurper
     ports:
       - "4436:4436"  # SMTP
       - "4437:4437"  # Web UI
+    networks:
+      - vibewarden
 
+  # --------------------------------------------------------------------------
+  # VibeWarden — the security sidecar
+  #
+  # Builds from the local Dockerfile (multi-stage Go build).
+  # Listens on :8080 and proxies to the upstream app on host.docker.internal:3000.
+  #
+  # Kratos public URL inside the container network: http://kratos:4433
+  # Kratos admin URL inside the container network:  http://kratos:4434
+  # --------------------------------------------------------------------------
+  vibewarden:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        VERSION: dev
+    container_name: vibewarden-sidecar
+    ports:
+      - "8080:8080"
+    volumes:
+      # Mount the example config as vibewarden.yaml.  Override with your own
+      # config file by replacing this volume mount.
+      - ./vibewarden.example.yaml:/vibewarden.yaml:ro
+    environment:
+      # Point Kratos URLs at the kratos container on the internal network.
+      VIBEWARDEN_KRATOS_PUBLIC_URL: http://kratos:4433
+      VIBEWARDEN_KRATOS_ADMIN_URL: http://kratos:4434
+      # Proxy upstream app running on the Docker host.
+      VIBEWARDEN_UPSTREAM_HOST: host.docker.internal
+      VIBEWARDEN_UPSTREAM_PORT: "3000"
+      # Bind on all interfaces inside the container.
+      VIBEWARDEN_SERVER_HOST: "0.0.0.0"
+    depends_on:
+      kratos:
+        condition: service_healthy
+    networks:
+      - vibewarden
+    healthcheck:
+      test: ["CMD", "/vibewarden", "--version"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
+# --------------------------------------------------------------------------
+# Named volumes
+# --------------------------------------------------------------------------
 volumes:
   postgres_data:
+    driver: local
+
+# --------------------------------------------------------------------------
+# Networks — all services share a single bridge network so they can resolve
+# each other by container name (e.g. "kratos", "postgres").
+# --------------------------------------------------------------------------
+networks:
+  vibewarden:
+    driver: bridge
