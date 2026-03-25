@@ -3,6 +3,7 @@ package caddy
 
 import (
 	"encoding/json"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -120,12 +121,12 @@ func (h *RateLimitHandler) Provision(_ gocaddy.Context) error {
 func (h *RateLimitHandler) Cleanup() error {
 	if h.ipLimiter != nil {
 		if err := h.ipLimiter.Close(); err != nil {
-			return err
+			return fmt.Errorf("closing IP rate limiter: %w", err)
 		}
 	}
 	if h.userLimiter != nil {
 		if err := h.userLimiter.Close(); err != nil {
-			return err
+			return fmt.Errorf("closing user rate limiter: %w", err)
 		}
 	}
 	return nil
@@ -166,7 +167,7 @@ func buildRateLimitHandlerJSON(cfg ports.RateLimitConfig) (map[string]any, error
 
 	cfgBytes, err := json.Marshal(handlerCfg)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("marshaling rate limit handler config: %w", err)
 	}
 
 	var cfgRaw json.RawMessage = cfgBytes
@@ -180,7 +181,7 @@ func buildRateLimitHandlerJSON(cfg ports.RateLimitConfig) (map[string]any, error
 // Interface guards — ensure RateLimitHandler satisfies the required Caddy
 // and VibeWarden interfaces at compile time.
 var (
-	_ gocaddy.Provisioner      = (*RateLimitHandler)(nil)
-	_ gocaddy.CleanerUpper     = (*RateLimitHandler)(nil)
+	_ gocaddy.Provisioner         = (*RateLimitHandler)(nil)
+	_ gocaddy.CleanerUpper        = (*RateLimitHandler)(nil)
 	_ caddyhttp.MiddlewareHandler = (*RateLimitHandler)(nil)
 )

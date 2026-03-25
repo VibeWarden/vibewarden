@@ -9,7 +9,6 @@ import (
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
 
-
 // kratosFlowPaths contains the URL path patterns that must be proxied to
 // the Kratos public API instead of the upstream application.
 // These paths are the Kratos self-service browser flows and the Ory canonical prefix.
@@ -118,8 +117,8 @@ func BuildCaddyConfig(cfg *ports.ProxyConfig) (map[string]any, error) {
 	// Caddy's built-in automatic HTTPS negotiation is always disabled here;
 	// we control TLS completely through the explicit provider-based configuration.
 	server := map[string]any{
-		"listen":         []string{cfg.ListenAddr},
-		"routes":         routes,
+		"listen":          []string{cfg.ListenAddr},
+		"routes":          routes,
 		"automatic_https": map[string]any{"disable": true},
 	}
 
