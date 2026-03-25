@@ -118,31 +118,31 @@ func TestMemoryStore_Allow_DifferentKeysAreIndependent(t *testing.T) {
 
 func TestMemoryStore_Allow_ResultFields(t *testing.T) {
 	tests := []struct {
-		name           string
-		rps            float64
-		burst          int
-		requests       int
+		name            string
+		rps             float64
+		burst           int
+		requests        int
 		wantLastAllowed bool
-		wantLimit      float64
-		wantBurst      int
+		wantLimit       float64
+		wantBurst       int
 	}{
 		{
-			name:           "single request with capacity",
-			rps:            10,
-			burst:          3,
-			requests:       1,
+			name:            "single request with capacity",
+			rps:             10,
+			burst:           3,
+			requests:        1,
 			wantLastAllowed: true,
-			wantLimit:      10,
-			wantBurst:      3,
+			wantLimit:       10,
+			wantBurst:       3,
 		},
 		{
-			name:           "burst exhausted",
-			rps:            0.001,
-			burst:          2,
-			requests:       3, // one beyond burst
+			name:            "burst exhausted",
+			rps:             0.001,
+			burst:           2,
+			requests:        3, // one beyond burst
 			wantLastAllowed: false,
-			wantLimit:      0.001,
-			wantBurst:      2,
+			wantLimit:       0.001,
+			wantBurst:       2,
 		},
 	}
 
