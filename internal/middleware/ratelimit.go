@@ -61,7 +61,23 @@ func RateLimitMiddleware(
 			}
 
 			// Step 2: Extract client IP.
+			// Fail closed: if we cannot identify the client we must not let
+			// the request through unrated — that would collapse all such
+			// requests into a shared "" bucket, undermining per-IP limits.
 			clientIP := ExtractClientIP(r, cfg.TrustProxyHeaders)
+			if clientIP == "" {
+				logger.WarnContext(r.Context(), "rate limit middleware: empty client IP, rejecting request",
+					slog.String("schema_version", "v1"),
+					slog.String("event_type", "rate_limit.unidentified_client"),
+					slog.String("ai_summary", "Request rejected because the client IP could not be determined"),
+					slog.Group("payload",
+						slog.String("path", r.URL.Path),
+						slog.String("method", r.Method),
+					),
+				)
+				http.Error(w, "Forbidden", http.StatusForbidden)
+				return
+			}
 
 			// Step 3: Per-IP rate limit check.
 			ipResult := ipLimiter.Allow(r.Context(), clientIP)

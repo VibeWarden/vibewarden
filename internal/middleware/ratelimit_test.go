@@ -425,6 +425,50 @@ func TestRateLimitMiddleware_StructuredLogEvent(t *testing.T) {
 	}
 }
 
+func TestRateLimitMiddleware_EmptyClientIP_Returns403(t *testing.T) {
+	// Both limiters allow — the request must be rejected before reaching them
+	// because the client IP cannot be determined.
+	ipLimiter := allowAll()
+	userLimiter := allowAll()
+	logBuf := new(bytes.Buffer)
+	logger := newCapturingLogger(logBuf)
+
+	var nextCalled bool
+	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		nextCalled = true
+		w.WriteHeader(http.StatusOK)
+	})
+
+	mw := RateLimitMiddleware(ipLimiter, userLimiter, defaultCfg(), logger)
+	handler := mw(next)
+
+	// RemoteAddr with no port causes net.SplitHostPort to fail, which makes
+	// ExtractClientIP return "".
+	r := httptest.NewRequest(http.MethodGet, "/api/data", nil)
+	r.RemoteAddr = "no-port-addr"
+	w := httptest.NewRecorder()
+
+	handler.ServeHTTP(w, r)
+
+	if nextCalled {
+		t.Error("expected next handler NOT to be called when client IP is empty")
+	}
+	if w.Code != http.StatusForbidden {
+		t.Errorf("expected 403 Forbidden when client IP is empty, got %d", w.Code)
+	}
+	// Neither rate limiter should have been invoked.
+	if len(ipLimiter.calledKeys) != 0 {
+		t.Errorf("ip limiter should not be called when client IP is empty, got keys: %v", ipLimiter.calledKeys)
+	}
+	if len(userLimiter.calledKeys) != 0 {
+		t.Errorf("user limiter should not be called when client IP is empty, got keys: %v", userLimiter.calledKeys)
+	}
+	// A structured warning log must have been emitted.
+	if !bytes.Contains(logBuf.Bytes(), []byte("rate_limit.unidentified_client")) {
+		t.Errorf("expected rate_limit.unidentified_client log event, got:\n%s", logBuf.String())
+	}
+}
+
 func TestRateLimitMiddleware_AuthenticatedBothLimitsChecked(t *testing.T) {
 	ipLimiter := allowAll()
 	userLimiter := allowAll()
