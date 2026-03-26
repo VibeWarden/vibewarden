@@ -6,6 +6,8 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
+
+	cliCmd "github.com/vibewarden/vibewarden/internal/cli/cmd"
 )
 
 // version is set at build time via -ldflags.
@@ -31,6 +33,7 @@ Zero-to-secure in minutes.`,
 
 	// Register subcommands
 	rootCmd.AddCommand(newServeCmd())
+	rootCmd.AddCommand(cliCmd.NewInitCmd())
 
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
