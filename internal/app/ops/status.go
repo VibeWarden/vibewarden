@@ -49,7 +49,8 @@ func (s *StatusService) Run(ctx context.Context, cfg *config.Config, out io.Writ
 	defer cancel()
 
 	statuses := s.gatherStatuses(checkCtx, cfg, proxyBase)
-	printStatusTable(statuses, out)
+	pluginStatuses := gatherPluginStatuses(cfg)
+	printStatusTable(statuses, pluginStatuses, out)
 	return nil
 }
 
@@ -107,6 +108,55 @@ func (s *StatusService) gatherStatuses(ctx context.Context, cfg *config.Config, 
 	return statuses
 }
 
+// PluginStatus represents the enabled/disabled state of a single plugin
+// as reported from the current configuration.
+type PluginStatus struct {
+	// Name is the canonical plugin identifier (e.g. "tls").
+	Name string
+	// Enabled is true when the plugin is enabled in the config.
+	Enabled bool
+	// Detail is an optional extra detail line shown in the status output.
+	Detail string
+}
+
+// gatherPluginStatuses builds a slice of PluginStatus from cfg.
+// Status is derived from config only — no live HTTP checks are made.
+func gatherPluginStatuses(cfg *config.Config) []PluginStatus {
+	var ps []PluginStatus
+
+	// TLS
+	tlsDetail := fmt.Sprintf("provider: %s", cfg.TLS.Provider)
+	if cfg.TLS.Enabled && cfg.TLS.Domain != "" {
+		tlsDetail = fmt.Sprintf("provider: %s, domain: %s", cfg.TLS.Provider, cfg.TLS.Domain)
+	}
+	ps = append(ps, PluginStatus{Name: "tls", Enabled: cfg.TLS.Enabled, Detail: tlsDetail})
+
+	// Security headers
+	ps = append(ps, PluginStatus{Name: "security-headers", Enabled: cfg.SecurityHeaders.Enabled})
+
+	// Rate limiting
+	rlDetail := ""
+	if cfg.RateLimit.Enabled {
+		rlDetail = fmt.Sprintf("store: memory, %.0f req/s per IP", cfg.RateLimit.PerIP.RequestsPerSecond)
+	}
+	ps = append(ps, PluginStatus{Name: "rate-limiting", Enabled: cfg.RateLimit.Enabled, Detail: rlDetail})
+
+	// Auth
+	authDetail := ""
+	if cfg.Auth.Enabled {
+		authDetail = fmt.Sprintf("kratos: %s", cfg.Kratos.PublicURL)
+	}
+	ps = append(ps, PluginStatus{Name: "auth", Enabled: cfg.Auth.Enabled, Detail: authDetail})
+
+	// Metrics
+	ps = append(ps, PluginStatus{Name: "metrics", Enabled: cfg.Metrics.Enabled})
+
+	// User management
+	ps = append(ps, PluginStatus{Name: "user-management", Enabled: cfg.Admin.Enabled})
+
+	return ps
+}
+
 // checkHTTP performs a health check against url and returns a ComponentStatus.
 func (s *StatusService) checkHTTP(ctx context.Context, name, url, base string) ComponentStatus {
 	ok, code, err := s.health.CheckHealth(ctx, url)
@@ -131,10 +181,11 @@ func (s *StatusService) checkHTTP(ctx context.Context, name, url, base string) C
 	}
 }
 
-// printStatusTable renders the component statuses as a table.
-func printStatusTable(statuses []ComponentStatus, out io.Writer) {
+// printStatusTable renders the component and plugin statuses as a table.
+func printStatusTable(statuses []ComponentStatus, pluginStatuses []PluginStatus, out io.Writer) {
 	green := color.New(color.FgGreen).SprintFunc()
 	red := color.New(color.FgRed).SprintFunc()
+	cyan := color.New(color.FgCyan).SprintFunc()
 
 	fmt.Fprintln(out, "")
 	fmt.Fprintln(out, "VibeWarden Status")
@@ -151,5 +202,25 @@ func printStatusTable(statuses []ComponentStatus, out io.Writer) {
 			fmt.Fprintf(out, "  %s  %s\n", mark, s.Name)
 		}
 	}
+
+	if len(pluginStatuses) > 0 {
+		fmt.Fprintln(out, "")
+		fmt.Fprintln(out, "Plugins")
+		fmt.Fprintln(out, "─────────────────────────────────────────")
+		for _, p := range pluginStatuses {
+			mark := cyan("-")
+			statusStr := "disabled"
+			if p.Enabled {
+				mark = green("✓")
+				statusStr = "enabled"
+			}
+			line := fmt.Sprintf("  %s  %-20s  %s", mark, p.Name, statusStr)
+			if p.Detail != "" {
+				line += fmt.Sprintf("  (%s)", p.Detail)
+			}
+			fmt.Fprintln(out, line)
+		}
+	}
+
 	fmt.Fprintln(out, "")
 }

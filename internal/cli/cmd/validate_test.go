@@ -359,6 +359,70 @@ log:
 	}
 }
 
+func TestValidateCmd_UserManagementRequiresAuth(t *testing.T) {
+	path := writeConfig(t, `
+server:
+  port: 8080
+upstream:
+  port: 3000
+admin:
+  enabled: true
+  token: supersecret
+auth:
+  enabled: false
+`)
+
+	root := cmd.NewRootCmd("test")
+	var outBuf, errBuf bytes.Buffer
+	root.SetOut(&outBuf)
+	root.SetErr(&errBuf)
+	root.SetArgs([]string{"validate", path})
+
+	err := root.Execute()
+	if err == nil {
+		t.Error("Execute() expected error when user-management enabled but auth disabled, got nil")
+	}
+
+	errOut := errBuf.String()
+	if !strings.Contains(errOut, "user-management") {
+		t.Errorf("expected user-management mention in stderr, got: %q", errOut)
+	}
+	if !strings.Contains(errOut, "auth") {
+		t.Errorf("expected auth mention in stderr, got: %q", errOut)
+	}
+}
+
+func TestValidateCmd_UserManagementWithAuthEnabled(t *testing.T) {
+	path := writeConfig(t, `
+server:
+  port: 8080
+upstream:
+  port: 3000
+admin:
+  enabled: true
+  token: supersecret
+auth:
+  enabled: true
+  session_cookie_name: ory_kratos_session
+`)
+
+	root := cmd.NewRootCmd("test")
+	var outBuf, errBuf bytes.Buffer
+	root.SetOut(&outBuf)
+	root.SetErr(&errBuf)
+	root.SetArgs([]string{"validate", path})
+
+	err := root.Execute()
+	if err != nil {
+		// Should be valid — no inter-plugin dependency violation.
+		// (There may be other errors from other fields, but NOT the dependency one.)
+		errOut := errBuf.String()
+		if strings.Contains(errOut, "user-management plugin requires auth") {
+			t.Errorf("unexpected user-management/auth dependency error: %q", errOut)
+		}
+	}
+}
+
 func TestValidateConfig_ValidDefaults(t *testing.T) {
 	// Test the exported validateConfig logic (accessed via CLI) with a
 	// minimal valid YAML that relies on defaults.

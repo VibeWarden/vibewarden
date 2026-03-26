@@ -158,6 +158,37 @@ func TestStatusService_MetricsDisabled(t *testing.T) {
 	}
 }
 
+func TestStatusService_PluginSectionShown(t *testing.T) {
+	cfg := defaultConfig()
+
+	proxyBase := "http://localhost:8080"
+	checker := &fakeHealthChecker{responses: map[string]healthResponse{
+		proxyBase + "/_vibewarden/health":          {ok: true, statusCode: 200},
+		proxyBase + "/_vibewarden/metrics":         {ok: true, statusCode: 200},
+		"http://127.0.0.1:4434/admin/health/ready": {ok: true, statusCode: 200},
+	}}
+
+	svc := ops.NewStatusService(checker)
+	var buf bytes.Buffer
+	if err := svc.Run(context.Background(), cfg, &buf); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	out := buf.String()
+
+	// Plugin section header must appear.
+	if !strings.Contains(out, "Plugins") {
+		t.Errorf("expected 'Plugins' section header, got:\n%s", out)
+	}
+
+	// Each canonical plugin name must appear.
+	for _, name := range []string{"tls", "security-headers", "rate-limiting", "auth", "metrics", "user-management"} {
+		if !strings.Contains(out, name) {
+			t.Errorf("expected plugin %q in status output, got:\n%s", name, out)
+		}
+	}
+}
+
 func TestStatusService_TLSEnabled(t *testing.T) {
 	cfg := defaultConfig()
 	cfg.TLS.Enabled = true

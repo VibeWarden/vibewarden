@@ -62,6 +62,7 @@ Checks performed:
   - security_headers.frame_option is one of: DENY, SAMEORIGIN, or empty
   - rate_limit.per_ip.requests_per_second is greater than zero
   - rate_limit.per_ip.burst is greater than zero
+  - user-management requires auth to be enabled (inter-plugin dependency)
 
 Exits with code 0 when configuration is valid, code 1 when invalid.
 
@@ -179,6 +180,11 @@ func validateConfig(cfg *config.Config) []string {
 		if cfg.RateLimit.PerIP.Burst <= 0 {
 			errs = append(errs, "rate_limit.per_ip.burst must be greater than zero")
 		}
+	}
+
+	// Plugin inter-dependency: user-management requires auth.
+	if cfg.Admin.Enabled && !cfg.Auth.Enabled {
+		errs = append(errs, "user-management plugin requires auth to be enabled (set auth.enabled: true)")
 	}
 
 	return errs
