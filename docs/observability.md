@@ -48,9 +48,9 @@ contains the following panels:
 | Panel | Type | Description | Underlying Metric |
 |-------|------|-------------|-------------------|
 | Request Rate | Time series | Requests per second by HTTP status code | `vibewarden_requests_total` |
-| Error Rate (5xx) | Time series | Fraction of requests returning 5xx responses | `vibewarden_requests_total{status_code=~"5.."}` |
+| Error Rate (5xx) | Stat | Fraction of requests returning 5xx responses | `vibewarden_requests_total{status_code=~"5.."}` |
 | Latency Percentiles | Time series | P50, P95, P99 response times | `vibewarden_request_duration_seconds` |
-| Active Connections | Stat / Gauge | Current open connections | `vibewarden_active_connections` |
+| Active Connections | Gauge | Current open connections | `vibewarden_active_connections` |
 | Rate Limit Hits/sec | Time series | Rate limit trigger rate | `vibewarden_rate_limit_hits_total` |
 | Auth Decisions (Total) | Pie chart | Authentication allow vs. block counts | `vibewarden_auth_decisions_total` |
 | Upstream Errors/sec | Time series | Rate of upstream connection failures | `vibewarden_upstream_errors_total` |
