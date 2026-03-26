@@ -992,3 +992,402 @@ log:
 		t.Errorf("overrides.kratos_config = %q, want empty (backward compat default)", cfg.Overrides.KratosConfig)
 	}
 }
+
+// TestLoad_AuthUIDefaults verifies that auth.ui fields default to the expected values.
+func TestLoad_AuthUIDefaults(t *testing.T) {
+	cfg, err := config.Load("")
+	if err != nil {
+		t.Fatalf("Load() unexpected error: %v", err)
+	}
+
+	tests := []struct {
+		name string
+		got  interface{}
+		want interface{}
+	}{
+		{"auth.ui.mode", cfg.Auth.UI.Mode, "built-in"},
+		{"auth.ui.app_name", cfg.Auth.UI.AppName, ""},
+		{"auth.ui.logo_url", cfg.Auth.UI.LogoURL, ""},
+		{"auth.ui.primary_color", cfg.Auth.UI.PrimaryColor, "#7C3AED"},
+		{"auth.ui.background_color", cfg.Auth.UI.BackgroundColor, "#1a1a2e"},
+		{"auth.ui.login_url", cfg.Auth.UI.LoginURL, ""},
+		{"auth.ui.registration_url", cfg.Auth.UI.RegistrationURL, ""},
+		{"auth.ui.settings_url", cfg.Auth.UI.SettingsURL, ""},
+		{"auth.ui.recovery_url", cfg.Auth.UI.RecoveryURL, ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.got != tt.want {
+				t.Errorf("default %s = %v, want %v", tt.name, tt.got, tt.want)
+			}
+		})
+	}
+}
+
+// TestLoad_AuthUIFromFile verifies that auth.ui fields are loaded correctly from a config file.
+func TestLoad_AuthUIFromFile(t *testing.T) {
+	content := `
+auth:
+  ui:
+    mode: built-in
+    app_name: "My App"
+    logo_url: "https://example.com/logo.png"
+    primary_color: "#7C3AED"
+    background_color: "#1a1a2e"
+`
+	dir := t.TempDir()
+	cfgFile := filepath.Join(dir, "vibewarden.yaml")
+	if err := os.WriteFile(cfgFile, []byte(content), 0600); err != nil {
+		t.Fatalf("writing temp config file: %v", err)
+	}
+
+	cfg, err := config.Load(cfgFile)
+	if err != nil {
+		t.Fatalf("Load() unexpected error: %v", err)
+	}
+
+	tests := []struct {
+		name string
+		got  interface{}
+		want interface{}
+	}{
+		{"auth.ui.mode", cfg.Auth.UI.Mode, "built-in"},
+		{"auth.ui.app_name", cfg.Auth.UI.AppName, "My App"},
+		{"auth.ui.logo_url", cfg.Auth.UI.LogoURL, "https://example.com/logo.png"},
+		{"auth.ui.primary_color", cfg.Auth.UI.PrimaryColor, "#7C3AED"},
+		{"auth.ui.background_color", cfg.Auth.UI.BackgroundColor, "#1a1a2e"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.got != tt.want {
+				t.Errorf("%s = %v, want %v", tt.name, tt.got, tt.want)
+			}
+		})
+	}
+}
+
+// TestLoad_AuthUICustomMode verifies that mode=custom with all URLs loads correctly.
+func TestLoad_AuthUICustomMode(t *testing.T) {
+	content := `
+auth:
+  ui:
+    mode: custom
+    login_url: "https://myapp.example.com/login"
+    registration_url: "https://myapp.example.com/register"
+    settings_url: "https://myapp.example.com/settings"
+    recovery_url: "https://myapp.example.com/recovery"
+`
+	dir := t.TempDir()
+	cfgFile := filepath.Join(dir, "vibewarden.yaml")
+	if err := os.WriteFile(cfgFile, []byte(content), 0600); err != nil {
+		t.Fatalf("writing temp config file: %v", err)
+	}
+
+	cfg, err := config.Load(cfgFile)
+	if err != nil {
+		t.Fatalf("Load() unexpected error: %v", err)
+	}
+
+	tests := []struct {
+		name string
+		got  interface{}
+		want interface{}
+	}{
+		{"auth.ui.mode", cfg.Auth.UI.Mode, "custom"},
+		{"auth.ui.login_url", cfg.Auth.UI.LoginURL, "https://myapp.example.com/login"},
+		{"auth.ui.registration_url", cfg.Auth.UI.RegistrationURL, "https://myapp.example.com/register"},
+		{"auth.ui.settings_url", cfg.Auth.UI.SettingsURL, "https://myapp.example.com/settings"},
+		{"auth.ui.recovery_url", cfg.Auth.UI.RecoveryURL, "https://myapp.example.com/recovery"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.got != tt.want {
+				t.Errorf("%s = %v, want %v", tt.name, tt.got, tt.want)
+			}
+		})
+	}
+}
+
+// TestValidate_AuthUIMode verifies validation of auth.ui.mode.
+func TestValidate_AuthUIMode(t *testing.T) {
+	tests := []struct {
+		name    string
+		cfg     config.Config
+		wantErr bool
+		errMsg  string
+	}{
+		{
+			name:    "default empty mode is valid",
+			cfg:     config.Config{},
+			wantErr: false,
+		},
+		{
+			name: "built-in mode is valid",
+			cfg: config.Config{
+				Auth: config.AuthConfig{
+					UI: config.AuthUIConfig{Mode: "built-in"},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "custom mode with login_url is valid",
+			cfg: config.Config{
+				Auth: config.AuthConfig{
+					UI: config.AuthUIConfig{Mode: "custom", LoginURL: "/login"},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "custom mode without login_url fails",
+			cfg: config.Config{
+				Auth: config.AuthConfig{
+					UI: config.AuthUIConfig{Mode: "custom"},
+				},
+			},
+			wantErr: true,
+			errMsg:  "auth.ui.login_url is required when auth.ui.mode is \"custom\"",
+		},
+		{
+			name: "unknown mode fails",
+			cfg: config.Config{
+				Auth: config.AuthConfig{
+					UI: config.AuthUIConfig{Mode: "hosted"},
+				},
+			},
+			wantErr: true,
+			errMsg:  "auth.ui.mode \"hosted\" is invalid",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.cfg.Validate()
+			if (err != nil) != tt.wantErr {
+				t.Errorf("Validate() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if tt.wantErr && tt.errMsg != "" {
+				if !strings.Contains(err.Error(), tt.errMsg) {
+					t.Errorf("Validate() error = %q, want it to contain %q", err.Error(), tt.errMsg)
+				}
+			}
+		})
+	}
+}
+
+// TestValidate_AuthUIColors verifies hex color validation for primary_color and background_color.
+func TestValidate_AuthUIColors(t *testing.T) {
+	tests := []struct {
+		name    string
+		cfg     config.Config
+		wantErr bool
+		errMsg  string
+	}{
+		{
+			name: "valid #RRGGBB primary color",
+			cfg: config.Config{
+				Auth: config.AuthConfig{
+					UI: config.AuthUIConfig{PrimaryColor: "#7C3AED"},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "valid #RGB primary color",
+			cfg: config.Config{
+				Auth: config.AuthConfig{
+					UI: config.AuthUIConfig{PrimaryColor: "#F0A"},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "valid #RRGGBB background color",
+			cfg: config.Config{
+				Auth: config.AuthConfig{
+					UI: config.AuthUIConfig{BackgroundColor: "#1a1a2e"},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "valid #RGB background color",
+			cfg: config.Config{
+				Auth: config.AuthConfig{
+					UI: config.AuthUIConfig{BackgroundColor: "#abc"},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "empty primary color is valid (uses default)",
+			cfg: config.Config{
+				Auth: config.AuthConfig{
+					UI: config.AuthUIConfig{PrimaryColor: ""},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "empty background color is valid (uses default)",
+			cfg: config.Config{
+				Auth: config.AuthConfig{
+					UI: config.AuthUIConfig{BackgroundColor: ""},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "invalid primary color without hash",
+			cfg: config.Config{
+				Auth: config.AuthConfig{
+					UI: config.AuthUIConfig{PrimaryColor: "7C3AED"},
+				},
+			},
+			wantErr: true,
+			errMsg:  "auth.ui.primary_color",
+		},
+		{
+			name: "invalid primary color wrong length",
+			cfg: config.Config{
+				Auth: config.AuthConfig{
+					UI: config.AuthUIConfig{PrimaryColor: "#7C3AE"},
+				},
+			},
+			wantErr: true,
+			errMsg:  "auth.ui.primary_color",
+		},
+		{
+			name: "invalid primary color with non-hex chars",
+			cfg: config.Config{
+				Auth: config.AuthConfig{
+					UI: config.AuthUIConfig{PrimaryColor: "#GGGGGG"},
+				},
+			},
+			wantErr: true,
+			errMsg:  "auth.ui.primary_color",
+		},
+		{
+			name: "invalid background color",
+			cfg: config.Config{
+				Auth: config.AuthConfig{
+					UI: config.AuthUIConfig{BackgroundColor: "not-a-color"},
+				},
+			},
+			wantErr: true,
+			errMsg:  "auth.ui.background_color",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.cfg.Validate()
+			if (err != nil) != tt.wantErr {
+				t.Errorf("Validate() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if tt.wantErr && tt.errMsg != "" {
+				if !strings.Contains(err.Error(), tt.errMsg) {
+					t.Errorf("Validate() error = %q, want it to contain %q", err.Error(), tt.errMsg)
+				}
+			}
+		})
+	}
+}
+
+// TestLoad_AuthUIValidationFromFile verifies that auth.ui validation errors surface through Load.
+func TestLoad_AuthUIValidationFromFile(t *testing.T) {
+	tests := []struct {
+		name    string
+		yaml    string
+		wantErr bool
+		errMsg  string
+	}{
+		{
+			name: "valid built-in config",
+			yaml: `
+auth:
+  ui:
+    mode: built-in
+    primary_color: "#7C3AED"
+    background_color: "#1a1a2e"
+`,
+			wantErr: false,
+		},
+		{
+			name: "valid custom config with login_url",
+			yaml: `
+auth:
+  ui:
+    mode: custom
+    login_url: "/auth/login"
+`,
+			wantErr: false,
+		},
+		{
+			name: "custom mode without login_url fails",
+			yaml: `
+auth:
+  ui:
+    mode: custom
+`,
+			wantErr: true,
+			errMsg:  "auth.ui.login_url is required",
+		},
+		{
+			name: "invalid mode fails",
+			yaml: `
+auth:
+  ui:
+    mode: external
+`,
+			wantErr: true,
+			errMsg:  "auth.ui.mode",
+		},
+		{
+			name: "invalid primary_color fails",
+			yaml: `
+auth:
+  ui:
+    primary_color: "purple"
+`,
+			wantErr: true,
+			errMsg:  "auth.ui.primary_color",
+		},
+		{
+			name: "invalid background_color fails",
+			yaml: `
+auth:
+  ui:
+    background_color: "dark"
+`,
+			wantErr: true,
+			errMsg:  "auth.ui.background_color",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			cfgFile := filepath.Join(dir, "vibewarden.yaml")
+			if err := os.WriteFile(cfgFile, []byte(tt.yaml), 0600); err != nil {
+				t.Fatalf("writing temp config file: %v", err)
+			}
+			_, err := config.Load(cfgFile)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("Load() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if tt.wantErr && tt.errMsg != "" {
+				if !strings.Contains(err.Error(), tt.errMsg) {
+					t.Errorf("Load() error = %q, want it to contain %q", err.Error(), tt.errMsg)
+				}
+			}
+		})
+	}
+}

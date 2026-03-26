@@ -3,10 +3,14 @@ package config
 
 import (
 	"fmt"
+	"regexp"
 	"strings"
 
 	"github.com/spf13/viper"
 )
+
+// hexColorRE matches valid CSS hex color values: #RGB or #RRGGBB.
+var hexColorRE = regexp.MustCompile(`^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$`)
 
 // Config holds all configuration for VibeWarden.
 // Fields are loaded from vibewarden.yaml and can be overridden by environment variables.
@@ -169,6 +173,44 @@ type SocialProviderConfig struct {
 	IssuerURL string `mapstructure:"issuer_url"`
 }
 
+// AuthUIConfig holds theme and URL settings for the built-in authentication UI.
+// It configures the visual appearance of the login, registration, recovery, and
+// settings pages rendered by VibeWarden, as well as the optional custom URL
+// overrides used when mode is "custom".
+type AuthUIConfig struct {
+	// Mode selects whether VibeWarden renders its own auth pages or defers to
+	// custom URLs. Accepted values: "built-in" (default) or "custom".
+	Mode string `mapstructure:"mode"`
+
+	// AppName is the application name shown on the built-in login page.
+	AppName string `mapstructure:"app_name"`
+
+	// LogoURL is an optional URL to a logo image displayed on built-in pages.
+	LogoURL string `mapstructure:"logo_url"`
+
+	// PrimaryColor is the accent color used on built-in pages (hex, default: "#7C3AED").
+	PrimaryColor string `mapstructure:"primary_color"`
+
+	// BackgroundColor is the page background color for built-in pages (hex, default: "#1a1a2e").
+	BackgroundColor string `mapstructure:"background_color"`
+
+	// LoginURL is the URL of the custom login page.
+	// Required when Mode is "custom".
+	LoginURL string `mapstructure:"login_url"`
+
+	// RegistrationURL is the URL of the custom registration page.
+	// Only used when Mode is "custom".
+	RegistrationURL string `mapstructure:"registration_url"`
+
+	// SettingsURL is the URL of the custom account settings page.
+	// Only used when Mode is "custom".
+	SettingsURL string `mapstructure:"settings_url"`
+
+	// RecoveryURL is the URL of the custom account recovery page.
+	// Only used when Mode is "custom".
+	RecoveryURL string `mapstructure:"recovery_url"`
+}
+
 // AuthConfig holds auth middleware settings.
 // Authentication is enabled automatically when Kratos.PublicURL is non-empty.
 type AuthConfig struct {
@@ -201,6 +243,9 @@ type AuthConfig struct {
 	// SocialProviders is a list of OAuth2/OIDC social login providers to enable.
 	// Each entry requires at minimum a provider name, client_id, and client_secret.
 	SocialProviders []SocialProviderConfig `mapstructure:"social_providers"`
+
+	// UI holds theme and URL settings for the built-in or custom auth pages.
+	UI AuthUIConfig `mapstructure:"ui"`
 }
 
 // RateLimitConfig holds rate limiting settings.
@@ -353,6 +398,21 @@ func (c *Config) Validate() error {
 		}
 	}
 
+	// Auth UI validation.
+	ui := c.Auth.UI
+	if ui.Mode != "" && ui.Mode != "built-in" && ui.Mode != "custom" {
+		errs = append(errs, fmt.Sprintf("auth.ui.mode %q is invalid; accepted values: \"built-in\", \"custom\"", ui.Mode))
+	}
+	if ui.PrimaryColor != "" && !hexColorRE.MatchString(ui.PrimaryColor) {
+		errs = append(errs, fmt.Sprintf("auth.ui.primary_color %q is not a valid hex color (expected #RGB or #RRGGBB)", ui.PrimaryColor))
+	}
+	if ui.BackgroundColor != "" && !hexColorRE.MatchString(ui.BackgroundColor) {
+		errs = append(errs, fmt.Sprintf("auth.ui.background_color %q is not a valid hex color (expected #RGB or #RRGGBB)", ui.BackgroundColor))
+	}
+	if ui.Mode == "custom" && ui.LoginURL == "" {
+		errs = append(errs, "auth.ui.login_url is required when auth.ui.mode is \"custom\"")
+	}
+
 	if len(errs) > 0 {
 		return fmt.Errorf("%s", strings.Join(errs, "; "))
 	}
@@ -385,6 +445,15 @@ func Load(configPath string) (*Config, error) {
 	v.SetDefault("auth.session_cookie_name", "ory_kratos_session")
 	v.SetDefault("auth.login_url", "")
 	v.SetDefault("auth.social_providers", []SocialProviderConfig{})
+	v.SetDefault("auth.ui.mode", "built-in")
+	v.SetDefault("auth.ui.app_name", "")
+	v.SetDefault("auth.ui.logo_url", "")
+	v.SetDefault("auth.ui.primary_color", "#7C3AED")
+	v.SetDefault("auth.ui.background_color", "#1a1a2e")
+	v.SetDefault("auth.ui.login_url", "")
+	v.SetDefault("auth.ui.registration_url", "")
+	v.SetDefault("auth.ui.settings_url", "")
+	v.SetDefault("auth.ui.recovery_url", "")
 	v.SetDefault("rate_limit.enabled", true)
 	v.SetDefault("rate_limit.per_ip.requests_per_second", 10)
 	v.SetDefault("rate_limit.per_ip.burst", 20)
