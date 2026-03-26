@@ -1,0 +1,87 @@
+package ports
+
+import "context"
+
+// HealthStatus reports the current health of a plugin.
+type HealthStatus struct {
+	// Healthy is true when the plugin is operating normally.
+	Healthy bool
+
+	// Message provides a human-readable explanation of the current status.
+	// It should describe the problem when Healthy is false.
+	Message string
+}
+
+// Plugin is the core interface that all VibeWarden plugins must implement.
+// The lifecycle is: Init → Start → (running) → Stop.
+// A plugin is only started when its config has Enabled: true.
+type Plugin interface {
+	// Name returns the canonical plugin identifier (e.g. "tls", "rate-limiting").
+	// Must match the key used in vibewarden.yaml under plugins:.
+	Name() string
+
+	// Init prepares the plugin using its configuration. It is called once
+	// before Start and must not block. Validate config and allocate resources here.
+	Init(ctx context.Context) error
+
+	// Start begins the plugin's background work. It must return promptly;
+	// long-running work must be launched in a goroutine. The provided context
+	// is for the startup phase only — use a stored context or channel for
+	// ongoing work.
+	Start(ctx context.Context) error
+
+	// Stop gracefully shuts down the plugin. It must honour the context
+	// deadline and return promptly when the context is cancelled.
+	Stop(ctx context.Context) error
+
+	// Health returns the current health status of the plugin. It must be
+	// safe to call concurrently and must not block.
+	Health() HealthStatus
+}
+
+// CaddyRoute represents a single route entry to inject into the Caddy config.
+// Lower Priority values are placed earlier in the route chain.
+type CaddyRoute struct {
+	// MatchPath is the URL path prefix or pattern for this route.
+	MatchPath string
+
+	// Handler is the raw Caddy handler JSON object for this route.
+	Handler map[string]any
+
+	// Priority controls ordering. Lower numbers appear first. Use multiples
+	// of 10 (10, 20, 30…) so other plugins can insert between existing entries.
+	Priority int
+}
+
+// CaddyHandler represents an additional handler to append to the catch-all
+// route's handler chain (e.g. middleware applied to every request).
+type CaddyHandler struct {
+	// Handler is the raw Caddy handler JSON object.
+	Handler map[string]any
+
+	// Priority controls ordering within the catch-all handler chain.
+	// Lower numbers run first.
+	Priority int
+}
+
+// CaddyContributor is an optional interface implemented by plugins that need
+// to inject routes or handlers into the Caddy configuration. The registry
+// collects contributions from all enabled plugins before applying the config.
+type CaddyContributor interface {
+	// ContributeCaddyRoutes returns the list of routes this plugin adds to
+	// the Caddy server block. Called after Init and before Start.
+	ContributeCaddyRoutes() []CaddyRoute
+
+	// ContributeCaddyHandlers returns the list of handlers this plugin adds
+	// to the catch-all route. Called after Init and before Start.
+	ContributeCaddyHandlers() []CaddyHandler
+}
+
+// InternalServerPlugin is an optional interface implemented by plugins that
+// expose an internal HTTP server (e.g. an admin API or metrics endpoint).
+// Caddy reverse-proxies external requests to InternalAddr.
+type InternalServerPlugin interface {
+	// InternalAddr returns the host:port of the plugin's internal HTTP server
+	// (e.g. "127.0.0.1:9092"). The address must be stable after Init returns.
+	InternalAddr() string
+}
