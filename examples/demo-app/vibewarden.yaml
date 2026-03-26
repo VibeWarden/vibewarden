@@ -72,7 +72,6 @@ security_headers:
   hsts_preload: false
   content_type_nosniff: true
   frame_option: "DENY"
-  # Allow water.css from jsDelivr CDN for the demo UI.
-  content_security_policy: "default-src 'self'; style-src 'self' https://cdn.jsdelivr.net; script-src 'self' 'unsafe-inline'"
+  content_security_policy: "default-src 'self'; style-src 'self'; script-src 'self' 'unsafe-inline'"
   referrer_policy: "strict-origin-when-cross-origin"
   permissions_policy: ""
