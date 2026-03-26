@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"crypto/subtle"
 	"net/http"
 	"strings"
 
@@ -66,15 +67,9 @@ func AdminAuthMiddleware(cfg ports.AdminAuthConfig) func(http.Handler) http.Hand
 }
 
 // secureEqual compares two strings in constant time to prevent timing attacks.
-// It returns true only when both strings are identical and neither is empty.
+// It delegates to crypto/subtle.ConstantTimeCompare, which avoids leaking
+// length information through early returns.
+// It returns true only when both strings are identical.
 func secureEqual(a, b string) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	// XOR all bytes; result is zero only when every pair is equal.
-	var diff byte
-	for i := 0; i < len(a); i++ {
-		diff |= a[i] ^ b[i]
-	}
-	return diff == 0
+	return subtle.ConstantTimeCompare([]byte(a), []byte(b)) == 1
 }
