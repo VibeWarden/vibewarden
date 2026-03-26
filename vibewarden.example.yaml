@@ -82,6 +82,26 @@ kratos:
   #   VIBEWARDEN_KRATOS_PUBLIC_URL: http://kratos:4433
   #   VIBEWARDEN_KRATOS_ADMIN_URL:  http://kratos:4434
 
+  # Social login providers (OAuth 2.0 / OIDC).
+  #
+  # List the provider IDs that are active in your kratos.yml OIDC method config.
+  # VibeWarden uses this list for structured log enrichment only — credentials
+  # are configured exclusively in kratos.yml, never here.
+  #
+  # The OAuth callback URL for each provider follows this pattern:
+  #   https://<your-domain>/self-service/methods/oidc/callback/<provider-id>
+  #
+  # See docs/social-login.md for step-by-step setup guides for each provider.
+  #
+  # social_providers:
+  #   - google      # Google OAuth 2.0 — console.cloud.google.com
+  #   - github      # GitHub OAuth App — github.com/settings/developers
+  #   - apple       # Sign in with Apple — developer.apple.com
+  #   - facebook    # Meta / Facebook Login — developers.facebook.com
+  #   - microsoft   # Azure AD / Microsoft — portal.azure.com
+  #   - keycloak    # Generic OIDC — any provider with an OIDC discovery endpoint
+  social_providers: []
+
 # Auth middleware settings (requires kratos.public_url to be set)
 auth:
   # List of URL path glob patterns that bypass authentication entirely.
