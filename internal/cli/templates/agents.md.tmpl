@@ -1,0 +1,71 @@
+# VibeWarden Security Sidecar — AI Agent Instructions
+
+## Overview
+
+This application runs behind **VibeWarden**, a security sidecar process.
+VibeWarden listens on port 8080 and proxies requests to this app on
+port {{ .UpstreamPort }} after applying security controls.
+
+Do not implement security features that VibeWarden already provides.
+{{ if .AuthEnabled }}
+## Authentication
+
+VibeWarden handles all authentication via Ory Kratos. Do not write login flows,
+session management, or auth middleware in application code.
+
+Authenticated requests carry these headers:
+
+- `X-User-Id` — unique identifier for the authenticated user
+- `X-User-Email` — user's email address
+- `X-User-Verified` — `"true"` when the email address has been verified
+
+To expose a path without authentication, add it to `vibewarden.yaml`:
+
+```yaml
+auth:
+  public_paths:
+    - "/api/public"
+    - "/webhooks/stripe"
+```
+{{ end }}
+{{ if .RateLimitEnabled }}
+## Rate Limiting
+
+VibeWarden enforces {{ .RateLimitRPS }} requests/second per client IP.
+Do not add rate limiting to application code.
+
+Clients that exceed the limit receive `429 Too Many Requests` before reaching the app.
+{{ end }}
+{{ if .TLSEnabled }}
+## TLS
+
+TLS is terminated by VibeWarden. The application receives plain HTTP on
+port {{ .UpstreamPort }}. Do not configure TLS in the app.
+{{ end }}
+## Security Headers
+
+VibeWarden automatically sets:
+
+- `Strict-Transport-Security`
+- `X-Content-Type-Options: nosniff`
+- `X-Frame-Options: SAMEORIGIN`
+- `Content-Security-Policy: default-src 'self'`
+- `Referrer-Policy: strict-origin-when-cross-origin`
+
+Do not set these headers in application code.
+
+## Special Endpoints
+
+Served by VibeWarden (not the app):
+
+- `GET /_vibewarden/health` — JSON health status, use as liveness probe
+{{ if .AdminEnabled }}- `/_vibewarden/admin/*` — admin operations, requires `X-Admin-Key` header{{ end }}
+
+## Configuration
+
+VibeWarden is configured in `vibewarden.yaml`. To change security settings:
+
+1. Edit `vibewarden.yaml`
+2. Restart VibeWarden (`docker compose restart vibewarden`)
+
+Full documentation: https://vibewarden.dev/docs/config

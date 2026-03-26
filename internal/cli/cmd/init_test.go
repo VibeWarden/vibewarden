@@ -119,6 +119,88 @@ func TestNewInitCmd_FlagCombinations(t *testing.T) {
 	}
 }
 
+func TestNewInitCmd_AgentFlag(t *testing.T) {
+	tests := []struct {
+		name       string
+		args       []string
+		wantErr    bool
+		checkFiles []string
+	}{
+		{
+			name: "agent all generates three context files",
+			args: []string{"--agent", "all", "--skip-docker"},
+			checkFiles: []string{
+				filepath.Join(".claude", "CLAUDE.md"),
+				filepath.Join(".cursor", "rules"),
+				"AGENTS.md",
+			},
+		},
+		{
+			name:       "agent claude generates .claude/CLAUDE.md only",
+			args:       []string{"--agent", "claude", "--skip-docker"},
+			checkFiles: []string{filepath.Join(".claude", "CLAUDE.md")},
+		},
+		{
+			name:       "agent cursor generates .cursor/rules only",
+			args:       []string{"--agent", "cursor", "--skip-docker"},
+			checkFiles: []string{filepath.Join(".cursor", "rules")},
+		},
+		{
+			name:       "agent generic generates AGENTS.md only",
+			args:       []string{"--agent", "generic", "--skip-docker"},
+			checkFiles: []string{"AGENTS.md"},
+		},
+		{
+			name:       "agent none generates no context files",
+			args:       []string{"--agent", "none", "--skip-docker"},
+			checkFiles: []string{},
+		},
+		{
+			name:    "invalid agent value returns error",
+			args:    []string{"--agent", "unknown-tool", "--skip-docker"},
+			wantErr: true,
+		},
+		{
+			name: "default agent all is used when flag omitted",
+			args: []string{"--skip-docker"},
+			checkFiles: []string{
+				filepath.Join(".claude", "CLAUDE.md"),
+				filepath.Join(".cursor", "rules"),
+				"AGENTS.md",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+
+			root := cmd.NewRootCmd("test")
+			var outBuf bytes.Buffer
+			root.SetOut(&outBuf)
+
+			allArgs := append([]string{"init", dir}, tt.args...)
+			root.SetArgs(allArgs)
+
+			err := root.Execute()
+
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("Execute() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if tt.wantErr {
+				return
+			}
+
+			for _, relPath := range tt.checkFiles {
+				absPath := filepath.Join(dir, relPath)
+				if _, err := os.Stat(absPath); err != nil {
+					t.Errorf("expected file %q to exist: %v", absPath, err)
+				}
+			}
+		})
+	}
+}
+
 func TestNewInitCmd_RenderedYAMLValid(t *testing.T) {
 	// This test verifies that rendered vibewarden.yaml is non-empty and contains
 	// expected keys — it does not fully parse YAML (that is tested in the
