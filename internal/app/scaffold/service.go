@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	domainscaffold "github.com/vibewarden/vibewarden/internal/domain/scaffold"
 	"github.com/vibewarden/vibewarden/internal/ports"
@@ -18,6 +19,11 @@ const (
 	vibewShell         = "vibew"
 	vibewPowerShell    = "vibew.ps1"
 	vibewCmd           = "vibew.cmd"
+	gitIgnoreFile      = ".gitignore"
+
+	// vibeWardenDir is the local runtime directory that must be excluded from
+	// version control so that generated config files are never committed.
+	vibeWardenDir = ".vibewarden/"
 )
 
 // InitOptions carries the options supplied by the user when running
@@ -135,6 +141,11 @@ func (s *Service) Init(_ context.Context, dir string, opts InitOptions) error {
 		}
 	}
 
+	// Ensure .vibewarden/ is excluded from version control.
+	if err := s.ensureGitIgnore(dir); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -180,5 +191,40 @@ func (s *Service) renderWrappers(dir string, data domainscaffold.TemplateData, f
 		return fmt.Errorf(".vibewarden-version already exists; use --force to overwrite: %w", err)
 	}
 
+	return nil
+}
+
+// ensureGitIgnore creates a .gitignore in dir that contains the .vibewarden/
+// entry when one does not already exist. When a .gitignore is present and
+// already contains the entry, the file is left unchanged.
+func (s *Service) ensureGitIgnore(dir string) error {
+	gitignorePath := filepath.Join(dir, gitIgnoreFile)
+
+	existing, err := os.ReadFile(gitignorePath)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("reading .gitignore: %w", err)
+	}
+
+	// Already contains the entry — nothing to do.
+	if strings.Contains(string(existing), vibeWardenDir) {
+		return nil
+	}
+
+	// File does not exist: render the template.
+	if errors.Is(err, os.ErrNotExist) {
+		if renderErr := s.renderer.RenderToFile("gitignore.tmpl", nil, gitignorePath, false); renderErr != nil {
+			if !errors.Is(renderErr, os.ErrExist) {
+				return fmt.Errorf("creating .gitignore: %w", renderErr)
+			}
+		}
+		return nil
+	}
+
+	// File exists but is missing the entry — append it.
+	entry := "\n# VibeWarden — local runtime files\n" + vibeWardenDir + "\n"
+	updated := string(existing) + entry
+	if err := os.WriteFile(gitignorePath, []byte(updated), 0o644); err != nil {
+		return fmt.Errorf("updating .gitignore: %w", err)
+	}
 	return nil
 }

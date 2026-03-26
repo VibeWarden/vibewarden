@@ -18,10 +18,12 @@ type fakeCompose struct {
 	versionErr error
 	infoErr    error
 
-	capturedProfiles []string
+	capturedComposeFile string
+	capturedProfiles    []string
 }
 
-func (f *fakeCompose) Up(_ context.Context, profiles []string) error {
+func (f *fakeCompose) Up(_ context.Context, composeFile string, profiles []string) error {
+	f.capturedComposeFile = composeFile
 	f.capturedProfiles = profiles
 	return f.upErr
 }
@@ -32,6 +34,19 @@ func (f *fakeCompose) Version(_ context.Context) (string, error) {
 
 func (f *fakeCompose) Info(_ context.Context) error {
 	return f.infoErr
+}
+
+// fakeGenerator is a test double for ports.ConfigGenerator.
+type fakeGenerator struct {
+	generateErr       error
+	capturedOutputDir string
+	generateCalled    bool
+}
+
+func (f *fakeGenerator) Generate(_ context.Context, _ *config.Config, outputDir string) error {
+	f.generateCalled = true
+	f.capturedOutputDir = outputDir
+	return f.generateErr
 }
 
 func defaultConfig() *config.Config {
@@ -119,5 +134,89 @@ func TestDevService_Run(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestDevService_WithGenerator_CallsGenerateBeforeUp(t *testing.T) {
+	fc := &fakeCompose{}
+	fg := &fakeGenerator{}
+	svc := ops.NewDevServiceWithGenerator(fc, fg)
+	cfg := defaultConfig()
+	var buf bytes.Buffer
+
+	err := svc.Run(context.Background(), cfg, ops.DevOptions{}, &buf)
+	if err != nil {
+		t.Fatalf("Run() unexpected error: %v", err)
+	}
+
+	if !fg.generateCalled {
+		t.Error("expected Generate() to be called, but it was not")
+	}
+	if fg.capturedOutputDir != ".vibewarden/generated" {
+		t.Errorf("Generate() called with outputDir=%q, want %q", fg.capturedOutputDir, ".vibewarden/generated")
+	}
+}
+
+func TestDevService_WithGenerator_PassesGeneratedComposeFilePath(t *testing.T) {
+	fc := &fakeCompose{}
+	fg := &fakeGenerator{}
+	svc := ops.NewDevServiceWithGenerator(fc, fg)
+	cfg := defaultConfig()
+	var buf bytes.Buffer
+
+	if err := svc.Run(context.Background(), cfg, ops.DevOptions{}, &buf); err != nil {
+		t.Fatalf("Run() unexpected error: %v", err)
+	}
+
+	wantComposeFile := ".vibewarden/generated/docker-compose.yml"
+	if fc.capturedComposeFile != wantComposeFile {
+		t.Errorf("Up() called with composeFile=%q, want %q", fc.capturedComposeFile, wantComposeFile)
+	}
+}
+
+func TestDevService_WithGenerator_GenerateError_ReturnsError(t *testing.T) {
+	fc := &fakeCompose{}
+	fg := &fakeGenerator{generateErr: errors.New("template render failed")}
+	svc := ops.NewDevServiceWithGenerator(fc, fg)
+	cfg := defaultConfig()
+	var buf bytes.Buffer
+
+	err := svc.Run(context.Background(), cfg, ops.DevOptions{}, &buf)
+	if err == nil {
+		t.Fatal("Run() expected error when Generate() fails, got nil")
+	}
+}
+
+func TestDevService_WithoutGenerator_UsesEmptyComposeFile(t *testing.T) {
+	// Without a generator, Up should be called with an empty composeFile so
+	// that docker compose uses its default discovery behaviour.
+	fc := &fakeCompose{}
+	svc := ops.NewDevService(fc)
+	cfg := defaultConfig()
+	var buf bytes.Buffer
+
+	if err := svc.Run(context.Background(), cfg, ops.DevOptions{}, &buf); err != nil {
+		t.Fatalf("Run() unexpected error: %v", err)
+	}
+
+	if fc.capturedComposeFile != "" {
+		t.Errorf("Up() called with composeFile=%q, want empty string for backward compat", fc.capturedComposeFile)
+	}
+}
+
+func TestDevService_WithGenerator_PrintsGeneratedOutputMessage(t *testing.T) {
+	fc := &fakeCompose{}
+	fg := &fakeGenerator{}
+	svc := ops.NewDevServiceWithGenerator(fc, fg)
+	cfg := defaultConfig()
+	var buf bytes.Buffer
+
+	if err := svc.Run(context.Background(), cfg, ops.DevOptions{}, &buf); err != nil {
+		t.Fatalf("Run() unexpected error: %v", err)
+	}
+
+	out := buf.String()
+	if !strings.Contains(out, ".vibewarden/generated") {
+		t.Errorf("expected output to mention generated dir, got:\n%s", out)
 	}
 }
