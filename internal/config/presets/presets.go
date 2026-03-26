@@ -17,6 +17,9 @@ var emailOnly []byte
 //go:embed username_password.json
 var usernamePassword []byte
 
+//go:embed social.json
+var social []byte
+
 // Known preset names.
 const (
 	// PresetEmailPassword is the preset for email + password authentication.
@@ -25,12 +28,16 @@ const (
 	PresetEmailOnly = "email_only"
 	// PresetUsernamePassword is the preset for username + password authentication.
 	PresetUsernamePassword = "username_password"
+	// PresetSocial is the preset for social login (OAuth2/OIDC) combined with
+	// email + password. It extends email_password with name and picture traits
+	// populated by OIDC mappers.
+	PresetSocial = "social"
 )
 
 // Resolve returns the identity schema JSON for the given name.
 // name may be one of the built-in preset names (PresetEmailPassword,
-// PresetEmailOnly, PresetUsernamePassword) or a filesystem path to a
-// custom JSON schema file.
+// PresetEmailOnly, PresetUsernamePassword, PresetSocial) or a filesystem
+// path to a custom JSON schema file.
 // Returns an error when name is empty, unknown, or the custom file cannot
 // be read.
 func Resolve(name string) ([]byte, error) {
@@ -41,6 +48,8 @@ func Resolve(name string) ([]byte, error) {
 		return emailOnly, nil
 	case PresetUsernamePassword:
 		return usernamePassword, nil
+	case PresetSocial:
+		return social, nil
 	case "":
 		return nil, fmt.Errorf("identity schema name must not be empty")
 	default:
@@ -56,7 +65,7 @@ func Resolve(name string) ([]byte, error) {
 // IsPreset reports whether name is one of the built-in preset names.
 func IsPreset(name string) bool {
 	switch name {
-	case PresetEmailPassword, PresetEmailOnly, PresetUsernamePassword:
+	case PresetEmailPassword, PresetEmailOnly, PresetUsernamePassword, PresetSocial:
 		return true
 	default:
 		return false

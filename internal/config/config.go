@@ -179,7 +179,10 @@ type AuthConfig struct {
 
 	// IdentitySchema selects the identity schema to use.
 	// Accepted values: "email_password" (default), "email_only", "username_password",
-	// or a filesystem path to a custom JSON schema file.
+	// "social", or a filesystem path to a custom JSON schema file.
+	// When social_providers are configured and this field is left at its default
+	// ("email_password"), the generate service automatically upgrades to the
+	// "social" schema so that name and picture traits are available.
 	IdentitySchema string `mapstructure:"identity_schema"`
 
 	// PublicPaths is a list of URL path glob patterns that bypass auth.
