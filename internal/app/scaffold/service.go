@@ -12,8 +12,12 @@ import (
 )
 
 const (
-	vibeWardenYAML   = "vibewarden.yaml"
-	dockerComposeYML = "docker-compose.yml"
+	vibeWardenYAML      = "vibewarden.yaml"
+	dockerComposeYML    = "docker-compose.yml"
+	vibeWardenVersionF  = ".vibewarden-version"
+	vibewShell          = "vibew"
+	vibewPowerShell     = "vibew.ps1"
+	vibewCmd            = "vibew.cmd"
 )
 
 // InitOptions carries the options supplied by the user when running
@@ -39,6 +43,13 @@ type InitOptions struct {
 
 	// SkipDocker skips docker-compose.yml generation.
 	SkipDocker bool
+
+	// Version is the VibeWarden release version written into .vibewarden-version.
+	// When empty the wrapper falls back to the latest GitHub release at runtime.
+	Version string
+
+	// SkipWrapper skips generation of the vibew wrapper scripts.
+	SkipWrapper bool
 }
 
 // Service orchestrates project scaffolding operations.
@@ -56,10 +67,11 @@ func NewService(renderer ports.TemplateRenderer, detector ports.ProjectDetector)
 }
 
 // Init initialises VibeWarden in a project directory by generating
-// vibewarden.yaml and (unless SkipDocker is set) docker-compose.yml.
+// vibewarden.yaml, (unless SkipDocker is set) docker-compose.yml, and
+// (unless SkipWrapper is set) the vibew wrapper scripts.
 //
-// If either file already exists and opts.Force is false, Init returns an error
-// wrapping os.ErrExist.
+// If any required file already exists and opts.Force is false, Init returns an
+// error wrapping os.ErrExist.
 func (s *Service) Init(_ context.Context, dir string, opts InitOptions) error {
 	// Detect project to pick up port suggestions etc.
 	project, err := s.detector.Detect(dir)
@@ -93,6 +105,7 @@ func (s *Service) Init(_ context.Context, dir string, opts InitOptions) error {
 		RateLimitEnabled: opts.RateLimitEnabled,
 		TLSEnabled:       opts.TLSEnabled,
 		TLSDomain:        opts.TLSDomain,
+		Version:          opts.Version,
 	}
 
 	// Render vibewarden.yaml.
@@ -113,6 +126,58 @@ func (s *Service) Init(_ context.Context, dir string, opts InitOptions) error {
 			}
 			return fmt.Errorf("docker-compose.yml already exists; use --force to overwrite: %w", err)
 		}
+	}
+
+	// Render vibew wrapper scripts unless skipped.
+	if !opts.SkipWrapper {
+		if err := s.renderWrappers(dir, data, opts.Force); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+// renderWrappers generates vibew, vibew.ps1, vibew.cmd and .vibewarden-version
+// in dir. The POSIX shell script is made executable (0o755).
+func (s *Service) renderWrappers(dir string, data domainscaffold.TemplateData, force bool) error {
+	// POSIX shell wrapper — must be executable.
+	shellPath := filepath.Join(dir, vibewShell)
+	if err := s.renderer.RenderToFile("vibew.tmpl", data, shellPath, force); err != nil {
+		if !errors.Is(err, os.ErrExist) {
+			return fmt.Errorf("rendering vibew: %w", err)
+		}
+		return fmt.Errorf("vibew already exists; use --force to overwrite: %w", err)
+	}
+	if err := os.Chmod(shellPath, 0o755); err != nil {
+		return fmt.Errorf("setting vibew executable: %w", err)
+	}
+
+	// PowerShell wrapper.
+	ps1Path := filepath.Join(dir, vibewPowerShell)
+	if err := s.renderer.RenderToFile("vibew.ps1.tmpl", data, ps1Path, force); err != nil {
+		if !errors.Is(err, os.ErrExist) {
+			return fmt.Errorf("rendering vibew.ps1: %w", err)
+		}
+		return fmt.Errorf("vibew.ps1 already exists; use --force to overwrite: %w", err)
+	}
+
+	// Batch wrapper.
+	cmdPath := filepath.Join(dir, vibewCmd)
+	if err := s.renderer.RenderToFile("vibew.cmd.tmpl", data, cmdPath, force); err != nil {
+		if !errors.Is(err, os.ErrExist) {
+			return fmt.Errorf("rendering vibew.cmd: %w", err)
+		}
+		return fmt.Errorf("vibew.cmd already exists; use --force to overwrite: %w", err)
+	}
+
+	// Version pin file.
+	versionPath := filepath.Join(dir, vibeWardenVersionF)
+	if err := s.renderer.RenderToFile("vibewarden-version.tmpl", data, versionPath, force); err != nil {
+		if !errors.Is(err, os.ErrExist) {
+			return fmt.Errorf("rendering .vibewarden-version: %w", err)
+		}
+		return fmt.Errorf(".vibewarden-version already exists; use --force to overwrite: %w", err)
 	}
 
 	return nil
