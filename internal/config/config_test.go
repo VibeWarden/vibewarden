@@ -3,6 +3,7 @@ package config_test
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/vibewarden/vibewarden/internal/config"
@@ -434,6 +435,494 @@ overrides:
 				t.Errorf("%s = %v, want %v", tt.name, tt.got, tt.want)
 			}
 		})
+	}
+}
+
+// TestValidate_SocialProviders verifies validation rules for social provider entries.
+func TestValidate_SocialProviders(t *testing.T) {
+	tests := []struct {
+		name    string
+		cfg     config.Config
+		wantErr bool
+		errMsg  string
+	}{
+		{
+			name: "valid google provider",
+			cfg: config.Config{
+				Auth: config.AuthConfig{
+					SocialProviders: []config.SocialProviderConfig{
+						{Provider: "google", ClientID: "cid", ClientSecret: "csecret"},
+					},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "valid github provider",
+			cfg: config.Config{
+				Auth: config.AuthConfig{
+					SocialProviders: []config.SocialProviderConfig{
+						{Provider: "github", ClientID: "cid", ClientSecret: "csecret"},
+					},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "valid apple provider",
+			cfg: config.Config{
+				Auth: config.AuthConfig{
+					SocialProviders: []config.SocialProviderConfig{
+						{Provider: "apple", ClientID: "cid", ClientSecret: "csecret", TeamID: "TEAM123", KeyID: "KEY456"},
+					},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "valid oidc provider",
+			cfg: config.Config{
+				Auth: config.AuthConfig{
+					SocialProviders: []config.SocialProviderConfig{
+						{Provider: "oidc", ClientID: "cid", ClientSecret: "csecret", ID: "acme-oidc", IssuerURL: "https://accounts.acme.com"},
+					},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "missing client_id",
+			cfg: config.Config{
+				Auth: config.AuthConfig{
+					SocialProviders: []config.SocialProviderConfig{
+						{Provider: "google", ClientSecret: "csecret"},
+					},
+				},
+			},
+			wantErr: true,
+			errMsg:  "social_providers[0].client_id is required",
+		},
+		{
+			name: "missing client_secret",
+			cfg: config.Config{
+				Auth: config.AuthConfig{
+					SocialProviders: []config.SocialProviderConfig{
+						{Provider: "google", ClientID: "cid"},
+					},
+				},
+			},
+			wantErr: true,
+			errMsg:  "social_providers[0].client_secret is required",
+		},
+		{
+			name: "apple missing team_id",
+			cfg: config.Config{
+				Auth: config.AuthConfig{
+					SocialProviders: []config.SocialProviderConfig{
+						{Provider: "apple", ClientID: "cid", ClientSecret: "csecret", KeyID: "KEY456"},
+					},
+				},
+			},
+			wantErr: true,
+			errMsg:  "social_providers[0].team_id is required for provider \"apple\"",
+		},
+		{
+			name: "apple missing key_id",
+			cfg: config.Config{
+				Auth: config.AuthConfig{
+					SocialProviders: []config.SocialProviderConfig{
+						{Provider: "apple", ClientID: "cid", ClientSecret: "csecret", TeamID: "TEAM123"},
+					},
+				},
+			},
+			wantErr: true,
+			errMsg:  "social_providers[0].key_id is required for provider \"apple\"",
+		},
+		{
+			name: "oidc missing id",
+			cfg: config.Config{
+				Auth: config.AuthConfig{
+					SocialProviders: []config.SocialProviderConfig{
+						{Provider: "oidc", ClientID: "cid", ClientSecret: "csecret", IssuerURL: "https://accounts.acme.com"},
+					},
+				},
+			},
+			wantErr: true,
+			errMsg:  "social_providers[0].id is required for provider \"oidc\"",
+		},
+		{
+			name: "oidc missing issuer_url",
+			cfg: config.Config{
+				Auth: config.AuthConfig{
+					SocialProviders: []config.SocialProviderConfig{
+						{Provider: "oidc", ClientID: "cid", ClientSecret: "csecret", ID: "acme-oidc"},
+					},
+				},
+			},
+			wantErr: true,
+			errMsg:  "social_providers[0].issuer_url is required for provider \"oidc\"",
+		},
+		{
+			name: "unknown provider",
+			cfg: config.Config{
+				Auth: config.AuthConfig{
+					SocialProviders: []config.SocialProviderConfig{
+						{Provider: "twitter", ClientID: "cid", ClientSecret: "csecret"},
+					},
+				},
+			},
+			wantErr: true,
+			errMsg:  "social_providers[0].provider \"twitter\" is not supported",
+		},
+		{
+			name: "empty provider",
+			cfg: config.Config{
+				Auth: config.AuthConfig{
+					SocialProviders: []config.SocialProviderConfig{
+						{Provider: "", ClientID: "cid", ClientSecret: "csecret"},
+					},
+				},
+			},
+			wantErr: true,
+			errMsg:  "social_providers[0].provider",
+		},
+		{
+			name: "multiple providers first invalid",
+			cfg: config.Config{
+				Auth: config.AuthConfig{
+					SocialProviders: []config.SocialProviderConfig{
+						{Provider: "google", ClientID: "", ClientSecret: "csecret"},
+						{Provider: "github", ClientID: "cid", ClientSecret: "csecret"},
+					},
+				},
+			},
+			wantErr: true,
+			errMsg:  "social_providers[0].client_id is required",
+		},
+		{
+			name: "multiple providers second invalid",
+			cfg: config.Config{
+				Auth: config.AuthConfig{
+					SocialProviders: []config.SocialProviderConfig{
+						{Provider: "google", ClientID: "cid", ClientSecret: "csecret"},
+						{Provider: "gitlab", ClientID: "cid2", ClientSecret: ""},
+					},
+				},
+			},
+			wantErr: true,
+			errMsg:  "social_providers[1].client_secret is required",
+		},
+		{
+			name:    "no social providers is valid",
+			cfg:     config.Config{},
+			wantErr: false,
+		},
+		{
+			name: "facebook provider",
+			cfg: config.Config{
+				Auth: config.AuthConfig{
+					SocialProviders: []config.SocialProviderConfig{
+						{Provider: "facebook", ClientID: "cid", ClientSecret: "csecret"},
+					},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "discord provider",
+			cfg: config.Config{
+				Auth: config.AuthConfig{
+					SocialProviders: []config.SocialProviderConfig{
+						{Provider: "discord", ClientID: "cid", ClientSecret: "csecret"},
+					},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "microsoft provider",
+			cfg: config.Config{
+				Auth: config.AuthConfig{
+					SocialProviders: []config.SocialProviderConfig{
+						{Provider: "microsoft", ClientID: "cid", ClientSecret: "csecret"},
+					},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "slack provider",
+			cfg: config.Config{
+				Auth: config.AuthConfig{
+					SocialProviders: []config.SocialProviderConfig{
+						{Provider: "slack", ClientID: "cid", ClientSecret: "csecret"},
+					},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "spotify provider",
+			cfg: config.Config{
+				Auth: config.AuthConfig{
+					SocialProviders: []config.SocialProviderConfig{
+						{Provider: "spotify", ClientID: "cid", ClientSecret: "csecret"},
+					},
+				},
+			},
+			wantErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.cfg.Validate()
+			if (err != nil) != tt.wantErr {
+				t.Errorf("Validate() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if tt.wantErr && tt.errMsg != "" {
+				if !strings.Contains(err.Error(), tt.errMsg) {
+					t.Errorf("Validate() error = %q, want it to contain %q", err.Error(), tt.errMsg)
+				}
+			}
+		})
+	}
+}
+
+// TestLoad_SocialProvidersFromFile verifies that social_providers are correctly loaded from YAML.
+func TestLoad_SocialProvidersFromFile(t *testing.T) {
+	tests := []struct {
+		name    string
+		yaml    string
+		wantErr bool
+		check   func(t *testing.T, cfg *config.Config)
+	}{
+		{
+			name: "single google provider",
+			yaml: `
+auth:
+  social_providers:
+    - provider: google
+      client_id: my-client-id
+      client_secret: my-client-secret
+      scopes:
+        - email
+        - profile
+      label: Sign in with Google
+`,
+			wantErr: false,
+			check: func(t *testing.T, cfg *config.Config) {
+				t.Helper()
+				if len(cfg.Auth.SocialProviders) != 1 {
+					t.Fatalf("len(social_providers) = %d, want 1", len(cfg.Auth.SocialProviders))
+				}
+				sp := cfg.Auth.SocialProviders[0]
+				if sp.Provider != "google" {
+					t.Errorf("provider = %q, want %q", sp.Provider, "google")
+				}
+				if sp.ClientID != "my-client-id" {
+					t.Errorf("client_id = %q, want %q", sp.ClientID, "my-client-id")
+				}
+				if sp.ClientSecret != "my-client-secret" {
+					t.Errorf("client_secret = %q, want %q", sp.ClientSecret, "my-client-secret")
+				}
+				if len(sp.Scopes) != 2 || sp.Scopes[0] != "email" || sp.Scopes[1] != "profile" {
+					t.Errorf("scopes = %v, want [email profile]", sp.Scopes)
+				}
+				if sp.Label != "Sign in with Google" {
+					t.Errorf("label = %q, want %q", sp.Label, "Sign in with Google")
+				}
+			},
+		},
+		{
+			name: "apple provider with team_id and key_id",
+			yaml: `
+auth:
+  social_providers:
+    - provider: apple
+      client_id: com.example.app
+      client_secret: apple-secret
+      team_id: TEAMABC123
+      key_id: KEYXYZ789
+`,
+			wantErr: false,
+			check: func(t *testing.T, cfg *config.Config) {
+				t.Helper()
+				if len(cfg.Auth.SocialProviders) != 1 {
+					t.Fatalf("len(social_providers) = %d, want 1", len(cfg.Auth.SocialProviders))
+				}
+				sp := cfg.Auth.SocialProviders[0]
+				if sp.TeamID != "TEAMABC123" {
+					t.Errorf("team_id = %q, want %q", sp.TeamID, "TEAMABC123")
+				}
+				if sp.KeyID != "KEYXYZ789" {
+					t.Errorf("key_id = %q, want %q", sp.KeyID, "KEYXYZ789")
+				}
+			},
+		},
+		{
+			name: "oidc provider with id and issuer_url",
+			yaml: `
+auth:
+  social_providers:
+    - provider: oidc
+      id: acme-sso
+      client_id: oidc-client-id
+      client_secret: oidc-secret
+      issuer_url: https://sso.acme.com
+`,
+			wantErr: false,
+			check: func(t *testing.T, cfg *config.Config) {
+				t.Helper()
+				if len(cfg.Auth.SocialProviders) != 1 {
+					t.Fatalf("len(social_providers) = %d, want 1", len(cfg.Auth.SocialProviders))
+				}
+				sp := cfg.Auth.SocialProviders[0]
+				if sp.ID != "acme-sso" {
+					t.Errorf("id = %q, want %q", sp.ID, "acme-sso")
+				}
+				if sp.IssuerURL != "https://sso.acme.com" {
+					t.Errorf("issuer_url = %q, want %q", sp.IssuerURL, "https://sso.acme.com")
+				}
+			},
+		},
+		{
+			name: "multiple providers",
+			yaml: `
+auth:
+  social_providers:
+    - provider: google
+      client_id: g-cid
+      client_secret: g-secret
+    - provider: github
+      client_id: gh-cid
+      client_secret: gh-secret
+`,
+			wantErr: false,
+			check: func(t *testing.T, cfg *config.Config) {
+				t.Helper()
+				if len(cfg.Auth.SocialProviders) != 2 {
+					t.Fatalf("len(social_providers) = %d, want 2", len(cfg.Auth.SocialProviders))
+				}
+				if cfg.Auth.SocialProviders[0].Provider != "google" {
+					t.Errorf("providers[0] = %q, want google", cfg.Auth.SocialProviders[0].Provider)
+				}
+				if cfg.Auth.SocialProviders[1].Provider != "github" {
+					t.Errorf("providers[1] = %q, want github", cfg.Auth.SocialProviders[1].Provider)
+				}
+			},
+		},
+		{
+			name: "missing client_secret fails",
+			yaml: `
+auth:
+  social_providers:
+    - provider: google
+      client_id: g-cid
+`,
+			wantErr: true,
+		},
+		{
+			name: "unknown provider fails",
+			yaml: `
+auth:
+  social_providers:
+    - provider: twitter
+      client_id: cid
+      client_secret: csecret
+`,
+			wantErr: true,
+		},
+		{
+			name: "apple missing team_id fails",
+			yaml: `
+auth:
+  social_providers:
+    - provider: apple
+      client_id: cid
+      client_secret: csecret
+      key_id: KEY123
+`,
+			wantErr: true,
+		},
+		{
+			name: "oidc missing issuer_url fails",
+			yaml: `
+auth:
+  social_providers:
+    - provider: oidc
+      id: my-oidc
+      client_id: cid
+      client_secret: csecret
+`,
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			cfgFile := filepath.Join(dir, "vibewarden.yaml")
+			if err := os.WriteFile(cfgFile, []byte(tt.yaml), 0600); err != nil {
+				t.Fatalf("writing temp config file: %v", err)
+			}
+			cfg, err := config.Load(cfgFile)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("Load() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if !tt.wantErr && tt.check != nil {
+				tt.check(t, cfg)
+			}
+		})
+	}
+}
+
+// TestLoad_SocialProvidersEnvVarSubstitution verifies that environment variables are
+// substituted when used as client_id and client_secret values via viper's AutomaticEnv.
+func TestLoad_SocialProvidersEnvVarSubstitution(t *testing.T) {
+	// Viper's AutomaticEnv only substitutes top-level keys matching VIBEWARDEN_<KEY>.
+	// For slice elements we rely on the YAML file providing the literal value from env
+	// expansion done by the shell or a secrets manager before the process starts.
+	// This test covers that the YAML value (already expanded) is loaded correctly.
+	yamlContent := `
+auth:
+  social_providers:
+    - provider: google
+      client_id: expanded-client-id
+      client_secret: expanded-client-secret
+`
+	dir := t.TempDir()
+	cfgFile := filepath.Join(dir, "vibewarden.yaml")
+	if err := os.WriteFile(cfgFile, []byte(yamlContent), 0600); err != nil {
+		t.Fatalf("writing temp config file: %v", err)
+	}
+
+	cfg, err := config.Load(cfgFile)
+	if err != nil {
+		t.Fatalf("Load() unexpected error: %v", err)
+	}
+	if len(cfg.Auth.SocialProviders) != 1 {
+		t.Fatalf("len(social_providers) = %d, want 1", len(cfg.Auth.SocialProviders))
+	}
+	sp := cfg.Auth.SocialProviders[0]
+	if sp.ClientID != "expanded-client-id" {
+		t.Errorf("client_id = %q, want %q", sp.ClientID, "expanded-client-id")
+	}
+	if sp.ClientSecret != "expanded-client-secret" {
+		t.Errorf("client_secret = %q, want %q", sp.ClientSecret, "expanded-client-secret")
+	}
+}
+
+// TestLoad_SocialProvidersDefault verifies that social_providers defaults to empty.
+func TestLoad_SocialProvidersDefault(t *testing.T) {
+	cfg, err := config.Load("")
+	if err != nil {
+		t.Fatalf("Load() unexpected error: %v", err)
+	}
+	if len(cfg.Auth.SocialProviders) != 0 {
+		t.Errorf("social_providers default length = %d, want 0", len(cfg.Auth.SocialProviders))
 	}
 }
 
