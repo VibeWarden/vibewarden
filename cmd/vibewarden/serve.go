@@ -12,19 +12,21 @@ import (
 	"github.com/spf13/cobra"
 
 	caddyadapter "github.com/vibewarden/vibewarden/internal/adapters/caddy"
-	httpadapter "github.com/vibewarden/vibewarden/internal/adapters/http"
-	kratosadapter "github.com/vibewarden/vibewarden/internal/adapters/kratos"
 	logadapter "github.com/vibewarden/vibewarden/internal/adapters/log"
-	metricsadapter "github.com/vibewarden/vibewarden/internal/adapters/metrics"
-	postgresadapter "github.com/vibewarden/vibewarden/internal/adapters/postgres"
-	adminapp "github.com/vibewarden/vibewarden/internal/app/admin"
+	ratelimitadapter "github.com/vibewarden/vibewarden/internal/adapters/ratelimit"
 	"github.com/vibewarden/vibewarden/internal/app/proxy"
 	"github.com/vibewarden/vibewarden/internal/config"
+	"github.com/vibewarden/vibewarden/internal/plugins"
+	authplugin "github.com/vibewarden/vibewarden/internal/plugins/auth"
+	metricsplugin "github.com/vibewarden/vibewarden/internal/plugins/metrics"
+	ratelimitplugin "github.com/vibewarden/vibewarden/internal/plugins/ratelimit"
+	sechdrs "github.com/vibewarden/vibewarden/internal/plugins/securityheaders"
+	tlsplugin "github.com/vibewarden/vibewarden/internal/plugins/tls"
+	usermgmtplugin "github.com/vibewarden/vibewarden/internal/plugins/usermgmt"
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
 
 // newServeCmd creates the serve subcommand.
-// This is a minimal implementation; the full CLI is handled in Epic #6.
 func newServeCmd() *cobra.Command {
 	var configPath string
 
@@ -45,14 +47,14 @@ Listens for SIGINT/SIGTERM and performs a graceful shutdown.`,
 	return cmd
 }
 
-// runServe loads config, wires up the proxy, and runs until shutdown signal.
+// runServe loads config, builds the plugin registry, wires Caddy via plugin
+// contributors, and runs until a shutdown signal is received.
 func runServe(configPath string) error {
 	cfg, err := config.Load(configPath)
 	if err != nil {
 		return fmt.Errorf("loading config: %w", err)
 	}
 
-	// Initialize structured logger.
 	logger := buildLogger(cfg.Log)
 
 	logger.Info("VibeWarden starting",
@@ -64,72 +66,163 @@ func runServe(configPath string) error {
 	// Initialize the EventLogger — writes structured JSON events to stdout.
 	eventLogger := logadapter.NewSlogEventLogger(os.Stdout)
 
-	// Initialize Prometheus metrics adapter and start the internal metrics server.
-	// The internal server binds a random localhost port; Caddy reverse-proxies
-	// /_vibewarden/metrics to it when metrics are enabled.
+	// Build the plugin registry and register all compiled-in plugins.
+	registry := plugins.NewRegistry(logger)
+	registerPlugins(registry, cfg, eventLogger, logger)
+
+	// Set up OS signal handling before Init/Start so that a slow Init can
+	// still be interrupted.
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	sigCh := make(chan os.Signal, 1)
+	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
+
+	go func() {
+		sig := <-sigCh
+		logger.Info("received shutdown signal", slog.String("signal", sig.String()))
+		cancel()
+	}()
+
+	// Initialise all plugins.
+	if err := registry.InitAll(ctx); err != nil {
+		return fmt.Errorf("initialising plugins: %w", err)
+	}
+
+	// Start all plugins (background servers, etc.).
+	if err := registry.StartAll(ctx); err != nil {
+		return fmt.Errorf("starting plugins: %w", err)
+	}
+
+	// Ensure StopAll runs on return (normal or error path).
+	defer func() {
+		stopCtx, stopCancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer stopCancel()
+		if stopErr := registry.StopAll(stopCtx); stopErr != nil {
+			logger.Error("stopping plugins", slog.String("error", stopErr.Error()))
+		}
+	}()
+
+	// Build ProxyConfig — base fields that the Caddy adapter uses directly.
+	// Plugin-specific wiring (security headers, rate limiting, auth, admin,
+	// metrics) is now driven by each plugin's CaddyContributor implementation.
+	// The legacy top-level fields are still populated for the existing
+	// BuildCaddyConfig path; a follow-up issue will migrate that fully to
+	// the contributor model.
+	proxyCfg := buildProxyConfig(cfg, registry)
+
+	// Create Caddy adapter and proxy service.
+	adapter := caddyadapter.NewAdapter(proxyCfg, logger, eventLogger)
+	svc := proxy.NewService(adapter, logger)
+
+	if err := svc.Run(ctx); err != nil {
+		return fmt.Errorf("proxy service: %w", err)
+	}
+
+	return nil
+}
+
+// registerPlugins creates each compiled-in plugin from cfg and registers it
+// with the registry. Registration order matches plugin priority (low → high).
+func registerPlugins(
+	registry *plugins.Registry,
+	cfg *config.Config,
+	eventLogger ports.EventLogger,
+	logger *slog.Logger,
+) {
+	// TLS — priority 10
+	registry.Register(tlsplugin.New(ports.TLSConfig{
+		Enabled:     cfg.TLS.Enabled,
+		Provider:    ports.TLSProvider(cfg.TLS.Provider),
+		Domain:      cfg.TLS.Domain,
+		CertPath:    cfg.TLS.CertPath,
+		KeyPath:     cfg.TLS.KeyPath,
+		StoragePath: cfg.TLS.StoragePath,
+	}, logger))
+
+	// Security headers — priority 20
+	registry.Register(sechdrs.New(sechdrs.Config{
+		Enabled:               cfg.SecurityHeaders.Enabled,
+		HSTSMaxAge:            cfg.SecurityHeaders.HSTSMaxAge,
+		HSTSIncludeSubDomains: cfg.SecurityHeaders.HSTSIncludeSubDomains,
+		HSTSPreload:           cfg.SecurityHeaders.HSTSPreload,
+		ContentTypeNosniff:    cfg.SecurityHeaders.ContentTypeNosniff,
+		FrameOption:           cfg.SecurityHeaders.FrameOption,
+		ContentSecurityPolicy: cfg.SecurityHeaders.ContentSecurityPolicy,
+		ReferrerPolicy:        cfg.SecurityHeaders.ReferrerPolicy,
+		PermissionsPolicy:     cfg.SecurityHeaders.PermissionsPolicy,
+	}, cfg.TLS.Enabled, logger))
+
+	// Metrics — priority 30
+	registry.Register(metricsplugin.New(metricsplugin.Config{
+		Enabled:      cfg.Metrics.Enabled,
+		PathPatterns: cfg.Metrics.PathPatterns,
+	}, logger))
+
+	// Rate limiting — priority 50
+	registry.Register(ratelimitplugin.New(ratelimitplugin.Config{
+		Enabled:           cfg.RateLimit.Enabled,
+		Store:             "memory",
+		TrustProxyHeaders: cfg.RateLimit.TrustProxyHeaders,
+		ExemptPaths:       cfg.RateLimit.ExemptPaths,
+		PerIP: ratelimitplugin.RuleConfig{
+			RequestsPerSecond: cfg.RateLimit.PerIP.RequestsPerSecond,
+			Burst:             cfg.RateLimit.PerIP.Burst,
+		},
+		PerUser: ratelimitplugin.RuleConfig{
+			RequestsPerSecond: cfg.RateLimit.PerUser.RequestsPerSecond,
+			Burst:             cfg.RateLimit.PerUser.Burst,
+		},
+	}, ratelimitadapter.NewDefaultMemoryFactory(), logger))
+
+	// Auth — priority 40 (registered after rate-limiting for dependency clarity;
+	// actual order is controlled by priority, but registry order matches intent)
+	registry.Register(authplugin.New(authplugin.Config{
+		Enabled:           cfg.Auth.Enabled,
+		KratosPublicURL:   cfg.Kratos.PublicURL,
+		KratosAdminURL:    cfg.Kratos.AdminURL,
+		SessionCookieName: cfg.Auth.SessionCookieName,
+		LoginURL:          cfg.Auth.LoginURL,
+		PublicPaths:       cfg.Auth.PublicPaths,
+		IdentitySchema:    cfg.Auth.IdentitySchema,
+	}, logger, nil))
+
+	// User management — priority 60
+	registry.Register(usermgmtplugin.New(usermgmtplugin.Config{
+		Enabled:        cfg.Admin.Enabled,
+		AdminToken:     cfg.Admin.Token,
+		KratosAdminURL: cfg.Kratos.AdminURL,
+		DatabaseURL:    cfg.Database.URL,
+	}, eventLogger, logger))
+}
+
+// buildProxyConfig constructs the ports.ProxyConfig that the Caddy adapter
+// uses to build its JSON configuration. Plugin-specific fields are read from
+// the running plugins where possible (e.g. metrics internal address after
+// Start).
+func buildProxyConfig(cfg *config.Config, registry *plugins.Registry) *ports.ProxyConfig {
+	// Collect internal addresses from started InternalServerPlugin instances.
 	var metricsCfg ports.MetricsProxyConfig
-	if cfg.Metrics.Enabled {
-		pa := metricsadapter.NewPrometheusAdapter(cfg.Metrics.PathPatterns)
-		metricsSrv := metricsadapter.NewServer(pa.Handler(), logger)
-		if err := metricsSrv.Start(); err != nil {
-			return fmt.Errorf("starting metrics server: %w", err)
-		}
-		defer func() {
-			stopCtx, stopCancel := context.WithTimeout(context.Background(), 5*time.Second)
-			defer stopCancel()
-			if stopErr := metricsSrv.Stop(stopCtx); stopErr != nil {
-				logger.Error("stopping metrics server", slog.String("error", stopErr.Error()))
-			}
-		}()
-		metricsCfg = ports.MetricsProxyConfig{
-			Enabled:      true,
-			InternalAddr: metricsSrv.Addr(),
-		}
-		logger.Info("metrics enabled", slog.String("internal_addr", metricsSrv.Addr()))
-	}
-
-	// Initialize admin API when enabled in config.
 	var adminCfg ports.AdminProxyConfig
-	if cfg.Admin.Enabled {
-		kratosAdmin := kratosadapter.NewAdminAdapter(cfg.Kratos.AdminURL, 0, logger)
 
-		// AuditLogger is optional — only wired when a database URL is configured.
-		var auditLogger ports.AuditLogger
-		if cfg.Database.URL != "" {
-			auditAdapter, err := postgresadapter.NewAuditAdapter(cfg.Database.URL)
-			if err != nil {
-				return fmt.Errorf("connecting to audit database: %w", err)
-			}
-			defer func() {
-				if closeErr := auditAdapter.Close(); closeErr != nil {
-					logger.Error("closing audit database", slog.String("error", closeErr.Error()))
+	for _, p := range registry.Plugins() {
+		if isp, ok := p.(ports.InternalServerPlugin); ok {
+			switch p.Name() {
+			case "metrics":
+				metricsCfg = ports.MetricsProxyConfig{
+					Enabled:      cfg.Metrics.Enabled,
+					InternalAddr: isp.InternalAddr(),
 				}
-			}()
-			auditLogger = auditAdapter
-		}
-
-		adminSvc := adminapp.NewService(kratosAdmin, eventLogger, auditLogger)
-		adminHandlers := httpadapter.NewAdminHandlers(adminSvc, logger)
-		adminSrv := httpadapter.NewAdminServer(adminHandlers, logger)
-		if err := adminSrv.Start(); err != nil {
-			return fmt.Errorf("starting admin server: %w", err)
-		}
-		defer func() {
-			stopCtx, stopCancel := context.WithTimeout(context.Background(), 5*time.Second)
-			defer stopCancel()
-			if stopErr := adminSrv.Stop(stopCtx); stopErr != nil {
-				logger.Error("stopping admin server", slog.String("error", stopErr.Error()))
+			case "user-management":
+				adminCfg = ports.AdminProxyConfig{
+					Enabled:      cfg.Admin.Enabled,
+					InternalAddr: isp.InternalAddr(),
+				}
 			}
-		}()
-		adminCfg = ports.AdminProxyConfig{
-			Enabled:      true,
-			InternalAddr: adminSrv.Addr(),
 		}
-		logger.Info("admin API enabled", slog.String("internal_addr", adminSrv.Addr()))
 	}
 
-	// Build ProxyConfig from application config.
-	proxyCfg := &ports.ProxyConfig{
+	return &ports.ProxyConfig{
 		ListenAddr:   fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port),
 		UpstreamAddr: fmt.Sprintf("%s:%d", cfg.Upstream.Host, cfg.Upstream.Port),
 		Version:      version,
@@ -153,9 +246,7 @@ func runServe(configPath string) error {
 			PermissionsPolicy:     cfg.SecurityHeaders.PermissionsPolicy,
 		},
 		Auth: ports.AuthConfig{
-			// Auth is enabled when a Kratos public URL is configured.
-			// The KratosPublicURL drives Kratos flow proxy route insertion.
-			Enabled:           cfg.Kratos.PublicURL != "",
+			Enabled:           cfg.Auth.Enabled,
 			KratosPublicURL:   cfg.Kratos.PublicURL,
 			KratosAdminURL:    cfg.Kratos.AdminURL,
 			PublicPaths:       cfg.Auth.PublicPaths,
@@ -182,30 +273,6 @@ func runServe(configPath string) error {
 		},
 		Admin: adminCfg,
 	}
-
-	// Create Caddy adapter and proxy service.
-	adapter := caddyadapter.NewAdapter(proxyCfg, logger, eventLogger)
-	svc := proxy.NewService(adapter, logger)
-
-	// Handle OS signals for graceful shutdown.
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	sigCh := make(chan os.Signal, 1)
-	signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)
-
-	go func() {
-		sig := <-sigCh
-		logger.Info("received shutdown signal", slog.String("signal", sig.String()))
-		cancel()
-	}()
-
-	if err := svc.Run(ctx); err != nil {
-		// context.Canceled is the normal exit path after a signal.
-		return fmt.Errorf("proxy service: %w", err)
-	}
-
-	return nil
 }
 
 // buildLogger creates an slog.Logger from the log configuration.

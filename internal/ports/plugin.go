@@ -85,3 +85,20 @@ type InternalServerPlugin interface {
 	// (e.g. "127.0.0.1:9092"). The address must be stable after Init returns.
 	InternalAddr() string
 }
+
+// PluginMeta is an optional interface implemented by plugins that expose
+// metadata for CLI display (vibewarden plugins, vibewarden plugins show).
+// All compiled-in plugins implement this interface.
+type PluginMeta interface {
+	// Description returns a short, one-line description of the plugin.
+	Description() string
+
+	// ConfigSchema returns a map of field name to field description for use
+	// in "vibewarden plugins show <name>" output. Fields should be listed in
+	// logical order; the caller is responsible for display ordering.
+	ConfigSchema() map[string]string
+
+	// Example returns an example YAML snippet (indented under "plugins:")
+	// illustrating a minimal enabled configuration.
+	Example() string
+}
