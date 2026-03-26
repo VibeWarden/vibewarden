@@ -9,7 +9,6 @@ import (
 
 	"github.com/spf13/cobra"
 
-	scaffoldadapter "github.com/vibewarden/vibewarden/internal/adapters/scaffold"
 	templateadapter "github.com/vibewarden/vibewarden/internal/adapters/template"
 	scaffoldapp "github.com/vibewarden/vibewarden/internal/app/scaffold"
 	"github.com/vibewarden/vibewarden/internal/cli/templates"
@@ -86,9 +85,6 @@ Examples:
 			}
 
 			renderer := templateadapter.NewRenderer(templates.FS)
-			detector := scaffoldadapter.NewDetector()
-			_ = detector // not needed for context refresh
-
 			agentSvc := scaffoldapp.NewAgentContextService(renderer)
 
 			// Build InitOptions from the loaded config so AgentContextService

@@ -27,7 +27,7 @@ const (
 // minimal (no trailing newline decoration) so it can be piped to other tools.
 func newSecretGenerateCmd() *cobra.Command {
 	var (
-		length    int
+		length     int
 		adminToken bool
 		fleetKey   bool
 	)
