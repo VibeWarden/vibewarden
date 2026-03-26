@@ -1,0 +1,21 @@
+# Prometheus configuration for VibeWarden local development
+#
+# Scrapes VibeWarden metrics at vibewarden:8080/_vibewarden/metrics every 15s.
+# Start with: docker compose --profile observability up -d
+# UI available at: http://localhost:9090
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: 'vibewarden'
+    metrics_path: '/_vibewarden/metrics'
+    static_configs:
+      - targets: ['vibewarden:8080']
+        labels:
+          instance: 'vibewarden-sidecar'
+
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
