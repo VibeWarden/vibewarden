@@ -904,13 +904,13 @@ func TestBuildCaddyConfig_KratosFlowRoutes_Present(t *testing.T) {
 
 	// Verify all expected self-service paths are present.
 	wantPaths := map[string]bool{
-		"/self-service/login/*":         true,
-		"/self-service/registration/*":  true,
-		"/self-service/logout/*":        true,
-		"/self-service/settings/*":      true,
-		"/self-service/recovery/*":      true,
-		"/self-service/verification/*":  true,
-		"/.ory/kratos/public/*":         true,
+		"/self-service/login/*":        true,
+		"/self-service/registration/*": true,
+		"/self-service/logout/*":       true,
+		"/self-service/settings/*":     true,
+		"/self-service/recovery/*":     true,
+		"/self-service/verification/*": true,
+		"/.ory/kratos/public/*":        true,
 	}
 	for _, p := range paths {
 		delete(wantPaths, p)

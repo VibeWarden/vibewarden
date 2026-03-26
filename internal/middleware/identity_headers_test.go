@@ -10,11 +10,11 @@ import (
 
 func TestIdentityHeadersMiddleware_WithSession(t *testing.T) {
 	tests := []struct {
-		name          string
-		session       *ports.Session
-		wantID        string
-		wantEmail     string
-		wantVerified  string
+		name         string
+		session      *ports.Session
+		wantID       string
+		wantEmail    string
+		wantVerified string
 	}{
 		{
 			name: "verified user",
