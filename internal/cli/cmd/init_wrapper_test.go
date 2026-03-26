@@ -35,8 +35,8 @@ func TestNewInitCmd_WrapperScripts(t *testing.T) {
 			checkFiles: wrapperFiles,
 		},
 		{
-			name: "force flag overwrites existing wrapper files",
-			args: []string{"--skip-docker", "--force"},
+			name:       "force flag overwrites existing wrapper files",
+			args:       []string{"--skip-docker", "--force"},
 			checkFiles: wrapperFiles,
 		},
 	}
@@ -127,7 +127,7 @@ func TestNewInitCmd_VibewScriptContainsKeyPatterns(t *testing.T) {
 				"#!/bin/sh",
 				"vibewarden/vibewarden",
 				"sha256",
-				"~/.vibewarden/bin",
+				".vibewarden/bin",
 				"exec",
 			},
 		},

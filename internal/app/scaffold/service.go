@@ -12,12 +12,12 @@ import (
 )
 
 const (
-	vibeWardenYAML      = "vibewarden.yaml"
-	dockerComposeYML    = "docker-compose.yml"
-	vibeWardenVersionF  = ".vibewarden-version"
-	vibewShell          = "vibew"
-	vibewPowerShell     = "vibew.ps1"
-	vibewCmd            = "vibew.cmd"
+	vibeWardenYAML     = "vibewarden.yaml"
+	dockerComposeYML   = "docker-compose.yml"
+	vibeWardenVersionF = ".vibewarden-version"
+	vibewShell         = "vibew"
+	vibewPowerShell    = "vibew.ps1"
+	vibewCmd           = "vibew.cmd"
 )
 
 // InitOptions carries the options supplied by the user when running
