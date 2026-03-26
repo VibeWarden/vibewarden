@@ -96,14 +96,14 @@ func TestHandlePublic(t *testing.T) {
 
 func TestHandleMe(t *testing.T) {
 	tests := []struct {
-		name           string
-		userID         string
-		userEmail      string
-		userVerified   string
-		wantStatus     int
-		wantUserID     string
-		wantEmail      string
-		wantVerified   string
+		name         string
+		userID       string
+		userEmail    string
+		userVerified string
+		wantStatus   int
+		wantUserID   string
+		wantEmail    string
+		wantVerified string
 	}{
 		{
 			name:       "no X-User-Id returns 401",
