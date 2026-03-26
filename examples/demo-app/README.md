@@ -137,6 +137,19 @@ curl http://localhost:8080/health
 | Kratos admin API | http://localhost:4434 | Internal admin (not for browsers) |
 | Mailslurper | http://localhost:4437 | Catches Kratos verification emails |
 
+## Demo credentials
+
+Two users are seeded automatically when the stack starts.  No registration
+step required — just use these at the login page:
+
+| Email | Password |
+|---|---|
+| `demo@vibewarden.dev` | `demo1234` |
+| `alice@vibewarden.dev` | `alice1234` |
+
+Both accounts have their email address pre-verified so you can immediately
+access protected endpoints without completing a verification flow.
+
 ## Registration and login
 
 VibeWarden proxies Kratos self-service flows, so you can register and log in
