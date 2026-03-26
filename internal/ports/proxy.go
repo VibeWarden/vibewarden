@@ -49,6 +49,23 @@ type ProxyConfig struct {
 	// AdminAuth configuration — controls bearer-token protection of
 	// /_vibewarden/admin/* endpoints.
 	AdminAuth AdminAuthConfig
+
+	// Admin configuration — controls the admin HTTP API server that serves
+	// /_vibewarden/admin/* routes via an internal reverse proxy.
+	Admin AdminProxyConfig
+}
+
+// AdminProxyConfig holds configuration for exposing the admin API through
+// the Caddy reverse proxy.
+type AdminProxyConfig struct {
+	// Enabled toggles the admin API routes at /_vibewarden/admin/*.
+	Enabled bool
+
+	// InternalAddr is the host:port of the internal HTTP server that serves
+	// the admin API handlers (e.g., "127.0.0.1:9092"). Caddy reverse-proxies
+	// /_vibewarden/admin/* to this address.
+	// This field must be set when Enabled is true.
+	InternalAddr string
 }
 
 // MetricsProxyConfig holds configuration for exposing the Prometheus metrics

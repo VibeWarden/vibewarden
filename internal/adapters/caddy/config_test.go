@@ -1311,3 +1311,115 @@ func extractServer(t *testing.T, result map[string]any) map[string]any {
 
 	return server
 }
+
+func TestBuildCaddyConfig_AdminRoute(t *testing.T) {
+	tests := []struct {
+		name              string
+		cfg               *ports.ProxyConfig
+		wantAdminRoute    bool
+		wantAdminDialAddr string
+	}{
+		{
+			name: "admin route present when enabled with internal addr",
+			cfg: &ports.ProxyConfig{
+				ListenAddr:   "127.0.0.1:8080",
+				UpstreamAddr: "127.0.0.1:3000",
+				Admin: ports.AdminProxyConfig{
+					Enabled:      true,
+					InternalAddr: "127.0.0.1:9092",
+				},
+			},
+			wantAdminRoute:    true,
+			wantAdminDialAddr: "127.0.0.1:9092",
+		},
+		{
+			name: "admin route absent when disabled",
+			cfg: &ports.ProxyConfig{
+				ListenAddr:   "127.0.0.1:8080",
+				UpstreamAddr: "127.0.0.1:3000",
+				Admin: ports.AdminProxyConfig{
+					Enabled: false,
+				},
+			},
+			wantAdminRoute: false,
+		},
+		{
+			name: "admin route absent when enabled but internal addr is empty",
+			cfg: &ports.ProxyConfig{
+				ListenAddr:   "127.0.0.1:8080",
+				UpstreamAddr: "127.0.0.1:3000",
+				Admin: ports.AdminProxyConfig{
+					Enabled:      true,
+					InternalAddr: "",
+				},
+			},
+			wantAdminRoute: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := BuildCaddyConfig(tt.cfg)
+			if err != nil {
+				t.Fatalf("BuildCaddyConfig() unexpected error: %v", err)
+			}
+
+			server := extractServer(t, result)
+			routes, ok := server["routes"].([]map[string]any)
+			if !ok {
+				t.Fatal("routes not found in server config")
+			}
+
+			var adminRoute map[string]any
+			for _, route := range routes {
+				match, ok := route["match"].([]map[string]any)
+				if !ok || len(match) == 0 {
+					continue
+				}
+				paths, ok := match[0]["path"].([]string)
+				if !ok || len(paths) == 0 {
+					continue
+				}
+				if paths[0] == "/_vibewarden/admin/*" {
+					adminRoute = route
+					break
+				}
+			}
+
+			if tt.wantAdminRoute && adminRoute == nil {
+				t.Fatal("expected admin route to be present but not found")
+			}
+			if !tt.wantAdminRoute && adminRoute != nil {
+				t.Fatal("expected no admin route but found one")
+			}
+
+			if !tt.wantAdminRoute {
+				return
+			}
+
+			handles, ok := adminRoute["handle"].([]map[string]any)
+			if !ok || len(handles) == 0 {
+				t.Fatal("handle not found in admin route")
+			}
+
+			var rpHandler map[string]any
+			for _, h := range handles {
+				if h["handler"] == "reverse_proxy" {
+					rpHandler = h
+					break
+				}
+			}
+			if rpHandler == nil {
+				t.Fatal("reverse_proxy handler not found in admin route")
+			}
+
+			upstreams, ok := rpHandler["upstreams"].([]map[string]any)
+			if !ok || len(upstreams) == 0 {
+				t.Fatal("upstreams not found in reverse_proxy handler")
+			}
+			if upstreams[0]["dial"] != tt.wantAdminDialAddr {
+				t.Errorf("admin upstream dial = %v, want %q", upstreams[0]["dial"], tt.wantAdminDialAddr)
+			}
+		})
+	}
+}

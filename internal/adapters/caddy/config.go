@@ -124,6 +124,11 @@ func BuildCaddyConfig(cfg *ports.ProxyConfig) (map[string]any, error) {
 		routes = append(routes, kratosRoute)
 	}
 
+	if cfg.Admin.Enabled && cfg.Admin.InternalAddr != "" {
+		adminRoute := buildAdminRoute(cfg.Admin.InternalAddr)
+		routes = append(routes, adminRoute)
+	}
+
 	routes = append(routes, map[string]any{
 		"handle": handlers,
 	})
@@ -377,6 +382,31 @@ func urlToDialAddr(rawURL string) string {
 	}
 
 	return net.JoinHostPort(host, port)
+}
+
+// buildAdminRoute constructs a Caddy route that reverse-proxies all requests
+// under /_vibewarden/admin/* to the internal admin HTTP server at internalAddr.
+// The AdminAuthHandler in the middleware chain has already validated the bearer
+// token by the time the request reaches this route, so no additional auth is
+// performed here.
+//
+// The internalAddr must be a host:port string (e.g., "127.0.0.1:9092").
+// The full request path is forwarded unchanged; the internal admin server
+// handles routes under /_vibewarden/admin/*.
+func buildAdminRoute(internalAddr string) map[string]any {
+	return map[string]any{
+		"match": []map[string]any{
+			{"path": []string{"/_vibewarden/admin/*"}},
+		},
+		"handle": []map[string]any{
+			{
+				"handler": "reverse_proxy",
+				"upstreams": []map[string]any{
+					{"dial": internalAddr},
+				},
+			},
+		},
+	}
 }
 
 // buildMetricsRoute constructs a Caddy route that reverse-proxies requests to
