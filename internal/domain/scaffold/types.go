@@ -1,5 +1,6 @@
-// Package scaffold provides value objects and types for the VibeWarden
-// project scaffolding subsystem.
+// Package scaffold contains the core value objects for the VibeWarden
+// project scaffolding subsystem. This package has zero external dependencies
+// and is safe to import from any layer.
 package scaffold
 
 // ProjectType represents the detected project type.
@@ -56,7 +57,7 @@ type ScaffoldOptions struct {
 	Force bool
 }
 
-// TemplateData is the data passed to every template when rendering.
+// TemplateData is the data passed to every scaffold template when rendering.
 type TemplateData struct {
 	// UpstreamPort is the port of the protected application.
 	UpstreamPort int
@@ -72,4 +73,41 @@ type TemplateData struct {
 
 	// TLSDomain is the domain for TLS.
 	TLSDomain string
+}
+
+// AgentType identifies the target AI coding assistant for context generation.
+type AgentType string
+
+const (
+	// AgentTypeClaude targets Claude Code (.claude/CLAUDE.md).
+	AgentTypeClaude AgentType = "claude"
+	// AgentTypeCursor targets Cursor (.cursor/rules).
+	AgentTypeCursor AgentType = "cursor"
+	// AgentTypeGeneric targets generic AGENTS.md (OpenAI Codex, Gemini CLI, etc.).
+	AgentTypeGeneric AgentType = "generic"
+	// AgentTypeAll generates context files for all supported agent types.
+	AgentTypeAll AgentType = "all"
+)
+
+// AgentContextData is the data passed to agent context templates when rendering.
+// It is a superset of TemplateData enriched with agent-specific metadata.
+type AgentContextData struct {
+	// UpstreamPort is the port of the protected application.
+	UpstreamPort int
+
+	// AuthEnabled indicates whether authentication is configured.
+	AuthEnabled bool
+
+	// RateLimitEnabled indicates whether rate limiting is configured.
+	RateLimitEnabled bool
+
+	// TLSEnabled indicates whether TLS is configured.
+	TLSEnabled bool
+
+	// RateLimitRPS is the configured requests-per-second limit.
+	// Only meaningful when RateLimitEnabled is true.
+	RateLimitRPS int
+
+	// AdminEnabled indicates whether the admin API is enabled.
+	AdminEnabled bool
 }

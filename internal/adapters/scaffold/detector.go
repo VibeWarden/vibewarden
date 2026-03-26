@@ -9,7 +9,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/vibewarden/vibewarden/internal/cli/scaffold"
+	"github.com/vibewarden/vibewarden/internal/domain/scaffold"
 )
 
 // Detector implements ports.ProjectDetector by inspecting the filesystem.

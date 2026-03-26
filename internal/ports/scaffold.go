@@ -1,6 +1,6 @@
 package ports
 
-import "github.com/vibewarden/vibewarden/internal/cli/scaffold"
+import "github.com/vibewarden/vibewarden/internal/domain/scaffold"
 
 // TemplateRenderer renders Go text/template templates to bytes or files.
 // Implementations embed template files via embed.FS.

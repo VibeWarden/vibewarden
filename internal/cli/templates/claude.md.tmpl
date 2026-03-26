@@ -1,0 +1,83 @@
+# VibeWarden Security Sidecar — Claude Code Instructions
+
+## Security layer
+
+This application runs behind **VibeWarden**, a security sidecar that handles all
+security concerns as a separate process. VibeWarden listens on port 8080 and
+forwards authenticated, rate-limited requests to this app on port {{ .UpstreamPort }}.
+
+**Do not implement any of the following yourself — VibeWarden handles them:**
+{{ if .AuthEnabled }}
+### Authentication
+
+Authentication is fully managed by VibeWarden via Ory Kratos. Every request that
+reaches this app has already been authenticated.
+
+Authenticated requests carry these headers — read them instead of implementing session logic:
+
+| Header | Value |
+|--------|-------|
+| `X-User-Id` | Unique user identifier |
+| `X-User-Email` | User's verified email address |
+| `X-User-Verified` | `true` when the user's email is verified |
+
+**To make a path publicly accessible (no auth required)**, add it to `vibewarden.yaml`:
+
+```yaml
+auth:
+  public_paths:
+    - "/your/public/path"
+    - "/api/webhooks/*"
+```
+{{ end }}
+{{ if .RateLimitEnabled }}
+### Rate limiting
+
+Rate limiting is configured at {{ .RateLimitRPS }} requests/second per client IP.
+Do not implement your own rate limiting — duplicate limiting will cause incorrect
+behaviour for legitimate users.
+
+Requests that exceed the limit receive a `429 Too Many Requests` response before
+they reach this app.
+{{ end }}
+{{ if .TLSEnabled }}
+### TLS
+
+TLS termination is handled by VibeWarden. This app receives plain HTTP on
+port {{ .UpstreamPort }}. Do not configure TLS in the app itself.
+{{ end }}
+### Security headers
+
+VibeWarden injects the following security headers on every response:
+
+- `Strict-Transport-Security` (HSTS)
+- `X-Content-Type-Options: nosniff`
+- `X-Frame-Options: SAMEORIGIN`
+- `Content-Security-Policy: default-src 'self'`
+- `Referrer-Policy: strict-origin-when-cross-origin`
+
+Do not set these headers in application code — they will conflict or be duplicated.
+
+## VibeWarden endpoints
+
+These endpoints are served by VibeWarden at the sidecar address (port 8080):
+
+| Endpoint | Purpose |
+|----------|---------|
+| `GET /_vibewarden/health` | Health check — returns `200 OK` with JSON status |
+{{ if .AdminEnabled }}| `/_vibewarden/admin/*` | Admin API — requires `X-Admin-Key` header |{{ end }}
+
+Use `/_vibewarden/health` as the liveness probe in Docker Compose or Kubernetes.
+
+## Configuration reference
+
+VibeWarden is configured in `vibewarden.yaml` at the project root. Key sections:
+{{ if .AuthEnabled }}
+- `auth.public_paths` — paths that bypass authentication
+- `kratos.public_url` — Ory Kratos public API URL
+{{ end }}
+{{ if .RateLimitEnabled }}
+- `rate_limit.per_ip.requests_per_second` — per-IP rate limit
+- `rate_limit.exempt_paths` — paths that bypass rate limiting
+{{ end }}
+Full reference: https://vibewarden.dev/docs/config

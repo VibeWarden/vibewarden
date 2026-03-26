@@ -10,7 +10,7 @@ import (
 	"testing"
 
 	scaffoldapp "github.com/vibewarden/vibewarden/internal/app/scaffold"
-	"github.com/vibewarden/vibewarden/internal/cli/scaffold"
+	"github.com/vibewarden/vibewarden/internal/domain/scaffold"
 )
 
 // fakeRenderer is a test double for ports.TemplateRenderer.
