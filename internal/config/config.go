@@ -200,6 +200,28 @@ type MetricsConfig struct {
 	PathPatterns []string `mapstructure:"path_patterns"`
 }
 
+// Validate checks the loaded configuration for logical consistency.
+// It returns a combined error listing all violations found.
+// Call Validate after Load to catch misconfiguration early.
+func (c *Config) Validate() error {
+	var errs []string
+
+	// TLS external provider requires cert_path and key_path.
+	if c.TLS.Enabled && c.TLS.Provider == "external" {
+		if c.TLS.CertPath == "" {
+			errs = append(errs, "tls.cert_path is required when tls.provider is \"external\"")
+		}
+		if c.TLS.KeyPath == "" {
+			errs = append(errs, "tls.key_path is required when tls.provider is \"external\"")
+		}
+	}
+
+	if len(errs) > 0 {
+		return fmt.Errorf("%s", strings.Join(errs, "; "))
+	}
+	return nil
+}
+
 // Load reads configuration from file and environment variables.
 // Config file path can be specified; defaults to "./vibewarden.yaml".
 // Environment variables override file values using VIBEWARDEN_ prefix.
@@ -268,6 +290,10 @@ func Load(configPath string) (*Config, error) {
 	var cfg Config
 	if err := v.Unmarshal(&cfg); err != nil {
 		return nil, fmt.Errorf("unmarshaling config: %w", err)
+	}
+
+	if err := cfg.Validate(); err != nil {
+		return nil, fmt.Errorf("invalid config: %w", err)
 	}
 
 	return &cfg, nil

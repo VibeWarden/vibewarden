@@ -8,6 +8,156 @@ import (
 	"github.com/vibewarden/vibewarden/internal/config"
 )
 
+// TestValidate_TLSExternal verifies that provider=external requires cert_path and key_path.
+func TestValidate_TLSExternal(t *testing.T) {
+	tests := []struct {
+		name    string
+		cfg     config.Config
+		wantErr bool
+	}{
+		{
+			name: "external with both paths",
+			cfg: config.Config{
+				TLS: config.TLSConfig{
+					Enabled:  true,
+					Provider: "external",
+					CertPath: "/etc/tls/cert.pem",
+					KeyPath:  "/etc/tls/key.pem",
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "external missing cert_path",
+			cfg: config.Config{
+				TLS: config.TLSConfig{
+					Enabled:  true,
+					Provider: "external",
+					KeyPath:  "/etc/tls/key.pem",
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "external missing key_path",
+			cfg: config.Config{
+				TLS: config.TLSConfig{
+					Enabled:  true,
+					Provider: "external",
+					CertPath: "/etc/tls/cert.pem",
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "external missing both paths",
+			cfg: config.Config{
+				TLS: config.TLSConfig{
+					Enabled:  true,
+					Provider: "external",
+				},
+			},
+			wantErr: true,
+		},
+		{
+			name: "letsencrypt does not require cert_path or key_path",
+			cfg: config.Config{
+				TLS: config.TLSConfig{
+					Enabled:  true,
+					Provider: "letsencrypt",
+					Domain:   "example.com",
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "self-signed does not require cert_path or key_path",
+			cfg: config.Config{
+				TLS: config.TLSConfig{
+					Enabled:  true,
+					Provider: "self-signed",
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "TLS disabled external without paths is valid",
+			cfg: config.Config{
+				TLS: config.TLSConfig{
+					Enabled:  false,
+					Provider: "external",
+				},
+			},
+			wantErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.cfg.Validate()
+			if (err != nil) != tt.wantErr {
+				t.Errorf("Validate() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+// TestLoad_TLSExternalValidation verifies that Load returns an error when
+// provider=external is configured without cert_path and/or key_path.
+func TestLoad_TLSExternalValidation(t *testing.T) {
+	tests := []struct {
+		name    string
+		yaml    string
+		wantErr bool
+	}{
+		{
+			name: "external with both paths passes",
+			yaml: `
+tls:
+  enabled: true
+  provider: external
+  cert_path: /etc/tls/cert.pem
+  key_path: /etc/tls/key.pem
+`,
+			wantErr: false,
+		},
+		{
+			name: "external missing cert_path fails",
+			yaml: `
+tls:
+  enabled: true
+  provider: external
+  key_path: /etc/tls/key.pem
+`,
+			wantErr: true,
+		},
+		{
+			name: "external missing key_path fails",
+			yaml: `
+tls:
+  enabled: true
+  provider: external
+  cert_path: /etc/tls/cert.pem
+`,
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			cfgFile := filepath.Join(dir, "vibewarden.yaml")
+			if err := os.WriteFile(cfgFile, []byte(tt.yaml), 0600); err != nil {
+				t.Fatalf("writing temp config file: %v", err)
+			}
+			_, err := config.Load(cfgFile)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("Load() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
 func TestLoad_Defaults(t *testing.T) {
 	cfg, err := config.Load("")
 	if err != nil {
