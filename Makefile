@@ -1,6 +1,6 @@
 # VibeWarden Makefile
 
-.PHONY: build test lint run docker-up docker-down observability-up observability-down clean
+.PHONY: build test lint run docker-up docker-down observability-up observability-down grafana-open prometheus-open clean
 
 # Build variables
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
@@ -39,6 +39,14 @@ observability-up:
 # Stop observability stack
 observability-down:
 	docker compose --profile observability down
+
+# Open Grafana dashboard in the default browser (macOS/Linux)
+grafana-open:
+	open http://localhost:3000 2>/dev/null || xdg-open http://localhost:3000
+
+# Open Prometheus UI in the default browser (macOS/Linux)
+prometheus-open:
+	open http://localhost:9090 2>/dev/null || xdg-open http://localhost:9090
 
 # Clean build artifacts
 clean:
