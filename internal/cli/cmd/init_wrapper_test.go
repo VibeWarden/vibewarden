@@ -21,22 +21,22 @@ func TestNewInitCmd_WrapperScripts(t *testing.T) {
 	}{
 		{
 			name:       "default init generates wrapper scripts",
-			args:       []string{"--skip-docker"},
+			args:       []string{},
 			checkFiles: wrapperFiles,
 		},
 		{
 			name:        "skip-wrapper omits wrapper files",
-			args:        []string{"--skip-docker", "--skip-wrapper"},
+			args:        []string{"--skip-wrapper"},
 			absentFiles: wrapperFiles,
 		},
 		{
 			name:       "version flag written to .vibewarden-version",
-			args:       []string{"--skip-docker", "--version", "v1.2.3"},
+			args:       []string{"--version", "v1.2.3"},
 			checkFiles: wrapperFiles,
 		},
 		{
 			name:       "force flag overwrites existing wrapper files",
-			args:       []string{"--skip-docker", "--force"},
+			args:       []string{"--force"},
 			checkFiles: wrapperFiles,
 		},
 	}
@@ -79,7 +79,7 @@ func TestNewInitCmd_VibewIsExecutable(t *testing.T) {
 	dir := t.TempDir()
 
 	root := cmd.NewRootCmd("test")
-	root.SetArgs([]string{"init", dir, "--skip-docker"})
+	root.SetArgs([]string{"init", dir})
 
 	if err := root.Execute(); err != nil {
 		t.Fatalf("Execute() unexpected error: %v", err)
@@ -99,7 +99,7 @@ func TestNewInitCmd_VersionFilePinnedContent(t *testing.T) {
 	dir := t.TempDir()
 
 	root := cmd.NewRootCmd("test")
-	root.SetArgs([]string{"init", dir, "--skip-docker", "--version", "v0.5.0"})
+	root.SetArgs([]string{"init", dir, "--version", "v0.5.0"})
 
 	if err := root.Execute(); err != nil {
 		t.Fatalf("Execute() unexpected error: %v", err)
@@ -154,7 +154,7 @@ func TestNewInitCmd_VibewScriptContainsKeyPatterns(t *testing.T) {
 
 	dir := t.TempDir()
 	root := cmd.NewRootCmd("test")
-	root.SetArgs([]string{"init", dir, "--skip-docker"})
+	root.SetArgs([]string{"init", dir})
 	if err := root.Execute(); err != nil {
 		t.Fatalf("Execute() unexpected error: %v", err)
 	}
@@ -180,14 +180,14 @@ func TestNewInitCmd_SuccessMessageListsWrapperFiles(t *testing.T) {
 	root := cmd.NewRootCmd("test")
 	var outBuf strings.Builder
 	root.SetOut(&outBuf)
-	root.SetArgs([]string{"init", dir, "--skip-docker"})
+	root.SetArgs([]string{"init", dir})
 
 	if err := root.Execute(); err != nil {
 		t.Fatalf("Execute() unexpected error: %v", err)
 	}
 
 	out := outBuf.String()
-	for _, want := range []string{"vibew", "vibew.ps1", "vibew.cmd", ".vibewarden-version"} {
+	for _, want := range []string{"vibew", "vibew.ps1", ".vibewarden-version"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("success message does not mention %q\n\nOutput:\n%s", want, out)
 		}

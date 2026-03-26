@@ -17,10 +17,10 @@ import (
 
 // NewInitCmd creates the `vibewarden init` subcommand.
 //
-// The command scaffolds vibewarden.yaml, docker-compose.yml, and the vibew
-// wrapper scripts in the current directory (or the directory supplied as the
-// first positional argument). When --agent is specified, AI agent context
-// files are also generated.
+// The command scaffolds vibewarden.yaml and the vibew wrapper scripts in the
+// current directory (or the directory supplied as the first positional argument).
+// When --agent is specified, AI agent context files are also generated.
+// Docker Compose and Kratos config are generated at runtime by `vibew dev`.
 func NewInitCmd() *cobra.Command {
 	var (
 		upstream    int
@@ -29,7 +29,6 @@ func NewInitCmd() *cobra.Command {
 		tls         bool
 		domain      string
 		force       bool
-		skipDocker  bool
 		skipWrapper bool
 		version     string
 		agent       string
@@ -38,9 +37,9 @@ func NewInitCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "init [directory]",
 		Short: "Initialise VibeWarden in a project",
-		Long: `Scaffold vibewarden.yaml, docker-compose.yml, and the vibew wrapper scripts
-in the project directory.
+		Long: `Scaffold vibewarden.yaml and the vibew wrapper scripts in the project directory.
 
+Docker Compose and Kratos config are generated at runtime by ` + "`vibew dev`" + `.
 The command detects the project type and upstream port automatically.
 Pass flags to enable optional features.
 
@@ -82,7 +81,6 @@ Examples:
 				TLSEnabled:       tls,
 				TLSDomain:        domain,
 				Force:            force,
-				SkipDocker:       skipDocker,
 				SkipWrapper:      skipWrapper,
 				Version:          version,
 			}
@@ -116,7 +114,6 @@ Examples:
 	cmd.Flags().BoolVar(&tls, "tls", false, "enable TLS (requires --domain)")
 	cmd.Flags().StringVar(&domain, "domain", "", "domain for TLS certificate (required with --tls)")
 	cmd.Flags().BoolVar(&force, "force", false, "overwrite existing files")
-	cmd.Flags().BoolVar(&skipDocker, "skip-docker", false, "skip docker-compose.yml generation")
 	cmd.Flags().BoolVar(&skipWrapper, "skip-wrapper", false, "skip vibew wrapper script generation")
 	cmd.Flags().StringVar(&version, "version", "", "VibeWarden version to pin in .vibewarden-version (default: latest)")
 	cmd.Flags().StringVar(&agent, "agent", "all", `generate AI agent context files: "claude", "cursor", "generic", "all", or "none"`)
@@ -148,34 +145,26 @@ func printSuccessMessage(cmd *cobra.Command, dir string, opts scaffoldapp.InitOp
 	w := cmd.OutOrStdout()
 
 	fmt.Fprintln(w, "")
-	fmt.Fprintln(w, "VibeWarden initialised successfully.")
+	fmt.Fprintln(w, "VibeWarden initialized!")
 	fmt.Fprintln(w, "")
-	fmt.Fprintln(w, "Generated files:")
-	fmt.Fprintf(w, "  %s/vibewarden.yaml\n", dir)
-	if !opts.SkipDocker {
-		fmt.Fprintf(w, "  %s/docker-compose.yml\n", dir)
-	}
+	fmt.Fprintln(w, "Files created:")
+	fmt.Fprintf(w, "  vibewarden.yaml          Configuration\n")
 	if !opts.SkipWrapper {
-		fmt.Fprintf(w, "  %s/vibew\n", dir)
-		fmt.Fprintf(w, "  %s/vibew.ps1\n", dir)
-		fmt.Fprintf(w, "  %s/vibew.cmd\n", dir)
-		fmt.Fprintf(w, "  %s/.vibewarden-version\n", dir)
+		fmt.Fprintf(w, "  vibew                    Wrapper script (macOS/Linux)\n")
+		fmt.Fprintf(w, "  vibew.ps1                Wrapper script (Windows)\n")
+		fmt.Fprintf(w, "  .vibewarden-version      Version pin\n")
 	}
+	fmt.Fprintf(w, "  .gitignore               Git ignore rules\n")
 	for _, f := range agentFiles {
 		fmt.Fprintf(w, "  %s\n", f)
 	}
 	fmt.Fprintln(w, "")
 	fmt.Fprintln(w, "Next steps:")
-	fmt.Fprintln(w, "  1. Review and adjust vibewarden.yaml as needed.")
 	if !opts.SkipWrapper {
-		fmt.Fprintln(w, "  2. Commit vibew, vibew.ps1, vibew.cmd, and .vibewarden-version to your repository.")
-		if !opts.SkipDocker {
-			fmt.Fprintln(w, "  3. Start the local dev environment:")
-			fmt.Fprintln(w, "       docker compose up")
-		}
-	} else if !opts.SkipDocker {
-		fmt.Fprintln(w, "  2. Start the local dev environment:")
-		fmt.Fprintln(w, "       docker compose up")
+		fmt.Fprintln(w, "  ./vibew dev              Start the dev environment")
+		fmt.Fprintln(w, "  ./vibew status           Check component health")
+	} else {
+		fmt.Fprintln(w, "  Review and adjust vibewarden.yaml as needed.")
 	}
 	fmt.Fprintln(w, "")
 	fmt.Fprintln(w, "Documentation: https://vibewarden.dev/docs/quickstart")

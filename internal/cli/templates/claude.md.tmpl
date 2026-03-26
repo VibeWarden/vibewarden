@@ -69,6 +69,18 @@ These endpoints are served by VibeWarden at the sidecar address (port 8080):
 
 Use `/_vibewarden/health` as the liveness probe in Docker Compose or Kubernetes.
 
+## Running the dev environment
+
+Start everything with:
+
+```
+./vibew dev
+```
+
+This generates all runtime config (Kratos, Docker Compose) into `.vibewarden/generated/`
+and starts the full stack. Do not run `docker compose up` directly — use `./vibew dev`
+so that config is generated from `vibewarden.yaml` first.
+
 ## Configuration reference
 
 VibeWarden is configured in `vibewarden.yaml` at the project root. Key sections:
