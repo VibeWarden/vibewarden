@@ -120,8 +120,8 @@ func TestStatusService_RateLimitDisabled(t *testing.T) {
 
 	proxyBase := "http://localhost:8080"
 	checker := &fakeHealthChecker{responses: map[string]healthResponse{
-		proxyBase + "/_vibewarden/health":  {ok: true, statusCode: 200},
-		proxyBase + "/_vibewarden/metrics": {ok: true, statusCode: 200},
+		proxyBase + "/_vibewarden/health":          {ok: true, statusCode: 200},
+		proxyBase + "/_vibewarden/metrics":         {ok: true, statusCode: 200},
 		"http://127.0.0.1:4434/admin/health/ready": {ok: true, statusCode: 200},
 	}}
 
@@ -142,7 +142,7 @@ func TestStatusService_MetricsDisabled(t *testing.T) {
 
 	proxyBase := "http://localhost:8080"
 	checker := &fakeHealthChecker{responses: map[string]healthResponse{
-		proxyBase + "/_vibewarden/health": {ok: true, statusCode: 200},
+		proxyBase + "/_vibewarden/health":          {ok: true, statusCode: 200},
 		"http://127.0.0.1:4434/admin/health/ready": {ok: true, statusCode: 200},
 	}}
 

@@ -27,13 +27,12 @@ func (c *ComposeAdapter) Up(ctx context.Context, profiles []string) error {
 	args = append(args, "up", "-d")
 
 	cmd := exec.CommandContext(ctx, "docker", args...)
-	cmd.Stdout = nil // let exec inherit parent stdout/stderr via Output
 	// We want live output — use Run with inherited file descriptors instead.
+	// exec.Cmd with nil Stdout/Stderr inherits the parent process's file
+	// descriptors, which means output streams directly to the terminal.
 	cmd.Stdout = nil
 	cmd.Stderr = nil
 
-	// exec.Cmd with nil Stdout/Stderr inherits the parent process's file
-	// descriptors, which means output streams directly to the terminal.
 	if err := cmd.Run(); err != nil {
 		return fmt.Errorf("docker compose up: %w", err)
 	}

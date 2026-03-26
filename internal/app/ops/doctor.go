@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"net/http"
 	"time"
 
 	"github.com/fatih/color"
@@ -26,15 +25,17 @@ type CheckResult struct {
 // DoctorService orchestrates the "vibewarden doctor" use case.
 // Every check runs independently — a failing check does not stop subsequent ones.
 type DoctorService struct {
-	compose     ports.ComposeRunner
-	portChecker ports.PortChecker
+	compose       ports.ComposeRunner
+	portChecker   ports.PortChecker
+	healthChecker ports.HealthChecker
 }
 
 // NewDoctorService creates a new DoctorService.
-func NewDoctorService(compose ports.ComposeRunner, portChecker ports.PortChecker) *DoctorService {
+func NewDoctorService(compose ports.ComposeRunner, portChecker ports.PortChecker, healthChecker ports.HealthChecker) *DoctorService {
 	return &DoctorService{
-		compose:     compose,
-		portChecker: portChecker,
+		compose:       compose,
+		portChecker:   portChecker,
+		healthChecker: healthChecker,
 	}
 }
 
@@ -178,17 +179,7 @@ func (s *DoctorService) checkUpstream(ctx context.Context, host string, port int
 	defer cancel()
 
 	url := fmt.Sprintf("http://%s:%d", host, port)
-	client := &http.Client{Timeout: 2 * time.Second}
-	req, err := http.NewRequestWithContext(checkCtx, http.MethodGet, url, nil)
-	if err != nil {
-		return CheckResult{
-			Name:   "Upstream app",
-			OK:     false,
-			Detail: fmt.Sprintf("cannot build request to %s: %v", url, err),
-		}
-	}
-
-	resp, err := client.Do(req)
+	ok, statusCode, err := s.healthChecker.CheckHealth(checkCtx, url)
 	if err != nil {
 		return CheckResult{
 			Name:   "Upstream app",
@@ -196,12 +187,11 @@ func (s *DoctorService) checkUpstream(ctx context.Context, host string, port int
 			Detail: fmt.Sprintf("not reachable at %s", url),
 		}
 	}
-	defer resp.Body.Close() //nolint:errcheck
 
 	return CheckResult{
 		Name:   "Upstream app",
-		OK:     true,
-		Detail: fmt.Sprintf("reachable at %s (HTTP %d)", url, resp.StatusCode),
+		OK:     ok,
+		Detail: fmt.Sprintf("reachable at %s (HTTP %d)", url, statusCode),
 	}
 }
 

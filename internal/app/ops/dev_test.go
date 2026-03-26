@@ -50,11 +50,11 @@ func defaultConfig() *config.Config {
 
 func TestDevService_Run(t *testing.T) {
 	tests := []struct {
-		name            string
-		opts            ops.DevOptions
-		upErr           error
-		wantErr         bool
-		wantProfiles    []string
+		name               string
+		opts               ops.DevOptions
+		upErr              error
+		wantErr            bool
+		wantProfiles       []string
 		wantOutputContains []string
 	}{
 		{

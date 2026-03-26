@@ -1,8 +1,10 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
-	"os"
+	"net/http"
+	"time"
 
 	"github.com/spf13/cobra"
 
@@ -52,7 +54,9 @@ Examples:
 
 			compose := opsadapter.NewComposeAdapter()
 			portChecker := opsadapter.NewNetPortChecker()
-			svc := opsapp.NewDoctorService(compose, portChecker)
+			httpClient := &http.Client{Timeout: 5 * time.Second}
+			healthChecker := opsadapter.NewHTTPHealthChecker(httpClient)
+			svc := opsapp.NewDoctorService(compose, portChecker, healthChecker)
 
 			label := configPath
 			if label == "" {
@@ -65,7 +69,7 @@ Examples:
 			}
 
 			if !allOK {
-				os.Exit(1)
+				return errors.New("one or more checks failed")
 			}
 			return nil
 		},

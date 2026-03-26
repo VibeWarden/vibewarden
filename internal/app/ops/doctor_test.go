@@ -23,14 +23,33 @@ func (f *fakePortChecker) IsPortAvailable(_ context.Context, _ string, port int)
 	return true, nil
 }
 
+// reachableHealthChecker is a fakeHealthChecker that reports upstream as reachable.
+func reachableHealthChecker() *fakeHealthChecker {
+	return &fakeHealthChecker{
+		responses: map[string]healthResponse{
+			"http://127.0.0.1:3000": {ok: true, statusCode: 200},
+		},
+	}
+}
+
+// unreachableHealthChecker is a fakeHealthChecker that reports upstream as unreachable.
+func unreachableHealthChecker() *fakeHealthChecker {
+	return &fakeHealthChecker{
+		responses: map[string]healthResponse{
+			"http://127.0.0.1:3000": {ok: false, err: errors.New("connection refused")},
+		},
+	}
+}
+
 func TestDoctorService_Run_AllPassing(t *testing.T) {
 	fc := &fakeCompose{
 		versionStr: "Docker Compose version v2.35.1",
 		infoErr:    nil,
 	}
 	pc := &fakePortChecker{available: map[int]bool{8080: true}}
+	hc := reachableHealthChecker()
 
-	svc := ops.NewDoctorService(fc, pc)
+	svc := ops.NewDoctorService(fc, pc, hc)
 	cfg := defaultConfig()
 	var buf bytes.Buffer
 
@@ -38,9 +57,9 @@ func TestDoctorService_Run_AllPassing(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Run() unexpected error: %v", err)
 	}
-
-	// Upstream is likely not running in test — expect allOK = false
-	_ = allOK
+	if !allOK {
+		t.Error("expected allOK = true when all checks pass")
+	}
 
 	out := buf.String()
 	for _, want := range []string{
@@ -63,7 +82,8 @@ func TestDoctorService_Run_DockerNotRunning(t *testing.T) {
 		versionStr: "Docker Compose version v2.35.1",
 	}
 	pc := &fakePortChecker{}
-	svc := ops.NewDoctorService(fc, pc)
+	hc := reachableHealthChecker()
+	svc := ops.NewDoctorService(fc, pc, hc)
 	cfg := defaultConfig()
 	var buf bytes.Buffer
 
@@ -87,7 +107,8 @@ func TestDoctorService_Run_DockerComposeNotAvailable(t *testing.T) {
 		versionErr: errors.New("docker compose: command not found"),
 	}
 	pc := &fakePortChecker{}
-	svc := ops.NewDoctorService(fc, pc)
+	hc := reachableHealthChecker()
+	svc := ops.NewDoctorService(fc, pc, hc)
 	cfg := defaultConfig()
 	var buf bytes.Buffer
 
@@ -110,7 +131,8 @@ func TestDoctorService_Run_PortInUse(t *testing.T) {
 		versionStr: "Docker Compose version v2.35.1",
 	}
 	pc := &fakePortChecker{available: map[int]bool{8080: false}}
-	svc := ops.NewDoctorService(fc, pc)
+	hc := reachableHealthChecker()
+	svc := ops.NewDoctorService(fc, pc, hc)
 	cfg := defaultConfig()
 	var buf bytes.Buffer
 
@@ -128,10 +150,35 @@ func TestDoctorService_Run_PortInUse(t *testing.T) {
 	}
 }
 
+func TestDoctorService_Run_UpstreamUnreachable(t *testing.T) {
+	fc := &fakeCompose{
+		versionStr: "Docker Compose version v2.35.1",
+	}
+	pc := &fakePortChecker{available: map[int]bool{8080: true}}
+	hc := unreachableHealthChecker()
+	svc := ops.NewDoctorService(fc, pc, hc)
+	cfg := defaultConfig()
+	var buf bytes.Buffer
+
+	allOK, err := svc.Run(context.Background(), cfg, "", &buf)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if allOK {
+		t.Error("expected allOK = false when upstream is unreachable")
+	}
+
+	out := buf.String()
+	if !strings.Contains(out, "not reachable") {
+		t.Errorf("expected 'not reachable' in output, got:\n%s", out)
+	}
+}
+
 func TestDoctorService_Run_NilConfig(t *testing.T) {
 	fc := &fakeCompose{versionStr: "Docker Compose version v2.35.1"}
 	pc := &fakePortChecker{}
-	svc := ops.NewDoctorService(fc, pc)
+	hc := reachableHealthChecker()
+	svc := ops.NewDoctorService(fc, pc, hc)
 
 	// nil cfg should not panic — checkConfigFile handles it
 	// We pass a defaultConfig but test the label path
@@ -156,7 +203,8 @@ func TestDoctorService_ChecksAreIndependent(t *testing.T) {
 		versionErr: errors.New("compose not found"),
 	}
 	pc := &fakePortChecker{available: map[int]bool{8080: false}}
-	svc := ops.NewDoctorService(fc, pc)
+	hc := unreachableHealthChecker()
+	svc := ops.NewDoctorService(fc, pc, hc)
 	cfg := defaultConfig()
 	var buf bytes.Buffer
 
