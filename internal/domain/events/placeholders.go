@@ -89,6 +89,10 @@ type UserCreatedParams struct {
 
 	// Email is the email address of the new user.
 	Email string
+
+	// ActorID identifies the admin who performed the action.
+	// May be empty when the action was performed by the system.
+	ActorID string
 }
 
 // NewUserCreated creates a user.created event indicating that a new user
@@ -105,6 +109,7 @@ func NewUserCreated(params UserCreatedParams) Event {
 		Payload: map[string]any{
 			"identity_id": params.IdentityID,
 			"email":       params.Email,
+			"actor_id":    params.ActorID,
 		},
 	}
 }
@@ -117,6 +122,13 @@ type UserDeletedParams struct {
 
 	// Email is the email address of the deleted user.
 	Email string
+
+	// ActorID identifies the admin who performed the action.
+	// May be empty when the action was performed by the system.
+	ActorID string
+
+	// Reason is an optional human-readable explanation for the deletion.
+	Reason string
 }
 
 // NewUserDeleted creates a user.deleted event indicating that a user identity
@@ -133,6 +145,46 @@ func NewUserDeleted(params UserDeletedParams) Event {
 		Payload: map[string]any{
 			"identity_id": params.IdentityID,
 			"email":       params.Email,
+			"actor_id":    params.ActorID,
+			"reason":      params.Reason,
+		},
+	}
+}
+
+// UserDeactivatedParams contains the parameters needed to construct a
+// user.deactivated event.
+type UserDeactivatedParams struct {
+	// IdentityID is the identity provider identifier of the deactivated user.
+	IdentityID string
+
+	// Email is the email address of the deactivated user.
+	Email string
+
+	// ActorID identifies the admin who performed the action.
+	// May be empty when the action was performed by the system.
+	ActorID string
+
+	// Reason is an optional human-readable explanation for the deactivation.
+	Reason string
+}
+
+// NewUserDeactivated creates a user.deactivated event indicating that a user
+// identity was deactivated, preventing further authentication while retaining
+// the identity record.
+func NewUserDeactivated(params UserDeactivatedParams) Event {
+	return Event{
+		SchemaVersion: SchemaVersion,
+		EventType:     EventTypeUserDeactivated,
+		Timestamp:     time.Now().UTC(),
+		AISummary: fmt.Sprintf(
+			"User deactivated: %s (identity %s)",
+			params.Email, params.IdentityID,
+		),
+		Payload: map[string]any{
+			"identity_id": params.IdentityID,
+			"email":       params.Email,
+			"actor_id":    params.ActorID,
+			"reason":      params.Reason,
 		},
 	}
 }

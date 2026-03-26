@@ -12,6 +12,17 @@ import (
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
 
+// fakeAuditLogger is a hand-written fake that implements ports.AuditLogger.
+type fakeAuditLogger struct {
+	entries   []ports.AuditEntry
+	recordErr error
+}
+
+func (f *fakeAuditLogger) RecordEntry(_ context.Context, e ports.AuditEntry) error {
+	f.entries = append(f.entries, e)
+	return f.recordErr
+}
+
 // fakeUserAdmin is a hand-written fake that implements ports.UserAdmin.
 type fakeUserAdmin struct {
 	listUsersResult *ports.PaginatedUsers
@@ -117,7 +128,7 @@ func TestService_ListUsers(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			svc := admin.NewService(tt.setupAdmin(), &fakeEventLogger{})
+			svc := admin.NewService(tt.setupAdmin(), &fakeEventLogger{}, nil)
 			result, err := svc.ListUsers(context.Background(), tt.pagination)
 			if (err != nil) != tt.wantErr {
 				t.Fatalf("ListUsers() error = %v, wantErr %v", err, tt.wantErr)
@@ -157,7 +168,7 @@ func TestService_GetUser(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			svc := admin.NewService(tt.setupAdmin(), &fakeEventLogger{})
+			svc := admin.NewService(tt.setupAdmin(), &fakeEventLogger{}, nil)
 			u, err := svc.GetUser(context.Background(), tt.id)
 			if (err != nil) != tt.wantErr {
 				t.Fatalf("GetUser() error = %v, wantErr %v", err, tt.wantErr)
@@ -223,7 +234,7 @@ func TestService_InviteUser(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			fakeAdmin := tt.setupAdmin()
 			fakeLog := &fakeEventLogger{logError: tt.logError}
-			svc := admin.NewService(fakeAdmin, fakeLog)
+			svc := admin.NewService(fakeAdmin, fakeLog, nil)
 
 			result, err := svc.InviteUser(context.Background(), tt.email, "admin-actor-id")
 			if (err != nil) != tt.wantErr {
@@ -254,7 +265,7 @@ func TestService_DeactivateUser(t *testing.T) {
 		wantDeactivatedID string
 	}{
 		{
-			name: "success emits user.deleted event",
+			name: "success emits user.deactivated event",
 			setupAdmin: func() *fakeUserAdmin {
 				return &fakeUserAdmin{
 					getUserResult: makeUser("id-1", "alice@example.com", user.StatusActive),
@@ -262,7 +273,7 @@ func TestService_DeactivateUser(t *testing.T) {
 			},
 			userID:            "id-1",
 			wantLogged:        1,
-			wantEventTy:       events.EventTypeUserDeleted,
+			wantEventTy:       events.EventTypeUserDeactivated,
 			wantDeactivatedID: "id-1",
 		},
 		{
@@ -296,7 +307,7 @@ func TestService_DeactivateUser(t *testing.T) {
 			userID:            "id-2",
 			logError:          errors.New("log sink unavailable"),
 			wantLogged:        1,
-			wantEventTy:       events.EventTypeUserDeleted,
+			wantEventTy:       events.EventTypeUserDeactivated,
 			wantDeactivatedID: "id-2",
 		},
 	}
@@ -305,7 +316,7 @@ func TestService_DeactivateUser(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			fakeAdmin := tt.setupAdmin()
 			fakeLog := &fakeEventLogger{logError: tt.logError}
-			svc := admin.NewService(fakeAdmin, fakeLog)
+			svc := admin.NewService(fakeAdmin, fakeLog, nil)
 
 			err := svc.DeactivateUser(context.Background(), tt.userID, "admin-actor-id", "policy violation")
 			if (err != nil) != tt.wantErr {
@@ -319,6 +330,116 @@ func TestService_DeactivateUser(t *testing.T) {
 			}
 			if tt.wantDeactivatedID != "" && fakeAdmin.lastDeactivateID != tt.wantDeactivatedID {
 				t.Errorf("DeactivateUser() called Deactivate with ID %q, want %q", fakeAdmin.lastDeactivateID, tt.wantDeactivatedID)
+			}
+		})
+	}
+}
+
+func TestService_InviteUser_AuditLogging(t *testing.T) {
+	tests := []struct {
+		name            string
+		auditErr        error
+		wantAuditCalls  int
+		wantAuditAction ports.AuditAction
+		wantActorID     string
+		wantResultNil   bool
+	}{
+		{
+			name:            "records audit entry on success",
+			wantAuditCalls:  1,
+			wantAuditAction: ports.AuditActionUserCreated,
+			wantActorID:     "admin-xyz",
+		},
+		{
+			name:           "audit failure does not abort invite",
+			auditErr:       errors.New("db unavailable"),
+			wantAuditCalls: 1,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fakeAdmin := &fakeUserAdmin{
+				inviteUserResult: &ports.InviteResult{
+					User: *makeUser("id-1", "alice@example.com", user.StatusActive),
+				},
+			}
+			fakeLog := &fakeEventLogger{}
+			fakeAudit := &fakeAuditLogger{recordErr: tt.auditErr}
+			svc := admin.NewService(fakeAdmin, fakeLog, fakeAudit)
+
+			result, err := svc.InviteUser(context.Background(), "alice@example.com", "admin-xyz")
+			if err != nil {
+				t.Fatalf("InviteUser() unexpected error: %v", err)
+			}
+			if result == nil {
+				t.Fatal("InviteUser() returned nil result")
+			}
+			if len(fakeAudit.entries) != tt.wantAuditCalls {
+				t.Errorf("audit entries = %d, want %d", len(fakeAudit.entries), tt.wantAuditCalls)
+			}
+			if tt.wantAuditCalls > 0 {
+				entry := fakeAudit.entries[0]
+				if entry.Action != ports.AuditActionUserCreated {
+					t.Errorf("audit action = %q, want %q", entry.Action, ports.AuditActionUserCreated)
+				}
+				if entry.ActorID != "admin-xyz" {
+					t.Errorf("audit actor_id = %q, want %q", entry.ActorID, "admin-xyz")
+				}
+				if entry.UserID != "id-1" {
+					t.Errorf("audit user_id = %q, want %q", entry.UserID, "id-1")
+				}
+			}
+		})
+	}
+}
+
+func TestService_DeactivateUser_AuditLogging(t *testing.T) {
+	tests := []struct {
+		name            string
+		auditErr        error
+		wantAuditCalls  int
+		wantAuditAction ports.AuditAction
+	}{
+		{
+			name:            "records audit entry on success",
+			wantAuditCalls:  1,
+			wantAuditAction: ports.AuditActionUserDeactivated,
+		},
+		{
+			name:           "audit failure does not abort deactivation",
+			auditErr:       errors.New("db unavailable"),
+			wantAuditCalls: 1,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fakeAdmin := &fakeUserAdmin{
+				getUserResult: makeUser("id-1", "alice@example.com", user.StatusActive),
+			}
+			fakeLog := &fakeEventLogger{}
+			fakeAudit := &fakeAuditLogger{recordErr: tt.auditErr}
+			svc := admin.NewService(fakeAdmin, fakeLog, fakeAudit)
+
+			err := svc.DeactivateUser(context.Background(), "id-1", "admin-xyz", "policy violation")
+			if err != nil {
+				t.Fatalf("DeactivateUser() unexpected error: %v", err)
+			}
+			if len(fakeAudit.entries) != tt.wantAuditCalls {
+				t.Errorf("audit entries = %d, want %d", len(fakeAudit.entries), tt.wantAuditCalls)
+			}
+			if tt.wantAuditCalls > 0 {
+				entry := fakeAudit.entries[0]
+				if entry.Action != ports.AuditActionUserDeactivated {
+					t.Errorf("audit action = %q, want %q", entry.Action, ports.AuditActionUserDeactivated)
+				}
+				if entry.ActorID != "admin-xyz" {
+					t.Errorf("audit actor_id = %q, want %q", entry.ActorID, "admin-xyz")
+				}
+				if entry.UserID != "id-1" {
+					t.Errorf("audit user_id = %q, want %q", entry.UserID, "id-1")
+				}
 			}
 		})
 	}

@@ -40,6 +40,18 @@ type Config struct {
 
 	// Metrics configuration
 	Metrics MetricsConfig `mapstructure:"metrics"`
+
+	// Database configuration
+	Database DatabaseConfig `mapstructure:"database"`
+}
+
+// DatabaseConfig holds PostgreSQL connection settings used for audit logging
+// and other persistence features.
+type DatabaseConfig struct {
+	// URL is a libpq-compatible connection string or URL.
+	// Example: "postgres://user:pass@localhost:5432/vibewarden?sslmode=disable"
+	// Can be set via VIBEWARDEN_DATABASE_URL env var.
+	URL string `mapstructure:"url"`
 }
 
 // ServerConfig holds server-related settings.
@@ -229,6 +241,7 @@ func Load(configPath string) (*Config, error) {
 	v.SetDefault("security_headers.permissions_policy", "")
 	v.SetDefault("metrics.enabled", true)
 	v.SetDefault("metrics.path_patterns", []string{})
+	v.SetDefault("database.url", "")
 
 	// Config file
 	if configPath != "" {
