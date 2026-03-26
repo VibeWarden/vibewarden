@@ -187,3 +187,64 @@ func TestNewStatusCmd_Short(t *testing.T) {
 		t.Error("expected non-empty Short description on 'status' command")
 	}
 }
+
+// TestNewGenerateCmd_RegisteredOnRoot verifies that the generate subcommand
+// is reachable from the root command and that its expected flags are registered.
+func TestNewGenerateCmd_RegisteredOnRoot(t *testing.T) {
+	root := cmd.NewRootCmd("test")
+
+	genCmd, _, err := root.Find([]string{"generate"})
+	if err != nil {
+		t.Fatalf("Find(generate) error: %v", err)
+	}
+	if genCmd == nil || genCmd.Use != "generate" {
+		t.Fatal("expected 'generate' subcommand to be registered on root")
+	}
+
+	if genCmd.Flags().Lookup("config") == nil {
+		t.Error("expected --config flag to be registered on 'generate' command")
+	}
+	if genCmd.Flags().Lookup("output-dir") == nil {
+		t.Error("expected --output-dir flag to be registered on 'generate' command")
+	}
+}
+
+// TestNewGenerateCmd_Help verifies that help output for generate contains expected content.
+func TestNewGenerateCmd_Help(t *testing.T) {
+	root := cmd.NewRootCmd("test")
+	var outBuf strings.Builder
+	root.SetOut(&outBuf)
+	root.SetArgs([]string{"generate", "--help"})
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("Execute() unexpected error: %v", err)
+	}
+
+	out := outBuf.String()
+	for _, want := range []string{"generate", "config", "output-dir", ".vibewarden/generated"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("help output missing %q\ngot:\n%s", want, out)
+		}
+	}
+}
+
+// TestNewGenerateCmd_MissingConfig verifies that generate returns an error when
+// a non-existent config path is specified.
+func TestNewGenerateCmd_MissingConfig(t *testing.T) {
+	root := cmd.NewRootCmd("test")
+	root.SetArgs([]string{"generate", "--config", "/nonexistent/path/vibewarden.yaml"})
+
+	err := root.Execute()
+	if err == nil {
+		t.Fatal("expected error when config file does not exist")
+	}
+}
+
+// TestNewGenerateCmd_Short verifies the Short description is set.
+func TestNewGenerateCmd_Short(t *testing.T) {
+	root := cmd.NewRootCmd("test")
+	genCmd, _, _ := root.Find([]string{"generate"})
+	if genCmd.Short == "" {
+		t.Error("expected non-empty Short description on 'generate' command")
+	}
+}

@@ -214,6 +214,74 @@ func dirOf(path string) string {
 	return path[:idx]
 }
 
+// TestService_Init_EnsuresGitIgnore verifies that Init creates or updates
+// .gitignore to include the .vibewarden/ entry.
+func TestService_Init_EnsuresGitIgnore(t *testing.T) {
+	baseProject := &scaffold.ProjectConfig{Type: scaffold.ProjectTypeNode}
+
+	t.Run("creates .gitignore when absent", func(t *testing.T) {
+		dir := t.TempDir()
+		svc := scaffoldapp.NewService(newFakeRenderer(), &fakeDetector{cfg: baseProject})
+
+		if err := svc.Init(context.Background(), dir, scaffoldapp.InitOptions{UpstreamPort: 3000}); err != nil {
+			t.Fatalf("Init() unexpected error: %v", err)
+		}
+
+		gitignorePath := dir + "/.gitignore"
+		if _, err := os.Stat(gitignorePath); err != nil {
+			t.Fatalf(".gitignore not created: %v", err)
+		}
+	})
+
+	t.Run("appends entry to existing .gitignore that lacks it", func(t *testing.T) {
+		dir := t.TempDir()
+		gitignorePath := dir + "/.gitignore"
+		existing := "node_modules/\n.env\n"
+		if err := os.WriteFile(gitignorePath, []byte(existing), 0o644); err != nil {
+			t.Fatalf("writing .gitignore: %v", err)
+		}
+
+		svc := scaffoldapp.NewService(newFakeRenderer(), &fakeDetector{cfg: baseProject})
+		if err := svc.Init(context.Background(), dir, scaffoldapp.InitOptions{UpstreamPort: 3000}); err != nil {
+			t.Fatalf("Init() unexpected error: %v", err)
+		}
+
+		data, err := os.ReadFile(gitignorePath)
+		if err != nil {
+			t.Fatalf("reading .gitignore: %v", err)
+		}
+		if !strings.Contains(string(data), ".vibewarden/") {
+			t.Errorf(".gitignore missing .vibewarden/ entry:\n%s", string(data))
+		}
+		if !strings.Contains(string(data), "node_modules/") {
+			t.Errorf(".gitignore lost existing content:\n%s", string(data))
+		}
+	})
+
+	t.Run("does not modify .gitignore that already has entry", func(t *testing.T) {
+		dir := t.TempDir()
+		gitignorePath := dir + "/.gitignore"
+		existing := ".vibewarden/\nnode_modules/\n"
+		if err := os.WriteFile(gitignorePath, []byte(existing), 0o644); err != nil {
+			t.Fatalf("writing .gitignore: %v", err)
+		}
+
+		svc := scaffoldapp.NewService(newFakeRenderer(), &fakeDetector{cfg: baseProject})
+		if err := svc.Init(context.Background(), dir, scaffoldapp.InitOptions{UpstreamPort: 3000}); err != nil {
+			t.Fatalf("Init() unexpected error: %v", err)
+		}
+
+		data, err := os.ReadFile(gitignorePath)
+		if err != nil {
+			t.Fatalf("reading .gitignore: %v", err)
+		}
+		// Content should be unchanged (no duplicate entry).
+		if string(data) != existing {
+			t.Errorf(".gitignore was modified unnecessarily:\ngot:  %q\nwant: %q", string(data), existing)
+		}
+	})
+}
+
 // Verify fakeDetector satisfies the interface at compile time.
 var _ interface {
 	Detect(string) (*scaffold.ProjectConfig, error)

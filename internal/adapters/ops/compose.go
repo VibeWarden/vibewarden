@@ -16,11 +16,16 @@ func NewComposeAdapter() *ComposeAdapter {
 	return &ComposeAdapter{}
 }
 
-// Up runs "docker compose [--profile <p>...] up -d" in the working directory.
+// Up runs "docker compose [-f <composeFile>] [--profile <p>...] up -d".
+// When composeFile is non-empty it is passed as the -f flag so that docker
+// compose uses that specific file rather than the default discovery logic.
 // Output from the command is streamed directly to stdout/stderr so the user
 // sees progress in real time.
-func (c *ComposeAdapter) Up(ctx context.Context, profiles []string) error {
+func (c *ComposeAdapter) Up(ctx context.Context, composeFile string, profiles []string) error {
 	args := []string{"compose"}
+	if composeFile != "" {
+		args = append(args, "-f", composeFile)
+	}
 	for _, p := range profiles {
 		args = append(args, "--profile", p)
 	}

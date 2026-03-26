@@ -7,13 +7,17 @@ import (
 	"github.com/spf13/cobra"
 
 	opsadapter "github.com/vibewarden/vibewarden/internal/adapters/ops"
+	templateadapter "github.com/vibewarden/vibewarden/internal/adapters/template"
+	generateapp "github.com/vibewarden/vibewarden/internal/app/generate"
 	opsapp "github.com/vibewarden/vibewarden/internal/app/ops"
 	"github.com/vibewarden/vibewarden/internal/config"
+	configtemplates "github.com/vibewarden/vibewarden/internal/config/templates"
 )
 
 // NewDevCmd creates the "vibewarden dev" subcommand.
 //
-// The command starts the Docker Compose dev environment in detached mode and
+// The command generates runtime config files under .vibewarden/generated/,
+// then starts the Docker Compose dev environment in detached mode and
 // prints the running service URLs. Pass --observability to also start the
 // Prometheus + Grafana observability stack.
 func NewDevCmd() *cobra.Command {
@@ -26,6 +30,9 @@ func NewDevCmd() *cobra.Command {
 		Use:   "dev",
 		Short: "Start the local dev environment",
 		Long: `Start the VibeWarden Docker Compose dev environment in detached mode.
+
+When vibewarden.yaml is present, VibeWarden generates runtime configuration
+files under .vibewarden/generated/ before starting the stack.
 
 The baseline stack includes:
   - VibeWarden proxy (port 8080)
@@ -46,7 +53,9 @@ Examples:
 			}
 
 			compose := opsadapter.NewComposeAdapter()
-			svc := opsapp.NewDevService(compose)
+			renderer := templateadapter.NewRenderer(configtemplates.FS)
+			generator := generateapp.NewService(renderer)
+			svc := opsapp.NewDevServiceWithGenerator(compose, generator)
 
 			opts := opsapp.DevOptions{
 				Observability: observability,

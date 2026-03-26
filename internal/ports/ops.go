@@ -7,9 +7,11 @@ import "context"
 // Implementations shell out to the docker compose CLI.
 type ComposeRunner interface {
 	// Up starts services defined in the compose file.
+	// composeFile is the path to the docker-compose.yml to use; when empty
+	// the default file discovery behaviour of docker compose applies.
 	// profiles is a list of compose profiles to activate (e.g. "observability").
 	// The output of the command is streamed to the caller via the returned channel.
-	Up(ctx context.Context, profiles []string) error
+	Up(ctx context.Context, composeFile string, profiles []string) error
 
 	// Version returns the docker compose version string.
 	// Returns an error when docker compose is not available.
