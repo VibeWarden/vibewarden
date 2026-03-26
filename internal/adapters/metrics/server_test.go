@@ -11,7 +11,7 @@ import (
 
 func TestServer_StartAndStop(t *testing.T) {
 	adapter := NewPrometheusAdapter(nil)
-	srv := NewServer(adapter.Handler())
+	srv := NewServer(adapter.Handler(), nil)
 
 	if err := srv.Start(); err != nil {
 		t.Fatalf("Start() error = %v", err)
@@ -52,7 +52,7 @@ func TestServer_StartAndStop(t *testing.T) {
 
 func TestServer_StopBeforeStart(t *testing.T) {
 	// Stop on a never-started server must be a no-op.
-	srv := NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}))
+	srv := NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {}), nil)
 	ctx := context.Background()
 	if err := srv.Stop(ctx); err != nil {
 		t.Errorf("Stop() on unstarted server error = %v, want nil", err)
@@ -61,7 +61,7 @@ func TestServer_StopBeforeStart(t *testing.T) {
 
 func TestServer_UnknownPathReturns404(t *testing.T) {
 	adapter := NewPrometheusAdapter(nil)
-	srv := NewServer(adapter.Handler())
+	srv := NewServer(adapter.Handler(), nil)
 
 	if err := srv.Start(); err != nil {
 		t.Fatalf("Start() error = %v", err)

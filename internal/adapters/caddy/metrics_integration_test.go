@@ -29,7 +29,7 @@ func TestAdapter_Integration_MetricsEndpoint(t *testing.T) {
 
 	// Start the internal metrics server.
 	pa := prometheusadapter.NewPrometheusAdapter(nil)
-	metricsSrv := prometheusadapter.NewServer(pa.Handler())
+	metricsSrv := prometheusadapter.NewServer(pa.Handler(), slog.Default())
 	if err := metricsSrv.Start(); err != nil {
 		t.Fatalf("starting metrics server: %v", err)
 	}
@@ -122,7 +122,7 @@ func TestAdapter_Integration_MetricsEndpoint_BypassesUpstream(t *testing.T) {
 	defer upstream.Close()
 
 	pa := prometheusadapter.NewPrometheusAdapter(nil)
-	metricsSrv := prometheusadapter.NewServer(pa.Handler())
+	metricsSrv := prometheusadapter.NewServer(pa.Handler(), slog.Default())
 	if err := metricsSrv.Start(); err != nil {
 		t.Fatalf("starting metrics server: %v", err)
 	}

@@ -3,6 +3,7 @@ package metrics
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/http"
 )
@@ -15,12 +16,18 @@ type Server struct {
 	handler  http.Handler
 	listener net.Listener
 	server   *http.Server
+	logger   *slog.Logger
 }
 
 // NewServer creates a Server that will serve the given handler.
-// Call Start to bind the listener and begin accepting connections.
-func NewServer(handler http.Handler) *Server {
-	return &Server{handler: handler}
+// logger is used to report unexpected serve errors; pass slog.Default() if no
+// custom logger is needed. Call Start to bind the listener and begin accepting
+// connections.
+func NewServer(handler http.Handler, logger *slog.Logger) *Server {
+	if logger == nil {
+		logger = slog.Default()
+	}
+	return &Server{handler: handler, logger: logger}
 }
 
 // Start binds a random localhost TCP port, starts serving the metrics handler,
@@ -40,9 +47,7 @@ func (s *Server) Start() error {
 	go func() {
 		// Serve until stopped; ErrServerClosed is the expected shutdown signal.
 		if serveErr := s.server.Serve(ln); serveErr != nil && serveErr != http.ErrServerClosed {
-			// The server cannot recover from a serve error — log it to stderr via
-			// the standard library so it surfaces without importing slog here.
-			_ = serveErr
+			s.logger.Error("metrics server stopped unexpectedly", "err", serveErr)
 		}
 	}()
 
