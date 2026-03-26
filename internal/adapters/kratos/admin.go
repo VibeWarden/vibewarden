@@ -27,10 +27,10 @@ var emailPattern = regexp.MustCompile(`^[^@\s]+@[^@\s]+\.[^@\s]+$`)
 
 // kratosAdminIdentity mirrors the identity object returned by the Kratos admin API.
 type kratosAdminIdentity struct {
-	ID    string         `json:"id"`
-	State string         `json:"state"`
-	Traits map[string]any `json:"traits"`
-	CreatedAt string     `json:"created_at"`
+	ID        string         `json:"id"`
+	State     string         `json:"state"`
+	Traits    map[string]any `json:"traits"`
+	CreatedAt string         `json:"created_at"`
 }
 
 // kratosCreateIdentityRequest is the body sent to POST /admin/identities.
