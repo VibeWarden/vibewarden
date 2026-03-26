@@ -1,0 +1,90 @@
+# Promtail — scrapes Docker container logs and ships them to Loki
+#
+# Mounts:
+#   /var/run/docker.sock  — Docker socket for container discovery
+#   /var/lib/docker/containers  — raw container log files
+#
+# VibeWarden's structured JSON logs are parsed via the json pipeline stage so
+# that each field (event_type, ai_summary, schema_version, etc.) becomes a Loki
+# label or structured metadata that can be queried in Grafana.
+#
+# This configuration is intended for local dev only — do not use in production.
+
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+  log_level: warn
+
+positions:
+  filename: /tmp/positions.yaml
+
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+
+scrape_configs:
+  # --------------------------------------------------------------------------
+  # Docker — discover all containers via the Docker socket and tail their logs
+  # --------------------------------------------------------------------------
+  - job_name: docker
+    docker_sd_configs:
+      - host: unix:///var/run/docker.sock
+        refresh_interval: 10s
+        filters:
+          - name: status
+            values: ["running"]
+
+    relabel_configs:
+      # Use the container name as the "container" label
+      - source_labels: [__meta_docker_container_name]
+        regex: "/(.*)"
+        target_label: container
+      # Propagate the compose service name as a label
+      - source_labels: [__meta_docker_container_label_com_docker_compose_service]
+        target_label: service
+      # Keep the compose project name as a label
+      - source_labels: [__meta_docker_container_label_com_docker_compose_project]
+        target_label: compose_project
+
+    pipeline_stages:
+      # ------------------------------------------------------------------
+      # VibeWarden structured JSON log parsing
+      #
+      # VibeWarden emits log lines as JSON objects with the schema:
+      #   {
+      #     "schema_version": "v1",
+      #     "event_type": "request.completed",
+      #     "ai_summary": "GET /api/users returned 200 in 12ms",
+      #     "payload": { ... }
+      #   }
+      #
+      # The json stage extracts the top-level fields into pipeline data so
+      # they can be promoted to Loki labels (for indexing) or structured
+      # metadata (for ad-hoc querying without label cardinality explosion).
+      # ------------------------------------------------------------------
+      - json:
+          expressions:
+            schema_version: schema_version
+            event_type: event_type
+            ai_summary: ai_summary
+            level: level
+            time: time
+
+      # Promote low-cardinality fields to Loki labels for efficient querying
+      - labels:
+          schema_version:
+          event_type:
+          level:
+
+      # Map the parsed "time" field to the log entry timestamp so Loki stores
+      # the event at the time VibeWarden recorded it, not the scrape time.
+      - timestamp:
+          source: time
+          format: RFC3339Nano
+          fallback_formats:
+            - RFC3339
+            - UnixMs
+
+      # Surface the ai_summary as a structured metadata field so Grafana can
+      # display it in the log details panel without adding it as a label.
+      - structured_metadata:
+          ai_summary:

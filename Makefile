@@ -1,6 +1,6 @@
 # VibeWarden Makefile
 
-.PHONY: build test lint run docker-up docker-down observability-up observability-down grafana-open prometheus-open clean check setup-hooks
+.PHONY: build test lint run docker-up docker-down observability-up observability-down grafana-open prometheus-open loki-open clean check setup-hooks
 
 # Build variables
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
@@ -47,6 +47,10 @@ grafana-open:
 # Open Prometheus UI in the default browser (macOS/Linux)
 prometheus-open:
 	open http://localhost:9090 2>/dev/null || xdg-open http://localhost:9090
+
+# Open Loki UI in the default browser (macOS/Linux)
+loki-open:
+	open http://localhost:3100/ready 2>/dev/null || xdg-open http://localhost:3100/ready
 
 # Clean build artifacts
 clean:

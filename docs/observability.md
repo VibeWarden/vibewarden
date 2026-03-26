@@ -1,8 +1,9 @@
 # Observability Stack
 
 VibeWarden includes an optional local observability stack for development and testing.
-It consists of **Prometheus** (metrics collection) and **Grafana** (dashboards), both
-started via Docker Compose profiles so they do not run unless explicitly requested.
+It consists of **Prometheus** (metrics collection), **Loki** (log aggregation),
+**Promtail** (log shipper), and **Grafana** (dashboards and log explorer), all started
+via Docker Compose profiles so they do not run unless explicitly requested.
 
 ## Quick Start
 
@@ -27,14 +28,16 @@ Open the dashboards in your browser:
 ```bash
 make grafana-open      # opens http://localhost:3000
 make prometheus-open   # opens http://localhost:9090
+make loki-open         # opens http://localhost:3100/ready
 ```
 
 ## Accessing the UIs
 
-| Service    | URL                    | Notes                                  |
-|------------|------------------------|----------------------------------------|
-| Grafana    | http://localhost:3000  | Anonymous access, Admin role, no login |
-| Prometheus | http://localhost:9090  | No authentication required             |
+| Service    | URL                          | Notes                                  |
+|------------|------------------------------|----------------------------------------|
+| Grafana    | http://localhost:3000        | Anonymous access, Admin role, no login |
+| Prometheus | http://localhost:9090        | No authentication required             |
+| Loki       | http://localhost:3100/ready  | API only; query logs via Grafana       |
 
 Grafana is configured with anonymous authentication so there is no login screen in
 the local dev environment. This is intentional — do not use this configuration in
@@ -97,12 +100,67 @@ Prometheus collectors:
                           |                                     |
                           +---> /_vibewarden/metrics            v
                                                          [Grafana :3000]
+                                                               ^
+[Docker container logs]  -->  [Promtail]  -->  [Loki :3100] --+
 ```
 
 Prometheus scrapes VibeWarden every 15 seconds (configured in
-`observability/prometheus/prometheus.yml`). Grafana queries Prometheus as its
-data source (provisioned automatically in
+`observability/prometheus/prometheus.yml`). Promtail discovers all running Docker
+containers via the Docker socket, tails their log files, and ships log entries to Loki.
+Grafana queries both Prometheus and Loki as data sources (provisioned automatically in
 `observability/grafana/provisioning/datasources/prometheus.yml`).
+
+## Loki Log Aggregation
+
+Loki aggregates logs from all Docker containers in the stack. Logs are available in
+Grafana's **Explore** view (select the **Loki** data source).
+
+### Querying VibeWarden Logs
+
+VibeWarden emits structured JSON logs with the following top-level fields:
+
+| Field            | Description                                      | Indexed as label |
+|------------------|--------------------------------------------------|------------------|
+| `schema_version` | Log schema version (e.g., `v1`)                  | Yes              |
+| `event_type`     | Event kind (e.g., `request.completed`)           | Yes              |
+| `level`          | Log level (`DEBUG`, `INFO`, `WARN`, `ERROR`)     | Yes              |
+| `ai_summary`     | Human/AI-readable one-line description           | Structured metadata |
+| `time`           | RFC 3339 timestamp of the event                  | Used as log timestamp |
+| `payload`        | Event-specific data (arbitrary JSON object)      | Full-text search |
+
+Example LogQL queries in Grafana Explore:
+
+```logql
+# All VibeWarden logs
+{container="vibewarden-sidecar"}
+
+# Only error-level events
+{container="vibewarden-sidecar", level="ERROR"}
+
+# Request completed events
+{container="vibewarden-sidecar", event_type="request.completed"}
+
+# Full-text search within payloads
+{container="vibewarden-sidecar"} |= "rate_limit"
+
+# Parse and filter on a payload field (e.g. status_code)
+{container="vibewarden-sidecar", event_type="request.completed"}
+  | json
+  | payload_status_code >= 500
+```
+
+### Promtail Pipeline
+
+Promtail parses each VibeWarden log line as JSON and:
+
+1. Extracts `schema_version`, `event_type`, and `level` as Loki labels (low-cardinality,
+   indexed for fast filtering).
+2. Maps the `time` field to the Loki log timestamp so events are stored at the time
+   VibeWarden recorded them, not the scrape time.
+3. Promotes `ai_summary` as Loki structured metadata so it appears in the Grafana log
+   details panel without bloating the label index.
+
+Configuration lives in `observability/promtail/promtail-config.yml`.
 
 ## Adding Custom Dashboards
 
@@ -155,6 +213,26 @@ malformed, Grafana will start without it. Check the Grafana container logs:
 ```bash
 docker compose logs grafana
 ```
+
+### Loki shows no logs in Grafana
+
+1. Verify Loki is ready:
+   ```bash
+   curl http://localhost:3100/ready
+   # expected: ready
+   ```
+2. Check Promtail is running and has no errors:
+   ```bash
+   docker compose --profile observability logs promtail
+   ```
+3. Confirm Promtail has write access to the Docker socket:
+   ```bash
+   docker compose --profile observability ps promtail
+   ```
+4. In Grafana Explore, select the **Loki** datasource and run:
+   ```logql
+   {service="vibewarden"}
+   ```
 
 ### Prometheus cannot reach VibeWarden
 

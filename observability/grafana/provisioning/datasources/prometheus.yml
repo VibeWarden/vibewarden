@@ -8,3 +8,15 @@ datasources:
     url: http://prometheus:9090
     isDefault: true
     editable: false
+
+  - name: Loki
+    type: loki
+    uid: loki
+    access: proxy
+    url: http://loki:3100
+    isDefault: false
+    editable: false
+    jsonData:
+      # Derive fields turn the ai_summary structured metadata field into a
+      # clickable link in Grafana's log detail view (optional enhancement).
+      maxLines: 1000
