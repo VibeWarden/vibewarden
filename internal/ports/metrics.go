@@ -48,25 +48,3 @@ type MetricsConfig struct {
 	// Paths that don't match any pattern are recorded as "other".
 	PathPatterns []string
 }
-
-// NoOpMetricsCollector is a MetricsCollector that does nothing.
-// Use when metrics are disabled.
-type NoOpMetricsCollector struct{}
-
-// IncRequestTotal implements MetricsCollector and does nothing.
-func (NoOpMetricsCollector) IncRequestTotal(_, _, _ string) {}
-
-// ObserveRequestDuration implements MetricsCollector and does nothing.
-func (NoOpMetricsCollector) ObserveRequestDuration(_, _ string, _ time.Duration) {}
-
-// IncRateLimitHit implements MetricsCollector and does nothing.
-func (NoOpMetricsCollector) IncRateLimitHit(_ string) {}
-
-// IncAuthDecision implements MetricsCollector and does nothing.
-func (NoOpMetricsCollector) IncAuthDecision(_ string) {}
-
-// IncUpstreamError implements MetricsCollector and does nothing.
-func (NoOpMetricsCollector) IncUpstreamError() {}
-
-// SetActiveConnections implements MetricsCollector and does nothing.
-func (NoOpMetricsCollector) SetActiveConnections(_ int) {}

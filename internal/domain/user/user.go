@@ -17,21 +17,6 @@ const (
 	StatusInactive Status = "inactive"
 )
 
-// AuditAction is the type of administrative action recorded in an AuditEntry.
-type AuditAction string
-
-const (
-	// AuditActionCreated is recorded when a new user is invited/created by an admin.
-	AuditActionCreated AuditAction = "created"
-
-	// AuditActionDeactivated is recorded when a user is deactivated by an admin.
-	AuditActionDeactivated AuditAction = "deactivated"
-
-	// AuditActionReactivated is recorded when a previously inactive user is
-	// reactivated by an admin.
-	AuditActionReactivated AuditAction = "reactivated"
-)
-
 // User represents a user identity managed via the Kratos admin API.
 // It is a read-only projection — mutations are performed through the
 // UserAdmin port, not by modifying this struct directly.
@@ -47,18 +32,4 @@ type User struct {
 
 	// CreatedAt is when the identity was created in Kratos.
 	CreatedAt time.Time
-}
-
-// AuditEntry records an administrative action taken on a user identity.
-// These entries form an append-only audit trail that VibeWarden can expose
-// to the fleet dashboard (Pro tier) for compliance purposes.
-type AuditEntry struct {
-	// UserID is the Kratos identity UUID of the affected user.
-	UserID string
-
-	// Action is the type of administrative action performed.
-	Action AuditAction
-
-	// PerformedAt is when the action was recorded.
-	PerformedAt time.Time
 }

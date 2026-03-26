@@ -6,6 +6,7 @@ import (
 	"testing"
 	"time"
 
+	vibemetrics "github.com/vibewarden/vibewarden/internal/adapters/metrics"
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
 
@@ -228,7 +229,7 @@ func TestMetricsMiddleware_DefaultStatusOK_WhenHandlerWritesBody(t *testing.T) {
 
 func TestNoOpMetricsCollector(t *testing.T) {
 	// Ensure NoOpMetricsCollector compiles and satisfies the interface.
-	var mc ports.MetricsCollector = ports.NoOpMetricsCollector{}
+	var mc ports.MetricsCollector = vibemetrics.NoOpMetricsCollector{}
 
 	// All calls must be no-ops (no panic).
 	mc.IncRequestTotal("GET", "200", "/health")
