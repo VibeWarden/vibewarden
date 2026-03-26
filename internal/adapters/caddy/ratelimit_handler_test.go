@@ -158,7 +158,7 @@ func TestRateLimitHandler_Cleanup(t *testing.T) {
 			wantErr:     false,
 		},
 		{
-			name: "both limiters present — both closed",
+			name:        "both limiters present — both closed",
 			ipLimiter:   &fakeRateLimiter{},
 			userLimiter: &fakeRateLimiter{},
 			wantErr:     false,

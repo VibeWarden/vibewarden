@@ -30,10 +30,10 @@ func TestNewPublicPathMatcher_InvalidPattern(t *testing.T) {
 
 func TestPublicPathMatcher_Matches(t *testing.T) {
 	tests := []struct {
-		name         string
-		patterns     []string
-		requestPath  string
-		wantMatch    bool
+		name        string
+		patterns    []string
+		requestPath string
+		wantMatch   bool
 	}{
 		// /_vibewarden/* is always added automatically.
 		{

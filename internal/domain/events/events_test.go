@@ -545,8 +545,8 @@ func TestNewUserDeleted(t *testing.T) {
 
 func TestNewUserDeactivated(t *testing.T) {
 	tests := []struct {
-		name    string
-		params  events.UserDeactivatedParams
+		name       string
+		params     events.UserDeactivatedParams
 		wantReason string
 	}{
 		{

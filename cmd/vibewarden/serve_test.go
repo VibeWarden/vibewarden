@@ -67,8 +67,8 @@ func TestBuildLogger_Level(t *testing.T) {
 
 func TestBuildLogger_Format(t *testing.T) {
 	tests := []struct {
-		name   string
-		cfg    config.LogConfig
+		name    string
+		cfg     config.LogConfig
 		wantNil bool
 	}{
 		{
