@@ -10,6 +10,7 @@ import (
 
 	"github.com/vibewarden/vibewarden/internal/config"
 	"github.com/vibewarden/vibewarden/internal/config/presets"
+	"github.com/vibewarden/vibewarden/internal/config/templates"
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
 
@@ -31,6 +32,7 @@ func NewService(renderer ports.TemplateRenderer) *Service {
 //
 //	kratos/kratos.yml
 //	kratos/identity.schema.json
+//	kratos/mappers/<provider>.jsonnet  (one per configured social provider)
 //	docker-compose.yml
 func (s *Service) Generate(ctx context.Context, cfg *config.Config, outputDir string) error {
 	if outputDir == "" {
@@ -71,6 +73,13 @@ func (s *Service) Generate(ctx context.Context, cfg *config.Config, outputDir st
 		}
 	}
 
+	// Generate OIDC mapper files if social providers are configured.
+	if len(cfg.Auth.SocialProviders) > 0 {
+		if err := s.generateMappers(cfg, outputDir); err != nil {
+			return fmt.Errorf("generating OIDC mappers: %w", err)
+		}
+	}
+
 	// Generate docker-compose.yml unless an override path is configured.
 	composePath := filepath.Join(outputDir, "docker-compose.yml")
 	if cfg.Overrides.ComposeFile != "" {
@@ -89,6 +98,57 @@ func (s *Service) Generate(ctx context.Context, cfg *config.Config, outputDir st
 	}
 
 	return nil
+}
+
+// generateMappers writes Kratos OIDC Jsonnet mapper files to
+// <outputDir>/kratos/mappers/ — one file per unique mapper required by the
+// configured social providers.
+//
+// Mapper selection:
+//   - google  → mappers/google.jsonnet
+//   - github  → mappers/github.jsonnet
+//   - all others → mappers/generic.jsonnet
+//
+// Files are written only for mappers that are actually referenced so the
+// output directory stays minimal.
+func (s *Service) generateMappers(cfg *config.Config, outputDir string) error {
+	mappersDir := filepath.Join(outputDir, "kratos", "mappers")
+	if err := os.MkdirAll(mappersDir, 0o755); err != nil {
+		return fmt.Errorf("creating mappers directory: %w", err)
+	}
+
+	// Collect the set of mapper file names required by the configuration.
+	needed := make(map[string]bool)
+	for _, sp := range cfg.Auth.SocialProviders {
+		needed[mapperFileName(sp.Provider)] = true
+	}
+
+	// Write each required mapper file from the embedded FS.
+	for mapperFile := range needed {
+		src := "mappers/" + mapperFile
+		data, err := templates.FS.ReadFile(src)
+		if err != nil {
+			return fmt.Errorf("reading embedded mapper %q: %w", src, err)
+		}
+		dst := filepath.Join(mappersDir, mapperFile)
+		if err := os.WriteFile(dst, data, 0o644); err != nil {
+			return fmt.Errorf("writing mapper file %q: %w", dst, err)
+		}
+	}
+	return nil
+}
+
+// mapperFileName returns the Jsonnet mapper file name for the given provider name.
+// Google and GitHub have dedicated mappers; all other providers use the generic mapper.
+func mapperFileName(provider string) string {
+	switch provider {
+	case "google":
+		return "google.jsonnet"
+	case "github":
+		return "github.jsonnet"
+	default:
+		return "generic.jsonnet"
+	}
 }
 
 // resolveIdentitySchema returns the JSON bytes for the identity schema.

@@ -266,3 +266,167 @@ func TestGenerate_UnknownPreset_ReturnsError(t *testing.T) {
 		t.Error("Generate() expected error for unknown preset, got nil")
 	}
 }
+
+func TestGenerate_WithSocialProviders_GeneratesMapperFiles(t *testing.T) {
+	tests := []struct {
+		name          string
+		providers     []config.SocialProviderConfig
+		wantMappers   []string
+		wantNoMappers []string
+	}{
+		{
+			name: "google provider uses google mapper",
+			providers: []config.SocialProviderConfig{
+				{Provider: "google", ClientID: "gid", ClientSecret: "gsecret"},
+			},
+			wantMappers:   []string{"google.jsonnet"},
+			wantNoMappers: []string{"github.jsonnet"},
+		},
+		{
+			name: "github provider uses github mapper",
+			providers: []config.SocialProviderConfig{
+				{Provider: "github", ClientID: "ghid", ClientSecret: "ghsecret"},
+			},
+			wantMappers:   []string{"github.jsonnet"},
+			wantNoMappers: []string{"google.jsonnet"},
+		},
+		{
+			name: "generic oidc provider uses generic mapper",
+			providers: []config.SocialProviderConfig{
+				{Provider: "oidc", ID: "acme", ClientID: "oid", ClientSecret: "osecret", IssuerURL: "https://accounts.acme.example"},
+			},
+			wantMappers:   []string{"generic.jsonnet"},
+			wantNoMappers: []string{"google.jsonnet", "github.jsonnet"},
+		},
+		{
+			name: "multiple providers with overlapping mapper type",
+			providers: []config.SocialProviderConfig{
+				{Provider: "google", ClientID: "gid", ClientSecret: "gsecret"},
+				{Provider: "github", ClientID: "ghid", ClientSecret: "ghsecret"},
+				{Provider: "gitlab", ClientID: "glid", ClientSecret: "glsecret"},
+			},
+			wantMappers:   []string{"google.jsonnet", "github.jsonnet", "generic.jsonnet"},
+			wantNoMappers: []string{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			outputDir := t.TempDir()
+			svc := generate.NewService(&fakeRenderer{})
+			cfg := minimalConfig()
+			cfg.Auth.SocialProviders = tt.providers
+
+			if err := svc.Generate(context.Background(), cfg, outputDir); err != nil {
+				t.Fatalf("Generate() unexpected error: %v", err)
+			}
+
+			mappersDir := filepath.Join(outputDir, "kratos", "mappers")
+
+			for _, m := range tt.wantMappers {
+				path := filepath.Join(mappersDir, m)
+				if _, err := os.Stat(path); err != nil {
+					t.Errorf("expected mapper file %q to exist: %v", path, err)
+				}
+			}
+
+			for _, m := range tt.wantNoMappers {
+				path := filepath.Join(mappersDir, m)
+				if _, err := os.Stat(path); err == nil {
+					t.Errorf("unexpected mapper file %q exists", path)
+				}
+			}
+		})
+	}
+}
+
+func TestGenerate_MapperFilesContainValidJsonnet(t *testing.T) {
+	dir := t.TempDir()
+	outputDir := filepath.Join(dir, "generated")
+
+	svc := generate.NewService(&fakeRenderer{})
+	cfg := minimalConfig()
+	cfg.Auth.SocialProviders = []config.SocialProviderConfig{
+		{Provider: "google", ClientID: "gid", ClientSecret: "gsecret"},
+		{Provider: "github", ClientID: "ghid", ClientSecret: "ghsecret"},
+		{Provider: "oidc", ID: "custom", ClientID: "oid", ClientSecret: "osecret", IssuerURL: "https://issuer.example"},
+	}
+
+	if err := svc.Generate(context.Background(), cfg, outputDir); err != nil {
+		t.Fatalf("Generate() unexpected error: %v", err)
+	}
+
+	mappers := []string{"google.jsonnet", "github.jsonnet", "generic.jsonnet"}
+	for _, m := range mappers {
+		path := filepath.Join(outputDir, "kratos", "mappers", m)
+		data, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("reading mapper %q: %v", m, err)
+		}
+		if !bytes.Contains(data, []byte("identity")) {
+			t.Errorf("mapper %q does not contain 'identity' key, content: %s", m, data)
+		}
+		if !bytes.Contains(data, []byte("traits")) {
+			t.Errorf("mapper %q does not contain 'traits' key, content: %s", m, data)
+		}
+	}
+}
+
+func TestGenerate_WithoutSocialProviders_NoMappersDir(t *testing.T) {
+	dir := t.TempDir()
+	outputDir := filepath.Join(dir, "generated")
+
+	svc := generate.NewService(&fakeRenderer{})
+	cfg := minimalConfig()
+	// No social providers configured.
+
+	if err := svc.Generate(context.Background(), cfg, outputDir); err != nil {
+		t.Fatalf("Generate() unexpected error: %v", err)
+	}
+
+	mappersDir := filepath.Join(outputDir, "kratos", "mappers")
+	if _, err := os.Stat(mappersDir); err == nil {
+		t.Errorf("expected mappers directory NOT to exist when no social providers configured, but it does: %q", mappersDir)
+	}
+}
+
+func TestGenerate_WithSocialProviders_KratosTemplatePassesConfig(t *testing.T) {
+	dir := t.TempDir()
+	outputDir := filepath.Join(dir, "generated")
+
+	var capturedData any
+	renderer := &fakeRenderer{
+		renderFn: func(templateName string, data any) ([]byte, error) {
+			if templateName == "kratos.yml.tmpl" {
+				capturedData = data
+			}
+			return []byte("# rendered: " + templateName), nil
+		},
+	}
+
+	svc := generate.NewService(renderer)
+	cfg := minimalConfig()
+	cfg.Auth.SocialProviders = []config.SocialProviderConfig{
+		{Provider: "google", ClientID: "my-client-id", ClientSecret: "my-secret"},
+	}
+
+	if err := svc.Generate(context.Background(), cfg, outputDir); err != nil {
+		t.Fatalf("Generate() unexpected error: %v", err)
+	}
+
+	if capturedData == nil {
+		t.Fatal("kratos.yml.tmpl was not rendered")
+	}
+
+	renderedCfg, ok := capturedData.(*config.Config)
+	if !ok {
+		t.Fatalf("expected *config.Config passed to renderer, got %T", capturedData)
+	}
+
+	if len(renderedCfg.Auth.SocialProviders) != 1 {
+		t.Errorf("expected 1 social provider in rendered config, got %d", len(renderedCfg.Auth.SocialProviders))
+	}
+	if renderedCfg.Auth.SocialProviders[0].ClientID != "my-client-id" {
+		t.Errorf("expected ClientID %q, got %q", "my-client-id", renderedCfg.Auth.SocialProviders[0].ClientID)
+	}
+}
