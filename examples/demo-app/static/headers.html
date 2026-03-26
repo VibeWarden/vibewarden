@@ -23,6 +23,17 @@
     tr.security-missing { background: rgba(220, 38, 38, 0.08); }
     td code { word-break: break-all; }
     .section-title { margin-top: 1.5em; font-weight: bold; color: #555; font-size: 0.9em; text-transform: uppercase; letter-spacing: 0.05em; }
+    .vw-footer {
+      margin-top: 3em;
+      padding: 1em 1.2em;
+      background: #f9fafb;
+      border: 1px solid #e5e7eb;
+      border-radius: 6px;
+      font-size: 0.9em;
+      color: #374151;
+      text-align: center;
+    }
+    .vw-footer strong { color: #7C3AED; }
   </style>
 </head>
 <body>
@@ -45,6 +56,13 @@
   </p>
 
   <div id="results">Loading...</div>
+
+  <div class="vw-footer">
+    <strong>This app has zero custom security code.</strong>
+    All protection is provided by <strong>VibeWarden</strong>.
+    &mdash; <a href="/">Back to Home</a> &mdash;
+    <a href="https://github.com/vibewarden/vibewarden" target="_blank" rel="noopener">GitHub</a>
+  </div>
 
   <script>
     // Security headers VibeWarden should inject on every response.

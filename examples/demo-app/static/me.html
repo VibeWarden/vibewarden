@@ -19,6 +19,17 @@
     nav a { margin-right: 1em; }
     table { width: 100%; }
     td:first-child { font-weight: bold; width: 40%; }
+    .vw-footer {
+      margin-top: 3em;
+      padding: 1em 1.2em;
+      background: #f9fafb;
+      border: 1px solid #e5e7eb;
+      border-radius: 6px;
+      font-size: 0.9em;
+      color: #374151;
+      text-align: center;
+    }
+    .vw-footer strong { color: #7C3AED; }
   </style>
 </head>
 <body>
@@ -39,6 +50,13 @@
   </p>
 
   <div id="profile-container">Loading...</div>
+
+  <div class="vw-footer">
+    <strong>This app has zero custom security code.</strong>
+    All protection is provided by <strong>VibeWarden</strong>.
+    &mdash; <a href="/">Back to Home</a> &mdash;
+    <a href="https://github.com/vibewarden/vibewarden" target="_blank" rel="noopener">GitHub</a>
+  </div>
 
   <script>
     (async function () {
