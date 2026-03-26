@@ -99,9 +99,9 @@
   <div id="auth-status" class="auth-card">Checking...</div>
 
   <p>
-    <a href="/self-service/login/browser"><button>Log In</button></a>
+    <a href="/auth/login"><button>Log In</button></a>
     &nbsp;
-    <a href="/self-service/registration/browser"><button>Register</button></a>
+    <a href="/auth/registration"><button>Register</button></a>
     &nbsp;
     <button id="btn-logout" style="display:none">Log Out</button>
   </p>
@@ -136,6 +136,15 @@
       <p>
         Session management, login flows, and registration are handled by
         Ory Kratos. The app only sees injected <code>X-User-*</code> headers.
+      </p>
+    </div>
+    <div class="protection-card">
+      <h3>Social Login</h3>
+      <p>
+        When social providers (Google, GitHub, GitLab, Discord) are configured in
+        <code>vibewarden.yaml</code>, sign-in buttons appear automatically on the
+        <a href="/auth/login">login</a> and <a href="/auth/registration">registration</a>
+        pages — no code changes required.
       </p>
     </div>
     <div class="protection-card">

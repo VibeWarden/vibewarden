@@ -56,6 +56,8 @@ func main() {
 	mux.HandleFunc("GET /headers", handleHeaders)
 	mux.HandleFunc("POST /spam", handleSpam)
 	mux.HandleFunc("GET /health", handleHealth)
+	mux.HandleFunc("GET /auth/login", handleAuthPage(staticFS, "login.html"))
+	mux.HandleFunc("GET /auth/registration", handleAuthPage(staticFS, "register.html"))
 	mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.FS(staticFS))))
 
 	addr := ":" + port
@@ -180,6 +182,24 @@ func handleSpam(w http.ResponseWriter, r *http.Request) {
 // Demonstrates: a health endpoint excluded from auth and rate limiting.
 func handleHealth(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"status": "ok"})
+}
+
+// handleAuthPage returns an http.HandlerFunc that serves a named HTML file
+// from the embedded static filesystem.  It is used for the Kratos self-service
+// UI pages (/auth/login, /auth/registration) so that VibeWarden can route
+// Kratos's ui_url redirects directly to the demo app.
+func handleAuthPage(staticFS fs.FS, filename string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		content, err := fs.ReadFile(staticFS, filename)
+		if err != nil {
+			http.Error(w, "page not found", http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		if _, err := w.Write(content); err != nil {
+			slog.Error("failed to write auth page response", "file", filename, "error", err)
+		}
+	}
 }
 
 // writeJSON serialises v as JSON and writes it to w with the given status code.
