@@ -9,6 +9,7 @@
 #
 # Observability profile (optional):
 #   prometheus     — metrics collection and storage (UI: http://localhost:9090)
+#   grafana        — metrics visualization and dashboards (UI: http://localhost:3000)
 #
 # Usage:
 #   docker compose up -d                           # start baseline stack
@@ -195,6 +196,46 @@ services:
       retries: 5
       start_period: 10s
 
+  # --------------------------------------------------------------------------
+  # Grafana — metrics visualization and dashboards
+  #
+  # Web UI: http://localhost:3000
+  # Anonymous auth enabled (admin role) for frictionless local dev
+  #
+  # Only starts when the "observability" profile is active:
+  #   docker compose --profile observability up -d
+  # --------------------------------------------------------------------------
+  grafana:
+    image: grafana/grafana-oss:latest
+    container_name: vibewarden-grafana
+    profiles:
+      - observability
+    ports:
+      - "3000:3000"
+    environment:
+      # Anonymous auth for frictionless local dev
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+      # Disable telemetry
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    networks:
+      - vibewarden
+    depends_on:
+      prometheus:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3000/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
 # --------------------------------------------------------------------------
 # Named volumes
 # --------------------------------------------------------------------------
@@ -202,6 +243,8 @@ volumes:
   postgres_data:
     driver: local
   prometheus_data:
+    driver: local
+  grafana_data:
     driver: local
 
 # --------------------------------------------------------------------------
