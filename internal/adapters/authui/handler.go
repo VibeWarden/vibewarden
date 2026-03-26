@@ -1,9 +1,10 @@
 // Package authui serves the built-in authentication UI pages for VibeWarden.
 //
-// It provides a Handler that renders four HTML pages — login, registration,
-// recovery, and verification — at the /_vibewarden/{login,registration,recovery,verification}
-// paths. All templates are embedded in the binary via embed.FS so that no
-// external assets are required at runtime.
+// It provides a Handler that renders five HTML pages — login, registration,
+// recovery, verification, and settings — at the
+// /_vibewarden/{login,registration,recovery,verification,settings} paths.
+// All templates are embedded in the binary via embed.FS so that no external
+// assets are required at runtime.
 //
 // Each page communicates with the Ory Kratos public API (proxied through
 // VibeWarden at /self-service/*) using plain HTML and vanilla JavaScript with
@@ -147,6 +148,7 @@ func (h *Handler) registerRoutes(mux *http.ServeMux) {
 	mux.HandleFunc("/_vibewarden/registration", h.handleRegistration)
 	mux.HandleFunc("/_vibewarden/recovery", h.handleRecovery)
 	mux.HandleFunc("/_vibewarden/verification", h.handleVerification)
+	mux.HandleFunc("/_vibewarden/settings", h.handleSettings)
 }
 
 // handleLogin renders the login page.
@@ -167,6 +169,11 @@ func (h *Handler) handleRecovery(w http.ResponseWriter, r *http.Request) {
 // handleVerification renders the email verification page.
 func (h *Handler) handleVerification(w http.ResponseWriter, r *http.Request) {
 	h.renderPage(w, r, "verification.html")
+}
+
+// handleSettings renders the account settings page.
+func (h *Handler) handleSettings(w http.ResponseWriter, r *http.Request) {
+	h.renderPage(w, r, "settings.html")
 }
 
 // renderPage executes the named template with theme data derived from cfg

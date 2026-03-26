@@ -55,22 +55,48 @@ type Config struct {
 type UIConfig struct {
 	// Mode selects the UI serving strategy.
 	// Accepted values: "built-in" (default), "custom".
+	//
+	// When Mode is "custom", the built-in auth UI server is not started and no
+	// /_vibewarden/ui routes are contributed to Caddy. The auth middleware
+	// instead redirects unauthenticated requests to the operator-supplied
+	// LoginURL. RegistrationURL, SettingsURL, and RecoveryURL are optional.
 	Mode string
+
+	// LoginURL is the URL unauthenticated users are redirected to when
+	// Mode is "custom". Required when Mode is "custom".
+	// Ignored when Mode is "built-in".
+	LoginURL string
+
+	// RegistrationURL is the URL for the registration page when Mode is
+	// "custom". Optional.
+	RegistrationURL string
+
+	// SettingsURL is the URL for the account settings page when Mode is
+	// "custom". Optional.
+	SettingsURL string
+
+	// RecoveryURL is the URL for the account recovery page when Mode is
+	// "custom". Optional.
+	RecoveryURL string
 
 	// PrimaryColor is the CSS color value for the --vw-primary custom property.
 	// Defaults to "#7C3AED" (VibeWarden purple) when empty.
+	// Only used when Mode is "built-in".
 	PrimaryColor string
 
 	// BackgroundColor is the CSS color value for the --vw-bg custom property.
 	// Defaults to "#F3F4F6" when empty.
+	// Only used when Mode is "built-in".
 	BackgroundColor string
 
 	// TextColor is the CSS color value for the --vw-text custom property.
 	// Defaults to "#111827" when empty.
+	// Only used when Mode is "built-in".
 	TextColor string
 
 	// ErrorColor is the CSS color value for the --vw-error custom property.
 	// Defaults to "#DC2626" when empty.
+	// Only used when Mode is "built-in".
 	ErrorColor string
 }
 
