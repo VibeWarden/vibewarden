@@ -48,4 +48,3 @@ type MetricsConfig struct {
 	// Paths that don't match any pattern are recorded as "other".
 	PathPatterns []string
 }
-

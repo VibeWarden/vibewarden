@@ -330,4 +330,3 @@ func mapIdentityToUser(id kratosAdminIdentity) user.User {
 		CreatedAt: createdAt,
 	}
 }
-

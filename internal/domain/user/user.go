@@ -33,4 +33,3 @@ type User struct {
 	// CreatedAt is when the identity was created in Kratos.
 	CreatedAt time.Time
 }
-
