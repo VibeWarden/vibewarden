@@ -1,0 +1,76 @@
+# VibeWarden configuration for the demo app.
+#
+# VibeWarden listens on :8080 and proxies requests to the demo-app
+# container on demo-app:3000.
+#
+# Features demonstrated:
+#   - Auth (Ory Kratos) — protects all routes except the public_paths list
+#   - Rate limiting     — low limits so you can trigger them easily
+#   - Security headers  — added to every response
+
+server:
+  host: "0.0.0.0"
+  port: 8080
+
+upstream:
+  host: "demo-app"
+  port: 3000
+
+tls:
+  enabled: false
+
+kratos:
+  # Resolved via the internal Docker network.
+  public_url: "http://kratos:4433"
+  admin_url:  "http://kratos:4434"
+
+auth:
+  # Paths that do NOT require authentication.
+  public_paths:
+    - "/"
+    - "/public"
+    - "/health"
+  session_cookie_name: "ory_kratos_session"
+  login_url: ""
+
+rate_limit:
+  enabled: true
+  # Low limits so you can trigger them easily during the demo.
+  # Try: for i in $(seq 1 20); do curl -s -o /dev/null -w "%{http_code}\n" -X POST http://localhost:8080/spam; done
+  per_ip:
+    requests_per_second: 5
+    burst: 10
+  per_user:
+    requests_per_second: 10
+    burst: 20
+  trust_proxy_headers: false
+  exempt_paths: []
+
+log:
+  level: "info"
+  format: "json"
+
+admin:
+  enabled: false
+  token: ""
+
+metrics:
+  enabled: true
+  path_patterns:
+    - "/"
+    - "/public"
+    - "/me"
+    - "/headers"
+    - "/spam"
+    - "/health"
+
+security_headers:
+  enabled: true
+  hsts_max_age: 31536000
+  hsts_include_subdomains: true
+  hsts_preload: false
+  content_type_nosniff: true
+  frame_option: "DENY"
+  content_security_policy: "default-src 'self'"
+  referrer_policy: "strict-origin-when-cross-origin"
+  permissions_policy: ""
