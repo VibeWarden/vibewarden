@@ -1,0 +1,318 @@
+# VibeWarden Demo App — Full Local Demo Stack
+#
+# Extends the basic stack with a complete observability suite:
+#   postgres       — Kratos session / identity storage
+#   kratos-migrate — runs Kratos DB migrations once, then exits
+#   kratos         — Ory Kratos identity server (public :4433, admin :4434)
+#   mailslurper    — catches outbound Kratos emails (SMTP :4436, web UI :4437)
+#   seed           — seeds demo identities into Kratos once, then exits
+#   demo-app       — the Go API backend (built from local Dockerfile)
+#   vibewarden     — the security sidecar (built from repo root Dockerfile)
+#                    with self-signed TLS on :8443
+#   prometheus     — scrapes VibeWarden metrics every 15 s (:9090)
+#   grafana        — pre-provisioned dashboards (:3000)
+#   loki           — log aggregation backend (:3100)
+#   promtail       — tails Docker container logs and ships them to Loki
+#
+# Usage:
+#   docker compose -f docker-compose.local-demo.yml up -d
+#   # Visit https://localhost:8443  (accept the self-signed cert warning)
+#   # Grafana:  http://localhost:3000  (admin / admin)
+#
+# Demo credentials (seeded automatically):
+#   demo@vibewarden.dev  / demo1234
+#   alice@vibewarden.dev / alice1234
+#
+# Secrets: all credentials are hard-coded to simple demo values.
+# Never use these outside a local demo environment.
+
+version: "3.8"
+
+services:
+  # --------------------------------------------------------------------------
+  # Postgres — persistent storage for Ory Kratos
+  # --------------------------------------------------------------------------
+  postgres:
+    image: postgres:17-alpine
+    container_name: demo-postgres
+    environment:
+      POSTGRES_USER: demo
+      POSTGRES_PASSWORD: demo
+      POSTGRES_DB: demo
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - demo
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U demo -d demo"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # --------------------------------------------------------------------------
+  # Kratos migrate — runs DB migrations once, then exits
+  # --------------------------------------------------------------------------
+  kratos-migrate:
+    image: oryd/kratos:v1.3.1
+    container_name: demo-kratos-migrate
+    environment:
+      DSN: postgres://demo:demo@postgres:5432/demo?sslmode=disable
+    volumes:
+      - ./kratos:/etc/config/kratos:ro
+    command: migrate sql -e --yes
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - demo
+
+  # --------------------------------------------------------------------------
+  # Kratos — identity / session management
+  #
+  # Public API  (user-facing flows):  http://localhost:4433
+  # Admin API   (internal use only):  http://localhost:4434
+  # --------------------------------------------------------------------------
+  kratos:
+    image: oryd/kratos:v1.3.1
+    container_name: demo-kratos
+    environment:
+      DSN: postgres://demo:demo@postgres:5432/demo?sslmode=disable
+      # Browser-visible base URL points to the VibeWarden HTTPS address so that
+      # Kratos self-service redirects land back at the sidecar.
+      SERVE_PUBLIC_BASE_URL: https://localhost:8443/
+      SERVE_ADMIN_BASE_URL: http://kratos:4434/
+    ports:
+      - "4433:4433"
+      - "4434:4434"
+    volumes:
+      - ./kratos:/etc/config/kratos:ro
+    command: serve --config /etc/config/kratos/kratos.yml --dev --watch-courier
+    depends_on:
+      kratos-migrate:
+        condition: service_completed_successfully
+    networks:
+      - demo
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://kratos:4434/admin/health/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+
+  # --------------------------------------------------------------------------
+  # Mailslurper — local SMTP sink for Kratos verification / recovery emails
+  #
+  # SMTP endpoint (used by Kratos): mailslurper:4436
+  # Web UI to read captured emails:  http://localhost:4437
+  # --------------------------------------------------------------------------
+  mailslurper:
+    image: oryd/mailslurper:latest-smtps
+    container_name: demo-mailslurper
+    ports:
+      - "4436:4436"   # SMTP
+      - "4437:4437"   # Web UI
+    networks:
+      - demo
+
+  # --------------------------------------------------------------------------
+  # Seed — seeds demo identities into Kratos once on first boot, then exits.
+  #
+  # Creates:
+  #   demo@vibewarden.dev  / demo1234
+  #   alice@vibewarden.dev / alice1234
+  #
+  # Idempotent: skips identities that already exist.
+  # --------------------------------------------------------------------------
+  seed:
+    image: curlimages/curl:8.12.1
+    container_name: demo-seed
+    environment:
+      KRATOS_ADMIN_URL: http://kratos:4434
+    volumes:
+      - ./scripts/seed-users.sh:/seed-users.sh:ro
+    command: sh /seed-users.sh
+    depends_on:
+      kratos:
+        condition: service_healthy
+    networks:
+      - demo
+    restart: "no"
+
+  # --------------------------------------------------------------------------
+  # Demo app — the Go API backend
+  #
+  # Built from the local Dockerfile in examples/demo-app/.
+  # Not published to the host — only reachable through VibeWarden on :8443.
+  # --------------------------------------------------------------------------
+  demo-app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: demo-app
+    environment:
+      PORT: "3000"
+    networks:
+      - demo
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:3000/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
+  # --------------------------------------------------------------------------
+  # VibeWarden — the security sidecar
+  #
+  # Built from the repo root Dockerfile (../../Dockerfile).
+  # Listens on :8443 (HTTPS, self-signed TLS) and proxies to demo-app:3000.
+  # Enforces auth (Kratos), rate limiting, and security headers.
+  # Exposes /_vibewarden/metrics for Prometheus to scrape.
+  # --------------------------------------------------------------------------
+  vibewarden:
+    build:
+      context: ../..
+      dockerfile: Dockerfile
+    container_name: demo-vibewarden
+    ports:
+      - "8443:8443"
+    volumes:
+      - ./vibewarden.local-demo.yaml:/vibewarden.yaml:ro
+      # Caddy stores self-signed certificate state here between restarts.
+      - caddy_data:/root/.local/share/caddy
+    environment:
+      VIBEWARDEN_KRATOS_PUBLIC_URL: http://kratos:4433
+      VIBEWARDEN_KRATOS_ADMIN_URL:  http://kratos:4434
+      VIBEWARDEN_UPSTREAM_HOST: demo-app
+      VIBEWARDEN_UPSTREAM_PORT: "3000"
+      VIBEWARDEN_SERVER_HOST: "0.0.0.0"
+    depends_on:
+      kratos:
+        condition: service_healthy
+      demo-app:
+        condition: service_healthy
+    networks:
+      - demo
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --no-check-certificate --spider https://localhost:8443/_vibewarden/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  # --------------------------------------------------------------------------
+  # Prometheus — scrapes VibeWarden metrics every 15 s
+  #
+  # UI available at: http://localhost:9090
+  # --------------------------------------------------------------------------
+  prometheus:
+    image: prom/prometheus:v3.4.0
+    container_name: demo-prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ../../observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - "--config.file=/etc/prometheus/prometheus.yml"
+      - "--storage.tsdb.path=/prometheus"
+      - "--web.console.libraries=/usr/share/prometheus/console_libraries"
+      - "--web.console.templates=/usr/share/prometheus/consoles"
+    depends_on:
+      vibewarden:
+        condition: service_healthy
+    networks:
+      - demo
+
+  # --------------------------------------------------------------------------
+  # Grafana — pre-provisioned dashboards
+  #
+  # UI available at: http://localhost:3000  (admin / admin)
+  # Datasources (Prometheus + Loki) and the VibeWarden dashboard are
+  # provisioned automatically from the observability/ directory.
+  # --------------------------------------------------------------------------
+  grafana:
+    image: grafana/grafana:12.0.1
+    container_name: demo-grafana
+    ports:
+      - "3000:3000"
+    environment:
+      GF_SECURITY_ADMIN_PASSWORD: admin
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      # Disable the "change password on first login" prompt for the demo.
+      GF_SECURITY_DISABLE_INITIAL_ADMIN_CREATION: "false"
+    volumes:
+      - ../../observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ../../observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      - prometheus
+      - loki
+    networks:
+      - demo
+
+  # --------------------------------------------------------------------------
+  # Loki — log aggregation backend
+  #
+  # Receives log streams from Promtail.
+  # Queried by Grafana for the log panels.
+  # API available at: http://localhost:3100
+  # --------------------------------------------------------------------------
+  loki:
+    image: grafana/loki:3.5.0
+    container_name: demo-loki
+    ports:
+      - "3100:3100"
+    volumes:
+      - ../../observability/loki/loki-config.yml:/etc/loki/local-config.yaml:ro
+      - loki_data:/loki
+    command: -config.file=/etc/loki/local-config.yaml
+    networks:
+      - demo
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:3100/ready || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  # --------------------------------------------------------------------------
+  # Promtail — tails Docker container logs and ships them to Loki
+  #
+  # Mounts the Docker socket so it can discover all running containers.
+  # Parses VibeWarden's structured JSON logs and promotes fields to Loki labels.
+  # --------------------------------------------------------------------------
+  promtail:
+    image: grafana/promtail:3.5.0
+    container_name: demo-promtail
+    volumes:
+      - ../../observability/promtail/promtail-config.yml:/etc/promtail/config.yml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+    command: -config.file=/etc/promtail/config.yml
+    depends_on:
+      loki:
+        condition: service_healthy
+    networks:
+      - demo
+
+# --------------------------------------------------------------------------
+# Named volumes
+# --------------------------------------------------------------------------
+volumes:
+  postgres_data:
+    driver: local
+  caddy_data:
+    driver: local
+  prometheus_data:
+    driver: local
+  grafana_data:
+    driver: local
+  loki_data:
+    driver: local
+
+# --------------------------------------------------------------------------
+# Networks
+# --------------------------------------------------------------------------
+networks:
+  demo:
+    driver: bridge

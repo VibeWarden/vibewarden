@@ -15,6 +15,51 @@ docker compose up -d
 Wait ~15 seconds for the full stack to be healthy.  Your browser will be
 redirected to the demo UI at `http://localhost:8080/static/index.html`.
 
+## Full Demo Stack
+
+The full demo stack adds Prometheus metrics, Grafana dashboards, and Loki log
+aggregation on top of the basic stack.  It also enables self-signed TLS so you
+can exercise the HTTPS path locally.
+
+```bash
+cd examples/demo-app
+docker compose -f docker-compose.local-demo.yml up -d
+# Visit https://localhost:8443  (accept the self-signed certificate warning)
+```
+
+Wait ~30 seconds for all services to become healthy.
+
+### Access URLs
+
+| Service | URL | Credentials |
+|---|---|---|
+| Demo app (via VibeWarden) | https://localhost:8443 | see Demo credentials below |
+| Grafana | http://localhost:3000 | admin / admin |
+| Prometheus | http://localhost:9090 | — |
+| Loki (ready check) | http://localhost:3100/ready | — |
+| Kratos public API | http://localhost:4433 | — |
+| Mailslurper (email UI) | http://localhost:4437 | — |
+
+### What the full stack demonstrates
+
+- **Self-signed TLS** — VibeWarden terminates HTTPS using a Caddy-generated
+  self-signed certificate.  No domain or ACME account required.
+- **Metrics** — Prometheus scrapes `/_vibewarden/metrics` every 15 s.  Open
+  Grafana and navigate to the VibeWarden dashboard to see request rates, latency
+  histograms, rate-limit hits, and auth decisions in real time.
+- **Log aggregation** — Promtail tails every container's stdout/stderr via the
+  Docker socket and ships structured JSON logs to Loki.  Grafana's Explore view
+  lets you query them with LogQL.
+- **Pre-provisioned dashboards** — Grafana starts with the Prometheus and Loki
+  datasources already configured and the VibeWarden dashboard pre-loaded.
+
+### Teardown
+
+```bash
+docker compose -f docker-compose.local-demo.yml down        # stop containers
+docker compose -f docker-compose.local-demo.yml down -v     # also remove volumes
+```
+
 ## Demo UI
 
 A plain HTML + vanilla JS frontend is embedded directly in the binary (no
@@ -130,9 +175,23 @@ curl http://localhost:8080/health
 
 ## Services
 
+### Basic stack (`docker-compose.yml`)
+
 | Service | URL | Description |
 |---|---|---|
 | VibeWarden | http://localhost:8080 | Security sidecar — the entry point |
+| Kratos public API | http://localhost:4433 | Self-service auth flows |
+| Kratos admin API | http://localhost:4434 | Internal admin (not for browsers) |
+| Mailslurper | http://localhost:4437 | Catches Kratos verification emails |
+
+### Full demo stack (`docker-compose.local-demo.yml`)
+
+| Service | URL | Description |
+|---|---|---|
+| VibeWarden (HTTPS) | https://localhost:8443 | Security sidecar with self-signed TLS |
+| Grafana | http://localhost:3000 | Pre-provisioned dashboards (admin / admin) |
+| Prometheus | http://localhost:9090 | Metrics storage and query UI |
+| Loki | http://localhost:3100 | Log aggregation backend |
 | Kratos public API | http://localhost:4433 | Self-service auth flows |
 | Kratos admin API | http://localhost:4434 | Internal admin (not for browsers) |
 | Mailslurper | http://localhost:4437 | Catches Kratos verification emails |

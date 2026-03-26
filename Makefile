@@ -1,6 +1,6 @@
 # VibeWarden Makefile
 
-.PHONY: build test lint run docker-up docker-down observability-up observability-down grafana-open prometheus-open loki-open clean check setup-hooks
+.PHONY: build test lint run docker-up docker-down observability-up observability-down grafana-open prometheus-open loki-open clean check setup-hooks demo demo-down
 
 # Build variables
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
@@ -70,6 +70,22 @@ check: ## Run all quality checks (build, format, vet, tests)
 	@test -z "$$(cd examples/demo-app && gofmt -l .)" || (echo "gofmt: these demo-app files need formatting:" && cd examples/demo-app && gofmt -l . && exit 1)
 	cd examples/demo-app && go vet ./... && go build ./... && go test -race ./...
 	@echo "==> All checks passed!"
+
+# Start the full local demo stack (builds from source, includes observability)
+demo: ## Start the full local demo stack (https://localhost:8443, Grafana http://localhost:3000)
+	docker compose -f examples/demo-app/docker-compose.local-demo.yml up -d --build
+	@echo ""
+	@echo "Demo stack is starting — wait ~30 s for all services to be healthy."
+	@echo ""
+	@echo "  App:      https://localhost:8443   (accept the self-signed cert warning)"
+	@echo "  Grafana:  http://localhost:3000    (admin / admin)"
+	@echo "  Prometheus: http://localhost:9090"
+	@echo ""
+	@echo "Demo credentials: demo@vibewarden.dev / demo1234"
+
+# Stop the full local demo stack
+demo-down: ## Stop the full local demo stack
+	docker compose -f examples/demo-app/docker-compose.local-demo.yml down
 
 # Install git hooks for local development
 setup-hooks: ## Install git hooks for local development
