@@ -5,8 +5,6 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/spf13/cobra"
-
 	cliCmd "github.com/vibewarden/vibewarden/internal/cli/cmd"
 )
 
@@ -14,26 +12,12 @@ import (
 var version = "dev"
 
 func main() {
-	rootCmd := &cobra.Command{
-		Use:   "vibewarden",
-		Short: "VibeWarden - Security sidecar for vibe-coded apps",
-		Long: `VibeWarden is an open-source security sidecar that handles
-TLS, authentication, rate limiting, and AI-readable structured logs.
+	rootCmd := cliCmd.NewRootCmd(version)
 
-Zero-to-secure in minutes.`,
-		Version: version,
-		Run: func(cmd *cobra.Command, args []string) {
-			// Default behavior: print help
-			cmd.Help() //nolint:errcheck
-		},
-	}
-
-	// Configure version template
-	rootCmd.SetVersionTemplate("vibewarden {{.Version}}\n")
-
-	// Register subcommands
+	// serve is defined in this package because it references the version
+	// variable set at build time and wires concrete adapters that live outside
+	// internal/cli/cmd.
 	rootCmd.AddCommand(newServeCmd())
-	rootCmd.AddCommand(cliCmd.NewInitCmd())
 
 	if err := rootCmd.Execute(); err != nil {
 		fmt.Fprintln(os.Stderr, err)

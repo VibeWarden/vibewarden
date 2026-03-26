@@ -35,6 +35,8 @@ Zero-to-secure in minutes.`,
 	root.AddCommand(NewStatusCmd())
 	root.AddCommand(NewDoctorCmd())
 	root.AddCommand(NewLogsCmd())
+	root.AddCommand(NewSecretCmd())
+	root.AddCommand(NewValidateCmd())
 
 	return root
 }
