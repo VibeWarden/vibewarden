@@ -12,8 +12,12 @@ import (
 	"github.com/spf13/cobra"
 
 	caddyadapter "github.com/vibewarden/vibewarden/internal/adapters/caddy"
+	httpadapter "github.com/vibewarden/vibewarden/internal/adapters/http"
+	kratosadapter "github.com/vibewarden/vibewarden/internal/adapters/kratos"
 	logadapter "github.com/vibewarden/vibewarden/internal/adapters/log"
 	metricsadapter "github.com/vibewarden/vibewarden/internal/adapters/metrics"
+	postgresadapter "github.com/vibewarden/vibewarden/internal/adapters/postgres"
+	adminapp "github.com/vibewarden/vibewarden/internal/app/admin"
 	"github.com/vibewarden/vibewarden/internal/app/proxy"
 	"github.com/vibewarden/vibewarden/internal/config"
 	"github.com/vibewarden/vibewarden/internal/ports"
@@ -84,6 +88,46 @@ func runServe(configPath string) error {
 		logger.Info("metrics enabled", slog.String("internal_addr", metricsSrv.Addr()))
 	}
 
+	// Initialize admin API when enabled in config.
+	var adminCfg ports.AdminProxyConfig
+	if cfg.Admin.Enabled {
+		kratosAdmin := kratosadapter.NewAdminAdapter(cfg.Kratos.AdminURL, 0, logger)
+
+		// AuditLogger is optional — only wired when a database URL is configured.
+		var auditLogger ports.AuditLogger
+		if cfg.Database.URL != "" {
+			auditAdapter, err := postgresadapter.NewAuditAdapter(cfg.Database.URL)
+			if err != nil {
+				return fmt.Errorf("connecting to audit database: %w", err)
+			}
+			defer func() {
+				if closeErr := auditAdapter.Close(); closeErr != nil {
+					logger.Error("closing audit database", slog.String("error", closeErr.Error()))
+				}
+			}()
+			auditLogger = auditAdapter
+		}
+
+		adminSvc := adminapp.NewService(kratosAdmin, eventLogger, auditLogger)
+		adminHandlers := httpadapter.NewAdminHandlers(adminSvc, logger)
+		adminSrv := httpadapter.NewAdminServer(adminHandlers, logger)
+		if err := adminSrv.Start(); err != nil {
+			return fmt.Errorf("starting admin server: %w", err)
+		}
+		defer func() {
+			stopCtx, stopCancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer stopCancel()
+			if stopErr := adminSrv.Stop(stopCtx); stopErr != nil {
+				logger.Error("stopping admin server", slog.String("error", stopErr.Error()))
+			}
+		}()
+		adminCfg = ports.AdminProxyConfig{
+			Enabled:      true,
+			InternalAddr: adminSrv.Addr(),
+		}
+		logger.Info("admin API enabled", slog.String("internal_addr", adminSrv.Addr()))
+	}
+
 	// Build ProxyConfig from application config.
 	proxyCfg := &ports.ProxyConfig{
 		ListenAddr:   fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port),
@@ -136,6 +180,7 @@ func runServe(configPath string) error {
 			Enabled: cfg.Admin.Enabled,
 			Token:   cfg.Admin.Token,
 		},
+		Admin: adminCfg,
 	}
 
 	// Create Caddy adapter and proxy service.
