@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VibeWarden Demo</title>
+  <link rel="stylesheet" href="/static/water.css">
+  <style>
+    .badge {
+      display: inline-block;
+      padding: 0.2em 0.6em;
+      border-radius: 4px;
+      font-size: 0.85em;
+      font-weight: bold;
+    }
+    .badge-ok    { background: #16a34a; color: #fff; }
+    .badge-error { background: #dc2626; color: #fff; }
+    .badge-warn  { background: #d97706; color: #fff; }
+    .badge-info  { background: #2563eb; color: #fff; }
+    nav a { margin-right: 1em; }
+    .hero { margin: 2em 0; }
+    .auth-card { padding: 1em; border: 1px solid #ccc; border-radius: 6px; margin-top: 1em; }
+  </style>
+</head>
+<body>
+  <nav>
+    <strong>VibeWarden Demo</strong> &nbsp;|&nbsp;
+    <a href="/">Home</a>
+    <a href="/static/me.html">My Profile</a>
+    <a href="/static/headers.html">Headers Inspector</a>
+    <a href="/static/ratelimit.html">Rate Limit Test</a>
+  </nav>
+
+  <div class="hero">
+    <h1>Welcome to the VibeWarden Demo</h1>
+    <p>
+      This demo app is protected by VibeWarden — a security sidecar that handles
+      authentication (Ory Kratos), rate limiting, and security headers for your app.
+    </p>
+  </div>
+
+  <h2>Auth Status</h2>
+  <div id="auth-status" class="auth-card">Loading...</div>
+
+  <h2>VibeWarden Health</h2>
+  <div id="vw-health">Checking...</div>
+
+  <h2>Quick Actions</h2>
+  <p>
+    <a href="/self-service/login/browser"><button>Log In</button></a>
+    &nbsp;
+    <a href="/self-service/registration/browser"><button>Register</button></a>
+    &nbsp;
+    <button id="btn-logout" style="display:none">Log Out</button>
+  </p>
+
+  <hr>
+  <p>
+    <small>
+      Explore the other demo pages:
+      <a href="/static/me.html">My Profile</a>,
+      <a href="/static/headers.html">Headers Inspector</a>,
+      <a href="/static/ratelimit.html">Rate Limit Test</a>.
+    </small>
+  </p>
+
+  <script>
+    (async function () {
+      // -----------------------------------------------------------------------
+      // Auth status — calls the demo-app's / endpoint which returns
+      // {"authenticated": bool, "message": "..."} based on VibeWarden headers.
+      // -----------------------------------------------------------------------
+      const authDiv = document.getElementById('auth-status');
+      try {
+        const resp = await fetch('/');
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        const data = await resp.json();
+
+        if (data.authenticated) {
+          authDiv.innerHTML =
+            '<span class="badge badge-ok">Authenticated</span>' +
+            ' <strong>' + escapeHtml(data.message) + '</strong>';
+          document.getElementById('btn-logout').style.display = 'inline';
+        } else {
+          authDiv.innerHTML =
+            '<span class="badge badge-warn">Not logged in</span>' +
+            ' ' + escapeHtml(data.message);
+        }
+      } catch (err) {
+        authDiv.innerHTML = '<span class="badge badge-error">Error</span> ' + escapeHtml(String(err));
+      }
+
+      // -----------------------------------------------------------------------
+      // VibeWarden health badge — calls /_vibewarden/health
+      // -----------------------------------------------------------------------
+      const vwDiv = document.getElementById('vw-health');
+      try {
+        const resp = await fetch('/_vibewarden/health');
+        if (resp.ok) {
+          vwDiv.innerHTML = '<span class="badge badge-ok">Healthy</span>';
+        } else {
+          vwDiv.innerHTML = '<span class="badge badge-error">Unhealthy (HTTP ' + resp.status + ')</span>';
+        }
+      } catch (err) {
+        vwDiv.innerHTML = '<span class="badge badge-error">Unreachable</span>';
+      }
+
+      // -----------------------------------------------------------------------
+      // Logout button — redirects to Kratos self-service logout
+      // -----------------------------------------------------------------------
+      document.getElementById('btn-logout').addEventListener('click', async function () {
+        try {
+          const resp = await fetch('/self-service/logout/browser', { redirect: 'follow' });
+          if (resp.ok || resp.type === 'opaqueredirect') {
+            window.location.href = '/self-service/logout/browser';
+          }
+        } catch (_) {
+          window.location.href = '/self-service/logout/browser';
+        }
+      });
+    })();
+
+    function escapeHtml(str) {
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+  </script>
+</body>
+</html>

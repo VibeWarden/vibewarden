@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Rate Limit Test — VibeWarden Demo</title>
+  <link rel="stylesheet" href="/static/water.css">
+  <style>
+    .badge {
+      display: inline-block;
+      padding: 0.2em 0.6em;
+      border-radius: 4px;
+      font-size: 0.85em;
+      font-weight: bold;
+    }
+    .badge-ok    { background: #16a34a; color: #fff; }
+    .badge-error { background: #dc2626; color: #fff; }
+    .badge-warn  { background: #d97706; color: #fff; }
+    nav a { margin-right: 1em; }
+    #progress-bar-container {
+      width: 100%;
+      background: #e5e7eb;
+      border-radius: 6px;
+      height: 24px;
+      overflow: hidden;
+      margin: 0.5em 0;
+    }
+    #progress-bar-ok {
+      background: #16a34a;
+      height: 100%;
+      width: 0;
+      display: inline-block;
+      transition: width 0.1s;
+    }
+    #progress-bar-429 {
+      background: #dc2626;
+      height: 100%;
+      width: 0;
+      display: inline-block;
+      transition: width 0.1s;
+    }
+    #log {
+      font-family: monospace;
+      font-size: 0.85em;
+      max-height: 300px;
+      overflow-y: auto;
+      background: #f9fafb;
+      border: 1px solid #e5e7eb;
+      border-radius: 4px;
+      padding: 0.5em;
+    }
+    .log-ok  { color: #15803d; }
+    .log-429 { color: #b91c1c; font-weight: bold; }
+    .log-err { color: #78350f; }
+    .stats { display: flex; gap: 2em; margin: 0.5em 0; }
+    .stat-box { text-align: center; padding: 0.5em 1em; border: 1px solid #ccc; border-radius: 6px; min-width: 90px; }
+    .stat-label { font-size: 0.75em; color: #6b7280; }
+    .stat-value { font-size: 1.8em; font-weight: bold; }
+  </style>
+</head>
+<body>
+  <nav>
+    <strong>VibeWarden Demo</strong> &nbsp;|&nbsp;
+    <a href="/">Home</a>
+    <a href="/static/me.html">My Profile</a>
+    <a href="/static/headers.html">Headers Inspector</a>
+    <a href="/static/ratelimit.html">Rate Limit Test</a>
+  </nav>
+
+  <h1>Rate Limit Test</h1>
+  <p>
+    Click <strong>Fire Requests</strong> to send 20 rapid POST requests to
+    <code>/spam</code>.  VibeWarden is configured with a burst of 10 requests,
+    so requests 11–20 should receive <code>429 Too Many Requests</code>.
+  </p>
+
+  <label for="num-requests">Number of requests:</label>
+  <input type="number" id="num-requests" value="20" min="1" max="100" style="width:80px">
+  &nbsp;
+  <button id="btn-fire">Fire Requests</button>
+  <button id="btn-reset">Reset</button>
+
+  <h3>Progress</h3>
+  <div id="progress-bar-container">
+    <div id="progress-bar-ok"></div><div id="progress-bar-429"></div>
+  </div>
+
+  <div class="stats">
+    <div class="stat-box">
+      <div class="stat-value" id="stat-ok">0</div>
+      <div class="stat-label">200 OK</div>
+    </div>
+    <div class="stat-box">
+      <div class="stat-value" id="stat-429">0</div>
+      <div class="stat-label">429 Too Many</div>
+    </div>
+    <div class="stat-box">
+      <div class="stat-value" id="stat-total">0</div>
+      <div class="stat-label">Total</div>
+    </div>
+    <div class="stat-box">
+      <div class="stat-value" id="stat-retry">—</div>
+      <div class="stat-label">Retry-After (s)</div>
+    </div>
+  </div>
+
+  <h3>Request Log</h3>
+  <div id="log"><em>No requests yet.</em></div>
+
+  <script>
+    let running = false;
+
+    document.getElementById('btn-fire').addEventListener('click', fire);
+    document.getElementById('btn-reset').addEventListener('click', reset);
+
+    function reset() {
+      if (running) return;
+      updateStats(0, 0, 0, '—');
+      setProgress(0, 0, 0);
+      const log = document.getElementById('log');
+      log.innerHTML = '<em>No requests yet.</em>';
+    }
+
+    async function fire() {
+      if (running) return;
+      running = true;
+
+      const btn = document.getElementById('btn-fire');
+      btn.disabled = true;
+
+      const total = Math.max(1, Math.min(100, parseInt(document.getElementById('num-requests').value, 10) || 20));
+
+      let okCount = 0;
+      let tooManyCount = 0;
+      let latestRetryAfter = '—';
+
+      const log = document.getElementById('log');
+      log.innerHTML = '';
+
+      for (let i = 1; i <= total; i++) {
+        let statusCode = 0;
+        let retryAfter = null;
+
+        try {
+          const resp = await fetch('/spam', { method: 'POST' });
+          statusCode = resp.status;
+          retryAfter = resp.headers.get('Retry-After');
+
+          if (statusCode === 200) {
+            okCount++;
+            appendLog(log, i, '200 OK', 'ok', null);
+          } else if (statusCode === 429) {
+            tooManyCount++;
+            if (retryAfter) latestRetryAfter = retryAfter;
+            appendLog(log, i, '429 Too Many Requests', '429', retryAfter);
+          } else {
+            appendLog(log, i, 'HTTP ' + statusCode, 'err', null);
+          }
+        } catch (err) {
+          appendLog(log, i, 'Error: ' + String(err), 'err', null);
+        }
+
+        updateStats(okCount, tooManyCount, i, latestRetryAfter);
+        setProgress(okCount, tooManyCount, total);
+
+        // Scroll log to bottom.
+        log.scrollTop = log.scrollHeight;
+      }
+
+      running = false;
+      btn.disabled = false;
+    }
+
+    function appendLog(logEl, index, text, type, retryAfter) {
+      const line = document.createElement('div');
+      let cls = 'log-ok';
+      if (type === '429') cls = 'log-429';
+      if (type === 'err') cls = 'log-err';
+      line.className = cls;
+
+      let msg = '#' + String(index).padStart(3, ' ') + '  ' + text;
+      if (retryAfter) msg += '  (Retry-After: ' + retryAfter + 's)';
+      line.textContent = msg;
+      logEl.appendChild(line);
+    }
+
+    function updateStats(ok, tooMany, total, retryAfter) {
+      document.getElementById('stat-ok').textContent = ok;
+      document.getElementById('stat-429').textContent = tooMany;
+      document.getElementById('stat-total').textContent = total;
+      document.getElementById('stat-retry').textContent = retryAfter;
+    }
+
+    function setProgress(ok, tooMany, total) {
+      const pctOk = total > 0 ? (ok / total) * 100 : 0;
+      const pct429 = total > 0 ? (tooMany / total) * 100 : 0;
+      document.getElementById('progress-bar-ok').style.width = pctOk + '%';
+      document.getElementById('progress-bar-429').style.width = pct429 + '%';
+    }
+  </script>
+</body>
+</html>

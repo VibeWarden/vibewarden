@@ -8,17 +8,28 @@
 // The server listens on port 3000 (or $PORT).  All protected functionality
 // relies on headers injected by the VibeWarden sidecar — the app itself
 // performs no authentication.
+//
+// Static HTML pages live in the static/ directory and are embedded into the
+// binary at compile time via go:embed.  They are served under the /static/
+// path prefix.  GET / serves the index page for browser requests (Accept:
+// text/html) and the JSON greeting for API clients.
 package main
 
 import (
+	"embed"
 	"encoding/json"
 	"fmt"
+	"io/fs"
 	"log/slog"
 	"net/http"
 	"os"
+	"strings"
 	"sync/atomic"
 	"time"
 )
+
+//go:embed static
+var staticFiles embed.FS
 
 // spamCounter counts POST /spam requests to demonstrate rate limiting.
 var spamCounter atomic.Int64
@@ -29,6 +40,15 @@ func main() {
 		port = "3000"
 	}
 
+	// Expose the embedded static/ tree as an http.FileSystem rooted at
+	// "static" so requests to /static/index.html map to static/index.html
+	// inside the embed.
+	staticFS, err := fs.Sub(staticFiles, "static")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "static fs: %v\n", err)
+		os.Exit(1)
+	}
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /", handleRoot)
 	mux.HandleFunc("GET /public", handlePublic)
@@ -36,6 +56,7 @@ func main() {
 	mux.HandleFunc("GET /headers", handleHeaders)
 	mux.HandleFunc("POST /spam", handleSpam)
 	mux.HandleFunc("GET /health", handleHealth)
+	mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.FS(staticFS))))
 
 	addr := ":" + port
 	slog.Info("demo-app starting", "addr", addr)
@@ -58,8 +79,24 @@ func main() {
 // authenticated user's identity via the X-User-Id / X-User-Email headers,
 // or a generic welcome message for unauthenticated requests.
 //
+// For browser requests (Accept: text/html) it redirects to /static/index.html
+// so the demo UI is immediately visible.  API clients (curl, fetch) receive
+// the JSON response as before.
+//
 // Demonstrates: VibeWarden auth header forwarding.
 func handleRoot(w http.ResponseWriter, r *http.Request) {
+	// Only handle the exact root path; let the mux 404 on anything else.
+	if r.URL.Path != "/" {
+		http.NotFound(w, r)
+		return
+	}
+
+	// Browser redirect — serve the HTML frontend.
+	if strings.Contains(r.Header.Get("Accept"), "text/html") {
+		http.Redirect(w, r, "/static/index.html", http.StatusFound)
+		return
+	}
+
 	userID := r.Header.Get("X-User-Id")
 	email := r.Header.Get("X-User-Email")
 
