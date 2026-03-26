@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"strconv"
 
@@ -40,12 +41,18 @@ type AdminService interface {
 // AdminHandlers holds the HTTP handler functions for the admin user management API.
 // All routes are registered under the /_vibewarden/admin/ prefix.
 type AdminHandlers struct {
-	svc AdminService
+	svc    AdminService
+	logger *slog.Logger
 }
 
 // NewAdminHandlers creates a new AdminHandlers backed by the supplied service.
-func NewAdminHandlers(svc AdminService) *AdminHandlers {
-	return &AdminHandlers{svc: svc}
+// logger is used to record internal errors that must not be exposed to clients;
+// pass slog.Default() when no custom logger is available.
+func NewAdminHandlers(svc AdminService, logger *slog.Logger) *AdminHandlers {
+	if logger == nil {
+		logger = slog.Default()
+	}
+	return &AdminHandlers{svc: svc, logger: logger}
 }
 
 // RegisterRoutes registers all admin routes on mux using the Go 1.22+
@@ -124,10 +131,12 @@ func (h *AdminHandlers) listUsers(w http.ResponseWriter, r *http.Request) {
 	})
 	if err != nil {
 		if errors.Is(err, ports.ErrAdminUnavailable) {
-			writeError(w, http.StatusServiceUnavailable, "service_unavailable", err.Error())
+			h.logger.Error("admin service unavailable listing users", "err", err)
+			writeError(w, http.StatusServiceUnavailable, "service_unavailable", "service unavailable")
 			return
 		}
-		writeError(w, http.StatusInternalServerError, "internal_error", err.Error())
+		h.logger.Error("unexpected error listing users", "err", err)
+		writeError(w, http.StatusInternalServerError, "internal_error", "internal server error")
 		return
 	}
 
@@ -168,10 +177,12 @@ func (h *AdminHandlers) getUser(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if errors.Is(err, ports.ErrAdminUnavailable) {
-			writeError(w, http.StatusServiceUnavailable, "service_unavailable", err.Error())
+			h.logger.Error("admin service unavailable getting user", "err", err, "user_id", id)
+			writeError(w, http.StatusServiceUnavailable, "service_unavailable", "service unavailable")
 			return
 		}
-		writeError(w, http.StatusInternalServerError, "internal_error", err.Error())
+		h.logger.Error("unexpected error getting user", "err", err, "user_id", id)
+		writeError(w, http.StatusInternalServerError, "internal_error", "internal server error")
 		return
 	}
 
@@ -203,10 +214,12 @@ func (h *AdminHandlers) inviteUser(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if errors.Is(err, ports.ErrAdminUnavailable) {
-			writeError(w, http.StatusServiceUnavailable, "service_unavailable", err.Error())
+			h.logger.Error("admin service unavailable inviting user", "err", err, "email", normalised)
+			writeError(w, http.StatusServiceUnavailable, "service_unavailable", "service unavailable")
 			return
 		}
-		writeError(w, http.StatusInternalServerError, "internal_error", err.Error())
+		h.logger.Error("unexpected error inviting user", "err", err, "email", normalised)
+		writeError(w, http.StatusInternalServerError, "internal_error", "internal server error")
 		return
 	}
 
@@ -240,10 +253,12 @@ func (h *AdminHandlers) deactivateUser(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if errors.Is(err, ports.ErrAdminUnavailable) {
-			writeError(w, http.StatusServiceUnavailable, "service_unavailable", err.Error())
+			h.logger.Error("admin service unavailable deactivating user", "err", err, "user_id", id)
+			writeError(w, http.StatusServiceUnavailable, "service_unavailable", "service unavailable")
 			return
 		}
-		writeError(w, http.StatusInternalServerError, "internal_error", err.Error())
+		h.logger.Error("unexpected error deactivating user", "err", err, "user_id", id)
+		writeError(w, http.StatusInternalServerError, "internal_error", "internal server error")
 		return
 	}
 

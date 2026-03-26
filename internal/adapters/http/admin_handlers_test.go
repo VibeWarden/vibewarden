@@ -29,11 +29,11 @@ type fakeAdminService struct {
 	deactivateErr error
 
 	// Recorded calls.
-	lastListPagination ports.Pagination
-	lastGetID          string
-	lastInviteEmail    string
-	lastInviteActor    string
-	lastDeactivateID   string
+	lastListPagination  ports.Pagination
+	lastGetID           string
+	lastInviteEmail     string
+	lastInviteActor     string
+	lastDeactivateID    string
 	lastDeactivateActor string
 }
 
@@ -70,7 +70,7 @@ func makeTestUser(id, email string, status user.Status) *user.User {
 
 func newMux(svc vibehttp.AdminService) *http.ServeMux {
 	mux := http.NewServeMux()
-	vibehttp.NewAdminHandlers(svc).RegisterRoutes(mux)
+	vibehttp.NewAdminHandlers(svc, nil).RegisterRoutes(mux)
 	return mux
 }
 
