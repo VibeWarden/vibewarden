@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"time"
 
+	"github.com/vibewarden/vibewarden/internal/adapters/authui"
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
 
@@ -42,6 +43,9 @@ const healthCheckTimeout = 3 * time.Second
 //   - Validate Kratos URLs on Init.
 //   - Contribute a Caddy route that transparently proxies Kratos self-service
 //     flow paths to the Kratos public API (ContributeCaddyRoutes).
+//   - When UI.Mode is "built-in", start an internal auth UI HTTP server and
+//     contribute a Caddy route that reverse-proxies the /_vibewarden/auth-ui
+//     paths to it (ContributeCaddyRoutes).
 //   - Contribute an auth middleware handler and an identity-headers handler
 //     to the catch-all route (ContributeCaddyHandlers).
 //   - Health-check Kratos connectivity (Health).
@@ -55,6 +59,9 @@ type Plugin struct {
 	// from cfg.KratosPublicURL. Storing it as an interface makes the plugin
 	// unit-testable without a live Kratos instance.
 	sessionChecker ports.SessionChecker
+	// uiHandler is the built-in auth UI HTTP server.
+	// It is nil when UI.Mode != "built-in" or when the plugin is disabled.
+	uiHandler *authui.Handler
 	// healthy tracks whether the last Health() call found Kratos reachable.
 	healthy bool
 	// healthMsg is the last health status message.
@@ -107,6 +114,29 @@ func (p *Plugin) Init(_ context.Context) error {
 		p.sessionChecker = kratosAdapterFunc(p.cfg.KratosPublicURL, p.logger)
 	}
 
+	// Start the built-in auth UI server when the mode is "built-in" (default).
+	uiMode := p.cfg.UI.Mode
+	if uiMode == "" {
+		uiMode = "built-in"
+	}
+	if uiMode == "built-in" {
+		uiCfg := authui.AuthUIConfig{
+			Mode:            uiMode,
+			PrimaryColor:    p.cfg.UI.PrimaryColor,
+			BackgroundColor: p.cfg.UI.BackgroundColor,
+			TextColor:       p.cfg.UI.TextColor,
+			ErrorColor:      p.cfg.UI.ErrorColor,
+		}
+		h, err := authui.NewHandler(uiCfg, p.logger)
+		if err != nil {
+			return fmt.Errorf("auth plugin init: creating auth UI handler: %w", err)
+		}
+		if err := h.Start(); err != nil {
+			return fmt.Errorf("auth plugin init: starting auth UI server: %w", err)
+		}
+		p.uiHandler = h
+	}
+
 	p.healthy = true
 	p.healthMsg = fmt.Sprintf("auth configured, kratos: %s", p.cfg.KratosPublicURL)
 
@@ -114,6 +144,7 @@ func (p *Plugin) Init(_ context.Context) error {
 		slog.String("kratos_public_url", p.cfg.KratosPublicURL),
 		slog.String("session_cookie", p.cfg.SessionCookieName),
 		slog.Int("public_paths", len(p.cfg.PublicPaths)),
+		slog.String("ui_mode", uiMode),
 	)
 
 	return nil
@@ -123,8 +154,16 @@ func (p *Plugin) Init(_ context.Context) error {
 // Session validation happens inline during request processing via Caddy middleware.
 func (p *Plugin) Start(_ context.Context) error { return nil }
 
-// Stop is a no-op for the auth plugin.
-func (p *Plugin) Stop(_ context.Context) error { return nil }
+// Stop gracefully shuts down the auth plugin. When the built-in auth UI
+// server is running, it is stopped. The function honours the provided context.
+func (p *Plugin) Stop(ctx context.Context) error {
+	if p.uiHandler != nil {
+		if err := p.uiHandler.Stop(ctx); err != nil {
+			return fmt.Errorf("auth plugin stop: stopping auth UI server: %w", err)
+		}
+	}
+	return nil
+}
 
 // Health checks whether Kratos is reachable by calling its health/ready
 // endpoint. Returns healthy=true with a "auth disabled" message when the
@@ -173,12 +212,15 @@ func (p *Plugin) HealthCheck(ctx context.Context) ports.HealthStatus {
 	return ports.HealthStatus{Healthy: true, Message: p.healthMsg}
 }
 
-// ContributeCaddyRoutes returns the Caddy route that transparently proxies
-// all Kratos self-service flow paths and the Ory canonical prefix
-// (/.ory/kratos/public/*) to the Kratos public API.
+// ContributeCaddyRoutes returns the Caddy routes contributed by the auth plugin.
 //
-// This route must be placed before the catch-all reverse proxy route so that
-// Kratos paths are never forwarded to the upstream application.
+// When enabled, two sets of routes are returned:
+//  1. A route that transparently proxies all Kratos self-service flow paths and
+//     the Ory canonical prefix (/.ory/kratos/public/*) to the Kratos public API.
+//  2. When the auth UI mode is "built-in", a route that reverse-proxies the four
+//     built-in auth UI paths (/_vibewarden/login, /_vibewarden/registration,
+//     /_vibewarden/recovery, /_vibewarden/verification) to the internal auth UI
+//     HTTP server started during Init.
 //
 // Returns nil when the plugin is disabled.
 func (p *Plugin) ContributeCaddyRoutes() []ports.CaddyRoute {
@@ -188,7 +230,7 @@ func (p *Plugin) ContributeCaddyRoutes() []ports.CaddyRoute {
 
 	kratosAddr := urlToDialAddr(p.cfg.KratosPublicURL)
 
-	return []ports.CaddyRoute{
+	routes := []ports.CaddyRoute{
 		{
 			MatchPath: "/self-service/*",
 			Priority:  40,
@@ -207,6 +249,37 @@ func (p *Plugin) ContributeCaddyRoutes() []ports.CaddyRoute {
 			},
 		},
 	}
+
+	// Add auth UI route when the built-in UI is running.
+	if p.uiHandler != nil {
+		uiAddr := p.uiHandler.Addr()
+		routes = append(routes, ports.CaddyRoute{
+			MatchPath: "/_vibewarden/login",
+			Priority:  39, // just before the Kratos proxy route
+			Handler: map[string]any{
+				"match": []map[string]any{
+					{
+						"path": []string{
+							"/_vibewarden/login",
+							"/_vibewarden/registration",
+							"/_vibewarden/recovery",
+							"/_vibewarden/verification",
+						},
+					},
+				},
+				"handle": []map[string]any{
+					{
+						"handler": "reverse_proxy",
+						"upstreams": []map[string]any{
+							{"dial": uiAddr},
+						},
+					},
+				},
+			},
+		})
+	}
+
+	return routes
 }
 
 // ContributeCaddyHandlers returns the Caddy handlers that the auth plugin

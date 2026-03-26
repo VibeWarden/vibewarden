@@ -707,3 +707,142 @@ func TestPlugin_ImplementsPortsPlugin(t *testing.T) {
 func TestPlugin_ImplementsCaddyContributor(t *testing.T) {
 	var _ ports.CaddyContributor = (*auth.Plugin)(nil)
 }
+
+// ---------------------------------------------------------------------------
+// Auth UI integration — built-in mode
+// ---------------------------------------------------------------------------
+
+func TestPlugin_ContributeCaddyRoutes_BuiltInUI_ContributesUIRoute(t *testing.T) {
+	p := newPlugin(defaultConfig())
+	if err := p.Init(context.Background()); err != nil {
+		t.Fatalf("Init() error: %v", err)
+	}
+	defer p.Stop(context.Background()) //nolint: errcheck
+
+	routes := p.ContributeCaddyRoutes()
+	// Expect at least 2 routes: Kratos proxy + auth UI.
+	if len(routes) < 2 {
+		t.Fatalf("ContributeCaddyRoutes() returned %d routes, want at least 2 (Kratos + auth UI)", len(routes))
+	}
+
+	// The auth UI route should proxy to a localhost address.
+	uiRoute := routes[1]
+	handleSlice, ok := uiRoute.Handler["handle"].([]map[string]any)
+	if !ok || len(handleSlice) == 0 {
+		t.Fatal("auth UI route handle slice invalid")
+	}
+	if got := handleSlice[0]["handler"]; got != "reverse_proxy" {
+		t.Errorf("auth UI route handler = %q, want reverse_proxy", got)
+	}
+	upstreams, ok := handleSlice[0]["upstreams"].([]map[string]any)
+	if !ok || len(upstreams) == 0 {
+		t.Fatal("auth UI route upstreams invalid")
+	}
+	dial, _ := upstreams[0]["dial"].(string)
+	if dial == "" {
+		t.Error("auth UI route upstream dial address is empty")
+	}
+}
+
+func TestPlugin_ContributeCaddyRoutes_BuiltInUI_MatchesFourPaths(t *testing.T) {
+	p := newPlugin(defaultConfig())
+	if err := p.Init(context.Background()); err != nil {
+		t.Fatalf("Init() error: %v", err)
+	}
+	defer p.Stop(context.Background()) //nolint: errcheck
+
+	routes := p.ContributeCaddyRoutes()
+	if len(routes) < 2 {
+		t.Fatalf("expected at least 2 routes, got %d", len(routes))
+	}
+
+	uiRoute := routes[1]
+	matchSlice, ok := uiRoute.Handler["match"].([]map[string]any)
+	if !ok || len(matchSlice) == 0 {
+		t.Fatal("auth UI route match slice invalid")
+	}
+	paths, ok := matchSlice[0]["path"].([]string)
+	if !ok {
+		t.Fatalf("auth UI match path is not []string: %T", matchSlice[0]["path"])
+	}
+
+	wantPaths := []string{
+		"/_vibewarden/login",
+		"/_vibewarden/registration",
+		"/_vibewarden/recovery",
+		"/_vibewarden/verification",
+	}
+	for _, want := range wantPaths {
+		found := false
+		for _, got := range paths {
+			if got == want {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("auth UI route missing path %q; got: %v", want, paths)
+		}
+	}
+}
+
+func TestPlugin_ContributeCaddyRoutes_CustomUI_NoUIRoute(t *testing.T) {
+	cfg := defaultConfig()
+	cfg.UI = auth.UIConfig{Mode: "custom"}
+	p := auth.New(cfg, discardLogger(), &fakeSessionChecker{})
+	if err := p.Init(context.Background()); err != nil {
+		t.Fatalf("Init() error: %v", err)
+	}
+	defer p.Stop(context.Background()) //nolint: errcheck
+
+	routes := p.ContributeCaddyRoutes()
+	// Only the Kratos proxy route; no UI route.
+	if len(routes) != 1 {
+		t.Errorf("ContributeCaddyRoutes() returned %d routes for custom UI mode, want 1", len(routes))
+	}
+}
+
+func TestPlugin_Stop_StopsUIHandler(t *testing.T) {
+	p := newPlugin(defaultConfig())
+	if err := p.Init(context.Background()); err != nil {
+		t.Fatalf("Init() error: %v", err)
+	}
+
+	// Stop must not error.
+	if err := p.Stop(context.Background()); err != nil {
+		t.Errorf("Stop() error: %v", err)
+	}
+}
+
+func TestPlugin_Stop_DisabledPlugin_IsNoop(t *testing.T) {
+	p := auth.New(auth.Config{Enabled: false}, discardLogger(), nil)
+	if err := p.Init(context.Background()); err != nil {
+		t.Fatalf("Init() error: %v", err)
+	}
+	if err := p.Stop(context.Background()); err != nil {
+		t.Errorf("Stop() error for disabled plugin: %v", err)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// UIConfig
+// ---------------------------------------------------------------------------
+
+func TestPlugin_UIConfig_DefaultsApplied(t *testing.T) {
+	// With no UI config, built-in mode should be activated.
+	cfg := auth.Config{
+		Enabled:         true,
+		KratosPublicURL: "http://127.0.0.1:4433",
+	}
+	p := auth.New(cfg, discardLogger(), &fakeSessionChecker{})
+	if err := p.Init(context.Background()); err != nil {
+		t.Fatalf("Init() error: %v", err)
+	}
+	defer p.Stop(context.Background()) //nolint: errcheck
+
+	routes := p.ContributeCaddyRoutes()
+	// Built-in mode adds an auth UI route.
+	if len(routes) < 2 {
+		t.Errorf("ContributeCaddyRoutes() = %d routes, want >=2 (UI route expected by default)", len(routes))
+	}
+}
