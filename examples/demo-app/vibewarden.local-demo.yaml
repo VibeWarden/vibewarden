@@ -1,0 +1,80 @@
+# VibeWarden configuration for the full local demo stack.
+#
+# Differences from vibewarden.yaml (basic stack):
+#   - TLS enabled with self-signed provider (Caddy generates a local certificate)
+#   - Metrics enabled with all demo-app path patterns registered
+#   - All other features (auth, rate limiting, security headers) identical
+#
+# Used by docker-compose.local-demo.yml.
+# Do NOT use this configuration outside a local demo environment.
+
+server:
+  host: "0.0.0.0"
+  port: 8443
+
+upstream:
+  host: "demo-app"
+  port: 3000
+
+tls:
+  enabled: true
+  # Caddy generates an internal self-signed certificate — no ACME, no domain needed.
+  # Browsers will show a security warning; accept it to proceed.
+  provider: "self-signed"
+
+kratos:
+  # Resolved via the internal Docker network.
+  public_url: "http://kratos:4433"
+  admin_url:  "http://kratos:4434"
+
+auth:
+  # Paths that do NOT require authentication.
+  public_paths:
+    - "/"
+    - "/public"
+    - "/health"
+    - "/static"
+  session_cookie_name: "ory_kratos_session"
+  login_url: ""
+
+rate_limit:
+  enabled: true
+  # Low limits so you can trigger them easily during the demo.
+  # Try: for i in $(seq 1 20); do curl -sk -o /dev/null -w "%{http_code}\n" -X POST https://localhost:8443/spam; done
+  per_ip:
+    requests_per_second: 5
+    burst: 10
+  per_user:
+    requests_per_second: 10
+    burst: 20
+  trust_proxy_headers: false
+  exempt_paths: []
+
+log:
+  level: "info"
+  format: "json"
+
+admin:
+  enabled: false
+  token: ""
+
+metrics:
+  enabled: true
+  path_patterns:
+    - "/"
+    - "/public"
+    - "/me"
+    - "/headers"
+    - "/spam"
+    - "/health"
+
+security_headers:
+  enabled: true
+  hsts_max_age: 31536000
+  hsts_include_subdomains: true
+  hsts_preload: false
+  content_type_nosniff: true
+  frame_option: "DENY"
+  content_security_policy: "default-src 'self'; style-src 'self'; script-src 'self' 'unsafe-inline'"
+  referrer_policy: "strict-origin-when-cross-origin"
+  permissions_policy: ""
