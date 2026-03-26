@@ -1,6 +1,6 @@
 # VibeWarden Makefile
 
-.PHONY: build test lint run docker-up docker-down observability-up observability-down grafana-open prometheus-open loki-open clean check setup-hooks demo demo-down
+.PHONY: build test lint run docker-up docker-down observability-up observability-down grafana-open prometheus-open loki-open clean check setup-hooks demo demo-down deploy-demo
 
 # Build variables
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
@@ -86,6 +86,16 @@ demo: ## Start the full local demo stack (https://localhost:8443, Grafana http:/
 # Stop the full local demo stack
 demo-down: ## Stop the full local demo stack
 	docker compose -f examples/demo-app/docker-compose.local-demo.yml down
+
+# Deploy the public demo to a remote VM via SSH.
+# Usage: make deploy-demo SSH=root@challenge.vibewarden.dev
+# Rollback: make deploy-demo SSH=root@challenge.vibewarden.dev ROLLBACK=--rollback
+deploy-demo: ## Deploy the public demo (SSH=<target> required; optional ROLLBACK=--rollback)
+	@if [ -z "$(SSH)" ]; then \
+		echo "error: SSH target is required. Usage: make deploy-demo SSH=root@challenge.vibewarden.dev"; \
+		exit 1; \
+	fi
+	./scripts/deploy-demo.sh $(SSH) $(ROLLBACK)
 
 # Install git hooks for local development
 setup-hooks: ## Install git hooks for local development
