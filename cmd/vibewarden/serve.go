@@ -132,6 +132,10 @@ func runServe(configPath string) error {
 			},
 		},
 		Metrics: metricsCfg,
+		AdminAuth: ports.AdminAuthConfig{
+			Enabled: cfg.Admin.Enabled,
+			Token:   cfg.Admin.Token,
+		},
 	}
 
 	// Create Caddy adapter and proxy service.

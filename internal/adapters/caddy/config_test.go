@@ -595,12 +595,18 @@ func TestBuildCaddyConfig_NoSecurityHeaders(t *testing.T) {
 		t.Fatal("handle not found in proxy route")
 	}
 
-	if len(handlers) != 1 {
-		t.Fatalf("expected 1 handler (reverse proxy only), got %d", len(handlers))
+	// The admin auth handler is always present; with security headers disabled
+	// and rate limiting disabled the chain is: admin_auth → reverse_proxy.
+	if len(handlers) != 2 {
+		t.Fatalf("expected 2 handlers (admin_auth + reverse_proxy), got %d", len(handlers))
 	}
 
-	if handlers[0]["handler"] != "reverse_proxy" {
-		t.Errorf("handler = %v, want 'reverse_proxy'", handlers[0]["handler"])
+	if handlers[0]["handler"] != "vibewarden_admin_auth" {
+		t.Errorf("handlers[0] = %v, want 'vibewarden_admin_auth'", handlers[0]["handler"])
+	}
+
+	if handlers[1]["handler"] != "reverse_proxy" {
+		t.Errorf("handlers[1] = %v, want 'reverse_proxy'", handlers[1]["handler"])
 	}
 }
 

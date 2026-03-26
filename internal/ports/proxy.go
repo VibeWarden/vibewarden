@@ -45,6 +45,10 @@ type ProxyConfig struct {
 
 	// Metrics configuration — controls the Prometheus metrics endpoint.
 	Metrics MetricsProxyConfig
+
+	// AdminAuth configuration — controls bearer-token protection of
+	// /_vibewarden/admin/* endpoints.
+	AdminAuth AdminAuthConfig
 }
 
 // MetricsProxyConfig holds configuration for exposing the Prometheus metrics
