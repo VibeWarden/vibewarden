@@ -116,3 +116,73 @@ func TestLoad_InvalidFile(t *testing.T) {
 		t.Error("Load() expected error for nonexistent explicit config path, got nil")
 	}
 }
+
+func TestLoad_MetricsDefaults(t *testing.T) {
+	cfg, err := config.Load("")
+	if err != nil {
+		t.Fatalf("Load() unexpected error: %v", err)
+	}
+
+	tests := []struct {
+		name string
+		got  interface{}
+		want interface{}
+	}{
+		{"metrics.enabled", cfg.Metrics.Enabled, true},
+		{"metrics.path_patterns length", len(cfg.Metrics.PathPatterns), 0},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.got != tt.want {
+				t.Errorf("default %s = %v, want %v", tt.name, tt.got, tt.want)
+			}
+		})
+	}
+}
+
+func TestLoad_MetricsFromFile(t *testing.T) {
+	content := `
+metrics:
+  enabled: false
+  path_patterns:
+    - "/users/:id"
+    - "/api/v1/items/:item_id"
+`
+	dir := t.TempDir()
+	cfgFile := filepath.Join(dir, "vibewarden.yaml")
+	if err := os.WriteFile(cfgFile, []byte(content), 0600); err != nil {
+		t.Fatalf("writing temp config file: %v", err)
+	}
+
+	cfg, err := config.Load(cfgFile)
+	if err != nil {
+		t.Fatalf("Load() unexpected error: %v", err)
+	}
+
+	if cfg.Metrics.Enabled {
+		t.Errorf("metrics.enabled = true, want false")
+	}
+	if len(cfg.Metrics.PathPatterns) != 2 {
+		t.Fatalf("len(metrics.path_patterns) = %d, want 2", len(cfg.Metrics.PathPatterns))
+	}
+	if cfg.Metrics.PathPatterns[0] != "/users/:id" {
+		t.Errorf("metrics.path_patterns[0] = %q, want %q", cfg.Metrics.PathPatterns[0], "/users/:id")
+	}
+	if cfg.Metrics.PathPatterns[1] != "/api/v1/items/:item_id" {
+		t.Errorf("metrics.path_patterns[1] = %q, want %q", cfg.Metrics.PathPatterns[1], "/api/v1/items/:item_id")
+	}
+}
+
+func TestLoad_MetricsEnvVarOverride(t *testing.T) {
+	t.Setenv("VIBEWARDEN_METRICS_ENABLED", "false")
+
+	cfg, err := config.Load("")
+	if err != nil {
+		t.Fatalf("Load() unexpected error: %v", err)
+	}
+
+	if cfg.Metrics.Enabled {
+		t.Errorf("metrics.enabled = true, want false after VIBEWARDEN_METRICS_ENABLED=false")
+	}
+}

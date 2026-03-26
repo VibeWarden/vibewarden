@@ -7,11 +7,13 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/spf13/cobra"
 
 	caddyadapter "github.com/vibewarden/vibewarden/internal/adapters/caddy"
 	logadapter "github.com/vibewarden/vibewarden/internal/adapters/log"
+	metricsadapter "github.com/vibewarden/vibewarden/internal/adapters/metrics"
 	"github.com/vibewarden/vibewarden/internal/app/proxy"
 	"github.com/vibewarden/vibewarden/internal/config"
 	"github.com/vibewarden/vibewarden/internal/ports"
@@ -57,6 +59,30 @@ func runServe(configPath string) error {
 
 	// Initialize the EventLogger — writes structured JSON events to stdout.
 	eventLogger := logadapter.NewSlogEventLogger(os.Stdout)
+
+	// Initialize Prometheus metrics adapter and start the internal metrics server.
+	// The internal server binds a random localhost port; Caddy reverse-proxies
+	// /_vibewarden/metrics to it when metrics are enabled.
+	var metricsCfg ports.MetricsProxyConfig
+	if cfg.Metrics.Enabled {
+		pa := metricsadapter.NewPrometheusAdapter(cfg.Metrics.PathPatterns)
+		metricsSrv := metricsadapter.NewServer(pa.Handler(), logger)
+		if err := metricsSrv.Start(); err != nil {
+			return fmt.Errorf("starting metrics server: %w", err)
+		}
+		defer func() {
+			stopCtx, stopCancel := context.WithTimeout(context.Background(), 5*time.Second)
+			defer stopCancel()
+			if stopErr := metricsSrv.Stop(stopCtx); stopErr != nil {
+				logger.Error("stopping metrics server", slog.String("error", stopErr.Error()))
+			}
+		}()
+		metricsCfg = ports.MetricsProxyConfig{
+			Enabled:      true,
+			InternalAddr: metricsSrv.Addr(),
+		}
+		logger.Info("metrics enabled", slog.String("internal_addr", metricsSrv.Addr()))
+	}
 
 	// Build ProxyConfig from application config.
 	proxyCfg := &ports.ProxyConfig{
@@ -105,6 +131,7 @@ func runServe(configPath string) error {
 				Burst:             cfg.RateLimit.PerUser.Burst,
 			},
 		},
+		Metrics: metricsCfg,
 	}
 
 	// Create Caddy adapter and proxy service.
