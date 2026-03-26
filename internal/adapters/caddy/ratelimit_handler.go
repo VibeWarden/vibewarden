@@ -17,6 +17,10 @@ import (
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
 
+// init registers RateLimitHandler with the Caddy module system so it can be
+// referenced by name ("http.handlers.vibewarden_rate_limit") in Caddy's JSON
+// configuration. This function is called automatically by the Go runtime before
+// main() runs.
 func init() {
 	gocaddy.RegisterModule(RateLimitHandler{})
 }
