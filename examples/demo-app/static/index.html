@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>VibeWarden Demo</title>
+  <title>VibeWarden Challenge — Can You Break Through?</title>
   <link rel="stylesheet" href="/static/water.css">
   <style>
     .badge {
@@ -18,8 +18,61 @@
     .badge-warn  { background: #d97706; color: #fff; }
     .badge-info  { background: #2563eb; color: #fff; }
     nav a { margin-right: 1em; }
-    .hero { margin: 2em 0; }
-    .auth-card { padding: 1em; border: 1px solid #ccc; border-radius: 6px; margin-top: 1em; }
+
+    .hero {
+      margin: 2em 0 2.5em;
+      padding: 2em;
+      border-left: 4px solid #7C3AED;
+      background: rgba(124, 58, 237, 0.04);
+      border-radius: 0 6px 6px 0;
+    }
+    .hero h1 { margin-top: 0; }
+    .hero .tagline {
+      font-size: 1.1em;
+      color: #555;
+      margin-bottom: 0;
+    }
+
+    .protection-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 1em;
+      margin: 1em 0;
+    }
+    .protection-card {
+      padding: 1em;
+      border: 1px solid #d1d5db;
+      border-radius: 6px;
+    }
+    .protection-card h3 { margin-top: 0; font-size: 1em; }
+    .protection-card p  { margin-bottom: 0; font-size: 0.9em; color: #555; }
+
+    .auth-card {
+      padding: 1em;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      margin-top: 0.5em;
+    }
+    .demo-creds {
+      font-family: monospace;
+      background: #f3f4f6;
+      padding: 0.8em 1em;
+      border-radius: 4px;
+      margin-top: 0.5em;
+    }
+    .demo-creds span { color: #7C3AED; }
+
+    .vw-footer {
+      margin-top: 3em;
+      padding: 1em 1.2em;
+      background: #f9fafb;
+      border: 1px solid #e5e7eb;
+      border-radius: 6px;
+      font-size: 0.9em;
+      color: #374151;
+      text-align: center;
+    }
+    .vw-footer strong { color: #7C3AED; }
   </style>
 </head>
 <body>
@@ -31,21 +84,20 @@
     <a href="/static/ratelimit.html">Rate Limit Test</a>
   </nav>
 
+  <!-- Hero -->
   <div class="hero">
-    <h1>Welcome to the VibeWarden Demo</h1>
-    <p>
-      This demo app is protected by VibeWarden — a security sidecar that handles
-      authentication (Ory Kratos), rate limiting, and security headers for your app.
+    <h1>This app is protected by VibeWarden.</h1>
+    <p class="tagline">
+      No custom security code. Zero hand-rolled auth. Zero hand-rolled rate limiting.
+      Zero hand-rolled security headers.<br>
+      <strong>See for yourself.</strong>
     </p>
   </div>
 
+  <!-- Auth status -->
   <h2>Auth Status</h2>
-  <div id="auth-status" class="auth-card">Loading...</div>
+  <div id="auth-status" class="auth-card">Checking...</div>
 
-  <h2>VibeWarden Health</h2>
-  <div id="vw-health">Checking...</div>
-
-  <h2>Quick Actions</h2>
   <p>
     <a href="/self-service/login/browser"><button>Log In</button></a>
     &nbsp;
@@ -54,22 +106,122 @@
     <button id="btn-logout" style="display:none">Log Out</button>
   </p>
 
-  <hr>
+  <details>
+    <summary>Demo credentials</summary>
+    <div class="demo-creds">
+      Email: <span>demo@vibewarden.dev</span><br>
+      Password: <span>demo1234</span>
+    </div>
+    <p><small>This account is reset periodically. Do not store sensitive data in it.</small></p>
+  </details>
+
+  <!-- What protects this app -->
+  <h2>What protects this app</h2>
   <p>
-    <small>
-      Explore the other demo pages:
-      <a href="/static/me.html">My Profile</a>,
-      <a href="/static/headers.html">Headers Inspector</a>,
-      <a href="/static/ratelimit.html">Rate Limit Test</a>.
-    </small>
+    VibeWarden is a security sidecar — a single binary that sits in front of your app
+    and handles every layer of protection. The app behind it has
+    <strong>zero security code</strong>.
   </p>
+
+  <div class="protection-grid">
+    <div class="protection-card">
+      <h3>TLS — Let's Encrypt</h3>
+      <p>
+        HTTPS is automatic. VibeWarden obtains and renews certificates via ACME.
+        No configuration needed.
+      </p>
+    </div>
+    <div class="protection-card">
+      <h3>Auth — Ory Kratos</h3>
+      <p>
+        Session management, login flows, and registration are handled by
+        Ory Kratos. The app only sees injected <code>X-User-*</code> headers.
+      </p>
+    </div>
+    <div class="protection-card">
+      <h3>Rate Limiting — 20 req/s per IP</h3>
+      <p>
+        Requests over the threshold receive <code>429 Too Many Requests</code>
+        with a <code>Retry-After</code> header. Try the
+        <a href="/static/ratelimit.html">Rate Limit Test</a> page.
+      </p>
+    </div>
+    <div class="protection-card">
+      <h3>Security Headers</h3>
+      <p>
+        Every response carries: HSTS, CSP, <code>X-Frame-Options</code>,
+        <code>X-Content-Type-Options</code>, and <code>Referrer-Policy</code>.
+        Inspect them on the <a href="/static/headers.html">Headers Inspector</a>.
+      </p>
+    </div>
+    <div class="protection-card">
+      <h3>AI-Structured Logs</h3>
+      <p>
+        Every event is logged with <code>schema_version</code>,
+        <code>event_type</code>, <code>ai_summary</code>, and <code>payload</code>.
+        Machine-readable by design.
+      </p>
+    </div>
+    <div class="protection-card">
+      <h3>VibeWarden Health</h3>
+      <p>
+        Sidecar status: <span id="vw-health">checking...</span>
+      </p>
+    </div>
+  </div>
+
+  <!-- Explore -->
+  <h2>Explore the demo</h2>
+  <ul>
+    <li>
+      <a href="/static/me.html">My Profile</a> —
+      authenticated endpoint that shows identity headers injected by VibeWarden.
+    </li>
+    <li>
+      <a href="/static/headers.html">Headers Inspector</a> —
+      see every security header VibeWarden adds to responses.
+    </li>
+    <li>
+      <a href="/static/ratelimit.html">Rate Limit Test</a> —
+      fire 20 rapid requests and watch the 429s appear.
+    </li>
+    <li>
+      <a href="http://dashboard.vibewarden.dev" target="_blank" rel="noopener">Grafana Dashboard</a> —
+      live metrics and structured logs from this sidecar instance.
+    </li>
+  </ul>
+
+  <!-- Found something -->
+  <h2>Found something?</h2>
+  <p>
+    If you find a real vulnerability in VibeWarden, please disclose it responsibly.
+    We read every report and credit researchers publicly (with your permission).
+  </p>
+  <p>
+    <a href="https://github.com/vibewarden/vibewarden/blob/main/SECURITY.md" target="_blank" rel="noopener">
+      Read our responsible disclosure policy (SECURITY.md)
+    </a>
+    &nbsp;&mdash;&nbsp;
+    <a href="mailto:security@vibewarden.dev">security@vibewarden.dev</a>
+  </p>
+
+  <!-- Links -->
+  <h2>Open source</h2>
+  <p>
+    VibeWarden is Apache 2.0.
+    <a href="https://github.com/vibewarden/vibewarden" target="_blank" rel="noopener">View on GitHub</a>.
+    Issues, PRs, and feedback are welcome.
+  </p>
+
+  <!-- Footer banner -->
+  <div class="vw-footer">
+    <strong>This app has zero custom security code.</strong>
+    All protection is provided by <strong>VibeWarden</strong>.
+  </div>
 
   <script>
     (async function () {
-      // -----------------------------------------------------------------------
-      // Auth status — calls the demo-app's / endpoint which returns
-      // {"authenticated": bool, "message": "..."} based on VibeWarden headers.
-      // -----------------------------------------------------------------------
+      // Auth status
       const authDiv = document.getElementById('auth-status');
       try {
         const resp = await fetch('/');
@@ -90,33 +242,22 @@
         authDiv.innerHTML = '<span class="badge badge-error">Error</span> ' + escapeHtml(String(err));
       }
 
-      // -----------------------------------------------------------------------
-      // VibeWarden health badge — calls /_vibewarden/health
-      // -----------------------------------------------------------------------
-      const vwDiv = document.getElementById('vw-health');
+      // VibeWarden health badge
+      const vwSpan = document.getElementById('vw-health');
       try {
         const resp = await fetch('/_vibewarden/health');
         if (resp.ok) {
-          vwDiv.innerHTML = '<span class="badge badge-ok">Healthy</span>';
+          vwSpan.innerHTML = '<span class="badge badge-ok">Healthy</span>';
         } else {
-          vwDiv.innerHTML = '<span class="badge badge-error">Unhealthy (HTTP ' + resp.status + ')</span>';
+          vwSpan.innerHTML = '<span class="badge badge-error">Unhealthy (HTTP ' + resp.status + ')</span>';
         }
-      } catch (err) {
-        vwDiv.innerHTML = '<span class="badge badge-error">Unreachable</span>';
+      } catch (_) {
+        vwSpan.innerHTML = '<span class="badge badge-error">Unreachable</span>';
       }
 
-      // -----------------------------------------------------------------------
-      // Logout button — redirects to Kratos self-service logout
-      // -----------------------------------------------------------------------
-      document.getElementById('btn-logout').addEventListener('click', async function () {
-        try {
-          const resp = await fetch('/self-service/logout/browser', { redirect: 'follow' });
-          if (resp.ok || resp.type === 'opaqueredirect') {
-            window.location.href = '/self-service/logout/browser';
-          }
-        } catch (_) {
-          window.location.href = '/self-service/logout/browser';
-        }
+      // Logout
+      document.getElementById('btn-logout').addEventListener('click', function () {
+        window.location.href = '/self-service/logout/browser';
       });
     })();
 
