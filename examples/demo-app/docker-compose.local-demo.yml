@@ -26,8 +26,6 @@
 # Secrets: all credentials are hard-coded to simple demo values.
 # Never use these outside a local demo environment.
 
-version: "3.8"
-
 services:
   # --------------------------------------------------------------------------
   # Postgres — persistent storage for Ory Kratos

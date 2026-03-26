@@ -24,8 +24,6 @@
 #   Postgres password and DSN are hard-coded to simple dev values — never use
 #   these credentials outside of a local dev environment.
 
-version: "3.8"
-
 services:
   # --------------------------------------------------------------------------
   # Postgres — persistent storage for Ory Kratos
