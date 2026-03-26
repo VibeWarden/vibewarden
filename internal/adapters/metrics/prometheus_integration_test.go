@@ -15,8 +15,8 @@ import (
 
 	"log/slog"
 
-	"github.com/vibewarden/vibewarden/internal/adapters/metrics"
 	caddyadapter "github.com/vibewarden/vibewarden/internal/adapters/caddy"
+	"github.com/vibewarden/vibewarden/internal/adapters/metrics"
 	"github.com/vibewarden/vibewarden/internal/middleware"
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
@@ -256,4 +256,3 @@ func assertBodyContains(t *testing.T, body, substring string) {
 			substring, body)
 	}
 }
-
