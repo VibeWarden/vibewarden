@@ -269,3 +269,8 @@ Apache 2.0 — see [LICENSE](LICENSE).
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, coding standards,
 and how to submit changes.
+
+## Security
+
+To report a vulnerability, see [SECURITY.md](SECURITY.md) for our responsible
+disclosure policy and contact details.
