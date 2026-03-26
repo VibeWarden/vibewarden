@@ -17,25 +17,29 @@ import (
 
 // NewInitCmd creates the `vibewarden init` subcommand.
 //
-// The command scaffolds vibewarden.yaml and docker-compose.yml in the current
-// directory (or the directory supplied as the first positional argument).
-// When --agent is specified, AI agent context files are also generated.
+// The command scaffolds vibewarden.yaml, docker-compose.yml, and the vibew
+// wrapper scripts in the current directory (or the directory supplied as the
+// first positional argument). When --agent is specified, AI agent context
+// files are also generated.
 func NewInitCmd() *cobra.Command {
 	var (
-		upstream   int
-		auth       bool
-		rateLimit  bool
-		tls        bool
-		domain     string
-		force      bool
-		skipDocker bool
-		agent      string
+		upstream    int
+		auth        bool
+		rateLimit   bool
+		tls         bool
+		domain      string
+		force       bool
+		skipDocker  bool
+		skipWrapper bool
+		version     string
+		agent       string
 	)
 
 	cmd := &cobra.Command{
 		Use:   "init [directory]",
 		Short: "Initialise VibeWarden in a project",
-		Long: `Scaffold vibewarden.yaml and docker-compose.yml in the project directory.
+		Long: `Scaffold vibewarden.yaml, docker-compose.yml, and the vibew wrapper scripts
+in the project directory.
 
 The command detects the project type and upstream port automatically.
 Pass flags to enable optional features.
@@ -45,6 +49,8 @@ Examples:
   vibewarden init --upstream 8000
   vibewarden init --auth --rate-limit
   vibewarden init --tls --domain example.com
+  vibewarden init --version v0.2.0
+  vibewarden init --skip-wrapper
   vibewarden init --agent claude
   vibewarden init --agent all
   vibewarden init --force`,
@@ -77,6 +83,8 @@ Examples:
 				TLSDomain:        domain,
 				Force:            force,
 				SkipDocker:       skipDocker,
+				SkipWrapper:      skipWrapper,
+				Version:          version,
 			}
 
 			if err := svc.Init(context.Background(), dir, opts); err != nil {
@@ -109,6 +117,8 @@ Examples:
 	cmd.Flags().StringVar(&domain, "domain", "", "domain for TLS certificate (required with --tls)")
 	cmd.Flags().BoolVar(&force, "force", false, "overwrite existing files")
 	cmd.Flags().BoolVar(&skipDocker, "skip-docker", false, "skip docker-compose.yml generation")
+	cmd.Flags().BoolVar(&skipWrapper, "skip-wrapper", false, "skip vibew wrapper script generation")
+	cmd.Flags().StringVar(&version, "version", "", "VibeWarden version to pin in .vibewarden-version (default: latest)")
 	cmd.Flags().StringVar(&agent, "agent", "all", `generate AI agent context files: "claude", "cursor", "generic", "all", or "none"`)
 
 	return cmd
@@ -145,13 +155,25 @@ func printSuccessMessage(cmd *cobra.Command, dir string, opts scaffoldapp.InitOp
 	if !opts.SkipDocker {
 		fmt.Fprintf(w, "  %s/docker-compose.yml\n", dir)
 	}
+	if !opts.SkipWrapper {
+		fmt.Fprintf(w, "  %s/vibew\n", dir)
+		fmt.Fprintf(w, "  %s/vibew.ps1\n", dir)
+		fmt.Fprintf(w, "  %s/vibew.cmd\n", dir)
+		fmt.Fprintf(w, "  %s/.vibewarden-version\n", dir)
+	}
 	for _, f := range agentFiles {
 		fmt.Fprintf(w, "  %s\n", f)
 	}
 	fmt.Fprintln(w, "")
 	fmt.Fprintln(w, "Next steps:")
 	fmt.Fprintln(w, "  1. Review and adjust vibewarden.yaml as needed.")
-	if !opts.SkipDocker {
+	if !opts.SkipWrapper {
+		fmt.Fprintln(w, "  2. Commit vibew, vibew.ps1, vibew.cmd, and .vibewarden-version to your repository.")
+		if !opts.SkipDocker {
+			fmt.Fprintln(w, "  3. Start the local dev environment:")
+			fmt.Fprintln(w, "       docker compose up")
+		}
+	} else if !opts.SkipDocker {
 		fmt.Fprintln(w, "  2. Start the local dev environment:")
 		fmt.Fprintln(w, "       docker compose up")
 	}

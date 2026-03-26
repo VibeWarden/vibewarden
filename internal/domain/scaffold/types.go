@@ -73,6 +73,10 @@ type TemplateData struct {
 
 	// TLSDomain is the domain for TLS.
 	TLSDomain string
+
+	// Version is the VibeWarden release version to pin in .vibewarden-version.
+	// When empty the wrapper falls back to the latest GitHub release at runtime.
+	Version string
 }
 
 // AgentType identifies the target AI coding assistant for context generation.
