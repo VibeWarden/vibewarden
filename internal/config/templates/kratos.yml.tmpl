@@ -59,6 +59,41 @@ selfservice:
     password:
       enabled: true
 {{- end }}
+{{- if .Auth.SocialProviders }}
+    oidc:
+      enabled: true
+      config:
+        providers:
+{{- range .Auth.SocialProviders }}
+          - id: {{ if eq .Provider "oidc" }}{{ .ID }}{{ else }}{{ .Provider }}{{ end }}
+            provider: {{ .Provider }}
+            client_id: {{ .ClientID }}
+            client_secret: {{ .ClientSecret }}
+            mapper_url: file:///etc/kratos/mappers/{{ if eq .Provider "google" }}google{{ else if eq .Provider "github" }}github{{ else }}generic{{ end }}.jsonnet
+{{- if .IssuerURL }}
+            issuer_url: {{ .IssuerURL }}
+{{- end }}
+{{- if .Scopes }}
+            scope:
+{{- range .Scopes }}
+              - {{ . }}
+{{- end }}
+{{- else if eq .Provider "google" }}
+            scope:
+              - email
+              - profile
+{{- else if eq .Provider "github" }}
+            scope:
+              - user:email
+{{- end }}
+{{- if and (eq .Provider "apple") .TeamID }}
+            apple_team_id: {{ .TeamID }}
+{{- end }}
+{{- if and (eq .Provider "apple") .KeyID }}
+            apple_private_key_id: {{ .KeyID }}
+{{- end }}
+{{- end }}
+{{- end }}
 
   flows:
     error:
