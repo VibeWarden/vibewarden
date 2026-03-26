@@ -1,6 +1,6 @@
 # VibeWarden Makefile
 
-.PHONY: build test lint run docker-up docker-down clean
+.PHONY: build test lint run docker-up docker-down observability-up observability-down clean
 
 # Build variables
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
@@ -31,6 +31,14 @@ docker-up:
 # Stop dev environment
 docker-down:
 	docker compose down
+
+# Start observability stack (Prometheus)
+observability-up:
+	docker compose --profile observability up -d
+
+# Stop observability stack
+observability-down:
+	docker compose --profile observability down
 
 # Clean build artifacts
 clean:

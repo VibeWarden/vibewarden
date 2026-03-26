@@ -1,17 +1,21 @@
 # VibeWarden — Docker Compose dev environment
 #
 # Brings up the full local stack:
-#   postgres      — Kratos session/identity storage
+#   postgres       — Kratos session/identity storage
 #   kratos-migrate — runs Kratos DB migrations once, then exits
 #   kratos         — Ory Kratos identity server (public :4433, admin :4434)
 #   mailslurper    — catches outbound Kratos emails (SMTP :4436, web UI :4437)
 #   vibewarden     — the security sidecar (proxies your upstream app on :8080)
 #
+# Observability profile (optional):
+#   prometheus     — metrics collection and storage (UI: http://localhost:9090)
+#
 # Usage:
-#   docker compose up -d          # start everything
-#   docker compose logs -f        # tail logs
-#   docker compose down           # stop and remove containers
-#   docker compose down -v        # also remove the postgres volume
+#   docker compose up -d                           # start baseline stack
+#   docker compose --profile observability up -d   # start with observability stack
+#   docker compose logs -f                         # tail logs
+#   docker compose down                            # stop and remove containers
+#   docker compose down -v                         # also remove named volumes
 #
 # Secrets:
 #   Postgres password and DSN are hard-coded to simple dev values — never use
@@ -156,11 +160,48 @@ services:
       retries: 5
       start_period: 5s
 
+  # --------------------------------------------------------------------------
+  # Prometheus — metrics collection and storage
+  #
+  # Web UI: http://localhost:9090
+  # Scrapes VibeWarden metrics at vibewarden:8080/_vibewarden/metrics
+  #
+  # Only starts when the "observability" profile is active:
+  #   docker compose --profile observability up -d
+  # --------------------------------------------------------------------------
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: vibewarden-prometheus
+    profiles:
+      - observability
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.enable-lifecycle'
+    networks:
+      - vibewarden
+    depends_on:
+      vibewarden:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9090/-/healthy"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
 # --------------------------------------------------------------------------
 # Named volumes
 # --------------------------------------------------------------------------
 volumes:
   postgres_data:
+    driver: local
+  prometheus_data:
     driver: local
 
 # --------------------------------------------------------------------------
