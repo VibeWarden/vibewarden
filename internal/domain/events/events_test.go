@@ -541,6 +541,48 @@ func TestNewUserDeleted(t *testing.T) {
 	}
 }
 
+// --- user.deactivated ---
+
+func TestNewUserDeactivated(t *testing.T) {
+	tests := []struct {
+		name    string
+		params  events.UserDeactivatedParams
+		wantReason string
+	}{
+		{
+			name: "deactivated with reason and actor",
+			params: events.UserDeactivatedParams{
+				IdentityID: "id-user001",
+				Email:      "user@example.com",
+				ActorID:    "admin-001",
+				Reason:     "policy violation",
+			},
+			wantReason: "policy violation",
+		},
+		{
+			name: "deactivated without actor or reason",
+			params: events.UserDeactivatedParams{
+				IdentityID: "id-user002",
+				Email:      "other@example.com",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			e := events.NewUserDeactivated(tt.params)
+
+			assertEvent(t, e, events.EventTypeUserDeactivated)
+			requireSummaryContains(t, e.AISummary, tt.params.Email)
+			requireSummaryContains(t, e.AISummary, tt.params.IdentityID)
+			requirePayloadString(t, e.Payload, "identity_id", tt.params.IdentityID)
+			requirePayloadString(t, e.Payload, "email", tt.params.Email)
+			requirePayloadString(t, e.Payload, "actor_id", tt.params.ActorID)
+			requirePayloadString(t, e.Payload, "reason", tt.params.Reason)
+		})
+	}
+}
+
 // TestTimestampIsRecent verifies that all constructors set the Timestamp to a
 // time close to now (within 5 seconds), confirming it is not a zero value
 // and not some fixed/hardcoded time.
@@ -580,6 +622,9 @@ func TestTimestampIsRecent(t *testing.T) {
 		}},
 		{"NewUserDeleted", func() events.Event {
 			return events.NewUserDeleted(events.UserDeletedParams{IdentityID: "id-1", Email: "a@example.com"})
+		}},
+		{"NewUserDeactivated", func() events.Event {
+			return events.NewUserDeactivated(events.UserDeactivatedParams{IdentityID: "id-1", Email: "a@example.com"})
 		}},
 	}
 

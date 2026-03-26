@@ -56,6 +56,10 @@ const (
 	// EventTypeUserDeleted is emitted when a user identity is deleted from the
 	// identity provider.
 	EventTypeUserDeleted = "user.deleted"
+
+	// EventTypeUserDeactivated is emitted when a user identity is deactivated,
+	// preventing further authentication while retaining the identity record.
+	EventTypeUserDeactivated = "user.deactivated"
 )
 
 // Event is the base structured log event.
