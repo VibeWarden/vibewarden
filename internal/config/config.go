@@ -118,6 +118,57 @@ type KratosConfig struct {
 	SMTP KratosSMTPConfig `mapstructure:"smtp"`
 }
 
+// SupportedSocialProviders is the set of accepted provider names for social login.
+// The special value "oidc" indicates a generic OpenID Connect provider.
+var SupportedSocialProviders = map[string]bool{
+	"google":    true,
+	"github":    true,
+	"apple":     true,
+	"facebook":  true,
+	"microsoft": true,
+	"gitlab":    true,
+	"discord":   true,
+	"slack":     true,
+	"spotify":   true,
+	"oidc":      true,
+}
+
+// SocialProviderConfig holds OAuth2/OIDC settings for a single social login provider.
+// It is used as an element of AuthConfig.SocialProviders.
+type SocialProviderConfig struct {
+	// Provider is the provider name.
+	// Accepted values: google, github, apple, facebook, microsoft, gitlab, discord, slack, spotify, oidc.
+	Provider string `mapstructure:"provider"`
+
+	// ClientID is the OAuth2 client ID issued by the provider. Required.
+	ClientID string `mapstructure:"client_id"`
+
+	// ClientSecret is the OAuth2 client secret issued by the provider. Required.
+	// Supports environment variable substitution via ${VAR} syntax in the YAML file.
+	ClientSecret string `mapstructure:"client_secret"`
+
+	// Scopes is an optional list of OAuth2 scopes to request.
+	// When empty, provider-specific defaults are used.
+	Scopes []string `mapstructure:"scopes"`
+
+	// Label is an optional custom label shown on the login button (e.g. "Sign in with Acme").
+	Label string `mapstructure:"label"`
+
+	// TeamID is the Apple Developer Team ID. Required when Provider is "apple".
+	TeamID string `mapstructure:"team_id"`
+
+	// KeyID is the Apple private key ID. Required when Provider is "apple".
+	KeyID string `mapstructure:"key_id"`
+
+	// ID is the unique identifier for the OIDC provider entry (e.g. "acme-oidc").
+	// Required when Provider is "oidc".
+	ID string `mapstructure:"id"`
+
+	// IssuerURL is the OIDC issuer URL (e.g. "https://accounts.google.com").
+	// Required when Provider is "oidc".
+	IssuerURL string `mapstructure:"issuer_url"`
+}
+
 // AuthConfig holds auth middleware settings.
 // Authentication is enabled automatically when Kratos.PublicURL is non-empty.
 type AuthConfig struct {
@@ -143,6 +194,10 @@ type AuthConfig struct {
 	// LoginURL is the redirect destination for unauthenticated users.
 	// Defaults to "/self-service/login/browser" when empty.
 	LoginURL string `mapstructure:"login_url"`
+
+	// SocialProviders is a list of OAuth2/OIDC social login providers to enable.
+	// Each entry requires at minimum a provider name, client_id, and client_secret.
+	SocialProviders []SocialProviderConfig `mapstructure:"social_providers"`
 }
 
 // RateLimitConfig holds rate limiting settings.
@@ -264,6 +319,37 @@ func (c *Config) Validate() error {
 		}
 	}
 
+	// Social providers: validate each entry.
+	for i, sp := range c.Auth.SocialProviders {
+		prefix := fmt.Sprintf("social_providers[%d]", i)
+
+		if !SupportedSocialProviders[sp.Provider] {
+			errs = append(errs, fmt.Sprintf("%s.provider %q is not supported; accepted values: google, github, apple, facebook, microsoft, gitlab, discord, slack, spotify, oidc", prefix, sp.Provider))
+		}
+		if sp.ClientID == "" {
+			errs = append(errs, fmt.Sprintf("%s.client_id is required", prefix))
+		}
+		if sp.ClientSecret == "" {
+			errs = append(errs, fmt.Sprintf("%s.client_secret is required", prefix))
+		}
+		if sp.Provider == "apple" {
+			if sp.TeamID == "" {
+				errs = append(errs, fmt.Sprintf("%s.team_id is required for provider \"apple\"", prefix))
+			}
+			if sp.KeyID == "" {
+				errs = append(errs, fmt.Sprintf("%s.key_id is required for provider \"apple\"", prefix))
+			}
+		}
+		if sp.Provider == "oidc" {
+			if sp.ID == "" {
+				errs = append(errs, fmt.Sprintf("%s.id is required for provider \"oidc\"", prefix))
+			}
+			if sp.IssuerURL == "" {
+				errs = append(errs, fmt.Sprintf("%s.issuer_url is required for provider \"oidc\"", prefix))
+			}
+		}
+	}
+
 	if len(errs) > 0 {
 		return fmt.Errorf("%s", strings.Join(errs, "; "))
 	}
@@ -295,6 +381,7 @@ func Load(configPath string) (*Config, error) {
 	v.SetDefault("auth.public_paths", []string{})
 	v.SetDefault("auth.session_cookie_name", "ory_kratos_session")
 	v.SetDefault("auth.login_url", "")
+	v.SetDefault("auth.social_providers", []SocialProviderConfig{})
 	v.SetDefault("rate_limit.enabled", true)
 	v.SetDefault("rate_limit.per_ip.requests_per_second", 10)
 	v.SetDefault("rate_limit.per_ip.burst", 20)
