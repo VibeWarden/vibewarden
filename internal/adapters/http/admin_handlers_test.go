@@ -15,7 +15,7 @@ import (
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
 
-// fakeAdminService implements vibehttp.AdminService for tests.
+// fakeAdminService implements ports.AdminService for tests.
 type fakeAdminService struct {
 	listResult *ports.PaginatedUsers
 	listErr    error
@@ -68,7 +68,7 @@ func makeTestUser(id, email string, status user.Status) *user.User {
 	}
 }
 
-func newMux(svc vibehttp.AdminService) *http.ServeMux {
+func newMux(svc ports.AdminService) *http.ServeMux {
 	mux := http.NewServeMux()
 	vibehttp.NewAdminHandlers(svc, nil).RegisterRoutes(mux)
 	return mux

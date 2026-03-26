@@ -1,7 +1,6 @@
 package http
 
 import (
-	"context"
 	"encoding/json"
 	"errors"
 	"log/slog"
@@ -22,33 +21,17 @@ const (
 	maxPerPage = 100
 )
 
-// AdminService is the interface that AdminHandlers depends on.
-// It is satisfied by *app/admin.Service and any test fake.
-type AdminService interface {
-	// ListUsers returns a paginated list of users.
-	ListUsers(ctx context.Context, pagination ports.Pagination) (*ports.PaginatedUsers, error)
-
-	// GetUser returns a single user by identity UUID.
-	GetUser(ctx context.Context, id string) (*user.User, error)
-
-	// InviteUser creates a new user identity and returns a recovery link.
-	InviteUser(ctx context.Context, email string, actorID string) (*ports.InviteResult, error)
-
-	// DeactivateUser deactivates the user and emits a domain event.
-	DeactivateUser(ctx context.Context, userID string, actorID string, reason string) error
-}
-
 // AdminHandlers holds the HTTP handler functions for the admin user management API.
 // All routes are registered under the /_vibewarden/admin/ prefix.
 type AdminHandlers struct {
-	svc    AdminService
+	svc    ports.AdminService
 	logger *slog.Logger
 }
 
 // NewAdminHandlers creates a new AdminHandlers backed by the supplied service.
 // logger is used to record internal errors that must not be exposed to clients;
 // pass slog.Default() when no custom logger is available.
-func NewAdminHandlers(svc AdminService, logger *slog.Logger) *AdminHandlers {
+func NewAdminHandlers(svc ports.AdminService, logger *slog.Logger) *AdminHandlers {
 	if logger == nil {
 		logger = slog.Default()
 	}

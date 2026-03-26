@@ -9,6 +9,11 @@ import (
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
 
+// defaultRateLimitRPS is the default requests-per-second value written into
+// generated agent context files. It must stay in sync with the rate_limit
+// per_ip.requests_per_second default in the vibewarden.yaml.tmpl template.
+const defaultRateLimitRPS = 10
+
 // agentSpec maps an AgentType to its template name and output path.
 type agentSpec struct {
 	templateName string
@@ -57,7 +62,7 @@ func (s *AgentContextService) GenerateAgentContext(
 		AuthEnabled:      opts.AuthEnabled,
 		RateLimitEnabled: opts.RateLimitEnabled,
 		TLSEnabled:       opts.TLSEnabled,
-		RateLimitRPS:     10, // TODO: must stay in sync with the rate_limit default in vibewarden.yaml template
+		RateLimitRPS:     defaultRateLimitRPS,
 		AdminEnabled:     false,
 	}
 

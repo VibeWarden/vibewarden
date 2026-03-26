@@ -25,25 +25,6 @@ func TestStatusConstants(t *testing.T) {
 	}
 }
 
-func TestAuditActionConstants(t *testing.T) {
-	tests := []struct {
-		name  string
-		value user.AuditAction
-		want  string
-	}{
-		{"created", user.AuditActionCreated, "created"},
-		{"deactivated", user.AuditActionDeactivated, "deactivated"},
-		{"reactivated", user.AuditActionReactivated, "reactivated"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if string(tt.value) != tt.want {
-				t.Errorf("AuditAction = %q, want %q", string(tt.value), tt.want)
-			}
-		})
-	}
-}
-
 func TestUserStruct(t *testing.T) {
 	now := time.Now().UTC().Truncate(time.Second)
 	u := user.User{
@@ -64,24 +45,5 @@ func TestUserStruct(t *testing.T) {
 	}
 	if !u.CreatedAt.Equal(now) {
 		t.Errorf("CreatedAt = %v, want %v", u.CreatedAt, now)
-	}
-}
-
-func TestAuditEntryStruct(t *testing.T) {
-	now := time.Now().UTC().Truncate(time.Second)
-	entry := user.AuditEntry{
-		UserID:      "abc-123",
-		Action:      user.AuditActionDeactivated,
-		PerformedAt: now,
-	}
-
-	if entry.UserID != "abc-123" {
-		t.Errorf("UserID = %q, want %q", entry.UserID, "abc-123")
-	}
-	if entry.Action != user.AuditActionDeactivated {
-		t.Errorf("Action = %q, want %q", entry.Action, user.AuditActionDeactivated)
-	}
-	if !entry.PerformedAt.Equal(now) {
-		t.Errorf("PerformedAt = %v, want %v", entry.PerformedAt, now)
 	}
 }

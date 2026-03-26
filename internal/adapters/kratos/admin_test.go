@@ -163,36 +163,17 @@ func TestAdminAdapter_GetUser_NotFound(t *testing.T) {
 	}
 }
 
-func TestAdminAdapter_GetUser_InvalidUUID(t *testing.T) {
-	tests := []struct {
-		name string
-		id   string
-	}{
-		{"empty", ""},
-		{"not-a-uuid", "not-a-uuid"},
-		{"too-short", "abc123"},
-		{"uppercase-uuid-still-valid", "A1B2C3D4-E5F6-7890-ABCD-EF1234567890"},
-	}
-
+// TestAdminAdapter_GetUser_InvalidUUID_NoLongerValidatedByAdapter verifies that
+// UUID validation is not performed by the adapter — it is the HTTP handler's
+// responsibility (see internal/adapters/http/validation.go). The adapter passes
+// the id directly to the Kratos API which returns 404 for unknown identities.
+func TestAdminAdapter_GetUser_InvalidUUID_NoLongerValidatedByAdapter(t *testing.T) {
+	// The adapter must NOT return ErrInvalidUUID — it delegates that
+	// responsibility to the caller (HTTP handler via ValidateUUID).
 	adapter := kratos.NewAdminAdapter("http://localhost:4434", 0, newTestLogger())
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// Uppercase UUIDs should be accepted (normalised internally).
-			if tt.name == "uppercase-uuid-still-valid" {
-				_, err := adapter.GetUser(context.Background(), tt.id)
-				// This will fail at network level, not UUID validation.
-				// Verify it does NOT return ErrInvalidUUID.
-				if errors.Is(err, ports.ErrInvalidUUID) {
-					t.Errorf("GetUser(%q) returned ErrInvalidUUID, uppercase UUIDs should be accepted", tt.id)
-				}
-				return
-			}
-			_, err := adapter.GetUser(context.Background(), tt.id)
-			if !errors.Is(err, ports.ErrInvalidUUID) {
-				t.Errorf("GetUser(%q) error = %v, want ErrInvalidUUID", tt.id, err)
-			}
-		})
+	_, err := adapter.GetUser(context.Background(), "not-a-uuid")
+	if errors.Is(err, ports.ErrInvalidUUID) {
+		t.Errorf("GetUser() should not return ErrInvalidUUID — validation is the HTTP layer's responsibility")
 	}
 }
 
@@ -296,27 +277,16 @@ func TestAdminAdapter_InviteUser_AlreadyExists(t *testing.T) {
 	}
 }
 
-func TestAdminAdapter_InviteUser_InvalidEmail(t *testing.T) {
-	tests := []struct {
-		name  string
-		email string
-	}{
-		{"empty", ""},
-		{"no-at", "notanemail"},
-		{"no-domain", "user@"},
-		{"no-local", "@example.com"},
-		{"whitespace", "user @example.com"},
-	}
-
+// TestAdminAdapter_InviteUser_InvalidEmail_NoLongerValidatedByAdapter verifies
+// that email validation is not performed by the adapter — it is the HTTP
+// handler's responsibility (see internal/adapters/http/validation.go).
+func TestAdminAdapter_InviteUser_InvalidEmail_NoLongerValidatedByAdapter(t *testing.T) {
+	// The adapter must NOT return ErrInvalidEmail — it delegates that
+	// responsibility to the caller (HTTP handler via ValidateEmail).
 	adapter := kratos.NewAdminAdapter("http://localhost:4434", 0, newTestLogger())
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			_, err := adapter.InviteUser(context.Background(), tt.email)
-			if !errors.Is(err, ports.ErrInvalidEmail) {
-				t.Errorf("InviteUser(%q) error = %v, want ErrInvalidEmail", tt.email, err)
-			}
-		})
+	_, err := adapter.InviteUser(context.Background(), "notanemail")
+	if errors.Is(err, ports.ErrInvalidEmail) {
+		t.Errorf("InviteUser() should not return ErrInvalidEmail — validation is the HTTP layer's responsibility")
 	}
 }
 
@@ -383,25 +353,16 @@ func TestAdminAdapter_DeactivateUser_NotFound(t *testing.T) {
 	}
 }
 
-func TestAdminAdapter_DeactivateUser_InvalidUUID(t *testing.T) {
-	tests := []struct {
-		name string
-		id   string
-	}{
-		{"empty", ""},
-		{"plain-string", "user-1234"},
-		{"partial-uuid", "a1b2c3d4-e5f6"},
-	}
-
+// TestAdminAdapter_DeactivateUser_InvalidUUID_NoLongerValidatedByAdapter verifies
+// that UUID validation is not performed by the adapter — it is the HTTP
+// handler's responsibility (see internal/adapters/http/validation.go).
+func TestAdminAdapter_DeactivateUser_InvalidUUID_NoLongerValidatedByAdapter(t *testing.T) {
+	// The adapter must NOT return ErrInvalidUUID — it delegates that
+	// responsibility to the caller (HTTP handler via ValidateUUID).
 	adapter := kratos.NewAdminAdapter("http://localhost:4434", 0, newTestLogger())
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			err := adapter.DeactivateUser(context.Background(), tt.id)
-			if !errors.Is(err, ports.ErrInvalidUUID) {
-				t.Errorf("DeactivateUser(%q) error = %v, want ErrInvalidUUID", tt.id, err)
-			}
-		})
+	err := adapter.DeactivateUser(context.Background(), "not-a-uuid")
+	if errors.Is(err, ports.ErrInvalidUUID) {
+		t.Errorf("DeactivateUser() should not return ErrInvalidUUID — validation is the HTTP layer's responsibility")
 	}
 }
 

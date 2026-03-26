@@ -8,22 +8,11 @@ import (
 	"log/slog"
 	"net/http"
 	"net/url"
-	"regexp"
-	"strings"
 	"time"
 
 	"github.com/vibewarden/vibewarden/internal/domain/user"
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
-
-// uuidPattern is the regex for a canonical UUID v4 format.
-var uuidPattern = regexp.MustCompile(
-	`^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$`,
-)
-
-// emailPattern is a minimal RFC5322-aligned email validator.
-// It rejects obviously malformed values without requiring a full parser.
-var emailPattern = regexp.MustCompile(`^[^@\s]+@[^@\s]+\.[^@\s]+$`)
 
 // kratosAdminIdentity mirrors the identity object returned by the Kratos admin API.
 type kratosAdminIdentity struct {
@@ -126,10 +115,6 @@ func (a *AdminAdapter) ListUsers(ctx context.Context, pagination ports.Paginatio
 // GetUser implements ports.UserAdmin.
 // It calls GET /admin/identities/:id.
 func (a *AdminAdapter) GetUser(ctx context.Context, id string) (*user.User, error) {
-	if err := validateUUID(id); err != nil {
-		return nil, err
-	}
-
 	endpoint := fmt.Sprintf("%s/admin/identities/%s", a.adminURL, url.PathEscape(id))
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
@@ -165,10 +150,6 @@ func (a *AdminAdapter) GetUser(ctx context.Context, id string) (*user.User, erro
 // It calls POST /admin/identities to create the identity, then
 // POST /admin/recovery/link to obtain a one-time recovery link.
 func (a *AdminAdapter) InviteUser(ctx context.Context, email string) (*ports.InviteResult, error) {
-	if err := validateEmail(email); err != nil {
-		return nil, err
-	}
-
 	// Step 1: Create the identity.
 	createBody := kratosCreateIdentityRequest{
 		SchemaID: "default",
@@ -228,10 +209,6 @@ func (a *AdminAdapter) InviteUser(ctx context.Context, email string) (*ports.Inv
 // DeactivateUser implements ports.UserAdmin.
 // It calls PATCH /admin/identities/:id with state=inactive.
 func (a *AdminAdapter) DeactivateUser(ctx context.Context, id string) error {
-	if err := validateUUID(id); err != nil {
-		return err
-	}
-
 	patchBody := kratosPatchIdentityRequest{State: "inactive"}
 	bodyBytes, err := json.Marshal(patchBody)
 	if err != nil {
@@ -354,18 +331,3 @@ func mapIdentityToUser(id kratosAdminIdentity) user.User {
 	}
 }
 
-// validateUUID returns ErrInvalidUUID when id is not a canonical UUID.
-func validateUUID(id string) error {
-	if !uuidPattern.MatchString(strings.ToLower(id)) {
-		return fmt.Errorf("%q: %w", id, ports.ErrInvalidUUID)
-	}
-	return nil
-}
-
-// validateEmail returns ErrInvalidEmail when email does not look valid.
-func validateEmail(email string) error {
-	if !emailPattern.MatchString(email) {
-		return fmt.Errorf("%q: %w", email, ports.ErrInvalidEmail)
-	}
-	return nil
-}
