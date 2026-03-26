@@ -8,7 +8,7 @@ import (
 	"testing"
 
 	scaffoldapp "github.com/vibewarden/vibewarden/internal/app/scaffold"
-	"github.com/vibewarden/vibewarden/internal/cli/scaffold"
+	domainscaffold "github.com/vibewarden/vibewarden/internal/domain/scaffold"
 )
 
 // fakeAgentRenderer records calls so tests can assert which templates were used.
@@ -56,36 +56,36 @@ func TestAgentContextService_GenerateAgentContext(t *testing.T) {
 
 	tests := []struct {
 		name          string
-		agentType     scaffold.AgentType
+		agentType     domainscaffold.AgentType
 		opts          scaffoldapp.InitOptions
 		wantPaths     []string
 		wantTemplates []string
 		wantErr       bool
 	}{
 		{
-			name:      "claude generates .claude/CLAUDE.md",
-			agentType: scaffold.AgentTypeClaude,
-			opts:      baseOpts,
-			wantPaths: []string{filepath.Join(".claude", "CLAUDE.md")},
+			name:          "claude generates .claude/CLAUDE.md",
+			agentType:     domainscaffold.AgentTypeClaude,
+			opts:          baseOpts,
+			wantPaths:     []string{filepath.Join(".claude", "CLAUDE.md")},
 			wantTemplates: []string{"claude.md.tmpl"},
 		},
 		{
-			name:      "cursor generates .cursor/rules",
-			agentType: scaffold.AgentTypeCursor,
-			opts:      baseOpts,
-			wantPaths: []string{filepath.Join(".cursor", "rules")},
+			name:          "cursor generates .cursor/rules",
+			agentType:     domainscaffold.AgentTypeCursor,
+			opts:          baseOpts,
+			wantPaths:     []string{filepath.Join(".cursor", "rules")},
 			wantTemplates: []string{"cursor-rules.tmpl"},
 		},
 		{
 			name:          "generic generates AGENTS.md",
-			agentType:     scaffold.AgentTypeGeneric,
+			agentType:     domainscaffold.AgentTypeGeneric,
 			opts:          baseOpts,
 			wantPaths:     []string{"AGENTS.md"},
 			wantTemplates: []string{"agents.md.tmpl"},
 		},
 		{
 			name:      "all generates three files",
-			agentType: scaffold.AgentTypeAll,
+			agentType: domainscaffold.AgentTypeAll,
 			opts:      baseOpts,
 			wantPaths: []string{
 				filepath.Join(".claude", "CLAUDE.md"),
@@ -96,7 +96,7 @@ func TestAgentContextService_GenerateAgentContext(t *testing.T) {
 		},
 		{
 			name:      "force false does not overwrite existing file",
-			agentType: scaffold.AgentTypeGeneric,
+			agentType: domainscaffold.AgentTypeGeneric,
 			opts: scaffoldapp.InitOptions{
 				UpstreamPort: 3000,
 				Force:        false,
@@ -165,7 +165,7 @@ func TestAgentContextService_GenerateAgentContext_ForceOverwrites(t *testing.T) 
 		Force:        true,
 	}
 
-	written, err := svc.GenerateAgentContext(context.Background(), dir, scaffold.AgentTypeGeneric, opts)
+	written, err := svc.GenerateAgentContext(context.Background(), dir, domainscaffold.AgentTypeGeneric, opts)
 	if err != nil {
 		t.Fatalf("GenerateAgentContext() unexpected error: %v", err)
 	}
@@ -190,7 +190,7 @@ func TestAgentContextService_GenerateAgentContext_RenderError(t *testing.T) {
 	svc := scaffoldapp.NewAgentContextService(renderer)
 
 	opts := scaffoldapp.InitOptions{UpstreamPort: 3000}
-	_, err := svc.GenerateAgentContext(context.Background(), dir, scaffold.AgentTypeClaude, opts)
+	_, err := svc.GenerateAgentContext(context.Background(), dir, domainscaffold.AgentTypeClaude, opts)
 	if err == nil {
 		t.Fatal("expected error but got nil")
 	}
@@ -204,7 +204,7 @@ func TestResolveAgentTypes_AllExpands(t *testing.T) {
 	svc := scaffoldapp.NewAgentContextService(renderer)
 
 	opts := scaffoldapp.InitOptions{UpstreamPort: 3000}
-	written, err := svc.GenerateAgentContext(context.Background(), dir, scaffold.AgentTypeAll, opts)
+	written, err := svc.GenerateAgentContext(context.Background(), dir, domainscaffold.AgentTypeAll, opts)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}

@@ -6,7 +6,7 @@ import (
 	"testing"
 
 	scaffoldadapter "github.com/vibewarden/vibewarden/internal/adapters/scaffold"
-	"github.com/vibewarden/vibewarden/internal/cli/scaffold"
+	"github.com/vibewarden/vibewarden/internal/domain/scaffold"
 )
 
 func TestDetector_Detect(t *testing.T) {

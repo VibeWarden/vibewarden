@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"path/filepath"
 
-	"github.com/vibewarden/vibewarden/internal/cli/scaffold"
+	domainscaffold "github.com/vibewarden/vibewarden/internal/domain/scaffold"
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
 
@@ -16,17 +16,17 @@ type agentSpec struct {
 }
 
 // agentSpecs defines the template and output path for each supported agent type.
-var agentSpecs = map[scaffold.AgentType]agentSpec{
-	scaffold.AgentTypeClaude:  {templateName: "claude.md.tmpl", outputPath: filepath.Join(".claude", "CLAUDE.md")},
-	scaffold.AgentTypeCursor:  {templateName: "cursor-rules.tmpl", outputPath: filepath.Join(".cursor", "rules")},
-	scaffold.AgentTypeGeneric: {templateName: "agents.md.tmpl", outputPath: "AGENTS.md"},
+var agentSpecs = map[domainscaffold.AgentType]agentSpec{
+	domainscaffold.AgentTypeClaude:  {templateName: "claude.md.tmpl", outputPath: filepath.Join(".claude", "CLAUDE.md")},
+	domainscaffold.AgentTypeCursor:  {templateName: "cursor-rules.tmpl", outputPath: filepath.Join(".cursor", "rules")},
+	domainscaffold.AgentTypeGeneric: {templateName: "agents.md.tmpl", outputPath: "AGENTS.md"},
 }
 
 // allAgentTypes is the ordered slice used when AgentTypeAll is requested.
-var allAgentTypes = []scaffold.AgentType{
-	scaffold.AgentTypeClaude,
-	scaffold.AgentTypeCursor,
-	scaffold.AgentTypeGeneric,
+var allAgentTypes = []domainscaffold.AgentType{
+	domainscaffold.AgentTypeClaude,
+	domainscaffold.AgentTypeCursor,
+	domainscaffold.AgentTypeGeneric,
 }
 
 // AgentContextService generates AI agent context files for a project.
@@ -49,15 +49,15 @@ func NewAgentContextService(renderer ports.TemplateRenderer) *AgentContextServic
 func (s *AgentContextService) GenerateAgentContext(
 	_ context.Context,
 	dir string,
-	agentType scaffold.AgentType,
+	agentType domainscaffold.AgentType,
 	opts InitOptions,
 ) ([]string, error) {
-	data := scaffold.AgentContextData{
+	data := domainscaffold.AgentContextData{
 		UpstreamPort:     opts.UpstreamPort,
 		AuthEnabled:      opts.AuthEnabled,
 		RateLimitEnabled: opts.RateLimitEnabled,
 		TLSEnabled:       opts.TLSEnabled,
-		RateLimitRPS:     10, // sensible default matching vibewarden.yaml template
+		RateLimitRPS:     10, // TODO: must stay in sync with the rate_limit default in vibewarden.yaml template
 		AdminEnabled:     false,
 	}
 
@@ -82,9 +82,9 @@ func (s *AgentContextService) GenerateAgentContext(
 
 // resolveAgentTypes expands AgentTypeAll into the full list; otherwise returns
 // a single-element slice.
-func resolveAgentTypes(agentType scaffold.AgentType) []scaffold.AgentType {
-	if agentType == scaffold.AgentTypeAll {
+func resolveAgentTypes(agentType domainscaffold.AgentType) []domainscaffold.AgentType {
+	if agentType == domainscaffold.AgentTypeAll {
 		return allAgentTypes
 	}
-	return []scaffold.AgentType{agentType}
+	return []domainscaffold.AgentType{agentType}
 }

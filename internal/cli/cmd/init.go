@@ -11,8 +11,8 @@ import (
 	scaffoldadapter "github.com/vibewarden/vibewarden/internal/adapters/scaffold"
 	templateadapter "github.com/vibewarden/vibewarden/internal/adapters/template"
 	scaffoldapp "github.com/vibewarden/vibewarden/internal/app/scaffold"
-	"github.com/vibewarden/vibewarden/internal/cli/scaffold"
 	"github.com/vibewarden/vibewarden/internal/cli/templates"
+	domainscaffold "github.com/vibewarden/vibewarden/internal/domain/scaffold"
 )
 
 // NewInitCmd creates the `vibewarden init` subcommand.
@@ -114,16 +114,16 @@ Examples:
 	return cmd
 }
 
-// parseAgentType converts the --agent flag string to a scaffold.AgentType.
+// parseAgentType converts the --agent flag string to a domainscaffold.AgentType.
 // Returns an empty AgentType (and no error) when value is "none".
-func parseAgentType(value string) (scaffold.AgentType, error) {
-	switch scaffold.AgentType(value) {
-	case scaffold.AgentTypeClaude,
-		scaffold.AgentTypeCursor,
-		scaffold.AgentTypeGeneric,
-		scaffold.AgentTypeAll:
-		return scaffold.AgentType(value), nil
-	case scaffold.AgentType("none"), scaffold.AgentType(""):
+func parseAgentType(value string) (domainscaffold.AgentType, error) {
+	switch domainscaffold.AgentType(value) {
+	case domainscaffold.AgentTypeClaude,
+		domainscaffold.AgentTypeCursor,
+		domainscaffold.AgentTypeGeneric,
+		domainscaffold.AgentTypeAll:
+		return domainscaffold.AgentType(value), nil
+	case domainscaffold.AgentType("none"), domainscaffold.AgentType(""):
 		return "", nil
 	default:
 		return "", fmt.Errorf(

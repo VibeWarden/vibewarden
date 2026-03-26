@@ -5,8 +5,8 @@ import (
 	"testing"
 
 	templateadapter "github.com/vibewarden/vibewarden/internal/adapters/template"
-	"github.com/vibewarden/vibewarden/internal/cli/scaffold"
 	"github.com/vibewarden/vibewarden/internal/cli/templates"
+	domainscaffold "github.com/vibewarden/vibewarden/internal/domain/scaffold"
 )
 
 func TestAgentContextTemplates_Claudemd(t *testing.T) {
@@ -14,13 +14,13 @@ func TestAgentContextTemplates_Claudemd(t *testing.T) {
 
 	tests := []struct {
 		name         string
-		data         scaffold.AgentContextData
+		data         domainscaffold.AgentContextData
 		wantContains []string
 		wantAbsent   []string
 	}{
 		{
 			name: "all features enabled",
-			data: scaffold.AgentContextData{
+			data: domainscaffold.AgentContextData{
 				UpstreamPort:     3000,
 				AuthEnabled:      true,
 				RateLimitEnabled: true,
@@ -45,7 +45,7 @@ func TestAgentContextTemplates_Claudemd(t *testing.T) {
 		},
 		{
 			name: "auth disabled excludes auth section",
-			data: scaffold.AgentContextData{
+			data: domainscaffold.AgentContextData{
 				UpstreamPort:     8080,
 				AuthEnabled:      false,
 				RateLimitEnabled: false,
@@ -65,7 +65,7 @@ func TestAgentContextTemplates_Claudemd(t *testing.T) {
 		},
 		{
 			name: "rate limiting disabled excludes rate limit section",
-			data: scaffold.AgentContextData{
+			data: domainscaffold.AgentContextData{
 				UpstreamPort:     3000,
 				AuthEnabled:      false,
 				RateLimitEnabled: false,
@@ -107,13 +107,13 @@ func TestAgentContextTemplates_CursorRules(t *testing.T) {
 
 	tests := []struct {
 		name         string
-		data         scaffold.AgentContextData
+		data         domainscaffold.AgentContextData
 		wantContains []string
 		wantAbsent   []string
 	}{
 		{
 			name: "all features enabled",
-			data: scaffold.AgentContextData{
+			data: domainscaffold.AgentContextData{
 				UpstreamPort:     3000,
 				AuthEnabled:      true,
 				RateLimitEnabled: true,
@@ -135,7 +135,7 @@ func TestAgentContextTemplates_CursorRules(t *testing.T) {
 		},
 		{
 			name: "auth disabled excludes auth section",
-			data: scaffold.AgentContextData{
+			data: domainscaffold.AgentContextData{
 				UpstreamPort:     5000,
 				AuthEnabled:      false,
 				RateLimitEnabled: false,
@@ -181,13 +181,13 @@ func TestAgentContextTemplates_AgentsMd(t *testing.T) {
 
 	tests := []struct {
 		name         string
-		data         scaffold.AgentContextData
+		data         domainscaffold.AgentContextData
 		wantContains []string
 		wantAbsent   []string
 	}{
 		{
 			name: "all features enabled",
-			data: scaffold.AgentContextData{
+			data: domainscaffold.AgentContextData{
 				UpstreamPort:     3000,
 				AuthEnabled:      true,
 				RateLimitEnabled: true,
@@ -212,7 +212,7 @@ func TestAgentContextTemplates_AgentsMd(t *testing.T) {
 		},
 		{
 			name: "auth disabled excludes auth section",
-			data: scaffold.AgentContextData{
+			data: domainscaffold.AgentContextData{
 				UpstreamPort:     4000,
 				AuthEnabled:      false,
 				RateLimitEnabled: false,

@@ -7,7 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/vibewarden/vibewarden/internal/cli/scaffold"
+	domainscaffold "github.com/vibewarden/vibewarden/internal/domain/scaffold"
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
 
@@ -87,7 +87,7 @@ func (s *Service) Init(_ context.Context, dir string, opts InitOptions) error {
 		}
 	}
 
-	data := scaffold.TemplateData{
+	data := domainscaffold.TemplateData{
 		UpstreamPort:     upstreamPort,
 		AuthEnabled:      opts.AuthEnabled,
 		RateLimitEnabled: opts.RateLimitEnabled,

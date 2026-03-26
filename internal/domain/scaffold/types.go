@@ -1,5 +1,6 @@
-// Package scaffold provides value objects and types for the VibeWarden
-// project scaffolding subsystem.
+// Package scaffold contains the core value objects for the VibeWarden
+// project scaffolding subsystem. This package has zero external dependencies
+// and is safe to import from any layer.
 package scaffold
 
 // ProjectType represents the detected project type.
@@ -56,7 +57,7 @@ type ScaffoldOptions struct {
 	Force bool
 }
 
-// TemplateData is the data passed to every template when rendering.
+// TemplateData is the data passed to every scaffold template when rendering.
 type TemplateData struct {
 	// UpstreamPort is the port of the protected application.
 	UpstreamPort int
