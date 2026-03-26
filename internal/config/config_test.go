@@ -336,3 +336,170 @@ func TestLoad_MetricsEnvVarOverride(t *testing.T) {
 		t.Errorf("metrics.enabled = true, want false after VIBEWARDEN_METRICS_ENABLED=false")
 	}
 }
+
+// TestLoad_NewFieldDefaults verifies defaults for all new config fields added in #117.
+func TestLoad_NewFieldDefaults(t *testing.T) {
+	cfg, err := config.Load("")
+	if err != nil {
+		t.Fatalf("Load() unexpected error: %v", err)
+	}
+
+	tests := []struct {
+		name string
+		got  interface{}
+		want interface{}
+	}{
+		{"auth.enabled", cfg.Auth.Enabled, false},
+		{"auth.identity_schema", cfg.Auth.IdentitySchema, "email_password"},
+		{"auth.session_cookie_name", cfg.Auth.SessionCookieName, "ory_kratos_session"},
+		{"auth.login_url", cfg.Auth.LoginURL, ""},
+		{"kratos.dsn", cfg.Kratos.DSN, ""},
+		{"kratos.smtp.host", cfg.Kratos.SMTP.Host, "localhost"},
+		{"kratos.smtp.port", cfg.Kratos.SMTP.Port, 1025},
+		{"kratos.smtp.from", cfg.Kratos.SMTP.From, "no-reply@vibewarden.local"},
+		{"overrides.kratos_config", cfg.Overrides.KratosConfig, ""},
+		{"overrides.compose_file", cfg.Overrides.ComposeFile, ""},
+		{"overrides.identity_schema", cfg.Overrides.IdentitySchema, ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.got != tt.want {
+				t.Errorf("default %s = %v, want %v", tt.name, tt.got, tt.want)
+			}
+		})
+	}
+}
+
+// TestLoad_NewFieldsFromFile verifies that new fields are correctly loaded from a config file.
+func TestLoad_NewFieldsFromFile(t *testing.T) {
+	content := `
+auth:
+  enabled: true
+  identity_schema: email_only
+  session_cookie_name: my_session
+  login_url: /login
+  public_paths:
+    - /health
+    - /static/*
+
+kratos:
+  public_url: "http://localhost:4433"
+  admin_url: "http://localhost:4434"
+  dsn: "postgres://kratos:secret@localhost:5432/kratos?sslmode=disable"
+  smtp:
+    host: smtp.example.com
+    port: 587
+    from: noreply@example.com
+
+overrides:
+  kratos_config: /custom/kratos.yml
+  compose_file: /custom/override.yml
+  identity_schema: /custom/schema.json
+`
+	dir := t.TempDir()
+	cfgFile := filepath.Join(dir, "vibewarden.yaml")
+	if err := os.WriteFile(cfgFile, []byte(content), 0600); err != nil {
+		t.Fatalf("writing temp config file: %v", err)
+	}
+
+	cfg, err := config.Load(cfgFile)
+	if err != nil {
+		t.Fatalf("Load() unexpected error: %v", err)
+	}
+
+	tests := []struct {
+		name string
+		got  interface{}
+		want interface{}
+	}{
+		{"auth.enabled", cfg.Auth.Enabled, true},
+		{"auth.identity_schema", cfg.Auth.IdentitySchema, "email_only"},
+		{"auth.session_cookie_name", cfg.Auth.SessionCookieName, "my_session"},
+		{"auth.login_url", cfg.Auth.LoginURL, "/login"},
+		{"auth.public_paths[0]", cfg.Auth.PublicPaths[0], "/health"},
+		{"auth.public_paths[1]", cfg.Auth.PublicPaths[1], "/static/*"},
+		{"kratos.dsn", cfg.Kratos.DSN, "postgres://kratos:secret@localhost:5432/kratos?sslmode=disable"},
+		{"kratos.smtp.host", cfg.Kratos.SMTP.Host, "smtp.example.com"},
+		{"kratos.smtp.port", cfg.Kratos.SMTP.Port, 587},
+		{"kratos.smtp.from", cfg.Kratos.SMTP.From, "noreply@example.com"},
+		{"overrides.kratos_config", cfg.Overrides.KratosConfig, "/custom/kratos.yml"},
+		{"overrides.compose_file", cfg.Overrides.ComposeFile, "/custom/override.yml"},
+		{"overrides.identity_schema", cfg.Overrides.IdentitySchema, "/custom/schema.json"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.got != tt.want {
+				t.Errorf("%s = %v, want %v", tt.name, tt.got, tt.want)
+			}
+		})
+	}
+}
+
+// TestLoad_BackwardCompatibility verifies that existing config files without the new
+// fields continue to load successfully with appropriate defaults.
+func TestLoad_BackwardCompatibility(t *testing.T) {
+	// This is a typical pre-#117 vibewarden.yaml with no auth, kratos.dsn, or overrides fields.
+	legacyConfig := `
+server:
+  host: "127.0.0.1"
+  port: 8080
+
+upstream:
+  host: "127.0.0.1"
+  port: 3000
+
+kratos:
+  public_url: "http://localhost:4433"
+  admin_url: "http://localhost:4434"
+
+auth:
+  session_cookie_name: "ory_kratos_session"
+  login_url: "/self-service/login/browser"
+  public_paths:
+    - "/health"
+
+log:
+  level: "info"
+  format: "json"
+`
+	dir := t.TempDir()
+	cfgFile := filepath.Join(dir, "vibewarden.yaml")
+	if err := os.WriteFile(cfgFile, []byte(legacyConfig), 0600); err != nil {
+		t.Fatalf("writing temp config file: %v", err)
+	}
+
+	cfg, err := config.Load(cfgFile)
+	if err != nil {
+		t.Fatalf("Load() unexpected error for legacy config: %v", err)
+	}
+
+	// Existing fields must still be set correctly.
+	if cfg.Server.Port != 8080 {
+		t.Errorf("server.port = %d, want 8080", cfg.Server.Port)
+	}
+	if cfg.Kratos.PublicURL != "http://localhost:4433" {
+		t.Errorf("kratos.public_url = %q, want %q", cfg.Kratos.PublicURL, "http://localhost:4433")
+	}
+	if cfg.Auth.SessionCookieName != "ory_kratos_session" {
+		t.Errorf("auth.session_cookie_name = %q, want %q", cfg.Auth.SessionCookieName, "ory_kratos_session")
+	}
+	if len(cfg.Auth.PublicPaths) != 1 || cfg.Auth.PublicPaths[0] != "/health" {
+		t.Errorf("auth.public_paths = %v, want [\"/health\"]", cfg.Auth.PublicPaths)
+	}
+
+	// New fields must have their defaults.
+	if cfg.Auth.Enabled {
+		t.Errorf("auth.enabled = true, want false (backward compat default)")
+	}
+	if cfg.Auth.IdentitySchema != "email_password" {
+		t.Errorf("auth.identity_schema = %q, want %q", cfg.Auth.IdentitySchema, "email_password")
+	}
+	if cfg.Kratos.DSN != "" {
+		t.Errorf("kratos.dsn = %q, want empty (backward compat default)", cfg.Kratos.DSN)
+	}
+	if cfg.Overrides.KratosConfig != "" {
+		t.Errorf("overrides.kratos_config = %q, want empty (backward compat default)", cfg.Overrides.KratosConfig)
+	}
+}

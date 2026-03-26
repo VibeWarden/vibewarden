@@ -24,7 +24,7 @@ type Config struct {
 	Kratos KratosConfig `mapstructure:"kratos"`
 
 	// Auth middleware configuration
-	Auth AuthMiddlewareConfig `mapstructure:"auth"`
+	Auth AuthConfig `mapstructure:"auth"`
 
 	// Rate limiting configuration
 	RateLimit RateLimitConfig `mapstructure:"rate_limit"`
@@ -43,6 +43,10 @@ type Config struct {
 
 	// Database configuration
 	Database DatabaseConfig `mapstructure:"database"`
+
+	// Overrides provides escape hatches for advanced users who need to supply
+	// hand-crafted config files instead of relying on VibeWarden's generation.
+	Overrides OverridesConfig `mapstructure:"overrides"`
 }
 
 // DatabaseConfig holds PostgreSQL connection settings used for audit logging
@@ -89,17 +93,44 @@ type TLSConfig struct {
 	StoragePath string `mapstructure:"storage_path"`
 }
 
-// KratosConfig holds Ory Kratos connection settings.
-type KratosConfig struct {
-	// PublicURL is the Kratos public API URL
-	PublicURL string `mapstructure:"public_url"`
-	// AdminURL is the Kratos admin API URL
-	AdminURL string `mapstructure:"admin_url"`
+// KratosSMTPConfig holds SMTP settings used by Ory Kratos to send emails.
+type KratosSMTPConfig struct {
+	// Host is the SMTP server hostname (default: "localhost").
+	Host string `mapstructure:"host"`
+	// Port is the SMTP server port (default: 1025).
+	Port int `mapstructure:"port"`
+	// From is the sender address for Kratos emails (default: "no-reply@vibewarden.local").
+	From string `mapstructure:"from"`
 }
 
-// AuthMiddlewareConfig holds auth middleware settings.
+// KratosConfig holds Ory Kratos connection settings.
+// These values are used both for the auth middleware and for generating
+// the Kratos config file under .vibewarden/generated/.
+type KratosConfig struct {
+	// PublicURL is the Kratos public API URL (default: "http://127.0.0.1:4433")
+	PublicURL string `mapstructure:"public_url"`
+	// AdminURL is the Kratos admin API URL (default: "http://127.0.0.1:4434")
+	AdminURL string `mapstructure:"admin_url"`
+	// DSN is the data source name for the Kratos database.
+	// Example: "postgres://kratos:secret@localhost:5432/kratos?sslmode=disable"
+	DSN string `mapstructure:"dsn"`
+	// SMTP holds email delivery settings for Kratos.
+	SMTP KratosSMTPConfig `mapstructure:"smtp"`
+}
+
+// AuthConfig holds auth middleware settings.
 // Authentication is enabled automatically when Kratos.PublicURL is non-empty.
-type AuthMiddlewareConfig struct {
+type AuthConfig struct {
+	// Enabled toggles the authentication middleware (default: false).
+	// When true, all requests must present a valid Kratos session cookie unless
+	// the path matches one of the PublicPaths patterns.
+	Enabled bool `mapstructure:"enabled"`
+
+	// IdentitySchema selects the identity schema to use.
+	// Accepted values: "email_password" (default), "email_only", "username_password",
+	// or a filesystem path to a custom JSON schema file.
+	IdentitySchema string `mapstructure:"identity_schema"`
+
 	// PublicPaths is a list of URL path glob patterns that bypass auth.
 	// The /_vibewarden/* prefix is always public (added automatically).
 	// Supports * for single-segment wildcards (e.g. "/static/*").
@@ -200,6 +231,23 @@ type MetricsConfig struct {
 	PathPatterns []string `mapstructure:"path_patterns"`
 }
 
+// OverridesConfig provides escape hatches for users who need to supply
+// hand-crafted configuration files instead of relying on VibeWarden's
+// auto-generation. All fields are optional.
+type OverridesConfig struct {
+	// KratosConfig is the path to a custom kratos.yml file.
+	// When non-empty, VibeWarden uses this file instead of generating one.
+	KratosConfig string `mapstructure:"kratos_config"`
+
+	// ComposeFile is the path to a docker-compose.override.yml file.
+	// When non-empty, VibeWarden merges this file with the generated compose file.
+	ComposeFile string `mapstructure:"compose_file"`
+
+	// IdentitySchema is the path to a custom Kratos identity schema JSON file.
+	// When non-empty, this file is used instead of the preset selected by auth.identity_schema.
+	IdentitySchema string `mapstructure:"identity_schema"`
+}
+
 // Validate checks the loaded configuration for logical consistency.
 // It returns a combined error listing all violations found.
 // Call Validate after Load to catch misconfiguration early.
@@ -238,6 +286,12 @@ func Load(configPath string) (*Config, error) {
 	v.SetDefault("tls.provider", "self-signed")
 	v.SetDefault("kratos.public_url", "http://127.0.0.1:4433")
 	v.SetDefault("kratos.admin_url", "http://127.0.0.1:4434")
+	v.SetDefault("kratos.dsn", "")
+	v.SetDefault("kratos.smtp.host", "localhost")
+	v.SetDefault("kratos.smtp.port", 1025)
+	v.SetDefault("kratos.smtp.from", "no-reply@vibewarden.local")
+	v.SetDefault("auth.enabled", false)
+	v.SetDefault("auth.identity_schema", "email_password")
 	v.SetDefault("auth.public_paths", []string{})
 	v.SetDefault("auth.session_cookie_name", "ory_kratos_session")
 	v.SetDefault("auth.login_url", "")
@@ -264,6 +318,9 @@ func Load(configPath string) (*Config, error) {
 	v.SetDefault("metrics.enabled", true)
 	v.SetDefault("metrics.path_patterns", []string{})
 	v.SetDefault("database.url", "")
+	v.SetDefault("overrides.kratos_config", "")
+	v.SetDefault("overrides.compose_file", "")
+	v.SetDefault("overrides.identity_schema", "")
 
 	// Config file
 	if configPath != "" {
