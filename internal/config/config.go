@@ -37,6 +37,9 @@ type Config struct {
 
 	// Security headers configuration
 	SecurityHeaders SecurityHeadersConfig `mapstructure:"security_headers"`
+
+	// Metrics configuration
+	Metrics MetricsConfig `mapstructure:"metrics"`
 }
 
 // ServerConfig holds server-related settings.
@@ -174,6 +177,17 @@ type SecurityHeadersConfig struct {
 	PermissionsPolicy string `mapstructure:"permissions_policy"`
 }
 
+// MetricsConfig holds Prometheus metrics settings.
+type MetricsConfig struct {
+	// Enabled toggles metrics collection and the /_vibewarden/metrics endpoint (default: true).
+	Enabled bool `mapstructure:"enabled"`
+
+	// PathPatterns is a list of URL path normalization patterns using :param syntax.
+	// Example: "/users/:id", "/api/v1/items/:item_id/comments/:comment_id"
+	// Paths that don't match any pattern are recorded as "other".
+	PathPatterns []string `mapstructure:"path_patterns"`
+}
+
 // Load reads configuration from file and environment variables.
 // Config file path can be specified; defaults to "./vibewarden.yaml".
 // Environment variables override file values using VIBEWARDEN_ prefix.
@@ -213,6 +227,8 @@ func Load(configPath string) (*Config, error) {
 	v.SetDefault("security_headers.content_security_policy", "default-src 'self'")
 	v.SetDefault("security_headers.referrer_policy", "strict-origin-when-cross-origin")
 	v.SetDefault("security_headers.permissions_policy", "")
+	v.SetDefault("metrics.enabled", true)
+	v.SetDefault("metrics.path_patterns", []string{})
 
 	// Config file
 	if configPath != "" {

@@ -159,6 +159,32 @@ admin:
   # Bearer token for authentication (use env var VIBEWARDEN_ADMIN_TOKEN in production)
   token: ""
 
+# Prometheus metrics
+# VibeWarden exposes a Prometheus-compatible metrics endpoint at /_vibewarden/metrics.
+# An internal HTTP server is started on a random localhost port; Caddy reverse-proxies
+# /_vibewarden/metrics to it so the metrics handler never handles TLS or auth directly.
+#
+# Scraped metrics include:
+#   vibewarden_requests_total            — request counter (labels: method, status_code, path_pattern)
+#   vibewarden_request_duration_seconds  — request duration histogram (labels: method, path_pattern)
+#   vibewarden_rate_limit_hits_total     — rate limit hits (labels: limit_type: ip|user)
+#   vibewarden_auth_decisions_total      — auth decisions (labels: decision: allowed|blocked)
+#   vibewarden_upstream_errors_total     — upstream connection errors
+#   vibewarden_active_connections        — current number of active proxy connections
+#   go_*                                 — Go runtime metrics
+#   process_*                            — process metrics
+metrics:
+  # Enable metrics endpoint at /_vibewarden/metrics (recommended: true)
+  enabled: true
+  # Path normalization patterns (colon-param syntax).
+  # Without patterns, all paths are recorded as "other".
+  # Configure the routes your app exposes to prevent high-cardinality labels.
+  # Example:
+  #   path_patterns:
+  #     - "/users/:id"
+  #     - "/api/v1/items/:item_id/comments/:comment_id"
+  path_patterns: []
+
 # Security headers added to all proxied responses
 security_headers:
   # Enable security headers middleware (recommended: true)
