@@ -42,25 +42,25 @@ func runAddCmd(t *testing.T, dir string, args ...string) (string, error) {
 
 func TestAddAuthCmd(t *testing.T) {
 	tests := []struct {
-		name           string
-		initial        string
-		args           []string
-		wantErr        bool
+		name            string
+		initial         string
+		args            []string
+		wantErr         bool
 		wantOutContains string
-		wantInYAML     []string
-		notInYAML      []string
+		wantInYAML      []string
+		notInYAML       []string
 	}{
 		{
-			name:           "adds auth sections",
-			initial:        minimalVibeWardenYAML,
-			args:           []string{"auth"},
+			name:            "adds auth sections",
+			initial:         minimalVibeWardenYAML,
+			args:            []string{"auth"},
 			wantOutContains: `"auth" enabled successfully`,
-			wantInYAML:     []string{"kratos:", "auth:", "session_cookie_name:"},
+			wantInYAML:      []string{"kratos:", "auth:", "session_cookie_name:"},
 		},
 		{
-			name:           "already enabled is a no-op with message",
-			initial:        minimalVibeWardenYAML + "\nkratos:\n  public_url: \"http://localhost:4433\"\n",
-			args:           []string{"auth"},
+			name:            "already enabled is a no-op with message",
+			initial:         minimalVibeWardenYAML + "\nkratos:\n  public_url: \"http://localhost:4433\"\n",
+			args:            []string{"auth"},
 			wantOutContains: "already enabled",
 		},
 		{

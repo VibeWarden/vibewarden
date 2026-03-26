@@ -210,10 +210,10 @@ func TestToggler_EnableFeature(t *testing.T) {
 			wantInYAML: []string{"tls:", "enabled: true", "example.com", "letsencrypt"},
 		},
 		{
-			name:    "enable tls defaults provider to letsencrypt",
-			initial: minimalConfig,
-			feature: scaffold.FeatureTLS,
-			opts:    scaffold.FeatureOptions{TLSDomain: "foo.com"},
+			name:       "enable tls defaults provider to letsencrypt",
+			initial:    minimalConfig,
+			feature:    scaffold.FeatureTLS,
+			opts:       scaffold.FeatureOptions{TLSDomain: "foo.com"},
 			wantInYAML: []string{"enabled: true", "letsencrypt"},
 		},
 		{
@@ -250,11 +250,11 @@ func TestToggler_EnableFeature(t *testing.T) {
 			wantErrIs: scaffold.ErrFeatureAlreadyEnabled,
 		},
 		{
-			name:         "comments are preserved after auth enable",
-			initial:      "# top comment\nserver:\n  port: 8080\nupstream:\n  port: 3000\ntls:\n  enabled: false\n",
-			feature:      scaffold.FeatureAuth,
-			preserveStr:  "# top comment",
-			wantInYAML:   []string{"kratos:"},
+			name:        "comments are preserved after auth enable",
+			initial:     "# top comment\nserver:\n  port: 8080\nupstream:\n  port: 3000\ntls:\n  enabled: false\n",
+			feature:     scaffold.FeatureAuth,
+			preserveStr: "# top comment",
+			wantInYAML:  []string{"kratos:"},
 		},
 		{
 			name:    "unknown feature returns error",

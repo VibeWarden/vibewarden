@@ -7,8 +7,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	yamlmodadapter "github.com/vibewarden/vibewarden/internal/adapters/yamlmod"
 	templateadapter "github.com/vibewarden/vibewarden/internal/adapters/template"
+	yamlmodadapter "github.com/vibewarden/vibewarden/internal/adapters/yamlmod"
 	scaffoldapp "github.com/vibewarden/vibewarden/internal/app/scaffold"
 	"github.com/vibewarden/vibewarden/internal/cli/templates"
 	domainscaffold "github.com/vibewarden/vibewarden/internal/domain/scaffold"
