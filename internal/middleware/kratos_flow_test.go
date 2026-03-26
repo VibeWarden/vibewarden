@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/vibewarden/vibewarden/internal/domain/events"
 )
 
 func TestIsKratosFlowPath(t *testing.T) {
@@ -103,7 +105,7 @@ func TestKratosFlowLoggingMiddleware_CallsNext(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	mw := KratosFlowLoggingMiddleware(logger)(next)
+	mw := KratosFlowLoggingMiddleware(logger, nil)(next)
 
 	req := httptest.NewRequest(http.MethodGet, "/self-service/login/browser", nil)
 	rec := httptest.NewRecorder()
@@ -126,7 +128,7 @@ func TestKratosFlowLoggingMiddleware_NonKratosPathCallsNext(t *testing.T) {
 		w.WriteHeader(http.StatusTeapot)
 	})
 
-	mw := KratosFlowLoggingMiddleware(logger)(next)
+	mw := KratosFlowLoggingMiddleware(logger, nil)(next)
 
 	req := httptest.NewRequest(http.MethodGet, "/dashboard", nil)
 	rec := httptest.NewRecorder()
@@ -138,5 +140,66 @@ func TestKratosFlowLoggingMiddleware_NonKratosPathCallsNext(t *testing.T) {
 	}
 	if rec.Code != http.StatusTeapot {
 		t.Errorf("response code = %d, want %d", rec.Code, http.StatusTeapot)
+	}
+}
+
+func TestKratosFlowLoggingMiddleware_EmitsEventForKratosPath(t *testing.T) {
+	spy := &fakeEventLogger{}
+	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+
+	mw := KratosFlowLoggingMiddleware(slog.Default(), spy)(next)
+
+	req := httptest.NewRequest(http.MethodGet, "/self-service/login/browser", nil)
+	rec := httptest.NewRecorder()
+	mw.ServeHTTP(rec, req)
+
+	if !spy.hasEventType(events.EventTypeProxyKratosFlow) {
+		t.Error("expected proxy.kratos_flow event but none was logged")
+	}
+	if len(spy.logged) == 0 {
+		t.Fatal("no events logged")
+	}
+	ev := spy.logged[0]
+	if ev.SchemaVersion != events.SchemaVersion {
+		t.Errorf("schema_version = %q, want %q", ev.SchemaVersion, events.SchemaVersion)
+	}
+	if ev.Payload["path"] != "/self-service/login/browser" {
+		t.Errorf("payload.path = %v, want %q", ev.Payload["path"], "/self-service/login/browser")
+	}
+}
+
+func TestKratosFlowLoggingMiddleware_DoesNotEmitEventForNonKratosPath(t *testing.T) {
+	spy := &fakeEventLogger{}
+	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+
+	mw := KratosFlowLoggingMiddleware(slog.Default(), spy)(next)
+
+	req := httptest.NewRequest(http.MethodGet, "/dashboard", nil)
+	rec := httptest.NewRecorder()
+	mw.ServeHTTP(rec, req)
+
+	if len(spy.logged) != 0 {
+		t.Errorf("expected no events for non-Kratos path, got: %v", spy.logged)
+	}
+}
+
+func TestKratosFlowLoggingMiddleware_NilEventLoggerDoesNotPanic(t *testing.T) {
+	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+
+	// Must not panic with nil eventLogger.
+	mw := KratosFlowLoggingMiddleware(slog.Default(), nil)(next)
+
+	req := httptest.NewRequest(http.MethodGet, "/self-service/login/browser", nil)
+	rec := httptest.NewRecorder()
+	mw.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("response code = %d, want %d", rec.Code, http.StatusOK)
 	}
 }

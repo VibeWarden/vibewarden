@@ -12,20 +12,25 @@ import (
 	// Import Caddy standard modules so they are registered with the Caddy module system.
 	_ "github.com/caddyserver/caddy/v2/modules/standard"
 
+	"github.com/vibewarden/vibewarden/internal/domain/events"
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
 
 // Adapter implements ports.ProxyServer using embedded Caddy.
 type Adapter struct {
-	config *ports.ProxyConfig
-	logger *slog.Logger
+	config      *ports.ProxyConfig
+	logger      *slog.Logger
+	eventLogger ports.EventLogger
 }
 
 // NewAdapter creates a new Caddy adapter with the given configuration.
-func NewAdapter(cfg *ports.ProxyConfig, logger *slog.Logger) *Adapter {
+// The eventLogger parameter is optional: pass nil to disable structured event
+// logging (the adapter will still emit plain slog lines).
+func NewAdapter(cfg *ports.ProxyConfig, logger *slog.Logger, eventLogger ports.EventLogger) *Adapter {
 	return &Adapter{
-		config: cfg,
-		logger: logger,
+		config:      cfg,
+		logger:      logger,
+		eventLogger: eventLogger,
 	}
 }
 
@@ -41,19 +46,19 @@ func (a *Adapter) Start(ctx context.Context) error {
 		return fmt.Errorf("loading caddy config: %w", err)
 	}
 
-	a.logger.Info("proxy started",
-		slog.String("schema_version", "v1"),
-		slog.String("event_type", "proxy.started"),
-		slog.String("ai_summary", fmt.Sprintf("Reverse proxy listening on %s, forwarding to %s", a.config.ListenAddr, a.config.UpstreamAddr)),
-		slog.Group("payload",
-			slog.String("listen", a.config.ListenAddr),
-			slog.String("upstream", a.config.UpstreamAddr),
-			slog.Bool("tls_enabled", a.config.TLS.Enabled),
-			slog.String("tls_provider", string(a.config.TLS.Provider)),
-			slog.Bool("security_headers_enabled", a.config.SecurityHeaders.Enabled),
-			slog.String("version", a.config.Version),
-		),
-	)
+	if a.eventLogger != nil {
+		ev := events.NewProxyStarted(events.ProxyStartedParams{
+			ListenAddr:             a.config.ListenAddr,
+			UpstreamAddr:           a.config.UpstreamAddr,
+			TLSEnabled:             a.config.TLS.Enabled,
+			TLSProvider:            string(a.config.TLS.Provider),
+			SecurityHeadersEnabled: a.config.SecurityHeaders.Enabled,
+			Version:                a.config.Version,
+		})
+		if logErr := a.eventLogger.Log(ctx, ev); logErr != nil {
+			a.logger.Error("failed to emit proxy.started event", slog.String("error", logErr.Error()))
+		}
+	}
 
 	// Block until context is cancelled.
 	<-ctx.Done()

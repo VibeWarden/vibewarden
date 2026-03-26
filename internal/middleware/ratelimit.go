@@ -2,13 +2,13 @@ package middleware
 
 import (
 	"encoding/json"
-	"fmt"
 	"log/slog"
 	"math"
 	"net/http"
 	"strconv"
 	"time"
 
+	"github.com/vibewarden/vibewarden/internal/domain/events"
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
 
@@ -36,11 +36,15 @@ type rateLimitErrorBody struct {
 //   - Returns Content-Type: application/json.
 //   - Returns body: {"error":"rate_limit_exceeded","retry_after_seconds":N}
 //   - Emits a structured log event with event_type "rate_limit.hit".
+//
+// The eventLogger receives structured rate limit events following the VibeWarden
+// schema. If eventLogger is nil, event logging is skipped silently.
 func RateLimitMiddleware(
 	ipLimiter ports.RateLimiter,
 	userLimiter ports.RateLimiter,
 	cfg ports.RateLimitConfig,
 	logger *slog.Logger,
+	eventLogger ports.EventLogger,
 ) func(http.Handler) http.Handler {
 	matcher, err := NewExemptPathMatcher(cfg.ExemptPaths)
 	if err != nil {
@@ -66,15 +70,7 @@ func RateLimitMiddleware(
 			// requests into a shared "" bucket, undermining per-IP limits.
 			clientIP := ExtractClientIP(r, cfg.TrustProxyHeaders)
 			if clientIP == "" {
-				logger.WarnContext(r.Context(), "rate limit middleware: empty client IP, rejecting request",
-					slog.String("schema_version", "v1"),
-					slog.String("event_type", "rate_limit.unidentified_client"),
-					slog.String("ai_summary", "Request rejected because the client IP could not be determined"),
-					slog.Group("payload",
-						slog.String("path", r.URL.Path),
-						slog.String("method", r.Method),
-					),
-				)
+				emitRateLimitUnidentified(r, eventLogger)
 				http.Error(w, "Forbidden", http.StatusForbidden)
 				return
 			}
@@ -82,7 +78,7 @@ func RateLimitMiddleware(
 			// Step 3: Per-IP rate limit check.
 			ipResult := ipLimiter.Allow(r.Context(), clientIP)
 			if !ipResult.Allowed {
-				logRateLimitHit(logger, r, "ip", clientIP, "", ipResult)
+				emitRateLimitHit(r, eventLogger, "ip", clientIP, "", ipResult)
 				writeRateLimitResponse(w, ipResult)
 				return
 			}
@@ -92,7 +88,7 @@ func RateLimitMiddleware(
 			if userID != "" {
 				userResult := userLimiter.Allow(r.Context(), userID)
 				if !userResult.Allowed {
-					logRateLimitHit(logger, r, "user", userID, clientIP, userResult)
+					emitRateLimitHit(r, eventLogger, "user", userID, clientIP, userResult)
 					writeRateLimitResponse(w, userResult)
 					return
 				}
@@ -132,45 +128,43 @@ func retryAfterSeconds(d time.Duration) int {
 	return int(math.Ceil(d.Seconds()))
 }
 
-// logRateLimitHit emits a rate_limit.hit structured log event following the
-// VibeWarden schema (schema_version v1).
-func logRateLimitHit(
-	logger *slog.Logger,
+// emitRateLimitHit emits a rate_limit.hit structured event via the EventLogger port.
+// If eventLogger is nil the call is a no-op.
+func emitRateLimitHit(
 	r *http.Request,
+	eventLogger ports.EventLogger,
 	limitType string,
 	identifier string,
 	clientIP string,
 	result ports.RateLimitResult,
 ) {
-	retrySeconds := retryAfterSeconds(result.RetryAfter)
-
-	aiSummary := fmt.Sprintf(
-		"Rate limit exceeded for %s %s: %.0f requests/second limit reached",
-		limitType, identifier, result.Limit,
-	)
-
-	attrs := []any{
-		slog.String("schema_version", "v1"),
-		slog.String("event_type", "rate_limit.hit"),
-		slog.String("ai_summary", aiSummary),
+	if eventLogger == nil {
+		return
 	}
+	ev := events.NewRateLimitHit(events.RateLimitHitParams{
+		LimitType:         limitType,
+		Identifier:        identifier,
+		RequestsPerSecond: result.Limit,
+		Burst:             result.Burst,
+		RetryAfterSeconds: retryAfterSeconds(result.RetryAfter),
+		Path:              r.URL.Path,
+		Method:            r.Method,
+		ClientIP:          clientIP,
+	})
+	// Best-effort: ignore logging errors so request processing is never blocked.
+	_ = eventLogger.Log(r.Context(), ev)
+}
 
-	payloadAttrs := []any{
-		slog.String("limit_type", limitType),
-		slog.String("identifier", identifier),
-		slog.Float64("requests_per_second", result.Limit),
-		slog.Int("burst", result.Burst),
-		slog.Int("retry_after_seconds", retrySeconds),
-		slog.String("path", r.URL.Path),
-		slog.String("method", r.Method),
-		slog.String("timestamp", time.Now().UTC().Format(time.RFC3339)),
+// emitRateLimitUnidentified emits a rate_limit.unidentified_client event via
+// the EventLogger port. If eventLogger is nil the call is a no-op.
+func emitRateLimitUnidentified(r *http.Request, eventLogger ports.EventLogger) {
+	if eventLogger == nil {
+		return
 	}
-
-	if limitType == "user" && clientIP != "" {
-		payloadAttrs = append(payloadAttrs, slog.String("client_ip", clientIP))
-	}
-
-	attrs = append(attrs, slog.Group("payload", payloadAttrs...))
-
-	logger.WarnContext(r.Context(), "rate_limit.hit", attrs...)
+	ev := events.NewRateLimitUnidentified(events.RateLimitUnidentifiedParams{
+		Path:   r.URL.Path,
+		Method: r.Method,
+	})
+	// Best-effort: ignore logging errors so request processing is never blocked.
+	_ = eventLogger.Log(r.Context(), ev)
 }

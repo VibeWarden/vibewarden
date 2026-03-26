@@ -11,6 +11,7 @@ import (
 	"github.com/spf13/cobra"
 
 	caddyadapter "github.com/vibewarden/vibewarden/internal/adapters/caddy"
+	logadapter "github.com/vibewarden/vibewarden/internal/adapters/log"
 	"github.com/vibewarden/vibewarden/internal/app/proxy"
 	"github.com/vibewarden/vibewarden/internal/config"
 	"github.com/vibewarden/vibewarden/internal/ports"
@@ -53,6 +54,9 @@ func runServe(configPath string) error {
 		slog.String("listen", fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port)),
 		slog.String("upstream", fmt.Sprintf("%s:%d", cfg.Upstream.Host, cfg.Upstream.Port)),
 	)
+
+	// Initialize the EventLogger — writes structured JSON events to stdout.
+	eventLogger := logadapter.NewSlogEventLogger(os.Stdout)
 
 	// Build ProxyConfig from application config.
 	proxyCfg := &ports.ProxyConfig{
@@ -104,7 +108,7 @@ func runServe(configPath string) error {
 	}
 
 	// Create Caddy adapter and proxy service.
-	adapter := caddyadapter.NewAdapter(proxyCfg, logger)
+	adapter := caddyadapter.NewAdapter(proxyCfg, logger, eventLogger)
 	svc := proxy.NewService(adapter, logger)
 
 	// Handle OS signals for graceful shutdown.

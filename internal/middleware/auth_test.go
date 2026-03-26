@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/vibewarden/vibewarden/internal/domain/events"
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
 
@@ -64,7 +65,7 @@ func TestAuthMiddleware_UnauthenticatedRequest(t *testing.T) {
 		LoginURL:          "/login",
 	}
 
-	mw := AuthMiddleware(checker, cfg, newTestLogger())
+	mw := AuthMiddleware(checker, cfg, newTestLogger(), nil)
 	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
@@ -98,7 +99,7 @@ func TestAuthMiddleware_AuthenticatedRequest(t *testing.T) {
 	nextCalled := false
 	var nextCtx context.Context
 
-	mw := AuthMiddleware(checker, cfg, newTestLogger())
+	mw := AuthMiddleware(checker, cfg, newTestLogger(), nil)
 	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		nextCalled = true
 		nextCtx = r.Context()
@@ -146,7 +147,7 @@ func TestAuthMiddleware_PublicPathBypass(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			nextCalled := false
-			mw := AuthMiddleware(checker, cfg, newTestLogger())
+			mw := AuthMiddleware(checker, cfg, newTestLogger(), nil)
 			next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 				nextCalled = true
 				w.WriteHeader(http.StatusOK)
@@ -177,9 +178,9 @@ func TestAuthMiddleware_GlobPatternMatching(t *testing.T) {
 	}
 
 	tests := []struct {
-		name        string
-		path        string
-		wantPublic  bool
+		name       string
+		path       string
+		wantPublic bool
 	}{
 		{"matched glob segment", "/api/v1/users/public", true},
 		{"matched glob segment resources", "/api/v1/items/public", true},
@@ -190,7 +191,7 @@ func TestAuthMiddleware_GlobPatternMatching(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			nextCalled := false
-			mw := AuthMiddleware(checker, cfg, newTestLogger())
+			mw := AuthMiddleware(checker, cfg, newTestLogger(), nil)
 			next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 				nextCalled = true
 				w.WriteHeader(http.StatusOK)
@@ -225,7 +226,7 @@ func TestAuthMiddleware_ProviderUnavailable(t *testing.T) {
 		LoginURL:          "/login",
 	}
 
-	mw := AuthMiddleware(checker, cfg, newTestLogger())
+	mw := AuthMiddleware(checker, cfg, newTestLogger(), nil)
 	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
@@ -254,7 +255,7 @@ func TestAuthMiddleware_XUserHeadersStripped(t *testing.T) {
 	}
 
 	var receivedHeaders http.Header
-	mw := AuthMiddleware(checker, cfg, newTestLogger())
+	mw := AuthMiddleware(checker, cfg, newTestLogger(), nil)
 	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		receivedHeaders = r.Header.Clone()
 		w.WriteHeader(http.StatusOK)
@@ -296,7 +297,7 @@ func TestAuthMiddleware_XUserHeadersStrippedOnPublicPath(t *testing.T) {
 	}
 
 	var receivedHeaders http.Header
-	mw := AuthMiddleware(checker, cfg, newTestLogger())
+	mw := AuthMiddleware(checker, cfg, newTestLogger(), nil)
 	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		receivedHeaders = r.Header.Clone()
 		w.WriteHeader(http.StatusOK)
@@ -334,7 +335,7 @@ func TestAuthMiddleware_VibewardenPrefixAlwaysPublic(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			nextCalled := false
-			mw := AuthMiddleware(checker, cfg, newTestLogger())
+			mw := AuthMiddleware(checker, cfg, newTestLogger(), nil)
 			next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 				nextCalled = true
 				w.WriteHeader(http.StatusOK)
@@ -368,7 +369,7 @@ func TestAuthMiddleware_DefaultCookieNameAndLoginURL(t *testing.T) {
 		Enabled: true,
 	}
 
-	mw := AuthMiddleware(checker, cfg, newTestLogger())
+	mw := AuthMiddleware(checker, cfg, newTestLogger(), nil)
 	nextCalled := false
 	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		nextCalled = true
@@ -399,7 +400,7 @@ func TestAuthMiddleware_DefaultCookieNameAndLoginURL(t *testing.T) {
 
 func TestAuthMiddleware_InvalidSessionRedirects(t *testing.T) {
 	tests := []struct {
-		name    string
+		name       string
 		checkerErr error
 	}{
 		{"session not found", ports.ErrSessionNotFound},
@@ -415,7 +416,7 @@ func TestAuthMiddleware_InvalidSessionRedirects(t *testing.T) {
 				LoginURL:          "/login",
 			}
 
-			mw := AuthMiddleware(checker, cfg, newTestLogger())
+			mw := AuthMiddleware(checker, cfg, newTestLogger(), nil)
 			next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 				w.WriteHeader(http.StatusOK)
 			})
@@ -433,4 +434,98 @@ func TestAuthMiddleware_InvalidSessionRedirects(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestAuthMiddleware_EmitsAuthSuccessEvent(t *testing.T) {
+	sess := validSession()
+	checker := &fakeSessionChecker{
+		sessions: map[string]*ports.Session{
+			"ory_kratos_session=valid-token": sess,
+		},
+	}
+	cfg := ports.AuthConfig{
+		Enabled:           true,
+		SessionCookieName: "ory_kratos_session",
+		LoginURL:          "/login",
+	}
+	spy := &fakeEventLogger{}
+
+	mw := AuthMiddleware(checker, cfg, newTestLogger(), spy)
+	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/dashboard", nil)
+	req.AddCookie(&http.Cookie{Name: "ory_kratos_session", Value: "valid-token"})
+	w := httptest.NewRecorder()
+	mw(next).ServeHTTP(w, req)
+
+	if !spy.hasEventType(events.EventTypeAuthSuccess) {
+		t.Error("expected auth.success event but none was logged")
+	}
+	if len(spy.logged) == 0 {
+		t.Fatal("no events logged")
+	}
+	ev := spy.logged[0]
+	if ev.SchemaVersion != events.SchemaVersion {
+		t.Errorf("schema_version = %q, want %q", ev.SchemaVersion, events.SchemaVersion)
+	}
+	if ev.Payload["identity_id"] != sess.Identity.ID {
+		t.Errorf("payload.identity_id = %v, want %q", ev.Payload["identity_id"], sess.Identity.ID)
+	}
+	if ev.Payload["email"] != sess.Identity.Email {
+		t.Errorf("payload.email = %v, want %q", ev.Payload["email"], sess.Identity.Email)
+	}
+}
+
+func TestAuthMiddleware_EmitsAuthFailedEvent(t *testing.T) {
+	checker := &fakeSessionChecker{sessions: map[string]*ports.Session{}}
+	cfg := ports.AuthConfig{
+		Enabled:           true,
+		SessionCookieName: "ory_kratos_session",
+		LoginURL:          "/login",
+	}
+	spy := &fakeEventLogger{}
+
+	mw := AuthMiddleware(checker, cfg, newTestLogger(), spy)
+	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+
+	// No cookie — should emit auth.failed with "missing session cookie" reason.
+	req := httptest.NewRequest(http.MethodGet, "/protected", nil)
+	w := httptest.NewRecorder()
+	mw(next).ServeHTTP(w, req)
+
+	if !spy.hasEventType(events.EventTypeAuthFailed) {
+		t.Error("expected auth.failed event but none was logged")
+	}
+	if len(spy.logged) == 0 {
+		t.Fatal("no events logged")
+	}
+	ev := spy.logged[0]
+	if ev.Payload["reason"] != "missing session cookie" {
+		t.Errorf("payload.reason = %v, want %q", ev.Payload["reason"], "missing session cookie")
+	}
+}
+
+func TestAuthMiddleware_NilEventLoggerDoesNotPanic(t *testing.T) {
+	// Verify that passing nil for eventLogger does not cause a panic.
+	checker := &fakeSessionChecker{sessions: map[string]*ports.Session{}}
+	cfg := ports.AuthConfig{
+		Enabled:           true,
+		SessionCookieName: "ory_kratos_session",
+		LoginURL:          "/login",
+	}
+
+	mw := AuthMiddleware(checker, cfg, newTestLogger(), nil)
+	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/protected", nil)
+	w := httptest.NewRecorder()
+
+	// Must not panic.
+	mw(next).ServeHTTP(w, req)
 }
