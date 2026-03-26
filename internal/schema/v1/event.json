@@ -1,0 +1,425 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://vibewarden.dev/schema/v1/event.json",
+  "title": "VibeWarden Structured Event v1",
+  "description": "Schema for all VibeWarden structured log events. Every security-relevant action emits an event conforming to this schema. Designed to be AI-readable: an LLM can understand each event from the ai_summary field alone, and can parse the payload for deeper analysis.",
+  "type": "object",
+  "required": ["schema_version", "event_type", "timestamp", "ai_summary", "payload"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": {
+      "type": "string",
+      "description": "The schema version. Consumers must reject events with unknown versions.",
+      "const": "v1"
+    },
+    "event_type": {
+      "type": "string",
+      "description": "Stable identifier for the kind of event. Consumers use this to dispatch to type-specific logic.",
+      "enum": [
+        "proxy.started",
+        "proxy.kratos_flow",
+        "auth.success",
+        "auth.failed",
+        "rate_limit.hit",
+        "rate_limit.unidentified_client",
+        "request.blocked",
+        "tls.certificate_issued",
+        "user.created",
+        "user.deleted"
+      ]
+    },
+    "timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "RFC 3339 / ISO 8601 timestamp in UTC when the event occurred."
+    },
+    "ai_summary": {
+      "type": "string",
+      "description": "A concise, human- and AI-readable sentence describing what happened. Includes the most relevant identifiers so an LLM can reason about the event without reading the payload.",
+      "minLength": 1,
+      "maxLength": 200
+    },
+    "payload": {
+      "type": "object",
+      "description": "Event-specific structured data. The shape depends on event_type; see the conditional schemas below."
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": { "event_type": { "const": "proxy.started" } },
+        "required": ["event_type"]
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/ProxyStartedPayload"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "event_type": { "const": "proxy.kratos_flow" } },
+        "required": ["event_type"]
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/ProxyKratosFlowPayload"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "event_type": { "const": "auth.success" } },
+        "required": ["event_type"]
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/AuthSuccessPayload"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "event_type": { "const": "auth.failed" } },
+        "required": ["event_type"]
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/AuthFailedPayload"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "event_type": { "const": "rate_limit.hit" } },
+        "required": ["event_type"]
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/RateLimitHitPayload"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "event_type": { "const": "rate_limit.unidentified_client" } },
+        "required": ["event_type"]
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/RateLimitUnidentifiedClientPayload"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "event_type": { "const": "request.blocked" } },
+        "required": ["event_type"]
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/RequestBlockedPayload"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "event_type": { "const": "tls.certificate_issued" } },
+        "required": ["event_type"]
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/TLSCertificateIssuedPayload"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "event_type": { "const": "user.created" } },
+        "required": ["event_type"]
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/UserCreatedPayload"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": { "event_type": { "const": "user.deleted" } },
+        "required": ["event_type"]
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/UserDeletedPayload"
+          }
+        }
+      }
+    }
+  ],
+  "$defs": {
+    "ProxyStartedPayload": {
+      "type": "object",
+      "description": "Payload for proxy.started events. Emitted once at startup when the reverse proxy is ready to accept connections.",
+      "required": ["listen", "upstream", "tls_enabled", "tls_provider", "security_headers_enabled", "version"],
+      "additionalProperties": false,
+      "properties": {
+        "listen": {
+          "type": "string",
+          "description": "The address the reverse proxy is listening on (e.g. \":8080\", \":8443\")."
+        },
+        "upstream": {
+          "type": "string",
+          "description": "The address requests are forwarded to (e.g. \"localhost:3000\")."
+        },
+        "tls_enabled": {
+          "type": "boolean",
+          "description": "Whether TLS termination is active."
+        },
+        "tls_provider": {
+          "type": "string",
+          "description": "The TLS certificate provider (e.g. \"letsencrypt\", \"self-signed\", \"external\"). Empty string when tls_enabled is false."
+        },
+        "security_headers_enabled": {
+          "type": "boolean",
+          "description": "Whether the security headers middleware is active."
+        },
+        "version": {
+          "type": "string",
+          "description": "The VibeWarden binary version string."
+        }
+      }
+    },
+    "ProxyKratosFlowPayload": {
+      "type": "object",
+      "description": "Payload for proxy.kratos_flow events. Emitted for every request routed to the Ory Kratos self-service flow API.",
+      "required": ["method", "path"],
+      "additionalProperties": false,
+      "properties": {
+        "method": {
+          "type": "string",
+          "description": "The HTTP method of the request (e.g. \"GET\", \"POST\")."
+        },
+        "path": {
+          "type": "string",
+          "description": "The URL path of the request."
+        }
+      }
+    },
+    "AuthSuccessPayload": {
+      "type": "object",
+      "description": "Payload for auth.success events. Emitted when a request carries a valid session and is allowed to proceed to the upstream application.",
+      "required": ["method", "path", "session_id", "identity_id", "email"],
+      "additionalProperties": false,
+      "properties": {
+        "method": {
+          "type": "string",
+          "description": "The HTTP method of the authenticated request (e.g. \"GET\")."
+        },
+        "path": {
+          "type": "string",
+          "description": "The URL path of the authenticated request."
+        },
+        "session_id": {
+          "type": "string",
+          "description": "The Kratos session identifier."
+        },
+        "identity_id": {
+          "type": "string",
+          "description": "The Kratos identity (user) identifier."
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "description": "The email address associated with the authenticated identity."
+        }
+      }
+    },
+    "AuthFailedPayload": {
+      "type": "object",
+      "description": "Payload for auth.failed events. Emitted when a request is rejected due to a missing, invalid, or expired session.",
+      "required": ["method", "path", "reason", "detail"],
+      "additionalProperties": false,
+      "properties": {
+        "method": {
+          "type": "string",
+          "description": "The HTTP method of the rejected request (e.g. \"GET\")."
+        },
+        "path": {
+          "type": "string",
+          "description": "The URL path of the rejected request."
+        },
+        "reason": {
+          "type": "string",
+          "description": "A short description of why the request was rejected (e.g. \"missing session cookie\", \"invalid or missing session\")."
+        },
+        "detail": {
+          "type": "string",
+          "description": "Optional additional detail (e.g. an error message). May be an empty string."
+        }
+      }
+    },
+    "RateLimitHitPayload": {
+      "type": "object",
+      "description": "Payload for rate_limit.hit events. Emitted when a request is rejected because the caller exceeded their per-IP or per-user rate limit.",
+      "required": ["limit_type", "identifier", "requests_per_second", "burst", "retry_after_seconds", "path", "method"],
+      "additionalProperties": false,
+      "properties": {
+        "limit_type": {
+          "type": "string",
+          "description": "The kind of limit that was exceeded.",
+          "enum": ["ip", "user"]
+        },
+        "identifier": {
+          "type": "string",
+          "description": "The value that was rate-limited: the client IP address for limit_type \"ip\", or the user ID for limit_type \"user\"."
+        },
+        "requests_per_second": {
+          "type": "number",
+          "description": "The configured rate limit in tokens per second.",
+          "minimum": 0
+        },
+        "burst": {
+          "type": "integer",
+          "description": "The configured burst capacity.",
+          "minimum": 0
+        },
+        "retry_after_seconds": {
+          "type": "integer",
+          "description": "How long the caller must wait before retrying, in seconds.",
+          "minimum": 0
+        },
+        "path": {
+          "type": "string",
+          "description": "The URL path of the rate-limited request."
+        },
+        "method": {
+          "type": "string",
+          "description": "The HTTP method of the rate-limited request."
+        },
+        "client_ip": {
+          "type": "string",
+          "description": "The client IP address. Present only when limit_type is \"user\" and the IP could be determined."
+        }
+      }
+    },
+    "RateLimitUnidentifiedClientPayload": {
+      "type": "object",
+      "description": "Payload for rate_limit.unidentified_client events. Emitted when a request is rejected because the client IP address could not be determined.",
+      "required": ["path", "method"],
+      "additionalProperties": false,
+      "properties": {
+        "path": {
+          "type": "string",
+          "description": "The URL path of the rejected request."
+        },
+        "method": {
+          "type": "string",
+          "description": "The HTTP method of the rejected request."
+        }
+      }
+    },
+    "RequestBlockedPayload": {
+      "type": "object",
+      "description": "Payload for request.blocked events. Emitted when a request is blocked by a middleware layer for a reason other than auth or rate limiting (e.g. a security policy violation).",
+      "required": ["method", "path", "reason", "blocked_by", "client_ip"],
+      "additionalProperties": false,
+      "properties": {
+        "method": {
+          "type": "string",
+          "description": "The HTTP method of the blocked request."
+        },
+        "path": {
+          "type": "string",
+          "description": "The URL path of the blocked request."
+        },
+        "reason": {
+          "type": "string",
+          "description": "A short description of why the request was blocked."
+        },
+        "blocked_by": {
+          "type": "string",
+          "description": "Identifies the middleware or policy that blocked the request (e.g. \"security_headers\", \"ip_blocklist\")."
+        },
+        "client_ip": {
+          "type": "string",
+          "description": "The client IP address. May be an empty string if the IP could not be determined."
+        }
+      }
+    },
+    "TLSCertificateIssuedPayload": {
+      "type": "object",
+      "description": "Payload for tls.certificate_issued events. Emitted when a new TLS certificate is successfully obtained or renewed.",
+      "required": ["domain", "provider", "expires_at"],
+      "additionalProperties": false,
+      "properties": {
+        "domain": {
+          "type": "string",
+          "description": "The domain name for which the certificate was issued."
+        },
+        "provider": {
+          "type": "string",
+          "description": "The certificate authority or provider (e.g. \"letsencrypt\", \"self-signed\")."
+        },
+        "expires_at": {
+          "type": "string",
+          "format": "date-time",
+          "description": "The certificate expiry time in RFC 3339 format."
+        }
+      }
+    },
+    "UserCreatedPayload": {
+      "type": "object",
+      "description": "Payload for user.created events. Emitted when a new user identity is created in the identity provider.",
+      "required": ["identity_id", "email"],
+      "additionalProperties": false,
+      "properties": {
+        "identity_id": {
+          "type": "string",
+          "description": "The identity provider identifier for the new user."
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "description": "The email address of the new user."
+        }
+      }
+    },
+    "UserDeletedPayload": {
+      "type": "object",
+      "description": "Payload for user.deleted events. Emitted when a user identity is deleted from the identity provider.",
+      "required": ["identity_id", "email"],
+      "additionalProperties": false,
+      "properties": {
+        "identity_id": {
+          "type": "string",
+          "description": "The identity provider identifier of the deleted user."
+        },
+        "email": {
+          "type": "string",
+          "format": "email",
+          "description": "The email address of the deleted user."
+        }
+      }
+    }
+  }
+}
