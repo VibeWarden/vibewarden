@@ -788,7 +788,7 @@ func TestPlugin_ContributeCaddyRoutes_BuiltInUI_MatchesFourPaths(t *testing.T) {
 
 func TestPlugin_ContributeCaddyRoutes_CustomUI_NoUIRoute(t *testing.T) {
 	cfg := defaultConfig()
-	cfg.UI = auth.UIConfig{Mode: "custom"}
+	cfg.UI = auth.UIConfig{Mode: "custom", LoginURL: "https://example.com/login"}
 	p := auth.New(cfg, discardLogger(), &fakeSessionChecker{})
 	if err := p.Init(context.Background()); err != nil {
 		t.Fatalf("Init() error: %v", err)
@@ -844,5 +844,138 @@ func TestPlugin_UIConfig_DefaultsApplied(t *testing.T) {
 	// Built-in mode adds an auth UI route.
 	if len(routes) < 2 {
 		t.Errorf("ContributeCaddyRoutes() = %d routes, want >=2 (UI route expected by default)", len(routes))
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Settings page route — built-in mode
+// ---------------------------------------------------------------------------
+
+func TestPlugin_ContributeCaddyRoutes_BuiltInUI_MatchesFivePaths(t *testing.T) {
+	p := newPlugin(defaultConfig())
+	if err := p.Init(context.Background()); err != nil {
+		t.Fatalf("Init() error: %v", err)
+	}
+	defer p.Stop(context.Background()) //nolint: errcheck
+
+	routes := p.ContributeCaddyRoutes()
+	if len(routes) < 2 {
+		t.Fatalf("expected at least 2 routes, got %d", len(routes))
+	}
+
+	uiRoute := routes[1]
+	matchSlice, ok := uiRoute.Handler["match"].([]map[string]any)
+	if !ok || len(matchSlice) == 0 {
+		t.Fatal("auth UI route match slice invalid")
+	}
+	paths, ok := matchSlice[0]["path"].([]string)
+	if !ok {
+		t.Fatalf("auth UI match path is not []string: %T", matchSlice[0]["path"])
+	}
+
+	wantPaths := []string{
+		"/_vibewarden/login",
+		"/_vibewarden/registration",
+		"/_vibewarden/recovery",
+		"/_vibewarden/verification",
+		"/_vibewarden/settings",
+	}
+	for _, want := range wantPaths {
+		found := false
+		for _, got := range paths {
+			if got == want {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("auth UI route missing path %q; got: %v", want, paths)
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Custom mode — config validation
+// ---------------------------------------------------------------------------
+
+func TestPlugin_Init_CustomUI_RequiresLoginURL(t *testing.T) {
+	cfg := auth.Config{
+		Enabled:         true,
+		KratosPublicURL: "http://127.0.0.1:4433",
+		UI:              auth.UIConfig{Mode: "custom"},
+	}
+	p := auth.New(cfg, discardLogger(), &fakeSessionChecker{})
+	err := p.Init(context.Background())
+	if err == nil {
+		t.Fatal("Init() expected error for custom mode without login_url, got nil")
+	}
+	if !strings.Contains(err.Error(), "login_url") {
+		t.Errorf("Init() error = %q, want to mention login_url", err.Error())
+	}
+}
+
+func TestPlugin_Init_CustomUI_WithLoginURL_Succeeds(t *testing.T) {
+	cfg := auth.Config{
+		Enabled:         true,
+		KratosPublicURL: "http://127.0.0.1:4433",
+		UI:              auth.UIConfig{Mode: "custom", LoginURL: "https://example.com/login"},
+	}
+	p := auth.New(cfg, discardLogger(), &fakeSessionChecker{})
+	if err := p.Init(context.Background()); err != nil {
+		t.Fatalf("Init() unexpected error: %v", err)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Custom mode — auth handler uses custom login URL
+// ---------------------------------------------------------------------------
+
+func TestPlugin_ContributeCaddyHandlers_CustomUI_UsesConfiguredLoginURL(t *testing.T) {
+	customLoginURL := "https://example.com/my-login"
+	cfg := auth.Config{
+		Enabled:         true,
+		KratosPublicURL: "http://127.0.0.1:4433",
+		UI:              auth.UIConfig{Mode: "custom", LoginURL: customLoginURL},
+	}
+	p := auth.New(cfg, discardLogger(), &fakeSessionChecker{})
+	if err := p.Init(context.Background()); err != nil {
+		t.Fatalf("Init() error: %v", err)
+	}
+
+	handlers := p.ContributeCaddyHandlers()
+	if len(handlers) < 1 {
+		t.Fatal("no handlers contributed")
+	}
+
+	loginURL, ok := handlers[0].Handler["login_url"].(string)
+	if !ok {
+		t.Fatalf("login_url is not string: %T", handlers[0].Handler["login_url"])
+	}
+	if loginURL != customLoginURL {
+		t.Errorf("login_url = %q, want %q", loginURL, customLoginURL)
+	}
+}
+
+func TestPlugin_ContributeCaddyRoutes_CustomUI_OnlyKratosRoute(t *testing.T) {
+	cfg := auth.Config{
+		Enabled:         true,
+		KratosPublicURL: "http://127.0.0.1:4433",
+		UI: auth.UIConfig{
+			Mode:            "custom",
+			LoginURL:        "https://example.com/login",
+			RegistrationURL: "https://example.com/register",
+			SettingsURL:     "https://example.com/settings",
+			RecoveryURL:     "https://example.com/recovery",
+		},
+	}
+	p := auth.New(cfg, discardLogger(), &fakeSessionChecker{})
+	if err := p.Init(context.Background()); err != nil {
+		t.Fatalf("Init() error: %v", err)
+	}
+
+	routes := p.ContributeCaddyRoutes()
+	// Custom mode must not add an auth UI route — only the Kratos proxy.
+	if len(routes) != 1 {
+		t.Errorf("ContributeCaddyRoutes() = %d routes for custom UI, want 1", len(routes))
 	}
 }

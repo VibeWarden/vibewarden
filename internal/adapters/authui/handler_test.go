@@ -132,6 +132,18 @@ func TestHandler_Pages(t *testing.T) {
 				"#7C3AED",
 			},
 		},
+		{
+			name:       "settings page",
+			path:       "/_vibewarden/settings",
+			wantStatus: http.StatusOK,
+			wantContains: []string{
+				"Account settings",
+				"Change password",
+				"Email verification",
+				"/_vibewarden/login",
+				"#7C3AED",
+			},
+		},
 	}
 
 	for _, tt := range tests {
@@ -195,6 +207,7 @@ func TestHandler_ThemeColorsInjected(t *testing.T) {
 		"/_vibewarden/registration",
 		"/_vibewarden/recovery",
 		"/_vibewarden/verification",
+		"/_vibewarden/settings",
 	}
 
 	for _, path := range pages {
@@ -288,6 +301,7 @@ func TestHandler_ServeHTTP_ViaRecorder(t *testing.T) {
 		{"registration", "/_vibewarden/registration", true},
 		{"recovery", "/_vibewarden/recovery", true},
 		{"verification", "/_vibewarden/verification", true},
+		{"settings", "/_vibewarden/settings", true},
 	}
 
 	h := newHandler(t, defaultConfig())

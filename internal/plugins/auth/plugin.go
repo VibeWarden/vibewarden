@@ -105,8 +105,22 @@ func (p *Plugin) Init(_ context.Context) error {
 	if p.cfg.SessionCookieName == "" {
 		p.cfg.SessionCookieName = defaultSessionCookieName
 	}
-	if p.cfg.LoginURL == "" {
-		p.cfg.LoginURL = defaultLoginURL
+
+	// Determine the effective login URL.
+	// In custom mode, UI.LoginURL takes precedence (already validated above).
+	// In built-in mode, the top-level LoginURL is used (or the built-in default).
+	uiMode := p.cfg.UI.Mode
+	if uiMode == "" {
+		uiMode = "built-in"
+	}
+	if uiMode == "custom" {
+		// Custom mode: redirect to operator-supplied login URL.
+		p.cfg.LoginURL = p.cfg.UI.LoginURL
+	} else {
+		// Built-in mode: use the configured LoginURL or the built-in default.
+		if p.cfg.LoginURL == "" {
+			p.cfg.LoginURL = defaultLoginURL
+		}
 	}
 
 	// Create the real Kratos adapter when no fake was injected.
@@ -115,10 +129,6 @@ func (p *Plugin) Init(_ context.Context) error {
 	}
 
 	// Start the built-in auth UI server when the mode is "built-in" (default).
-	uiMode := p.cfg.UI.Mode
-	if uiMode == "" {
-		uiMode = "built-in"
-	}
 	if uiMode == "built-in" {
 		uiCfg := authui.AuthUIConfig{
 			Mode:            uiMode,
@@ -264,6 +274,7 @@ func (p *Plugin) ContributeCaddyRoutes() []ports.CaddyRoute {
 							"/_vibewarden/registration",
 							"/_vibewarden/recovery",
 							"/_vibewarden/verification",
+							"/_vibewarden/settings",
 						},
 					},
 				},
@@ -355,6 +366,9 @@ func validateConfig(cfg Config) error {
 	}
 	if _, err := url.ParseRequestURI(cfg.KratosPublicURL); err != nil {
 		return fmt.Errorf("kratos_public_url %q is not a valid URL: %w", cfg.KratosPublicURL, err)
+	}
+	if cfg.UI.Mode == "custom" && cfg.UI.LoginURL == "" {
+		return fmt.Errorf("ui.login_url is required when ui.mode is \"custom\"")
 	}
 	return nil
 }
