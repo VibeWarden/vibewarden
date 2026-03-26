@@ -5,8 +5,8 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
-	"time"
 
+	"github.com/vibewarden/vibewarden/internal/domain/events"
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
 
@@ -35,12 +35,14 @@ const (
 //  8. On a valid session, store the session in the request context and
 //     call the next handler.
 //
-// The logger receives structured auth events following the VibeWarden
-// schema (auth.success and auth.failed event types).
+// The eventLogger receives structured auth events following the VibeWarden
+// schema (auth.success and auth.failed event types). If eventLogger is nil,
+// event logging is skipped silently.
 func AuthMiddleware(
 	checker ports.SessionChecker,
 	cfg ports.AuthConfig,
 	logger *slog.Logger,
+	eventLogger ports.EventLogger,
 ) func(http.Handler) http.Handler {
 	cookieName := cfg.SessionCookieName
 	if cookieName == "" {
@@ -80,7 +82,7 @@ func AuthMiddleware(
 			cookie, err := r.Cookie(cookieName)
 			if err != nil {
 				// http.ErrNoCookie is the only error Cookie returns.
-				logAuthFailed(logger, r, "missing session cookie", "")
+				emitAuthFailed(r, eventLogger, "missing session cookie", "")
 				http.Redirect(w, r, loginURL, http.StatusFound)
 				return
 			}
@@ -92,23 +94,23 @@ func AuthMiddleware(
 				switch {
 				case errors.Is(err, ports.ErrSessionNotFound),
 					errors.Is(err, ports.ErrSessionInvalid):
-					logAuthFailed(logger, r, "invalid or missing session", "")
+					emitAuthFailed(r, eventLogger, "invalid or missing session", "")
 					http.Redirect(w, r, loginURL, http.StatusFound)
 
 				case errors.Is(err, ports.ErrAuthProviderUnavailable):
-					logAuthFailed(logger, r, "auth provider unavailable", err.Error())
+					emitAuthFailed(r, eventLogger, "auth provider unavailable", err.Error())
 					http.Error(w, "Service Unavailable", http.StatusServiceUnavailable)
 
 				default:
 					// Unknown error — fail closed.
-					logAuthFailed(logger, r, "unexpected auth error", err.Error())
+					emitAuthFailed(r, eventLogger, "unexpected auth error", err.Error())
 					http.Error(w, "Service Unavailable", http.StatusServiceUnavailable)
 				}
 				return
 			}
 
 			// Step 8: Valid session — store in context and proceed.
-			logAuthSuccess(logger, r, session)
+			emitAuthSuccess(r, eventLogger, session)
 			ctx := contextWithSession(r.Context(), session)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
@@ -125,35 +127,35 @@ func stripXUserHeaders(r *http.Request) {
 	}
 }
 
-// logAuthSuccess emits an auth.success structured log event.
-func logAuthSuccess(logger *slog.Logger, r *http.Request, session *ports.Session) {
-	logger.InfoContext(r.Context(), "auth.success",
-		slog.String("schema_version", "v1"),
-		slog.String("event_type", "auth.success"),
-		slog.String("ai_summary", "authenticated request allowed"),
-		slog.Group("payload",
-			slog.String("method", r.Method),
-			slog.String("path", r.URL.Path),
-			slog.String("session_id", session.ID),
-			slog.String("identity_id", session.Identity.ID),
-			slog.String("email", session.Identity.Email),
-			slog.String("timestamp", time.Now().UTC().Format(time.RFC3339)),
-		),
-	)
+// emitAuthSuccess logs an auth.success event via the EventLogger port.
+// If eventLogger is nil the call is a no-op.
+func emitAuthSuccess(r *http.Request, eventLogger ports.EventLogger, session *ports.Session) {
+	if eventLogger == nil {
+		return
+	}
+	ev := events.NewAuthSuccess(events.AuthSuccessParams{
+		Method:     r.Method,
+		Path:       r.URL.Path,
+		SessionID:  session.ID,
+		IdentityID: session.Identity.ID,
+		Email:      session.Identity.Email,
+	})
+	// Best-effort: ignore logging errors so request processing is never blocked.
+	_ = eventLogger.Log(r.Context(), ev)
 }
 
-// logAuthFailed emits an auth.failed structured log event.
-func logAuthFailed(logger *slog.Logger, r *http.Request, reason, detail string) {
-	logger.WarnContext(r.Context(), "auth.failed",
-		slog.String("schema_version", "v1"),
-		slog.String("event_type", "auth.failed"),
-		slog.String("ai_summary", "unauthenticated request rejected: "+reason),
-		slog.Group("payload",
-			slog.String("method", r.Method),
-			slog.String("path", r.URL.Path),
-			slog.String("reason", reason),
-			slog.String("detail", detail),
-			slog.String("timestamp", time.Now().UTC().Format(time.RFC3339)),
-		),
-	)
+// emitAuthFailed logs an auth.failed event via the EventLogger port.
+// If eventLogger is nil the call is a no-op.
+func emitAuthFailed(r *http.Request, eventLogger ports.EventLogger, reason, detail string) {
+	if eventLogger == nil {
+		return
+	}
+	ev := events.NewAuthFailed(events.AuthFailedParams{
+		Method: r.Method,
+		Path:   r.URL.Path,
+		Reason: reason,
+		Detail: detail,
+	})
+	// Best-effort: ignore logging errors so request processing is never blocked.
+	_ = eventLogger.Log(r.Context(), ev)
 }

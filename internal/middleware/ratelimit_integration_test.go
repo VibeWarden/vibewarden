@@ -38,7 +38,7 @@ func buildRateLimitHandler(
 	cfg.PerIP = ipRule
 	cfg.PerUser = userRule
 
-	handler = RateLimitMiddleware(ipLimiter, userLimiter, cfg, slog.Default())
+	handler = RateLimitMiddleware(ipLimiter, userLimiter, cfg, slog.Default(), nil)
 	return handler, ipLimiter, userLimiter
 }
 
@@ -480,7 +480,7 @@ func TestRateLimitMiddleware_Integration_LimitersAreCloseable(t *testing.T) {
 		PerUser:           userRule,
 	}
 
-	mw := RateLimitMiddleware(ipLimiter, userLimiter, cfg, slog.Default())
+	mw := RateLimitMiddleware(ipLimiter, userLimiter, cfg, slog.Default(), nil)
 	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})

@@ -5,8 +5,20 @@ import (
 	"log/slog"
 	"testing"
 
+	"github.com/vibewarden/vibewarden/internal/domain/events"
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
+
+// fakeEventLogger is a spy that captures all events emitted through it.
+// It implements ports.EventLogger without any real I/O.
+type fakeEventLogger struct {
+	logged []events.Event
+}
+
+func (f *fakeEventLogger) Log(_ context.Context, ev events.Event) error {
+	f.logged = append(f.logged, ev)
+	return nil
+}
 
 func TestNewAdapter(t *testing.T) {
 	cfg := &ports.ProxyConfig{
@@ -15,7 +27,7 @@ func TestNewAdapter(t *testing.T) {
 	}
 	logger := slog.Default()
 
-	adapter := NewAdapter(cfg, logger)
+	adapter := NewAdapter(cfg, logger, nil)
 
 	if adapter == nil {
 		t.Fatal("NewAdapter() returned nil")
@@ -25,6 +37,23 @@ func TestNewAdapter(t *testing.T) {
 	}
 	if adapter.logger != logger {
 		t.Error("NewAdapter() did not set logger correctly")
+	}
+}
+
+func TestNewAdapter_WithEventLogger(t *testing.T) {
+	cfg := &ports.ProxyConfig{
+		ListenAddr:   "127.0.0.1:8080",
+		UpstreamAddr: "127.0.0.1:3000",
+	}
+	spy := &fakeEventLogger{}
+
+	adapter := NewAdapter(cfg, slog.Default(), spy)
+
+	if adapter == nil {
+		t.Fatal("NewAdapter() returned nil")
+	}
+	if adapter.eventLogger != spy {
+		t.Error("NewAdapter() did not set eventLogger correctly")
 	}
 }
 
@@ -66,7 +95,7 @@ func TestAdapter_BuildConfigJSON(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			adapter := NewAdapter(tt.cfg, slog.Default())
+			adapter := NewAdapter(tt.cfg, slog.Default(), nil)
 
 			data, err := adapter.buildConfigJSON()
 			if (err != nil) != tt.wantErr {
@@ -85,7 +114,7 @@ func TestAdapter_StopWithoutStart(t *testing.T) {
 		ListenAddr:   "127.0.0.1:8080",
 		UpstreamAddr: "127.0.0.1:3000",
 	}
-	adapter := NewAdapter(cfg, slog.Default())
+	adapter := NewAdapter(cfg, slog.Default(), nil)
 
 	// Stopping without starting should not panic (Caddy handles this gracefully)
 	err := adapter.Stop(context.Background())

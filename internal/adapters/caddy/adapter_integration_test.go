@@ -46,7 +46,7 @@ func TestAdapter_Integration_ProxyRequest(t *testing.T) {
 		UpstreamAddr: upstreamAddr,
 	}
 
-	adapter := NewAdapter(cfg, slog.Default())
+	adapter := NewAdapter(cfg, slog.Default(), nil)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -109,7 +109,7 @@ func TestAdapter_Integration_GracefulShutdown(t *testing.T) {
 		UpstreamAddr: upstream.Listener.Addr().String(),
 	}
 
-	adapter := NewAdapter(cfg, slog.Default())
+	adapter := NewAdapter(cfg, slog.Default(), nil)
 
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -172,7 +172,7 @@ func TestAdapter_Integration_SecurityHeadersInProxiedResponse(t *testing.T) {
 		},
 	}
 
-	adapter := NewAdapter(cfg, slog.Default())
+	adapter := NewAdapter(cfg, slog.Default(), nil)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -250,7 +250,7 @@ func TestAdapter_Integration_SelfSignedTLS(t *testing.T) {
 		},
 	}
 
-	adapter := NewAdapter(cfg, slog.Default())
+	adapter := NewAdapter(cfg, slog.Default(), nil)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

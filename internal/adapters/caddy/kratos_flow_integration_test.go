@@ -59,7 +59,7 @@ func TestAdapter_Integration_KratosFlowProxied(t *testing.T) {
 		},
 	}
 
-	adapter := NewAdapter(cfg, slog.Default())
+	adapter := NewAdapter(cfg, slog.Default(), nil)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -177,7 +177,7 @@ func TestAdapter_Integration_AppRequestNotProxiedToKratos(t *testing.T) {
 		},
 	}
 
-	adapter := NewAdapter(cfg, slog.Default())
+	adapter := NewAdapter(cfg, slog.Default(), nil)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -268,7 +268,7 @@ func TestAdapter_Integration_HealthCheckNotProxiedToKratosOrUpstream(t *testing.
 		},
 	}
 
-	adapter := NewAdapter(cfg, slog.Default())
+	adapter := NewAdapter(cfg, slog.Default(), nil)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

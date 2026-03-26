@@ -3,7 +3,9 @@ package middleware
 import (
 	"log/slog"
 	"net/http"
-	"time"
+
+	"github.com/vibewarden/vibewarden/internal/domain/events"
+	"github.com/vibewarden/vibewarden/internal/ports"
 )
 
 // kratosFlowPathPrefixes lists the URL path prefixes that are considered
@@ -21,11 +23,14 @@ var kratosFlowPathPrefixes = []string{
 // This middleware is intended to wrap the Kratos reverse-proxy handler so that
 // AI-readable logs capture when the sidecar is routing a browser flow to Kratos
 // rather than to the upstream application.
-func KratosFlowLoggingMiddleware(logger *slog.Logger) func(http.Handler) http.Handler {
+//
+// The eventLogger receives structured events following the VibeWarden schema.
+// If eventLogger is nil, event logging is skipped silently.
+func KratosFlowLoggingMiddleware(logger *slog.Logger, eventLogger ports.EventLogger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if isKratosFlowPath(r.URL.Path) {
-				logKratosFlowEvent(logger, r)
+				emitKratosFlowEvent(r, eventLogger)
 			}
 			next.ServeHTTP(w, r)
 		})
@@ -43,16 +48,16 @@ func isKratosFlowPath(requestPath string) bool {
 	return false
 }
 
-// logKratosFlowEvent emits the proxy.kratos_flow structured log event.
-func logKratosFlowEvent(logger *slog.Logger, r *http.Request) {
-	logger.InfoContext(r.Context(), "proxy.kratos_flow",
-		slog.String("schema_version", "v1"),
-		slog.String("event_type", "proxy.kratos_flow"),
-		slog.String("ai_summary", "request proxied to Kratos self-service API"),
-		slog.Group("payload",
-			slog.String("method", r.Method),
-			slog.String("path", r.URL.Path),
-			slog.String("timestamp", time.Now().UTC().Format(time.RFC3339)),
-		),
-	)
+// emitKratosFlowEvent emits the proxy.kratos_flow structured event via the
+// EventLogger port. If eventLogger is nil the call is a no-op.
+func emitKratosFlowEvent(r *http.Request, eventLogger ports.EventLogger) {
+	if eventLogger == nil {
+		return
+	}
+	ev := events.NewProxyKratosFlow(events.ProxyKratosFlowParams{
+		Method: r.Method,
+		Path:   r.URL.Path,
+	})
+	// Best-effort: ignore logging errors so request processing is never blocked.
+	_ = eventLogger.Log(r.Context(), ev)
 }

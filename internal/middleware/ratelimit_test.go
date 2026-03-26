@@ -1,16 +1,15 @@
 package middleware
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
-	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strconv"
 	"testing"
 	"time"
 
+	"github.com/vibewarden/vibewarden/internal/domain/events"
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
 
@@ -53,12 +52,6 @@ func denyWithRetry(retryAfter time.Duration, limit float64, burst int) *fakeRate
 	}
 }
 
-// newCapturingLogger returns a slog.Logger that writes JSON to the provided buffer,
-// enabling log output inspection in tests.
-func newCapturingLogger(buf *bytes.Buffer) *slog.Logger {
-	return slog.New(slog.NewJSONHandler(buf, &slog.HandlerOptions{Level: slog.LevelDebug}))
-}
-
 // defaultCfg returns a RateLimitConfig suitable for most middleware tests.
 func defaultCfg() ports.RateLimitConfig {
 	return ports.RateLimitConfig{
@@ -66,6 +59,27 @@ func defaultCfg() ports.RateLimitConfig {
 		TrustProxyHeaders: false,
 		ExemptPaths:       nil,
 	}
+}
+
+// fakeEventLogger is a spy that captures all events emitted through it.
+// It implements ports.EventLogger without any real I/O.
+type fakeEventLogger struct {
+	logged []events.Event
+}
+
+func (f *fakeEventLogger) Log(_ context.Context, ev events.Event) error {
+	f.logged = append(f.logged, ev)
+	return nil
+}
+
+// hasEventType returns true if the spy captured at least one event of the given type.
+func (f *fakeEventLogger) hasEventType(eventType string) bool {
+	for _, ev := range f.logged {
+		if ev.EventType == eventType {
+			return true
+		}
+	}
+	return false
 }
 
 func TestRateLimitMiddleware_RequestWithinLimit(t *testing.T) {
@@ -79,7 +93,7 @@ func TestRateLimitMiddleware_RequestWithinLimit(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	mw := RateLimitMiddleware(ipLimiter, userLimiter, defaultCfg(), logger)
+	mw := RateLimitMiddleware(ipLimiter, userLimiter, defaultCfg(), logger, nil)
 	handler := mw(next)
 
 	r := httptest.NewRequest(http.MethodGet, "/api/data", nil)
@@ -100,15 +114,14 @@ func TestRateLimitMiddleware_IPLimitExceeded(t *testing.T) {
 	retryDuration := 3 * time.Second
 	ipLimiter := denyWithRetry(retryDuration, 10, 20)
 	userLimiter := allowAll()
-	logBuf := new(bytes.Buffer)
-	logger := newCapturingLogger(logBuf)
+	spy := &fakeEventLogger{}
 
 	var nextCalled bool
 	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		nextCalled = true
 	})
 
-	mw := RateLimitMiddleware(ipLimiter, userLimiter, defaultCfg(), logger)
+	mw := RateLimitMiddleware(ipLimiter, userLimiter, defaultCfg(), newTestLogger(), spy)
 	handler := mw(next)
 
 	r := httptest.NewRequest(http.MethodGet, "/api/data", nil)
@@ -143,9 +156,9 @@ func TestRateLimitMiddleware_IPLimitExceeded(t *testing.T) {
 	if len(userLimiter.calledKeys) != 0 {
 		t.Errorf("user limiter called unexpectedly: keys = %v", userLimiter.calledKeys)
 	}
-	// Structured log event.
-	if !bytes.Contains(logBuf.Bytes(), []byte("rate_limit.hit")) {
-		t.Error("expected rate_limit.hit log event but none found")
+	// Structured event must have been emitted via EventLogger.
+	if !spy.hasEventType(events.EventTypeRateLimitHit) {
+		t.Error("expected rate_limit.hit event but none was logged")
 	}
 }
 
@@ -153,15 +166,14 @@ func TestRateLimitMiddleware_UserLimitExceeded(t *testing.T) {
 	ipLimiter := allowAll()
 	retryDuration := time.Second + 500*time.Millisecond // 1.5 s → ceil = 2
 	userLimiter := denyWithRetry(retryDuration, 100, 200)
-	logBuf := new(bytes.Buffer)
-	logger := newCapturingLogger(logBuf)
+	spy := &fakeEventLogger{}
 
 	var nextCalled bool
 	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		nextCalled = true
 	})
 
-	mw := RateLimitMiddleware(ipLimiter, userLimiter, defaultCfg(), logger)
+	mw := RateLimitMiddleware(ipLimiter, userLimiter, defaultCfg(), newTestLogger(), spy)
 	handler := mw(next)
 
 	r := httptest.NewRequest(http.MethodGet, "/api/data", nil)
@@ -196,8 +208,8 @@ func TestRateLimitMiddleware_UserLimitExceeded(t *testing.T) {
 	if len(userLimiter.calledKeys) == 0 || userLimiter.calledKeys[0] != "user-abc" {
 		t.Errorf("user limiter called with unexpected keys: %v", userLimiter.calledKeys)
 	}
-	if !bytes.Contains(logBuf.Bytes(), []byte("rate_limit.hit")) {
-		t.Error("expected rate_limit.hit log event but none found")
+	if !spy.hasEventType(events.EventTypeRateLimitHit) {
+		t.Error("expected rate_limit.hit event but none was logged")
 	}
 }
 
@@ -210,7 +222,7 @@ func TestRateLimitMiddleware_UnauthenticatedSkipsUserLimiter(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	mw := RateLimitMiddleware(ipLimiter, userLimiter, defaultCfg(), logger)
+	mw := RateLimitMiddleware(ipLimiter, userLimiter, defaultCfg(), logger, nil)
 	handler := mw(next)
 
 	// No X-User-Id header — unauthenticated request.
@@ -240,7 +252,7 @@ func TestRateLimitMiddleware_ExemptPath(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	mw := RateLimitMiddleware(ipLimiter, userLimiter, defaultCfg(), logger)
+	mw := RateLimitMiddleware(ipLimiter, userLimiter, defaultCfg(), logger, nil)
 	handler := mw(next)
 
 	// /_vibewarden/* is always exempt.
@@ -278,7 +290,7 @@ func TestRateLimitMiddleware_CustomExemptPath(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	mw := RateLimitMiddleware(ipLimiter, userLimiter, cfg, logger)
+	mw := RateLimitMiddleware(ipLimiter, userLimiter, cfg, logger, nil)
 	handler := mw(next)
 
 	r := httptest.NewRequest(http.MethodGet, "/public/logo.png", nil)
@@ -301,7 +313,7 @@ func TestRateLimitMiddleware_429ContentType(t *testing.T) {
 	logger := newTestLogger()
 	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})
 
-	mw := RateLimitMiddleware(ipLimiter, userLimiter, defaultCfg(), logger)
+	mw := RateLimitMiddleware(ipLimiter, userLimiter, defaultCfg(), logger, nil)
 	handler := mw(next)
 
 	r := httptest.NewRequest(http.MethodGet, "/api", nil)
@@ -329,7 +341,7 @@ func TestRateLimitMiddleware_TrustProxyHeader(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	mw := RateLimitMiddleware(ipLimiter, userLimiter, cfg, logger)
+	mw := RateLimitMiddleware(ipLimiter, userLimiter, cfg, logger, nil)
 	handler := mw(next)
 
 	r := httptest.NewRequest(http.MethodGet, "/api", nil)
@@ -366,7 +378,7 @@ func TestRateLimitMiddleware_RetryAfterRoundsUp(t *testing.T) {
 			logger := newTestLogger()
 			next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})
 
-			mw := RateLimitMiddleware(ipLimiter, allowAll(), defaultCfg(), logger)
+			mw := RateLimitMiddleware(ipLimiter, allowAll(), defaultCfg(), logger, nil)
 			handler := mw(next)
 
 			r := httptest.NewRequest(http.MethodGet, "/", nil)
@@ -396,11 +408,10 @@ func TestRateLimitMiddleware_RetryAfterRoundsUp(t *testing.T) {
 func TestRateLimitMiddleware_StructuredLogEvent(t *testing.T) {
 	retryDuration := 2 * time.Second
 	ipLimiter := denyWithRetry(retryDuration, 10, 20)
-	logBuf := new(bytes.Buffer)
-	logger := newCapturingLogger(logBuf)
+	spy := &fakeEventLogger{}
 
 	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})
-	mw := RateLimitMiddleware(ipLimiter, allowAll(), defaultCfg(), logger)
+	mw := RateLimitMiddleware(ipLimiter, allowAll(), defaultCfg(), newTestLogger(), spy)
 	handler := mw(next)
 
 	r := httptest.NewRequest(http.MethodGet, "/api/resource", nil)
@@ -409,19 +420,22 @@ func TestRateLimitMiddleware_StructuredLogEvent(t *testing.T) {
 
 	handler.ServeHTTP(w, r)
 
-	logOutput := logBuf.String()
-	// Check required structured fields.
-	requiredFields := []string{
-		"rate_limit.hit",
-		"v1",
-		"rate_limit.hit",
-		"ip",
-		"/api/resource",
+	if !spy.hasEventType(events.EventTypeRateLimitHit) {
+		t.Error("expected rate_limit.hit event but none was logged")
 	}
-	for _, field := range requiredFields {
-		if !bytes.Contains(logBuf.Bytes(), []byte(field)) {
-			t.Errorf("expected log to contain %q, got:\n%s", field, logOutput)
-		}
+
+	if len(spy.logged) == 0 {
+		t.Fatal("no events were logged")
+	}
+	ev := spy.logged[0]
+	if ev.SchemaVersion != events.SchemaVersion {
+		t.Errorf("schema_version = %q, want %q", ev.SchemaVersion, events.SchemaVersion)
+	}
+	if ev.Payload["limit_type"] != "ip" {
+		t.Errorf("payload.limit_type = %v, want %q", ev.Payload["limit_type"], "ip")
+	}
+	if ev.Payload["path"] != "/api/resource" {
+		t.Errorf("payload.path = %v, want %q", ev.Payload["path"], "/api/resource")
 	}
 }
 
@@ -430,8 +444,7 @@ func TestRateLimitMiddleware_EmptyClientIP_Returns403(t *testing.T) {
 	// because the client IP cannot be determined.
 	ipLimiter := allowAll()
 	userLimiter := allowAll()
-	logBuf := new(bytes.Buffer)
-	logger := newCapturingLogger(logBuf)
+	spy := &fakeEventLogger{}
 
 	var nextCalled bool
 	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -439,7 +452,7 @@ func TestRateLimitMiddleware_EmptyClientIP_Returns403(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	mw := RateLimitMiddleware(ipLimiter, userLimiter, defaultCfg(), logger)
+	mw := RateLimitMiddleware(ipLimiter, userLimiter, defaultCfg(), newTestLogger(), spy)
 	handler := mw(next)
 
 	// RemoteAddr with no port causes net.SplitHostPort to fail, which makes
@@ -463,9 +476,9 @@ func TestRateLimitMiddleware_EmptyClientIP_Returns403(t *testing.T) {
 	if len(userLimiter.calledKeys) != 0 {
 		t.Errorf("user limiter should not be called when client IP is empty, got keys: %v", userLimiter.calledKeys)
 	}
-	// A structured warning log must have been emitted.
-	if !bytes.Contains(logBuf.Bytes(), []byte("rate_limit.unidentified_client")) {
-		t.Errorf("expected rate_limit.unidentified_client log event, got:\n%s", logBuf.String())
+	// A structured event must have been emitted.
+	if !spy.hasEventType(events.EventTypeRateLimitUnidentified) {
+		t.Errorf("expected rate_limit.unidentified_client event, got events: %v", spy.logged)
 	}
 }
 
@@ -478,7 +491,7 @@ func TestRateLimitMiddleware_AuthenticatedBothLimitsChecked(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	mw := RateLimitMiddleware(ipLimiter, userLimiter, defaultCfg(), logger)
+	mw := RateLimitMiddleware(ipLimiter, userLimiter, defaultCfg(), logger, nil)
 	handler := mw(next)
 
 	r := httptest.NewRequest(http.MethodGet, "/api/data", nil)
