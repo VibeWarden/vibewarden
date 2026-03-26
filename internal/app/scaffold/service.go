@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/vibewarden/vibewarden/internal/cli/scaffold"
 	"github.com/vibewarden/vibewarden/internal/ports"
@@ -95,7 +96,7 @@ func (s *Service) Init(_ context.Context, dir string, opts InitOptions) error {
 	}
 
 	// Render vibewarden.yaml.
-	vwPath := joinPath(dir, vibeWardenYAML)
+	vwPath := filepath.Join(dir, vibeWardenYAML)
 	if err := s.renderer.RenderToFile("vibewarden.yaml.tmpl", data, vwPath, opts.Force); err != nil {
 		if !errors.Is(err, os.ErrExist) {
 			return fmt.Errorf("rendering vibewarden.yaml: %w", err)
@@ -105,7 +106,7 @@ func (s *Service) Init(_ context.Context, dir string, opts InitOptions) error {
 
 	// Render docker-compose.yml unless skipped.
 	if !opts.SkipDocker {
-		dcPath := joinPath(dir, dockerComposeYML)
+		dcPath := filepath.Join(dir, dockerComposeYML)
 		if err := s.renderer.RenderToFile("docker-compose.yml.tmpl", data, dcPath, opts.Force); err != nil {
 			if !errors.Is(err, os.ErrExist) {
 				return fmt.Errorf("rendering docker-compose.yml: %w", err)
@@ -115,12 +116,4 @@ func (s *Service) Init(_ context.Context, dir string, opts InitOptions) error {
 	}
 
 	return nil
-}
-
-// joinPath joins a directory and a filename, returning the full path.
-func joinPath(dir, file string) string {
-	if dir == "" || dir == "." {
-		return file
-	}
-	return dir + "/" + file
 }

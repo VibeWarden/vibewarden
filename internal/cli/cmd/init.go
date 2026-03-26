@@ -8,6 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	scaffoldadapter "github.com/vibewarden/vibewarden/internal/adapters/scaffold"
 	templateadapter "github.com/vibewarden/vibewarden/internal/adapters/template"
 	scaffoldapp "github.com/vibewarden/vibewarden/internal/app/scaffold"
 	"github.com/vibewarden/vibewarden/internal/cli/templates"
@@ -19,13 +20,13 @@ import (
 // directory (or the directory supplied as the first positional argument).
 func NewInitCmd() *cobra.Command {
 	var (
-		upstream     int
-		auth         bool
-		rateLimit    bool
-		tls          bool
-		domain       string
-		force        bool
-		skipDocker   bool
+		upstream   int
+		auth       bool
+		rateLimit  bool
+		tls        bool
+		domain     string
+		force      bool
+		skipDocker bool
 	)
 
 	cmd := &cobra.Command{
@@ -54,7 +55,7 @@ Examples:
 			}
 
 			renderer := templateadapter.NewRenderer(templates.FS)
-			detector := scaffoldapp.NewDetector()
+			detector := scaffoldadapter.NewDetector()
 			svc := scaffoldapp.NewService(renderer, detector)
 
 			opts := scaffoldapp.InitOptions{

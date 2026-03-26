@@ -12,17 +12,17 @@ import (
 
 func TestNewInitCmd_FlagCombinations(t *testing.T) {
 	tests := []struct {
-		name          string
-		args          []string
-		wantErr       bool
+		name            string
+		args            []string
+		wantErr         bool
 		wantOutContains string
-		setup         func(dir string)
-		checkFiles    []string
+		setup           func(dir string)
+		checkFiles      []string
 	}{
 		{
-			name:          "defaults generate both files",
-			args:          []string{},
-			checkFiles:    []string{"vibewarden.yaml", "docker-compose.yml"},
+			name:            "defaults generate both files",
+			args:            []string{},
+			checkFiles:      []string{"vibewarden.yaml", "docker-compose.yml"},
 			wantOutContains: "VibeWarden initialised successfully",
 		},
 		{
@@ -31,9 +31,9 @@ func TestNewInitCmd_FlagCombinations(t *testing.T) {
 			checkFiles: []string{"vibewarden.yaml"},
 		},
 		{
-			name:       "tls without domain returns error",
-			args:       []string{"--tls"},
-			wantErr:    true,
+			name:    "tls without domain returns error",
+			args:    []string{"--tls"},
+			wantErr: true,
 		},
 		{
 			name:       "tls with domain succeeds",
@@ -56,8 +56,8 @@ func TestNewInitCmd_FlagCombinations(t *testing.T) {
 			checkFiles: []string{"vibewarden.yaml", "docker-compose.yml"},
 		},
 		{
-			name:    "force flag overwrites existing files",
-			args:    []string{"--force"},
+			name: "force flag overwrites existing files",
+			args: []string{"--force"},
 			setup: func(dir string) {
 				if err := os.WriteFile(filepath.Join(dir, "vibewarden.yaml"), []byte("old"), 0o644); err != nil {
 					t.Fatal(err)
@@ -124,9 +124,9 @@ func TestNewInitCmd_RenderedYAMLValid(t *testing.T) {
 	// expected keys — it does not fully parse YAML (that is tested in the
 	// template adapter tests).
 	tests := []struct {
-		name         string
-		args         []string
-		wantInYAML   []string
+		name       string
+		args       []string
+		wantInYAML []string
 	}{
 		{
 			name:       "default config contains server and upstream sections",

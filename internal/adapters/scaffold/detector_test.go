@@ -5,18 +5,18 @@ import (
 	"path/filepath"
 	"testing"
 
-	scaffoldapp "github.com/vibewarden/vibewarden/internal/app/scaffold"
+	scaffoldadapter "github.com/vibewarden/vibewarden/internal/adapters/scaffold"
 	"github.com/vibewarden/vibewarden/internal/cli/scaffold"
 )
 
 func TestDetector_Detect(t *testing.T) {
 	tests := []struct {
-		name        string
-		setup       func(dir string) // creates files in dir
-		wantType    scaffold.ProjectType
-		wantPort    int
-		wantDocker  bool
-		wantVW      bool
+		name       string
+		setup      func(dir string) // creates files in dir
+		wantType   scaffold.ProjectType
+		wantPort   int
+		wantDocker bool
+		wantVW     bool
 	}{
 		{
 			name: "node project with PORT in start script",
@@ -104,7 +104,7 @@ func TestDetector_Detect(t *testing.T) {
 			dir := t.TempDir()
 			tt.setup(dir)
 
-			d := scaffoldapp.NewDetector()
+			d := scaffoldadapter.NewDetector()
 			got, err := d.Detect(dir)
 			if err != nil {
 				t.Fatalf("Detect() unexpected error: %v", err)

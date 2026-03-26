@@ -1,5 +1,4 @@
-// Package scaffold provides the application-layer scaffold service and related
-// types for the VibeWarden CLI init command.
+// Package scaffold provides filesystem-based adapters for project scaffolding.
 package scaffold
 
 import (
