@@ -1,6 +1,6 @@
 # VibeWarden Makefile
 
-.PHONY: build test lint run docker-up docker-down observability-up observability-down grafana-open prometheus-open clean
+.PHONY: build test lint run docker-up docker-down observability-up observability-down grafana-open prometheus-open clean check setup-hooks
 
 # Build variables
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
@@ -51,3 +51,23 @@ prometheus-open:
 # Clean build artifacts
 clean:
 	rm -rf bin/
+
+# Run all quality checks (build, format, vet, tests)
+check: ## Run all quality checks (build, format, vet, tests)
+	@echo "==> Checking formatting (main module)..."
+	@test -z "$$(gofmt -l .)" || (echo "gofmt: these files need formatting:" && gofmt -l . && exit 1)
+	@echo "==> Running go vet (main module)..."
+	go vet ./...
+	@echo "==> Building (main module)..."
+	go build ./...
+	@echo "==> Running tests (main module)..."
+	go test -race ./...
+	@echo "==> Checking demo-app..."
+	@test -z "$$(cd examples/demo-app && gofmt -l .)" || (echo "gofmt: these demo-app files need formatting:" && cd examples/demo-app && gofmt -l . && exit 1)
+	cd examples/demo-app && go vet ./... && go build ./... && go test -race ./...
+	@echo "==> All checks passed!"
+
+# Install git hooks for local development
+setup-hooks: ## Install git hooks for local development
+	ln -sf ../../scripts/hooks/pre-push .git/hooks/pre-push
+	@echo "Git pre-push hook installed"
