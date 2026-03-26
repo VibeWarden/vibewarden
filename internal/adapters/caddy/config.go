@@ -70,6 +70,15 @@ func BuildCaddyConfig(cfg *ports.ProxyConfig) (map[string]any, error) {
 		handlers = append(handlers, buildSecurityHeadersHandler(cfg.SecurityHeaders, cfg.TLS.Enabled))
 	}
 
+	// Add admin auth handler. It is always included so that admin paths return
+	// the correct status (404 when disabled, 401 when token is wrong) even
+	// when the admin API is not yet enabled.
+	adminAuthHandler, err := buildAdminAuthHandlerJSON(cfg.AdminAuth)
+	if err != nil {
+		return nil, fmt.Errorf("building admin auth handler config: %w", err)
+	}
+	handlers = append(handlers, adminAuthHandler)
+
 	// Add rate limit handler if enabled.
 	if cfg.RateLimit.Enabled {
 		rlHandler, err := buildRateLimitHandlerJSON(cfg.RateLimit)
