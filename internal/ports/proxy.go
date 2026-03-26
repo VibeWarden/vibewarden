@@ -42,6 +42,22 @@ type ProxyConfig struct {
 
 	// RateLimit configuration — controls per-IP and per-user rate limiting.
 	RateLimit RateLimitConfig
+
+	// Metrics configuration — controls the Prometheus metrics endpoint.
+	Metrics MetricsProxyConfig
+}
+
+// MetricsProxyConfig holds configuration for exposing the Prometheus metrics
+// endpoint through the Caddy reverse proxy.
+type MetricsProxyConfig struct {
+	// Enabled toggles the metrics endpoint at /_vibewarden/metrics.
+	Enabled bool
+
+	// InternalAddr is the host:port of the internal HTTP server that serves the
+	// Prometheus handler (e.g., "127.0.0.1:9091"). Caddy reverse-proxies
+	// /_vibewarden/metrics to this address.
+	// This field must be set when Enabled is true.
+	InternalAddr string
 }
 
 // TLSProvider identifies how TLS certificates are provisioned.

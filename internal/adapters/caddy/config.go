@@ -100,9 +100,15 @@ func BuildCaddyConfig(cfg *ports.ProxyConfig) (map[string]any, error) {
 		},
 	}
 
-	// Build routes — health check first, then Kratos flow routes (when auth is
-	// configured), and finally the catch-all proxy route.
+	// Build routes — health check first, then metrics (when enabled), then
+	// Kratos flow routes (when auth is configured), and finally the catch-all
+	// proxy route.
 	routes := []map[string]any{healthRoute}
+
+	if cfg.Metrics.Enabled && cfg.Metrics.InternalAddr != "" {
+		metricsRoute := buildMetricsRoute(cfg.Metrics.InternalAddr)
+		routes = append(routes, metricsRoute)
+	}
 
 	if cfg.Auth.Enabled && cfg.Auth.KratosPublicURL != "" {
 		kratosRoute := buildKratosFlowRoute(cfg.Auth.KratosPublicURL)
@@ -362,6 +368,37 @@ func urlToDialAddr(rawURL string) string {
 	}
 
 	return net.JoinHostPort(host, port)
+}
+
+// buildMetricsRoute constructs a Caddy route that reverse-proxies requests to
+// /_vibewarden/metrics to the internal metrics HTTP server at internalAddr.
+// The internal server is started separately (see adapters/metrics.Server) and
+// serves the Prometheus handler on a random localhost port.
+//
+// The internalAddr must be a host:port string (e.g., "127.0.0.1:9091").
+//
+// A rewrite handler is placed before reverse_proxy to translate the public path
+// /_vibewarden/metrics into /metrics, which is the path the internal ServeMux
+// listens on.
+func buildMetricsRoute(internalAddr string) map[string]any {
+	return map[string]any{
+		"match": []map[string]any{
+			{"path": []string{"/_vibewarden/metrics"}},
+		},
+		"handle": []map[string]any{
+			// Rewrite /_vibewarden/metrics → /metrics before proxying.
+			{
+				"handler": "rewrite",
+				"uri":     "/metrics",
+			},
+			{
+				"handler": "reverse_proxy",
+				"upstreams": []map[string]any{
+					{"dial": internalAddr},
+				},
+			},
+		},
+	}
 }
 
 // buildSecurityHeadersHandler creates the Caddy headers handler for security headers.

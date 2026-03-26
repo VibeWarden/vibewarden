@@ -1073,6 +1073,212 @@ func TestURLToDialAddr(t *testing.T) {
 	}
 }
 
+func TestBuildCaddyConfig_MetricsRoute_PresentWhenEnabled(t *testing.T) {
+	cfg := &ports.ProxyConfig{
+		ListenAddr:   "127.0.0.1:8080",
+		UpstreamAddr: "127.0.0.1:3000",
+		Metrics: ports.MetricsProxyConfig{
+			Enabled:      true,
+			InternalAddr: "127.0.0.1:9091",
+		},
+	}
+
+	result, err := BuildCaddyConfig(cfg)
+	if err != nil {
+		t.Fatalf("BuildCaddyConfig() unexpected error: %v", err)
+	}
+
+	server := extractServer(t, result)
+	routes, ok := server["routes"].([]map[string]any)
+	if !ok {
+		t.Fatal("routes not found in server config")
+	}
+	// Expect: health (index 0), metrics (index 1), catch-all (index 2).
+	if len(routes) != 3 {
+		t.Fatalf("expected 3 routes (health + metrics + proxy), got %d", len(routes))
+	}
+
+	metricsRoute := routes[1]
+
+	matchers, ok := metricsRoute["match"].([]map[string]any)
+	if !ok || len(matchers) == 0 {
+		t.Fatal("match not found in metrics route")
+	}
+	paths, ok := matchers[0]["path"].([]string)
+	if !ok || len(paths) == 0 {
+		t.Fatal("path not found in metrics route matcher")
+	}
+	if paths[0] != "/_vibewarden/metrics" {
+		t.Errorf("metrics route path = %q, want %q", paths[0], "/_vibewarden/metrics")
+	}
+
+	handlers, ok := metricsRoute["handle"].([]map[string]any)
+	if !ok || len(handlers) < 2 {
+		t.Fatalf("expected at least 2 handlers (rewrite + reverse_proxy) in metrics route, got %v", handlers)
+	}
+	// First handler: rewrite.
+	if handlers[0]["handler"] != "rewrite" {
+		t.Errorf("metrics handlers[0] = %v, want rewrite", handlers[0]["handler"])
+	}
+	if handlers[0]["uri"] != "/metrics" {
+		t.Errorf("metrics rewrite uri = %v, want /metrics", handlers[0]["uri"])
+	}
+	// Second handler: reverse_proxy to internal addr.
+	if handlers[1]["handler"] != "reverse_proxy" {
+		t.Errorf("metrics handlers[1] = %v, want reverse_proxy", handlers[1]["handler"])
+	}
+	upstreams, ok := handlers[1]["upstreams"].([]map[string]any)
+	if !ok || len(upstreams) == 0 {
+		t.Fatal("upstreams not found in metrics route handler")
+	}
+	if upstreams[0]["dial"] != "127.0.0.1:9091" {
+		t.Errorf("metrics upstream dial = %v, want 127.0.0.1:9091", upstreams[0]["dial"])
+	}
+}
+
+func TestBuildCaddyConfig_MetricsRoute_AbsentWhenDisabled(t *testing.T) {
+	tests := []struct {
+		name string
+		cfg  *ports.ProxyConfig
+	}{
+		{
+			name: "metrics disabled",
+			cfg: &ports.ProxyConfig{
+				ListenAddr:   "127.0.0.1:8080",
+				UpstreamAddr: "127.0.0.1:3000",
+				Metrics: ports.MetricsProxyConfig{
+					Enabled:      false,
+					InternalAddr: "127.0.0.1:9091",
+				},
+			},
+		},
+		{
+			name: "metrics enabled but no internal addr",
+			cfg: &ports.ProxyConfig{
+				ListenAddr:   "127.0.0.1:8080",
+				UpstreamAddr: "127.0.0.1:3000",
+				Metrics: ports.MetricsProxyConfig{
+					Enabled:      true,
+					InternalAddr: "",
+				},
+			},
+		},
+		{
+			name: "metrics not configured",
+			cfg: &ports.ProxyConfig{
+				ListenAddr:   "127.0.0.1:8080",
+				UpstreamAddr: "127.0.0.1:3000",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := BuildCaddyConfig(tt.cfg)
+			if err != nil {
+				t.Fatalf("BuildCaddyConfig() unexpected error: %v", err)
+			}
+
+			server := extractServer(t, result)
+			routes, ok := server["routes"].([]map[string]any)
+			if !ok {
+				t.Fatal("routes not found in server config")
+			}
+			// Without metrics: only health + catch-all = 2 routes.
+			if len(routes) != 2 {
+				t.Errorf("expected 2 routes (health + proxy), got %d", len(routes))
+			}
+		})
+	}
+}
+
+func TestBuildCaddyConfig_MetricsRouteBeforeCatchAll(t *testing.T) {
+	cfg := &ports.ProxyConfig{
+		ListenAddr:   "127.0.0.1:8080",
+		UpstreamAddr: "127.0.0.1:3000",
+		Metrics: ports.MetricsProxyConfig{
+			Enabled:      true,
+			InternalAddr: "127.0.0.1:9091",
+		},
+	}
+
+	result, err := BuildCaddyConfig(cfg)
+	if err != nil {
+		t.Fatalf("BuildCaddyConfig() unexpected error: %v", err)
+	}
+
+	server := extractServer(t, result)
+	routes, ok := server["routes"].([]map[string]any)
+	if !ok || len(routes) < 3 {
+		t.Fatalf("expected at least 3 routes, got %d", len(routes))
+	}
+
+	// routes[0] = health, routes[1] = metrics, routes[2] = catch-all.
+	metricsRoute := routes[1]
+	if _, hasMatcher := metricsRoute["match"]; !hasMatcher {
+		t.Error("routes[1] (metrics) must have a path matcher")
+	}
+
+	catchAll := routes[2]
+	if _, hasMatcher := catchAll["match"]; hasMatcher {
+		t.Error("routes[2] (catch-all) must not have a path matcher")
+	}
+}
+
+func TestBuildMetricsRoute(t *testing.T) {
+	tests := []struct {
+		name         string
+		internalAddr string
+	}{
+		{
+			name:         "standard localhost addr",
+			internalAddr: "127.0.0.1:9091",
+		},
+		{
+			name:         "high port",
+			internalAddr: "127.0.0.1:49152",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			route := buildMetricsRoute(tt.internalAddr)
+
+			matchers, ok := route["match"].([]map[string]any)
+			if !ok || len(matchers) == 0 {
+				t.Fatal("match not found in route")
+			}
+			paths, ok := matchers[0]["path"].([]string)
+			if !ok || len(paths) != 1 || paths[0] != "/_vibewarden/metrics" {
+				t.Errorf("path = %v, want [/_vibewarden/metrics]", paths)
+			}
+
+			handlers, ok := route["handle"].([]map[string]any)
+			if !ok || len(handlers) < 2 {
+				t.Fatalf("expected at least 2 handlers (rewrite + reverse_proxy), got %v", handlers)
+			}
+			// handlers[0] must be the rewrite handler.
+			if handlers[0]["handler"] != "rewrite" {
+				t.Errorf("handlers[0] = %v, want rewrite", handlers[0]["handler"])
+			}
+			if handlers[0]["uri"] != "/metrics" {
+				t.Errorf("rewrite uri = %v, want /metrics", handlers[0]["uri"])
+			}
+			// handlers[1] must be reverse_proxy.
+			if handlers[1]["handler"] != "reverse_proxy" {
+				t.Errorf("handlers[1] = %v, want reverse_proxy", handlers[1]["handler"])
+			}
+			upstreams, ok := handlers[1]["upstreams"].([]map[string]any)
+			if !ok || len(upstreams) == 0 {
+				t.Fatal("upstreams not found")
+			}
+			if upstreams[0]["dial"] != tt.internalAddr {
+				t.Errorf("dial = %v, want %v", upstreams[0]["dial"], tt.internalAddr)
+			}
+		})
+	}
+}
+
 // extractServer is a helper to navigate the Caddy config structure to the server map.
 func extractServer(t *testing.T, result map[string]any) map[string]any {
 	t.Helper()
