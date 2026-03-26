@@ -26,7 +26,6 @@ func TestService_Init_WrapperGeneration(t *testing.T) {
 			name: "default init generates wrapper scripts",
 			opts: scaffoldapp.InitOptions{
 				UpstreamPort: 3000,
-				SkipDocker:   true,
 			},
 			checkFiles: []string{
 				"vibew",
@@ -39,7 +38,6 @@ func TestService_Init_WrapperGeneration(t *testing.T) {
 			name: "skip-wrapper omits all wrapper files",
 			opts: scaffoldapp.InitOptions{
 				UpstreamPort: 3000,
-				SkipDocker:   true,
 				SkipWrapper:  true,
 			},
 			absentFiles: []string{
@@ -53,7 +51,6 @@ func TestService_Init_WrapperGeneration(t *testing.T) {
 			name: "force overwrites existing wrapper files",
 			opts: scaffoldapp.InitOptions{
 				UpstreamPort: 3000,
-				SkipDocker:   true,
 				Force:        true,
 			},
 			checkFiles: []string{
@@ -67,7 +64,6 @@ func TestService_Init_WrapperGeneration(t *testing.T) {
 			name: "wrapper without force fails when vibew exists",
 			opts: scaffoldapp.InitOptions{
 				UpstreamPort: 3000,
-				SkipDocker:   true,
 				Force:        false,
 			},
 			wantErr: true,
@@ -120,7 +116,6 @@ func TestService_Init_VibewExecutable(t *testing.T) {
 
 	opts := scaffoldapp.InitOptions{
 		UpstreamPort: 3000,
-		SkipDocker:   true,
 	}
 	if err := svc.Init(context.Background(), dir, opts); err != nil {
 		t.Fatalf("Init() unexpected error: %v", err)
@@ -151,7 +146,6 @@ func TestService_Init_VersionWrittenToVersionFile(t *testing.T) {
 
 	opts := scaffoldapp.InitOptions{
 		UpstreamPort: 3000,
-		SkipDocker:   true,
 		Version:      "v1.2.3",
 	}
 	if err := svc.Init(context.Background(), dir, opts); err != nil {

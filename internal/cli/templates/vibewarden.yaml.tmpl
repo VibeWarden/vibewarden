@@ -41,8 +41,19 @@ tls:
 kratos:
   public_url: "http://localhost:4433"
   admin_url: "http://localhost:4434"
+  # DSN for the Kratos PostgreSQL database.
+  # Example: "postgres://kratos:secret@localhost:5432/kratos?sslmode=disable"
+  # Can be set via VIBEWARDEN_KRATOS_DSN env var.
+  dsn: ""
+  smtp:
+    host: "localhost"
+    port: 1025
+    from: "no-reply@vibewarden.local"
 
 auth:
+  # Identity schema preset: "email_password" (default), "email_only", or "username_password".
+  # You can also point to a custom JSON schema file path.
+  identity_schema: "email_password"
   session_cookie_name: "ory_kratos_session"
   login_url: "http://localhost:4433/self-service/login/browser"
   public_paths:
@@ -64,3 +75,11 @@ rate_limit:
     - "/health"
     - "/ready"
 {{- end }}
+
+# Escape hatches — uncomment to supply hand-crafted config files instead of
+# relying on VibeWarden's runtime generation. Paths are relative to the
+# .vibewarden/generated/ directory.
+#
+# overrides:
+#   kratos_config: ""      # path to a custom kratos.yml
+#   docker_compose: ""     # path to a custom docker-compose.yml

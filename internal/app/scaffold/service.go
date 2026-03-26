@@ -14,7 +14,6 @@ import (
 
 const (
 	vibeWardenYAML     = "vibewarden.yaml"
-	dockerComposeYML   = "docker-compose.yml"
 	vibeWardenVersionF = ".vibewarden-version"
 	vibewShell         = "vibew"
 	vibewPowerShell    = "vibew.ps1"
@@ -47,9 +46,6 @@ type InitOptions struct {
 	// Force allows overwriting existing files.
 	Force bool
 
-	// SkipDocker skips docker-compose.yml generation.
-	SkipDocker bool
-
 	// Version is the VibeWarden release version written into .vibewarden-version.
 	// When empty the wrapper falls back to the latest GitHub release at runtime.
 	Version string
@@ -73,8 +69,10 @@ func NewService(renderer ports.TemplateRenderer, detector ports.ProjectDetector)
 }
 
 // Init initialises VibeWarden in a project directory by generating
-// vibewarden.yaml, (unless SkipDocker is set) docker-compose.yml, and
-// (unless SkipWrapper is set) the vibew wrapper scripts.
+// vibewarden.yaml and (unless SkipWrapper is set) the vibew wrapper scripts.
+// Docker Compose and Kratos config are no longer generated at init time —
+// they are generated at runtime by `vibew dev` from the consolidated
+// vibewarden.yaml.
 //
 // If any required file already exists and opts.Force is false, Init returns an
 // error wrapping os.ErrExist.
@@ -96,13 +94,8 @@ func (s *Service) Init(_ context.Context, dir string, opts InitOptions) error {
 	}
 
 	// Guard against unintentional overwrite.
-	if !opts.Force {
-		if project.HasVibeWardenConfig {
-			return fmt.Errorf("vibewarden.yaml already exists in %q: %w", dir, os.ErrExist)
-		}
-		if !opts.SkipDocker && project.HasDockerCompose {
-			return fmt.Errorf("docker-compose.yml already exists in %q: %w", dir, os.ErrExist)
-		}
+	if !opts.Force && project.HasVibeWardenConfig {
+		return fmt.Errorf("vibewarden.yaml already exists in %q: %w", dir, os.ErrExist)
 	}
 
 	data := domainscaffold.TemplateData{
@@ -121,17 +114,6 @@ func (s *Service) Init(_ context.Context, dir string, opts InitOptions) error {
 			return fmt.Errorf("rendering vibewarden.yaml: %w", err)
 		}
 		return fmt.Errorf("vibewarden.yaml already exists; use --force to overwrite: %w", err)
-	}
-
-	// Render docker-compose.yml unless skipped.
-	if !opts.SkipDocker {
-		dcPath := filepath.Join(dir, dockerComposeYML)
-		if err := s.renderer.RenderToFile("docker-compose.yml.tmpl", data, dcPath, opts.Force); err != nil {
-			if !errors.Is(err, os.ErrExist) {
-				return fmt.Errorf("rendering docker-compose.yml: %w", err)
-			}
-			return fmt.Errorf("docker-compose.yml already exists; use --force to overwrite: %w", err)
-		}
 	}
 
 	// Render vibew wrapper scripts unless skipped.
