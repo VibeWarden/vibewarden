@@ -14,6 +14,12 @@
       "version": "1.0.0"
     },
     {
+      "type": "datasource",
+      "id": "loki",
+      "name": "Loki",
+      "version": "1.0.0"
+    },
+    {
       "type": "panel",
       "id": "timeseries",
       "name": "Time series",
@@ -35,6 +41,18 @@
       "type": "panel",
       "id": "piechart",
       "name": "Pie chart",
+      "version": ""
+    },
+    {
+      "type": "panel",
+      "id": "text",
+      "name": "Text",
+      "version": ""
+    },
+    {
+      "type": "panel",
+      "id": "logs",
+      "name": "Logs",
       "version": ""
     }
   ],
@@ -59,11 +77,23 @@
   "links": [],
   "panels": [
     {
+      "id": 10,
+      "title": "Security Configuration",
+      "type": "text",
+      "description": "Active security configuration for this VibeWarden instance.",
+      "gridPos": { "h": 4, "w": 24, "x": 0, "y": 0 },
+      "options": {
+        "content": "## VibeWarden — Active Security Configuration\n\n| Setting | Value |\n|---|---|\n| **TLS** | Automatic via Let's Encrypt |\n| **Auth** | Ory Kratos with email/password |\n| **Rate Limiting** | 20 req/s per IP, burst 40 |\n| **Security Headers** | HSTS, nosniff, DENY, CSP, Referrer-Policy |\n| **Logging** | AI-structured JSON enabled |",
+        "mode": "markdown"
+      },
+      "transparent": false
+    },
+    {
       "id": 1,
       "title": "Request Rate",
       "type": "timeseries",
       "description": "HTTP requests per second grouped by status code.",
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 4 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": {
         "defaults": {
@@ -109,7 +139,7 @@
       "title": "Error Rate (5xx)",
       "type": "stat",
       "description": "Percentage of requests returning a 5xx status code over the last 5 minutes.",
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 4 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": {
         "defaults": {
@@ -151,7 +181,7 @@
       "title": "Latency Percentiles",
       "type": "timeseries",
       "description": "Request latency at the P50, P95, and P99 percentiles.",
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 8 },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 12 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": {
         "defaults": {
@@ -195,7 +225,7 @@
       "title": "Active Connections",
       "type": "gauge",
       "description": "Current number of active connections being proxied by VibeWarden.",
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 8 },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 12 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": {
         "defaults": {
@@ -235,7 +265,7 @@
       "title": "Rate Limit Hits/sec",
       "type": "timeseries",
       "description": "Rate of requests hitting rate limits, grouped by limit type.",
-      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 20 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": {
         "defaults": {
@@ -267,7 +297,7 @@
       "title": "Auth Decisions (Total)",
       "type": "piechart",
       "description": "Cumulative distribution of authentication decisions (allow, deny, redirect).",
-      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 20 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": {
         "defaults": {
@@ -295,7 +325,7 @@
       "title": "Upstream Errors/sec",
       "type": "timeseries",
       "description": "Rate of errors returned by the upstream application.",
-      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 24 },
+      "gridPos": { "h": 8, "w": 24, "x": 0, "y": 28 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "fieldConfig": {
         "defaults": {
@@ -321,6 +351,110 @@
           "legendFormat": "Upstream errors"
         }
       ]
+    },
+    {
+      "id": 20,
+      "title": "Log Stream",
+      "type": "logs",
+      "description": "Live tail of all structured logs showing timestamp, event_type, and ai_summary.",
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 36 },
+      "datasource": { "type": "loki", "uid": "loki" },
+      "options": {
+        "dedupStrategy": "none",
+        "enableLogDetails": true,
+        "prettifyLogMessage": false,
+        "showCommonLabels": false,
+        "showLabels": false,
+        "showTime": true,
+        "sortOrder": "Descending",
+        "wrapLogMessage": false
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "loki", "uid": "loki" },
+          "expr": "{container=\"vibewarden\"} | json",
+          "legendFormat": ""
+        }
+      ]
+    },
+    {
+      "id": 21,
+      "title": "Auth Events",
+      "type": "logs",
+      "description": "Structured log entries for authentication events (login, logout, token refresh, etc.).",
+      "gridPos": { "h": 10, "w": 12, "x": 0, "y": 46 },
+      "datasource": { "type": "loki", "uid": "loki" },
+      "options": {
+        "dedupStrategy": "none",
+        "enableLogDetails": true,
+        "prettifyLogMessage": false,
+        "showCommonLabels": false,
+        "showLabels": false,
+        "showTime": true,
+        "sortOrder": "Descending",
+        "wrapLogMessage": false
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "loki", "uid": "loki" },
+          "expr": "{container=\"vibewarden\"} | json | event_type =~ \"auth.*\"",
+          "legendFormat": ""
+        }
+      ]
+    },
+    {
+      "id": 22,
+      "title": "Rate Limit Events",
+      "type": "logs",
+      "description": "Structured log entries for rate limiting events.",
+      "gridPos": { "h": 10, "w": 12, "x": 12, "y": 46 },
+      "datasource": { "type": "loki", "uid": "loki" },
+      "options": {
+        "dedupStrategy": "none",
+        "enableLogDetails": true,
+        "prettifyLogMessage": false,
+        "showCommonLabels": false,
+        "showLabels": false,
+        "showTime": true,
+        "sortOrder": "Descending",
+        "wrapLogMessage": false
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "loki", "uid": "loki" },
+          "expr": "{container=\"vibewarden\"} | json | event_type =~ \"rate_limit.*\"",
+          "legendFormat": ""
+        }
+      ]
+    },
+    {
+      "id": 23,
+      "title": "Security Events",
+      "type": "logs",
+      "description": "Structured log entries for security events including blocked requests and suspicious patterns.",
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 56 },
+      "datasource": { "type": "loki", "uid": "loki" },
+      "options": {
+        "dedupStrategy": "none",
+        "enableLogDetails": true,
+        "prettifyLogMessage": false,
+        "showCommonLabels": false,
+        "showLabels": false,
+        "showTime": true,
+        "sortOrder": "Descending",
+        "wrapLogMessage": false
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "loki", "uid": "loki" },
+          "expr": "{container=\"vibewarden\"} | json | event_type =~ \"security.*\" or event_type =~ \"blocked.*\" or event_type =~ \"suspicious.*\"",
+          "legendFormat": ""
+        }
+      ]
     }
   ],
   "refresh": "5s",
@@ -332,6 +466,6 @@
   "timezone": "browser",
   "title": "VibeWarden",
   "uid": "vibewarden-overview",
-  "version": 1,
+  "version": 2,
   "weekStart": ""
 }
