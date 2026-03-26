@@ -36,9 +36,10 @@ RUN CGO_ENABLED=0 GOOS=linux go build \
 # ---------------------------------------------------------------------------
 # Stage 2: runtime
 # ---------------------------------------------------------------------------
-# gcr.io/distroless/static-debian12 is the smallest possible base that still
-# has TLS root certificates and timezone data (needed by Caddy and Kratos client).
-FROM gcr.io/distroless/static-debian12:nonroot
+# Alpine provides wget for Docker healthchecks while remaining lightweight.
+FROM alpine:3.21
+
+RUN apk add --no-cache ca-certificates wget
 
 # Copy the statically linked binary.
 COPY --from=builder /vibewarden /vibewarden
