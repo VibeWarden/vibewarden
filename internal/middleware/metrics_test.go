@@ -65,13 +65,13 @@ func identityNormalize(path string) string { return path }
 
 func TestMetricsMiddleware_RecordsRequestTotal(t *testing.T) {
 	tests := []struct {
-		name           string
-		method         string
-		path           string
-		handlerStatus  int
-		wantMethod     string
-		wantStatus     string
-		wantPattern    string
+		name          string
+		method        string
+		path          string
+		handlerStatus int
+		wantMethod    string
+		wantStatus    string
+		wantPattern   string
 	}{
 		{
 			name:          "GET 200",
