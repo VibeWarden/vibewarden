@@ -27,8 +27,6 @@
 #   # Full wipe including volumes:
 #   docker compose -f docker-compose.prod.yml down -v
 
-version: "3.8"
-
 services:
   # --------------------------------------------------------------------------
   # Postgres — persistent storage for Ory Kratos
