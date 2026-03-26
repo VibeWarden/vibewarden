@@ -58,7 +58,7 @@ func main() {
 	mux.HandleFunc("GET /health", handleHealth)
 	mux.HandleFunc("GET /auth/login", handleAuthPage(staticFS, "login.html"))
 	mux.HandleFunc("GET /auth/registration", handleAuthPage(staticFS, "register.html"))
-	mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.FS(staticFS))))
+	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.FS(staticFS))))
 
 	addr := ":" + port
 	slog.Info("demo-app starting", "addr", addr)
