@@ -1,0 +1,84 @@
+# VibeWarden production configuration for the public demo at challenge.vibewarden.dev.
+#
+# Differences from vibewarden.yaml (local dev config):
+#   - TLS enabled with Let's Encrypt (automatic ACME certificate)
+#   - Rate limits tuned for public traffic: higher sustained rate, lower enough to demo 429s
+#   - Per-user rate limits set to production-grade defaults
+#   - login_url set to the Kratos browser login flow URL through the VibeWarden proxy
+#
+# Used by docker-compose.prod.yml.
+# Do NOT use this configuration for local development — use vibewarden.yaml instead.
+
+server:
+  host: "0.0.0.0"
+  port: 443
+
+upstream:
+  host: "demo-app"
+  port: 3000
+
+tls:
+  enabled: true
+  provider: "letsencrypt"
+  domain: "challenge.vibewarden.dev"
+
+kratos:
+  # Resolved via the internal Docker network.
+  public_url: "http://kratos:4433"
+  admin_url:  "http://kratos:4434"
+
+auth:
+  # Paths that do NOT require authentication.
+  public_paths:
+    - "/"
+    - "/public"
+    - "/health"
+    - "/static/*"
+  session_cookie_name: "ory_kratos_session"
+  # Redirect unauthenticated users to the Kratos browser login flow,
+  # which VibeWarden proxies to Kratos internally.
+  login_url: "/self-service/login/browser"
+
+rate_limit:
+  enabled: true
+  # Per-IP limits: high enough for normal browsing, low enough to demo 429s with a script.
+  # Try: for i in $(seq 1 50); do curl -s -o /dev/null -w "%{http_code}\n" https://challenge.vibewarden.dev/spam; done
+  per_ip:
+    requests_per_second: 20
+    burst: 40
+  # Per-user limits: production-grade defaults for authenticated traffic.
+  per_user:
+    requests_per_second: 100
+    burst: 200
+  trust_proxy_headers: false
+  exempt_paths: []
+
+log:
+  level: "info"
+  format: "json"
+
+admin:
+  enabled: false
+  token: ""
+
+metrics:
+  enabled: true
+  path_patterns:
+    - "/"
+    - "/public"
+    - "/me"
+    - "/headers"
+    - "/spam"
+    - "/health"
+
+security_headers:
+  enabled: true
+  hsts_max_age: 31536000
+  hsts_include_subdomains: true
+  # Not submitted to browser preload lists — this is a demo domain.
+  hsts_preload: false
+  content_type_nosniff: true
+  frame_option: "DENY"
+  content_security_policy: "default-src 'self'; style-src 'self'; script-src 'self' 'unsafe-inline'"
+  referrer_policy: "strict-origin-when-cross-origin"
+  permissions_policy: ""
