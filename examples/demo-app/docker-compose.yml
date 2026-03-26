@@ -5,12 +5,17 @@
 #   kratos-migrate — runs Kratos DB migrations once, then exits
 #   kratos         — Ory Kratos identity server (public :4433, admin :4434)
 #   mailslurper    — catches outbound Kratos emails (SMTP :4436, web UI :4437)
+#   seed           — seeds demo identities into Kratos once, then exits
 #   demo-app       — the Go API backend (internal only — not published to host)
 #   vibewarden     — the security sidecar exposed on :8080
 #
 # Usage:
 #   docker compose up -d
 #   # Visit http://localhost:8080
+#
+# Demo credentials (seeded automatically):
+#   demo@vibewarden.dev  / demo1234
+#   alice@vibewarden.dev / alice1234
 #
 # Secrets: all credentials are hard-coded to simple demo values.
 # Never use these outside a local demo environment.
@@ -101,6 +106,30 @@ services:
       - "4437:4437"   # Web UI
     networks:
       - demo
+
+  # --------------------------------------------------------------------------
+  # Seed — seeds demo identities into Kratos once on first boot, then exits.
+  #
+  # Creates:
+  #   demo@vibewarden.dev  / demo1234
+  #   alice@vibewarden.dev / alice1234
+  #
+  # Idempotent: skips identities that already exist.
+  # --------------------------------------------------------------------------
+  seed:
+    image: curlimages/curl:8.12.1
+    container_name: demo-seed
+    environment:
+      KRATOS_ADMIN_URL: http://kratos:4434
+    volumes:
+      - ./scripts/seed-users.sh:/seed-users.sh:ro
+    command: sh /seed-users.sh
+    depends_on:
+      kratos:
+        condition: service_healthy
+    networks:
+      - demo
+    restart: "no"
 
   # --------------------------------------------------------------------------
   # Demo app — the Go API backend
