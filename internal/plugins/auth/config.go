@@ -41,6 +41,37 @@ type Config struct {
 	// Accepted values: "email_password" (default), "email_only",
 	// "username_password", or a filesystem path to a custom JSON file.
 	IdentitySchema string
+
+	// UI holds configuration for the built-in auth UI pages.
+	// When UI.Mode is "built-in" (the default), VibeWarden serves its own
+	// login, registration, recovery, and verification pages.
+	// When UI.Mode is "custom", the operator provides their own pages and
+	// the built-in handler is not mounted.
+	UI UIConfig
+}
+
+// UIConfig holds theming and mode settings for the built-in auth UI pages.
+// It maps to the plugins.auth.ui section of vibewarden.yaml.
+type UIConfig struct {
+	// Mode selects the UI serving strategy.
+	// Accepted values: "built-in" (default), "custom".
+	Mode string
+
+	// PrimaryColor is the CSS color value for the --vw-primary custom property.
+	// Defaults to "#7C3AED" (VibeWarden purple) when empty.
+	PrimaryColor string
+
+	// BackgroundColor is the CSS color value for the --vw-bg custom property.
+	// Defaults to "#F3F4F6" when empty.
+	BackgroundColor string
+
+	// TextColor is the CSS color value for the --vw-text custom property.
+	// Defaults to "#111827" when empty.
+	TextColor string
+
+	// ErrorColor is the CSS color value for the --vw-error custom property.
+	// Defaults to "#DC2626" when empty.
+	ErrorColor string
 }
 
 // defaultSessionCookieName is used when SessionCookieName is not set.
