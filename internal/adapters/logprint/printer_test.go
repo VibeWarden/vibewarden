@@ -84,9 +84,9 @@ func TestPrinter_Print_ValidJSON(t *testing.T) {
 			},
 		},
 		{
-			name: "filter matches event type prefix",
-			line: `{"schema_version":"1","timestamp":"2026-03-26T10:30:50Z","level":"info","event_type":"auth.session_validated","ai_summary":"Auth ok","payload":{}}`,
-			opts: logprint.PrinterOptions{Filter: "auth"},
+			name:        "filter matches event type prefix",
+			line:        `{"schema_version":"1","timestamp":"2026-03-26T10:30:50Z","level":"info","event_type":"auth.session_validated","ai_summary":"Auth ok","payload":{}}`,
+			opts:        logprint.PrinterOptions{Filter: "auth"},
 			wantContain: []string{"[auth.session_validated]"},
 		},
 		{
@@ -106,9 +106,9 @@ func TestPrinter_Print_ValidJSON(t *testing.T) {
 			},
 		},
 		{
-			name: "filter is case-insensitive",
-			line: `{"schema_version":"1","timestamp":"2026-03-26T10:30:53Z","level":"info","event_type":"Auth.Session","ai_summary":"Auth match","payload":{}}`,
-			opts: logprint.PrinterOptions{Filter: "AUTH"},
+			name:        "filter is case-insensitive",
+			line:        `{"schema_version":"1","timestamp":"2026-03-26T10:30:53Z","level":"info","event_type":"Auth.Session","ai_summary":"Auth match","payload":{}}`,
+			opts:        logprint.PrinterOptions{Filter: "AUTH"},
 			wantContain: []string{"[Auth.Session]"},
 		},
 	}

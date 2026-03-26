@@ -3,6 +3,7 @@ package ops
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os/exec"
@@ -64,9 +65,9 @@ func (s *LogsService) runCompose(ctx context.Context, opts LogsOptions, out io.W
 	}
 
 	if err := s.stream(ctx, stdout, out); err != nil {
-		// Best-effort wait — process may already be done.
-		_ = cmd.Wait()
-		return err
+		// Wait so the child process is reaped; join any wait error so it is
+		// not silently discarded.
+		return errors.Join(err, cmd.Wait())
 	}
 
 	if err := cmd.Wait(); err != nil {
