@@ -13,6 +13,10 @@ import (
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
 
+// init registers AdminAuthHandler with the Caddy module system so it can be
+// referenced by name ("http.handlers.vibewarden_admin_auth") in Caddy's JSON
+// configuration. This function is called automatically by the Go runtime before
+// main() runs.
 func init() {
 	gocaddy.RegisterModule(AdminAuthHandler{})
 }
