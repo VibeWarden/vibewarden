@@ -240,3 +240,83 @@ func TestWriteJSONContentType(t *testing.T) {
 		t.Errorf("status: want 201, got %d", rr.Code)
 	}
 }
+
+func TestHandleRootBrowserRedirect(t *testing.T) {
+	tests := []struct {
+		name         string
+		acceptHeader string
+		wantStatus   int
+		wantLocation string
+	}{
+		{
+			name:         "browser Accept header redirects to static index",
+			acceptHeader: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+			wantStatus:   http.StatusFound,
+			wantLocation: "/static/index.html",
+		},
+		{
+			name:         "API client without Accept text/html receives JSON",
+			acceptHeader: "application/json",
+			wantStatus:   http.StatusOK,
+			wantLocation: "",
+		},
+		{
+			name:         "no Accept header receives JSON",
+			acceptHeader: "",
+			wantStatus:   http.StatusOK,
+			wantLocation: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, "/", nil)
+			if tt.acceptHeader != "" {
+				req.Header.Set("Accept", tt.acceptHeader)
+			}
+			rr := httptest.NewRecorder()
+
+			handleRoot(rr, req)
+
+			if rr.Code != tt.wantStatus {
+				t.Fatalf("want status %d, got %d", tt.wantStatus, rr.Code)
+			}
+			if tt.wantLocation != "" {
+				loc := rr.Header().Get("Location")
+				if loc != tt.wantLocation {
+					t.Errorf("Location: want %q, got %q", tt.wantLocation, loc)
+				}
+			}
+		})
+	}
+}
+
+func TestHandleRootUnknownPath(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/unknown-path", nil)
+	rr := httptest.NewRecorder()
+
+	handleRoot(rr, req)
+
+	if rr.Code != http.StatusNotFound {
+		t.Errorf("want status 404 for unknown path, got %d", rr.Code)
+	}
+}
+
+func TestStaticFilesEmbedded(t *testing.T) {
+	// Verify that the expected HTML files are present in the embedded FS.
+	wantFiles := []string{
+		"static/index.html",
+		"static/me.html",
+		"static/headers.html",
+		"static/ratelimit.html",
+	}
+	for _, path := range wantFiles {
+		t.Run(path, func(t *testing.T) {
+			f, err := staticFiles.Open(path)
+			if err != nil {
+				t.Fatalf("expected embedded file %q to exist: %v", path, err)
+			}
+			f.Close()
+		})
+	}
+}

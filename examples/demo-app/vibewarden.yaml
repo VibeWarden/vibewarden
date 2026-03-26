@@ -30,6 +30,7 @@ auth:
     - "/"
     - "/public"
     - "/health"
+    - "/static"
   session_cookie_name: "ory_kratos_session"
   login_url: ""
 
@@ -71,6 +72,7 @@ security_headers:
   hsts_preload: false
   content_type_nosniff: true
   frame_option: "DENY"
-  content_security_policy: "default-src 'self'"
+  # Allow water.css from jsDelivr CDN for the demo UI.
+  content_security_policy: "default-src 'self'; style-src 'self' https://cdn.jsdelivr.net; script-src 'self' 'unsafe-inline'"
   referrer_policy: "strict-origin-when-cross-origin"
   permissions_policy: ""

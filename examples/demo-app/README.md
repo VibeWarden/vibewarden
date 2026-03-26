@@ -12,8 +12,23 @@ docker compose up -d
 # Visit http://localhost:8080
 ```
 
-Wait ~15 seconds for the full stack to be healthy, then explore the endpoints
-below.
+Wait ~15 seconds for the full stack to be healthy.  Your browser will be
+redirected to the demo UI at `http://localhost:8080/static/index.html`.
+
+## Demo UI
+
+A plain HTML + vanilla JS frontend is embedded directly in the binary (no
+build step required).  Four pages showcase each VibeWarden feature visually:
+
+| Page | URL | What it shows |
+|---|---|---|
+| Home | `/static/index.html` | Auth status, VibeWarden health badge, login / register / logout |
+| My Profile | `/static/me.html` | User ID, email, and verification status from VibeWarden headers |
+| Headers Inspector | `/static/headers.html` | All response headers, security headers highlighted green / red |
+| Rate Limit Test | `/static/ratelimit.html` | Fire 20 rapid requests and watch 429s appear in real time |
+
+The UI uses [water.css](https://watercss.kognise.dev/) (MIT) loaded from
+jsDelivr CDN for a clean, classless style with zero build tooling.
 
 ## Architecture
 
