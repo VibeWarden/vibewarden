@@ -214,6 +214,32 @@ func TestGenerate_OverrideKratosConfig(t *testing.T) {
 	}
 }
 
+func TestGenerate_OverrideComposeFile(t *testing.T) {
+	customCompose := "# custom docker-compose config"
+	composeDir := t.TempDir()
+	customComposePath := filepath.Join(composeDir, "docker-compose.override.yml")
+	if err := os.WriteFile(customComposePath, []byte(customCompose), 0600); err != nil {
+		t.Fatalf("writing custom compose file: %v", err)
+	}
+
+	outputDir := t.TempDir()
+	svc := generate.NewService(&fakeRenderer{})
+	cfg := minimalConfig()
+	cfg.Overrides.ComposeFile = customComposePath
+
+	if err := svc.Generate(context.Background(), cfg, outputDir); err != nil {
+		t.Fatalf("Generate() unexpected error: %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(outputDir, "docker-compose.yml"))
+	if err != nil {
+		t.Fatalf("reading docker-compose.yml: %v", err)
+	}
+	if string(data) != customCompose {
+		t.Errorf("docker-compose.yml = %q, want %q", string(data), customCompose)
+	}
+}
+
 func TestGenerate_RendererError_PropagatesError(t *testing.T) {
 	outputDir := t.TempDir()
 	svc := generate.NewService(&fakeRenderer{

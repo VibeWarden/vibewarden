@@ -239,8 +239,8 @@ type OverridesConfig struct {
 	// When non-empty, VibeWarden uses this file instead of generating one.
 	KratosConfig string `mapstructure:"kratos_config"`
 
-	// ComposeFile is the path to a docker-compose.override.yml file.
-	// When non-empty, VibeWarden merges this file with the generated compose file.
+	// ComposeFile is the path to a custom docker-compose.yml file.
+	// When non-empty, VibeWarden uses this file instead of generating one.
 	ComposeFile string `mapstructure:"compose_file"`
 
 	// IdentitySchema is the path to a custom Kratos identity schema JSON file.

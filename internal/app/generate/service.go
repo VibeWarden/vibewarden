@@ -71,10 +71,21 @@ func (s *Service) Generate(ctx context.Context, cfg *config.Config, outputDir st
 		}
 	}
 
-	// Generate docker-compose.yml.
+	// Generate docker-compose.yml unless an override path is configured.
 	composePath := filepath.Join(outputDir, "docker-compose.yml")
-	if err := s.renderer.RenderToFile("docker-compose.yml.tmpl", cfg, composePath, true); err != nil {
-		return fmt.Errorf("rendering docker-compose.yml: %w", err)
+	if cfg.Overrides.ComposeFile != "" {
+		// Copy the override file verbatim.
+		data, err := os.ReadFile(cfg.Overrides.ComposeFile)
+		if err != nil {
+			return fmt.Errorf("reading compose override config %q: %w", cfg.Overrides.ComposeFile, err)
+		}
+		if err := os.WriteFile(composePath, data, 0o644); err != nil {
+			return fmt.Errorf("writing docker-compose.yml from override: %w", err)
+		}
+	} else {
+		if err := s.renderer.RenderToFile("docker-compose.yml.tmpl", cfg, composePath, true); err != nil {
+			return fmt.Errorf("rendering docker-compose.yml: %w", err)
+		}
 	}
 
 	return nil
