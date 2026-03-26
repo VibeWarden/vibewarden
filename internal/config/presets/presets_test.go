@@ -29,6 +29,21 @@ func TestResolve_BuiltinPresets(t *testing.T) {
 			preset:     presets.PresetUsernamePassword,
 			wantSubstr: `"username"`,
 		},
+		{
+			name:       "social preset contains email",
+			preset:     presets.PresetSocial,
+			wantSubstr: `"email"`,
+		},
+		{
+			name:       "social preset contains name",
+			preset:     presets.PresetSocial,
+			wantSubstr: `"name"`,
+		},
+		{
+			name:       "social preset contains picture",
+			preset:     presets.PresetSocial,
+			wantSubstr: `"picture"`,
+		},
 	}
 
 	for _, tt := range tests {
@@ -87,6 +102,7 @@ func TestIsPreset(t *testing.T) {
 		{"email_password", presets.PresetEmailPassword, true},
 		{"email_only", presets.PresetEmailOnly, true},
 		{"username_password", presets.PresetUsernamePassword, true},
+		{"social", presets.PresetSocial, true},
 		{"custom path", "/path/to/schema.json", false},
 		{"unknown name", "magic_link", false},
 		{"empty", "", false},

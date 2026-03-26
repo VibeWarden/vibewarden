@@ -152,7 +152,16 @@ func mapperFileName(provider string) string {
 }
 
 // resolveIdentitySchema returns the JSON bytes for the identity schema.
-// Precedence: overrides.identity_schema path > auth.identity_schema preset/path.
+//
+// Precedence (highest to lowest):
+//  1. overrides.identity_schema — explicit filesystem path, used verbatim.
+//  2. auth.identity_schema — explicit preset name or filesystem path chosen
+//     by the operator.
+//  3. Auto-selection: when social providers are configured and
+//     auth.identity_schema is "email_password" (the default), the service
+//     upgrades to the "social" preset so that name and picture traits are
+//     available for OIDC mappers to populate.
+//  4. Fallback: "email_password" preset when auth.identity_schema is empty.
 func resolveIdentitySchema(cfg *config.Config) ([]byte, error) {
 	if cfg.Overrides.IdentitySchema != "" {
 		data, err := os.ReadFile(cfg.Overrides.IdentitySchema)
@@ -165,6 +174,13 @@ func resolveIdentitySchema(cfg *config.Config) ([]byte, error) {
 	schemaName := cfg.Auth.IdentitySchema
 	if schemaName == "" {
 		schemaName = presets.PresetEmailPassword
+	}
+
+	// Auto-upgrade to the social preset when social providers are configured
+	// and the operator has not explicitly chosen a schema other than the
+	// default email_password preset.
+	if len(cfg.Auth.SocialProviders) > 0 && schemaName == presets.PresetEmailPassword {
+		schemaName = presets.PresetSocial
 	}
 
 	data, err := presets.Resolve(schemaName)

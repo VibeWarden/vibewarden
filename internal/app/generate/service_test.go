@@ -135,6 +135,11 @@ func TestGenerate_IdentitySchemaPresets(t *testing.T) {
 			identitySchema: "username_password",
 			wantSubstr:     []byte(`"username"`),
 		},
+		{
+			name:           "social preset",
+			identitySchema: "social",
+			wantSubstr:     []byte(`"picture"`),
+		},
 	}
 
 	for _, tt := range tests {
@@ -387,6 +392,86 @@ func TestGenerate_WithoutSocialProviders_NoMappersDir(t *testing.T) {
 	mappersDir := filepath.Join(outputDir, "kratos", "mappers")
 	if _, err := os.Stat(mappersDir); err == nil {
 		t.Errorf("expected mappers directory NOT to exist when no social providers configured, but it does: %q", mappersDir)
+	}
+}
+
+func TestGenerate_SocialProviders_AutoSelectsSocialSchema(t *testing.T) {
+	tests := []struct {
+		name             string
+		identitySchema   string
+		socialProviders  []config.SocialProviderConfig
+		wantSchemaSubstr []byte
+		wantNoSubstr     []byte
+	}{
+		{
+			name:           "auto-upgrades email_password to social when providers configured",
+			identitySchema: "email_password",
+			socialProviders: []config.SocialProviderConfig{
+				{Provider: "google", ClientID: "gid", ClientSecret: "gsecret"},
+			},
+			wantSchemaSubstr: []byte(`"picture"`),
+			wantNoSubstr:     nil,
+		},
+		{
+			name:           "auto-upgrades when identity_schema is empty (uses default)",
+			identitySchema: "",
+			socialProviders: []config.SocialProviderConfig{
+				{Provider: "github", ClientID: "ghid", ClientSecret: "ghsecret"},
+			},
+			wantSchemaSubstr: []byte(`"picture"`),
+			wantNoSubstr:     nil,
+		},
+		{
+			name:           "does not upgrade when explicit non-default schema is set",
+			identitySchema: "email_only",
+			socialProviders: []config.SocialProviderConfig{
+				{Provider: "google", ClientID: "gid", ClientSecret: "gsecret"},
+			},
+			wantSchemaSubstr: []byte(`"email"`),
+			wantNoSubstr:     []byte(`"picture"`),
+		},
+		{
+			name:           "explicit social schema is used as-is",
+			identitySchema: "social",
+			socialProviders: []config.SocialProviderConfig{
+				{Provider: "google", ClientID: "gid", ClientSecret: "gsecret"},
+			},
+			wantSchemaSubstr: []byte(`"picture"`),
+			wantNoSubstr:     nil,
+		},
+		{
+			name:             "no social providers keeps email_password schema",
+			identitySchema:   "email_password",
+			socialProviders:  nil,
+			wantSchemaSubstr: []byte(`"email"`),
+			wantNoSubstr:     []byte(`"picture"`),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			outputDir := t.TempDir()
+			svc := generate.NewService(&fakeRenderer{})
+			cfg := minimalConfig()
+			cfg.Auth.IdentitySchema = tt.identitySchema
+			cfg.Auth.SocialProviders = tt.socialProviders
+
+			if err := svc.Generate(context.Background(), cfg, outputDir); err != nil {
+				t.Fatalf("Generate() unexpected error: %v", err)
+			}
+
+			schemaPath := filepath.Join(outputDir, "kratos", "identity.schema.json")
+			data, err := os.ReadFile(schemaPath)
+			if err != nil {
+				t.Fatalf("reading identity.schema.json: %v", err)
+			}
+			if !bytes.Contains(data, tt.wantSchemaSubstr) {
+				t.Errorf("identity.schema.json does not contain %q; content: %s", tt.wantSchemaSubstr, data)
+			}
+			if tt.wantNoSubstr != nil && bytes.Contains(data, tt.wantNoSubstr) {
+				t.Errorf("identity.schema.json unexpectedly contains %q; content: %s", tt.wantNoSubstr, data)
+			}
+		})
 	}
 }
 
