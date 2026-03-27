@@ -225,4 +225,18 @@ security_headers:
   # Referrer-Policy value (empty string disables the header)
   referrer_policy: "strict-origin-when-cross-origin"
   # Permissions-Policy value (empty string disables the header)
+  # An empty value means no browser features are explicitly allowed or denied
+  # via this header; set to e.g. "camera=(), microphone=()" to restrict specific features.
   permissions_policy: ""
+  # Cross-Origin-Opener-Policy — isolates the browsing context from cross-origin
+  # documents. "same-origin" is the most restrictive safe default.
+  cross_origin_opener_policy: "same-origin"
+  # Cross-Origin-Resource-Policy — prevents other origins from loading this
+  # resource in a no-cors cross-origin request.
+  cross_origin_resource_policy: "same-origin"
+  # X-Permitted-Cross-Domain-Policies — instructs Adobe Flash/PDF clients not
+  # to allow cross-domain requests. "none" disables all cross-domain access.
+  permitted_cross_domain_policies: "none"
+  # Suppress the Via header that Caddy's reverse proxy adds to forwarded
+  # responses. Suppressing it reduces information disclosure about the proxy.
+  suppress_via_header: true

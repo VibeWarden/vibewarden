@@ -1021,6 +1021,63 @@ func TestBuildSecurityHeadersHandler(t *testing.T) {
 				"Permissions-Policy": "camera=(), microphone=()",
 			},
 		},
+		{
+			name: "cross-origin-opener-policy",
+			cfg: ports.SecurityHeadersConfig{
+				CrossOriginOpenerPolicy: "same-origin",
+			},
+			tlsEnabled: false,
+			wantHeaders: map[string]string{
+				"Cross-Origin-Opener-Policy": "same-origin",
+			},
+		},
+		{
+			name: "cross-origin-resource-policy",
+			cfg: ports.SecurityHeadersConfig{
+				CrossOriginResourcePolicy: "same-origin",
+			},
+			tlsEnabled: false,
+			wantHeaders: map[string]string{
+				"Cross-Origin-Resource-Policy": "same-origin",
+			},
+		},
+		{
+			name: "x-permitted-cross-domain-policies",
+			cfg: ports.SecurityHeadersConfig{
+				PermittedCrossDomainPolicies: "none",
+			},
+			tlsEnabled: false,
+			wantHeaders: map[string]string{
+				"X-Permitted-Cross-Domain-Policies": "none",
+			},
+		},
+		{
+			name: "empty cross-origin-opener-policy disables header",
+			cfg: ports.SecurityHeadersConfig{
+				CrossOriginOpenerPolicy: "",
+			},
+			tlsEnabled:    false,
+			wantHeaders:   map[string]string{},
+			absentHeaders: []string{"Cross-Origin-Opener-Policy"},
+		},
+		{
+			name: "empty cross-origin-resource-policy disables header",
+			cfg: ports.SecurityHeadersConfig{
+				CrossOriginResourcePolicy: "",
+			},
+			tlsEnabled:    false,
+			wantHeaders:   map[string]string{},
+			absentHeaders: []string{"Cross-Origin-Resource-Policy"},
+		},
+		{
+			name: "empty permitted-cross-domain-policies disables header",
+			cfg: ports.SecurityHeadersConfig{
+				PermittedCrossDomainPolicies: "",
+			},
+			tlsEnabled:    false,
+			wantHeaders:   map[string]string{},
+			absentHeaders: []string{"X-Permitted-Cross-Domain-Policies"},
+		},
 	}
 
 	for _, tt := range tests {
@@ -1055,6 +1112,52 @@ func TestBuildSecurityHeadersHandler(t *testing.T) {
 			for _, headerName := range tt.absentHeaders {
 				if _, found := setHeaders[headerName]; found {
 					t.Errorf("header %q must not be present when TLS is disabled", headerName)
+				}
+			}
+		})
+	}
+}
+
+func TestBuildSecurityHeadersHandler_SuppressViaHeader(t *testing.T) {
+	tests := []struct {
+		name           string
+		suppressVia    bool
+		wantDeleteList bool
+	}{
+		{"suppress Via when true", true, true},
+		{"no deletion when false", false, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := ports.SecurityHeadersConfig{SuppressViaHeader: tt.suppressVia}
+			handler := buildSecurityHeadersHandler(cfg, false)
+
+			response, ok := handler["response"].(map[string]any)
+			if !ok {
+				t.Fatal("response not found in handler")
+			}
+
+			deleteList, hasDelete := response["delete"]
+			if tt.wantDeleteList && !hasDelete {
+				t.Error("expected response.delete to be set when SuppressViaHeader is true")
+			}
+			if !tt.wantDeleteList && hasDelete {
+				t.Errorf("unexpected response.delete: %v", deleteList)
+			}
+			if tt.wantDeleteList {
+				dl, ok := deleteList.([]string)
+				if !ok {
+					t.Fatalf("response.delete = %T, want []string", deleteList)
+				}
+				found := false
+				for _, h := range dl {
+					if h == "Via" {
+						found = true
+						break
+					}
+				}
+				if !found {
+					t.Errorf("response.delete = %v, want it to contain \"Via\"", dl)
 				}
 			}
 		})

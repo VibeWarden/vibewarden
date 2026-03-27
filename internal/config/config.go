@@ -321,6 +321,18 @@ type SecurityHeadersConfig struct {
 
 	// PermissionsPolicy sets Permissions-Policy value (default: "")
 	PermissionsPolicy string `mapstructure:"permissions_policy"`
+
+	// CrossOriginOpenerPolicy sets Cross-Origin-Opener-Policy value (default: "same-origin")
+	CrossOriginOpenerPolicy string `mapstructure:"cross_origin_opener_policy"`
+
+	// CrossOriginResourcePolicy sets Cross-Origin-Resource-Policy value (default: "same-origin")
+	CrossOriginResourcePolicy string `mapstructure:"cross_origin_resource_policy"`
+
+	// PermittedCrossDomainPolicies sets X-Permitted-Cross-Domain-Policies value (default: "none")
+	PermittedCrossDomainPolicies string `mapstructure:"permitted_cross_domain_policies"`
+
+	// SuppressViaHeader removes the Via header from proxied responses (default: true)
+	SuppressViaHeader bool `mapstructure:"suppress_via_header"`
 }
 
 // MetricsConfig holds Prometheus metrics settings.
@@ -474,6 +486,10 @@ func Load(configPath string) (*Config, error) {
 	v.SetDefault("security_headers.content_security_policy", "default-src 'self'")
 	v.SetDefault("security_headers.referrer_policy", "strict-origin-when-cross-origin")
 	v.SetDefault("security_headers.permissions_policy", "")
+	v.SetDefault("security_headers.cross_origin_opener_policy", "same-origin")
+	v.SetDefault("security_headers.cross_origin_resource_policy", "same-origin")
+	v.SetDefault("security_headers.permitted_cross_domain_policies", "none")
+	v.SetDefault("security_headers.suppress_via_header", true)
 	v.SetDefault("metrics.enabled", true)
 	v.SetDefault("metrics.path_patterns", []string{})
 	v.SetDefault("database.url", "")
