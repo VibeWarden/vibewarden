@@ -54,6 +54,9 @@ type Config struct {
 	// IPFilter configures IP-based access control.
 	IPFilter IPFilterConfig `mapstructure:"ip_filter"`
 
+	// Webhooks configures outbound webhook delivery.
+	Webhooks WebhooksConfig `mapstructure:"webhooks"`
+
 	// Overrides provides escape hatches for advanced users who need to supply
 	// hand-crafted config files instead of relying on VibeWarden's generation.
 	Overrides OverridesConfig `mapstructure:"overrides"`
@@ -399,6 +402,29 @@ type IPFilterConfig struct {
 	TrustProxyHeaders bool `mapstructure:"trust_proxy_headers"`
 }
 
+// WebhooksConfig holds all webhook delivery settings.
+// It maps to the webhooks section of vibewarden.yaml.
+type WebhooksConfig struct {
+	// Endpoints is the list of webhook endpoints to deliver events to.
+	Endpoints []WebhookEndpointConfig `mapstructure:"endpoints"`
+}
+
+// WebhookEndpointConfig holds the settings for a single webhook endpoint.
+type WebhookEndpointConfig struct {
+	// URL is the HTTP(S) endpoint to POST events to. Required.
+	URL string `mapstructure:"url"`
+
+	// Events is the list of event types to deliver to this endpoint.
+	// Use "*" to subscribe to all events.
+	Events []string `mapstructure:"events"`
+
+	// Format selects the payload format: "raw" (default), "slack", or "discord".
+	Format string `mapstructure:"format"`
+
+	// TimeoutSeconds is the per-request HTTP timeout in seconds (default: 10).
+	TimeoutSeconds int `mapstructure:"timeout_seconds"`
+}
+
 // OverridesConfig provides escape hatches for users who need to supply
 // hand-crafted configuration files instead of relying on VibeWarden's
 // auto-generation. All fields are optional.
@@ -521,6 +547,24 @@ func (c *Config) Validate() error {
 		}
 	}
 
+	// webhooks.endpoints validation.
+	validFormats := map[string]bool{"": true, "raw": true, "slack": true, "discord": true}
+	for i, ep := range c.Webhooks.Endpoints {
+		prefix := fmt.Sprintf("webhooks.endpoints[%d]", i)
+		if ep.URL == "" {
+			errs = append(errs, fmt.Sprintf("%s.url is required", prefix))
+		}
+		if len(ep.Events) == 0 {
+			errs = append(errs, fmt.Sprintf("%s.events must have at least one entry", prefix))
+		}
+		if !validFormats[ep.Format] {
+			errs = append(errs, fmt.Sprintf("%s.format %q is invalid; accepted values: \"raw\", \"slack\", \"discord\"", prefix, ep.Format))
+		}
+		if ep.TimeoutSeconds < 0 {
+			errs = append(errs, fmt.Sprintf("%s.timeout_seconds must be >= 0", prefix))
+		}
+	}
+
 	if len(errs) > 0 {
 		return fmt.Errorf("%s", strings.Join(errs, "; "))
 	}
@@ -596,6 +640,7 @@ func Load(configPath string) (*Config, error) {
 	v.SetDefault("ip_filter.addresses", []string{})
 	v.SetDefault("ip_filter.trust_proxy_headers", false)
 	v.SetDefault("database.url", "")
+	v.SetDefault("webhooks.endpoints", []WebhookEndpointConfig{})
 	v.SetDefault("overrides.kratos_config", "")
 	v.SetDefault("overrides.compose_file", "")
 	v.SetDefault("overrides.identity_schema", "")
