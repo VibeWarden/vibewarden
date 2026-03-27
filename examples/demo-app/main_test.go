@@ -302,6 +302,74 @@ func TestHandleRootUnknownPath(t *testing.T) {
 	}
 }
 
+func TestHandleVulnLab(t *testing.T) {
+	tests := []struct {
+		name         string
+		path         string
+		wantStatus   int
+		wantLocation string
+		wantSlug     string
+	}{
+		{
+			name:         "bare /vuln/ redirects to vulnlab.html",
+			path:         "/vuln/",
+			wantStatus:   http.StatusFound,
+			wantLocation: "/static/vulnlab.html",
+		},
+		{
+			name:       "xss-reflected returns JSON with slug",
+			path:       "/vuln/xss-reflected",
+			wantStatus: http.StatusOK,
+			wantSlug:   "xss-reflected",
+		},
+		{
+			name:       "sqli returns JSON with slug",
+			path:       "/vuln/sqli",
+			wantStatus: http.StatusOK,
+			wantSlug:   "sqli",
+		},
+		{
+			name:       "clickjacking returns JSON with slug",
+			path:       "/vuln/clickjacking",
+			wantStatus: http.StatusOK,
+			wantSlug:   "clickjacking",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, tt.path, nil)
+			rr := httptest.NewRecorder()
+
+			handleVulnLab(rr, req)
+
+			if rr.Code != tt.wantStatus {
+				t.Fatalf("want status %d, got %d", tt.wantStatus, rr.Code)
+			}
+
+			if tt.wantLocation != "" {
+				loc := rr.Header().Get("Location")
+				if loc != tt.wantLocation {
+					t.Errorf("Location: want %q, got %q", tt.wantLocation, loc)
+				}
+				return
+			}
+
+			var body map[string]any
+			if err := json.NewDecoder(rr.Body).Decode(&body); err != nil {
+				t.Fatalf("decode response: %v", err)
+			}
+
+			if got := body["vulnerability"]; got != tt.wantSlug {
+				t.Errorf("vulnerability: want %q, got %v", tt.wantSlug, got)
+			}
+			if got, ok := body["status"].(string); !ok || got == "" {
+				t.Error("want non-empty status field")
+			}
+		})
+	}
+}
+
 func TestStaticFilesEmbedded(t *testing.T) {
 	// Verify that the expected HTML files are present in the embedded FS.
 	wantFiles := []string{
@@ -309,6 +377,7 @@ func TestStaticFilesEmbedded(t *testing.T) {
 		"static/me.html",
 		"static/headers.html",
 		"static/ratelimit.html",
+		"static/vulnlab.html",
 	}
 	for _, path := range wantFiles {
 		t.Run(path, func(t *testing.T) {

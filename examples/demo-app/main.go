@@ -59,6 +59,7 @@ func main() {
 	mux.HandleFunc("GET /auth/login", handleAuthPage(staticFS, "login.html"))
 	mux.HandleFunc("GET /auth/registration", handleAuthPage(staticFS, "register.html"))
 	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.FS(staticFS))))
+	mux.HandleFunc("GET /vuln/", handleVulnLab)
 
 	addr := ":" + port
 	slog.Info("demo-app starting", "addr", addr)
@@ -182,6 +183,32 @@ func handleSpam(w http.ResponseWriter, r *http.Request) {
 // Demonstrates: a health endpoint excluded from auth and rate limiting.
 func handleHealth(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]any{"status": "ok"})
+}
+
+// handleVulnLab handles GET /vuln/* requests for the Vulnerability Lab.
+//
+// The individual vulnerability demo pages under /vuln/ are placeholder routes
+// that return a JSON response describing the vulnerability until the full demo
+// pages are implemented.  The route is listed in public_paths so it requires
+// no authentication.
+//
+// Demonstrates: VibeWarden public path bypass, CSP, X-Frame-Options, and
+// X-Content-Type-Options mitigations visible on these pages.
+func handleVulnLab(w http.ResponseWriter, r *http.Request) {
+	// Strip the /vuln/ prefix to get the vulnerability slug.
+	slug := strings.TrimPrefix(r.URL.Path, "/vuln/")
+	slug = strings.TrimSuffix(slug, "/")
+
+	if slug == "" {
+		http.Redirect(w, r, "/static/vulnlab.html", http.StatusFound)
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"vulnerability": slug,
+		"status":        "demo page coming soon",
+		"lab":           "/static/vulnlab.html",
+	})
 }
 
 // handleAuthPage returns an http.HandlerFunc that serves a named HTML file
