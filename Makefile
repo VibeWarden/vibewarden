@@ -42,7 +42,7 @@ observability-down:
 
 # Open Grafana dashboard in the default browser (macOS/Linux)
 grafana-open:
-	open http://localhost:3000 2>/dev/null || xdg-open http://localhost:3000
+	open http://localhost:3001 2>/dev/null || xdg-open http://localhost:3001
 
 # Open Prometheus UI in the default browser (macOS/Linux)
 prometheus-open:
@@ -71,21 +71,29 @@ check: ## Run all quality checks (build, format, vet, tests)
 	cd examples/demo-app && go vet ./... && go build ./... && go test -race ./...
 	@echo "==> All checks passed!"
 
-# Start the full local demo stack (builds from source, includes observability)
-demo: ## Start the full local demo stack (https://localhost:8443, Grafana http://localhost:3000)
-	docker compose -f examples/demo-app/docker-compose.local-demo.yml up -d --build
+# Start the full local demo stack (observability profile + self-signed TLS)
+demo: ## Start the full local demo stack (https://localhost:8443, Grafana http://localhost:3001)
+	cd examples/demo-app && \
+	  VIBEWARDEN_PROFILE=tls \
+	  VIBEWARDEN_HTTP_PORT=8443 \
+	  VIBEWARDEN_SERVER_PORT=8443 \
+	  VIBEWARDEN_TLS_ENABLED=true \
+	  VIBEWARDEN_TLS_PROVIDER=self-signed \
+	  KRATOS_PUBLIC_BASE_URL=https://localhost:8443/ \
+	  COMPOSE_PROFILES=observability \
+	  docker compose up -d
 	@echo ""
 	@echo "Demo stack is starting — wait ~30 s for all services to be healthy."
 	@echo ""
-	@echo "  App:      https://localhost:8443   (accept the self-signed cert warning)"
-	@echo "  Grafana:  http://localhost:3000    (admin / admin)"
+	@echo "  App:        https://localhost:8443   (accept the self-signed cert warning)"
+	@echo "  Grafana:    http://localhost:3001    (admin / admin)"
 	@echo "  Prometheus: http://localhost:9090"
 	@echo ""
 	@echo "Demo credentials: demo@vibewarden.dev / demo1234"
 
 # Stop the full local demo stack
 demo-down: ## Stop the full local demo stack
-	docker compose -f examples/demo-app/docker-compose.local-demo.yml down
+	cd examples/demo-app && COMPOSE_PROFILES=observability docker compose down
 
 # Deploy the public demo to a remote VM via SSH.
 # Usage: make deploy-demo SSH=root@challenge.vibewarden.dev
