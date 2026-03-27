@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Reflected XSS — VibeWarden Vulnerability Lab</title>
+  <link rel="stylesheet" href="/static/water.css">
+  <style>
+    nav a { margin-right: 1em; }
+
+    .warning-banner {
+      padding: 1em 1.2em;
+      background: #fef2f2;
+      border: 2px solid #dc2626;
+      border-radius: 6px;
+      color: #991b1b;
+      font-weight: bold;
+      font-size: 1em;
+      margin-bottom: 1.5em;
+    }
+
+    .hero {
+      margin: 1.5em 0 2em;
+      padding: 2em;
+      border-left: 4px solid #7C3AED;
+      background: rgba(124, 58, 237, 0.04);
+      border-radius: 0 6px 6px 0;
+    }
+    .hero h1 { margin-top: 0; }
+    .hero .tagline {
+      font-size: 1.1em;
+      color: #555;
+      margin-bottom: 0;
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 0.2em 0.6em;
+      border-radius: 4px;
+      font-size: 0.8em;
+      font-weight: bold;
+    }
+    .badge-high   { background: #dc2626; color: #fff; }
+    .badge-mitigated { background: #16a34a; color: #fff; }
+
+    .section {
+      margin: 2em 0;
+    }
+
+    .try-it-box {
+      padding: 1.2em;
+      border: 1px solid #d1d5db;
+      border-radius: 6px;
+      background: #fafafa;
+    }
+    .try-it-box h3 { margin-top: 0; }
+
+    .result-panel {
+      margin-top: 1em;
+      padding: 1em;
+      border: 1px solid #e5e7eb;
+      border-radius: 4px;
+      background: #fff;
+      min-height: 3em;
+      font-family: monospace;
+      font-size: 0.9em;
+      color: #374151;
+    }
+
+    .protection-box {
+      padding: 1.2em;
+      border: 2px solid #16a34a;
+      border-radius: 6px;
+      background: rgba(22, 163, 74, 0.04);
+    }
+    .protection-box h3 { margin-top: 0; color: #15803d; }
+
+    .code-block {
+      font-family: monospace;
+      background: #1e1e2e;
+      color: #cdd6f4;
+      padding: 1em;
+      border-radius: 6px;
+      overflow-x: auto;
+      font-size: 0.9em;
+      line-height: 1.5;
+    }
+
+    .vuln-code {
+      font-family: monospace;
+      background: #fff5f5;
+      color: #9b2335;
+      padding: 1em;
+      border-radius: 6px;
+      border-left: 4px solid #dc2626;
+      overflow-x: auto;
+      font-size: 0.9em;
+      line-height: 1.5;
+    }
+
+    .step { margin: 0.5em 0; }
+    .step code { background: #f3f4f6; padding: 0.1em 0.4em; border-radius: 3px; }
+
+    .vw-footer {
+      margin-top: 3em;
+      padding: 1em 1.2em;
+      background: #f9fafb;
+      border: 1px solid #e5e7eb;
+      border-radius: 6px;
+      font-size: 0.9em;
+      color: #374151;
+      text-align: center;
+    }
+    .vw-footer strong { color: #7C3AED; }
+  </style>
+</head>
+<body>
+  <nav>
+    <strong>VibeWarden Demo</strong> &nbsp;|&nbsp;
+    <a href="/">Home</a>
+    <a href="/static/me.html">My Profile</a>
+    <a href="/static/headers.html">Headers Inspector</a>
+    <a href="/static/ratelimit.html">Rate Limit Test</a>
+    <a href="/static/vulnlab.html">Vulnerability Lab</a>
+  </nav>
+
+  <div class="warning-banner">
+    &#9888;&#65039; This page contains an INTENTIONAL security vulnerability for demonstration purposes.
+    The endpoint at <code>/vuln/xss-reflected</code> is deliberately insecure.
+    Do not deploy this in production.
+  </div>
+
+  <div class="hero">
+    <h1>Reflected XSS &nbsp;<span class="badge badge-high">High</span>&nbsp;<span class="badge badge-mitigated">Mitigated by VibeWarden</span></h1>
+    <p class="tagline">
+      User-supplied input is reflected directly into the HTML response without escaping,
+      allowing an attacker to inject and execute arbitrary JavaScript in the victim's browser.
+    </p>
+  </div>
+
+  <div class="section">
+    <h2>What is Reflected XSS?</h2>
+    <p>
+      Reflected Cross-Site Scripting (XSS) occurs when a web application takes input from an
+      HTTP request and immediately includes it in the response without sanitisation or escaping.
+      The malicious script is "reflected" off the server back to the user's browser, where it
+      executes in the context of the vulnerable site.
+    </p>
+    <p>
+      An attacker crafts a URL with a malicious payload in a query parameter and tricks a victim
+      into clicking it — via phishing email, social media, or a short link.  Because the script
+      comes from a trusted domain, the browser executes it with full access to cookies, local
+      storage, and the DOM.
+    </p>
+    <p>
+      Common consequences include: session hijacking, credential theft, defacement, and
+      redirecting users to malicious sites.
+    </p>
+  </div>
+
+  <div class="section">
+    <h2>The Vulnerable Code</h2>
+    <p>
+      The endpoint <code>/vuln/xss-reflected?q=...</code> in this demo app is intentionally
+      written without output encoding:
+    </p>
+    <div class="vuln-code">// INTENTIONALLY VULNERABLE — demonstrates reflected XSS<br>
+fmt.Fprintf(w, "&lt;p&gt;Search results for: %s&lt;/p&gt;", r.URL.Query().Get("q"))</div>
+    <p>
+      When a browser requests <code>/vuln/xss-reflected?q=hello</code>, the response contains
+      <code>&lt;p&gt;Search results for: hello&lt;/p&gt;</code>.  If the value of
+      <code>q</code> is <code>&lt;script&gt;alert('XSS')&lt;/script&gt;</code>, that script
+      tag lands verbatim in the HTML and the browser executes it — unless a Content Security
+      Policy prevents it.
+    </p>
+  </div>
+
+  <div class="section">
+    <h2>Try It</h2>
+    <div class="try-it-box">
+      <h3>Search Demo</h3>
+      <p>
+        Enter a search term.  The value is sent to the vulnerable endpoint and reflected
+        back into the page.  Try entering:
+        <code>&lt;script&gt;alert('XSS')&lt;/script&gt;</code>
+      </p>
+      <form id="search-form">
+        <label for="search-input">Search:</label>
+        <input type="text" id="search-input" placeholder="try: &lt;script&gt;alert('XSS')&lt;/script&gt;" style="width:100%;max-width:420px">
+        <button type="submit">Search</button>
+      </form>
+      <h4>Result from <code>/vuln/xss-reflected</code></h4>
+      <div class="result-panel" id="result-panel">
+        <em>Submit a search above to see the raw response from the vulnerable endpoint.</em>
+      </div>
+      <p id="csp-note" style="display:none;color:#15803d;font-weight:bold;margin-top:0.5em;">
+        &#10003; CSP blocked the script. The raw HTML contains the injected tag, but the browser
+        refused to execute it because VibeWarden's <code>Content-Security-Policy</code> header
+        does not permit inline scripts.
+      </p>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>VibeWarden Protection</h2>
+    <div class="protection-box">
+      <h3>Content Security Policy blocks inline script execution</h3>
+      <p>
+        VibeWarden adds the following header to every response from your app:
+      </p>
+      <div class="code-block">Content-Security-Policy: default-src 'self'; ...</div>
+      <p>
+        Because <code>default-src 'self'</code> does not include <code>'unsafe-inline'</code>,
+        the browser refuses to execute any inline <code>&lt;script&gt;</code> tags injected by
+        the attacker.  The malicious HTML is written into the page, but the script never runs.
+      </p>
+      <p>
+        You can verify this in the browser's developer console: when you submit the XSS payload,
+        you will see a CSP violation message such as:
+      </p>
+      <div class="code-block">Refused to execute inline script because it violates the following
+Content Security Policy directive: "default-src 'self'"</div>
+      <p>
+        <strong>Important:</strong> CSP is a defence-in-depth measure.  The correct fix at the
+        application layer is to always HTML-encode output — e.g. use
+        <code>html/template</code> in Go instead of <code>fmt.Fprintf</code>.  CSP protects
+        against mistakes; it is not a substitute for correct encoding.
+      </p>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>How to Fix This in Your App</h2>
+    <p>Use Go's <code>html/template</code> package, which escapes output by default:</p>
+    <div class="code-block">// SAFE: html/template escapes all values automatically<br>
+tmpl := template.Must(template.New("").Parse(`&lt;p&gt;Search results for: {{.}}&lt;/p&gt;`))<br>
+tmpl.Execute(w, r.URL.Query().Get("q"))</div>
+    <p>
+      Never use <code>fmt.Fprintf</code> to write user-supplied data into an HTML response.
+      If you must build HTML strings, call <code>html.EscapeString()</code> on every
+      untrusted value first.
+    </p>
+  </div>
+
+  <!-- Footer banner -->
+  <div class="vw-footer">
+    <strong>VibeWarden</strong> — security sidecar for vibe-coded apps.
+    CSP and other security headers are applied automatically to every response.
+    &mdash; <a href="/static/vulnlab.html">Back to Vulnerability Lab</a> &mdash;
+    <a href="https://github.com/vibewarden/vibewarden" target="_blank" rel="noopener">GitHub</a>
+  </div>
+
+  <script>
+    document.getElementById('search-form').addEventListener('submit', async function (e) {
+      e.preventDefault();
+      const q = document.getElementById('search-input').value;
+      const panel = document.getElementById('result-panel');
+      const note  = document.getElementById('csp-note');
+
+      panel.textContent = 'Loading...';
+      note.style.display = 'none';
+
+      try {
+        const resp = await fetch('/vuln/xss-reflected?q=' + encodeURIComponent(q));
+        const text = await resp.text();
+        // Show the raw HTML the server returned — displayed as text, not rendered.
+        panel.textContent = text;
+
+        // Heuristic: if q contained a script tag and we got a 200, CSP should have blocked it.
+        if (q.toLowerCase().includes('<script') || q.toLowerCase().includes('onerror')) {
+          note.style.display = 'block';
+        }
+      } catch (err) {
+        panel.textContent = 'Error: ' + String(err);
+      }
+    });
+  </script>
+</body>
+</html>
