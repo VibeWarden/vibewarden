@@ -161,7 +161,7 @@ func TestBuildCaddyConfig_AutomaticHTTPS(t *testing.T) {
 		}
 	})
 
-	t.Run("TLS enabled — only redirects disabled", func(t *testing.T) {
+	t.Run("TLS enabled — redirects disabled but cert management active", func(t *testing.T) {
 		cfg := &ports.ProxyConfig{
 			ListenAddr:   "127.0.0.1:8443",
 			UpstreamAddr: "127.0.0.1:3000",
@@ -179,11 +179,11 @@ func TestBuildCaddyConfig_AutomaticHTTPS(t *testing.T) {
 		if !ok {
 			t.Fatal("automatic_https not found in server config")
 		}
-		if redirectsDisabled, _ := autoHTTPS["disable_redirects"].(bool); !redirectsDisabled {
-			t.Error("automatic_https.disable_redirects must be true when TLS is enabled")
+		if disabled, _ := autoHTTPS["disable"].(bool); disabled {
+			t.Error("automatic_https.disable must NOT be true when TLS is enabled")
 		}
-		if fullDisable, _ := autoHTTPS["disable"].(bool); fullDisable {
-			t.Error("automatic_https.disable must NOT be true when TLS is enabled — cert issuance needs to work")
+		if redirectsDisabled, _ := autoHTTPS["disable_redirects"].(bool); !redirectsDisabled {
+			t.Error("automatic_https.disable_redirects must be true")
 		}
 	})
 }
