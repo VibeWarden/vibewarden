@@ -1391,3 +1391,121 @@ auth:
 		})
 	}
 }
+
+// TestValidate_Webhooks verifies webhook endpoint configuration validation.
+func TestValidate_Webhooks(t *testing.T) {
+	tests := []struct {
+		name    string
+		cfg     config.Config
+		wantErr bool
+		errMsg  string
+	}{
+		{
+			name: "no endpoints — valid",
+			cfg:  config.Config{},
+		},
+		{
+			name: "valid raw endpoint",
+			cfg: config.Config{
+				Webhooks: config.WebhooksConfig{
+					Endpoints: []config.WebhookEndpointConfig{
+						{URL: "https://example.com/hook", Events: []string{"*"}, Format: "raw"},
+					},
+				},
+			},
+		},
+		{
+			name: "valid slack endpoint",
+			cfg: config.Config{
+				Webhooks: config.WebhooksConfig{
+					Endpoints: []config.WebhookEndpointConfig{
+						{URL: "https://hooks.slack.com/xxx", Events: []string{"auth.failed"}, Format: "slack"},
+					},
+				},
+			},
+		},
+		{
+			name: "valid discord endpoint",
+			cfg: config.Config{
+				Webhooks: config.WebhooksConfig{
+					Endpoints: []config.WebhookEndpointConfig{
+						{URL: "https://discord.com/api/webhooks/xxx", Events: []string{"*"}, Format: "discord"},
+					},
+				},
+			},
+		},
+		{
+			name: "empty format is valid",
+			cfg: config.Config{
+				Webhooks: config.WebhooksConfig{
+					Endpoints: []config.WebhookEndpointConfig{
+						{URL: "https://example.com/hook", Events: []string{"*"}, Format: ""},
+					},
+				},
+			},
+		},
+		{
+			name: "missing url",
+			cfg: config.Config{
+				Webhooks: config.WebhooksConfig{
+					Endpoints: []config.WebhookEndpointConfig{
+						{URL: "", Events: []string{"*"}, Format: "raw"},
+					},
+				},
+			},
+			wantErr: true,
+			errMsg:  "webhooks.endpoints[0].url is required",
+		},
+		{
+			name: "missing events",
+			cfg: config.Config{
+				Webhooks: config.WebhooksConfig{
+					Endpoints: []config.WebhookEndpointConfig{
+						{URL: "https://example.com/hook", Events: []string{}, Format: "raw"},
+					},
+				},
+			},
+			wantErr: true,
+			errMsg:  "webhooks.endpoints[0].events",
+		},
+		{
+			name: "invalid format",
+			cfg: config.Config{
+				Webhooks: config.WebhooksConfig{
+					Endpoints: []config.WebhookEndpointConfig{
+						{URL: "https://example.com/hook", Events: []string{"*"}, Format: "teams"},
+					},
+				},
+			},
+			wantErr: true,
+			errMsg:  "teams",
+		},
+		{
+			name: "negative timeout",
+			cfg: config.Config{
+				Webhooks: config.WebhooksConfig{
+					Endpoints: []config.WebhookEndpointConfig{
+						{URL: "https://example.com/hook", Events: []string{"*"}, Format: "raw", TimeoutSeconds: -1},
+					},
+				},
+			},
+			wantErr: true,
+			errMsg:  "timeout_seconds",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.cfg.Validate()
+			if (err != nil) != tt.wantErr {
+				t.Errorf("Validate() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if tt.wantErr && tt.errMsg != "" {
+				if !strings.Contains(err.Error(), tt.errMsg) {
+					t.Errorf("Validate() error = %q, want it to contain %q", err.Error(), tt.errMsg)
+				}
+			}
+		})
+	}
+}

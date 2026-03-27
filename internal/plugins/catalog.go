@@ -149,6 +149,24 @@ var Catalog = []PluginDescriptor{
     admin_token: ${VIBEWARDEN_ADMIN_TOKEN}
     kratos_admin_url: http://127.0.0.1:4434`,
 	},
+	{
+		Name:        "webhooks",
+		Description: "Webhook delivery: dispatch security events to Slack, Discord, or any HTTP endpoint",
+		ConfigSchema: map[string]string{
+			"endpoints[].url":             "HTTP(S) URL to POST events to (required)",
+			"endpoints[].events":          "List of event types to send, or [\"*\"] for all events",
+			"endpoints[].format":          "Payload format: \"raw\" (default), \"slack\", or \"discord\"",
+			"endpoints[].timeout_seconds": "Per-request HTTP timeout in seconds (default: 10)",
+		},
+		Example: `  webhooks:
+    endpoints:
+      - url: https://hooks.slack.com/services/xxx/yyy/zzz
+        events: ["auth.failed", "rate_limit.hit"]
+        format: slack
+      - url: https://discord.com/api/webhooks/xxx/yyy
+        events: ["*"]
+        format: discord`,
+	},
 }
 
 // FindDescriptor returns the PluginDescriptor for the plugin with the given
