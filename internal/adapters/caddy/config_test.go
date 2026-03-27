@@ -406,6 +406,40 @@ func TestBuildCaddyConfig_LetsEncryptDomainInPolicy(t *testing.T) {
 	}
 }
 
+func TestBuildCaddyConfig_SelfSignedDefaultsToLocalhost(t *testing.T) {
+	cfg := &ports.ProxyConfig{
+		ListenAddr:   "0.0.0.0:8443",
+		UpstreamAddr: "127.0.0.1:3000",
+		TLS: ports.TLSConfig{
+			Enabled:  true,
+			Provider: ports.TLSProviderSelfSigned,
+			// No domain — should default to "localhost"
+		},
+	}
+
+	result, err := BuildCaddyConfig(cfg)
+	if err != nil {
+		t.Fatalf("BuildCaddyConfig() unexpected error: %v", err)
+	}
+
+	apps := result["apps"].(map[string]any)
+	tlsApp := apps["tls"].(map[string]any)
+	automation := tlsApp["automation"].(map[string]any)
+	policies := automation["policies"].([]map[string]any)
+
+	if len(policies) == 0 {
+		t.Fatal("expected at least one automation policy")
+	}
+
+	subjects, ok := policies[0]["subjects"].([]string)
+	if !ok || len(subjects) == 0 {
+		t.Fatal("subjects not found — self-signed must default to localhost")
+	}
+	if subjects[0] != "localhost" {
+		t.Errorf("subjects[0] = %q, want %q", subjects[0], "localhost")
+	}
+}
+
 func TestBuildCaddyConfig_ExternalTLSPolicy(t *testing.T) {
 	cfg := &ports.ProxyConfig{
 		ListenAddr:   "0.0.0.0:443",

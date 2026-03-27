@@ -272,10 +272,14 @@ func buildSelfSignedTLSApp(cfg ports.TLSConfig) map[string]any {
 		},
 	}
 
-	// Scope the policy to the domain when one is provided.
-	if cfg.Domain != "" {
-		policy["subjects"] = []string{cfg.Domain}
+	// Scope the policy to the domain. For self-signed certs, Caddy's internal
+	// issuer needs at least one subject to generate a certificate. Default to
+	// "localhost" when no domain is configured (typical for local development).
+	domain := cfg.Domain
+	if domain == "" {
+		domain = "localhost"
 	}
+	policy["subjects"] = []string{domain}
 
 	tlsApp := map[string]any{
 		"automation": map[string]any{
