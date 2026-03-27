@@ -24,6 +24,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"runtime"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -55,6 +56,26 @@ var (
 // INTENTIONALLY VULNERABLE — the /vuln/sqli endpoint queries this database
 // using string concatenation instead of parameterised queries.
 var notesDB *sql.DB
+
+// lastTransfer stores the most recent CSRF transfer attempt.
+// Access is protected by lastTransferMu.
+//
+// INTENTIONALLY VULNERABLE — no CSRF token is checked; this demonstrates
+// that the app relies on VibeWarden's SameSite cookie configuration.
+var (
+	lastTransfer   csrfTransfer
+	lastTransferMu sync.Mutex
+)
+
+// csrfTransfer holds the parameters of the last transfer request.
+type csrfTransfer struct {
+	To     string `json:"to"`
+	Amount string `json:"amount"`
+	Time   string `json:"time"`
+}
+
+// startTime records when the process started, used by the info-leak endpoint.
+var startTime = time.Now()
 
 func main() {
 	port := os.Getenv("PORT")
@@ -98,6 +119,11 @@ func main() {
 	mux.HandleFunc("GET /vuln/xss-stored", handleXSSStoredGet)
 	mux.HandleFunc("POST /vuln/xss-stored", handleXSSStoredPost)
 	mux.HandleFunc("GET /vuln/sqli", handleSQLi)
+	mux.HandleFunc("POST /vuln/csrf-transfer", handleCSRFTransfer)
+	mux.HandleFunc("GET /vuln/redirect", handleOpenRedirect)
+	mux.HandleFunc("GET /vuln/debug/vars", handleInfoLeakVars)
+	mux.HandleFunc("GET /vuln/debug/config", handleInfoLeakConfig)
+	mux.HandleFunc("GET /vuln/mime-sniff", handleMIMESniff)
 	mux.HandleFunc("GET /vuln/", handleVulnLab)
 
 	addr := ":" + port
@@ -455,6 +481,136 @@ func handleSQLi(w http.ResponseWriter, r *http.Request) {
 		"notes": notes,
 		"count": len(notes),
 	})
+}
+
+// handleCSRFTransfer is the INTENTIONALLY VULNERABLE CSRF endpoint.
+//
+// It accepts a POST with form parameters "to" and "amount" and stores the
+// transfer in memory.  There is no CSRF token — the protection comes entirely
+// from VibeWarden configuring Ory Kratos session cookies with SameSite=Strict,
+// which prevents cross-origin POST requests from including the session cookie.
+//
+// INTENTIONALLY VULNERABLE — do not add CSRF token validation here.
+func handleCSRFTransfer(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "bad request"})
+		return
+	}
+	to := r.FormValue("to")
+	amount := r.FormValue("amount")
+	if to == "" || amount == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "to and amount are required"})
+		return
+	}
+
+	t := csrfTransfer{
+		To:     to,
+		Amount: amount,
+		Time:   time.Now().UTC().Format(time.RFC3339),
+	}
+	lastTransferMu.Lock()
+	lastTransfer = t
+	lastTransferMu.Unlock()
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"message":  "Transfer recorded (no CSRF token checked — intentionally vulnerable)",
+		"transfer": t,
+	})
+}
+
+// handleOpenRedirect is the INTENTIONALLY VULNERABLE open redirect endpoint.
+//
+// It redirects to whatever URL is supplied in the "url" query parameter without
+// any validation.  An attacker can craft a link to this endpoint that redirects
+// victims to a phishing site while the URL still shows the trusted domain.
+//
+// VibeWarden CANNOT prevent this — it is an application-level vulnerability.
+// The correct fix is to validate redirect targets against an allowlist.
+//
+// INTENTIONALLY VULNERABLE — do not add URL validation here.
+func handleOpenRedirect(w http.ResponseWriter, r *http.Request) {
+	target := r.URL.Query().Get("url")
+	if target == "" {
+		writeJSON(w, http.StatusBadRequest, map[string]any{"error": "url parameter required"})
+		return
+	}
+	http.Redirect(w, r, target, http.StatusFound)
+}
+
+// handleInfoLeakVars is an INTENTIONALLY VULNERABLE debug endpoint that
+// exposes application internals: Go version, goroutine count, memory stats,
+// uptime, and environment variables.
+//
+// This endpoint is NOT listed in public_paths — VibeWarden's default
+// auth-on-all-paths configuration blocks unauthenticated access, demonstrating
+// defence-in-depth even when the developer forgot to protect the endpoint.
+//
+// INTENTIONALLY VULNERABLE — do not restrict the data returned here.
+func handleInfoLeakVars(w http.ResponseWriter, r *http.Request) {
+	userID := r.Header.Get("X-User-Id")
+	if userID == "" {
+		writeJSON(w, http.StatusUnauthorized, map[string]any{
+			"error": "not authenticated — VibeWarden blocked this request",
+		})
+		return
+	}
+
+	var mem runtime.MemStats
+	runtime.ReadMemStats(&mem)
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"go_version":  runtime.Version(),
+		"goroutines":  runtime.NumGoroutine(),
+		"uptime":      time.Since(startTime).String(),
+		"alloc_bytes": mem.Alloc,
+		"num_gc":      mem.NumGC,
+		"env_vars":    os.Environ(),
+	})
+}
+
+// handleInfoLeakConfig is an INTENTIONALLY VULNERABLE debug endpoint that
+// exposes fake application configuration including database credentials and
+// API keys.
+//
+// This endpoint is NOT listed in public_paths — VibeWarden's auth-on-all-paths
+// blocks unauthenticated access.
+//
+// INTENTIONALLY VULNERABLE — the fake credentials are intentionally visible
+// to demonstrate the disclosure risk.
+func handleInfoLeakConfig(w http.ResponseWriter, r *http.Request) {
+	userID := r.Header.Get("X-User-Id")
+	if userID == "" {
+		writeJSON(w, http.StatusUnauthorized, map[string]any{
+			"error": "not authenticated — VibeWarden blocked this request",
+		})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"database_url":        "postgres://admin:password123@internal-db:5432/production",
+		"stripe_secret_key":   "sk_live_FAKE_KEY_FOR_DEMO_PURPOSES_ONLY",
+		"internal_api_url":    "http://internal-payments-service:8080",
+		"smtp_password":       "smtp_FAKE_PASSWORD_DEMO",
+		"session_secret":      "FAKE_SESSION_SECRET_DO_NOT_USE_IN_PROD",
+		"note":                "These are FAKE credentials for demonstration purposes only.",
+	})
+}
+
+// handleMIMESniff is the INTENTIONALLY VULNERABLE MIME sniffing endpoint.
+//
+// It serves JavaScript content with Content-Type: text/plain.  Without the
+// X-Content-Type-Options: nosniff header, older browsers might sniff the
+// content and execute it as a script.
+//
+// VibeWarden mitigation: X-Content-Type-Options: nosniff on every response
+// instructs browsers to trust the declared Content-Type and never sniff.
+//
+// INTENTIONALLY VULNERABLE — do not fix the Content-Type mismatch here.
+func handleMIMESniff(w http.ResponseWriter, r *http.Request) {
+	// Serve JavaScript content with the wrong Content-Type.
+	// Without nosniff, some browsers would execute this as JS.
+	w.Header().Set("Content-Type", "text/plain")
+	fmt.Fprint(w, "alert('MIME sniffing attack')")
 }
 
 // handleAuthPage returns an http.HandlerFunc that serves a named HTML file
