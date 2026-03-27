@@ -35,6 +35,7 @@ auth:
     - "/health"
     - "/static"
     - "/auth"
+    - "/vuln"
   session_cookie_name: "ory_kratos_session"
   login_url: ""
 
