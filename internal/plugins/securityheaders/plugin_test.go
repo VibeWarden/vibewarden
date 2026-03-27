@@ -483,6 +483,142 @@ func TestPlugin_ContributeCaddyHandlers_HandlerStructure(t *testing.T) {
 	}
 }
 
+func TestPlugin_ContributeCaddyHandlers_CrossOriginOpenerPolicy(t *testing.T) {
+	tests := []struct {
+		name    string
+		policy  string
+		wantSet bool
+	}{
+		{"same-origin", "same-origin", true},
+		{"empty disables header", "", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := securityheaders.Config{Enabled: true, CrossOriginOpenerPolicy: tt.policy}
+			p := newPlugin(cfg, false)
+			handlers := p.ContributeCaddyHandlers()
+			hdrs := responseHeaders(t, handlers[0].Handler)
+			val, has := hdrs["Cross-Origin-Opener-Policy"]
+			if tt.wantSet && !has {
+				t.Error("expected Cross-Origin-Opener-Policy header")
+			}
+			if !tt.wantSet && has {
+				t.Errorf("unexpected Cross-Origin-Opener-Policy header: %v", val)
+			}
+			if tt.wantSet && (len(val) == 0 || val[0] != tt.policy) {
+				t.Errorf("Cross-Origin-Opener-Policy = %v, want [%q]", val, tt.policy)
+			}
+		})
+	}
+}
+
+func TestPlugin_ContributeCaddyHandlers_CrossOriginResourcePolicy(t *testing.T) {
+	tests := []struct {
+		name    string
+		policy  string
+		wantSet bool
+	}{
+		{"same-origin", "same-origin", true},
+		{"same-site", "same-site", true},
+		{"empty disables header", "", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := securityheaders.Config{Enabled: true, CrossOriginResourcePolicy: tt.policy}
+			p := newPlugin(cfg, false)
+			handlers := p.ContributeCaddyHandlers()
+			hdrs := responseHeaders(t, handlers[0].Handler)
+			val, has := hdrs["Cross-Origin-Resource-Policy"]
+			if tt.wantSet && !has {
+				t.Error("expected Cross-Origin-Resource-Policy header")
+			}
+			if !tt.wantSet && has {
+				t.Errorf("unexpected Cross-Origin-Resource-Policy header: %v", val)
+			}
+			if tt.wantSet && (len(val) == 0 || val[0] != tt.policy) {
+				t.Errorf("Cross-Origin-Resource-Policy = %v, want [%q]", val, tt.policy)
+			}
+		})
+	}
+}
+
+func TestPlugin_ContributeCaddyHandlers_PermittedCrossDomainPolicies(t *testing.T) {
+	tests := []struct {
+		name    string
+		policy  string
+		wantSet bool
+	}{
+		{"none", "none", true},
+		{"empty disables header", "", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := securityheaders.Config{Enabled: true, PermittedCrossDomainPolicies: tt.policy}
+			p := newPlugin(cfg, false)
+			handlers := p.ContributeCaddyHandlers()
+			hdrs := responseHeaders(t, handlers[0].Handler)
+			val, has := hdrs["X-Permitted-Cross-Domain-Policies"]
+			if tt.wantSet && !has {
+				t.Error("expected X-Permitted-Cross-Domain-Policies header")
+			}
+			if !tt.wantSet && has {
+				t.Errorf("unexpected X-Permitted-Cross-Domain-Policies header: %v", val)
+			}
+			if tt.wantSet && (len(val) == 0 || val[0] != tt.policy) {
+				t.Errorf("X-Permitted-Cross-Domain-Policies = %v, want [%q]", val, tt.policy)
+			}
+		})
+	}
+}
+
+func TestPlugin_ContributeCaddyHandlers_SuppressViaHeader(t *testing.T) {
+	tests := []struct {
+		name           string
+		suppressVia    bool
+		wantDeleteList bool
+	}{
+		{"suppress Via when true", true, true},
+		{"no Via suppression when false", false, false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := securityheaders.Config{Enabled: true, SuppressViaHeader: tt.suppressVia}
+			p := newPlugin(cfg, false)
+			handlers := p.ContributeCaddyHandlers()
+			if len(handlers) == 0 {
+				t.Fatal("expected at least one handler")
+			}
+			resp, ok := handlers[0].Handler["response"].(map[string]any)
+			if !ok {
+				t.Fatal("expected response key to be map[string]any")
+			}
+			deleteList, hasDelete := resp["delete"]
+			if tt.wantDeleteList && !hasDelete {
+				t.Error("expected response.delete to be set when SuppressViaHeader is true")
+			}
+			if !tt.wantDeleteList && hasDelete {
+				t.Errorf("unexpected response.delete: %v", deleteList)
+			}
+			if tt.wantDeleteList {
+				dl, ok := deleteList.([]string)
+				if !ok {
+					t.Fatalf("response.delete = %T, want []string", deleteList)
+				}
+				found := false
+				for _, h := range dl {
+					if h == "Via" {
+						found = true
+						break
+					}
+				}
+				if !found {
+					t.Errorf("response.delete = %v, want it to contain \"Via\"", dl)
+				}
+			}
+		})
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Interface compliance
 // ---------------------------------------------------------------------------

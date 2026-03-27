@@ -19,6 +19,12 @@ import (
 //   - Content-Security-Policy
 //   - Referrer-Policy
 //   - Permissions-Policy
+//   - Cross-Origin-Opener-Policy
+//   - Cross-Origin-Resource-Policy
+//   - X-Permitted-Cross-Domain-Policies
+//
+// Optionally the Via response header added by Caddy's reverse proxy can be
+// suppressed to reduce infrastructure information disclosure.
 //
 // Start and Stop are no-ops; the plugin is fully stateless. Health reports
 // whether the plugin is enabled.
@@ -164,10 +170,33 @@ func buildHeadersHandler(cfg Config, tlsEnabled bool) map[string]any {
 		headers["Permissions-Policy"] = []string{cfg.PermissionsPolicy}
 	}
 
-	return map[string]any{
+	// Cross-Origin-Opener-Policy.
+	if cfg.CrossOriginOpenerPolicy != "" {
+		headers["Cross-Origin-Opener-Policy"] = []string{cfg.CrossOriginOpenerPolicy}
+	}
+
+	// Cross-Origin-Resource-Policy.
+	if cfg.CrossOriginResourcePolicy != "" {
+		headers["Cross-Origin-Resource-Policy"] = []string{cfg.CrossOriginResourcePolicy}
+	}
+
+	// X-Permitted-Cross-Domain-Policies.
+	if cfg.PermittedCrossDomainPolicies != "" {
+		headers["X-Permitted-Cross-Domain-Policies"] = []string{cfg.PermittedCrossDomainPolicies}
+	}
+
+	handler := map[string]any{
 		"handler": "headers",
 		"response": map[string]any{
 			"set": headers,
 		},
 	}
+
+	// Suppress the Via header that Caddy's reverse proxy adds to forwarded
+	// responses. This reduces information disclosure about proxy infrastructure.
+	if cfg.SuppressViaHeader {
+		handler["response"].(map[string]any)["delete"] = []string{"Via"}
+	}
+
+	return handler
 }

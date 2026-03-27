@@ -52,4 +52,28 @@ type Config struct {
 	// An empty string disables the header.
 	// Default: "".
 	PermissionsPolicy string
+
+	// CrossOriginOpenerPolicy sets the Cross-Origin-Opener-Policy response
+	// header value. Recommended: "same-origin". An empty string disables the
+	// header.
+	// Default: "same-origin".
+	CrossOriginOpenerPolicy string
+
+	// CrossOriginResourcePolicy sets the Cross-Origin-Resource-Policy response
+	// header value. Recommended: "same-origin". An empty string disables the
+	// header.
+	// Default: "same-origin".
+	CrossOriginResourcePolicy string
+
+	// PermittedCrossDomainPolicies sets the X-Permitted-Cross-Domain-Policies
+	// response header value. Recommended: "none". An empty string disables the
+	// header.
+	// Default: "none".
+	PermittedCrossDomainPolicies string
+
+	// SuppressViaHeader, when true, removes the Via response header that
+	// Caddy's reverse proxy adds. Suppressing this header reduces information
+	// disclosure about the proxy infrastructure.
+	// Default: true.
+	SuppressViaHeader bool
 }

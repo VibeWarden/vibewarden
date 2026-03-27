@@ -1,5 +1,12 @@
 // Package template provides a ports.TemplateRenderer implementation that uses
 // Go's text/template package with templates embedded via embed.FS.
+//
+// Security note: this package uses text/template (not html/template) deliberately.
+// All templates rendered here produce YAML, Docker Compose, and agent-context files
+// — none of which are served as HTML to a browser. There is no XSS risk because
+// the output is never interpreted as HTML. If a template were ever added that
+// renders HTML content destined for a browser response, it must use html/template
+// for that specific case. See internal/adapters/authui for the HTML rendering path.
 package template
 
 import (

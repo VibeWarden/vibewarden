@@ -540,10 +540,33 @@ func buildSecurityHeadersHandler(cfg ports.SecurityHeadersConfig, tlsEnabled boo
 		headers["Permissions-Policy"] = []string{cfg.PermissionsPolicy}
 	}
 
+	// Cross-Origin-Opener-Policy.
+	if cfg.CrossOriginOpenerPolicy != "" {
+		headers["Cross-Origin-Opener-Policy"] = []string{cfg.CrossOriginOpenerPolicy}
+	}
+
+	// Cross-Origin-Resource-Policy.
+	if cfg.CrossOriginResourcePolicy != "" {
+		headers["Cross-Origin-Resource-Policy"] = []string{cfg.CrossOriginResourcePolicy}
+	}
+
+	// X-Permitted-Cross-Domain-Policies.
+	if cfg.PermittedCrossDomainPolicies != "" {
+		headers["X-Permitted-Cross-Domain-Policies"] = []string{cfg.PermittedCrossDomainPolicies}
+	}
+
+	response := map[string]any{
+		"set": headers,
+	}
+
+	// Suppress the Via header added by Caddy's reverse proxy to reduce
+	// information disclosure about the proxy infrastructure.
+	if cfg.SuppressViaHeader {
+		response["delete"] = []string{"Via"}
+	}
+
 	return map[string]any{
-		"handler": "headers",
-		"response": map[string]any{
-			"set": headers,
-		},
+		"handler":  "headers",
+		"response": response,
 	}
 }

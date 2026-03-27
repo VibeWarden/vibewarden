@@ -151,4 +151,21 @@ type SecurityHeadersConfig struct {
 
 	// PermissionsPolicy sets the Permissions-Policy value (empty = disabled)
 	PermissionsPolicy string
+
+	// CrossOriginOpenerPolicy sets the Cross-Origin-Opener-Policy value.
+	// Recommended: "same-origin". Empty string disables the header.
+	CrossOriginOpenerPolicy string
+
+	// CrossOriginResourcePolicy sets the Cross-Origin-Resource-Policy value.
+	// Recommended: "same-origin". Empty string disables the header.
+	CrossOriginResourcePolicy string
+
+	// PermittedCrossDomainPolicies sets the X-Permitted-Cross-Domain-Policies value.
+	// Recommended: "none". Empty string disables the header.
+	PermittedCrossDomainPolicies string
+
+	// SuppressViaHeader, when true, removes the Via header that Caddy's
+	// reverse proxy adds to forwarded responses. Suppressing this header
+	// reduces information disclosure about the proxy infrastructure.
+	SuppressViaHeader bool
 }
