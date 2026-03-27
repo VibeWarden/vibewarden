@@ -588,13 +588,33 @@ func TestBuildCaddyConfig_SecurityHeaders(t *testing.T) {
 		t.Fatal("handle not found in proxy route")
 	}
 
-	if len(handlers) < 2 {
-		t.Fatalf("expected at least 2 handlers (security headers + reverse proxy), got %d", len(handlers))
+	// Minimum chain: strip_headers + security_headers + admin_auth + reverse_proxy.
+	if len(handlers) < 4 {
+		t.Fatalf("expected at least 4 handlers (strip+security+admin_auth+reverse_proxy), got %d", len(handlers))
 	}
 
-	firstHandler := handlers[0]
-	if firstHandler["handler"] != "headers" {
-		t.Errorf("first handler = %v, want 'headers'", firstHandler["handler"])
+	// handlers[0] must be the user-header strip handler (a "headers" handler with
+	// a "request.delete" key, not a "response" key).
+	stripHandler := handlers[0]
+	if stripHandler["handler"] != "headers" {
+		t.Errorf("handlers[0] type = %v, want 'headers'", stripHandler["handler"])
+	}
+	req, ok := stripHandler["request"].(map[string]any)
+	if !ok {
+		t.Fatal("handlers[0] missing 'request' key — expected user-header strip handler")
+	}
+	if _, hasDelete := req["delete"]; !hasDelete {
+		t.Error("handlers[0].request missing 'delete' key — expected user-header strip handler")
+	}
+
+	// handlers[1] must be the security headers handler (a "headers" handler with
+	// a "response" key).
+	secHandler := handlers[1]
+	if secHandler["handler"] != "headers" {
+		t.Errorf("handlers[1] type = %v, want 'headers'", secHandler["handler"])
+	}
+	if _, hasResponse := secHandler["response"]; !hasResponse {
+		t.Error("handlers[1] missing 'response' key — expected security headers handler")
 	}
 }
 
@@ -626,18 +646,165 @@ func TestBuildCaddyConfig_NoSecurityHeaders(t *testing.T) {
 		t.Fatal("handle not found in proxy route")
 	}
 
-	// The admin auth handler is always present; with security headers disabled
-	// and rate limiting disabled the chain is: admin_auth → reverse_proxy.
-	if len(handlers) != 2 {
-		t.Fatalf("expected 2 handlers (admin_auth + reverse_proxy), got %d", len(handlers))
+	// With security headers disabled and rate limiting disabled the chain is:
+	// strip_headers → admin_auth → reverse_proxy.
+	if len(handlers) != 3 {
+		t.Fatalf("expected 3 handlers (strip_headers+admin_auth+reverse_proxy), got %d", len(handlers))
 	}
 
-	if handlers[0]["handler"] != "vibewarden_admin_auth" {
-		t.Errorf("handlers[0] = %v, want 'vibewarden_admin_auth'", handlers[0]["handler"])
+	if handlers[0]["handler"] != "headers" {
+		t.Errorf("handlers[0] = %v, want 'headers' (user-header strip)", handlers[0]["handler"])
+	}
+	req, ok := handlers[0]["request"].(map[string]any)
+	if !ok {
+		t.Fatal("handlers[0] missing 'request' key — expected user-header strip handler")
+	}
+	if _, hasDelete := req["delete"]; !hasDelete {
+		t.Error("handlers[0].request missing 'delete' key — expected user-header strip handler")
 	}
 
-	if handlers[1]["handler"] != "reverse_proxy" {
-		t.Errorf("handlers[1] = %v, want 'reverse_proxy'", handlers[1]["handler"])
+	if handlers[1]["handler"] != "vibewarden_admin_auth" {
+		t.Errorf("handlers[1] = %v, want 'vibewarden_admin_auth'", handlers[1]["handler"])
+	}
+
+	if handlers[2]["handler"] != "reverse_proxy" {
+		t.Errorf("handlers[2] = %v, want 'reverse_proxy'", handlers[2]["handler"])
+	}
+}
+
+// TestBuildCaddyConfig_UserHeaderStripIsFirst verifies that the X-User-* header
+// strip handler is always the very first handler in the catch-all route's chain,
+// regardless of which other middleware are enabled.
+func TestBuildCaddyConfig_UserHeaderStripIsFirst(t *testing.T) {
+	tests := []struct {
+		name string
+		cfg  *ports.ProxyConfig
+	}{
+		{
+			name: "strip handler is first when security headers disabled",
+			cfg: &ports.ProxyConfig{
+				ListenAddr:   "127.0.0.1:8080",
+				UpstreamAddr: "127.0.0.1:3000",
+			},
+		},
+		{
+			name: "strip handler is first when security headers enabled",
+			cfg: &ports.ProxyConfig{
+				ListenAddr:   "127.0.0.1:8080",
+				UpstreamAddr: "127.0.0.1:3000",
+				SecurityHeaders: ports.SecurityHeadersConfig{
+					Enabled:            true,
+					ContentTypeNosniff: true,
+				},
+			},
+		},
+		{
+			name: "strip handler is first when rate limiting enabled",
+			cfg: &ports.ProxyConfig{
+				ListenAddr:   "127.0.0.1:8080",
+				UpstreamAddr: "127.0.0.1:3000",
+				RateLimit: ports.RateLimitConfig{
+					Enabled: true,
+					PerIP: ports.RateLimitRule{
+						RequestsPerSecond: 10,
+						Burst:             20,
+					},
+				},
+			},
+		},
+		{
+			name: "strip handler is first when TLS enabled",
+			cfg: &ports.ProxyConfig{
+				ListenAddr:   "127.0.0.1:8443",
+				UpstreamAddr: "127.0.0.1:3000",
+				TLS: ports.TLSConfig{
+					Enabled:  true,
+					Provider: ports.TLSProviderSelfSigned,
+				},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := BuildCaddyConfig(tt.cfg)
+			if err != nil {
+				t.Fatalf("BuildCaddyConfig() unexpected error: %v", err)
+			}
+
+			server := extractServer(t, result)
+			routes, ok := server["routes"].([]map[string]any)
+			if !ok || len(routes) == 0 {
+				t.Fatal("routes not found in server config")
+			}
+
+			// The catch-all route is always last.
+			catchAll := routes[len(routes)-1]
+			handlers, ok := catchAll["handle"].([]map[string]any)
+			if !ok || len(handlers) == 0 {
+				t.Fatal("handle not found in catch-all route")
+			}
+
+			first := handlers[0]
+			if first["handler"] != "headers" {
+				t.Errorf("handlers[0].handler = %v, want 'headers'", first["handler"])
+			}
+			req, ok := first["request"].(map[string]any)
+			if !ok {
+				t.Fatal("handlers[0] missing 'request' key — expected user-header strip handler first")
+			}
+			if _, hasDelete := req["delete"]; !hasDelete {
+				t.Fatal("handlers[0].request missing 'delete' key — expected user-header strip handler first")
+			}
+		})
+	}
+}
+
+// TestBuildCaddyConfig_UserHeaderStripDeletesCorrectHeaders verifies that the
+// strip handler targets exactly X-User-Id, X-User-Email, and X-User-Verified.
+func TestBuildCaddyConfig_UserHeaderStripDeletesCorrectHeaders(t *testing.T) {
+	cfg := &ports.ProxyConfig{
+		ListenAddr:   "127.0.0.1:8080",
+		UpstreamAddr: "127.0.0.1:3000",
+	}
+
+	result, err := BuildCaddyConfig(cfg)
+	if err != nil {
+		t.Fatalf("BuildCaddyConfig() unexpected error: %v", err)
+	}
+
+	server := extractServer(t, result)
+	routes, ok := server["routes"].([]map[string]any)
+	if !ok || len(routes) == 0 {
+		t.Fatal("routes not found in server config")
+	}
+
+	catchAll := routes[len(routes)-1]
+	handlers, ok := catchAll["handle"].([]map[string]any)
+	if !ok || len(handlers) == 0 {
+		t.Fatal("handle not found in catch-all route")
+	}
+
+	stripHandler := handlers[0]
+	req, ok := stripHandler["request"].(map[string]any)
+	if !ok {
+		t.Fatal("handlers[0] missing 'request' key")
+	}
+	deleted, ok := req["delete"].([]string)
+	if !ok {
+		t.Fatal("handlers[0].request.delete is not []string")
+	}
+
+	wantDeleted := map[string]bool{
+		"X-User-Id":       true,
+		"X-User-Email":    true,
+		"X-User-Verified": true,
+	}
+	for _, h := range deleted {
+		delete(wantDeleted, h)
+	}
+	if len(wantDeleted) > 0 {
+		t.Errorf("missing headers in delete list: %v", wantDeleted)
 	}
 }
 

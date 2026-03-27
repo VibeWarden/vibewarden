@@ -62,8 +62,13 @@ func BuildCaddyConfig(cfg *ports.ProxyConfig) (map[string]any, error) {
 	}
 
 	// Build route handlers (middleware chain + reverse proxy).
-	// Middleware order: SecurityHeaders → RateLimit → ReverseProxy
-	handlers := []map[string]any{}
+	// Middleware order: StripUserHeaders → SecurityHeaders → AdminAuth → RateLimit → ReverseProxy
+	//
+	// The header strip handler MUST be first so that spoofed X-User-* headers sent
+	// by clients are removed before any other handler (including auth) runs.
+	// These headers are only valid when VibeWarden itself injects them after
+	// successful session validation.
+	handlers := []map[string]any{buildUserHeaderStripHandler()}
 
 	// Add security headers handler if enabled.
 	if cfg.SecurityHeaders.Enabled {
@@ -472,6 +477,22 @@ func buildMetricsRoute(internalAddr string) map[string]any {
 					{"dial": internalAddr},
 				},
 			},
+		},
+	}
+}
+
+// buildUserHeaderStripHandler creates a Caddy headers handler that deletes the
+// X-User-Id, X-User-Email, and X-User-Verified request headers.
+//
+// This handler must be placed as the very first handler in every route's chain.
+// Removing these headers on every inbound request prevents a client from
+// impersonating an authenticated user by injecting them directly. VibeWarden
+// re-injects them only after a valid session has been verified.
+func buildUserHeaderStripHandler() map[string]any {
+	return map[string]any{
+		"handler": "headers",
+		"request": map[string]any{
+			"delete": []string{"X-User-Id", "X-User-Email", "X-User-Verified"},
 		},
 	}
 }
