@@ -587,12 +587,12 @@ func handleInfoLeakConfig(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{
-		"database_url":        "postgres://admin:password123@internal-db:5432/production",
-		"stripe_secret_key":   "sk_live_FAKE_KEY_FOR_DEMO_PURPOSES_ONLY",
-		"internal_api_url":    "http://internal-payments-service:8080",
-		"smtp_password":       "smtp_FAKE_PASSWORD_DEMO",
-		"session_secret":      "FAKE_SESSION_SECRET_DO_NOT_USE_IN_PROD",
-		"note":                "These are FAKE credentials for demonstration purposes only.",
+		"database_url":      "postgres://admin:password123@internal-db:5432/production",
+		"stripe_secret_key": "sk_live_FAKE_KEY_FOR_DEMO_PURPOSES_ONLY",
+		"internal_api_url":  "http://internal-payments-service:8080",
+		"smtp_password":     "smtp_FAKE_PASSWORD_DEMO",
+		"session_secret":    "FAKE_SESSION_SECRET_DO_NOT_USE_IN_PROD",
+		"note":              "These are FAKE credentials for demonstration purposes only.",
 	})
 }
 
