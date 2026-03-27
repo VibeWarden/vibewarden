@@ -122,6 +122,30 @@ auth:
   # Defaults to /self-service/login/browser (Kratos browser login flow).
   login_url: ""
 
+# Request body size limiting
+# VibeWarden can reject oversized request bodies before they reach the upstream.
+# This protects against payload-based denial-of-service attacks and enforces
+# upload limits without any application-level changes.
+#
+# Requests with a body larger than the configured limit receive:
+#   HTTP 413 Payload Too Large
+body_size:
+  # Global default maximum request body size.
+  # Supported units: B, KB, MB, GB, TB (case-insensitive).
+  # Set to "0" or empty to disable the global limit.
+  max: "1MB"
+
+  # Per-path overrides — takes precedence over the global max.
+  # Useful for upload endpoints that need to accept larger payloads.
+  # A path override with max "0" or empty means no limit for that path.
+  # Example:
+  #   overrides:
+  #     - path: /api/upload
+  #       max: "50MB"
+  #     - path: /api/avatar
+  #       max: "5MB"
+  overrides: []
+
 # Rate limiting
 # VibeWarden enforces two independent token-bucket rate limits:
 #   per_ip   — applied to every request, keyed by client IP address.

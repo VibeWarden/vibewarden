@@ -48,6 +48,9 @@ type Config struct {
 	// Database configuration
 	Database DatabaseConfig `mapstructure:"database"`
 
+	// BodySize configures request body size limits.
+	BodySize BodySizeConfig `mapstructure:"body_size"`
+
 	// Overrides provides escape hatches for advanced users who need to supply
 	// hand-crafted config files instead of relying on VibeWarden's generation.
 	Overrides OverridesConfig `mapstructure:"overrides"`
@@ -352,6 +355,28 @@ type MetricsConfig struct {
 	PathPatterns []string `mapstructure:"path_patterns"`
 }
 
+// BodySizeConfig holds request body size limit settings.
+type BodySizeConfig struct {
+	// Max is the global default maximum request body size as a human-readable
+	// string (e.g. "1MB", "512KB"). Parsed at startup.
+	// An empty string or "0" means no limit.
+	Max string `mapstructure:"max"`
+
+	// Overrides defines per-path body size limits.
+	// Each entry can increase or decrease the global limit for a specific path.
+	Overrides []BodySizeOverrideConfig `mapstructure:"overrides"`
+}
+
+// BodySizeOverrideConfig defines a per-path body size limit.
+type BodySizeOverrideConfig struct {
+	// Path is the URL path prefix to match (e.g. "/api/upload").
+	Path string `mapstructure:"path"`
+
+	// Max is the maximum request body size for this path as a human-readable
+	// string (e.g. "50MB"). An empty string or "0" means no limit for this path.
+	Max string `mapstructure:"max"`
+}
+
 // OverridesConfig provides escape hatches for users who need to supply
 // hand-crafted configuration files instead of relying on VibeWarden's
 // auto-generation. All fields are optional.
@@ -441,6 +466,26 @@ func (c *Config) Validate() error {
 		errs = append(errs, "auth.ui.login_url is required when auth.ui.mode is \"custom\"")
 	}
 
+	// body_size.max validation.
+	if c.BodySize.Max != "" {
+		if _, err := ParseBodySize(c.BodySize.Max); err != nil {
+			errs = append(errs, fmt.Sprintf("body_size.max: %s", err.Error()))
+		}
+	}
+
+	// body_size.overrides validation.
+	for i, ov := range c.BodySize.Overrides {
+		prefix := fmt.Sprintf("body_size.overrides[%d]", i)
+		if ov.Path == "" {
+			errs = append(errs, fmt.Sprintf("%s.path is required", prefix))
+		}
+		if ov.Max != "" {
+			if _, err := ParseBodySize(ov.Max); err != nil {
+				errs = append(errs, fmt.Sprintf("%s.max: %s", prefix, err.Error()))
+			}
+		}
+	}
+
 	if len(errs) > 0 {
 		return fmt.Errorf("%s", strings.Join(errs, "; "))
 	}
@@ -509,6 +554,8 @@ func Load(configPath string) (*Config, error) {
 	v.SetDefault("security_headers.suppress_via_header", true)
 	v.SetDefault("metrics.enabled", true)
 	v.SetDefault("metrics.path_patterns", []string{})
+	v.SetDefault("body_size.max", "1MB")
+	v.SetDefault("body_size.overrides", []BodySizeOverrideConfig{})
 	v.SetDefault("database.url", "")
 	v.SetDefault("overrides.kratos_config", "")
 	v.SetDefault("overrides.compose_file", "")

@@ -18,6 +18,7 @@ import (
 	"github.com/vibewarden/vibewarden/internal/config"
 	"github.com/vibewarden/vibewarden/internal/plugins"
 	authplugin "github.com/vibewarden/vibewarden/internal/plugins/auth"
+	bodysizeplugin "github.com/vibewarden/vibewarden/internal/plugins/bodysize"
 	metricsplugin "github.com/vibewarden/vibewarden/internal/plugins/metrics"
 	ratelimitplugin "github.com/vibewarden/vibewarden/internal/plugins/ratelimit"
 	sechdrs "github.com/vibewarden/vibewarden/internal/plugins/securityheaders"
@@ -157,6 +158,37 @@ func registerPlugins(
 		SuppressViaHeader:            cfg.SecurityHeaders.SuppressViaHeader,
 	}, cfg.TLS.Enabled, logger))
 
+	// Body size limiting — priority 45
+	// Parse the configured size strings into bytes. Errors are already validated
+	// by config.Validate(), so we log-and-skip on any unexpected parse failure
+	// rather than failing startup.
+	globalMaxBytes, err := config.ParseBodySize(cfg.BodySize.Max)
+	if err != nil {
+		logger.Error("body_size.max parse error — body size limiting disabled",
+			slog.String("error", err.Error()),
+		)
+	} else {
+		bodySizeCfg := bodysizeplugin.Config{
+			Enabled:  globalMaxBytes > 0 || len(cfg.BodySize.Overrides) > 0,
+			MaxBytes: globalMaxBytes,
+		}
+		for _, ov := range cfg.BodySize.Overrides {
+			ovBytes, ovErr := config.ParseBodySize(ov.Max)
+			if ovErr != nil {
+				logger.Error("body_size override parse error — skipping override",
+					slog.String("path", ov.Path),
+					slog.String("error", ovErr.Error()),
+				)
+				continue
+			}
+			bodySizeCfg.Overrides = append(bodySizeCfg.Overrides, bodysizeplugin.OverrideConfig{
+				Path:     ov.Path,
+				MaxBytes: ovBytes,
+			})
+		}
+		registry.Register(bodysizeplugin.New(bodySizeCfg, logger))
+	}
+
 	// Metrics — priority 30
 	registry.Register(metricsplugin.New(metricsplugin.Config{
 		Enabled:      cfg.Metrics.Enabled,
@@ -280,8 +312,41 @@ func buildProxyConfig(cfg *config.Config, registry *plugins.Registry) *ports.Pro
 			Enabled: cfg.Admin.Enabled,
 			Token:   cfg.Admin.Token,
 		},
-		Admin: adminCfg,
+		Admin:    adminCfg,
+		BodySize: buildBodySizePortsConfig(cfg),
 	}
+}
+
+// buildBodySizePortsConfig constructs a ports.BodySizeConfig from the app config,
+// parsing human-readable size strings into bytes. Unparseable overrides are skipped.
+func buildBodySizePortsConfig(cfg *config.Config) ports.BodySizeConfig {
+	if cfg.BodySize.Max == "" {
+		return ports.BodySizeConfig{}
+	}
+
+	maxBytes, err := config.ParseBodySize(cfg.BodySize.Max)
+	if err != nil {
+		// Already validated in config.Validate(). Defensive fallback: no limit.
+		return ports.BodySizeConfig{}
+	}
+
+	bodySizeCfg := ports.BodySizeConfig{
+		Enabled:  maxBytes > 0 || len(cfg.BodySize.Overrides) > 0,
+		MaxBytes: maxBytes,
+	}
+
+	for _, ov := range cfg.BodySize.Overrides {
+		ovBytes, ovErr := config.ParseBodySize(ov.Max)
+		if ovErr != nil {
+			continue
+		}
+		bodySizeCfg.Overrides = append(bodySizeCfg.Overrides, ports.BodySizeOverride{
+			Path:     ov.Path,
+			MaxBytes: ovBytes,
+		})
+	}
+
+	return bodySizeCfg
 }
 
 // buildLogger creates an slog.Logger from the log configuration.
