@@ -48,6 +48,7 @@ func (s *AdminServer) Start() error {
 
 	mux := http.NewServeMux()
 	s.handlers.RegisterRoutes(mux)
+	RegisterDocsRoute(mux)
 
 	s.server = &http.Server{
 		Handler:           mux,

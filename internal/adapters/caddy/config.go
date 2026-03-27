@@ -142,6 +142,8 @@ func BuildCaddyConfig(cfg *ports.ProxyConfig) (map[string]any, error) {
 	if cfg.Admin.Enabled && cfg.Admin.InternalAddr != "" {
 		adminRoute := buildAdminRoute(cfg.Admin.InternalAddr)
 		routes = append(routes, adminRoute)
+		docsRoute := buildDocsRoute(cfg.Admin.InternalAddr)
+		routes = append(routes, docsRoute)
 	}
 
 	catchAllRoute := map[string]any{
@@ -448,6 +450,30 @@ func buildAdminRoute(internalAddr string) map[string]any {
 	return map[string]any{
 		"match": []map[string]any{
 			{"path": []string{"/_vibewarden/admin/*"}},
+		},
+		"handle": []map[string]any{
+			{
+				"handler": "reverse_proxy",
+				"upstreams": []map[string]any{
+					{"dial": internalAddr},
+				},
+			},
+		},
+	}
+}
+
+// buildDocsRoute constructs a Caddy route that reverse-proxies requests to
+// /_vibewarden/api/docs to the internal admin HTTP server at internalAddr.
+// This endpoint is public — no authentication is required and it must not be
+// gated by the AdminAuthHandler. The route is inserted before the catch-all
+// proxy route so that the AdminAuth middleware (which lives in the catch-all
+// handler chain) never runs for doc requests.
+//
+// The internalAddr must be a host:port string (e.g., "127.0.0.1:9092").
+func buildDocsRoute(internalAddr string) map[string]any {
+	return map[string]any{
+		"match": []map[string]any{
+			{"path": []string{"/_vibewarden/api/docs"}},
 		},
 		"handle": []map[string]any{
 			{
