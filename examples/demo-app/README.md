@@ -4,7 +4,13 @@ A minimal Go HTTP server (stdlib only) that demonstrates every major VibeWarden
 feature.  The app itself performs no authentication — it simply trusts the
 headers injected by the VibeWarden sidecar.
 
-## Quickstart
+## Profiles
+
+All demo variants now live in a single `docker-compose.yml`.
+Pick a profile with the `VIBEWARDEN_PROFILE` and `COMPOSE_PROFILES` environment
+variables.
+
+### Default — HTTP dev stack
 
 ```bash
 cd examples/demo-app
@@ -15,49 +21,116 @@ docker compose up -d
 Wait ~15 seconds for the full stack to be healthy.  Your browser will be
 redirected to the demo UI at `http://localhost:8080/static/index.html`.
 
-## Full Demo Stack
+| Service | URL | Credentials |
+|---|---|---|
+| Demo app (via VibeWarden) | http://localhost:8080 | see Demo credentials below |
+| Kratos public API | http://localhost:4433 | — |
+| Kratos admin API | http://localhost:4434 | — |
+| Mailslurper (email UI) | http://localhost:4437 | — |
 
-The full demo stack adds Prometheus metrics, Grafana dashboards, and Loki log
-aggregation on top of the basic stack.  It also enables self-signed TLS so you
-can exercise the HTTPS path locally.
+### TLS — self-signed HTTPS
 
 ```bash
 cd examples/demo-app
-docker compose -f docker-compose.local-demo.yml up -d
+VIBEWARDEN_PROFILE=tls \
+VIBEWARDEN_HTTP_PORT=8443 \
+VIBEWARDEN_SERVER_PORT=8443 \
+VIBEWARDEN_TLS_ENABLED=true \
+VIBEWARDEN_TLS_PROVIDER=self-signed \
+KRATOS_PUBLIC_BASE_URL=https://localhost:8443/ \
+docker compose up -d
 # Visit https://localhost:8443  (accept the self-signed certificate warning)
+```
+
+Or put the variables in a `.env` file (copy `.env.example` as a starting point):
+
+```bash
+cp .env.example .env
+# Set VIBEWARDEN_PROFILE=tls and the related variables in .env
+docker compose up -d
+```
+
+### Observability — HTTP + Prometheus / Grafana / Loki
+
+```bash
+cd examples/demo-app
+COMPOSE_PROFILES=observability docker compose up -d
+# Demo app: http://localhost:8080
+# Grafana:  http://localhost:3001  (admin / admin)
 ```
 
 Wait ~30 seconds for all services to become healthy.
 
-### Access URLs
-
 | Service | URL | Credentials |
 |---|---|---|
-| Demo app (via VibeWarden) | https://localhost:8443 | see Demo credentials below |
-| Grafana | http://localhost:3000 | admin / admin |
+| Demo app (via VibeWarden) | http://localhost:8080 | see Demo credentials below |
+| Grafana | http://localhost:3001 | admin / admin |
 | Prometheus | http://localhost:9090 | — |
 | Loki (ready check) | http://localhost:3100/ready | — |
 | Kratos public API | http://localhost:4433 | — |
 | Mailslurper (email UI) | http://localhost:4437 | — |
 
-### What the full stack demonstrates
-
-- **Self-signed TLS** — VibeWarden terminates HTTPS using a Caddy-generated
-  self-signed certificate.  No domain or ACME account required.
-- **Metrics** — Prometheus scrapes `/_vibewarden/metrics` every 15 s.  Open
-  Grafana and navigate to the VibeWarden dashboard to see request rates, latency
-  histograms, rate-limit hits, and auth decisions in real time.
-- **Log aggregation** — Promtail tails every container's stdout/stderr via the
-  Docker socket and ships structured JSON logs to Loki.  Grafana's Explore view
-  lets you query them with LogQL.
-- **Pre-provisioned dashboards** — Grafana starts with the Prometheus and Loki
-  datasources already configured and the VibeWarden dashboard pre-loaded.
-
-### Teardown
+### Full — TLS + observability
 
 ```bash
-docker compose -f docker-compose.local-demo.yml down        # stop containers
-docker compose -f docker-compose.local-demo.yml down -v     # also remove volumes
+cd examples/demo-app
+VIBEWARDEN_PROFILE=tls \
+VIBEWARDEN_HTTP_PORT=8443 \
+VIBEWARDEN_SERVER_PORT=8443 \
+VIBEWARDEN_TLS_ENABLED=true \
+VIBEWARDEN_TLS_PROVIDER=self-signed \
+KRATOS_PUBLIC_BASE_URL=https://localhost:8443/ \
+COMPOSE_PROFILES=full \
+docker compose up -d
+# Visit https://localhost:8443  (accept the self-signed certificate warning)
+# Grafana: http://localhost:3001
+```
+
+### Production — Let's Encrypt (public server)
+
+```bash
+cd examples/demo-app
+cp .env.example .env
+# Edit .env: set VIBEWARDEN_PROFILE=prod, DOMAIN, POSTGRES_PASSWORD, GRAFANA_ADMIN_PASSWORD, etc.
+COMPOSE_PROFILES=observability docker compose up -d
+```
+
+Required `.env` variables for prod:
+
+| Variable | Example |
+|---|---|
+| `VIBEWARDEN_PROFILE` | `prod` |
+| `VIBEWARDEN_HTTP_PORT` | `443` |
+| `VIBEWARDEN_SERVER_PORT` | `443` |
+| `VIBEWARDEN_TLS_ENABLED` | `true` |
+| `VIBEWARDEN_TLS_PROVIDER` | `letsencrypt` |
+| `VIBEWARDEN_TLS_DOMAIN` | `challenge.vibewarden.dev` |
+| `KRATOS_PUBLIC_BASE_URL` | `https://challenge.vibewarden.dev/` |
+| `POSTGRES_PASSWORD` | _(strong secret)_ |
+| `GRAFANA_ADMIN_PASSWORD` | _(strong secret)_ |
+
+## What each profile demonstrates
+
+| Profile | TLS | Observability | Rate limits |
+|---|---|---|---|
+| `dev` (default) | HTTP | none | 5 req/s per IP |
+| `tls` | self-signed HTTPS | none | 5 req/s per IP |
+| `observability` | HTTP | Prometheus + Grafana + Loki | 5 req/s per IP |
+| `full` | self-signed HTTPS | Prometheus + Grafana + Loki | 5 req/s per IP |
+| `prod` | Let's Encrypt | optional | configurable |
+
+The landing page at `/static/index.html` detects the active profile and
+shows or hides sections accordingly (TLS badge, observability links, etc.).
+
+## Teardown
+
+```bash
+docker compose down           # stop containers, keep volumes
+docker compose down -v        # stop containers and remove volumes
+
+# With a non-default profile:
+COMPOSE_PROFILES=observability docker compose down
+COMPOSE_PROFILES=observability docker compose down -v
 ```
 
 ## Demo UI
@@ -67,20 +140,20 @@ build step required).  Four pages showcase each VibeWarden feature visually:
 
 | Page | URL | What it shows |
 |---|---|---|
-| Home | `/static/index.html` | Auth status, VibeWarden health badge, login / register / logout |
+| Home | `/static/index.html` | Auth status, VibeWarden health badge, profile banner, login / register / logout |
 | My Profile | `/static/me.html` | User ID, email, and verification status from VibeWarden headers |
 | Headers Inspector | `/static/headers.html` | All response headers, security headers highlighted green / red |
 | Rate Limit Test | `/static/ratelimit.html` | Fire 20 rapid requests and watch 429s appear in real time |
 
-The UI uses [water.css](https://watercss.kognise.dev/) (MIT) loaded from
-jsDelivr CDN for a clean, classless style with zero build tooling.
+The UI uses [water.css](https://watercss.kognise.dev/) (MIT) loaded locally
+for a clean, classless style with zero build tooling.
 
 ## Architecture
 
 ```
 Browser / curl
     |
-    | :8080
+    | :8080 (dev) or :8443 (tls) or :443 (prod)
     v
 +-------------------+
 |    VibeWarden      |  <-- auth check (Kratos), rate limiting, security headers
@@ -106,10 +179,15 @@ from the validated Kratos session.
 # Unauthenticated
 curl http://localhost:8080/
 # {"authenticated":false,"message":"Welcome! Please log in."}
+```
 
-# After logging in (cookie set by Kratos)
-curl -b cookies.txt http://localhost:8080/
-# {"authenticated":true,"message":"Welcome, alice@example.com!"}
+### `GET /profile` — Active profile info (public)
+
+Returns the active demo profile and which feature sets are available.
+
+```bash
+curl http://localhost:8080/profile
+# {"observability_enabled":false,"profile":"dev","tls_enabled":false}
 ```
 
 ### `GET /public` — Public endpoint (no auth required)
@@ -127,8 +205,6 @@ curl http://localhost:8080/public
 
 Returns the authenticated user's ID, email, and email-verification status.
 Returns 401 if the request did not pass through VibeWarden (no session cookie).
-
-**Demonstrates:** Protected route — app trusts sidecar-injected identity headers.
 
 ```bash
 curl -b cookies.txt http://localhost:8080/me
@@ -150,10 +226,7 @@ curl http://localhost:8080/headers
 ### `POST /spam` — Rate-limit trigger
 
 Increments an in-memory counter.  Hitting this endpoint rapidly will trigger
-VibeWarden's rate limiter (configured at 5 req/s per IP, burst 10).
-
-**Demonstrates:** Rate limiting — the 11th back-to-back request gets a
-`429 Too Many Requests` response with a `Retry-After` header.
+VibeWarden's rate limiter.
 
 ```bash
 for i in $(seq 1 20); do
@@ -166,35 +239,10 @@ done
 
 Returns `{"status":"ok"}`.
 
-**Demonstrates:** Health endpoint excluded from auth and rate limiting.
-
 ```bash
 curl http://localhost:8080/health
 # {"status":"ok"}
 ```
-
-## Services
-
-### Basic stack (`docker-compose.yml`)
-
-| Service | URL | Description |
-|---|---|---|
-| VibeWarden | http://localhost:8080 | Security sidecar — the entry point |
-| Kratos public API | http://localhost:4433 | Self-service auth flows |
-| Kratos admin API | http://localhost:4434 | Internal admin (not for browsers) |
-| Mailslurper | http://localhost:4437 | Catches Kratos verification emails |
-
-### Full demo stack (`docker-compose.local-demo.yml`)
-
-| Service | URL | Description |
-|---|---|---|
-| VibeWarden (HTTPS) | https://localhost:8443 | Security sidecar with self-signed TLS |
-| Grafana | http://localhost:3000 | Pre-provisioned dashboards (admin / admin) |
-| Prometheus | http://localhost:9090 | Metrics storage and query UI |
-| Loki | http://localhost:3100 | Log aggregation backend |
-| Kratos public API | http://localhost:4433 | Self-service auth flows |
-| Kratos admin API | http://localhost:4434 | Internal admin (not for browsers) |
-| Mailslurper | http://localhost:4437 | Catches Kratos verification emails |
 
 ## Demo credentials
 
@@ -239,11 +287,4 @@ Inspect them with:
 
 ```bash
 curl -I http://localhost:8080/public
-```
-
-## Teardown
-
-```bash
-docker compose down        # stop containers
-docker compose down -v     # also remove the Postgres volume
 ```

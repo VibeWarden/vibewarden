@@ -112,6 +112,7 @@ func main() {
 	mux.HandleFunc("GET /headers", handleHeaders)
 	mux.HandleFunc("POST /spam", handleSpam)
 	mux.HandleFunc("GET /health", handleHealth)
+	mux.HandleFunc("GET /profile", handleProfile)
 	mux.HandleFunc("GET /auth/login", handleAuthPage(staticFS, "login.html"))
 	mux.HandleFunc("GET /auth/registration", handleAuthPage(staticFS, "register.html"))
 	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.FS(staticFS))))
@@ -182,6 +183,27 @@ func handleRoot(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, resp)
+}
+
+// handleProfile returns the active demo profile and which optional feature sets
+// are available.  The profile is read from the VIBEWARDEN_PROFILE environment
+// variable (set in docker-compose.yml).  The landing page JavaScript calls this
+// endpoint to decide which sections to show or hide.
+//
+// This endpoint is public (no auth required).
+func handleProfile(w http.ResponseWriter, r *http.Request) {
+	profile := os.Getenv("VIBEWARDEN_PROFILE")
+	if profile == "" {
+		profile = "dev"
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"profile": profile,
+		// Feature flags derived from the profile name so the landing page
+		// can conditionally show observability links.
+		"tls_enabled":           profile == "tls" || profile == "prod",
+		"observability_enabled": profile == "full" || profile == "observability",
+	})
 }
 
 // handlePublic always returns a public response regardless of auth status.

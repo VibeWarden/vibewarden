@@ -1,12 +1,23 @@
 # VibeWarden configuration for the demo app.
 #
-# VibeWarden listens on :8080 and proxies requests to the demo-app
-# container on demo-app:3000.
+# This file is the single source of truth for all demo profiles.
+# Behaviour is controlled by the VIBEWARDEN_PROFILE environment variable:
 #
-# Features demonstrated:
-#   - Auth (Ory Kratos) — protects all routes except the public_paths list
-#   - Rate limiting     — low limits so you can trigger them easily
-#   - Security headers  — added to every response
+#   dev   — HTTP :8080, relaxed limits, no TLS (default)
+#   tls   — HTTPS :8443, self-signed certificate
+#   prod  — HTTPS :80/:443, Let's Encrypt (requires DOMAIN env var)
+#
+# All other settings are identical across profiles.  Set the appropriate
+# VIBEWARDEN_* environment variables in docker compose (or your .env file)
+# to override individual values without editing this file.
+#
+# Env vars that change per profile (set in docker-compose.yml or .env):
+#   VIBEWARDEN_SERVER_PORT          — 8080 (dev), 8443 (tls), 443 (prod)
+#   VIBEWARDEN_TLS_ENABLED          — false (dev), true (tls/prod)
+#   VIBEWARDEN_TLS_PROVIDER         — "" (dev), "self-signed" (tls), "letsencrypt" (prod)
+#   VIBEWARDEN_TLS_DOMAIN           — "" (dev/tls), your domain (prod)
+#   VIBEWARDEN_RATE_LIMIT_PER_IP_REQUESTS_PER_SECOND — 5 (dev/tls), 20 (prod)
+#   VIBEWARDEN_RATE_LIMIT_PER_IP_BURST               — 10 (dev/tls), 40 (prod)
 
 server:
   host: "0.0.0.0"
@@ -30,6 +41,7 @@ auth:
     - "/"
     - "/public"
     - "/health"
+    - "/profile"
     - "/static"
     - "/auth"
     - "/vuln"

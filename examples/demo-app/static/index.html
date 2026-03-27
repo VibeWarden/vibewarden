@@ -62,6 +62,16 @@
     }
     .demo-creds span { color: #7C3AED; }
 
+    .profile-banner {
+      margin: 0 0 1.5em;
+      padding: 0.7em 1em;
+      border: 1px solid #e5e7eb;
+      border-radius: 6px;
+      background: #f9fafb;
+      font-size: 0.9em;
+    }
+    .profile-banner code { color: #7C3AED; font-weight: bold; }
+
     .vw-footer {
       margin-top: 3em;
       padding: 1em 1.2em;
@@ -84,6 +94,9 @@
     <a href="/static/ratelimit.html">Rate Limit Test</a>
     <a href="/static/vulnlab.html">Vulnerability Lab</a>
   </nav>
+
+  <!-- Active profile banner (filled in by JS) -->
+  <div id="profile-banner" class="profile-banner" style="display:none"></div>
 
   <!-- Hero -->
   <div class="hero">
@@ -125,11 +138,11 @@
   </p>
 
   <div class="protection-grid">
-    <div class="protection-card">
-      <h3>TLS — Let's Encrypt</h3>
-      <p>
-        HTTPS is automatic. VibeWarden obtains and renews certificates via ACME.
-        No configuration needed.
+    <div class="protection-card" id="card-tls">
+      <h3>TLS — <span id="tls-label">disabled</span></h3>
+      <p id="tls-desc">
+        HTTP mode. Start with <code>VIBEWARDEN_PROFILE=tls</code> for self-signed
+        HTTPS or <code>VIBEWARDEN_PROFILE=prod</code> for Let's Encrypt.
       </p>
     </div>
     <div class="protection-card">
@@ -149,7 +162,7 @@
       </p>
     </div>
     <div class="protection-card">
-      <h3>Rate Limiting — 20 req/s per IP</h3>
+      <h3>Rate Limiting — 5 req/s per IP</h3>
       <p>
         Requests over the threshold receive <code>429 Too Many Requests</code>
         with a <code>Retry-After</code> header. Try the
@@ -199,9 +212,12 @@
       <a href="/static/vulnlab.html">Vulnerability Lab</a> —
       intentional vulnerabilities with VibeWarden mitigation status for each.
     </li>
-    <li>
-      <a href="http://dashboard.vibewarden.dev" target="_blank" rel="noopener">Grafana Dashboard</a> —
+    <!-- Observability links — shown only when observability profile is active -->
+    <li id="observability-links" style="display:none">
+      <a id="grafana-link" href="http://localhost:3001" target="_blank" rel="noopener">Grafana Dashboard</a> —
       live metrics and structured logs from this sidecar instance.
+      Also: <a href="http://localhost:9090" target="_blank" rel="noopener">Prometheus</a>
+      and <a href="http://localhost:3100/ready" target="_blank" rel="noopener">Loki</a>.
     </li>
   </ul>
 
@@ -235,6 +251,55 @@
 
   <script>
     (async function () {
+      // Fetch active profile first so we can adapt the rest of the page.
+      let profileData = { profile: 'dev', tls_enabled: false, observability_enabled: false };
+      try {
+        const resp = await fetch('/profile');
+        if (resp.ok) {
+          profileData = await resp.json();
+        }
+      } catch (_) {
+        // profile endpoint unavailable — use defaults
+      }
+
+      // Profile banner
+      const profileBanner = document.getElementById('profile-banner');
+      const profileLabels = {
+        dev:  'dev — HTTP, relaxed limits',
+        tls:  'tls — HTTPS with self-signed certificate',
+        prod: 'prod — HTTPS with Let\'s Encrypt',
+        full: 'full — HTTPS + observability stack',
+        observability: 'observability — HTTP + Prometheus / Grafana / Loki',
+      };
+      const label = profileLabels[profileData.profile] || profileData.profile;
+      profileBanner.innerHTML =
+        'Active profile: <code>' + escapeHtml(label) + '</code> &nbsp;' +
+        '(<a href="https://github.com/vibewarden/vibewarden/tree/main/examples/demo-app#profiles" ' +
+        'target="_blank" rel="noopener">how to switch</a>)';
+      profileBanner.style.display = '';
+
+      // TLS card
+      const tlsLabel = document.getElementById('tls-label');
+      const tlsDesc  = document.getElementById('tls-desc');
+      if (profileData.tls_enabled) {
+        tlsLabel.textContent = 'Let\'s Encrypt';
+        if (profileData.profile === 'tls') {
+          tlsLabel.textContent = 'self-signed';
+          tlsDesc.textContent =
+            'VibeWarden terminates HTTPS using a Caddy-generated self-signed certificate. ' +
+            'Browsers show a security warning — accept it to proceed.';
+        } else {
+          tlsDesc.textContent =
+            'HTTPS is automatic. VibeWarden obtains and renews certificates via ACME. ' +
+            'No configuration needed.';
+        }
+      }
+
+      // Observability links
+      if (profileData.observability_enabled) {
+        document.getElementById('observability-links').style.display = '';
+      }
+
       // Auth status
       const authDiv = document.getElementById('auth-status');
       try {
