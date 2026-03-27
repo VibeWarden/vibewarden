@@ -1,0 +1,401 @@
+openapi: "3.0.3"
+info:
+  title: VibeWarden Admin API
+  version: "1.0"
+  description: |
+    The VibeWarden Admin API provides user management operations for the
+    local security sidecar. All endpoints require the X-Admin-Key header
+    containing the configured admin bearer token, except for the health
+    check and this API spec endpoint.
+
+    The sidecar always runs locally next to your application. It is never
+    hosted remotely.
+  contact:
+    url: https://vibewarden.dev
+  license:
+    name: Apache 2.0
+    url: https://www.apache.org/licenses/LICENSE-2.0
+
+servers:
+  - url: http://localhost:8080
+    description: Default local sidecar address (plain HTTP)
+  - url: https://localhost:8443
+    description: Default local sidecar address (TLS)
+
+tags:
+  - name: health
+    description: Sidecar health and readiness
+  - name: users
+    description: Admin user management
+
+paths:
+  /_vibewarden/health:
+    get:
+      summary: Health check
+      description: |
+        Returns the sidecar status and binary version. This endpoint is public —
+        no authentication is required. Suitable for use as a liveness or
+        readiness probe.
+      operationId: getHealth
+      tags: [health]
+      responses:
+        "200":
+          description: Sidecar is healthy.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthResponse"
+              example:
+                status: ok
+                version: "v0.1.0"
+
+  /_vibewarden/api/docs:
+    get:
+      summary: OpenAPI specification
+      description: |
+        Returns this OpenAPI 3.0 specification as YAML. Public endpoint —
+        no authentication required.
+      operationId: getApiDocs
+      tags: [health]
+      responses:
+        "200":
+          description: OpenAPI specification in YAML format.
+          content:
+            application/yaml:
+              schema:
+                type: string
+                format: binary
+
+  /_vibewarden/admin/users:
+    get:
+      summary: List users
+      description: Returns a paginated list of all user identities from the identity provider.
+      operationId: listUsers
+      tags: [users]
+      security:
+        - AdminKey: []
+      parameters:
+        - $ref: "#/components/parameters/PageParam"
+        - $ref: "#/components/parameters/PerPageParam"
+      responses:
+        "200":
+          description: Paginated list of users.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ListUsersResponse"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/AdminDisabled"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+
+    post:
+      summary: Invite / create user
+      description: |
+        Creates a new user identity for the given email address and returns a
+        one-time recovery link the admin can forward to the new user so they
+        can set their password.
+      operationId: inviteUser
+      tags: [users]
+      security:
+        - AdminKey: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/InviteUserRequest"
+            example:
+              email: "alice@example.com"
+      responses:
+        "201":
+          description: User created successfully.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InviteUserResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/AdminDisabled"
+        "409":
+          description: A user with this email already exists.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+              example:
+                error: user_exists
+                message: "a user with this email already exists"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+
+  /_vibewarden/admin/users/{id}:
+    parameters:
+      - $ref: "#/components/parameters/UserIDParam"
+
+    get:
+      summary: Get user
+      description: Returns a single user identity by its UUID.
+      operationId: getUser
+      tags: [users]
+      security:
+        - AdminKey: []
+      responses:
+        "200":
+          description: User found.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/UserResponse"
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+
+    delete:
+      summary: Deactivate user
+      description: |
+        Sets the user's state to inactive, preventing further authentication.
+        The identity record is retained — this operation is not a hard delete.
+      operationId: deactivateUser
+      tags: [users]
+      security:
+        - AdminKey: []
+      responses:
+        "200":
+          description: User deactivated.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DeactivateUserResponse"
+              example:
+                status: deactivated
+        "400":
+          $ref: "#/components/responses/BadRequest"
+        "401":
+          $ref: "#/components/responses/Unauthorized"
+        "404":
+          $ref: "#/components/responses/NotFound"
+        "503":
+          $ref: "#/components/responses/ServiceUnavailable"
+
+components:
+  securitySchemes:
+    AdminKey:
+      type: apiKey
+      in: header
+      name: X-Admin-Key
+      description: |
+        Bearer token configured in vibewarden.yaml under `admin.token`.
+        Required for all /_vibewarden/admin/* endpoints.
+
+  parameters:
+    UserIDParam:
+      name: id
+      in: path
+      required: true
+      description: The UUID of the user identity.
+      schema:
+        type: string
+        format: uuid
+        example: "550e8400-e29b-41d4-a716-446655440000"
+
+    PageParam:
+      name: page
+      in: query
+      required: false
+      description: 1-based page number. Defaults to 1.
+      schema:
+        type: integer
+        minimum: 1
+        default: 1
+        example: 1
+
+    PerPageParam:
+      name: per_page
+      in: query
+      required: false
+      description: Number of items per page. Defaults to 20, maximum 100.
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+        example: 20
+
+  schemas:
+    HealthResponse:
+      type: object
+      required: [status, version]
+      properties:
+        status:
+          type: string
+          description: Sidecar health status.
+          enum: [ok]
+          example: ok
+        version:
+          type: string
+          description: Binary version string.
+          example: "v0.1.0"
+
+    UserResponse:
+      type: object
+      required: [id, email, status, created_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique identity UUID.
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        email:
+          type: string
+          format: email
+          description: User email address.
+          example: "alice@example.com"
+        status:
+          type: string
+          description: Identity state.
+          enum: [active, inactive]
+          example: active
+        created_at:
+          type: string
+          format: date-time
+          description: ISO 8601 timestamp of identity creation.
+          example: "2026-01-15T10:30:00Z"
+
+    ListUsersResponse:
+      type: object
+      required: [users, total, page, per_page]
+      properties:
+        users:
+          type: array
+          items:
+            $ref: "#/components/schemas/UserResponse"
+        total:
+          type: integer
+          description: Total number of users across all pages. -1 when unknown.
+          example: 42
+        page:
+          type: integer
+          description: Current page number (1-based).
+          example: 1
+        per_page:
+          type: integer
+          description: Number of items per page.
+          example: 20
+
+    InviteUserRequest:
+      type: object
+      required: [email]
+      properties:
+        email:
+          type: string
+          format: email
+          description: Email address for the new user.
+          example: "alice@example.com"
+
+    InviteUserResponse:
+      type: object
+      required: [id, email, recovery_link]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: UUID of the newly created user identity.
+          example: "550e8400-e29b-41d4-a716-446655440000"
+        email:
+          type: string
+          format: email
+          description: Email address of the created user.
+          example: "alice@example.com"
+        recovery_link:
+          type: string
+          format: uri
+          description: |
+            One-time recovery link the admin should forward to the invited user
+            so they can set their password. Empty string when the identity
+            provider does not support recovery links.
+          example: "http://localhost:4433/self-service/recovery?flow=abc123&token=xyz"
+
+    DeactivateUserResponse:
+      type: object
+      required: [status]
+      properties:
+        status:
+          type: string
+          description: Confirmation of deactivation.
+          enum: [deactivated]
+          example: deactivated
+
+    ErrorResponse:
+      type: object
+      required: [error, message]
+      properties:
+        error:
+          type: string
+          description: Machine-readable error code.
+          example: invalid_uuid
+        message:
+          type: string
+          description: Human-readable error description.
+          example: "user ID must be a valid UUID"
+
+  responses:
+    Unauthorized:
+      description: Missing or invalid X-Admin-Key header.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            error: unauthorized
+            message: "missing or invalid admin token"
+
+    BadRequest:
+      description: The request is malformed or contains invalid parameters.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            error: invalid_uuid
+            message: "user ID must be a valid UUID"
+
+    NotFound:
+      description: The requested resource was not found.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            error: user_not_found
+            message: "user not found"
+
+    AdminDisabled:
+      description: The admin API is disabled in vibewarden.yaml.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            error: not_found
+            message: "not found"
+
+    ServiceUnavailable:
+      description: The identity provider is unreachable.
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            error: service_unavailable
+            message: "service unavailable"

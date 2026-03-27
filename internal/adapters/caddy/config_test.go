@@ -1724,3 +1724,169 @@ func TestBuildCaddyConfig_AdminRoute(t *testing.T) {
 		})
 	}
 }
+
+func TestBuildDocsRoute(t *testing.T) {
+	tests := []struct {
+		name         string
+		internalAddr string
+		wantPath     string
+		wantDialAddr string
+	}{
+		{
+			name:         "builds correct route for internal addr",
+			internalAddr: "127.0.0.1:9092",
+			wantPath:     "/_vibewarden/api/docs",
+			wantDialAddr: "127.0.0.1:9092",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			route := buildDocsRoute(tt.internalAddr)
+
+			match, ok := route["match"].([]map[string]any)
+			if !ok || len(match) == 0 {
+				t.Fatal("match not found in docs route")
+			}
+			paths, ok := match[0]["path"].([]string)
+			if !ok || len(paths) == 0 {
+				t.Fatal("path not found in docs route match")
+			}
+			if paths[0] != tt.wantPath {
+				t.Errorf("path = %q, want %q", paths[0], tt.wantPath)
+			}
+
+			handles, ok := route["handle"].([]map[string]any)
+			if !ok || len(handles) == 0 {
+				t.Fatal("handle not found in docs route")
+			}
+			var rpHandler map[string]any
+			for _, h := range handles {
+				if h["handler"] == "reverse_proxy" {
+					rpHandler = h
+					break
+				}
+			}
+			if rpHandler == nil {
+				t.Fatal("reverse_proxy handler not found in docs route")
+			}
+			upstreams, ok := rpHandler["upstreams"].([]map[string]any)
+			if !ok || len(upstreams) == 0 {
+				t.Fatal("upstreams not found in docs route reverse_proxy handler")
+			}
+			if upstreams[0]["dial"] != tt.wantDialAddr {
+				t.Errorf("upstream dial = %v, want %q", upstreams[0]["dial"], tt.wantDialAddr)
+			}
+		})
+	}
+}
+
+func TestBuildCaddyConfig_DocsRoute(t *testing.T) {
+	tests := []struct {
+		name             string
+		cfg              *ports.ProxyConfig
+		wantDocsRoute    bool
+		wantDocsDialAddr string
+	}{
+		{
+			name: "docs route present when admin enabled with internal addr",
+			cfg: &ports.ProxyConfig{
+				ListenAddr:   "127.0.0.1:8080",
+				UpstreamAddr: "127.0.0.1:3000",
+				Admin: ports.AdminProxyConfig{
+					Enabled:      true,
+					InternalAddr: "127.0.0.1:9092",
+				},
+			},
+			wantDocsRoute:    true,
+			wantDocsDialAddr: "127.0.0.1:9092",
+		},
+		{
+			name: "docs route absent when admin disabled",
+			cfg: &ports.ProxyConfig{
+				ListenAddr:   "127.0.0.1:8080",
+				UpstreamAddr: "127.0.0.1:3000",
+				Admin: ports.AdminProxyConfig{
+					Enabled: false,
+				},
+			},
+			wantDocsRoute: false,
+		},
+		{
+			name: "docs route absent when admin enabled but internal addr empty",
+			cfg: &ports.ProxyConfig{
+				ListenAddr:   "127.0.0.1:8080",
+				UpstreamAddr: "127.0.0.1:3000",
+				Admin: ports.AdminProxyConfig{
+					Enabled:      true,
+					InternalAddr: "",
+				},
+			},
+			wantDocsRoute: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := BuildCaddyConfig(tt.cfg)
+			if err != nil {
+				t.Fatalf("BuildCaddyConfig() unexpected error: %v", err)
+			}
+
+			server := extractServer(t, result)
+			routes, ok := server["routes"].([]map[string]any)
+			if !ok {
+				t.Fatal("routes not found in server config")
+			}
+
+			var docsRoute map[string]any
+			for _, route := range routes {
+				match, ok := route["match"].([]map[string]any)
+				if !ok || len(match) == 0 {
+					continue
+				}
+				paths, ok := match[0]["path"].([]string)
+				if !ok || len(paths) == 0 {
+					continue
+				}
+				if paths[0] == "/_vibewarden/api/docs" {
+					docsRoute = route
+					break
+				}
+			}
+
+			if tt.wantDocsRoute && docsRoute == nil {
+				t.Fatal("expected docs route to be present but not found")
+			}
+			if !tt.wantDocsRoute && docsRoute != nil {
+				t.Fatal("expected no docs route but found one")
+			}
+
+			if !tt.wantDocsRoute {
+				return
+			}
+
+			handles, ok := docsRoute["handle"].([]map[string]any)
+			if !ok || len(handles) == 0 {
+				t.Fatal("handle not found in docs route")
+			}
+			var rpHandler map[string]any
+			for _, h := range handles {
+				if h["handler"] == "reverse_proxy" {
+					rpHandler = h
+					break
+				}
+			}
+			if rpHandler == nil {
+				t.Fatal("reverse_proxy handler not found in docs route")
+			}
+			upstreams, ok := rpHandler["upstreams"].([]map[string]any)
+			if !ok || len(upstreams) == 0 {
+				t.Fatal("upstreams not found in reverse_proxy handler")
+			}
+			if upstreams[0]["dial"] != tt.wantDocsDialAddr {
+				t.Errorf("docs upstream dial = %v, want %q", upstreams[0]["dial"], tt.wantDocsDialAddr)
+			}
+		})
+	}
+}
