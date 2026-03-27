@@ -24,6 +24,22 @@ type PluginDescriptor struct {
 // The order reflects the recommended initialisation priority.
 var Catalog = []PluginDescriptor{
 	{
+		Name:        "ip-filter",
+		Description: "IP allowlist/blocklist filter: reject or permit requests by client IP or CIDR range",
+		ConfigSchema: map[string]string{
+			"enabled":             "Enable IP filtering (default: false)",
+			"mode":                "Filter mode: \"allowlist\" (only listed IPs allowed) or \"blocklist\" (listed IPs blocked, default: \"blocklist\")",
+			"addresses":           "List of IP addresses or CIDR ranges to match (e.g. \"10.0.0.0/8\", \"192.168.1.100\")",
+			"trust_proxy_headers": "Read X-Forwarded-For for real client IP when behind a trusted proxy (default: false)",
+		},
+		Example: `  ip_filter:
+    enabled: true
+    mode: blocklist
+    addresses:
+      - "10.0.0.0/8"
+      - "192.168.1.100"`,
+	},
+	{
 		Name:        "tls",
 		Description: "TLS termination with Let's Encrypt, self-signed, or external certificates",
 		ConfigSchema: map[string]string{

@@ -73,6 +73,11 @@ const (
 	// persisted to the backing store (e.g. PostgreSQL is unavailable).
 	// The operation that triggered the audit entry is not rolled back.
 	EventTypeAuditLogFailure = "audit.log_failure"
+
+	// EventTypeIPFilterBlocked is emitted when a request is rejected by the
+	// IP filter plugin because the client IP is not in the allowlist or is
+	// in the blocklist.
+	EventTypeIPFilterBlocked = "ip_filter.blocked"
 )
 
 // Event is the base structured log event.

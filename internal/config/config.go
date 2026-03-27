@@ -51,6 +51,9 @@ type Config struct {
 	// BodySize configures request body size limits.
 	BodySize BodySizeConfig `mapstructure:"body_size"`
 
+	// IPFilter configures IP-based access control.
+	IPFilter IPFilterConfig `mapstructure:"ip_filter"`
+
 	// Overrides provides escape hatches for advanced users who need to supply
 	// hand-crafted config files instead of relying on VibeWarden's generation.
 	Overrides OverridesConfig `mapstructure:"overrides"`
@@ -377,6 +380,25 @@ type BodySizeOverrideConfig struct {
 	Max string `mapstructure:"max"`
 }
 
+// IPFilterConfig holds IP-based access control settings.
+type IPFilterConfig struct {
+	// Enabled toggles the IP filter plugin (default: false).
+	Enabled bool `mapstructure:"enabled"`
+
+	// Mode selects the filter behaviour: "allowlist" or "blocklist" (default: "blocklist").
+	// allowlist: only listed IPs/CIDRs may access the service.
+	// blocklist: listed IPs/CIDRs are blocked; all others are permitted.
+	Mode string `mapstructure:"mode"`
+
+	// Addresses is the list of IP addresses or CIDR ranges to match against.
+	// Examples: "10.0.0.0/8", "192.168.1.100", "2001:db8::/32".
+	Addresses []string `mapstructure:"addresses"`
+
+	// TrustProxyHeaders enables reading X-Forwarded-For for the real client IP.
+	// Only enable when VibeWarden runs behind a trusted reverse proxy.
+	TrustProxyHeaders bool `mapstructure:"trust_proxy_headers"`
+}
+
 // OverridesConfig provides escape hatches for users who need to supply
 // hand-crafted configuration files instead of relying on VibeWarden's
 // auto-generation. All fields are optional.
@@ -473,6 +495,19 @@ func (c *Config) Validate() error {
 		}
 	}
 
+	// ip_filter.mode validation.
+	if c.IPFilter.Enabled {
+		switch c.IPFilter.Mode {
+		case "", "allowlist", "blocklist":
+			// valid
+		default:
+			errs = append(errs, fmt.Sprintf(
+				"ip_filter.mode %q is invalid; accepted values: \"allowlist\", \"blocklist\"",
+				c.IPFilter.Mode,
+			))
+		}
+	}
+
 	// body_size.overrides validation.
 	for i, ov := range c.BodySize.Overrides {
 		prefix := fmt.Sprintf("body_size.overrides[%d]", i)
@@ -556,6 +591,10 @@ func Load(configPath string) (*Config, error) {
 	v.SetDefault("metrics.path_patterns", []string{})
 	v.SetDefault("body_size.max", "1MB")
 	v.SetDefault("body_size.overrides", []BodySizeOverrideConfig{})
+	v.SetDefault("ip_filter.enabled", false)
+	v.SetDefault("ip_filter.mode", "blocklist")
+	v.SetDefault("ip_filter.addresses", []string{})
+	v.SetDefault("ip_filter.trust_proxy_headers", false)
 	v.SetDefault("database.url", "")
 	v.SetDefault("overrides.kratos_config", "")
 	v.SetDefault("overrides.compose_file", "")

@@ -56,6 +56,24 @@ type ProxyConfig struct {
 
 	// BodySize configuration — controls request body size limiting.
 	BodySize BodySizeConfig
+
+	// IPFilter configuration — controls IP-based access control.
+	IPFilter IPFilterConfig
+}
+
+// IPFilterConfig holds configuration for IP-based access control.
+type IPFilterConfig struct {
+	// Enabled toggles IP filtering.
+	Enabled bool
+
+	// Mode selects the filter behaviour: "allowlist" or "blocklist".
+	Mode string
+
+	// Addresses is the list of IP addresses or CIDR ranges to evaluate.
+	Addresses []string
+
+	// TrustProxyHeaders, when true, reads X-Forwarded-For for the real client IP.
+	TrustProxyHeaders bool
 }
 
 // BodySizeConfig holds configuration for the request body size limiting middleware.
