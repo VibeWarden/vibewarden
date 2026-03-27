@@ -1,0 +1,380 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>SQL Injection — VibeWarden Vulnerability Lab</title>
+  <link rel="stylesheet" href="/static/water.css">
+  <style>
+    nav a { margin-right: 1em; }
+
+    .warning-banner {
+      padding: 1em 1.2em;
+      background: #fef2f2;
+      border: 2px solid #dc2626;
+      border-radius: 6px;
+      color: #991b1b;
+      font-weight: bold;
+      font-size: 1em;
+      margin-bottom: 1.5em;
+    }
+
+    .hero {
+      margin: 1.5em 0 2em;
+      padding: 2em;
+      border-left: 4px solid #7C3AED;
+      background: rgba(124, 58, 237, 0.04);
+      border-radius: 0 6px 6px 0;
+    }
+    .hero h1 { margin-top: 0; }
+    .hero .tagline {
+      font-size: 1.1em;
+      color: #555;
+      margin-bottom: 0;
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 0.2em 0.6em;
+      border-radius: 4px;
+      font-size: 0.8em;
+      font-weight: bold;
+    }
+    .badge-high   { background: #dc2626; color: #fff; }
+    .badge-not-mitigated { background: #6b7280; color: #fff; }
+
+    .section {
+      margin: 2em 0;
+    }
+
+    .try-it-box {
+      padding: 1.2em;
+      border: 1px solid #d1d5db;
+      border-radius: 6px;
+      background: #fafafa;
+    }
+    .try-it-box h3 { margin-top: 0; }
+
+    .result-panel {
+      margin-top: 1em;
+      padding: 1em;
+      border: 1px solid #e5e7eb;
+      border-radius: 4px;
+      background: #fff;
+      min-height: 3em;
+      font-family: monospace;
+      font-size: 0.9em;
+      color: #374151;
+      white-space: pre-wrap;
+      overflow-x: auto;
+    }
+
+    .honest-box {
+      padding: 1.2em;
+      border: 2px solid #d97706;
+      border-radius: 6px;
+      background: rgba(217, 119, 6, 0.04);
+    }
+    .honest-box h3 { margin-top: 0; color: #92400e; }
+
+    .code-block {
+      font-family: monospace;
+      background: #1e1e2e;
+      color: #cdd6f4;
+      padding: 1em;
+      border-radius: 6px;
+      overflow-x: auto;
+      font-size: 0.9em;
+      line-height: 1.5;
+    }
+
+    .vuln-code {
+      font-family: monospace;
+      background: #fff5f5;
+      color: #9b2335;
+      padding: 1em;
+      border-radius: 6px;
+      border-left: 4px solid #dc2626;
+      overflow-x: auto;
+      font-size: 0.9em;
+      line-height: 1.5;
+    }
+
+    .safe-code {
+      font-family: monospace;
+      background: #f0fdf4;
+      color: #166534;
+      padding: 1em;
+      border-radius: 6px;
+      border-left: 4px solid #16a34a;
+      overflow-x: auto;
+      font-size: 0.9em;
+      line-height: 1.5;
+    }
+
+    .step { margin: 0.5em 0; }
+    .step code { background: #f3f4f6; padding: 0.1em 0.4em; border-radius: 3px; }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.9em;
+    }
+    th, td {
+      border: 1px solid #e5e7eb;
+      padding: 0.5em 0.8em;
+      text-align: left;
+    }
+    th { background: #f9fafb; font-weight: bold; }
+    tr:nth-child(even) { background: #f9fafb; }
+
+    .error-text { color: #dc2626; font-weight: bold; }
+
+    .vw-footer {
+      margin-top: 3em;
+      padding: 1em 1.2em;
+      background: #f9fafb;
+      border: 1px solid #e5e7eb;
+      border-radius: 6px;
+      font-size: 0.9em;
+      color: #374151;
+      text-align: center;
+    }
+    .vw-footer strong { color: #7C3AED; }
+  </style>
+</head>
+<body>
+  <nav>
+    <strong>VibeWarden Demo</strong> &nbsp;|&nbsp;
+    <a href="/">Home</a>
+    <a href="/static/me.html">My Profile</a>
+    <a href="/static/headers.html">Headers Inspector</a>
+    <a href="/static/ratelimit.html">Rate Limit Test</a>
+    <a href="/static/vulnlab.html">Vulnerability Lab</a>
+  </nav>
+
+  <div class="warning-banner">
+    &#9888;&#65039; This page contains an INTENTIONAL security vulnerability for demonstration purposes.
+    The endpoint at <code>/vuln/sqli</code> is deliberately insecure.
+    Do not deploy this pattern in production.
+  </div>
+
+  <div class="hero">
+    <h1>SQL Injection &nbsp;<span class="badge badge-high">High</span>&nbsp;<span class="badge badge-not-mitigated">Not Mitigated by VibeWarden</span></h1>
+    <p class="tagline">
+      Unsanitised query parameters are interpolated directly into SQL statements,
+      allowing an attacker to read, modify, or delete arbitrary data in the database.
+    </p>
+  </div>
+
+  <div class="section">
+    <h2>What is SQL Injection?</h2>
+    <p>
+      SQL injection (SQLi) occurs when an application builds SQL queries by concatenating
+      user-supplied input directly into the query string without sanitisation or
+      parameterisation.  An attacker who controls the input can terminate the intended query
+      and append their own SQL clauses, changing the query's semantics entirely.
+    </p>
+    <p>
+      Classic consequences include: bypassing authentication, dumping entire tables, modifying
+      or deleting records, and (in some databases) executing operating-system commands.
+      SQLi has consistently ranked in the OWASP Top 10 for over a decade.
+    </p>
+  </div>
+
+  <div class="section">
+    <h2>The Vulnerable Code</h2>
+    <p>
+      The endpoint <code>GET /vuln/sqli?user=...</code> in this demo app builds its query
+      like this — intentionally wrong:
+    </p>
+    <div class="vuln-code">// INTENTIONALLY VULNERABLE — string concatenation, no parameterisation<br>
+query := "SELECT id, user_id, title, content FROM notes WHERE user_id = '" + userParam + "'"<br>
+rows, _ := db.Query(query)</div>
+    <p>
+      For a legitimate request <code>?user=admin</code> the generated SQL is:
+    </p>
+    <div class="code-block">SELECT id, user_id, title, content FROM notes WHERE user_id = 'admin'</div>
+    <p>
+      But when the attacker sends <code>?user=admin' OR '1'='1</code>, the SQL becomes:
+    </p>
+    <div class="code-block">SELECT id, user_id, title, content FROM notes WHERE user_id = 'admin' OR '1'='1'</div>
+    <p>
+      The condition <code>'1'='1'</code> is always true, so the database returns every row
+      in the table — including rows belonging to other users.
+    </p>
+  </div>
+
+  <div class="section">
+    <h2>Try It</h2>
+    <div class="try-it-box">
+      <h3>Query Notes by User ID</h3>
+      <p>
+        The database contains three notes: two belonging to <strong>admin</strong> and one
+        belonging to <strong>user1</strong>.  Enter a user ID to query notes for that user.
+        Then try the injection payload to dump all notes at once:
+      </p>
+      <div class="step">Normal query: <code>admin</code></div>
+      <div class="step">Injection payload: <code>admin' OR '1'='1</code></div>
+      <div class="step">No-results query: <code>nobody</code></div>
+      <br>
+      <label for="user-input">User ID:</label>
+      <input type="text" id="user-input" value="admin"
+             placeholder="try: admin' OR '1'='1"
+             style="width:100%;max-width:400px">
+      <button id="query-btn" type="button">Query Notes</button>
+
+      <h4>Generated SQL Query</h4>
+      <div class="result-panel" id="query-panel">
+        <em>Submit a query above to see the SQL the server executed.</em>
+      </div>
+
+      <h4>Results</h4>
+      <div id="results-container">
+        <div class="result-panel" id="results-panel">
+          <em>Results will appear here.</em>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>VibeWarden Protection</h2>
+    <div class="honest-box">
+      <h3>Honest answer: VibeWarden does NOT prevent SQL injection</h3>
+      <p>
+        SQL injection is a vulnerability in application code, not in the network layer.
+        VibeWarden sits between the internet and your app as a reverse proxy — it has no
+        visibility into the SQL queries your app runs internally.
+      </p>
+      <p>
+        VibeWarden provides two partial mitigations that reduce the blast radius but do
+        <strong>not</strong> prevent the attack:
+      </p>
+      <ul>
+        <li>
+          <strong>Authentication (Ory Kratos):</strong> Unauthenticated attackers cannot reach
+          protected routes at all.  This eliminates anonymous exploitation, but any authenticated
+          user — including one with a stolen session token — can still inject SQL.
+        </li>
+        <li>
+          <strong>Rate limiting:</strong> Automated scanners and exfiltration scripts that make
+          many requests per second will be throttled.  This slows down, but does not prevent, a
+          patient attacker.
+        </li>
+      </ul>
+      <p>
+        <strong>The real fix is in your application code.</strong>  Use parameterised queries.
+        Full stop.
+      </p>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>How to Fix This in Your App</h2>
+    <p>
+      Replace string concatenation with a parameterised query.  The database driver
+      handles escaping — your code never touches the value:
+    </p>
+    <div class="safe-code">// SAFE: parameterised query — user input never touches the SQL string<br>
+rows, err := db.QueryContext(ctx,<br>
+&nbsp;&nbsp;&nbsp;&nbsp;"SELECT id, user_id, title, content FROM notes WHERE user_id = ?",<br>
+&nbsp;&nbsp;&nbsp;&nbsp;userParam,<br>
+)</div>
+    <p>
+      With parameterised queries the database engine receives the query structure and the
+      parameter value separately.  Even if <code>userParam</code> contains SQL syntax, it is
+      treated as a plain string literal — never as part of the query structure.
+    </p>
+    <p>
+      Additional layers of defence:
+    </p>
+    <ul>
+      <li>Apply the principle of least privilege: the database user your app connects with
+          should only have the permissions it actually needs (SELECT on the notes table,
+          not DROP TABLE).</li>
+      <li>Use an ORM or query builder that parameterises automatically (e.g., sqlc, sqlx,
+          GORM).</li>
+      <li>Validate and allowlist input where possible — reject strings that contain
+          characters your app has no legitimate reason to accept.</li>
+    </ul>
+  </div>
+
+  <!-- Footer banner -->
+  <div class="vw-footer">
+    <strong>VibeWarden</strong> — security sidecar for vibe-coded apps.
+    SQL injection must be fixed at the application layer; the sidecar cannot intercept
+    internal database queries.
+    &mdash; <a href="/static/vulnlab.html">Back to Vulnerability Lab</a> &mdash;
+    <a href="https://github.com/vibewarden/vibewarden" target="_blank" rel="noopener">GitHub</a>
+  </div>
+
+  <script>
+    document.getElementById('query-btn').addEventListener('click', async function () {
+      const userInput = document.getElementById('user-input').value;
+      const queryPanel = document.getElementById('query-panel');
+      const resultsPanel = document.getElementById('results-panel');
+      const resultsContainer = document.getElementById('results-container');
+
+      queryPanel.textContent = 'Loading...';
+      resultsContainer.innerHTML = '<div class="result-panel" id="results-panel"><em>Loading...</em></div>';
+
+      try {
+        const resp = await fetch('/vuln/sqli?user=' + encodeURIComponent(userInput));
+        const data = await resp.json();
+
+        // Show the SQL query the server executed.
+        queryPanel.textContent = data.query || '(no query returned)';
+
+        if (data.error) {
+          resultsContainer.innerHTML =
+            '<div class="result-panel"><span class="error-text">Error: ' +
+            escapeHtml(data.error) + '</span></div>';
+          return;
+        }
+
+        const notes = data.notes || [];
+        if (notes.length === 0) {
+          resultsContainer.innerHTML =
+            '<div class="result-panel"><em>No notes found for that user.</em></div>';
+          return;
+        }
+
+        // Render results as a table.
+        let html = '<table><thead><tr>' +
+          '<th>ID</th><th>User ID</th><th>Title</th><th>Content</th>' +
+          '</tr></thead><tbody>';
+        for (const n of notes) {
+          html += '<tr>' +
+            '<td>' + escapeHtml(String(n.id)) + '</td>' +
+            '<td>' + escapeHtml(n.user_id) + '</td>' +
+            '<td>' + escapeHtml(n.title) + '</td>' +
+            '<td>' + escapeHtml(n.content) + '</td>' +
+            '</tr>';
+        }
+        html += '</tbody></table>';
+        html += '<p style="margin-top:0.5em;font-size:0.85em;color:#555;">' +
+          data.count + ' row(s) returned.</p>';
+        resultsContainer.innerHTML = html;
+
+      } catch (err) {
+        queryPanel.textContent = '(error)';
+        resultsContainer.innerHTML =
+          '<div class="result-panel"><span class="error-text">Fetch error: ' +
+          escapeHtml(String(err)) + '</span></div>';
+      }
+    });
+
+    // escapeHtml prevents the results table from becoming an XSS vector.
+    // We show user-supplied data in the results; always escape it.
+    function escapeHtml(str) {
+      return str
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    }
+  </script>
+</body>
+</html>

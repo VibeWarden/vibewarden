@@ -1,12 +1,16 @@
 package main
 
 import (
+	"database/sql"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
+
+	_ "modernc.org/sqlite"
 )
 
 func TestHandleRoot(t *testing.T) {
@@ -380,6 +384,7 @@ func TestStaticFilesEmbedded(t *testing.T) {
 		"static/vulnlab.html",
 		"static/xss-reflected.html",
 		"static/xss-stored.html",
+		"static/sqli.html",
 	}
 	for _, path := range wantFiles {
 		t.Run(path, func(t *testing.T) {
@@ -388,6 +393,154 @@ func TestStaticFilesEmbedded(t *testing.T) {
 				t.Fatalf("expected embedded file %q to exist: %v", path, err)
 			}
 			f.Close()
+		})
+	}
+}
+
+// newTestDB opens a fresh in-memory SQLite database seeded with notes for testing.
+func newTestDB(t *testing.T) *sql.DB {
+	t.Helper()
+	db, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatalf("open sqlite: %v", err)
+	}
+	t.Cleanup(func() { db.Close() })
+	if err := initNotesDB(db); err != nil {
+		t.Fatalf("initNotesDB: %v", err)
+	}
+	return db
+}
+
+func TestInitNotesDB(t *testing.T) {
+	db := newTestDB(t)
+
+	// Verify that the seed data was inserted correctly.
+	tests := []struct {
+		name      string
+		userID    string
+		wantCount int
+	}{
+		{"admin has two notes", "admin", 2},
+		{"user1 has one note", "user1", 1},
+		{"unknown user has no notes", "nobody", 0},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rows, err := db.Query(
+				"SELECT COUNT(*) FROM notes WHERE user_id = ?", tt.userID,
+			)
+			if err != nil {
+				t.Fatalf("query: %v", err)
+			}
+			defer rows.Close()
+			var count int
+			if rows.Next() {
+				if err := rows.Scan(&count); err != nil {
+					t.Fatalf("scan: %v", err)
+				}
+			}
+			if count != tt.wantCount {
+				t.Errorf("user %q: want %d rows, got %d", tt.userID, tt.wantCount, count)
+			}
+		})
+	}
+}
+
+func TestHandleSQLi(t *testing.T) {
+	// Swap in a fresh test database for this test, then restore original.
+	origDB := notesDB
+	notesDB = newTestDB(t)
+	t.Cleanup(func() { notesDB = origDB })
+
+	tests := []struct {
+		name       string
+		userParam  string
+		wantStatus int
+		wantCount  int
+		wantQuery  string // substring that must appear in the returned "query" field
+	}{
+		{
+			name:       "normal query returns admin notes only",
+			userParam:  "admin",
+			wantStatus: http.StatusOK,
+			wantCount:  2,
+			wantQuery:  "WHERE user_id = 'admin'",
+		},
+		{
+			name:       "injection payload dumps all rows",
+			userParam:  "admin' OR '1'='1",
+			wantStatus: http.StatusOK,
+			wantCount:  3, // all three seed rows
+			wantQuery:  "OR '1'='1'",
+		},
+		{
+			name:       "unknown user returns zero rows",
+			userParam:  "nobody",
+			wantStatus: http.StatusOK,
+			wantCount:  0,
+			wantQuery:  "WHERE user_id = 'nobody'",
+		},
+		{
+			name:       "empty user returns zero rows",
+			userParam:  "",
+			wantStatus: http.StatusOK,
+			wantCount:  0,
+			wantQuery:  "WHERE user_id = ''",
+		},
+		{
+			name:       "syntax error returns 400 with error field",
+			userParam:  "' INVALID SQL '''",
+			wantStatus: http.StatusBadRequest,
+			wantCount:  -1, // not checked
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, "/vuln/sqli?user="+url.QueryEscape(tt.userParam), nil)
+			rr := httptest.NewRecorder()
+
+			handleSQLi(rr, req)
+
+			if rr.Code != tt.wantStatus {
+				t.Fatalf("want status %d, got %d; body: %s", tt.wantStatus, rr.Code, rr.Body.String())
+			}
+
+			var body map[string]any
+			if err := json.NewDecoder(rr.Body).Decode(&body); err != nil {
+				t.Fatalf("decode response: %v", err)
+			}
+
+			// For error cases just verify the error field is present.
+			if tt.wantStatus != http.StatusOK {
+				if errMsg, ok := body["error"].(string); !ok || errMsg == "" {
+					t.Error("want non-empty error field in error response")
+				}
+				return
+			}
+
+			// Verify the query field contains the expected substring.
+			if tt.wantQuery != "" {
+				q, _ := body["query"].(string)
+				if !strings.Contains(q, tt.wantQuery) {
+					t.Errorf("query field %q does not contain %q", q, tt.wantQuery)
+				}
+			}
+
+			// Verify the count field.
+			countRaw, ok := body["count"].(float64)
+			if !ok {
+				t.Fatalf("count field missing or wrong type: %v", body["count"])
+			}
+			if int(countRaw) != tt.wantCount {
+				t.Errorf("count: want %d, got %d", tt.wantCount, int(countRaw))
+			}
+
+			// Verify the notes array has matching length.
+			notes, _ := body["notes"].([]any)
+			if len(notes) != tt.wantCount {
+				t.Errorf("notes array length: want %d, got %d", tt.wantCount, len(notes))
+			}
 		})
 	}
 }

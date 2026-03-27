@@ -1,9 +1,9 @@
 // Package main implements the VibeWarden demo API server.
 //
-// This is a deliberately simple Go HTTP server (stdlib only) that showcases
-// how VibeWarden protects a real application.  Each endpoint demonstrates a
-// different VibeWarden feature: auth header forwarding, rate limiting,
-// security headers, and public vs protected routes.
+// This is a deliberately simple Go HTTP server that showcases how VibeWarden
+// protects a real application.  Each endpoint demonstrates a different
+// VibeWarden feature: auth header forwarding, rate limiting, security headers,
+// and public vs protected routes.
 //
 // The server listens on port 3000 (or $PORT).  All protected functionality
 // relies on headers injected by the VibeWarden sidecar — the app itself
@@ -16,6 +16,7 @@
 package main
 
 import (
+	"database/sql"
 	"embed"
 	"encoding/json"
 	"fmt"
@@ -27,6 +28,10 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	// Import the modernc SQLite driver for its side-effect of registering the
+	// "sqlite" database/sql driver.  Pure Go — no CGO required.
+	_ "modernc.org/sqlite"
 )
 
 //go:embed static
@@ -44,10 +49,30 @@ var (
 	guestbookMu sync.Mutex
 )
 
+// notesDB is the in-memory SQLite database used by the SQL injection demo.
+// It is initialised once at startup and shared across requests.
+//
+// INTENTIONALLY VULNERABLE — the /vuln/sqli endpoint queries this database
+// using string concatenation instead of parameterised queries.
+var notesDB *sql.DB
+
 func main() {
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "3000"
+	}
+
+	// Initialise the in-memory SQLite database for the SQL injection demo.
+	// Errors here are unrecoverable startup failures — panic is acceptable in main.
+	var err error
+	notesDB, err = sql.Open("sqlite", ":memory:")
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "open sqlite: %v\n", err)
+		os.Exit(1)
+	}
+	if err := initNotesDB(notesDB); err != nil {
+		fmt.Fprintf(os.Stderr, "init notes db: %v\n", err)
+		os.Exit(1)
 	}
 
 	// Expose the embedded static/ tree as an http.FileSystem rooted at
@@ -72,6 +97,7 @@ func main() {
 	mux.HandleFunc("GET /vuln/xss-reflected", handleXSSReflected)
 	mux.HandleFunc("GET /vuln/xss-stored", handleXSSStoredGet)
 	mux.HandleFunc("POST /vuln/xss-stored", handleXSSStoredPost)
+	mux.HandleFunc("GET /vuln/sqli", handleSQLi)
 	mux.HandleFunc("GET /vuln/", handleVulnLab)
 
 	addr := ":" + port
@@ -328,6 +354,107 @@ func handleXSSStoredPost(w http.ResponseWriter, r *http.Request) {
 	guestbookMu.Unlock()
 
 	http.Redirect(w, r, "/static/xss-stored.html", http.StatusSeeOther)
+}
+
+// initNotesDB seeds the in-memory SQLite database with sample notes.
+//
+// The notes table is intentionally populated with "sensitive" data so that
+// the SQL injection demo can show realistic data exfiltration.
+func initNotesDB(db *sql.DB) error {
+	if _, err := db.Exec(`CREATE TABLE notes (
+		id      INTEGER PRIMARY KEY,
+		user_id TEXT,
+		title   TEXT,
+		content TEXT
+	)`); err != nil {
+		return fmt.Errorf("create notes table: %w", err)
+	}
+	seed := []struct {
+		id                     int
+		userID, title, content string
+	}{
+		{1, "admin", "Secret Note", "This is the admin secret"},
+		{2, "admin", "Credentials", "password: hunter2"},
+		{3, "user1", "Public Note", "Hello world"},
+	}
+	for _, row := range seed {
+		if _, err := db.Exec(
+			`INSERT INTO notes VALUES (?, ?, ?, ?)`,
+			row.id, row.userID, row.title, row.content,
+		); err != nil {
+			return fmt.Errorf("seed note %d: %w", row.id, err)
+		}
+	}
+	return nil
+}
+
+// note is the data transfer object for a row in the notes table.
+type note struct {
+	ID      int    `json:"id"`
+	UserID  string `json:"user_id"`
+	Title   string `json:"title"`
+	Content string `json:"content"`
+}
+
+// handleSQLi is the INTENTIONALLY VULNERABLE SQL injection endpoint.
+//
+// It builds the SQL query by concatenating the raw value of the "user" query
+// parameter directly into the SQL string without any escaping or parameterisation.
+// An attacker can craft input such as:
+//
+//	/vuln/sqli?user=admin'+OR+'1'='1
+//
+// to dump all rows regardless of user_id.
+//
+// VibeWarden partial mitigations:
+//   - Auth (Kratos) prevents unauthenticated access to protected routes.
+//   - Rate limiting slows automated scanning and exfiltration.
+//
+// Neither mitigation prevents SQL injection itself.  The real fix is to use
+// parameterised queries: db.Query("... WHERE user_id = ?", userID).
+//
+// INTENTIONALLY VULNERABLE — do not change to parameterised queries.
+func handleSQLi(w http.ResponseWriter, r *http.Request) {
+	userParam := r.URL.Query().Get("user")
+
+	// INTENTIONALLY VULNERABLE: string concatenation builds the SQL query.
+	// This allows input like: admin' OR '1'='1
+	//nolint:gosec // intentional SQL injection for demonstration purposes
+	query := "SELECT id, user_id, title, content FROM notes WHERE user_id = '" + userParam + "'"
+
+	rows, err := notesDB.Query(query) //nolint:gosec
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]any{
+			"error": err.Error(),
+			"query": query,
+		})
+		return
+	}
+	defer rows.Close()
+
+	notes := make([]note, 0)
+	for rows.Next() {
+		var n note
+		if err := rows.Scan(&n.ID, &n.UserID, &n.Title, &n.Content); err != nil {
+			writeJSON(w, http.StatusInternalServerError, map[string]any{
+				"error": fmt.Sprintf("scan row: %v", err),
+			})
+			return
+		}
+		notes = append(notes, n)
+	}
+	if err := rows.Err(); err != nil {
+		writeJSON(w, http.StatusInternalServerError, map[string]any{
+			"error": fmt.Sprintf("rows: %v", err),
+		})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"query": query,
+		"notes": notes,
+		"count": len(notes),
+	})
 }
 
 // handleAuthPage returns an http.HandlerFunc that serves a named HTML file
