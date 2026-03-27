@@ -141,54 +141,51 @@ func TestBuildCaddyConfig_Validation(t *testing.T) {
 }
 
 func TestBuildCaddyConfig_AutomaticHTTPS(t *testing.T) {
-	tests := []struct {
-		name string
-		cfg  *ports.ProxyConfig
-	}{
-		{
-			name: "TLS disabled",
-			cfg: &ports.ProxyConfig{
-				ListenAddr:   "0.0.0.0:8080",
-				UpstreamAddr: "127.0.0.1:3000",
-				TLS:          ports.TLSConfig{Enabled: false},
+	t.Run("TLS disabled — automatic_https fully disabled", func(t *testing.T) {
+		cfg := &ports.ProxyConfig{
+			ListenAddr:   "0.0.0.0:8080",
+			UpstreamAddr: "127.0.0.1:3000",
+			TLS:          ports.TLSConfig{Enabled: false},
+		}
+		result, err := BuildCaddyConfig(cfg)
+		if err != nil {
+			t.Fatalf("BuildCaddyConfig() unexpected error: %v", err)
+		}
+		server := extractServer(t, result)
+		autoHTTPS, ok := server["automatic_https"].(map[string]any)
+		if !ok {
+			t.Fatal("automatic_https not found in server config")
+		}
+		if disabled, _ := autoHTTPS["disable"].(bool); !disabled {
+			t.Error("automatic_https.disable must be true when TLS is disabled")
+		}
+	})
+
+	t.Run("TLS enabled — only redirects disabled", func(t *testing.T) {
+		cfg := &ports.ProxyConfig{
+			ListenAddr:   "127.0.0.1:8443",
+			UpstreamAddr: "127.0.0.1:3000",
+			TLS: ports.TLSConfig{
+				Enabled:  true,
+				Provider: ports.TLSProviderSelfSigned,
 			},
-		},
-		{
-			name: "TLS enabled with self-signed",
-			cfg: &ports.ProxyConfig{
-				ListenAddr:   "127.0.0.1:8443",
-				UpstreamAddr: "127.0.0.1:3000",
-				TLS: ports.TLSConfig{
-					Enabled:  true,
-					Provider: ports.TLSProviderSelfSigned,
-				},
-			},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			result, err := BuildCaddyConfig(tt.cfg)
-			if err != nil {
-				t.Fatalf("BuildCaddyConfig() unexpected error: %v", err)
-			}
-
-			server := extractServer(t, result)
-			autoHTTPS, ok := server["automatic_https"].(map[string]any)
-			if !ok {
-				t.Fatal("automatic_https not found in server config")
-			}
-
-			disabled, ok := autoHTTPS["disable"].(bool)
-			if !ok {
-				t.Fatal("automatic_https.disable not found")
-			}
-
-			if !disabled {
-				t.Error("automatic_https.disable must always be true (TLS is managed explicitly)")
-			}
-		})
-	}
+		}
+		result, err := BuildCaddyConfig(cfg)
+		if err != nil {
+			t.Fatalf("BuildCaddyConfig() unexpected error: %v", err)
+		}
+		server := extractServer(t, result)
+		autoHTTPS, ok := server["automatic_https"].(map[string]any)
+		if !ok {
+			t.Fatal("automatic_https not found in server config")
+		}
+		if redirectsDisabled, _ := autoHTTPS["disable_redirects"].(bool); !redirectsDisabled {
+			t.Error("automatic_https.disable_redirects must be true when TLS is enabled")
+		}
+		if fullDisable, _ := autoHTTPS["disable"].(bool); fullDisable {
+			t.Error("automatic_https.disable must NOT be true when TLS is enabled — cert issuance needs to work")
+		}
+	})
 }
 
 func TestBuildCaddyConfig_TLSProviders(t *testing.T) {

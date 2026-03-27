@@ -134,12 +134,19 @@ func BuildCaddyConfig(cfg *ports.ProxyConfig) (map[string]any, error) {
 	})
 
 	// Build the main HTTPS (or plain HTTP) server configuration.
-	// Caddy's built-in automatic HTTPS negotiation is always disabled here;
-	// we control TLS completely through the explicit provider-based configuration.
 	server := map[string]any{
-		"listen":          []string{cfg.ListenAddr},
-		"routes":          routes,
-		"automatic_https": map[string]any{"disable": true},
+		"listen": []string{cfg.ListenAddr},
+		"routes": routes,
+	}
+
+	if cfg.TLS.Enabled {
+		// Disable only Caddy's automatic redirects — we manage the redirect
+		// server ourselves. Certificate issuance via the TLS automation policies
+		// must remain active so Caddy obtains certs from internal/ACME issuers.
+		server["automatic_https"] = map[string]any{"disable_redirects": true}
+	} else {
+		// No TLS at all — fully disable automatic HTTPS.
+		server["automatic_https"] = map[string]any{"disable": true}
 	}
 
 	// Configure TLS connection policies when TLS is enabled.
@@ -214,6 +221,16 @@ func buildTLSPolicy(cfg ports.TLSConfig) []map[string]any {
 				},
 			},
 		}
+	}
+
+	// For self-signed, set a default SNI so Caddy can match the certificate
+	// even when clients connect by IP (no SNI in the TLS handshake).
+	if cfg.Provider == ports.TLSProviderSelfSigned {
+		domain := cfg.Domain
+		if domain == "" {
+			domain = "localhost"
+		}
+		return []map[string]any{{"default_sni": domain}}
 	}
 
 	// Default policy — Caddy selects the certificate automatically.
