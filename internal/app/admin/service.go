@@ -17,6 +17,11 @@ import (
 // It wires the UserAdmin port with the EventLogger and AuditLogger ports so
 // that every mutating operation emits a structured domain event and persists
 // an audit log entry.
+//
+// Audit logging is non-blocking: a failure to write to the audit store is
+// logged as an audit.log_failure structured event but does not abort the
+// originating operation. This ensures the admin API remains functional even
+// when PostgreSQL is unavailable.
 type Service struct {
 	admin  ports.UserAdmin
 	logger ports.EventLogger
@@ -59,6 +64,10 @@ func (s *Service) GetUser(ctx context.Context, id string) (*user.User, error) {
 // audit entry via the AuditLogger port.
 // actorID identifies the admin performing the action and is recorded in both
 // the event and the audit entry.
+//
+// Audit failures are non-blocking: when the audit store is unavailable the
+// failure is emitted as an audit.log_failure event and the invite result is
+// still returned to the caller.
 func (s *Service) InviteUser(ctx context.Context, email string, actorID string) (*ports.InviteResult, error) {
 	result, err := s.admin.InviteUser(ctx, email)
 	if err != nil {
@@ -86,7 +95,9 @@ func (s *Service) InviteUser(ctx context.Context, email string, actorID string) 
 				"email": result.User.Email,
 			},
 		})
-		_ = auditErr
+		if auditErr != nil {
+			s.emitAuditFailure(ctx, string(ports.AuditActionUserCreated), result.User.ID, auditErr)
+		}
 	}
 
 	return result, nil
@@ -98,6 +109,10 @@ func (s *Service) InviteUser(ctx context.Context, email string, actorID string) 
 // actorID identifies the admin performing the action and is recorded in both
 // the event and the audit entry.
 // reason is an optional human-readable explanation for the deactivation.
+//
+// Audit failures are non-blocking: when the audit store is unavailable the
+// failure is emitted as an audit.log_failure event and nil is still returned
+// to the caller.
 func (s *Service) DeactivateUser(ctx context.Context, userID string, actorID string, reason string) error {
 	// Fetch the user first so we can include the email in the event.
 	u, err := s.admin.GetUser(ctx, userID)
@@ -132,8 +147,25 @@ func (s *Service) DeactivateUser(ctx context.Context, userID string, actorID str
 				"reason": reason,
 			},
 		})
-		_ = auditErr
+		if auditErr != nil {
+			s.emitAuditFailure(ctx, string(ports.AuditActionUserDeactivated), userID, auditErr)
+		}
 	}
 
 	return nil
+}
+
+// emitAuditFailure emits an audit.log_failure structured event via the
+// EventLogger. It is called when audit.RecordEntry returns an error so that
+// audit failures are observable in the structured log stream without blocking
+// the originating operation.
+func (s *Service) emitAuditFailure(ctx context.Context, action, userID string, auditErr error) {
+	ev := events.NewAuditLogFailure(events.AuditLogFailureParams{
+		Action: action,
+		UserID: userID,
+		Error:  auditErr.Error(),
+	})
+	// This is also best-effort — if the event logger itself fails we swallow
+	// the error to avoid masking the original audit failure.
+	_ = s.logger.Log(ctx, ev)
 }

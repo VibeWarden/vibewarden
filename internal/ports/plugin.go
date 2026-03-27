@@ -1,8 +1,11 @@
 package ports
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
-// HealthStatus reports the current health of a plugin.
+// HealthStatus reports the current health of a plugin or dependency.
 type HealthStatus struct {
 	// Healthy is true when the plugin is operating normally.
 	Healthy bool
@@ -10,6 +13,59 @@ type HealthStatus struct {
 	// Message provides a human-readable explanation of the current status.
 	// It should describe the problem when Healthy is false.
 	Message string
+}
+
+// DependencyStatus is the detailed health report for a single named dependency.
+// It is included in the health endpoint response when dependency checking is enabled.
+type DependencyStatus struct {
+	// Status is "healthy" or "unhealthy".
+	Status string `json:"status"`
+
+	// LatencyMS is the round-trip latency of the last health probe in milliseconds.
+	// Zero when the check failed before a response was received.
+	LatencyMS int64 `json:"latency_ms"`
+
+	// Error is set to a short error description when Status is "unhealthy".
+	// Empty when Status is "healthy".
+	Error string `json:"error,omitempty"`
+}
+
+// DependencyChecker is an optional interface implemented by plugins that expose
+// a live connectivity probe for the health endpoint. Unlike Health(), which
+// returns cached state, CheckDependency performs a real probe and must be
+// called with an appropriate timeout.
+type DependencyChecker interface {
+	// CheckDependency performs a live health probe and returns a
+	// DependencyStatus. The latency is measured from the start of the call.
+	// Implementations must honour the context deadline.
+	CheckDependency(ctx context.Context) DependencyStatus
+
+	// DependencyName returns a short identifier for this dependency
+	// (e.g. "kratos", "postgres"). Used as the key in the health response.
+	DependencyName() string
+}
+
+// HealthSummaryStatus is the overall status of the health endpoint.
+type HealthSummaryStatus string
+
+const (
+	// HealthSummaryOK means all monitored dependencies are healthy.
+	HealthSummaryOK HealthSummaryStatus = "ok"
+
+	// HealthSummaryDegraded means some dependencies are unhealthy but the
+	// sidecar is still serving requests in a degraded mode.
+	HealthSummaryDegraded HealthSummaryStatus = "degraded"
+
+	// HealthSummaryUnhealthy means critical dependencies are down and the
+	// sidecar cannot serve protected requests correctly.
+	HealthSummaryUnhealthy HealthSummaryStatus = "unhealthy"
+)
+
+// HealthCheckCache caches dependency health results for a configured TTL to
+// avoid hammering dependencies on every health endpoint request.
+type HealthCheckCache struct {
+	// TTL is how long cached results are considered fresh.
+	TTL time.Duration
 }
 
 // Plugin is the core interface that all VibeWarden plugins must implement.

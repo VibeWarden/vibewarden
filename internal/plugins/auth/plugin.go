@@ -13,6 +13,9 @@ import (
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
 
+// Ensure auth.Plugin implements ports.DependencyChecker at compile time.
+var _ ports.DependencyChecker = (*Plugin)(nil)
+
 // kratosFlowPaths contains the URL path patterns that must be proxied to the
 // Kratos public API instead of the upstream application.
 // These paths are the Kratos self-service browser flows and the Ory canonical
@@ -220,6 +223,56 @@ func (p *Plugin) HealthCheck(ctx context.Context) ports.HealthStatus {
 	p.healthy = true
 	p.healthMsg = fmt.Sprintf("auth configured, kratos: %s", p.cfg.KratosPublicURL)
 	return ports.HealthStatus{Healthy: true, Message: p.healthMsg}
+}
+
+// DependencyName returns "kratos" as the dependency identifier for health
+// endpoint reporting.
+// Implements ports.DependencyChecker.
+func (p *Plugin) DependencyName() string { return "kratos" }
+
+// CheckDependency performs a live connectivity probe against the Kratos
+// public health endpoint and returns a DependencyStatus with latency.
+// Implements ports.DependencyChecker.
+func (p *Plugin) CheckDependency(ctx context.Context) ports.DependencyStatus {
+	if !p.cfg.Enabled {
+		return ports.DependencyStatus{Status: "healthy", LatencyMS: 0}
+	}
+
+	probeURL := p.cfg.KratosPublicURL + whoamiPath
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, probeURL, nil)
+	if err != nil {
+		return ports.DependencyStatus{
+			Status: "unhealthy",
+			Error:  fmt.Sprintf("cannot build health probe: %s", err),
+		}
+	}
+
+	start := time.Now()
+	client := &http.Client{Timeout: healthCheckTimeout}
+	resp, err := client.Do(req)
+	latencyMS := time.Since(start).Milliseconds()
+
+	if err != nil {
+		return ports.DependencyStatus{
+			Status:    "unhealthy",
+			LatencyMS: latencyMS,
+			Error:     fmt.Sprintf("kratos unreachable: %s", err),
+		}
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 500 {
+		return ports.DependencyStatus{
+			Status:    "unhealthy",
+			LatencyMS: latencyMS,
+			Error:     fmt.Sprintf("kratos health probe returned %d", resp.StatusCode),
+		}
+	}
+
+	return ports.DependencyStatus{
+		Status:    "healthy",
+		LatencyMS: latencyMS,
+	}
 }
 
 // ContributeCaddyRoutes returns the Caddy routes contributed by the auth plugin.

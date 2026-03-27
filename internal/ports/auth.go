@@ -46,6 +46,22 @@ type SessionChecker interface {
 	CheckSession(ctx context.Context, sessionCookie string) (*Session, error)
 }
 
+// KratosUnavailableBehavior controls how the auth middleware responds when
+// the Kratos identity provider is unreachable.
+type KratosUnavailableBehavior string
+
+const (
+	// KratosUnavailable503 returns HTTP 503 Service Unavailable for all
+	// protected requests when Kratos is down. This is the default (fail-closed).
+	KratosUnavailable503 KratosUnavailableBehavior = "503"
+
+	// KratosUnavailableAllowPublic allows requests to public paths through
+	// even when Kratos is down, but blocks all protected paths with HTTP 503.
+	// This is a softer degradation mode for use cases where public content
+	// must remain accessible during identity provider outages.
+	KratosUnavailableAllowPublic KratosUnavailableBehavior = "allow_public"
+)
+
 // AuthConfig holds configuration for the auth middleware.
 type AuthConfig struct {
 	// Enabled toggles auth middleware (default: true when Kratos is configured).
@@ -66,4 +82,9 @@ type AuthConfig struct {
 	// LoginURL is the URL to redirect unauthenticated users to.
 	// If empty, defaults to the Kratos self-service login flow URL.
 	LoginURL string
+
+	// OnKratosUnavailable controls the degradation behavior when Kratos cannot
+	// be reached. Accepted values: "503" (default, fail-closed) or
+	// "allow_public" (serve public paths, block protected paths with 503).
+	OnKratosUnavailable KratosUnavailableBehavior
 }

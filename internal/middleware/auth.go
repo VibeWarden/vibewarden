@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strings"
+	"sync/atomic"
 
 	"github.com/vibewarden/vibewarden/internal/domain/events"
 	"github.com/vibewarden/vibewarden/internal/ports"
@@ -30,10 +31,16 @@ const (
 //  5. Call SessionChecker.CheckSession to validate the session with the
 //     identity provider.
 //  6. If the session is invalid or not found, redirect to the login URL.
-//  7. If the identity provider is unavailable, return 503 Service
-//     Unavailable (fail closed — never fail open).
+//  7. If the identity provider is unavailable, the behavior depends on
+//     cfg.OnKratosUnavailable:
+//     - "503" (default): return HTTP 503 Service Unavailable (fail-closed).
+//     - "allow_public": already handled at step 2; protected paths get 503.
 //  8. On a valid session, store the session in the request context and
 //     call the next handler.
+//
+// When Kratos transitions between unavailable and available, structured events
+// (auth.provider_unavailable / auth.provider_recovered) are emitted exactly
+// once per transition to avoid log flooding.
 //
 // The eventLogger receives structured auth events following the VibeWarden
 // schema (auth.success and auth.failed event types). If eventLogger is nil,
@@ -66,6 +73,13 @@ func AuthMiddleware(
 		matcher, _ = NewPublicPathMatcher(nil) //nolint:errcheck // nil patterns are always valid
 	}
 
+	// unavailableState tracks Kratos availability transitions.
+	// 0 = last known healthy; 1 = last known unavailable.
+	// Using atomic int32 so the middleware closure is safe for concurrent use.
+	var unavailableState atomic.Int32
+
+	kratosURL := cfg.KratosPublicURL
+
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// Step 1: Strip incoming X-User-* headers unconditionally to
@@ -94,10 +108,19 @@ func AuthMiddleware(
 				switch {
 				case errors.Is(err, ports.ErrSessionNotFound),
 					errors.Is(err, ports.ErrSessionInvalid):
+					// Kratos is reachable but the session is invalid/missing.
+					// If we were previously unhealthy, record the recovery.
+					if unavailableState.CompareAndSwap(1, 0) {
+						emitKratosRecovered(r, eventLogger, kratosURL)
+					}
 					emitAuthFailed(r, eventLogger, "invalid or missing session", "")
 					http.Redirect(w, r, loginURL, http.StatusFound)
 
 				case errors.Is(err, ports.ErrAuthProviderUnavailable):
+					// Emit availability event only on transition to unavailable.
+					if unavailableState.CompareAndSwap(0, 1) {
+						emitKratosUnavailable(r, eventLogger, kratosURL, err.Error())
+					}
 					emitAuthFailed(r, eventLogger, "auth provider unavailable", err.Error())
 					http.Error(w, "Service Unavailable", http.StatusServiceUnavailable)
 
@@ -107,6 +130,11 @@ func AuthMiddleware(
 					http.Error(w, "Service Unavailable", http.StatusServiceUnavailable)
 				}
 				return
+			}
+
+			// Session is valid — record recovery if we were previously unhealthy.
+			if unavailableState.CompareAndSwap(1, 0) {
+				emitKratosRecovered(r, eventLogger, kratosURL)
 			}
 
 			// Step 8: Valid session — store in context and proceed.
@@ -157,5 +185,31 @@ func emitAuthFailed(r *http.Request, eventLogger ports.EventLogger, reason, deta
 		Detail: detail,
 	})
 	// Best-effort: ignore logging errors so request processing is never blocked.
+	_ = eventLogger.Log(r.Context(), ev)
+}
+
+// emitKratosUnavailable logs an auth.provider_unavailable event.
+// If eventLogger is nil the call is a no-op.
+func emitKratosUnavailable(r *http.Request, eventLogger ports.EventLogger, providerURL, errMsg string) {
+	if eventLogger == nil {
+		return
+	}
+	ev := events.NewAuthProviderUnavailable(events.AuthProviderUnavailableParams{
+		ProviderURL:  providerURL,
+		Error:        errMsg,
+		AffectedPath: r.URL.Path,
+	})
+	_ = eventLogger.Log(r.Context(), ev)
+}
+
+// emitKratosRecovered logs an auth.provider_recovered event.
+// If eventLogger is nil the call is a no-op.
+func emitKratosRecovered(r *http.Request, eventLogger ports.EventLogger, providerURL string) {
+	if eventLogger == nil {
+		return
+	}
+	ev := events.NewAuthProviderRecovered(events.AuthProviderRecoveredParams{
+		ProviderURL: providerURL,
+	})
 	_ = eventLogger.Log(r.Context(), ev)
 }

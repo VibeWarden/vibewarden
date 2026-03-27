@@ -168,8 +168,8 @@ func TestPlugin_Init(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// Install a fake service factory so Init does not dial Kratos or Postgres.
 			old := usermgmt.ExportedServiceFactory
-			usermgmt.ExportedServiceFactory = func(_ usermgmt.Config, _ ports.EventLogger, _ *slog.Logger) (ports.AdminService, func(), error) {
-				return &fakeAdminService{}, nil, nil
+			usermgmt.ExportedServiceFactory = func(_ usermgmt.Config, _ ports.EventLogger, _ *slog.Logger) (ports.AdminService, func(), usermgmt.PostgresProber, error) {
+				return &fakeAdminService{}, nil, nil, nil
 			}
 			defer func() { usermgmt.ExportedServiceFactory = old }()
 
@@ -190,8 +190,8 @@ func TestPlugin_Init(t *testing.T) {
 
 func TestPlugin_Init_ServiceFactoryError(t *testing.T) {
 	old := usermgmt.ExportedServiceFactory
-	usermgmt.ExportedServiceFactory = func(_ usermgmt.Config, _ ports.EventLogger, _ *slog.Logger) (ports.AdminService, func(), error) {
-		return nil, nil, errors.New("db connection failed")
+	usermgmt.ExportedServiceFactory = func(_ usermgmt.Config, _ ports.EventLogger, _ *slog.Logger) (ports.AdminService, func(), usermgmt.PostgresProber, error) {
+		return nil, nil, nil, errors.New("db connection failed")
 	}
 	defer func() { usermgmt.ExportedServiceFactory = old }()
 
@@ -213,8 +213,8 @@ func TestPlugin_Start_BindsServer(t *testing.T) {
 	fake := &fakeAdminServer{addr: "127.0.0.1:19999"}
 
 	old := usermgmt.ExportedServiceFactory
-	usermgmt.ExportedServiceFactory = func(_ usermgmt.Config, _ ports.EventLogger, _ *slog.Logger) (ports.AdminService, func(), error) {
-		return &fakeAdminService{}, nil, nil
+	usermgmt.ExportedServiceFactory = func(_ usermgmt.Config, _ ports.EventLogger, _ *slog.Logger) (ports.AdminService, func(), usermgmt.PostgresProber, error) {
+		return &fakeAdminService{}, nil, nil, nil
 	}
 	defer func() { usermgmt.ExportedServiceFactory = old }()
 
@@ -254,8 +254,8 @@ func TestPlugin_Start_ServerStartError(t *testing.T) {
 	fake := &fakeAdminServer{startErr: errors.New("port in use")}
 
 	old := usermgmt.ExportedServiceFactory
-	usermgmt.ExportedServiceFactory = func(_ usermgmt.Config, _ ports.EventLogger, _ *slog.Logger) (ports.AdminService, func(), error) {
-		return &fakeAdminService{}, nil, nil
+	usermgmt.ExportedServiceFactory = func(_ usermgmt.Config, _ ports.EventLogger, _ *slog.Logger) (ports.AdminService, func(), usermgmt.PostgresProber, error) {
+		return &fakeAdminService{}, nil, nil, nil
 	}
 	defer func() { usermgmt.ExportedServiceFactory = old }()
 
@@ -282,8 +282,8 @@ func TestPlugin_Stop_CallsServerStop(t *testing.T) {
 	fake := &fakeAdminServer{addr: "127.0.0.1:19999"}
 
 	old := usermgmt.ExportedServiceFactory
-	usermgmt.ExportedServiceFactory = func(_ usermgmt.Config, _ ports.EventLogger, _ *slog.Logger) (ports.AdminService, func(), error) {
-		return &fakeAdminService{}, nil, nil
+	usermgmt.ExportedServiceFactory = func(_ usermgmt.Config, _ ports.EventLogger, _ *slog.Logger) (ports.AdminService, func(), usermgmt.PostgresProber, error) {
+		return &fakeAdminService{}, nil, nil, nil
 	}
 	defer func() { usermgmt.ExportedServiceFactory = old }()
 
@@ -322,8 +322,8 @@ func TestPlugin_Stop_ServerStopError(t *testing.T) {
 	fake := &fakeAdminServer{addr: "127.0.0.1:19999", stopErr: errors.New("shutdown timeout")}
 
 	old := usermgmt.ExportedServiceFactory
-	usermgmt.ExportedServiceFactory = func(_ usermgmt.Config, _ ports.EventLogger, _ *slog.Logger) (ports.AdminService, func(), error) {
-		return &fakeAdminService{}, nil, nil
+	usermgmt.ExportedServiceFactory = func(_ usermgmt.Config, _ ports.EventLogger, _ *slog.Logger) (ports.AdminService, func(), usermgmt.PostgresProber, error) {
+		return &fakeAdminService{}, nil, nil, nil
 	}
 	defer func() { usermgmt.ExportedServiceFactory = old }()
 
@@ -369,8 +369,8 @@ func TestPlugin_Health_Disabled(t *testing.T) {
 
 func TestPlugin_Health_EnabledAfterInit(t *testing.T) {
 	old := usermgmt.ExportedServiceFactory
-	usermgmt.ExportedServiceFactory = func(_ usermgmt.Config, _ ports.EventLogger, _ *slog.Logger) (ports.AdminService, func(), error) {
-		return &fakeAdminService{}, nil, nil
+	usermgmt.ExportedServiceFactory = func(_ usermgmt.Config, _ ports.EventLogger, _ *slog.Logger) (ports.AdminService, func(), usermgmt.PostgresProber, error) {
+		return &fakeAdminService{}, nil, nil, nil
 	}
 	defer func() { usermgmt.ExportedServiceFactory = old }()
 
@@ -389,8 +389,8 @@ func TestPlugin_Health_EnabledAfterInit(t *testing.T) {
 
 func TestPlugin_Health_Table(t *testing.T) {
 	old := usermgmt.ExportedServiceFactory
-	usermgmt.ExportedServiceFactory = func(_ usermgmt.Config, _ ports.EventLogger, _ *slog.Logger) (ports.AdminService, func(), error) {
-		return &fakeAdminService{}, nil, nil
+	usermgmt.ExportedServiceFactory = func(_ usermgmt.Config, _ ports.EventLogger, _ *slog.Logger) (ports.AdminService, func(), usermgmt.PostgresProber, error) {
+		return &fakeAdminService{}, nil, nil, nil
 	}
 	defer func() { usermgmt.ExportedServiceFactory = old }()
 
@@ -450,8 +450,8 @@ func TestPlugin_HealthCheck_KratosAdminReachable(t *testing.T) {
 		KratosAdminURL: srv.URL,
 	}
 	old := usermgmt.ExportedServiceFactory
-	usermgmt.ExportedServiceFactory = func(_ usermgmt.Config, _ ports.EventLogger, _ *slog.Logger) (ports.AdminService, func(), error) {
-		return &fakeAdminService{}, nil, nil
+	usermgmt.ExportedServiceFactory = func(_ usermgmt.Config, _ ports.EventLogger, _ *slog.Logger) (ports.AdminService, func(), usermgmt.PostgresProber, error) {
+		return &fakeAdminService{}, nil, nil, nil
 	}
 	defer func() { usermgmt.ExportedServiceFactory = old }()
 
@@ -473,8 +473,8 @@ func TestPlugin_HealthCheck_KratosAdminUnreachable(t *testing.T) {
 		KratosAdminURL: "http://127.0.0.1:19998", // nothing listening
 	}
 	old := usermgmt.ExportedServiceFactory
-	usermgmt.ExportedServiceFactory = func(_ usermgmt.Config, _ ports.EventLogger, _ *slog.Logger) (ports.AdminService, func(), error) {
-		return &fakeAdminService{}, nil, nil
+	usermgmt.ExportedServiceFactory = func(_ usermgmt.Config, _ ports.EventLogger, _ *slog.Logger) (ports.AdminService, func(), usermgmt.PostgresProber, error) {
+		return &fakeAdminService{}, nil, nil, nil
 	}
 	defer func() { usermgmt.ExportedServiceFactory = old }()
 
@@ -512,8 +512,8 @@ func TestPlugin_HealthCheck_KratosAdminServerError(t *testing.T) {
 		KratosAdminURL: srv.URL,
 	}
 	old := usermgmt.ExportedServiceFactory
-	usermgmt.ExportedServiceFactory = func(_ usermgmt.Config, _ ports.EventLogger, _ *slog.Logger) (ports.AdminService, func(), error) {
-		return &fakeAdminService{}, nil, nil
+	usermgmt.ExportedServiceFactory = func(_ usermgmt.Config, _ ports.EventLogger, _ *slog.Logger) (ports.AdminService, func(), usermgmt.PostgresProber, error) {
+		return &fakeAdminService{}, nil, nil, nil
 	}
 	defer func() { usermgmt.ExportedServiceFactory = old }()
 
@@ -548,8 +548,8 @@ func TestPlugin_ContributeCaddyRoutes_Disabled(t *testing.T) {
 
 func TestPlugin_ContributeCaddyRoutes_Enabled(t *testing.T) {
 	old := usermgmt.ExportedServiceFactory
-	usermgmt.ExportedServiceFactory = func(_ usermgmt.Config, _ ports.EventLogger, _ *slog.Logger) (ports.AdminService, func(), error) {
-		return &fakeAdminService{}, nil, nil
+	usermgmt.ExportedServiceFactory = func(_ usermgmt.Config, _ ports.EventLogger, _ *slog.Logger) (ports.AdminService, func(), usermgmt.PostgresProber, error) {
+		return &fakeAdminService{}, nil, nil, nil
 	}
 	defer func() { usermgmt.ExportedServiceFactory = old }()
 
@@ -575,8 +575,8 @@ func TestPlugin_ContributeCaddyRoutes_Enabled(t *testing.T) {
 
 func TestPlugin_ContributeCaddyRoutes_HandlerIsReverseProxy(t *testing.T) {
 	old := usermgmt.ExportedServiceFactory
-	usermgmt.ExportedServiceFactory = func(_ usermgmt.Config, _ ports.EventLogger, _ *slog.Logger) (ports.AdminService, func(), error) {
-		return &fakeAdminService{}, nil, nil
+	usermgmt.ExportedServiceFactory = func(_ usermgmt.Config, _ ports.EventLogger, _ *slog.Logger) (ports.AdminService, func(), usermgmt.PostgresProber, error) {
+		return &fakeAdminService{}, nil, nil, nil
 	}
 	defer func() { usermgmt.ExportedServiceFactory = old }()
 
@@ -615,8 +615,8 @@ func TestPlugin_ContributeCaddyRoutes_DialAddrMatchesInternalAddr(t *testing.T) 
 	const wantAddr = "127.0.0.1:19999"
 
 	old := usermgmt.ExportedServiceFactory
-	usermgmt.ExportedServiceFactory = func(_ usermgmt.Config, _ ports.EventLogger, _ *slog.Logger) (ports.AdminService, func(), error) {
-		return &fakeAdminService{}, nil, nil
+	usermgmt.ExportedServiceFactory = func(_ usermgmt.Config, _ ports.EventLogger, _ *slog.Logger) (ports.AdminService, func(), usermgmt.PostgresProber, error) {
+		return &fakeAdminService{}, nil, nil, nil
 	}
 	defer func() { usermgmt.ExportedServiceFactory = old }()
 
@@ -658,8 +658,8 @@ func TestPlugin_ContributeCaddyRoutes_DialAddrMatchesInternalAddr(t *testing.T) 
 
 func TestPlugin_ContributeCaddyRoutes_Priority(t *testing.T) {
 	old := usermgmt.ExportedServiceFactory
-	usermgmt.ExportedServiceFactory = func(_ usermgmt.Config, _ ports.EventLogger, _ *slog.Logger) (ports.AdminService, func(), error) {
-		return &fakeAdminService{}, nil, nil
+	usermgmt.ExportedServiceFactory = func(_ usermgmt.Config, _ ports.EventLogger, _ *slog.Logger) (ports.AdminService, func(), usermgmt.PostgresProber, error) {
+		return &fakeAdminService{}, nil, nil, nil
 	}
 	defer func() { usermgmt.ExportedServiceFactory = old }()
 
@@ -703,8 +703,8 @@ func TestPlugin_ContributeCaddyHandlers_Disabled(t *testing.T) {
 
 func TestPlugin_ContributeCaddyHandlers_Enabled(t *testing.T) {
 	old := usermgmt.ExportedServiceFactory
-	usermgmt.ExportedServiceFactory = func(_ usermgmt.Config, _ ports.EventLogger, _ *slog.Logger) (ports.AdminService, func(), error) {
-		return &fakeAdminService{}, nil, nil
+	usermgmt.ExportedServiceFactory = func(_ usermgmt.Config, _ ports.EventLogger, _ *slog.Logger) (ports.AdminService, func(), usermgmt.PostgresProber, error) {
+		return &fakeAdminService{}, nil, nil, nil
 	}
 	defer func() { usermgmt.ExportedServiceFactory = old }()
 
@@ -721,8 +721,8 @@ func TestPlugin_ContributeCaddyHandlers_Enabled(t *testing.T) {
 
 func TestPlugin_ContributeCaddyHandlers_AdminAuthHandler(t *testing.T) {
 	old := usermgmt.ExportedServiceFactory
-	usermgmt.ExportedServiceFactory = func(_ usermgmt.Config, _ ports.EventLogger, _ *slog.Logger) (ports.AdminService, func(), error) {
-		return &fakeAdminService{}, nil, nil
+	usermgmt.ExportedServiceFactory = func(_ usermgmt.Config, _ ports.EventLogger, _ *slog.Logger) (ports.AdminService, func(), usermgmt.PostgresProber, error) {
+		return &fakeAdminService{}, nil, nil, nil
 	}
 	defer func() { usermgmt.ExportedServiceFactory = old }()
 
@@ -755,8 +755,8 @@ func TestPlugin_ContributeCaddyHandlers_AdminTokenSet(t *testing.T) {
 	const wantToken = "my-secret-token"
 
 	old := usermgmt.ExportedServiceFactory
-	usermgmt.ExportedServiceFactory = func(_ usermgmt.Config, _ ports.EventLogger, _ *slog.Logger) (ports.AdminService, func(), error) {
-		return &fakeAdminService{}, nil, nil
+	usermgmt.ExportedServiceFactory = func(_ usermgmt.Config, _ ports.EventLogger, _ *slog.Logger) (ports.AdminService, func(), usermgmt.PostgresProber, error) {
+		return &fakeAdminService{}, nil, nil, nil
 	}
 	defer func() { usermgmt.ExportedServiceFactory = old }()
 
@@ -786,8 +786,8 @@ func TestPlugin_ContributeCaddyHandlers_AdminTokenSet(t *testing.T) {
 
 func TestPlugin_InternalAddr_Empty_BeforeStart(t *testing.T) {
 	old := usermgmt.ExportedServiceFactory
-	usermgmt.ExportedServiceFactory = func(_ usermgmt.Config, _ ports.EventLogger, _ *slog.Logger) (ports.AdminService, func(), error) {
-		return &fakeAdminService{}, nil, nil
+	usermgmt.ExportedServiceFactory = func(_ usermgmt.Config, _ ports.EventLogger, _ *slog.Logger) (ports.AdminService, func(), usermgmt.PostgresProber, error) {
+		return &fakeAdminService{}, nil, nil, nil
 	}
 	defer func() { usermgmt.ExportedServiceFactory = old }()
 
