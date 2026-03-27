@@ -240,6 +240,12 @@ type AuthConfig struct {
 	// Defaults to "/self-service/login/browser" when empty.
 	LoginURL string `mapstructure:"login_url"`
 
+	// OnKratosUnavailable controls behavior when Kratos cannot be reached.
+	// Accepted values:
+	//   "503"          (default) — return 503 for all protected requests (fail-closed).
+	//   "allow_public" — serve requests to public paths; block protected paths with 503.
+	OnKratosUnavailable string `mapstructure:"on_kratos_unavailable"`
+
 	// SocialProviders is a list of OAuth2/OIDC social login providers to enable.
 	// Each entry requires at minimum a provider name, client_id, and client_secret.
 	SocialProviders []SocialProviderConfig `mapstructure:"social_providers"`
@@ -410,6 +416,16 @@ func (c *Config) Validate() error {
 		}
 	}
 
+	// auth.on_kratos_unavailable validation.
+	if c.Auth.OnKratosUnavailable != "" &&
+		c.Auth.OnKratosUnavailable != "503" &&
+		c.Auth.OnKratosUnavailable != "allow_public" {
+		errs = append(errs, fmt.Sprintf(
+			"auth.on_kratos_unavailable %q is invalid; accepted values: \"503\", \"allow_public\"",
+			c.Auth.OnKratosUnavailable,
+		))
+	}
+
 	// Auth UI validation.
 	ui := c.Auth.UI
 	if ui.Mode != "" && ui.Mode != "built-in" && ui.Mode != "custom" {
@@ -456,6 +472,7 @@ func Load(configPath string) (*Config, error) {
 	v.SetDefault("auth.public_paths", []string{})
 	v.SetDefault("auth.session_cookie_name", "ory_kratos_session")
 	v.SetDefault("auth.login_url", "")
+	v.SetDefault("auth.on_kratos_unavailable", "503")
 	v.SetDefault("auth.social_providers", []SocialProviderConfig{})
 	v.SetDefault("auth.ui.mode", "built-in")
 	v.SetDefault("auth.ui.app_name", "")

@@ -51,6 +51,13 @@ func (a *AuditAdapter) Close() error {
 	return a.db.Close()
 }
 
+// Ping sends a connectivity probe to the database, returning an error if the
+// database cannot be reached. It is used by the health endpoint to check
+// PostgreSQL availability. Context controls the probe timeout.
+func (a *AuditAdapter) Ping(ctx context.Context) error {
+	return a.db.PingContext(ctx)
+}
+
 // RecordEntry inserts an audit entry into the user_audit_log table.
 // If entry.Timestamp is zero, it is set to the current UTC time before
 // insertion. The database also applies DEFAULT NOW() as a safety net.

@@ -15,6 +15,9 @@ import (
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
 
+// Ensure Plugin implements ports.DependencyChecker at compile time.
+var _ ports.DependencyChecker = (*Plugin)(nil)
+
 // adminPath is the URL path wildcard that the plugin exposes through Caddy.
 const adminPath = "/_vibewarden/admin/*"
 
@@ -44,11 +47,12 @@ type AdminServerIface interface {
 // ExportedServiceFactory is a replaceable factory that creates a
 // ports.AdminService from the plugin config. The second return value is an
 // optional cleanup func (e.g. to close a database connection) that is called
-// by Stop. Tests may replace this variable to inject fakes without dialling
-// Kratos or PostgreSQL.
+// by Stop. The third return value is an optional postgresProber for health
+// checking (nil when no database is configured). Tests may replace this
+// variable to inject fakes without dialling Kratos or PostgreSQL.
 //
 // Exported for testing only — production code must not reassign this.
-var ExportedServiceFactory func(Config, ports.EventLogger, *slog.Logger) (ports.AdminService, func(), error) = defaultServiceFactory
+var ExportedServiceFactory func(Config, ports.EventLogger, *slog.Logger) (ports.AdminService, func(), PostgresProber, error) = defaultServiceFactory
 
 // ExportedServerFactory is a replaceable factory that creates an
 // AdminServerIface backed by the supplied handlers. Tests may replace this
@@ -59,18 +63,22 @@ var ExportedServerFactory func(*httpadapter.AdminHandlers, *slog.Logger) AdminSe
 
 // defaultServiceFactory builds the real admin application service, wiring the
 // Kratos admin adapter and the optional PostgreSQL audit logger.
-func defaultServiceFactory(cfg Config, eventLogger ports.EventLogger, logger *slog.Logger) (ports.AdminService, func(), error) {
+// The third return value is the postgres adapter when a DatabaseURL is
+// configured, or nil otherwise. It is stored on the plugin for health checking.
+func defaultServiceFactory(cfg Config, eventLogger ports.EventLogger, logger *slog.Logger) (ports.AdminService, func(), PostgresProber, error) {
 	kratosAdmin := kratosadapter.NewAdminAdapter(cfg.KratosAdminURL, 0, logger)
 
 	var auditLogger ports.AuditLogger
 	var cleanup func()
+	var prober postgresProber
 
 	if cfg.DatabaseURL != "" {
 		adapter, err := postgresadapter.NewAuditAdapter(cfg.DatabaseURL)
 		if err != nil {
-			return nil, nil, fmt.Errorf("connecting to audit database: %w", err)
+			return nil, nil, nil, fmt.Errorf("connecting to audit database: %w", err)
 		}
 		auditLogger = adapter
+		prober = adapter
 		cleanup = func() {
 			if closeErr := adapter.Close(); closeErr != nil {
 				logger.Error("closing audit database", slog.String("error", closeErr.Error()))
@@ -79,7 +87,7 @@ func defaultServiceFactory(cfg Config, eventLogger ports.EventLogger, logger *sl
 	}
 
 	svc := adminapp.NewService(kratosAdmin, eventLogger, auditLogger)
-	return svc, cleanup, nil
+	return svc, cleanup, prober, nil
 }
 
 // defaultServerFactory builds the real internal AdminServer.
@@ -87,10 +95,22 @@ func defaultServerFactory(handlers *httpadapter.AdminHandlers, logger *slog.Logg
 	return httpadapter.NewAdminServer(handlers, logger)
 }
 
+// PostgresProber is a minimal interface for checking Postgres connectivity.
+// It is satisfied by *postgresadapter.AuditAdapter and by test fakes.
+// Exported so that the ExportedServiceFactory type signature is accessible
+// from external test packages.
+type PostgresProber interface {
+	// Ping sends a connectivity probe to the database.
+	Ping(ctx context.Context) error
+}
+
+// postgresProber is the internal alias used in the plugin struct and methods.
+type postgresProber = PostgresProber
+
 // Plugin is the VibeWarden user-management plugin.
 //
-// It implements ports.Plugin, ports.CaddyContributor, and
-// ports.InternalServerPlugin. Priority is 60, placing it after TLS (10),
+// It implements ports.Plugin, ports.CaddyContributor, ports.InternalServerPlugin,
+// and ports.DependencyChecker. Priority is 60, placing it after TLS (10),
 // security-headers (20), rate-limiting (30), and auth (40).
 //
 // Responsibilities:
@@ -104,6 +124,7 @@ func defaultServerFactory(handlers *httpadapter.AdminHandlers, logger *slog.Logg
 //     token (ContributeCaddyHandlers).
 //   - Report the internal server address (InternalAddr).
 //   - Report the health of the admin server (Health).
+//   - Report Postgres connectivity for the health endpoint (CheckDependency).
 type Plugin struct {
 	cfg          Config
 	logger       *slog.Logger
@@ -111,6 +132,7 @@ type Plugin struct {
 	handlers     *httpadapter.AdminHandlers
 	server       AdminServerIface
 	dbCleanup    func()
+	dbProber     postgresProber // non-nil only when DatabaseURL is set
 	internalAddr string
 	healthy      bool
 	healthMsg    string
@@ -155,11 +177,12 @@ func (p *Plugin) Init(_ context.Context) error {
 		return fmt.Errorf("user-management plugin init: %w", err)
 	}
 
-	svc, cleanup, err := ExportedServiceFactory(p.cfg, p.eventLogger, p.logger)
+	svc, cleanup, prober, err := ExportedServiceFactory(p.cfg, p.eventLogger, p.logger)
 	if err != nil {
 		return fmt.Errorf("user-management plugin init: %w", err)
 	}
 	p.dbCleanup = cleanup
+	p.dbProber = prober
 	p.handlers = httpadapter.NewAdminHandlers(svc, p.logger)
 
 	p.healthy = true
@@ -262,6 +285,38 @@ func (p *Plugin) HealthCheck(ctx context.Context) ports.HealthStatus {
 	p.healthy = true
 	p.healthMsg = fmt.Sprintf("user-management configured, kratos admin: %s", p.cfg.KratosAdminURL)
 	return ports.HealthStatus{Healthy: true, Message: p.healthMsg}
+}
+
+// DependencyName returns "postgres" as the dependency identifier for health
+// endpoint reporting.
+// Implements ports.DependencyChecker.
+func (p *Plugin) DependencyName() string { return "postgres" }
+
+// CheckDependency performs a live connectivity probe against PostgreSQL and
+// returns a DependencyStatus with latency. When no database is configured,
+// it returns a healthy status immediately.
+// Implements ports.DependencyChecker.
+func (p *Plugin) CheckDependency(ctx context.Context) ports.DependencyStatus {
+	if !p.cfg.Enabled || p.dbProber == nil {
+		return ports.DependencyStatus{Status: "healthy", LatencyMS: 0}
+	}
+
+	start := time.Now()
+	err := p.dbProber.Ping(ctx)
+	latencyMS := time.Since(start).Milliseconds()
+
+	if err != nil {
+		return ports.DependencyStatus{
+			Status:    "unhealthy",
+			LatencyMS: latencyMS,
+			Error:     fmt.Sprintf("postgres unreachable: %s", err),
+		}
+	}
+
+	return ports.DependencyStatus{
+		Status:    "healthy",
+		LatencyMS: latencyMS,
+	}
 }
 
 // InternalAddr returns the host:port the internal admin HTTP server is

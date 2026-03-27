@@ -60,6 +60,19 @@ const (
 	// EventTypeUserDeactivated is emitted when a user identity is deactivated,
 	// preventing further authentication while retaining the identity record.
 	EventTypeUserDeactivated = "user.deactivated"
+
+	// EventTypeAuthProviderUnavailable is emitted when the auth provider
+	// (Ory Kratos) becomes unreachable and requests are being affected.
+	EventTypeAuthProviderUnavailable = "auth.provider_unavailable"
+
+	// EventTypeAuthProviderRecovered is emitted when the auth provider
+	// (Ory Kratos) becomes reachable again after a period of unavailability.
+	EventTypeAuthProviderRecovered = "auth.provider_recovered"
+
+	// EventTypeAuditLogFailure is emitted when an audit log entry cannot be
+	// persisted to the backing store (e.g. PostgreSQL is unavailable).
+	// The operation that triggered the audit entry is not rolled back.
+	EventTypeAuditLogFailure = "audit.log_failure"
 )
 
 // Event is the base structured log event.
