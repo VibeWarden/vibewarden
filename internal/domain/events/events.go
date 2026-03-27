@@ -78,6 +78,18 @@ const (
 	// IP filter plugin because the client IP is not in the allowlist or is
 	// in the blocklist.
 	EventTypeIPFilterBlocked = "ip_filter.blocked"
+
+	// EventTypeSecretRotated is emitted when a dynamic secret (e.g. dynamic
+	// Postgres credentials) is successfully rotated before its TTL expires.
+	EventTypeSecretRotated = "secret.rotated"
+
+	// EventTypeSecretRotationFailed is emitted when a dynamic secret rotation
+	// attempt fails. The old credentials remain in use until the next retry.
+	EventTypeSecretRotationFailed = "secret.rotation_failed"
+
+	// EventTypeSecretHealthCheck is emitted on each scheduled secret health
+	// check run. The payload contains the list of findings (if any).
+	EventTypeSecretHealthCheck = "secret.health_check"
 )
 
 // Event is the base structured log event.

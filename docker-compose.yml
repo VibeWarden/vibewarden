@@ -1,11 +1,13 @@
 # VibeWarden — Docker Compose dev environment
 #
 # Brings up the full local stack:
-#   postgres       — Kratos session/identity storage
-#   kratos-migrate — runs Kratos DB migrations once, then exits
-#   kratos         — Ory Kratos identity server (public :4433, admin :4434)
-#   mailslurper    — catches outbound Kratos emails (SMTP :4436, web UI :4437)
-#   vibewarden     — the security sidecar (proxies your upstream app on :8080)
+#   postgres          — Kratos session/identity storage
+#   kratos-migrate    — runs Kratos DB migrations once, then exits
+#   kratos            — Ory Kratos identity server (public :4433, admin :4434)
+#   mailslurper       — catches outbound Kratos emails (SMTP :4436, web UI :4437)
+#   openbao           — OpenBao secret store (dev mode, internal only)
+#   openbao-bootstrap — one-shot init container: enables engines, creates AppRole
+#   vibewarden        — the security sidecar (proxies your upstream app on :8080)
 #
 # Observability profile (optional):
 #   prometheus     — metrics collection and storage (UI: http://localhost:9090)
@@ -152,6 +154,8 @@ services:
     depends_on:
       kratos:
         condition: service_healthy
+      openbao-bootstrap:
+        condition: service_completed_successfully
     networks:
       - vibewarden
     healthcheck:
@@ -160,6 +164,66 @@ services:
       timeout: 5s
       retries: 5
       start_period: 5s
+
+  # --------------------------------------------------------------------------
+  # OpenBao — open-source Vault fork for secret management
+  #
+  # Dev mode: in-memory storage, auto-unsealed, root token from env var.
+  # IMPORTANT: dev mode is for local development only — never use in production.
+  # Data is lost on restart.
+  #
+  # The OpenBao port is NOT exposed to the host — it is accessible only from
+  # services on the internal "vibewarden" Docker network.
+  #
+  # Production mode: set BAO_DEV_ROOT_TOKEN_ID="" and configure a Postgres
+  # storage backend and Shamir unseal keys (see docs/secret-management.md).
+  # --------------------------------------------------------------------------
+  openbao:
+    image: quay.io/openbao/openbao:latest
+    container_name: vibewarden-openbao
+    cap_add:
+      - IPC_LOCK
+    environment:
+      BAO_DEV_ROOT_TOKEN_ID: ${OPENBAO_DEV_TOKEN:-vibewarden-dev}
+      BAO_DEV_LISTEN_ADDRESS: 0.0.0.0:8200
+    # No host port mapping — internal network only.
+    # Accessible as http://openbao:8200 from other containers.
+    command: server -dev
+    networks:
+      - vibewarden
+    healthcheck:
+      test: ["CMD", "sh", "-c", "wget -qO- http://127.0.0.1:8200/v1/sys/health | grep -q '\"sealed\":false'"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+
+  # --------------------------------------------------------------------------
+  # OpenBao bootstrap — one-shot init container
+  #
+  # Runs after OpenBao is healthy. Enables KV v2 and database secret engines,
+  # creates the VibeWarden policy and AppRole, then exits.
+  # Prints the generated role_id and secret_id to stdout (visible via
+  # "docker compose logs openbao-bootstrap").
+  #
+  # Re-run after "docker compose down -v" to regenerate credentials.
+  # --------------------------------------------------------------------------
+  openbao-bootstrap:
+    image: curlimages/curl:latest
+    container_name: vibewarden-openbao-bootstrap
+    environment:
+      BAO_ADDR: http://openbao:8200
+      BAO_TOKEN: ${OPENBAO_DEV_TOKEN:-vibewarden-dev}
+      SKIP_DATABASE: "true"
+    volumes:
+      - ./scripts/bootstrap-openbao.sh:/bootstrap-openbao.sh:ro
+    command: sh /bootstrap-openbao.sh
+    depends_on:
+      openbao:
+        condition: service_healthy
+    networks:
+      - vibewarden
+    restart: "no"
 
   # --------------------------------------------------------------------------
   # Prometheus — metrics collection and storage
