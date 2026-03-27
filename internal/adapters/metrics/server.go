@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"time"
 )
 
 // Server is an internal HTTP server that exposes the Prometheus metrics handler
@@ -43,7 +44,10 @@ func (s *Server) Start() error {
 	mux := http.NewServeMux()
 	mux.Handle("/metrics", s.handler)
 
-	s.server = &http.Server{Handler: mux} //nolint:gosec // internal-only, no timeouts needed
+	s.server = &http.Server{
+		Handler:           mux,
+		ReadHeaderTimeout: 10 * time.Second,
+	}
 	go func() {
 		// Serve until stopped; ErrServerClosed is the expected shutdown signal.
 		if serveErr := s.server.Serve(ln); serveErr != nil && serveErr != http.ErrServerClosed {

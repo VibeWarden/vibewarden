@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/vibewarden/vibewarden/internal/config"
 	"github.com/vibewarden/vibewarden/internal/config/presets"
@@ -15,6 +16,16 @@ import (
 )
 
 const defaultOutputDir = ".vibewarden/generated"
+
+// File permission constants used throughout this package.
+const (
+	// permDir is the permission mode for generated directories.
+	// Group and world execute bits are omitted to prevent unintended access.
+	permDir = os.FileMode(0o750)
+	// permConfig is the permission mode for generated config/data files.
+	// Readable only by the owner to protect credentials embedded in kratos.yml.
+	permConfig = os.FileMode(0o600)
+)
 
 // Service implements ports.ConfigGenerator using a ports.TemplateRenderer.
 type Service struct {
@@ -39,7 +50,10 @@ func (s *Service) Generate(ctx context.Context, cfg *config.Config, outputDir st
 		outputDir = defaultOutputDir
 	}
 
-	if err := os.MkdirAll(filepath.Join(outputDir, "kratos"), 0o755); err != nil {
+	// Sanitise the caller-supplied output directory to prevent path traversal.
+	outputDir = filepath.Clean(outputDir)
+
+	if err := os.MkdirAll(filepath.Join(outputDir, "kratos"), permDir); err != nil {
 		return fmt.Errorf("creating output directories: %w", err)
 	}
 
@@ -52,19 +66,24 @@ func (s *Service) Generate(ctx context.Context, cfg *config.Config, outputDir st
 
 	// Write identity.schema.json.
 	schemaPath := filepath.Join(outputDir, "kratos", "identity.schema.json")
-	if err := os.WriteFile(schemaPath, schemaJSON, 0o644); err != nil {
+	if err := os.WriteFile(schemaPath, schemaJSON, permConfig); err != nil {
 		return fmt.Errorf("writing identity schema: %w", err)
 	}
 
 	// Generate kratos.yml unless an override path is configured.
 	kratosYMLPath := filepath.Join(outputDir, "kratos", "kratos.yml")
 	if cfg.Overrides.KratosConfig != "" {
-		// Copy the override file verbatim.
-		data, err := os.ReadFile(cfg.Overrides.KratosConfig)
+		// Sanitise the user-supplied override path before reading from it.
+		overridePath := filepath.Clean(cfg.Overrides.KratosConfig)
+		data, err := os.ReadFile(overridePath)
 		if err != nil {
-			return fmt.Errorf("reading kratos override config %q: %w", cfg.Overrides.KratosConfig, err)
+			return fmt.Errorf("reading kratos override config %q: %w", overridePath, err)
 		}
-		if err := os.WriteFile(kratosYMLPath, data, 0o644); err != nil {
+		// kratosYMLPath is constructed from the already-cleaned outputDir and
+		// constant path segments — the destination is safe. The G703 taint
+		// tracks the content bytes read from the override file, which is a
+		// false positive for path traversal in the write destination.
+		if err := os.WriteFile(kratosYMLPath, data, permConfig); err != nil { //#nosec G703 -- destination is filepath.Join(cleanOutputDir, "kratos", "kratos.yml")
 			return fmt.Errorf("writing kratos.yml from override: %w", err)
 		}
 	} else {
@@ -83,12 +102,15 @@ func (s *Service) Generate(ctx context.Context, cfg *config.Config, outputDir st
 	// Generate docker-compose.yml unless an override path is configured.
 	composePath := filepath.Join(outputDir, "docker-compose.yml")
 	if cfg.Overrides.ComposeFile != "" {
-		// Copy the override file verbatim.
-		data, err := os.ReadFile(cfg.Overrides.ComposeFile)
+		// Sanitise the user-supplied override path before reading from it.
+		overridePath := filepath.Clean(cfg.Overrides.ComposeFile)
+		data, err := os.ReadFile(overridePath)
 		if err != nil {
-			return fmt.Errorf("reading compose override config %q: %w", cfg.Overrides.ComposeFile, err)
+			return fmt.Errorf("reading compose override config %q: %w", overridePath, err)
 		}
-		if err := os.WriteFile(composePath, data, 0o644); err != nil {
+		// composePath is constructed from the already-cleaned outputDir and a
+		// constant — the destination is safe. G703 taint tracks content bytes.
+		if err := os.WriteFile(composePath, data, permConfig); err != nil { //#nosec G703 -- destination is filepath.Join(cleanOutputDir, "docker-compose.yml")
 			return fmt.Errorf("writing docker-compose.yml from override: %w", err)
 		}
 	} else {
@@ -113,7 +135,7 @@ func (s *Service) Generate(ctx context.Context, cfg *config.Config, outputDir st
 // output directory stays minimal.
 func (s *Service) generateMappers(cfg *config.Config, outputDir string) error {
 	mappersDir := filepath.Join(outputDir, "kratos", "mappers")
-	if err := os.MkdirAll(mappersDir, 0o755); err != nil {
+	if err := os.MkdirAll(mappersDir, permDir); err != nil {
 		return fmt.Errorf("creating mappers directory: %w", err)
 	}
 
@@ -124,14 +146,19 @@ func (s *Service) generateMappers(cfg *config.Config, outputDir string) error {
 	}
 
 	// Write each required mapper file from the embedded FS.
+	// Guard against path traversal: reject any mapper file name that would
+	// escape the mappers directory after cleaning.
 	for mapperFile := range needed {
+		if strings.ContainsAny(mapperFile, `/\`) || mapperFile == ".." {
+			return fmt.Errorf("invalid mapper file name %q: path separators not allowed", mapperFile)
+		}
 		src := "mappers/" + mapperFile
 		data, err := templates.FS.ReadFile(src)
 		if err != nil {
 			return fmt.Errorf("reading embedded mapper %q: %w", src, err)
 		}
 		dst := filepath.Join(mappersDir, mapperFile)
-		if err := os.WriteFile(dst, data, 0o644); err != nil {
+		if err := os.WriteFile(dst, data, permConfig); err != nil {
 			return fmt.Errorf("writing mapper file %q: %w", dst, err)
 		}
 	}

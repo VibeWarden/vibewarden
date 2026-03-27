@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"time"
 )
 
 // AdminServer is an internal HTTP server that serves the admin API handlers on
@@ -48,7 +49,10 @@ func (s *AdminServer) Start() error {
 	mux := http.NewServeMux()
 	s.handlers.RegisterRoutes(mux)
 
-	s.server = &http.Server{Handler: mux} //nolint:gosec // internal-only localhost listener
+	s.server = &http.Server{
+		Handler:           mux,
+		ReadHeaderTimeout: 10 * time.Second,
+	}
 	go func() {
 		if serveErr := s.server.Serve(ln); serveErr != nil && serveErr != http.ErrServerClosed {
 			s.logger.Error("admin server stopped unexpectedly", "err", serveErr)

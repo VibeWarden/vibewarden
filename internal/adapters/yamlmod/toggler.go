@@ -13,6 +13,10 @@ import (
 	"github.com/vibewarden/vibewarden/internal/domain/scaffold"
 )
 
+// permConfig is the permission mode for vibewarden.yaml and its temp file.
+// Owner-read/write only to protect any credentials stored in the config.
+const permConfig = os.FileMode(0o600)
+
 // Toggler implements ports.FeatureToggler by reading and writing
 // vibewarden.yaml via yaml.v3 node trees.
 type Toggler struct{}
@@ -143,7 +147,7 @@ func writeNode(path string, root *yaml.Node) error {
 	}
 
 	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o644); err != nil {
+	if err := os.WriteFile(tmp, data, permConfig); err != nil {
 		return fmt.Errorf("writing temp file: %w", err)
 	}
 	if err := os.Rename(tmp, path); err != nil {
