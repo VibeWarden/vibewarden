@@ -38,7 +38,8 @@ func NewAuditAdapter(dsn string) (*AuditAdapter, error) {
 	defer cancel()
 
 	if err := db.PingContext(ctx); err != nil {
-		db.Close()
+		// Best-effort close; the ping error is the primary failure to surface.
+		_ = db.Close()
 		return nil, fmt.Errorf("pinging postgres: %w", err)
 	}
 

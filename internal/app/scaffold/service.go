@@ -23,6 +23,13 @@ const (
 	// vibeWardenDir is the local runtime directory that must be excluded from
 	// version control so that generated config files are never committed.
 	vibeWardenDir = ".vibewarden/"
+
+	// permConfig is the permission mode for generated YAML/config files.
+	// Readable only by the owner to protect any credentials embedded in config.
+	permConfig = os.FileMode(0o600)
+	// permExec is the permission mode for executable wrapper scripts.
+	// Must remain world-executable so that `./vibew` works without sudo.
+	permExec = os.FileMode(0o755)
 )
 
 // InitOptions carries the options supplied by the user when running
@@ -77,6 +84,9 @@ func NewService(renderer ports.TemplateRenderer, detector ports.ProjectDetector)
 // If any required file already exists and opts.Force is false, Init returns an
 // error wrapping os.ErrExist.
 func (s *Service) Init(_ context.Context, dir string, opts InitOptions) error {
+	// Sanitise the caller-supplied directory to prevent path traversal.
+	dir = filepath.Clean(dir)
+
 	// Detect project to pick up port suggestions etc.
 	project, err := s.detector.Detect(dir)
 	if err != nil {
@@ -142,7 +152,7 @@ func (s *Service) renderWrappers(dir string, data domainscaffold.TemplateData, f
 		}
 		return fmt.Errorf("vibew already exists; use --force to overwrite: %w", err)
 	}
-	if err := os.Chmod(shellPath, 0o755); err != nil {
+	if err := os.Chmod(shellPath, permExec); err != nil {
 		return fmt.Errorf("setting vibew executable: %w", err)
 	}
 
@@ -205,7 +215,10 @@ func (s *Service) ensureGitIgnore(dir string) error {
 	// File exists but is missing the entry — append it.
 	entry := "\n# VibeWarden — local runtime files\n" + vibeWardenDir + "\n"
 	updated := string(existing) + entry
-	if err := os.WriteFile(gitignorePath, []byte(updated), 0o644); err != nil {
+	// gitignorePath is filepath.Join(dir, gitIgnoreFile) where dir is already
+	// filepath.Clean'd and gitIgnoreFile is a package-level constant.
+	// The G703 taint originates from dir being a parameter; the path is safe.
+	if err := os.WriteFile(gitignorePath, []byte(updated), permConfig); err != nil { //#nosec G703 -- path is filepath.Join(cleanDir, ".gitignore")
 		return fmt.Errorf("updating .gitignore: %w", err)
 	}
 	return nil

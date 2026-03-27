@@ -12,6 +12,14 @@ import (
 	"text/template"
 )
 
+// File permission constants.
+const (
+	// permDir is the permission mode for directories created during rendering.
+	permDir = os.FileMode(0o750)
+	// permConfig is the permission mode for rendered config/template output files.
+	permConfig = os.FileMode(0o600)
+)
+
 // Renderer implements ports.TemplateRenderer using an embed.FS.
 type Renderer struct {
 	fs fs.ReadFileFS
@@ -61,11 +69,11 @@ func (r *Renderer) RenderToFile(templateName string, data any, path string, over
 		return err
 	}
 
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+	if err := os.MkdirAll(filepath.Dir(path), permDir); err != nil {
 		return fmt.Errorf("creating directories for %q: %w", path, err)
 	}
 
-	if err := os.WriteFile(path, rendered, 0o644); err != nil {
+	if err := os.WriteFile(path, rendered, permConfig); err != nil {
 		return fmt.Errorf("writing file %q: %w", path, err)
 	}
 

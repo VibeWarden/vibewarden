@@ -23,6 +23,7 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"time"
 )
 
 //go:embed templates/*.html
@@ -114,7 +115,10 @@ func (h *Handler) Start() error {
 	mux := http.NewServeMux()
 	h.registerRoutes(mux)
 
-	h.server = &http.Server{Handler: mux} //nolint:gosec // internal-only localhost listener
+	h.server = &http.Server{
+		Handler:           mux,
+		ReadHeaderTimeout: 10 * time.Second,
+	}
 	go func() {
 		if serveErr := h.server.Serve(ln); serveErr != nil && serveErr != http.ErrServerClosed {
 			h.logger.Error("authui server stopped unexpectedly", "err", serveErr)
