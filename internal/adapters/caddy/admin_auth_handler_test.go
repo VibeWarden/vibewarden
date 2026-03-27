@@ -245,15 +245,17 @@ func TestBuildCaddyConfig_AdminAuthHandlerPresent(t *testing.T) {
 		wantHandlerAt int
 	}{
 		{
+			// Chain: strip_headers(0) → admin_auth(1) → reverse_proxy(2)
 			name: "admin auth handler present with no other optional handlers",
 			cfg: &ports.ProxyConfig{
 				ListenAddr:   "127.0.0.1:8080",
 				UpstreamAddr: "127.0.0.1:3000",
 				AdminAuth:    ports.AdminAuthConfig{Enabled: true, Token: "secret"},
 			},
-			wantHandlerAt: 0,
+			wantHandlerAt: 1,
 		},
 		{
+			// Chain: strip_headers(0) → security_headers(1) → admin_auth(2) → reverse_proxy(3)
 			name: "admin auth handler after security headers when both enabled",
 			cfg: &ports.ProxyConfig{
 				ListenAddr:   "127.0.0.1:8080",
@@ -264,7 +266,7 @@ func TestBuildCaddyConfig_AdminAuthHandlerPresent(t *testing.T) {
 				},
 				AdminAuth: ports.AdminAuthConfig{Enabled: true, Token: "secret"},
 			},
-			wantHandlerAt: 1,
+			wantHandlerAt: 2,
 		},
 	}
 
