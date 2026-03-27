@@ -385,6 +385,11 @@ func TestStaticFilesEmbedded(t *testing.T) {
 		"static/xss-reflected.html",
 		"static/xss-stored.html",
 		"static/sqli.html",
+		"static/clickjacking.html",
+		"static/csrf.html",
+		"static/open-redirect.html",
+		"static/info-leak.html",
+		"static/mime-sniff.html",
 	}
 	for _, path := range wantFiles {
 		t.Run(path, func(t *testing.T) {
@@ -593,6 +598,273 @@ func TestHandleXSSReflected(t *testing.T) {
 				t.Errorf("response body does not contain %q; body: %s", tt.wantInBody, body)
 			}
 		})
+	}
+}
+
+func TestHandleCSRFTransfer(t *testing.T) {
+	// Reset the last transfer before the test.
+	lastTransferMu.Lock()
+	lastTransfer = csrfTransfer{}
+	lastTransferMu.Unlock()
+
+	tests := []struct {
+		name       string
+		body       string
+		wantStatus int
+		wantTo     string
+		wantAmount string
+	}{
+		{
+			name:       "valid transfer is recorded",
+			body:       "to=alice&amount=100",
+			wantStatus: http.StatusOK,
+			wantTo:     "alice",
+			wantAmount: "100",
+		},
+		{
+			name:       "missing to returns 400",
+			body:       "amount=50",
+			wantStatus: http.StatusBadRequest,
+		},
+		{
+			name:       "missing amount returns 400",
+			body:       "to=bob",
+			wantStatus: http.StatusBadRequest,
+		},
+		{
+			name:       "empty body returns 400",
+			body:       "",
+			wantStatus: http.StatusBadRequest,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodPost, "/vuln/csrf-transfer", strings.NewReader(tt.body))
+			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+			rr := httptest.NewRecorder()
+
+			handleCSRFTransfer(rr, req)
+
+			if rr.Code != tt.wantStatus {
+				t.Fatalf("want status %d, got %d; body: %s", tt.wantStatus, rr.Code, rr.Body.String())
+			}
+
+			if tt.wantStatus != http.StatusOK {
+				return
+			}
+
+			var body map[string]any
+			if err := json.NewDecoder(rr.Body).Decode(&body); err != nil {
+				t.Fatalf("decode response: %v", err)
+			}
+
+			transfer, ok := body["transfer"].(map[string]any)
+			if !ok {
+				t.Fatalf("want transfer object, got %v", body["transfer"])
+			}
+			if got := transfer["to"]; got != tt.wantTo {
+				t.Errorf("transfer.to: want %q, got %v", tt.wantTo, got)
+			}
+			if got := transfer["amount"]; got != tt.wantAmount {
+				t.Errorf("transfer.amount: want %q, got %v", tt.wantAmount, got)
+			}
+
+			// Verify in-memory state was updated.
+			lastTransferMu.Lock()
+			got := lastTransfer
+			lastTransferMu.Unlock()
+			if got.To != tt.wantTo {
+				t.Errorf("lastTransfer.To: want %q, got %q", tt.wantTo, got.To)
+			}
+		})
+	}
+}
+
+func TestHandleOpenRedirect(t *testing.T) {
+	tests := []struct {
+		name         string
+		urlParam     string
+		wantStatus   int
+		wantLocation string
+	}{
+		{
+			name:         "redirects to internal path",
+			urlParam:     "/static/index.html",
+			wantStatus:   http.StatusFound,
+			wantLocation: "/static/index.html",
+		},
+		{
+			name:         "redirects to external URL — vulnerability present",
+			urlParam:     "https://google.com",
+			wantStatus:   http.StatusFound,
+			wantLocation: "https://google.com",
+		},
+		{
+			name:         "redirects to phishing URL — no validation",
+			urlParam:     "https://evil-phishing-site.example.com/login",
+			wantStatus:   http.StatusFound,
+			wantLocation: "https://evil-phishing-site.example.com/login",
+		},
+		{
+			name:       "missing url param returns 400",
+			urlParam:   "",
+			wantStatus: http.StatusBadRequest,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			path := "/vuln/redirect"
+			if tt.urlParam != "" {
+				path += "?url=" + url.QueryEscape(tt.urlParam)
+			}
+			req := httptest.NewRequest(http.MethodGet, path, nil)
+			rr := httptest.NewRecorder()
+
+			handleOpenRedirect(rr, req)
+
+			if rr.Code != tt.wantStatus {
+				t.Fatalf("want status %d, got %d; body: %s", tt.wantStatus, rr.Code, rr.Body.String())
+			}
+			if tt.wantLocation != "" {
+				if got := rr.Header().Get("Location"); got != tt.wantLocation {
+					t.Errorf("Location: want %q, got %q", tt.wantLocation, got)
+				}
+			}
+		})
+	}
+}
+
+func TestHandleInfoLeakVars(t *testing.T) {
+	tests := []struct {
+		name       string
+		userID     string
+		wantStatus int
+		wantFields []string
+	}{
+		{
+			name:       "unauthenticated returns 401",
+			userID:     "",
+			wantStatus: http.StatusUnauthorized,
+		},
+		{
+			name:       "authenticated returns runtime info",
+			userID:     "usr_123",
+			wantStatus: http.StatusOK,
+			wantFields: []string{"go_version", "goroutines", "uptime", "alloc_bytes", "num_gc"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, "/vuln/debug/vars", nil)
+			if tt.userID != "" {
+				req.Header.Set("X-User-Id", tt.userID)
+			}
+			rr := httptest.NewRecorder()
+
+			handleInfoLeakVars(rr, req)
+
+			if rr.Code != tt.wantStatus {
+				t.Fatalf("want status %d, got %d; body: %s", tt.wantStatus, rr.Code, rr.Body.String())
+			}
+			if tt.wantStatus != http.StatusOK {
+				return
+			}
+
+			var body map[string]any
+			if err := json.NewDecoder(rr.Body).Decode(&body); err != nil {
+				t.Fatalf("decode response: %v", err)
+			}
+			for _, field := range tt.wantFields {
+				if _, ok := body[field]; !ok {
+					t.Errorf("expected field %q in response", field)
+				}
+			}
+		})
+	}
+}
+
+func TestHandleInfoLeakConfig(t *testing.T) {
+	tests := []struct {
+		name       string
+		userID     string
+		wantStatus int
+		wantFields []string
+	}{
+		{
+			name:       "unauthenticated returns 401",
+			userID:     "",
+			wantStatus: http.StatusUnauthorized,
+		},
+		{
+			name:       "authenticated returns fake config with visible credentials",
+			userID:     "usr_abc",
+			wantStatus: http.StatusOK,
+			wantFields: []string{"database_url", "stripe_secret_key", "internal_api_url"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, "/vuln/debug/config", nil)
+			if tt.userID != "" {
+				req.Header.Set("X-User-Id", tt.userID)
+			}
+			rr := httptest.NewRecorder()
+
+			handleInfoLeakConfig(rr, req)
+
+			if rr.Code != tt.wantStatus {
+				t.Fatalf("want status %d, got %d; body: %s", tt.wantStatus, rr.Code, rr.Body.String())
+			}
+			if tt.wantStatus != http.StatusOK {
+				return
+			}
+
+			var body map[string]any
+			if err := json.NewDecoder(rr.Body).Decode(&body); err != nil {
+				t.Fatalf("decode response: %v", err)
+			}
+			for _, field := range tt.wantFields {
+				if _, ok := body[field]; !ok {
+					t.Errorf("expected field %q in response", field)
+				}
+			}
+
+			// Verify the database URL contains fake credentials (demonstrates the risk).
+			dbURL, _ := body["database_url"].(string)
+			if !strings.Contains(dbURL, "password123") {
+				t.Errorf("database_url should contain fake credentials, got %q", dbURL)
+			}
+		})
+	}
+}
+
+func TestHandleMIMESniff(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/vuln/mime-sniff", nil)
+	rr := httptest.NewRecorder()
+
+	handleMIMESniff(rr, req)
+
+	if rr.Code != http.StatusOK {
+		t.Fatalf("want status 200, got %d", rr.Code)
+	}
+
+	// Content-Type must be text/plain (wrong type — intentional vulnerability).
+	ct := rr.Header().Get("Content-Type")
+	if ct != "text/plain" {
+		t.Errorf("Content-Type: want %q, got %q", "text/plain", ct)
+	}
+
+	// Body must contain the JavaScript payload served as plain text.
+	body := rr.Body.String()
+	if !strings.Contains(body, "alert(") {
+		t.Errorf("body should contain the JS payload, got %q", body)
+	}
+	if !strings.Contains(body, "MIME sniffing attack") {
+		t.Errorf("body should contain 'MIME sniffing attack', got %q", body)
 	}
 }
 
