@@ -24,6 +24,28 @@ type PluginDescriptor struct {
 // The order reflects the recommended initialisation priority.
 var Catalog = []PluginDescriptor{
 	{
+		Name:        "cors",
+		Description: "CORS: sets Access-Control-* headers and handles OPTIONS preflight requests",
+		ConfigSchema: map[string]string{
+			"enabled":           "Enable CORS middleware (default: false)",
+			"allowed_origins":   "List of allowed origins, or [\"*\"] for all origins (development only)",
+			"allowed_methods":   "HTTP methods allowed in cross-origin requests (default: GET, POST, PUT, DELETE, OPTIONS)",
+			"allowed_headers":   "Request headers allowed in cross-origin requests (default: Content-Type, Authorization)",
+			"exposed_headers":   "Response headers exposed to the browser via Access-Control-Expose-Headers",
+			"allow_credentials": "Set Access-Control-Allow-Credentials: true; must not be used with allowed_origins: [\"*\"]",
+			"max_age":           "Seconds to cache preflight response (Access-Control-Max-Age); 0 omits the header",
+		},
+		Example: `  cors:
+    enabled: true
+    allowed_origins:
+      - "https://example.com"
+    allowed_methods: ["GET", "POST", "PUT", "DELETE"]
+    allowed_headers: ["Content-Type", "Authorization"]
+    exposed_headers: ["X-Request-Id"]
+    allow_credentials: true
+    max_age: 3600`,
+	},
+	{
 		Name:        "ip-filter",
 		Description: "IP allowlist/blocklist filter: reject or permit requests by client IP or CIDR range",
 		ConfigSchema: map[string]string{

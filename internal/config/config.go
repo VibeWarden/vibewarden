@@ -63,6 +63,9 @@ type Config struct {
 	// Overrides provides escape hatches for advanced users who need to supply
 	// hand-crafted config files instead of relying on VibeWarden's generation.
 	Overrides OverridesConfig `mapstructure:"overrides"`
+
+	// CORS configures the Cross-Origin Resource Sharing plugin.
+	CORS CORSConfig `mapstructure:"cors"`
 }
 
 // DatabaseConfig holds PostgreSQL connection settings used for audit logging
@@ -351,6 +354,36 @@ type SecurityHeadersConfig struct {
 
 	// SuppressViaHeader removes the Via header from proxied responses (default: true)
 	SuppressViaHeader bool `mapstructure:"suppress_via_header"`
+}
+
+// CORSConfig holds Cross-Origin Resource Sharing settings.
+type CORSConfig struct {
+	// Enabled toggles the CORS plugin (default: false).
+	Enabled bool `mapstructure:"enabled"`
+
+	// AllowedOrigins is the list of origins permitted to make cross-origin
+	// requests. Use ["*"] to allow all origins (development only).
+	AllowedOrigins []string `mapstructure:"allowed_origins"`
+
+	// AllowedMethods is the list of HTTP methods permitted in cross-origin
+	// requests (default: GET, POST, PUT, DELETE, OPTIONS).
+	AllowedMethods []string `mapstructure:"allowed_methods"`
+
+	// AllowedHeaders is the list of request headers permitted in cross-origin
+	// requests (default: Content-Type, Authorization).
+	AllowedHeaders []string `mapstructure:"allowed_headers"`
+
+	// ExposedHeaders is the list of response headers exposed to the browser
+	// via Access-Control-Expose-Headers (default: []).
+	ExposedHeaders []string `mapstructure:"exposed_headers"`
+
+	// AllowCredentials, when true, sets Access-Control-Allow-Credentials: true.
+	// Must not be combined with AllowedOrigins: ["*"] (default: false).
+	AllowCredentials bool `mapstructure:"allow_credentials"`
+
+	// MaxAge is the number of seconds the browser may cache the preflight
+	// response (Access-Control-Max-Age). Zero omits the header (default: 0).
+	MaxAge int `mapstructure:"max_age"`
 }
 
 // MetricsConfig holds Prometheus metrics settings.
@@ -695,6 +728,16 @@ func (c *Config) Validate() error {
 		}
 	}
 
+	// cors validation.
+	if c.CORS.Enabled && c.CORS.AllowCredentials {
+		for _, o := range c.CORS.AllowedOrigins {
+			if o == "*" {
+				errs = append(errs, "cors.allow_credentials: true cannot be combined with cors.allowed_origins: [\"*\"]; browsers reject credentialed requests to wildcard origins")
+				break
+			}
+		}
+	}
+
 	if len(errs) > 0 {
 		return fmt.Errorf("%s", strings.Join(errs, "; "))
 	}
@@ -791,6 +834,13 @@ func Load(configPath string) (*Config, error) {
 	v.SetDefault("overrides.kratos_config", "")
 	v.SetDefault("overrides.compose_file", "")
 	v.SetDefault("overrides.identity_schema", "")
+	v.SetDefault("cors.enabled", false)
+	v.SetDefault("cors.allowed_origins", []string{})
+	v.SetDefault("cors.allowed_methods", []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"})
+	v.SetDefault("cors.allowed_headers", []string{"Content-Type", "Authorization"})
+	v.SetDefault("cors.exposed_headers", []string{})
+	v.SetDefault("cors.allow_credentials", false)
+	v.SetDefault("cors.max_age", 0)
 
 	// Config file
 	if configPath != "" {

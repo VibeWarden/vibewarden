@@ -229,6 +229,29 @@ metrics:
   #     - "/api/v1/items/:item_id/comments/:comment_id"
   path_patterns: []
 
+# CORS (Cross-Origin Resource Sharing)
+# Injects Access-Control-* headers and handles OPTIONS preflight requests.
+# Enable this when your app is served from a different origin than the browser app
+# (e.g. API at api.example.com accessed by frontend at app.example.com).
+cors:
+  # Enable CORS middleware (default: false)
+  enabled: false
+  # Origins allowed to make cross-origin requests.
+  # Use ["*"] for development (all origins). Never use "*" with allow_credentials: true.
+  allowed_origins:
+    - "https://example.com"
+  # HTTP methods allowed in cross-origin requests
+  allowed_methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
+  # Request headers allowed in cross-origin requests
+  allowed_headers: ["Content-Type", "Authorization"]
+  # Response headers exposed to the browser (Access-Control-Expose-Headers)
+  exposed_headers: []
+  # Set Access-Control-Allow-Credentials: true.
+  # Must not be combined with allowed_origins: ["*"].
+  allow_credentials: false
+  # Seconds to cache preflight response (0 omits Access-Control-Max-Age)
+  max_age: 0
+
 # Security headers added to all proxied responses
 security_headers:
   # Enable security headers middleware (recommended: true)
