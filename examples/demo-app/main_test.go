@@ -378,6 +378,8 @@ func TestStaticFilesEmbedded(t *testing.T) {
 		"static/headers.html",
 		"static/ratelimit.html",
 		"static/vulnlab.html",
+		"static/xss-reflected.html",
+		"static/xss-stored.html",
 	}
 	for _, path := range wantFiles {
 		t.Run(path, func(t *testing.T) {
@@ -388,4 +390,152 @@ func TestStaticFilesEmbedded(t *testing.T) {
 			f.Close()
 		})
 	}
+}
+
+func TestHandleXSSReflected(t *testing.T) {
+	tests := []struct {
+		name       string
+		query      string
+		wantInBody string
+		wantStatus int
+		wantCT     string
+	}{
+		{
+			name:       "plain text query is reflected verbatim",
+			query:      "hello",
+			wantInBody: "Search results for: hello",
+			wantStatus: http.StatusOK,
+			wantCT:     "text/html; charset=utf-8",
+		},
+		{
+			name:       "XSS payload is reflected unescaped",
+			query:      `<script>alert('XSS')</script>`,
+			wantInBody: `<script>alert('XSS')</script>`,
+			wantStatus: http.StatusOK,
+			wantCT:     "text/html; charset=utf-8",
+		},
+		{
+			name:       "empty query is handled without error",
+			query:      "",
+			wantInBody: "Search results for: ",
+			wantStatus: http.StatusOK,
+			wantCT:     "text/html; charset=utf-8",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, "/vuln/xss-reflected?q="+tt.query, nil)
+			rr := httptest.NewRecorder()
+
+			handleXSSReflected(rr, req)
+
+			if rr.Code != tt.wantStatus {
+				t.Fatalf("want status %d, got %d", tt.wantStatus, rr.Code)
+			}
+			if ct := rr.Header().Get("Content-Type"); ct != tt.wantCT {
+				t.Errorf("Content-Type: want %q, got %q", tt.wantCT, ct)
+			}
+			if body := rr.Body.String(); !strings.Contains(body, tt.wantInBody) {
+				t.Errorf("response body does not contain %q; body: %s", tt.wantInBody, body)
+			}
+		})
+	}
+}
+
+func TestHandleXSSStoredGetPost(t *testing.T) {
+	// Reset the global guestbook before this test so it is isolated.
+	guestbookMu.Lock()
+	guestbook = nil
+	guestbookMu.Unlock()
+
+	t.Run("GET empty guestbook shows no-messages placeholder", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/vuln/xss-stored", nil)
+		rr := httptest.NewRecorder()
+
+		handleXSSStoredGet(rr, req)
+
+		if rr.Code != http.StatusOK {
+			t.Fatalf("want status 200, got %d", rr.Code)
+		}
+		if ct := rr.Header().Get("Content-Type"); ct != "text/html; charset=utf-8" {
+			t.Errorf("Content-Type: want text/html, got %q", ct)
+		}
+		if body := rr.Body.String(); !strings.Contains(body, "No messages yet") {
+			t.Errorf("expected empty guestbook message; body: %s", body)
+		}
+	})
+
+	t.Run("POST stores message and redirects", func(t *testing.T) {
+		form := strings.NewReader("message=hello+world")
+		req := httptest.NewRequest(http.MethodPost, "/vuln/xss-stored", form)
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		rr := httptest.NewRecorder()
+
+		handleXSSStoredPost(rr, req)
+
+		if rr.Code != http.StatusSeeOther {
+			t.Fatalf("want status 303, got %d", rr.Code)
+		}
+	})
+
+	t.Run("GET after POST shows stored message unescaped", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodGet, "/vuln/xss-stored", nil)
+		rr := httptest.NewRecorder()
+
+		handleXSSStoredGet(rr, req)
+
+		if rr.Code != http.StatusOK {
+			t.Fatalf("want status 200, got %d", rr.Code)
+		}
+		if body := rr.Body.String(); !strings.Contains(body, "hello world") {
+			t.Errorf("expected stored message in body; body: %s", body)
+		}
+	})
+
+	t.Run("POST stores XSS payload unescaped", func(t *testing.T) {
+		// Reset guestbook first.
+		guestbookMu.Lock()
+		guestbook = nil
+		guestbookMu.Unlock()
+
+		payload := `<img src=x onerror=alert('XSS')>`
+		form := strings.NewReader("message=" + payload)
+		req := httptest.NewRequest(http.MethodPost, "/vuln/xss-stored", form)
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		rr := httptest.NewRecorder()
+		handleXSSStoredPost(rr, req)
+
+		// Now GET should reflect the payload verbatim.
+		req2 := httptest.NewRequest(http.MethodGet, "/vuln/xss-stored", nil)
+		rr2 := httptest.NewRecorder()
+		handleXSSStoredGet(rr2, req2)
+
+		if body := rr2.Body.String(); !strings.Contains(body, payload) {
+			t.Errorf("expected XSS payload in body (unescaped); body: %s", body)
+		}
+	})
+
+	t.Run("POST with empty message redirects without storing", func(t *testing.T) {
+		guestbookMu.Lock()
+		before := len(guestbook)
+		guestbookMu.Unlock()
+
+		form := strings.NewReader("message=")
+		req := httptest.NewRequest(http.MethodPost, "/vuln/xss-stored", form)
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		rr := httptest.NewRecorder()
+
+		handleXSSStoredPost(rr, req)
+
+		if rr.Code != http.StatusSeeOther {
+			t.Fatalf("want status 303, got %d", rr.Code)
+		}
+		guestbookMu.Lock()
+		after := len(guestbook)
+		guestbookMu.Unlock()
+		if after != before {
+			t.Errorf("empty message should not be stored; before=%d after=%d", before, after)
+		}
+	})
 }

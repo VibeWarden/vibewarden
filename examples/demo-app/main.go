@@ -24,6 +24,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 )
@@ -33,6 +34,15 @@ var staticFiles embed.FS
 
 // spamCounter counts POST /spam requests to demonstrate rate limiting.
 var spamCounter atomic.Int64
+
+// guestbook holds submitted messages for the stored XSS demo.
+// Access is protected by guestbookMu.
+//
+// INTENTIONALLY VULNERABLE — messages are stored and rendered without sanitisation.
+var (
+	guestbook   []string
+	guestbookMu sync.Mutex
+)
 
 func main() {
 	port := os.Getenv("PORT")
@@ -59,6 +69,9 @@ func main() {
 	mux.HandleFunc("GET /auth/login", handleAuthPage(staticFS, "login.html"))
 	mux.HandleFunc("GET /auth/registration", handleAuthPage(staticFS, "register.html"))
 	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServer(http.FS(staticFS))))
+	mux.HandleFunc("GET /vuln/xss-reflected", handleXSSReflected)
+	mux.HandleFunc("GET /vuln/xss-stored", handleXSSStoredGet)
+	mux.HandleFunc("POST /vuln/xss-stored", handleXSSStoredPost)
 	mux.HandleFunc("GET /vuln/", handleVulnLab)
 
 	addr := ":" + port
@@ -209,6 +222,112 @@ func handleVulnLab(w http.ResponseWriter, r *http.Request) {
 		"status":        "demo page coming soon",
 		"lab":           "/static/vulnlab.html",
 	})
+}
+
+// handleXSSReflected is the INTENTIONALLY VULNERABLE reflected XSS endpoint.
+//
+// It renders the value of the "q" query parameter directly into the HTML
+// response without any escaping.  This lets an attacker craft a URL that
+// executes arbitrary JavaScript in the victim's browser.
+//
+// VibeWarden mitigation: the CSP header "default-src 'self'" set by the
+// sidecar prevents inline scripts from executing, so the injected payload
+// is blocked even though the app itself does nothing to stop it.
+//
+// INTENTIONALLY VULNERABLE — do not sanitise this endpoint.
+func handleXSSReflected(w http.ResponseWriter, r *http.Request) {
+	q := r.URL.Query().Get("q")
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	fmt.Fprintf(w, `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Search Results — Reflected XSS Demo</title>
+  <link rel="stylesheet" href="/static/water.css">
+</head>
+<body>
+  <nav>
+    <strong>VibeWarden Demo</strong> &nbsp;|&nbsp;
+    <a href="/">Home</a>
+    <a href="/static/vulnlab.html">Vulnerability Lab</a>
+    <a href="/static/xss-reflected.html">Reflected XSS Explained</a>
+  </nav>
+  <h1>Search Results</h1>
+  <!-- INTENTIONALLY VULNERABLE: q is rendered without escaping -->
+  <p>Search results for: %s</p>
+  <p><a href="/static/xss-reflected.html">Back to explanation</a></p>
+</body>
+</html>`, q)
+}
+
+// handleXSSStoredGet renders the guestbook WITHOUT escaping stored messages.
+//
+// INTENTIONALLY VULNERABLE — messages are rendered raw so that any HTML/JS
+// that was stored via POST /vuln/xss-stored is executed in the browser.
+//
+// VibeWarden mitigation: CSP blocks inline event handlers (e.g. onerror=),
+// reducing the blast radius, but the app still must sanitise input at write
+// time to be fully safe.
+func handleXSSStoredGet(w http.ResponseWriter, r *http.Request) {
+	guestbookMu.Lock()
+	entries := make([]string, len(guestbook))
+	copy(entries, guestbook)
+	guestbookMu.Unlock()
+
+	var rows strings.Builder
+	if len(entries) == 0 {
+		rows.WriteString("<li><em>No messages yet. Be the first!</em></li>")
+	}
+	for _, msg := range entries {
+		// INTENTIONALLY VULNERABLE: msg is written without escaping.
+		fmt.Fprintf(&rows, "<li>%s</li>\n", msg)
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	fmt.Fprintf(w, `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Guestbook — Stored XSS Demo</title>
+  <link rel="stylesheet" href="/static/water.css">
+</head>
+<body>
+  <nav>
+    <strong>VibeWarden Demo</strong> &nbsp;|&nbsp;
+    <a href="/">Home</a>
+    <a href="/static/vulnlab.html">Vulnerability Lab</a>
+    <a href="/static/xss-stored.html">Stored XSS Explained</a>
+  </nav>
+  <h1>Guestbook</h1>
+  <!-- INTENTIONALLY VULNERABLE: messages are rendered without escaping -->
+  <ul>
+    %s
+  </ul>
+  <p><a href="/static/xss-stored.html">Back to explanation</a></p>
+</body>
+</html>`, rows.String())
+}
+
+// handleXSSStoredPost stores a guestbook message without sanitisation.
+//
+// INTENTIONALLY VULNERABLE — the message from the form body is appended to
+// the in-memory guestbook as-is and later rendered raw by handleXSSStoredGet.
+func handleXSSStoredPost(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+	msg := r.FormValue("message")
+	if msg == "" {
+		http.Redirect(w, r, "/static/xss-stored.html", http.StatusSeeOther)
+		return
+	}
+
+	guestbookMu.Lock()
+	guestbook = append(guestbook, msg)
+	guestbookMu.Unlock()
+
+	http.Redirect(w, r, "/static/xss-stored.html", http.StatusSeeOther)
 }
 
 // handleAuthPage returns an http.HandlerFunc that serves a named HTML file

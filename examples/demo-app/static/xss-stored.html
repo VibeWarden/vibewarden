@@ -1,0 +1,347 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Stored XSS — VibeWarden Vulnerability Lab</title>
+  <link rel="stylesheet" href="/static/water.css">
+  <style>
+    nav a { margin-right: 1em; }
+
+    .warning-banner {
+      padding: 1em 1.2em;
+      background: #fef2f2;
+      border: 2px solid #dc2626;
+      border-radius: 6px;
+      color: #991b1b;
+      font-weight: bold;
+      font-size: 1em;
+      margin-bottom: 1.5em;
+    }
+
+    .hero {
+      margin: 1.5em 0 2em;
+      padding: 2em;
+      border-left: 4px solid #7C3AED;
+      background: rgba(124, 58, 237, 0.04);
+      border-radius: 0 6px 6px 0;
+    }
+    .hero h1 { margin-top: 0; }
+    .hero .tagline {
+      font-size: 1.1em;
+      color: #555;
+      margin-bottom: 0;
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 0.2em 0.6em;
+      border-radius: 4px;
+      font-size: 0.8em;
+      font-weight: bold;
+    }
+    .badge-high      { background: #dc2626; color: #fff; }
+    .badge-partial   { background: #d97706; color: #fff; }
+
+    .section {
+      margin: 2em 0;
+    }
+
+    .try-it-box {
+      padding: 1.2em;
+      border: 1px solid #d1d5db;
+      border-radius: 6px;
+      background: #fafafa;
+    }
+    .try-it-box h3 { margin-top: 0; }
+
+    .guestbook-frame {
+      margin-top: 1.2em;
+      border: 1px solid #e5e7eb;
+      border-radius: 6px;
+      overflow: hidden;
+    }
+    .guestbook-frame iframe {
+      width: 100%;
+      border: none;
+      min-height: 200px;
+    }
+
+    .protection-box {
+      padding: 1.2em;
+      border: 2px solid #d97706;
+      border-radius: 6px;
+      background: rgba(217, 119, 6, 0.04);
+    }
+    .protection-box h3 { margin-top: 0; color: #b45309; }
+
+    .code-block {
+      font-family: monospace;
+      background: #1e1e2e;
+      color: #cdd6f4;
+      padding: 1em;
+      border-radius: 6px;
+      overflow-x: auto;
+      font-size: 0.9em;
+      line-height: 1.5;
+    }
+
+    .vuln-code {
+      font-family: monospace;
+      background: #fff5f5;
+      color: #9b2335;
+      padding: 1em;
+      border-radius: 6px;
+      border-left: 4px solid #dc2626;
+      overflow-x: auto;
+      font-size: 0.9em;
+      line-height: 1.5;
+    }
+
+    .status-msg {
+      margin-top: 0.5em;
+      padding: 0.5em 0.8em;
+      border-radius: 4px;
+      font-size: 0.9em;
+    }
+    .status-ok  { background: #f0fdf4; color: #15803d; border: 1px solid #86efac; }
+    .status-err { background: #fef2f2; color: #991b1b; border: 1px solid #fca5a5; }
+
+    .guestbook-list {
+      margin: 0;
+      padding: 0.5em 1em;
+      list-style: disc;
+      font-size: 0.95em;
+    }
+    .guestbook-list li { margin: 0.3em 0; }
+
+    .vw-footer {
+      margin-top: 3em;
+      padding: 1em 1.2em;
+      background: #f9fafb;
+      border: 1px solid #e5e7eb;
+      border-radius: 6px;
+      font-size: 0.9em;
+      color: #374151;
+      text-align: center;
+    }
+    .vw-footer strong { color: #7C3AED; }
+  </style>
+</head>
+<body>
+  <nav>
+    <strong>VibeWarden Demo</strong> &nbsp;|&nbsp;
+    <a href="/">Home</a>
+    <a href="/static/me.html">My Profile</a>
+    <a href="/static/headers.html">Headers Inspector</a>
+    <a href="/static/ratelimit.html">Rate Limit Test</a>
+    <a href="/static/vulnlab.html">Vulnerability Lab</a>
+  </nav>
+
+  <div class="warning-banner">
+    &#9888;&#65039; This page contains an INTENTIONAL security vulnerability for demonstration purposes.
+    The guestbook at <code>/vuln/xss-stored</code> stores and renders messages without sanitisation.
+    Do not deploy this in production.
+  </div>
+
+  <div class="hero">
+    <h1>Stored XSS &nbsp;<span class="badge badge-high">High</span>&nbsp;<span class="badge badge-partial">Partially Mitigated by VibeWarden</span></h1>
+    <p class="tagline">
+      Malicious scripts are persisted in the backend and executed in every user's browser
+      whenever the affected page is loaded — with no attacker interaction required after
+      the initial submission.
+    </p>
+  </div>
+
+  <div class="section">
+    <h2>What is Stored XSS?</h2>
+    <p>
+      Stored (or "persistent") XSS is more dangerous than reflected XSS because the payload
+      is saved server-side — in a database, log, comment field, or any other persistent store —
+      and served to every user who later views the affected page, not just the user who submitted
+      the original request.
+    </p>
+    <p>
+      Classic targets include: comment sections, forum posts, user profiles, chat messages,
+      product reviews, and any other user-generated content that is later rendered in a browser.
+    </p>
+    <p>
+      Consequences are the same as reflected XSS but amplified: one malicious submission can
+      compromise every visitor, indefinitely, until the payload is removed from the store.
+    </p>
+  </div>
+
+  <div class="section">
+    <h2>The Vulnerable Code</h2>
+    <p>
+      This demo has an in-memory guestbook.  Messages are stored as raw strings and rendered
+      directly into HTML without escaping:
+    </p>
+    <div class="vuln-code">// INTENTIONALLY VULNERABLE — messages are stored without sanitisation<br>
+var guestbook []string<br>
+<br>
+// POST handler stores the raw message<br>
+guestbook = append(guestbook, r.FormValue("message"))<br>
+<br>
+// GET handler renders every message without escaping<br>
+fmt.Fprintf(&amp;rows, "&lt;li&gt;%s&lt;/li&gt;", msg)</div>
+    <p>
+      If you submit <code>&lt;img src=x onerror=alert('XSS')&gt;</code>, that tag is stored
+      and written verbatim into the HTML for every subsequent visitor.  Any browser that
+      renders the guestbook will attempt to execute the <code>onerror</code> handler —
+      unless a CSP prevents it.
+    </p>
+  </div>
+
+  <div class="section">
+    <h2>Try It</h2>
+    <div class="try-it-box">
+      <h3>Guestbook</h3>
+      <p>
+        Post a message.  It is stored server-side and shown to every visitor.  Try:
+        <code>&lt;img src=x onerror=alert('XSS')&gt;</code> or
+        <code>&lt;b&gt;bold&lt;/b&gt;</code>
+      </p>
+      <form id="post-form">
+        <label for="message-input">Message:</label>
+        <input type="text" id="message-input" placeholder="try: &lt;img src=x onerror=alert('XSS')&gt;" style="width:100%;max-width:500px">
+        <button type="submit">Post Message</button>
+      </form>
+      <div id="status-msg" style="display:none" class="status-msg"></div>
+      <h4>Current Guestbook (loaded from <code>/vuln/xss-stored</code>)</h4>
+      <div id="guestbook-container">
+        <em>Click "Reload Guestbook" to fetch and display current messages.</em>
+      </div>
+      <p>
+        <button id="btn-reload">Reload Guestbook (raw HTML)</button>
+      </p>
+      <p id="csp-note" style="display:none;color:#b45309;font-weight:bold;margin-top:0.5em;">
+        &#9888; CSP may block inline event handlers (e.g. <code>onerror=</code>).
+        Open DevTools to see the CSP violation report.  Note that the raw HTML still contains
+        the injected payload — CSP reduces impact but does not prevent storage or remove the
+        need for server-side sanitisation.
+      </p>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>VibeWarden Protection</h2>
+    <div class="protection-box">
+      <h3>CSP reduces impact — but cannot fully prevent stored XSS</h3>
+      <p>
+        VibeWarden adds a <code>Content-Security-Policy</code> header to every response.
+        This blocks many XSS vectors:
+      </p>
+      <ul>
+        <li><code>&lt;script&gt;alert()&lt;/script&gt;</code> — inline scripts blocked by CSP</li>
+        <li><code>&lt;img onerror=...&gt;</code> — inline event handlers blocked by CSP</li>
+        <li>External script loads from non-whitelisted origins — blocked by <code>default-src 'self'</code></li>
+      </ul>
+      <p>
+        However, CSP cannot undo the fact that the payload was stored.  A very narrow CSP
+        might still allow certain injected HTML to alter page layout or trick users visually
+        (UI redressing), even if script execution is blocked.
+      </p>
+      <p>
+        <strong>The correct fix is sanitisation at write time</strong> — before storing the
+        message.  Strip or encode HTML tags in the input before it reaches the database.
+        CSP is defence-in-depth, not a substitute for input sanitisation.
+      </p>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>How to Fix This in Your App</h2>
+    <p>Two complementary layers of defence are required:</p>
+    <ol>
+      <li>
+        <strong>Sanitise on write:</strong> strip or encode HTML before storing user input.
+        For Go, use <code>html.EscapeString()</code> or a dedicated sanitiser library.
+      </li>
+      <li>
+        <strong>Encode on read:</strong> use <code>html/template</code> to render stored
+        content so any residual markup is escaped at display time.
+      </li>
+    </ol>
+    <div class="code-block">// SAFE: sanitise before storing<br>
+msg := html.EscapeString(r.FormValue("message"))<br>
+guestbook = append(guestbook, msg)<br>
+<br>
+// SAFE: html/template auto-escapes on render<br>
+tmpl := template.Must(template.New("").Parse(`&lt;li&gt;{{.}}&lt;/li&gt;`))<br>
+for _, entry := range guestbook &#123;<br>
+&nbsp;&nbsp;tmpl.Execute(w, entry)<br>
+&#125;</div>
+  </div>
+
+  <!-- Footer banner -->
+  <div class="vw-footer">
+    <strong>VibeWarden</strong> — security sidecar for vibe-coded apps.
+    CSP is applied automatically; sanitise user input at the application layer too.
+    &mdash; <a href="/static/vulnlab.html">Back to Vulnerability Lab</a> &mdash;
+    <a href="https://github.com/vibewarden/vibewarden" target="_blank" rel="noopener">GitHub</a>
+  </div>
+
+  <script>
+    const postForm   = document.getElementById('post-form');
+    const statusMsg  = document.getElementById('status-msg');
+    const container  = document.getElementById('guestbook-container');
+    const cspNote    = document.getElementById('csp-note');
+
+    postForm.addEventListener('submit', async function (e) {
+      e.preventDefault();
+      const msg = document.getElementById('message-input').value.trim();
+      if (!msg) return;
+
+      statusMsg.style.display = 'none';
+
+      const body = new URLSearchParams();
+      body.set('message', msg);
+
+      try {
+        // POST stores the message; server redirects back here.
+        // We do the POST via fetch so we stay on this page.
+        await fetch('/vuln/xss-stored', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: body.toString(),
+          redirect: 'manual',  // don't follow the server redirect
+        });
+        showStatus('Message posted. Click "Reload Guestbook" to see it.', 'ok');
+
+        if (msg.toLowerCase().includes('onerror') || msg.toLowerCase().includes('<script')) {
+          cspNote.style.display = 'block';
+        }
+      } catch (err) {
+        showStatus('Error: ' + String(err), 'err');
+      }
+    });
+
+    document.getElementById('btn-reload').addEventListener('click', loadGuestbook);
+
+    async function loadGuestbook() {
+      container.textContent = 'Loading...';
+      try {
+        const resp = await fetch('/vuln/xss-stored');
+        const text = await resp.text();
+        // Display the raw HTML returned by the vulnerable endpoint as plain text
+        // so this explanation page is not itself rendered insecurely.
+        const pre = document.createElement('pre');
+        pre.style.cssText = 'font-family:monospace;font-size:0.85em;background:#f9fafb;' +
+          'border:1px solid #e5e7eb;border-radius:4px;padding:0.6em;overflow-x:auto;white-space:pre-wrap;';
+        pre.textContent = text;
+        container.innerHTML = '';
+        container.appendChild(pre);
+      } catch (err) {
+        container.textContent = 'Error loading guestbook: ' + String(err);
+      }
+    }
+
+    function showStatus(text, type) {
+      statusMsg.textContent = text;
+      statusMsg.className = 'status-msg status-' + type;
+      statusMsg.style.display = 'block';
+    }
+  </script>
+</body>
+</html>
