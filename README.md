@@ -172,6 +172,20 @@ make grafana-open    # http://localhost:3000
 
 See [docs/observability.md](docs/observability.md) for details.
 
+### Secret Management
+
+Store API keys, database passwords, and other secrets in OpenBao (open-source Vault fork) and inject them into your app automatically — no `.env` files, no hardcoded credentials:
+
+```bash
+# Store a secret
+vibew secret store app/stripe api_key=sk_live_abc123
+
+# VibeWarden fetches and injects it into every proxied request
+# as a header or into a .env file the upstream reads
+```
+
+See [docs/secret-management.md](docs/secret-management.md) for full setup, dynamic Postgres credentials, and production considerations.
+
 ### Admin API
 
 User management at `/_vibewarden/admin/*` (protected by bearer token):

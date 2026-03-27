@@ -22,6 +22,7 @@ import (
 	ipfilterplugin "github.com/vibewarden/vibewarden/internal/plugins/ipfilter"
 	metricsplugin "github.com/vibewarden/vibewarden/internal/plugins/metrics"
 	ratelimitplugin "github.com/vibewarden/vibewarden/internal/plugins/ratelimit"
+	secretsplugin "github.com/vibewarden/vibewarden/internal/plugins/secrets"
 	sechdrs "github.com/vibewarden/vibewarden/internal/plugins/securityheaders"
 	tlsplugin "github.com/vibewarden/vibewarden/internal/plugins/tls"
 	usermgmtplugin "github.com/vibewarden/vibewarden/internal/plugins/usermgmt"
@@ -239,6 +240,93 @@ func registerPlugins(
 		KratosAdminURL: cfg.Kratos.AdminURL,
 		DatabaseURL:    cfg.Database.URL,
 	}, eventLogger, logger))
+
+	// Secrets (OpenBao) — priority 70
+	registry.Register(buildSecretsPlugin(cfg, eventLogger, logger))
+}
+
+// buildSecretsPlugin constructs the secrets plugin from config, parsing
+// duration strings into time.Duration values. Falls back to plugin defaults
+// on parse errors (config.Validate does not validate duration strings here
+// since they are optional and have sensible defaults).
+func buildSecretsPlugin(cfg *config.Config, eventLogger ports.EventLogger, logger *slog.Logger) *secretsplugin.Plugin {
+	secretsCfg := secretsplugin.Config{
+		Enabled:  cfg.Secrets.Enabled,
+		Provider: cfg.Secrets.Provider,
+		OpenBao: secretsplugin.OpenBaoConfig{
+			Address:   cfg.Secrets.OpenBao.Address,
+			MountPath: cfg.Secrets.OpenBao.MountPath,
+			Auth: secretsplugin.OpenBaoAuthConfig{
+				Method:   cfg.Secrets.OpenBao.Auth.Method,
+				Token:    cfg.Secrets.OpenBao.Auth.Token,
+				RoleID:   cfg.Secrets.OpenBao.Auth.RoleID,
+				SecretID: cfg.Secrets.OpenBao.Auth.SecretID,
+			},
+		},
+		Dynamic: secretsplugin.DynamicConfig{
+			Postgres: secretsplugin.DynamicPostgresConfig{
+				Enabled: cfg.Secrets.Dynamic.Postgres.Enabled,
+			},
+		},
+		Inject: secretsplugin.InjectConfig{
+			EnvFile: cfg.Secrets.Inject.EnvFile,
+		},
+		Health: secretsplugin.HealthConfig{
+			WeakPatterns: cfg.Secrets.Health.WeakPatterns,
+		},
+	}
+
+	// Parse optional duration strings.
+	if cfg.Secrets.CacheTTL != "" {
+		if d, err := time.ParseDuration(cfg.Secrets.CacheTTL); err != nil {
+			logger.Warn("secrets.cache_ttl parse error — using default", slog.String("error", err.Error()))
+		} else {
+			secretsCfg.CacheTTL = d
+		}
+	}
+	if cfg.Secrets.Health.CheckInterval != "" {
+		if d, err := time.ParseDuration(cfg.Secrets.Health.CheckInterval); err != nil {
+			logger.Warn("secrets.health.check_interval parse error — using default", slog.String("error", err.Error()))
+		} else {
+			secretsCfg.Health.CheckInterval = d
+		}
+	}
+	if cfg.Secrets.Health.MaxStaticAge != "" {
+		if d, err := time.ParseDuration(cfg.Secrets.Health.MaxStaticAge); err != nil {
+			logger.Warn("secrets.health.max_static_age parse error — using default", slog.String("error", err.Error()))
+		} else {
+			secretsCfg.Health.MaxStaticAge = d
+		}
+	}
+
+	// Map header injections.
+	for _, inj := range cfg.Secrets.Inject.Headers {
+		secretsCfg.Inject.Headers = append(secretsCfg.Inject.Headers, secretsplugin.HeaderInjection{
+			SecretPath: inj.SecretPath,
+			SecretKey:  inj.SecretKey,
+			Header:     inj.Header,
+		})
+	}
+
+	// Map env injections.
+	for _, inj := range cfg.Secrets.Inject.Env {
+		secretsCfg.Inject.Env = append(secretsCfg.Inject.Env, secretsplugin.EnvInjection{
+			SecretPath: inj.SecretPath,
+			SecretKey:  inj.SecretKey,
+			EnvVar:     inj.EnvVar,
+		})
+	}
+
+	// Map dynamic postgres roles.
+	for _, role := range cfg.Secrets.Dynamic.Postgres.Roles {
+		secretsCfg.Dynamic.Postgres.Roles = append(secretsCfg.Dynamic.Postgres.Roles, secretsplugin.DynamicRole{
+			Name:           role.Name,
+			EnvVarUser:     role.EnvVarUser,
+			EnvVarPassword: role.EnvVarPassword,
+		})
+	}
+
+	return secretsplugin.New(secretsCfg, eventLogger, logger)
 }
 
 // buildProxyConfig constructs the ports.ProxyConfig that the Caddy adapter
