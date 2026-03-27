@@ -19,6 +19,7 @@ import (
 	"github.com/vibewarden/vibewarden/internal/plugins"
 	authplugin "github.com/vibewarden/vibewarden/internal/plugins/auth"
 	bodysizeplugin "github.com/vibewarden/vibewarden/internal/plugins/bodysize"
+	corsplugin "github.com/vibewarden/vibewarden/internal/plugins/cors"
 	ipfilterplugin "github.com/vibewarden/vibewarden/internal/plugins/ipfilter"
 	metricsplugin "github.com/vibewarden/vibewarden/internal/plugins/metrics"
 	ratelimitplugin "github.com/vibewarden/vibewarden/internal/plugins/ratelimit"
@@ -149,6 +150,17 @@ func registerPlugins(
 		CertPath:    cfg.TLS.CertPath,
 		KeyPath:     cfg.TLS.KeyPath,
 		StoragePath: cfg.TLS.StoragePath,
+	}, logger))
+
+	// CORS — priority 10 (before all middleware; OPTIONS preflight must be handled first)
+	registry.Register(corsplugin.New(corsplugin.Config{
+		Enabled:          cfg.CORS.Enabled,
+		AllowedOrigins:   cfg.CORS.AllowedOrigins,
+		AllowedMethods:   cfg.CORS.AllowedMethods,
+		AllowedHeaders:   cfg.CORS.AllowedHeaders,
+		ExposedHeaders:   cfg.CORS.ExposedHeaders,
+		AllowCredentials: cfg.CORS.AllowCredentials,
+		MaxAge:           cfg.CORS.MaxAge,
 	}, logger))
 
 	// Security headers — priority 20
