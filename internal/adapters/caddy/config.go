@@ -129,9 +129,22 @@ func BuildCaddyConfig(cfg *ports.ProxyConfig) (map[string]any, error) {
 		routes = append(routes, adminRoute)
 	}
 
-	routes = append(routes, map[string]any{
+	catchAllRoute := map[string]any{
 		"handle": handlers,
-	})
+	}
+	// For self-signed TLS, add a host matcher so Caddy's auto-HTTPS knows
+	// which domain to issue a certificate for. Without this, Caddy won't
+	// generate any server certificate.
+	if cfg.TLS.Enabled && cfg.TLS.Provider == ports.TLSProviderSelfSigned {
+		domain := cfg.TLS.Domain
+		if domain == "" {
+			domain = "localhost"
+		}
+		catchAllRoute["match"] = []map[string]any{
+			{"host": []string{domain}},
+		}
+	}
+	routes = append(routes, catchAllRoute)
 
 	// Build the main HTTPS (or plain HTTP) server configuration.
 	server := map[string]any{
@@ -140,12 +153,14 @@ func BuildCaddyConfig(cfg *ports.ProxyConfig) (map[string]any, error) {
 	}
 
 	if cfg.TLS.Enabled {
-		// Disable only Caddy's automatic redirects — we manage the redirect
-		// server ourselves. Certificate issuance via the TLS automation policies
-		// must remain active so Caddy obtains certs from internal/ACME issuers.
-		server["automatic_https"] = map[string]any{"disable_redirects": true}
+		// When TLS is enabled, only disable Caddy's automatic HTTP→HTTPS
+		// redirects (we add our own redirect server). Certificate management
+		// via the TLS automation policies must remain active.
+		server["automatic_https"] = map[string]any{
+			"disable_redirects": true,
+		}
 	} else {
-		// No TLS at all — fully disable automatic HTTPS.
+		// No TLS — fully disable automatic HTTPS.
 		server["automatic_https"] = map[string]any{"disable": true}
 	}
 
