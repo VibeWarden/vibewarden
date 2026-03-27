@@ -19,6 +19,7 @@ import (
 	"github.com/vibewarden/vibewarden/internal/plugins"
 	authplugin "github.com/vibewarden/vibewarden/internal/plugins/auth"
 	bodysizeplugin "github.com/vibewarden/vibewarden/internal/plugins/bodysize"
+	ipfilterplugin "github.com/vibewarden/vibewarden/internal/plugins/ipfilter"
 	metricsplugin "github.com/vibewarden/vibewarden/internal/plugins/metrics"
 	ratelimitplugin "github.com/vibewarden/vibewarden/internal/plugins/ratelimit"
 	sechdrs "github.com/vibewarden/vibewarden/internal/plugins/securityheaders"
@@ -131,6 +132,14 @@ func registerPlugins(
 	eventLogger ports.EventLogger,
 	logger *slog.Logger,
 ) {
+	// IP filter — priority 15 (must run before all other middleware)
+	registry.Register(ipfilterplugin.New(ipfilterplugin.Config{
+		Enabled:           cfg.IPFilter.Enabled,
+		Mode:              ipfilterplugin.FilterMode(cfg.IPFilter.Mode),
+		Addresses:         cfg.IPFilter.Addresses,
+		TrustProxyHeaders: cfg.IPFilter.TrustProxyHeaders,
+	}, logger))
+
 	// TLS — priority 10
 	registry.Register(tlsplugin.New(ports.TLSConfig{
 		Enabled:     cfg.TLS.Enabled,
@@ -314,6 +323,12 @@ func buildProxyConfig(cfg *config.Config, registry *plugins.Registry) *ports.Pro
 		},
 		Admin:    adminCfg,
 		BodySize: buildBodySizePortsConfig(cfg),
+		IPFilter: ports.IPFilterConfig{
+			Enabled:           cfg.IPFilter.Enabled,
+			Mode:              cfg.IPFilter.Mode,
+			Addresses:         cfg.IPFilter.Addresses,
+			TrustProxyHeaders: cfg.IPFilter.TrustProxyHeaders,
+		},
 	}
 }
 
