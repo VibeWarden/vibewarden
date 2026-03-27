@@ -59,6 +59,20 @@ var Catalog = []PluginDescriptor{
     content_security_policy: "default-src 'self'"`,
 	},
 	{
+		Name:        "body-size",
+		Description: "Request body size limiting with global default and per-path overrides",
+		ConfigSchema: map[string]string{
+			"max":              "Global default maximum body size (e.g. \"1MB\", \"512KB\"; default: \"1MB\")",
+			"overrides[].path": "URL path prefix for the override (e.g. \"/api/upload\")",
+			"overrides[].max":  "Maximum body size for the path (e.g. \"50MB\")",
+		},
+		Example: `  body_size:
+    max: "1MB"
+    overrides:
+      - path: /api/upload
+        max: "50MB"`,
+	},
+	{
 		Name:        "rate-limiting",
 		Description: "Per-IP and per-user token-bucket rate limiting on every proxied request",
 		ConfigSchema: map[string]string{

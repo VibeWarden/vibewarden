@@ -62,7 +62,7 @@ func BuildCaddyConfig(cfg *ports.ProxyConfig) (map[string]any, error) {
 	}
 
 	// Build route handlers (middleware chain + reverse proxy).
-	// Middleware order: StripUserHeaders → SecurityHeaders → AdminAuth → RateLimit → ReverseProxy
+	// Middleware order: StripUserHeaders → SecurityHeaders → AdminAuth → BodySize → RateLimit → ReverseProxy
 	//
 	// The header strip handler MUST be first so that spoofed X-User-* headers sent
 	// by clients are removed before any other handler (including auth) runs.
@@ -83,6 +83,16 @@ func BuildCaddyConfig(cfg *ports.ProxyConfig) (map[string]any, error) {
 		return nil, fmt.Errorf("building admin auth handler config: %w", err)
 	}
 	handlers = append(handlers, adminAuthHandler)
+
+	// Add body size handler if enabled. It must run before the reverse proxy
+	// so that oversized request bodies are rejected before any upstream I/O.
+	if cfg.BodySize.Enabled {
+		bsHandler, err := buildBodySizeHandlerJSON(cfg.BodySize)
+		if err != nil {
+			return nil, fmt.Errorf("building body size handler config: %w", err)
+		}
+		handlers = append(handlers, bsHandler)
+	}
 
 	// Add rate limit handler if enabled.
 	if cfg.RateLimit.Enabled {

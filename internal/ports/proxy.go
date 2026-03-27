@@ -53,6 +53,33 @@ type ProxyConfig struct {
 	// Admin configuration — controls the admin HTTP API server that serves
 	// /_vibewarden/admin/* routes via an internal reverse proxy.
 	Admin AdminProxyConfig
+
+	// BodySize configuration — controls request body size limiting.
+	BodySize BodySizeConfig
+}
+
+// BodySizeConfig holds configuration for the request body size limiting middleware.
+type BodySizeConfig struct {
+	// Enabled toggles body size limiting.
+	Enabled bool
+
+	// MaxBytes is the global default maximum request body size in bytes.
+	// Requests with a larger body receive 413 Payload Too Large.
+	// A value of 0 means no limit.
+	MaxBytes int64
+
+	// Overrides defines per-path body size limits that take precedence over MaxBytes.
+	Overrides []BodySizeOverride
+}
+
+// BodySizeOverride defines a path-specific body size limit.
+type BodySizeOverride struct {
+	// Path is the URL path prefix to match (e.g. "/api/upload").
+	Path string
+
+	// MaxBytes is the maximum request body size for this path in bytes.
+	// A value of 0 means no limit for this path.
+	MaxBytes int64
 }
 
 // AdminProxyConfig holds configuration for exposing the admin API through
