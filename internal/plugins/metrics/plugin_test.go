@@ -337,3 +337,31 @@ func TestPlugin_ImplementsCaddyContributor(t *testing.T) {
 func TestPlugin_ImplementsInternalServerPlugin(t *testing.T) {
 	var _ ports.InternalServerPlugin = (*metrics.Plugin)(nil)
 }
+
+func TestPlugin_Collector_DisabledReturnsNoOp(t *testing.T) {
+	p := metrics.New(metrics.Config{Enabled: false}, slog.New(slog.NewTextHandler(&noopWriter{}, nil)))
+	c := p.Collector()
+	if c == nil {
+		t.Fatal("Collector() returned nil, want NoOpMetricsCollector")
+	}
+	// NoOp should not panic when called.
+	c.IncRequestTotal("GET", "200", "/test")
+}
+
+func TestPlugin_Collector_EnabledReturnsAdapter(t *testing.T) {
+	p := metrics.New(metrics.Config{Enabled: true}, slog.New(slog.NewTextHandler(&noopWriter{}, nil)))
+	if err := p.Init(context.Background()); err != nil {
+		t.Fatalf("Init() error: %v", err)
+	}
+	if err := p.Start(context.Background()); err != nil {
+		t.Fatalf("Start() error: %v", err)
+	}
+	defer p.Stop(context.Background()) //nolint:errcheck
+
+	c := p.Collector()
+	if c == nil {
+		t.Fatal("Collector() returned nil after Start")
+	}
+	// Should not panic when recording.
+	c.IncRequestTotal("GET", "200", "/test")
+}

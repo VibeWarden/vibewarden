@@ -2,6 +2,7 @@ package otel
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/vibewarden/vibewarden/internal/ports"
 	"go.opentelemetry.io/otel/attribute"
@@ -17,7 +18,7 @@ type meterAdapter struct {
 func (a *meterAdapter) Int64Counter(name string, opts ...ports.InstrumentOption) (ports.Int64Counter, error) {
 	c, err := a.m.Int64Counter(name, toCounterOptions(opts)...)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("creating Int64Counter %q: %w", name, err)
 	}
 	return &int64CounterAdapter{c: c}, nil
 }
@@ -26,7 +27,7 @@ func (a *meterAdapter) Int64Counter(name string, opts ...ports.InstrumentOption)
 func (a *meterAdapter) Float64Histogram(name string, opts ...ports.InstrumentOption) (ports.Float64Histogram, error) {
 	h, err := a.m.Float64Histogram(name, toHistogramOptions(opts)...)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("creating Float64Histogram %q: %w", name, err)
 	}
 	return &float64HistogramAdapter{h: h}, nil
 }
@@ -35,7 +36,7 @@ func (a *meterAdapter) Float64Histogram(name string, opts ...ports.InstrumentOpt
 func (a *meterAdapter) Int64UpDownCounter(name string, opts ...ports.InstrumentOption) (ports.Int64UpDownCounter, error) {
 	c, err := a.m.Int64UpDownCounter(name, toUpDownCounterOptions(opts)...)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("creating Int64UpDownCounter %q: %w", name, err)
 	}
 	return &int64UpDownCounterAdapter{c: c}, nil
 }
