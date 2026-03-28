@@ -116,6 +116,9 @@ func (p *LogProvider) Shutdown(ctx context.Context) error {
 //   - "*.failed", "*.blocked", "*.hit"            → WARN
 //   - "*.unavailable", "*_failed"                  → ERROR
 //   - default                                       → INFO
+//
+// This function is exported for use by a future custom slog handler that will
+// enrich log records with OTel severity before passing them to the bridge.
 func SeverityForEventType(eventType string) otellog.Severity {
 	switch {
 	case strings.HasSuffix(eventType, ".failed"),
