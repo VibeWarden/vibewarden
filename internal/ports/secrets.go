@@ -1,7 +1,11 @@
 // Package ports defines the interfaces (ports) for VibeWarden's hexagonal architecture.
 package ports
 
-import "context"
+import (
+	"context"
+
+	domainsecret "github.com/vibewarden/vibewarden/internal/domain/secret"
+)
 
 // SecretStore is the outbound port for reading and writing secrets in an
 // external secret store (e.g. OpenBao / HashiCorp Vault KV v2).
@@ -26,4 +30,16 @@ type SecretStore interface {
 	// Health performs a live connectivity probe against the secret store.
 	// Returns nil when the store is reachable and unsealed.
 	Health(ctx context.Context) error
+}
+
+// SecretRetriever provides read-only access to secrets from multiple sources.
+// It tries OpenBao first, then falls back to the credentials file.
+type SecretRetriever interface {
+	// Get retrieves a secret by alias or path. Tries OpenBao first, then
+	// falls back to the credentials file. Returns ErrSecretNotFound when
+	// neither source has the secret.
+	Get(ctx context.Context, aliasOrPath string) (*domainsecret.RetrievedSecret, error)
+
+	// List returns all managed secret paths from both sources.
+	List(ctx context.Context) ([]string, error)
 }
