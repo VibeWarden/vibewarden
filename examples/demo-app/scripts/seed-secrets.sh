@@ -1,10 +1,10 @@
-#!/bin/sh
+#!/usr/bin/env sh
 # seed-secrets.sh — populate OpenBao with demo secrets for the VibeWarden secrets plugin.
 #
 # Requires: BAO_ADDR and BAO_TOKEN set in the environment.
 # Idempotent: overwrites existing secrets (dev mode only).
 
-set -e
+set -eu
 
 echo "Waiting for OpenBao to be ready..."
 until bao status >/dev/null 2>&1; do
