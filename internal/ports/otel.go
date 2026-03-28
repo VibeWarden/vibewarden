@@ -21,6 +21,17 @@ type TelemetryConfig struct {
 
 	// Logs configures structured event log export settings.
 	Logs LogExportConfig
+
+	// Traces configures distributed tracing settings.
+	Traces TraceExportConfig
+}
+
+// TraceExportConfig configures OTel tracing.
+type TraceExportConfig struct {
+	// Enabled toggles tracing (default: false).
+	// When enabled, a span is created for each HTTP request and exported via OTLP.
+	// Requires that the OTLP exporter endpoint is configured.
+	Enabled bool
 }
 
 // LogExportConfig configures log export via OTLP.
@@ -82,12 +93,93 @@ type OTelProvider interface {
 	// The scope name is "github.com/vibewarden/vibewarden".
 	Meter() Meter
 
+	// Tracer returns an OTel Tracer for creating spans.
+	// Returns nil if tracing is disabled or Init has not been called.
+	Tracer() Tracer
+
 	// PrometheusEnabled returns true if the Prometheus exporter is active.
 	PrometheusEnabled() bool
 
 	// OTLPEnabled returns true if the OTLP exporter is active.
 	OTLPEnabled() bool
+
+	// TracingEnabled returns true if the tracing exporter is active.
+	TracingEnabled() bool
 }
+
+// Tracer is a subset of the OTel trace.Tracer interface.
+// It exposes only the span creation method VibeWarden needs, keeping application
+// code decoupled from the full OTel API.
+type Tracer interface {
+	// Start creates a span and a context containing the newly-created span.
+	// The span must be ended by calling span.End() when the operation completes.
+	Start(ctx context.Context, spanName string, opts ...SpanStartOption) (context.Context, Span)
+}
+
+// Span represents a single operation within a trace.
+type Span interface {
+	// End marks the span as complete. Must be called exactly once.
+	End()
+
+	// SetStatus sets the span status.
+	SetStatus(code SpanStatusCode, description string)
+
+	// SetAttributes sets attributes on the span.
+	SetAttributes(attrs ...Attribute)
+
+	// RecordError records an error as a span event.
+	RecordError(err error)
+}
+
+// SpanStartOption configures span creation.
+type SpanStartOption interface {
+	isSpanStartOption()
+}
+
+// spanKindOption carries the span kind for a SpanStartOption.
+type spanKindOption struct{ kind SpanKind }
+
+func (spanKindOption) isSpanStartOption() {}
+
+// WithSpanKind returns a SpanStartOption that sets the span kind.
+func WithSpanKind(kind SpanKind) SpanStartOption {
+	return spanKindOption{kind: kind}
+}
+
+// KindOf extracts the SpanKind from a SpanStartOption slice, defaulting to SpanKindInternal.
+// This is a helper for adapter implementations.
+func KindOf(opts []SpanStartOption) SpanKind {
+	for _, o := range opts {
+		if k, ok := o.(spanKindOption); ok {
+			return k.kind
+		}
+	}
+	return SpanKindInternal
+}
+
+// SpanStatusCode represents the status of a span.
+type SpanStatusCode int
+
+const (
+	// SpanStatusUnset is the default status, indicating no explicit status has been set.
+	SpanStatusUnset SpanStatusCode = iota
+	// SpanStatusOK indicates the span completed successfully.
+	SpanStatusOK
+	// SpanStatusError indicates the span completed with an error.
+	SpanStatusError
+)
+
+// SpanKind is the type of span, describing the relationship between the span and its callers.
+type SpanKind int
+
+const (
+	// SpanKindInternal is used for spans representing internal operations.
+	SpanKindInternal SpanKind = iota
+	// SpanKindServer is used for spans representing server-side handling of a request.
+	SpanKindServer
+	// SpanKindClient is used for spans representing client-side outgoing requests.
+	SpanKindClient
+)
 
 // LoggerProvider manages the OTel Log SDK lifecycle.
 // It creates a LoggerProvider that bridges slog events to OTel log records via OTLP.

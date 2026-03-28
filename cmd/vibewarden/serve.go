@@ -232,6 +232,7 @@ func registerPlugins(
 		OTLPInterval:      cfg.Telemetry.OTLP.Interval,
 		OTLPProtocol:      cfg.Telemetry.OTLP.Protocol,
 		LogsOTLPEnabled:   cfg.Telemetry.Logs.OTLP,
+		TracesEnabled:     cfg.Telemetry.Traces.Enabled,
 	}, logger))
 
 	// Rate limiting — priority 50

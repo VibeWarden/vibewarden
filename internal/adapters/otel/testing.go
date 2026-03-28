@@ -79,3 +79,60 @@ func NewTestLogProvider(ctx context.Context) (*LogProvider, func() [][]byte, fun
 	closeFn := srv.Close
 	return p, bodies, closeFn, nil
 }
+
+// MockTracer implements ports.Tracer for testing.
+// It records all calls to Start so tests can assert on span creation.
+type MockTracer struct {
+	// StartCalls records all calls to Start.
+	StartCalls []struct {
+		Name string
+		Opts []ports.SpanStartOption
+	}
+	// SpanToReturn is the span returned by Start. When nil, a new MockSpan is created.
+	SpanToReturn *MockSpan
+}
+
+// Start records the call and returns a context and a MockSpan.
+func (m *MockTracer) Start(ctx context.Context, spanName string, opts ...ports.SpanStartOption) (context.Context, ports.Span) {
+	m.StartCalls = append(m.StartCalls, struct {
+		Name string
+		Opts []ports.SpanStartOption
+	}{Name: spanName, Opts: opts})
+	span := m.SpanToReturn
+	if span == nil {
+		span = &MockSpan{}
+	}
+	return ctx, span
+}
+
+// MockSpan implements ports.Span for testing.
+// It records all calls so tests can assert on span state.
+type MockSpan struct {
+	// Ended is true after End has been called.
+	Ended bool
+	// StatusCode is the last status code passed to SetStatus.
+	StatusCode ports.SpanStatusCode
+	// StatusDesc is the last description passed to SetStatus.
+	StatusDesc string
+	// Attrs accumulates all attributes set via SetAttributes.
+	Attrs []ports.Attribute
+	// Errors accumulates all errors passed to RecordError.
+	Errors []error
+}
+
+// End marks the span as ended.
+func (s *MockSpan) End() { s.Ended = true }
+
+// SetStatus records the status code and description.
+func (s *MockSpan) SetStatus(code ports.SpanStatusCode, description string) {
+	s.StatusCode = code
+	s.StatusDesc = description
+}
+
+// SetAttributes appends attributes to the span.
+func (s *MockSpan) SetAttributes(attrs ...ports.Attribute) {
+	s.Attrs = append(s.Attrs, attrs...)
+}
+
+// RecordError appends an error to the span.
+func (s *MockSpan) RecordError(err error) { s.Errors = append(s.Errors, err) }

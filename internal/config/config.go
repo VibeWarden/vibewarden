@@ -505,6 +505,17 @@ type TelemetryConfig struct {
 
 	// Logs configures structured event log export settings.
 	Logs LogsConfig `mapstructure:"logs"`
+
+	// Traces configures distributed tracing settings.
+	Traces TracesConfig `mapstructure:"traces"`
+}
+
+// TracesConfig holds distributed tracing settings.
+type TracesConfig struct {
+	// Enabled toggles distributed tracing (default: false).
+	// When enabled, a span is created for each HTTP request and exported via OTLP.
+	// Requires telemetry.otlp.enabled to be true.
+	Enabled bool `mapstructure:"enabled"`
 }
 
 // LogsConfig holds log export settings.

@@ -48,4 +48,9 @@ type Config struct {
 	// When enabled, structured events are exported to the same OTLP endpoint as metrics.
 	// Requires OTLPEndpoint to be configured.
 	LogsOTLPEnabled bool
+
+	// TracesEnabled toggles distributed tracing (default: false).
+	// When enabled, a span is created for each HTTP request and exported via OTLP.
+	// Requires OTLPEnabled and OTLPEndpoint to be configured.
+	TracesEnabled bool
 }
