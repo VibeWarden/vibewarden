@@ -38,3 +38,6 @@ func (NoOpMetricsCollector) SetActiveConnections(_ int) {}
 
 // SetCircuitBreakerState implements ports.MetricsCollector and does nothing.
 func (NoOpMetricsCollector) SetCircuitBreakerState(_ context.Context, _ resilience.State) {}
+
+// SetUpstreamHealthy implements ports.MetricsCollectorWithUpstreamHealth and does nothing.
+func (NoOpMetricsCollector) SetUpstreamHealthy(_ context.Context, _ bool) {}

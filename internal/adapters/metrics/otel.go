@@ -14,19 +14,21 @@ import (
 // It creates counters and histograms via ports.Meter and records observations.
 // All methods are safe for concurrent use.
 type OTelAdapter struct {
-	requestsTotal       ports.Int64Counter
-	requestDuration     ports.Float64Histogram
-	rateLimitHits       ports.Int64Counter
-	authDecisions       ports.Int64Counter
-	upstreamErrors      ports.Int64Counter
-	upstreamTimeouts    ports.Int64Counter
-	upstreamRetries     ports.Int64Counter
-	activeConnections   ports.Int64UpDownCounter
-	circuitBreakerState ports.Int64UpDownCounter
-	currentConns        atomic.Int64
-	currentCBState      atomic.Int64
-	pathMatcher         *PathMatcher
-	handler             http.Handler
+	requestsTotal          ports.Int64Counter
+	requestDuration        ports.Float64Histogram
+	rateLimitHits          ports.Int64Counter
+	authDecisions          ports.Int64Counter
+	upstreamErrors         ports.Int64Counter
+	upstreamTimeouts       ports.Int64Counter
+	upstreamRetries        ports.Int64Counter
+	activeConnections      ports.Int64UpDownCounter
+	circuitBreakerState    ports.Int64UpDownCounter
+	upstreamHealthy        ports.Int64UpDownCounter
+	currentConns           atomic.Int64
+	currentCBState         atomic.Int64
+	currentUpstreamHealthy atomic.Int64
+	pathMatcher            *PathMatcher
+	handler                http.Handler
 }
 
 // NewOTelAdapter creates a new OTel-backed MetricsCollector.
@@ -101,6 +103,13 @@ func NewOTelAdapter(provider ports.OTelProvider, pathPatterns []string) (*OTelAd
 		return nil, err
 	}
 
+	upstreamHealthy, err := meter.Int64UpDownCounter("vibewarden_upstream_healthy",
+		ports.WithDescription("Whether the upstream application is healthy: 1=healthy, 0=unhealthy or unknown."),
+	)
+	if err != nil {
+		return nil, err
+	}
+
 	return &OTelAdapter{
 		requestsTotal:       requestsTotal,
 		requestDuration:     requestDuration,
@@ -111,6 +120,7 @@ func NewOTelAdapter(provider ports.OTelProvider, pathPatterns []string) (*OTelAd
 		upstreamRetries:     upstreamRetries,
 		activeConnections:   activeConnections,
 		circuitBreakerState: circuitBreakerState,
+		upstreamHealthy:     upstreamHealthy,
 		pathMatcher:         NewPathMatcher(pathPatterns),
 		handler:             provider.Handler(),
 	}, nil
@@ -195,5 +205,21 @@ func (a *OTelAdapter) SetCircuitBreakerState(ctx context.Context, state resilien
 	delta := next - prev
 	if delta != 0 {
 		a.circuitBreakerState.Add(ctx, delta)
+	}
+}
+
+// SetUpstreamHealthy implements ports.MetricsCollectorWithUpstreamHealth.
+// Sets the vibewarden_upstream_healthy gauge to 1 when healthy, 0 otherwise.
+// OTel's UpDownCounter only supports Add; this implementation tracks the
+// previous value atomically and emits only the delta.
+func (a *OTelAdapter) SetUpstreamHealthy(ctx context.Context, healthy bool) {
+	var next int64
+	if healthy {
+		next = 1
+	}
+	prev := a.currentUpstreamHealthy.Swap(next)
+	delta := next - prev
+	if delta != 0 {
+		a.upstreamHealthy.Add(ctx, delta)
 	}
 }
