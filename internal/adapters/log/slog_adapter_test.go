@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"log/slog"
 	"testing"
 	"time"
 
@@ -374,5 +375,85 @@ func TestSlogEventLogger_EmptyPayload(t *testing.T) {
 	}
 	if _, ok := payload.(map[string]any); !ok {
 		t.Errorf("payload is not a JSON object: %T", payload)
+	}
+}
+
+// captureHandler is an slog.Handler used in tests to record Handle calls.
+type captureHandler struct {
+	records []slog.Record
+}
+
+func (c *captureHandler) Enabled(_ context.Context, _ slog.Level) bool { return true }
+func (c *captureHandler) Handle(_ context.Context, r slog.Record) error {
+	c.records = append(c.records, r.Clone())
+	return nil
+}
+func (c *captureHandler) WithAttrs(_ []slog.Attr) slog.Handler { return c }
+func (c *captureHandler) WithGroup(_ string) slog.Handler      { return c }
+
+// TestSlogEventLogger_AdditionalHandler verifies that when an extra handler is
+// provided to NewSlogEventLogger, it receives every log record in addition to
+// the JSON writer.
+func TestSlogEventLogger_AdditionalHandler(t *testing.T) {
+	var buf bytes.Buffer
+	extra := &captureHandler{}
+
+	logger := log.NewSlogEventLogger(&buf, extra)
+
+	event := fixedEvent(
+		events.EventTypeAuthSuccess,
+		"Authenticated request allowed",
+		map[string]any{"method": "GET", "path": "/api"},
+	)
+
+	if err := logger.Log(context.Background(), event); err != nil {
+		t.Fatalf("Log() error: %v", err)
+	}
+
+	// JSON writer must have produced output.
+	if buf.Len() == 0 {
+		t.Error("JSON writer produced no output")
+	}
+
+	// Additional handler must have received the record.
+	if len(extra.records) != 1 {
+		t.Errorf("extra handler received %d records, want 1", len(extra.records))
+	}
+}
+
+// TestSlogEventLogger_MultipleAdditionalHandlers verifies fan-out to more than
+// one extra handler.
+func TestSlogEventLogger_MultipleAdditionalHandlers(t *testing.T) {
+	var buf bytes.Buffer
+	h1 := &captureHandler{}
+	h2 := &captureHandler{}
+
+	logger := log.NewSlogEventLogger(&buf, h1, h2)
+
+	event := fixedEvent(events.EventTypeProxyStarted, "Proxy started", map[string]any{})
+	if err := logger.Log(context.Background(), event); err != nil {
+		t.Fatalf("Log() error: %v", err)
+	}
+
+	if len(h1.records) != 1 {
+		t.Errorf("handler1 received %d records, want 1", len(h1.records))
+	}
+	if len(h2.records) != 1 {
+		t.Errorf("handler2 received %d records, want 1", len(h2.records))
+	}
+}
+
+// TestSlogEventLogger_NoAdditionalHandlers verifies backward compatibility:
+// passing no extra handlers keeps the original JSON-only behaviour.
+func TestSlogEventLogger_NoAdditionalHandlers(t *testing.T) {
+	var buf bytes.Buffer
+	logger := log.NewSlogEventLogger(&buf)
+
+	event := fixedEvent(events.EventTypeAuthSuccess, "test", map[string]any{})
+	if err := logger.Log(context.Background(), event); err != nil {
+		t.Fatalf("Log() error: %v", err)
+	}
+	if buf.Len() == 0 {
+		t.Error("JSON writer produced no output")
 	}
 }

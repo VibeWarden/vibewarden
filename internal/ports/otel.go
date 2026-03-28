@@ -3,6 +3,7 @@ package ports
 
 import (
 	"context"
+	"log/slog"
 	"net/http"
 	"time"
 )
@@ -17,6 +18,17 @@ type TelemetryConfig struct {
 	// OTLP enables the OTLP push-based exporter.
 	// When enabled, metrics are pushed to the configured endpoint.
 	OTLP OTLPExporterConfig
+
+	// Logs configures structured event log export settings.
+	Logs LogExportConfig
+}
+
+// LogExportConfig configures log export via OTLP.
+type LogExportConfig struct {
+	// OTLPEnabled toggles OTLP log export (default: false).
+	// When enabled, structured events are exported to the same OTLP endpoint as metrics.
+	// Requires that the OTLP exporter endpoint is configured.
+	OTLPEnabled bool
 }
 
 // PrometheusExporterConfig configures the Prometheus pull-based exporter.
@@ -75,6 +87,20 @@ type OTelProvider interface {
 
 	// OTLPEnabled returns true if the OTLP exporter is active.
 	OTLPEnabled() bool
+}
+
+// LoggerProvider manages the OTel Log SDK lifecycle.
+// It creates a LoggerProvider that bridges slog events to OTel log records via OTLP.
+// Implementations must be safe for concurrent use after Init returns.
+type LoggerProvider interface {
+	// Handler returns an slog.Handler that bridges log records to OTel.
+	// The handler emits logs with the configured service identity and resource attributes.
+	// Returns nil if log export is disabled or Init has not been called.
+	Handler() slog.Handler
+
+	// Shutdown gracefully shuts down the LoggerProvider, flushing any buffered logs.
+	// Must honour the context deadline.
+	Shutdown(ctx context.Context) error
 }
 
 // Meter is a subset of the OTel metric.Meter interface, exposing only the

@@ -24,11 +24,15 @@ type SlogEventLogger struct {
 // NewSlogEventLogger creates a SlogEventLogger that writes JSON to w.
 // Pass os.Stdout for production use. Pass a *bytes.Buffer or similar in tests.
 // The logger emits every record regardless of level — it always uses LevelInfo.
-func NewSlogEventLogger(w io.Writer) *SlogEventLogger {
+//
+// Additional handlers (e.g., an OTel bridge handler) can be provided via
+// additionalHandlers. When present, a MultiHandler fans out records to the
+// JSON handler and all additional handlers simultaneously.
+func NewSlogEventLogger(w io.Writer, additionalHandlers ...slog.Handler) *SlogEventLogger {
 	if w == nil {
 		w = os.Stdout
 	}
-	handler := slog.NewJSONHandler(w, &slog.HandlerOptions{
+	jsonHandler := slog.NewJSONHandler(w, &slog.HandlerOptions{
 		// Disable slog's default level filtering so all events are written.
 		Level: slog.LevelDebug,
 		// Replace the default "time" key with our own timestamp from the Event
@@ -50,6 +54,15 @@ func NewSlogEventLogger(w io.Writer) *SlogEventLogger {
 			return a
 		},
 	})
+
+	var handler slog.Handler = jsonHandler
+	if len(additionalHandlers) > 0 {
+		all := make([]slog.Handler, 0, 1+len(additionalHandlers))
+		all = append(all, jsonHandler)
+		all = append(all, additionalHandlers...)
+		handler = NewMultiHandler(all...)
+	}
+
 	return &SlogEventLogger{logger: slog.New(handler)}
 }
 
