@@ -166,6 +166,13 @@ func TestPlugin_Health(t *testing.T) {
 			wantHealthy:    true,
 			wantMsgContain: "running",
 		},
+		{
+			name:           "OTLP-only running",
+			cfg:            otlpOnlyConfig(),
+			initAndStart:   true,
+			wantHealthy:    true,
+			wantMsgContain: "running",
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
