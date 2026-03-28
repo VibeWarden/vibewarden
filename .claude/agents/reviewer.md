@@ -14,7 +14,7 @@ become technical debt.
 
 1. **Read context first**:
    - `CLAUDE.md` — all rules you will enforce
-   - `.claude/decisions.md` — ADRs for this issue
+   - `docs/decisions.md` — ADRs for this issue
    - The PR details:
      ```bash
      gh pr view <number> --repo vibewarden/vibewarden --comments
