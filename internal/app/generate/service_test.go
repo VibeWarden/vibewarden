@@ -8,12 +8,14 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	templateadapter "github.com/vibewarden/vibewarden/internal/adapters/template"
 	"github.com/vibewarden/vibewarden/internal/app/generate"
 	"github.com/vibewarden/vibewarden/internal/config"
 	configtemplates "github.com/vibewarden/vibewarden/internal/config/templates"
+	gendomain "github.com/vibewarden/vibewarden/internal/domain/generate"
 )
 
 // realRenderer returns a TemplateRenderer backed by the embedded config templates FS.
@@ -1176,5 +1178,274 @@ func TestGenerate_Observability_NotPresent_WhenDisabled(t *testing.T) {
 		if bytes.Contains(compose, []byte(vol)) {
 			t.Errorf("volume %q must not appear when observability is disabled\ncompose:\n%s", vol, compose)
 		}
+	}
+}
+
+// --- Credential generation tests ---
+
+// fakeCredentialGenerator is a test double for ports.CredentialGenerator.
+type fakeCredentialGenerator struct {
+	creds *gendomain.GeneratedCredentials
+	err   error
+}
+
+func (f *fakeCredentialGenerator) Generate(_ context.Context) (*gendomain.GeneratedCredentials, error) {
+	return f.creds, f.err
+}
+
+// fakeCredentialStore is a test double for ports.CredentialStore.
+type fakeCredentialStore struct {
+	written  *gendomain.GeneratedCredentials
+	writeErr error
+}
+
+func (f *fakeCredentialStore) Write(_ context.Context, creds *gendomain.GeneratedCredentials, _ string) error {
+	f.written = creds
+	return f.writeErr
+}
+
+func (f *fakeCredentialStore) Read(_ context.Context, _ string) (*gendomain.GeneratedCredentials, error) {
+	return f.written, nil
+}
+
+// fixedCreds returns a deterministic GeneratedCredentials for testing.
+func fixedCreds() *gendomain.GeneratedCredentials {
+	return &gendomain.GeneratedCredentials{
+		PostgresPassword:     "fixed_postgres_pass_32chars_abcd",
+		KratosCookieSecret:   "fixed_cookie_secret_32chars_abcd",
+		KratosCipherSecret:   "fixed_cipher_secret_32chars_abcd",
+		GrafanaAdminPassword: "fixed_grafana_pass24ab",
+		OpenBaoDevRootToken:  "fixed_openbao_token_32chars_abcd",
+	}
+}
+
+func TestGenerate_ProdProfile_RequiresSecrets(t *testing.T) {
+	outputDir := t.TempDir()
+	svc := generate.NewServiceWithCredentials(
+		&fakeRenderer{},
+		&fakeCredentialGenerator{creds: fixedCreds()},
+		&fakeCredentialStore{},
+	)
+	cfg := minimalConfig()
+	cfg.Profile = "prod"
+	cfg.Secrets.Enabled = false
+
+	err := svc.Generate(context.Background(), cfg, outputDir)
+	if err == nil {
+		t.Fatal("Generate() expected error for prod profile without secrets.enabled, got nil")
+	}
+	if !strings.Contains(err.Error(), "prod profile requires secrets.enabled") {
+		t.Errorf("Generate() error = %q, want message about prod profile requiring secrets", err.Error())
+	}
+}
+
+func TestGenerate_DevProfile_AllowsNoSecrets(t *testing.T) {
+	outputDir := t.TempDir()
+	svc := generate.NewServiceWithCredentials(
+		&fakeRenderer{},
+		&fakeCredentialGenerator{creds: fixedCreds()},
+		&fakeCredentialStore{},
+	)
+	cfg := minimalConfig()
+	cfg.Profile = "dev"
+	cfg.Secrets.Enabled = false
+
+	if err := svc.Generate(context.Background(), cfg, outputDir); err != nil {
+		t.Errorf("Generate() unexpected error for dev profile without secrets: %v", err)
+	}
+}
+
+func TestGenerate_TLSProfile_AllowsNoSecrets(t *testing.T) {
+	outputDir := t.TempDir()
+	svc := generate.NewServiceWithCredentials(
+		&fakeRenderer{},
+		&fakeCredentialGenerator{creds: fixedCreds()},
+		&fakeCredentialStore{},
+	)
+	cfg := minimalConfig()
+	cfg.Profile = "tls"
+	cfg.Secrets.Enabled = false
+
+	if err := svc.Generate(context.Background(), cfg, outputDir); err != nil {
+		t.Errorf("Generate() unexpected error for tls profile without secrets: %v", err)
+	}
+}
+
+func TestGenerate_ProdProfile_WithSecretsEnabled_Succeeds(t *testing.T) {
+	outputDir := t.TempDir()
+	svc := generate.NewServiceWithCredentials(
+		&fakeRenderer{},
+		&fakeCredentialGenerator{creds: fixedCreds()},
+		&fakeCredentialStore{},
+	)
+	cfg := minimalConfig()
+	cfg.Profile = "prod"
+	cfg.Secrets.Enabled = true
+
+	if err := svc.Generate(context.Background(), cfg, outputDir); err != nil {
+		t.Errorf("Generate() unexpected error for prod profile with secrets.enabled: %v", err)
+	}
+}
+
+func TestGenerate_CredentialsWritten(t *testing.T) {
+	outputDir := t.TempDir()
+	store := &fakeCredentialStore{}
+	svc := generate.NewServiceWithCredentials(
+		&fakeRenderer{},
+		&fakeCredentialGenerator{creds: fixedCreds()},
+		store,
+	)
+
+	if err := svc.Generate(context.Background(), minimalConfig(), outputDir); err != nil {
+		t.Fatalf("Generate() unexpected error: %v", err)
+	}
+
+	if store.written == nil {
+		t.Fatal("CredentialStore.Write() was not called")
+	}
+	if store.written.PostgresPassword != fixedCreds().PostgresPassword {
+		t.Errorf("stored PostgresPassword = %q, want %q", store.written.PostgresPassword, fixedCreds().PostgresPassword)
+	}
+}
+
+func TestGenerate_CredentialGeneratorError_ReturnsError(t *testing.T) {
+	outputDir := t.TempDir()
+	svc := generate.NewServiceWithCredentials(
+		&fakeRenderer{},
+		&fakeCredentialGenerator{err: fmt.Errorf("rand failure")},
+		&fakeCredentialStore{},
+	)
+
+	err := svc.Generate(context.Background(), minimalConfig(), outputDir)
+	if err == nil {
+		t.Fatal("Generate() expected error when credential generator fails, got nil")
+	}
+	if !strings.Contains(err.Error(), "generating credentials") {
+		t.Errorf("Generate() error = %q, expected context about credential generation", err.Error())
+	}
+}
+
+func TestGenerate_CredentialStoreError_ReturnsError(t *testing.T) {
+	outputDir := t.TempDir()
+	svc := generate.NewServiceWithCredentials(
+		&fakeRenderer{},
+		&fakeCredentialGenerator{creds: fixedCreds()},
+		&fakeCredentialStore{writeErr: fmt.Errorf("disk full")},
+	)
+
+	err := svc.Generate(context.Background(), minimalConfig(), outputDir)
+	if err == nil {
+		t.Fatal("Generate() expected error when credential store fails, got nil")
+	}
+	if !strings.Contains(err.Error(), "writing credentials") {
+		t.Errorf("Generate() error = %q, expected context about credential write", err.Error())
+	}
+}
+
+func TestGenerate_EnvTemplateWritten(t *testing.T) {
+	outputDir := t.TempDir()
+	svc := generate.NewService(realRenderer())
+	cfg := minimalConfig()
+
+	if err := svc.Generate(context.Background(), cfg, outputDir); err != nil {
+		t.Fatalf("Generate() unexpected error: %v", err)
+	}
+
+	envTemplatePath := filepath.Join(outputDir, ".env.template")
+	if _, err := os.Stat(envTemplatePath); err != nil {
+		t.Errorf("expected .env.template to exist: %v", err)
+	}
+}
+
+func TestGenerate_EnvTemplateNoSecrets(t *testing.T) {
+	outputDir := t.TempDir()
+	svc := generate.NewService(realRenderer())
+	cfg := minimalConfig()
+	cfg.Profile = "dev"
+
+	if err := svc.Generate(context.Background(), cfg, outputDir); err != nil {
+		t.Fatalf("Generate() unexpected error: %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(outputDir, ".env.template"))
+	if err != nil {
+		t.Fatalf("reading .env.template: %v", err)
+	}
+
+	// Verify .env.template contains no credential-like keys.
+	forbiddenKeys := []string{
+		"POSTGRES_PASSWORD=",
+		"KRATOS_SECRETS_COOKIE=",
+		"KRATOS_SECRETS_CIPHER=",
+		"GRAFANA_ADMIN_PASSWORD=",
+		"OPENBAO_DEV_ROOT_TOKEN=",
+	}
+	for _, key := range forbiddenKeys {
+		if bytes.Contains(data, []byte(key)) {
+			t.Errorf(".env.template contains forbidden credential key %q", key)
+		}
+	}
+}
+
+func TestGenerate_EnvTemplateContainsProfile(t *testing.T) {
+	outputDir := t.TempDir()
+	svc := generate.NewService(realRenderer())
+	cfg := minimalConfig()
+	cfg.Profile = "tls"
+
+	if err := svc.Generate(context.Background(), cfg, outputDir); err != nil {
+		t.Fatalf("Generate() unexpected error: %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(outputDir, ".env.template"))
+	if err != nil {
+		t.Fatalf("reading .env.template: %v", err)
+	}
+
+	if !bytes.Contains(data, []byte("VIBEWARDEN_PROFILE=tls")) {
+		t.Errorf(".env.template should contain VIBEWARDEN_PROFILE=tls, content:\n%s", data)
+	}
+}
+
+func TestGenerate_SeedSecretsSourcesCredentials(t *testing.T) {
+	headers := []config.SecretsHeaderInjection{
+		{SecretPath: "app/api-key", SecretKey: "value", Header: "X-API-Key"},
+	}
+	cfg := secretsConfig(true, headers, nil)
+
+	outputDir := t.TempDir()
+	svc := generate.NewService(realRenderer())
+	if err := svc.Generate(context.Background(), cfg, outputDir); err != nil {
+		t.Fatalf("Generate() unexpected error: %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(outputDir, "seed-secrets.sh"))
+	if err != nil {
+		t.Fatalf("reading seed-secrets.sh: %v", err)
+	}
+
+	// Verify the script sources the .credentials file.
+	if !bytes.Contains(data, []byte(".credentials")) {
+		t.Errorf("seed-secrets.sh should reference .credentials file, content:\n%s", data)
+	}
+	if !bytes.Contains(data, []byte(". \"$CREDS_FILE\"")) {
+		t.Errorf("seed-secrets.sh should source credentials via '. \"$CREDS_FILE\"', content:\n%s", data)
+	}
+}
+
+func TestGenerate_NoCredentialAdapters_SkipsCredentials(t *testing.T) {
+	// When NewService (no credential adapters) is used, the .credentials file
+	// must not be written; Generate should still succeed.
+	outputDir := t.TempDir()
+	svc := generate.NewService(&fakeRenderer{})
+	cfg := minimalConfig()
+
+	if err := svc.Generate(context.Background(), cfg, outputDir); err != nil {
+		t.Fatalf("Generate() unexpected error: %v", err)
+	}
+
+	credPath := filepath.Join(outputDir, ".credentials")
+	if _, err := os.Stat(credPath); err == nil {
+		t.Error("expected .credentials NOT to exist when no credential adapters are configured")
 	}
 }
