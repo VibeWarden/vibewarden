@@ -479,6 +479,15 @@ type MetricsConfig struct {
 // TelemetryConfig holds all telemetry export settings.
 // This replaces the narrower MetricsConfig and supports both pull (Prometheus)
 // and push (OTLP) export modes.
+//
+// Prometheus is the automatic fallback: when no telemetry block is present in
+// vibewarden.yaml, prometheus.enabled defaults to true and otlp.enabled defaults
+// to false. This means /_vibewarden/metrics always works out of the box, with
+// zero configuration required. Existing Prometheus scrapers and Grafana dashboards
+// continue to work without any changes.
+//
+// To add OTLP push export, set otlp.enabled = true and provide an endpoint.
+// Both exporters can run simultaneously.
 type TelemetryConfig struct {
 	// Enabled toggles telemetry collection entirely (default: true).
 	Enabled bool `mapstructure:"enabled"`

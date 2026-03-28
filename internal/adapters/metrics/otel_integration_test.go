@@ -159,3 +159,74 @@ func TestOTelMetrics_EndToEnd(t *testing.T) {
 		t.Errorf("Stop() error: %v", err)
 	}
 }
+
+// TestOTelAdapter_MetricNamesMatchLegacyPrometheus verifies that all metric names
+// exported via the OTel Prometheus bridge match the names that were previously
+// exported by the direct Prometheus adapter. This ensures that existing Prometheus
+// scrapers and Grafana dashboards continue to work without any changes.
+func TestOTelAdapter_MetricNamesMatchLegacyPrometheus(t *testing.T) {
+	provider, err := oteladapter.NewTestProvider(context.Background())
+	if err != nil {
+		t.Fatalf("NewTestProvider() error = %v", err)
+	}
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		_ = provider.Shutdown(ctx)
+	})
+
+	adapter, err := metrics.NewOTelAdapter(provider, nil)
+	if err != nil {
+		t.Fatalf("NewOTelAdapter() error = %v", err)
+	}
+
+	// Record one observation for each metric to ensure they appear in the output.
+	adapter.IncRequestTotal("GET", "200", "/")
+	adapter.ObserveRequestDuration("GET", "/", 10*time.Millisecond)
+	adapter.IncRateLimitHit("ip")
+	adapter.IncAuthDecision("allow")
+	adapter.IncUpstreamError()
+	adapter.SetActiveConnections(1)
+
+	// Scrape via the handler.
+	metricsSrv := metrics.NewServer(adapter.Handler(), nil)
+	if err := metricsSrv.Start(); err != nil {
+		t.Fatalf("starting metrics server: %v", err)
+	}
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		_ = metricsSrv.Stop(ctx)
+	})
+
+	client := &http.Client{Timeout: 5 * time.Second}
+	resp, err := client.Get("http://" + metricsSrv.Addr() + "/metrics")
+	if err != nil {
+		t.Fatalf("GET /metrics: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("status = %d, want 200", resp.StatusCode)
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("reading body: %v", err)
+	}
+	bodyStr := string(body)
+
+	// These are the exact metric names that were exported by the legacy
+	// PrometheusAdapter. All must be present for dashboard compatibility.
+	expectedMetrics := []string{
+		"vibewarden_requests_total",
+		"vibewarden_request_duration_seconds",
+		"vibewarden_rate_limit_hits_total",
+		"vibewarden_auth_decisions_total",
+		"vibewarden_upstream_errors_total",
+		"vibewarden_active_connections",
+	}
+	for _, name := range expectedMetrics {
+		assertBodyContains(t, bodyStr, name)
+	}
+}

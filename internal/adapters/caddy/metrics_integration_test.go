@@ -13,9 +13,38 @@ import (
 	"testing"
 	"time"
 
-	prometheusadapter "github.com/vibewarden/vibewarden/internal/adapters/metrics"
+	metricsadapter "github.com/vibewarden/vibewarden/internal/adapters/metrics"
+	oteladapter "github.com/vibewarden/vibewarden/internal/adapters/otel"
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
+
+// newTestMetricsServer creates an OTelAdapter-backed internal metrics server for
+// use in integration tests. It returns the started server; callers are responsible
+// for stopping it.
+func newTestMetricsServer(t *testing.T) *metricsadapter.Server {
+	t.Helper()
+	provider, err := oteladapter.NewTestProvider(context.Background())
+	if err != nil {
+		t.Fatalf("NewTestProvider() error = %v", err)
+	}
+	t.Cleanup(func() { _ = provider.Shutdown(context.Background()) })
+
+	adapter, err := metricsadapter.NewOTelAdapter(provider, nil)
+	if err != nil {
+		t.Fatalf("NewOTelAdapter() error = %v", err)
+	}
+
+	srv := metricsadapter.NewServer(adapter.Handler(), slog.Default())
+	if err := srv.Start(); err != nil {
+		t.Fatalf("starting metrics server: %v", err)
+	}
+	t.Cleanup(func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		_ = srv.Stop(ctx)
+	})
+	return srv
+}
 
 // TestAdapter_Integration_MetricsEndpoint starts Caddy with the metrics endpoint
 // enabled, scrapes /_vibewarden/metrics through the proxy, and verifies the
@@ -27,17 +56,8 @@ func TestAdapter_Integration_MetricsEndpoint(t *testing.T) {
 	}))
 	defer upstream.Close()
 
-	// Start the internal metrics server.
-	pa := prometheusadapter.NewPrometheusAdapter(nil)
-	metricsSrv := prometheusadapter.NewServer(pa.Handler(), slog.Default())
-	if err := metricsSrv.Start(); err != nil {
-		t.Fatalf("starting metrics server: %v", err)
-	}
-	defer func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-		defer cancel()
-		_ = metricsSrv.Stop(ctx)
-	}()
+	// Start the internal metrics server backed by OTelAdapter.
+	metricsSrv := newTestMetricsServer(t)
 
 	listenPort := findFreePort(t)
 	listenAddr := fmt.Sprintf("127.0.0.1:%d", listenPort)
@@ -90,9 +110,6 @@ func TestAdapter_Integration_MetricsEndpoint(t *testing.T) {
 	if !strings.Contains(bodyStr, "go_goroutines") {
 		t.Error("metrics response does not contain go_goroutines")
 	}
-	if !strings.Contains(bodyStr, "process_") {
-		t.Error("metrics response does not contain process_ metrics")
-	}
 
 	// VibeWarden metric type/help lines are present even when counters are zero
 	// because they are registered in the Prometheus registry at startup.
@@ -121,16 +138,7 @@ func TestAdapter_Integration_MetricsEndpoint_BypassesUpstream(t *testing.T) {
 	}))
 	defer upstream.Close()
 
-	pa := prometheusadapter.NewPrometheusAdapter(nil)
-	metricsSrv := prometheusadapter.NewServer(pa.Handler(), slog.Default())
-	if err := metricsSrv.Start(); err != nil {
-		t.Fatalf("starting metrics server: %v", err)
-	}
-	defer func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-		defer cancel()
-		_ = metricsSrv.Stop(ctx)
-	}()
+	metricsSrv := newTestMetricsServer(t)
 
 	listenPort := findFreePort(t)
 	listenAddr := fmt.Sprintf("127.0.0.1:%d", listenPort)

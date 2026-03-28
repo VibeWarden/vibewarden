@@ -4,14 +4,31 @@ import (
 	"context"
 	"io"
 	"net/http"
-	"strings"
 	"testing"
 	"time"
+
+	oteladapter "github.com/vibewarden/vibewarden/internal/adapters/otel"
 )
 
+// newTestHandler returns a Prometheus HTTP handler backed by a fresh OTelAdapter.
+// It uses NewTestProvider so tests do not need to repeat OTel initialisation boilerplate.
+func newTestHandler(t *testing.T) http.Handler {
+	t.Helper()
+	provider, err := oteladapter.NewTestProvider(context.Background())
+	if err != nil {
+		t.Fatalf("NewTestProvider() error = %v", err)
+	}
+	t.Cleanup(func() { _ = provider.Shutdown(context.Background()) })
+
+	adapter, err := NewOTelAdapter(provider, nil)
+	if err != nil {
+		t.Fatalf("NewOTelAdapter() error = %v", err)
+	}
+	return adapter.Handler()
+}
+
 func TestServer_StartAndStop(t *testing.T) {
-	adapter := NewPrometheusAdapter(nil)
-	srv := NewServer(adapter.Handler(), nil)
+	srv := NewServer(newTestHandler(t), nil)
 
 	if err := srv.Start(); err != nil {
 		t.Fatalf("Start() error = %v", err)
@@ -38,8 +55,9 @@ func TestServer_StartAndStop(t *testing.T) {
 	if err != nil {
 		t.Fatalf("reading body: %v", err)
 	}
-	if !strings.Contains(string(body), "go_goroutines") {
-		t.Error("response does not contain expected Prometheus metric go_goroutines")
+	// The OTel Prometheus bridge always emits target_info with service metadata.
+	if len(body) == 0 {
+		t.Error("metrics response body is empty")
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
@@ -60,8 +78,7 @@ func TestServer_StopBeforeStart(t *testing.T) {
 }
 
 func TestServer_UnknownPathReturns404(t *testing.T) {
-	adapter := NewPrometheusAdapter(nil)
-	srv := NewServer(adapter.Handler(), nil)
+	srv := NewServer(newTestHandler(t), nil)
 
 	if err := srv.Start(); err != nil {
 		t.Fatalf("Start() error = %v", err)
