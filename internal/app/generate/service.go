@@ -119,6 +119,19 @@ func (s *Service) Generate(ctx context.Context, cfg *config.Config, outputDir st
 		}
 	}
 
+	// Generate seed-secrets.sh when the secrets plugin is enabled and has
+	// inject entries. The script is mounted into the seed-secrets init container
+	// defined in docker-compose.yml to populate OpenBao with demo values.
+	if NeedsSeedSecrets(cfg) {
+		seedPath := filepath.Join(outputDir, "seed-secrets.sh")
+		if err := s.renderer.RenderToFile("seed-secrets.sh.tmpl", cfg, seedPath, true); err != nil {
+			return fmt.Errorf("rendering seed-secrets.sh: %w", err)
+		}
+		if err := os.Chmod(seedPath, 0o750); err != nil {
+			return fmt.Errorf("setting seed-secrets.sh permissions: %w", err)
+		}
+	}
+
 	return nil
 }
 
