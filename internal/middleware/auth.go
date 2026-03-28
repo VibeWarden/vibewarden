@@ -7,6 +7,7 @@ import (
 	"strings"
 	"sync/atomic"
 
+	"github.com/vibewarden/vibewarden/internal/domain/audit"
 	"github.com/vibewarden/vibewarden/internal/domain/events"
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
@@ -45,11 +46,17 @@ const (
 // The eventLogger receives structured auth events following the VibeWarden
 // schema (auth.success and auth.failed event types). If eventLogger is nil,
 // event logging is skipped silently.
+//
+// The auditLogger receives security audit events (audit.auth.success,
+// audit.auth.failure). Audit events are always emitted regardless of
+// operational log level. If auditLogger is nil, audit logging is skipped
+// silently.
 func AuthMiddleware(
 	checker ports.SessionChecker,
 	cfg ports.AuthConfig,
 	logger *slog.Logger,
 	eventLogger ports.EventLogger,
+	auditLogger ports.AuditEventLogger,
 ) func(http.Handler) http.Handler {
 	cookieName := cfg.SessionCookieName
 	if cookieName == "" {
@@ -97,6 +104,7 @@ func AuthMiddleware(
 			if err != nil {
 				// http.ErrNoCookie is the only error Cookie returns.
 				emitAuthFailed(r, eventLogger, "missing session cookie", "")
+				emitAuditAuthFailure(r, auditLogger, "", "missing session cookie")
 				http.Redirect(w, r, loginURL, http.StatusFound)
 				return
 			}
@@ -114,6 +122,7 @@ func AuthMiddleware(
 						emitKratosRecovered(r, eventLogger, kratosURL)
 					}
 					emitAuthFailed(r, eventLogger, "invalid or missing session", "")
+					emitAuditAuthFailure(r, auditLogger, "", "invalid or missing session")
 					http.Redirect(w, r, loginURL, http.StatusFound)
 
 				case errors.Is(err, ports.ErrAuthProviderUnavailable):
@@ -122,11 +131,13 @@ func AuthMiddleware(
 						emitKratosUnavailable(r, eventLogger, kratosURL, err.Error())
 					}
 					emitAuthFailed(r, eventLogger, "auth provider unavailable", err.Error())
+					emitAuditAuthFailure(r, auditLogger, "", "auth provider unavailable")
 					WriteErrorResponse(w, r, http.StatusServiceUnavailable, "auth_provider_unavailable", "authentication service is temporarily unavailable")
 
 				default:
 					// Unknown error — fail closed.
 					emitAuthFailed(r, eventLogger, "unexpected auth error", err.Error())
+					emitAuditAuthFailure(r, auditLogger, "", "unexpected auth error")
 					WriteErrorResponse(w, r, http.StatusServiceUnavailable, "auth_provider_unavailable", "authentication service is temporarily unavailable")
 				}
 				return
@@ -139,6 +150,7 @@ func AuthMiddleware(
 
 			// Step 8: Valid session — store in context and proceed.
 			emitAuthSuccess(r, eventLogger, session)
+			emitAuditAuthSuccess(r, auditLogger, session.Identity.ID, session.Identity.Email)
 			ctx := contextWithSession(r.Context(), session)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
@@ -212,4 +224,58 @@ func emitKratosRecovered(r *http.Request, eventLogger ports.EventLogger, provide
 		ProviderURL: providerURL,
 	})
 	_ = eventLogger.Log(r.Context(), ev)
+}
+
+// emitAuditAuthSuccess emits an audit.auth.success event via the AuditEventLogger port.
+// If auditLogger is nil the call is a no-op.
+func emitAuditAuthSuccess(r *http.Request, auditLogger ports.AuditEventLogger, userID, email string) {
+	if auditLogger == nil {
+		return
+	}
+	ev, err := audit.NewAuditEvent(
+		audit.EventTypeAuthSuccess,
+		audit.Actor{
+			IP:     ExtractClientIP(r, false),
+			UserID: userID,
+		},
+		audit.Target{Path: r.URL.Path},
+		audit.OutcomeSuccess,
+		CorrelationID(r.Context()),
+		map[string]any{
+			"method": r.Method,
+			"email":  email,
+		},
+	)
+	if err != nil {
+		return
+	}
+	// Best-effort: ignore logging errors so request processing is never blocked.
+	_ = auditLogger.Log(r.Context(), ev)
+}
+
+// emitAuditAuthFailure emits an audit.auth.failure event via the AuditEventLogger port.
+// If auditLogger is nil the call is a no-op.
+func emitAuditAuthFailure(r *http.Request, auditLogger ports.AuditEventLogger, userID, reason string) {
+	if auditLogger == nil {
+		return
+	}
+	ev, err := audit.NewAuditEvent(
+		audit.EventTypeAuthFailure,
+		audit.Actor{
+			IP:     ExtractClientIP(r, false),
+			UserID: userID,
+		},
+		audit.Target{Path: r.URL.Path},
+		audit.OutcomeFailure,
+		CorrelationID(r.Context()),
+		map[string]any{
+			"method": r.Method,
+			"reason": reason,
+		},
+	)
+	if err != nil {
+		return
+	}
+	// Best-effort: ignore logging errors so request processing is never blocked.
+	_ = auditLogger.Log(r.Context(), ev)
 }

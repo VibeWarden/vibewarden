@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/vibewarden/vibewarden/internal/domain/audit"
 	"github.com/vibewarden/vibewarden/internal/domain/events"
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
@@ -31,12 +32,17 @@ import (
 //
 // The eventLogger receives structured rate limit events following the VibeWarden
 // schema. If eventLogger is nil, event logging is skipped silently.
+//
+// The auditLogger receives a security audit event (audit.rate_limit.hit) when a
+// request is rejected. Audit events are always emitted regardless of operational
+// log level. If auditLogger is nil, audit logging is skipped silently.
 func RateLimitMiddleware(
 	ipLimiter ports.RateLimiter,
 	userLimiter ports.RateLimiter,
 	cfg ports.RateLimitConfig,
 	logger *slog.Logger,
 	eventLogger ports.EventLogger,
+	auditLogger ports.AuditEventLogger,
 ) func(http.Handler) http.Handler {
 	matcher, err := NewExemptPathMatcher(cfg.ExemptPaths)
 	if err != nil {
@@ -71,6 +77,7 @@ func RateLimitMiddleware(
 			ipResult := ipLimiter.Allow(r.Context(), clientIP)
 			if !ipResult.Allowed {
 				emitRateLimitHit(r, eventLogger, "ip", clientIP, "", ipResult)
+				emitAuditRateLimitHit(r, auditLogger, "ip", clientIP, ipResult)
 				writeRateLimitResponse(w, r, ipResult)
 				return
 			}
@@ -81,6 +88,7 @@ func RateLimitMiddleware(
 				userResult := userLimiter.Allow(r.Context(), userID)
 				if !userResult.Allowed {
 					emitRateLimitHit(r, eventLogger, "user", userID, clientIP, userResult)
+					emitAuditRateLimitHit(r, auditLogger, "user", clientIP, userResult)
 					writeRateLimitResponse(w, r, userResult)
 					return
 				}
@@ -147,4 +155,35 @@ func emitRateLimitUnidentified(r *http.Request, eventLogger ports.EventLogger) {
 	})
 	// Best-effort: ignore logging errors so request processing is never blocked.
 	_ = eventLogger.Log(r.Context(), ev)
+}
+
+// emitAuditRateLimitHit emits an audit.rate_limit.hit event via the
+// AuditEventLogger port. If auditLogger is nil the call is a no-op.
+func emitAuditRateLimitHit(
+	r *http.Request,
+	auditLogger ports.AuditEventLogger,
+	limitType string,
+	clientIP string,
+	result ports.RateLimitResult,
+) {
+	if auditLogger == nil {
+		return
+	}
+	ev, err := audit.NewAuditEvent(
+		audit.EventTypeRateLimitHit,
+		audit.Actor{IP: clientIP},
+		audit.Target{Path: r.URL.Path},
+		audit.OutcomeFailure,
+		CorrelationID(r.Context()),
+		map[string]any{
+			"method":              r.Method,
+			"limit_type":          limitType,
+			"retry_after_seconds": retryAfterSeconds(result.RetryAfter),
+		},
+	)
+	if err != nil {
+		return
+	}
+	// Best-effort: ignore logging errors so request processing is never blocked.
+	_ = auditLogger.Log(r.Context(), ev)
 }

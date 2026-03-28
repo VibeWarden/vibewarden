@@ -12,7 +12,9 @@ import (
 	gocaddy "github.com/caddyserver/caddy/v2"
 	"github.com/caddyserver/caddy/v2/modules/caddyhttp"
 
+	auditadapter "github.com/vibewarden/vibewarden/internal/adapters/audit"
 	logadapter "github.com/vibewarden/vibewarden/internal/adapters/log"
+	"github.com/vibewarden/vibewarden/internal/domain/audit"
 	"github.com/vibewarden/vibewarden/internal/domain/events"
 	"github.com/vibewarden/vibewarden/internal/middleware"
 	"github.com/vibewarden/vibewarden/internal/ports"
@@ -43,7 +45,8 @@ type IPFilterHandlerConfig struct {
 //   - blocklist: requests from addresses in Addresses are blocked.
 //
 // Blocked requests receive 403 Forbidden. A structured ip_filter.blocked event
-// is emitted for every blocked request.
+// is emitted for every blocked request. An audit.ip_filter.blocked audit event
+// is also emitted for every blocked request, regardless of log level.
 //
 // The module is registered under the name "vibewarden_ip_filter" and referenced
 // from the Caddy JSON configuration as:
@@ -60,8 +63,11 @@ type IPFilterHandler struct {
 	// logger is used to emit error messages when event logging fails.
 	logger *slog.Logger
 
-	// eventLogger emits structured events for blocked requests.
+	// eventLogger emits structured operational events for blocked requests.
 	eventLogger ports.EventLogger
+
+	// auditLogger emits security audit events for blocked requests.
+	auditLogger ports.AuditEventLogger
 }
 
 // CaddyModule returns the module metadata used to register it with Caddy.
@@ -77,6 +83,7 @@ func (IPFilterHandler) CaddyModule() gocaddy.ModuleInfo {
 func (h *IPFilterHandler) Provision(_ gocaddy.Context) error {
 	h.logger = slog.New(slog.NewJSONHandler(os.Stderr, nil))
 	h.eventLogger = logadapter.NewSlogEventLogger(os.Stdout)
+	h.auditLogger = auditadapter.NewJSONWriter(os.Stdout)
 
 	h.nets = h.nets[:0]
 	h.ips = h.ips[:0]
@@ -108,6 +115,7 @@ func (h *IPFilterHandler) ServeHTTP(w http.ResponseWriter, r *http.Request, next
 	blocked := h.isBlocked(matched)
 	if blocked {
 		h.emitBlockedEvent(r.Context(), clientIP, r.Method, r.URL.Path)
+		h.emitAuditBlockedEvent(r.Context(), clientIP, r.Method, r.URL.Path)
 		middleware.WriteErrorResponse(w, r, http.StatusForbidden, "forbidden", "your IP address is not permitted to access this resource")
 		return nil
 	}
@@ -160,6 +168,36 @@ func (h *IPFilterHandler) emitBlockedEvent(ctx context.Context, clientIP, method
 	})
 	if err := h.eventLogger.Log(ctx, ev); err != nil {
 		h.logger.Error("ip-filter: failed to emit blocked event", slog.String("error", err.Error()))
+	}
+}
+
+// emitAuditBlockedEvent emits an audit.ip_filter.blocked audit event.
+// Errors are logged but do not affect the HTTP response.
+func (h *IPFilterHandler) emitAuditBlockedEvent(ctx context.Context, clientIP, method, path string) {
+	if h.auditLogger == nil {
+		return
+	}
+	auditEv, err := audit.NewAuditEvent(
+		audit.EventTypeIPFilterBlocked,
+		audit.Actor{IP: clientIP},
+		audit.Target{Path: path},
+		audit.OutcomeFailure,
+		middleware.CorrelationID(ctx),
+		map[string]any{
+			"method": method,
+			"mode":   h.Config.Mode,
+		},
+	)
+	if err != nil {
+		if h.logger != nil {
+			h.logger.Error("ip-filter: failed to build audit event", slog.String("error", err.Error()))
+		}
+		return
+	}
+	if err := h.auditLogger.Log(ctx, auditEv); err != nil {
+		if h.logger != nil {
+			h.logger.Error("ip-filter: failed to emit audit blocked event", slog.String("error", err.Error()))
+		}
 	}
 }
 

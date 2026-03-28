@@ -12,6 +12,7 @@ import (
 	gocaddy "github.com/caddyserver/caddy/v2"
 	"github.com/caddyserver/caddy/v2/modules/caddyhttp"
 
+	auditadapter "github.com/vibewarden/vibewarden/internal/adapters/audit"
 	logadapter "github.com/vibewarden/vibewarden/internal/adapters/log"
 	resilienceadapter "github.com/vibewarden/vibewarden/internal/adapters/resilience"
 	"github.com/vibewarden/vibewarden/internal/middleware"
@@ -44,6 +45,10 @@ type CircuitBreakerHandlerConfig struct {
 //   - 503 Service Unavailable
 //   - 504 Gateway Timeout
 //
+// Audit events (audit.circuit_breaker.opened, audit.circuit_breaker.half_open,
+// audit.circuit_breaker.closed) are emitted on every state transition, regardless
+// of operational log level.
+//
 // The module is registered under the name "vibewarden_circuit_breaker" and
 // referenced from the Caddy JSON configuration as:
 //
@@ -59,6 +64,9 @@ type CircuitBreakerHandler struct {
 	// eventLogger emits structured state-transition events.
 	eventLogger ports.EventLogger
 
+	// auditLogger emits security audit events on state transitions.
+	auditLogger ports.AuditEventLogger
+
 	// cb is the concurrency-safe circuit breaker adapter.
 	cb ports.CircuitBreaker
 }
@@ -72,10 +80,11 @@ func (CircuitBreakerHandler) CaddyModule() gocaddy.ModuleInfo {
 }
 
 // Provision implements gocaddy.Provisioner. It initialises the circuit breaker,
-// logger and event logger.
+// logger, event logger, and audit logger.
 func (h *CircuitBreakerHandler) Provision(_ gocaddy.Context) error {
 	h.logger = slog.New(slog.NewJSONHandler(os.Stderr, nil))
 	h.eventLogger = logadapter.NewSlogEventLogger(os.Stdout)
+	h.auditLogger = auditadapter.NewJSONWriter(os.Stdout)
 
 	cfg := ports.CircuitBreakerConfig{
 		Enabled:   true,
@@ -87,6 +96,7 @@ func (h *CircuitBreakerHandler) Provision(_ gocaddy.Context) error {
 	if err != nil {
 		return fmt.Errorf("provisioning circuit breaker: %w", err)
 	}
+	cb.WithAuditLogger(h.auditLogger)
 	h.cb = cb
 	return nil
 }

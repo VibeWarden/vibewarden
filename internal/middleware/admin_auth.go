@@ -32,7 +32,12 @@ const (
 //     to the next handler.
 //
 // The comparison is constant-time to prevent timing attacks.
-func AdminAuthMiddleware(cfg ports.AdminAuthConfig) func(http.Handler) http.Handler {
+//
+// The auditLogger receives security audit events (audit.auth.success,
+// audit.auth.failure) for each admin authentication decision. Audit events are
+// always emitted regardless of operational log level. If auditLogger is nil,
+// audit logging is skipped silently.
+func AdminAuthMiddleware(cfg ports.AdminAuthConfig, auditLogger ports.AuditEventLogger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// Only apply to the admin path prefix.
@@ -56,11 +61,13 @@ func AdminAuthMiddleware(cfg ports.AdminAuthConfig) func(http.Handler) http.Hand
 			// Validate the X-Admin-Key header.
 			provided := r.Header.Get(adminKeyHeader)
 			if !secureEqual(provided, cfg.Token) {
+				emitAuditAuthFailure(r, auditLogger, "", "missing or invalid admin key")
 				w.Header().Set("WWW-Authenticate", `Bearer realm="vibewarden-admin"`)
 				WriteErrorResponse(w, r, http.StatusUnauthorized, "unauthorized", "missing or invalid admin key")
 				return
 			}
 
+			emitAuditAuthSuccess(r, auditLogger, "", "")
 			next.ServeHTTP(w, r)
 		})
 	}
