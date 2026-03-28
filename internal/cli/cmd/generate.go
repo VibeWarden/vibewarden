@@ -6,6 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	credentialsadapter "github.com/vibewarden/vibewarden/internal/adapters/credentials"
 	templateadapter "github.com/vibewarden/vibewarden/internal/adapters/template"
 	generateapp "github.com/vibewarden/vibewarden/internal/app/generate"
 	"github.com/vibewarden/vibewarden/internal/config"
@@ -50,7 +51,11 @@ Examples:
 			}
 
 			renderer := templateadapter.NewRenderer(configtemplates.FS)
-			generator := generateapp.NewService(renderer)
+			generator := generateapp.NewServiceWithCredentials(
+				renderer,
+				credentialsadapter.NewGenerator(),
+				credentialsadapter.NewStore(),
+			)
 
 			if err := generator.Generate(cmd.Context(), cfg, outputDir); err != nil {
 				return fmt.Errorf("generating config files: %w", err)

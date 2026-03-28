@@ -60,6 +60,10 @@ services:
 {{- if .TLS.Enabled }}
       - vibewarden-data:/var/lib/vibewarden
 {{- end }}
+{{- if .Secrets.Enabled }}
+    env_file:
+      - ./.vibewarden/generated/.credentials
+{{- end }}
     environment:
 {{- if or .App.Build .App.Image }}
       - VIBEWARDEN_UPSTREAM_HOST=app
@@ -69,7 +73,7 @@ services:
       - VIBEWARDEN_UPSTREAM_PORT={{ .Upstream.Port }}
 {{- if .Secrets.Enabled }}
       - VIBEWARDEN_SECRETS_OPENBAO_ADDRESS=http://openbao:8200
-      - VIBEWARDEN_SECRETS_OPENBAO_AUTH_TOKEN=${OPENBAO_DEV_ROOT_TOKEN:-dev-root-token}
+      - VIBEWARDEN_SECRETS_OPENBAO_AUTH_TOKEN=${OPENBAO_DEV_ROOT_TOKEN}
 {{- end }}
 {{- if eq .RateLimit.Store "redis" }}
       - VIBEWARDEN_RATE_LIMIT_REDIS_ADDRESS=redis:6379
@@ -107,10 +111,12 @@ services:
   kratos-db:
     image: postgres:17-alpine
     restart: unless-stopped
+    env_file:
+      - ./.vibewarden/generated/.credentials
     environment:
       POSTGRES_DB: kratos
       POSTGRES_USER: kratos
-      POSTGRES_PASSWORD: ${KRATOS_DB_PASSWORD}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
     volumes:
       - kratos-db-data:/var/lib/postgresql/data
     networks:
@@ -125,8 +131,10 @@ services:
     image: oryd/kratos:v1.3.1
     restart: unless-stopped
     command: serve --config /etc/kratos/kratos.yaml --dev
+    env_file:
+      - ./.vibewarden/generated/.credentials
     environment:
-      DSN: "postgres://kratos:${KRATOS_DB_PASSWORD}@kratos-db:5432/kratos?sslmode=disable"
+      DSN: "postgres://kratos:${POSTGRES_PASSWORD}@kratos-db:5432/kratos?sslmode=disable"
       SECRETS_COOKIE: "${KRATOS_SECRETS_COOKIE}"
       SECRETS_CIPHER: "${KRATOS_SECRETS_CIPHER}"
     ports:
@@ -153,8 +161,10 @@ services:
     restart: unless-stopped
     cap_add:
       - IPC_LOCK
+    env_file:
+      - ./.vibewarden/generated/.credentials
     environment:
-      BAO_DEV_ROOT_TOKEN_ID: ${OPENBAO_DEV_ROOT_TOKEN:-dev-root-token}
+      BAO_DEV_ROOT_TOKEN_ID: ${OPENBAO_DEV_ROOT_TOKEN}
       BAO_DEV_LISTEN_ADDRESS: "0.0.0.0:8200"
     ports:
       - "8200:8200"
@@ -171,11 +181,14 @@ services:
 
   seed-secrets:
     image: quay.io/openbao/openbao:2.2.0
+    env_file:
+      - ./.vibewarden/generated/.credentials
     environment:
       BAO_ADDR: http://openbao:8200
-      BAO_TOKEN: ${OPENBAO_DEV_ROOT_TOKEN:-dev-root-token}
+      BAO_TOKEN: ${OPENBAO_DEV_ROOT_TOKEN}
     volumes:
       - ./.vibewarden/generated/seed-secrets.sh:/seed-secrets.sh:ro
+      - ./.vibewarden/generated/.credentials:/.credentials:ro
     entrypoint: sh
     command: /seed-secrets.sh
     depends_on:
@@ -266,11 +279,13 @@ services:
     profiles:
       - observability
     restart: unless-stopped
+    env_file:
+      - ./.vibewarden/generated/.credentials
     environment:
       GF_AUTH_ANONYMOUS_ENABLED: "true"
       GF_AUTH_ANONYMOUS_ORG_ROLE: "Admin"
       GF_AUTH_DISABLE_LOGIN_FORM: "true"
-      GF_SECURITY_ADMIN_PASSWORD: "admin"
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD}
     ports:
       - "{{ .Observability.GrafanaPort }}:3000"
     volumes:

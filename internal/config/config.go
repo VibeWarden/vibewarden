@@ -15,6 +15,11 @@ var hexColorRE = regexp.MustCompile(`^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$`)
 // Config holds all configuration for VibeWarden.
 // Fields are loaded from vibewarden.yaml and can be overridden by environment variables.
 type Config struct {
+	// Profile selects the deployment profile: "dev", "tls", or "prod".
+	// Affects TLS settings, credential handling, and validation rules.
+	// Defaults to "dev".
+	Profile string `mapstructure:"profile"`
+
 	// Server configuration
 	Server ServerConfig `mapstructure:"server"`
 
@@ -697,6 +702,12 @@ type ObservabilityConfig struct {
 func (c *Config) Validate() error {
 	var errs []string
 
+	// Profile validation. An empty string is allowed (defaults to "dev" via Load).
+	validProfiles := map[string]bool{"": true, "dev": true, "tls": true, "prod": true}
+	if !validProfiles[c.Profile] {
+		errs = append(errs, fmt.Sprintf("profile must be 'dev', 'tls', or 'prod', got %q", c.Profile))
+	}
+
 	// TLS external provider requires cert_path and key_path.
 	if c.TLS.Enabled && c.TLS.Provider == "external" {
 		if c.TLS.CertPath == "" {
@@ -881,6 +892,7 @@ func Load(configPath string) (*Config, error) {
 	v := viper.New()
 
 	// Set defaults
+	v.SetDefault("profile", "dev")
 	v.SetDefault("server.host", "127.0.0.1")
 	v.SetDefault("server.port", 8080)
 	v.SetDefault("upstream.host", "127.0.0.1")

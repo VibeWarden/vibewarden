@@ -29,18 +29,37 @@ const (
 
 // Service implements ports.ConfigGenerator using a ports.TemplateRenderer.
 type Service struct {
-	renderer ports.TemplateRenderer
+	renderer  ports.TemplateRenderer
+	credGen   ports.CredentialGenerator
+	credStore ports.CredentialStore
 }
 
 // NewService creates a generate Service that uses renderer to execute the
-// embedded Kratos and Docker Compose templates.
+// embedded Kratos and Docker Compose templates. credGen and credStore may be
+// nil; when nil, credential generation and persistence are skipped.
 func NewService(renderer ports.TemplateRenderer) *Service {
 	return &Service{renderer: renderer}
+}
+
+// NewServiceWithCredentials creates a generate Service with credential
+// generation and storage support.
+func NewServiceWithCredentials(
+	renderer ports.TemplateRenderer,
+	credGen ports.CredentialGenerator,
+	credStore ports.CredentialStore,
+) *Service {
+	return &Service{
+		renderer:  renderer,
+		credGen:   credGen,
+		credStore: credStore,
+	}
 }
 
 // Generate implements ports.ConfigGenerator.
 // It writes the following files under outputDir (default: ".vibewarden/generated"):
 //
+//	.credentials         (mode 0600, when credGen and credStore are configured)
+//	.env.template        (non-secret config, safe to commit)
 //	kratos/kratos.yml
 //	kratos/identity.schema.json
 //	kratos/mappers/<provider>.jsonnet  (one per configured social provider)
@@ -53,8 +72,30 @@ func (s *Service) Generate(ctx context.Context, cfg *config.Config, outputDir st
 	// Sanitise the caller-supplied output directory to prevent path traversal.
 	outputDir = filepath.Clean(outputDir)
 
+	// Validate prod profile requirements before generating any files.
+	if cfg.Profile == "prod" && !cfg.Secrets.Enabled {
+		return fmt.Errorf("prod profile requires secrets.enabled: true (OpenBao is mandatory for production)")
+	}
+
 	if err := os.MkdirAll(filepath.Join(outputDir, "kratos"), permDir); err != nil {
 		return fmt.Errorf("creating output directories: %w", err)
+	}
+
+	// Generate and persist credentials when the adapters are configured.
+	if s.credGen != nil && s.credStore != nil {
+		creds, err := s.credGen.Generate(ctx)
+		if err != nil {
+			return fmt.Errorf("generating credentials: %w", err)
+		}
+		if err := s.credStore.Write(ctx, creds, outputDir); err != nil {
+			return fmt.Errorf("writing credentials: %w", err)
+		}
+	}
+
+	// Render .env.template (non-secret config, safe to commit).
+	envTemplatePath := filepath.Join(outputDir, ".env.template")
+	if err := s.renderer.RenderToFile("env.template.tmpl", cfg, envTemplatePath, true); err != nil {
+		return fmt.Errorf("rendering .env.template: %w", err)
 	}
 
 	// Resolve identity schema — override path takes priority over the preset

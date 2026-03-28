@@ -6,6 +6,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	credentialsadapter "github.com/vibewarden/vibewarden/internal/adapters/credentials"
 	opsadapter "github.com/vibewarden/vibewarden/internal/adapters/ops"
 	templateadapter "github.com/vibewarden/vibewarden/internal/adapters/template"
 	generateapp "github.com/vibewarden/vibewarden/internal/app/generate"
@@ -54,7 +55,11 @@ Examples:
 
 			compose := opsadapter.NewComposeAdapter()
 			renderer := templateadapter.NewRenderer(configtemplates.FS)
-			generator := generateapp.NewService(renderer)
+			generator := generateapp.NewServiceWithCredentials(
+				renderer,
+				credentialsadapter.NewGenerator(),
+				credentialsadapter.NewStore(),
+			)
 			svc := opsapp.NewDevServiceWithGenerator(compose, generator)
 
 			opts := opsapp.DevOptions{

@@ -1689,3 +1689,68 @@ func TestValidate_Observability(t *testing.T) {
 		})
 	}
 }
+
+func TestValidate_Profile(t *testing.T) {
+	tests := []struct {
+		name    string
+		profile string
+		wantErr bool
+		errMsg  string
+	}{
+		{"empty string is valid (defaults to dev)", "", false, ""},
+		{"dev is valid", "dev", false, ""},
+		{"tls is valid", "tls", false, ""},
+		{"prod is valid", "prod", false, ""},
+		{"unknown value is invalid", "staging", true, "profile must be 'dev', 'tls', or 'prod'"},
+		{"uppercase DEV is invalid", "DEV", true, "profile must be 'dev', 'tls', or 'prod'"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := config.Config{Profile: tt.profile}
+			err := cfg.Validate()
+			if (err != nil) != tt.wantErr {
+				t.Errorf("Validate() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if tt.wantErr && tt.errMsg != "" && !strings.Contains(err.Error(), tt.errMsg) {
+				t.Errorf("Validate() error = %q, want it to contain %q", err.Error(), tt.errMsg)
+			}
+		})
+	}
+}
+
+func TestLoad_ProfileDefault(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "vibewarden.yaml")
+	if err := os.WriteFile(cfgPath, []byte("server:\n  port: 8080\n"), 0o600); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	cfg, err := config.Load(cfgPath)
+	if err != nil {
+		t.Fatalf("Load() unexpected error: %v", err)
+	}
+
+	if cfg.Profile != "dev" {
+		t.Errorf("default Profile = %q, want %q", cfg.Profile, "dev")
+	}
+}
+
+func TestLoad_ProfileFromFile(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "vibewarden.yaml")
+	content := "profile: tls\nserver:\n  port: 8080\n"
+	if err := os.WriteFile(cfgPath, []byte(content), 0o600); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	cfg, err := config.Load(cfgPath)
+	if err != nil {
+		t.Fatalf("Load() unexpected error: %v", err)
+	}
+
+	if cfg.Profile != "tls" {
+		t.Errorf("Profile from file = %q, want %q", cfg.Profile, "tls")
+	}
+}
