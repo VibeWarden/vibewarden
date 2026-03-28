@@ -197,7 +197,6 @@ func (s *Service) generateObservability(cfg *config.Config, outputDir string) er
 		filepath.Join(obsDir, "loki"),
 		filepath.Join(obsDir, "promtail"),
 		filepath.Join(obsDir, "otel-collector"),
-		filepath.Join(obsDir, "tempo"),
 	}
 	for _, dir := range dirs {
 		if err := os.MkdirAll(dir, permDir); err != nil {
@@ -273,16 +272,6 @@ func (s *Service) generateObservability(cfg *config.Config, outputDir string) er
 		true,
 	); err != nil {
 		return fmt.Errorf("rendering otel-collector config: %w", err)
-	}
-
-	// Render Tempo config.
-	if err := s.renderer.RenderToFile(
-		"observability/tempo-config.yml.tmpl",
-		cfg,
-		filepath.Join(obsDir, "tempo", "tempo-config.yml"),
-		true,
-	); err != nil {
-		return fmt.Errorf("rendering tempo config: %w", err)
 	}
 
 	return nil

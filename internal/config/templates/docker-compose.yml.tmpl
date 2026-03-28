@@ -24,8 +24,8 @@
 #   prometheus      — Metrics collection (profile: observability)
 #   loki            — Log aggregation (profile: observability)
 #   promtail        — Log collector for non-VibeWarden containers (profile: observability)
-#   otel-collector  — OTel Collector: receives OTLP from VibeWarden, exports to Prometheus, Loki, and Tempo (profile: observability)
-#   tempo           — Distributed tracing backend (profile: observability)
+#   otel-collector  — OTel Collector: receives OTLP from VibeWarden, exports to Prometheus, Loki, and Jaeger (profile: observability)
+#   jaeger          — Distributed tracing backend (profile: observability)
 #   grafana         — Visualization (profile: observability)
 {{- end }}
 
@@ -310,7 +310,7 @@ services:
     depends_on:
       loki:
         condition: service_healthy
-      tempo:
+      jaeger:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:13133/"]
@@ -318,19 +318,19 @@ services:
       timeout: 5s
       retries: 5
 
-  tempo:
-    image: grafana/tempo:2.7.2
+  jaeger:
+    image: jaegertracing/jaeger:2.6.0
     profiles:
       - observability
     restart: unless-stopped
-    command: ["-config.file=/etc/tempo/tempo-config.yml"]
-    volumes:
-      - ./.vibewarden/generated/observability/tempo/tempo-config.yml:/etc/tempo/tempo-config.yml:ro
-      - tempo-data:/var/tempo
+    ports:
+      - "16686:16686"
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
     networks:
       - vibewarden
     healthcheck:
-      test: ["CMD-SHELL", "wget -q --spider http://localhost:3200/ready || exit 1"]
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:16687/ || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -362,7 +362,7 @@ services:
         condition: service_healthy
       otel-collector:
         condition: service_healthy
-      tempo:
+      jaeger:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "wget -q --spider http://localhost:3000/api/health || exit 1"]
@@ -390,6 +390,5 @@ volumes:
   prometheus-data:
   loki-data:
   grafana-data:
-  tempo-data:
 {{- end }}
 {{- end }}

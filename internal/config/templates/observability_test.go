@@ -56,7 +56,7 @@ func TestOtelCollectorConfig_PrometheusExporterPresent(t *testing.T) {
 }
 
 // TestOtelCollectorConfig_TracesPipelinePresent verifies that the OTel Collector
-// config includes a traces pipeline that forwards to Tempo.
+// config includes a traces pipeline that forwards to Jaeger.
 func TestOtelCollectorConfig_TracesPipelinePresent(t *testing.T) {
 	data, err := templates.FS.ReadFile("observability/otel-collector-config.yml.tmpl")
 	if err != nil {
@@ -68,44 +68,16 @@ func TestOtelCollectorConfig_TracesPipelinePresent(t *testing.T) {
 		name    string
 		present string
 	}{
-		{"tempo exporter section", "otlp/tempo:"},
-		{"tempo endpoint", "http://tempo:4317"},
+		{"jaeger exporter section", "otlp/jaeger:"},
+		{"jaeger endpoint", "jaeger:4317"},
 		{"traces pipeline", "traces:"},
-		{"traces exporters", "[otlp/tempo]"},
+		{"traces exporters", "[otlp/jaeger]"},
 	}
 
 	for _, tc := range checks {
 		t.Run(tc.name, func(t *testing.T) {
 			if !strings.Contains(content, tc.present) {
 				t.Errorf("otel-collector-config.yml.tmpl must contain %q", tc.present)
-			}
-		})
-	}
-}
-
-// TestTempoConfig_Present verifies that the Tempo config template exists and
-// contains the required structural elements.
-func TestTempoConfig_Present(t *testing.T) {
-	data, err := templates.FS.ReadFile("observability/tempo-config.yml.tmpl")
-	if err != nil {
-		t.Fatalf("reading tempo-config.yml.tmpl: %v", err)
-	}
-	content := string(data)
-
-	checks := []struct {
-		name    string
-		present string
-	}{
-		{"HTTP listen port", "http_listen_port: 3200"},
-		{"OTLP gRPC receiver", "grpc:"},
-		{"OTLP gRPC endpoint", "0.0.0.0:4317"},
-		{"local storage backend", "backend: local"},
-	}
-
-	for _, tc := range checks {
-		t.Run(tc.name, func(t *testing.T) {
-			if !strings.Contains(content, tc.present) {
-				t.Errorf("tempo-config.yml.tmpl must contain %q", tc.present)
 			}
 		})
 	}
