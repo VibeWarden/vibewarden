@@ -159,6 +159,37 @@ rate_limit:
   # Enable rate limiting (recommended: true in production).
   enabled: true
 
+  # Backing store for rate limit state.
+  # "memory" (default) — per-process token bucket. No external dependencies.
+  #                      Resets on restart. Suitable for single-instance deployments.
+  # "redis"            — Redis-backed distributed token bucket. Shared state
+  #                      across restarts and multiple instances. Requires a Redis server.
+  store: memory
+
+  # Redis store configuration. Only used when store is "redis".
+  # redis:
+  #   # Redis server address (required when store is "redis").
+  #   address: localhost:6379
+  #
+  #   # Redis AUTH password (leave empty if Redis has no auth configured).
+  #   password: ""
+  #
+  #   # Redis logical database index (default: 0).
+  #   db: 0
+  #
+  #   # Namespace prefix for Redis keys. All keys are stored as:
+  #   #   <key_prefix>:ratelimit:<limiter>:<identifier>
+  #   key_prefix: vibewarden
+  #
+  #   # Graceful fallback to in-memory store when Redis is unavailable.
+  #   # true  (default) — fail-open: keep rate limiting with in-memory store.
+  #   # false           — fail-closed: deny all requests when Redis is unreachable.
+  #   fallback: true
+  #
+  #   # How often VibeWarden checks whether Redis has recovered after a failure.
+  #   # Accepts Go duration strings: "30s", "1m", "5m".
+  #   health_check_interval: 30s
+
   # Per-IP rate limit — applied to ALL requests regardless of authentication.
   per_ip:
     # Sustained request rate allowed per IP address.

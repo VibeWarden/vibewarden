@@ -5,36 +5,55 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"time"
 
+	"github.com/redis/go-redis/v9"
+
+	ratelimitadapter "github.com/vibewarden/vibewarden/internal/adapters/ratelimit"
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
 
 // Plugin is the rate-limiting plugin for VibeWarden.
 // It implements ports.Plugin and ports.CaddyContributor.
 //
-// On Init the plugin creates per-IP and per-user MemoryStore rate limiters.
-// On Stop it closes both limiters to release the background GC goroutines.
+// On Init the plugin builds the appropriate factory (memory or Redis with
+// optional fallback), then creates per-IP and per-user rate limiters.
+// On Stop it closes both limiters and the Redis client (if any) to release
+// background goroutines and connections.
 // ContributeCaddyHandlers returns the vibewarden_rate_limit Caddy handler
 // fragment so the middleware is injected into the catch-all handler chain.
-// Health reports whether the plugin is enabled.
+// Health reports whether the plugin is enabled and the Redis connection status.
 type Plugin struct {
 	cfg         Config
 	factory     ports.RateLimiterFactory
 	ipLimiter   ports.RateLimiter
 	userLimiter ports.RateLimiter
+	redisClient *redis.Client // non-nil when store == "redis"
+	eventLog    ports.EventLogger
 	logger      *slog.Logger
 }
 
 // New creates a new rate-limiting Plugin.
 // factory is the RateLimiterFactory used to create the per-IP and per-user
-// limiters during Init. Pass ratelimitadapter.NewDefaultMemoryFactory() for
-// production use.
+// limiters during Init. Pass nil to have the plugin build its own factory
+// based on the Store configuration; pass a non-nil value to inject a custom
+// factory (useful in tests).
+// eventLog may be nil — domain events are silently dropped when nil.
 func New(cfg Config, factory ports.RateLimiterFactory, logger *slog.Logger) *Plugin {
 	return &Plugin{
 		cfg:     cfg,
 		factory: factory,
 		logger:  logger,
 	}
+}
+
+// NewWithEventLog creates a Plugin that emits structured domain events for
+// Redis store transitions (fallback / recovery).
+// Equivalent to New when factory is nil — the plugin selects its own factory.
+func NewWithEventLog(cfg Config, factory ports.RateLimiterFactory, logger *slog.Logger, eventLog ports.EventLogger) *Plugin {
+	p := New(cfg, factory, logger)
+	p.eventLog = eventLog
+	return p
 }
 
 // Name returns the canonical plugin identifier "rate-limiting".
@@ -48,10 +67,21 @@ func (p *Plugin) Priority() int { return 50 }
 
 // Init creates the per-IP and per-user rate limiters from the configured
 // factory. It is a no-op when the plugin is disabled.
+// When no factory was injected at construction time, Init builds one from
+// the plugin configuration (memory or Redis with optional fallback).
 // Init must be called before ContributeCaddyHandlers.
-func (p *Plugin) Init(_ context.Context) error {
+func (p *Plugin) Init(ctx context.Context) error {
 	if !p.cfg.Enabled {
 		return nil
+	}
+
+	if p.factory == nil {
+		f, client, err := p.buildFactory(ctx)
+		if err != nil {
+			return fmt.Errorf("building rate limiter factory: %w", err)
+		}
+		p.factory = f
+		p.redisClient = client
 	}
 
 	p.ipLimiter = p.factory.NewLimiter(ports.RateLimitRule{
@@ -65,6 +95,7 @@ func (p *Plugin) Init(_ context.Context) error {
 	})
 
 	p.logger.Info("rate-limiting plugin initialised",
+		slog.String("store", p.cfg.Store),
 		slog.Float64("per_ip_rps", p.cfg.PerIP.RequestsPerSecond),
 		slog.Int("per_ip_burst", p.cfg.PerIP.Burst),
 		slog.Float64("per_user_rps", p.cfg.PerUser.RequestsPerSecond),
@@ -73,13 +104,82 @@ func (p *Plugin) Init(_ context.Context) error {
 	return nil
 }
 
+// buildFactory constructs a RateLimiterFactory based on p.cfg.Store.
+// It returns the factory, an optional Redis client (non-nil only for Redis
+// stores), and any error encountered during construction.
+func (p *Plugin) buildFactory(_ context.Context) (ports.RateLimiterFactory, *redis.Client, error) {
+	switch p.cfg.Store {
+	case "", "memory":
+		return ratelimitadapter.NewDefaultMemoryFactory(), nil, nil
+
+	case "redis":
+		rCfg := p.cfg.Redis
+		client := redis.NewClient(&redis.Options{
+			Addr:     rCfg.Address,
+			Password: rCfg.Password,
+			DB:       rCfg.DB,
+		})
+
+		keyPrefix := rCfg.KeyPrefix
+		if keyPrefix == "" {
+			keyPrefix = "vibewarden"
+		}
+		keyPrefix += ":ratelimit"
+
+		redisFactory := ratelimitadapter.NewRedisFactory(client, keyPrefix)
+
+		if !rCfg.Fallback {
+			// Fail-closed: use Redis directly, no fallback.
+			return redisFactory, client, nil
+		}
+
+		// Fail-open: wrap Redis factory with a fallback memory factory.
+		memoryFactory := ratelimitadapter.NewDefaultMemoryFactory()
+
+		interval := 30 * time.Second
+		if rCfg.HealthCheckInterval != "" {
+			d, err := time.ParseDuration(rCfg.HealthCheckInterval)
+			if err != nil {
+				p.logger.Warn("rate-limiting: invalid health_check_interval, using default 30s",
+					slog.String("value", rCfg.HealthCheckInterval),
+					slog.String("error", err.Error()),
+				)
+			} else {
+				interval = d
+			}
+		}
+
+		probe := func(ctx context.Context) error {
+			return client.Ping(ctx).Err()
+		}
+
+		fallbackFactory := ratelimitadapter.NewFallbackFactory(
+			redisFactory,
+			memoryFactory,
+			probe,
+			ratelimitadapter.FallbackStoreConfig{
+				HealthCheckInterval: interval,
+				FailClosed:          false,
+			},
+			p.logger,
+			p.eventLog,
+		)
+
+		return fallbackFactory, client, nil
+
+	default:
+		return nil, nil, fmt.Errorf("unknown rate limit store %q", p.cfg.Store)
+	}
+}
+
 // Start is a no-op for the rate-limiting plugin.
 // Limiters are created during Init; no additional background work is started
 // here. The MemoryStore's own cleanup goroutine is managed internally.
 func (p *Plugin) Start(_ context.Context) error { return nil }
 
-// Stop closes the per-IP and per-user limiters to release the background GC
-// goroutines. It is safe to call Stop when the plugin is disabled.
+// Stop closes the per-IP and per-user limiters and the Redis client (if any)
+// to release background goroutines and connections.
+// It is safe to call Stop when the plugin is disabled.
 func (p *Plugin) Stop(_ context.Context) error {
 	if p.ipLimiter != nil {
 		if err := p.ipLimiter.Close(); err != nil {
@@ -91,11 +191,18 @@ func (p *Plugin) Stop(_ context.Context) error {
 			return fmt.Errorf("closing user rate limiter: %w", err)
 		}
 	}
+	if p.redisClient != nil {
+		if err := p.redisClient.Close(); err != nil {
+			return fmt.Errorf("closing Redis client: %w", err)
+		}
+		p.redisClient = nil
+	}
 	return nil
 }
 
 // Health returns the current health status of the rate-limiting plugin.
-// The plugin is always healthy; it reports whether it is enabled or disabled.
+// When Redis is configured, health reflects whether the Redis connection is
+// healthy or whether the fallback store is active.
 func (p *Plugin) Health() ports.HealthStatus {
 	if !p.cfg.Enabled {
 		return ports.HealthStatus{
@@ -103,14 +210,39 @@ func (p *Plugin) Health() ports.HealthStatus {
 			Message: "rate-limiting disabled",
 		}
 	}
+
+	storeStatus := p.storeHealthMessage()
+
 	return ports.HealthStatus{
 		Healthy: true,
 		Message: fmt.Sprintf(
-			"rate-limiting active (per-IP: %.1f rps burst %d, per-user: %.1f rps burst %d)",
+			"rate-limiting active (per-IP: %.1f rps burst %d, per-user: %.1f rps burst %d%s)",
 			p.cfg.PerIP.RequestsPerSecond, p.cfg.PerIP.Burst,
 			p.cfg.PerUser.RequestsPerSecond, p.cfg.PerUser.Burst,
+			storeStatus,
 		),
 	}
+}
+
+// storeHealthMessage returns a store-specific suffix for the health message.
+func (p *Plugin) storeHealthMessage() string {
+	if p.cfg.Store != "redis" {
+		return ""
+	}
+	// Check if ip limiter is a FallbackStore and report Redis health.
+	if p.ipLimiter == nil {
+		return ", store: redis (not initialised)"
+	}
+	type healthReporter interface {
+		IsHealthy() bool
+	}
+	if hr, ok := p.ipLimiter.(healthReporter); ok {
+		if hr.IsHealthy() {
+			return ", store: redis (healthy)"
+		}
+		return ", store: redis (fallback to memory)"
+	}
+	return ", store: redis"
 }
 
 // ContributeCaddyRoutes returns nil.

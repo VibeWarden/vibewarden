@@ -90,6 +90,16 @@ const (
 	// EventTypeSecretHealthCheck is emitted on each scheduled secret health
 	// check run. The payload contains the list of findings (if any).
 	EventTypeSecretHealthCheck = "secret.health_check"
+
+	// EventTypeRateLimitStoreFallback is emitted when the Redis rate limit
+	// store becomes unavailable and the rate limiter falls back to the
+	// in-memory store to preserve availability.
+	EventTypeRateLimitStoreFallback = "rate_limit.store_fallback"
+
+	// EventTypeRateLimitStoreRecovered is emitted when the Redis rate limit
+	// store becomes reachable again after a period of unavailability and the
+	// rate limiter switches back from the in-memory fallback.
+	EventTypeRateLimitStoreRecovered = "rate_limit.store_recovered"
 )
 
 // Event is the base structured log event.
