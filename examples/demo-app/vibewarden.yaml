@@ -79,6 +79,30 @@ metrics:
     - "/spam"
     - "/health"
 
+secrets:
+  enabled: true
+  provider: openbao
+  openbao:
+    address: http://openbao:8200
+    auth:
+      method: token
+      token: demo-root-token
+    mount_path: secret
+  inject:
+    headers:
+      - secret_path: demo/api-key
+        secret_key: token
+        header: X-Demo-Api-Key
+    env_file: /tmp/vibewarden-demo-secrets.env
+    env:
+      - secret_path: demo/app-config
+        secret_key: database_url
+        env_var: DEMO_DATABASE_URL
+      - secret_path: demo/app-config
+        secret_key: session_secret
+        env_var: DEMO_SESSION_SECRET
+  cache_ttl: "5m"
+
 security_headers:
   enabled: true
   hsts_max_age: 31536000
