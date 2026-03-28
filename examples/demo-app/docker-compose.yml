@@ -222,7 +222,7 @@ services:
       VIBEWARDEN_RATE_LIMIT_PER_IP_REQUESTS_PER_SECOND: ${VIBEWARDEN_RATE_LIMIT_PER_IP_REQUESTS_PER_SECOND:-}
       VIBEWARDEN_RATE_LIMIT_PER_IP_BURST:              ${VIBEWARDEN_RATE_LIMIT_PER_IP_BURST:-}
     healthcheck:
-      test: ["CMD-SHELL", "wget -q --no-check-certificate --spider http://localhost:${VIBEWARDEN_HTTP_PORT:-8080}/_vibewarden/health || exit 1"]
+      test: ["CMD-SHELL", "if [ \"$VIBEWARDEN_TLS_ENABLED\" = 'true' ]; then wget -q --no-check-certificate --spider https://localhost:${VIBEWARDEN_HTTP_PORT:-8080}/_vibewarden/health; else wget -q --spider http://localhost:${VIBEWARDEN_HTTP_PORT:-8080}/_vibewarden/health; fi"]
       interval: 10s
       timeout: 5s
       retries: 5
