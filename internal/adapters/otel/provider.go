@@ -32,6 +32,7 @@ import (
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
 	otelprom "go.opentelemetry.io/otel/exporters/prometheus"
 	otelmetric "go.opentelemetry.io/otel/metric"
+	"go.opentelemetry.io/otel/propagation"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
@@ -48,6 +49,7 @@ type Provider struct {
 	tracerProvider *sdktrace.TracerProvider
 	meter          otelmetric.Meter
 	tracer         trace.Tracer
+	propagator     *propagatorAdapter
 	handler        http.Handler
 	registry       *prometheusclient.Registry
 
@@ -176,6 +178,13 @@ func (p *Provider) Init(ctx context.Context, serviceName, serviceVersion string,
 		// Set as global tracer provider.
 		otel.SetTracerProvider(p.tracerProvider)
 
+		// Register W3C Trace Context as the global text map propagator so that
+		// incoming traceparent headers are extracted and outgoing requests carry
+		// the propagated span context automatically.
+		tc := propagation.TraceContext{}
+		otel.SetTextMapPropagator(tc)
+		p.propagator = &propagatorAdapter{p: tc}
+
 		// Create the application tracer.
 		p.tracer = p.tracerProvider.Tracer("github.com/vibewarden/vibewarden")
 		p.traceEnabled = true
@@ -234,6 +243,18 @@ func (p *Provider) Tracer() ports.Tracer {
 		return nil
 	}
 	return &tracerAdapter{t: p.tracer}
+}
+
+// Propagator returns a ports.TextMapPropagator that implements W3C Trace Context
+// extraction and injection. Returns nil if tracing is disabled or Init has not
+// been called.
+func (p *Provider) Propagator() ports.TextMapPropagator {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	if p.propagator == nil {
+		return nil
+	}
+	return p.propagator
 }
 
 // PrometheusEnabled returns true if the Prometheus exporter is active.

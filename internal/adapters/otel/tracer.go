@@ -7,6 +7,7 @@ import (
 	"github.com/vibewarden/vibewarden/internal/ports"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/trace"
 )
 
@@ -85,3 +86,32 @@ func convertStatusCode(code ports.SpanStatusCode) codes.Code {
 		return codes.Unset
 	}
 }
+
+// propagatorAdapter wraps propagation.TraceContext to implement ports.TextMapPropagator.
+// It bridges the OTel SDK propagation API to VibeWarden's port layer.
+type propagatorAdapter struct {
+	p propagation.TraceContext
+}
+
+// Extract reads the W3C traceparent (and tracestate) headers from the carrier
+// into the returned context, enabling the span started from that context to
+// become a child of the upstream trace.
+func (a *propagatorAdapter) Extract(ctx context.Context, carrier ports.TextMapCarrier) context.Context {
+	return a.p.Extract(ctx, headerCarrierBridge{c: carrier})
+}
+
+// Inject writes the current span context from ctx into the carrier as W3C
+// traceparent and tracestate headers, enabling downstream services to
+// continue the trace.
+func (a *propagatorAdapter) Inject(ctx context.Context, carrier ports.TextMapCarrier) {
+	a.p.Inject(ctx, headerCarrierBridge{c: carrier})
+}
+
+// headerCarrierBridge adapts ports.TextMapCarrier to propagation.TextMapCarrier.
+type headerCarrierBridge struct {
+	c ports.TextMapCarrier
+}
+
+func (b headerCarrierBridge) Get(key string) string { return b.c.Get(key) }
+func (b headerCarrierBridge) Set(key, value string) { b.c.Set(key, value) }
+func (b headerCarrierBridge) Keys() []string        { return b.c.Keys() }
