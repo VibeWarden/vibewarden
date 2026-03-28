@@ -5,10 +5,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"os"
 
 	gocaddy "github.com/caddyserver/caddy/v2"
 	"github.com/caddyserver/caddy/v2/modules/caddyhttp"
 
+	auditadapter "github.com/vibewarden/vibewarden/internal/adapters/audit"
 	"github.com/vibewarden/vibewarden/internal/middleware"
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
@@ -64,7 +66,8 @@ func (h *AdminAuthHandler) Provision(_ gocaddy.Context) error {
 		Enabled: h.Config.Enabled,
 		Token:   h.Config.Token,
 	}
-	h.handler = middleware.AdminAuthMiddleware(cfg)
+	auditLogger := auditadapter.NewJSONWriter(os.Stdout)
+	h.handler = middleware.AdminAuthMiddleware(cfg, auditLogger)
 	return nil
 }
 

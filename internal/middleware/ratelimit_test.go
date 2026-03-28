@@ -93,7 +93,7 @@ func TestRateLimitMiddleware_RequestWithinLimit(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	mw := RateLimitMiddleware(ipLimiter, userLimiter, defaultCfg(), logger, nil)
+	mw := RateLimitMiddleware(ipLimiter, userLimiter, defaultCfg(), logger, nil, nil)
 	handler := mw(next)
 
 	r := httptest.NewRequest(http.MethodGet, "/api/data", nil)
@@ -121,7 +121,7 @@ func TestRateLimitMiddleware_IPLimitExceeded(t *testing.T) {
 		nextCalled = true
 	})
 
-	mw := RateLimitMiddleware(ipLimiter, userLimiter, defaultCfg(), newTestLogger(), spy)
+	mw := RateLimitMiddleware(ipLimiter, userLimiter, defaultCfg(), newTestLogger(), spy, nil)
 	handler := mw(next)
 
 	r := httptest.NewRequest(http.MethodGet, "/api/data", nil)
@@ -173,7 +173,7 @@ func TestRateLimitMiddleware_UserLimitExceeded(t *testing.T) {
 		nextCalled = true
 	})
 
-	mw := RateLimitMiddleware(ipLimiter, userLimiter, defaultCfg(), newTestLogger(), spy)
+	mw := RateLimitMiddleware(ipLimiter, userLimiter, defaultCfg(), newTestLogger(), spy, nil)
 	handler := mw(next)
 
 	r := httptest.NewRequest(http.MethodGet, "/api/data", nil)
@@ -222,7 +222,7 @@ func TestRateLimitMiddleware_UnauthenticatedSkipsUserLimiter(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	mw := RateLimitMiddleware(ipLimiter, userLimiter, defaultCfg(), logger, nil)
+	mw := RateLimitMiddleware(ipLimiter, userLimiter, defaultCfg(), logger, nil, nil)
 	handler := mw(next)
 
 	// No X-User-Id header — unauthenticated request.
@@ -252,7 +252,7 @@ func TestRateLimitMiddleware_ExemptPath(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	mw := RateLimitMiddleware(ipLimiter, userLimiter, defaultCfg(), logger, nil)
+	mw := RateLimitMiddleware(ipLimiter, userLimiter, defaultCfg(), logger, nil, nil)
 	handler := mw(next)
 
 	// /_vibewarden/* is always exempt.
@@ -290,7 +290,7 @@ func TestRateLimitMiddleware_CustomExemptPath(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	mw := RateLimitMiddleware(ipLimiter, userLimiter, cfg, logger, nil)
+	mw := RateLimitMiddleware(ipLimiter, userLimiter, cfg, logger, nil, nil)
 	handler := mw(next)
 
 	r := httptest.NewRequest(http.MethodGet, "/public/logo.png", nil)
@@ -313,7 +313,7 @@ func TestRateLimitMiddleware_429ContentType(t *testing.T) {
 	logger := newTestLogger()
 	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})
 
-	mw := RateLimitMiddleware(ipLimiter, userLimiter, defaultCfg(), logger, nil)
+	mw := RateLimitMiddleware(ipLimiter, userLimiter, defaultCfg(), logger, nil, nil)
 	handler := mw(next)
 
 	r := httptest.NewRequest(http.MethodGet, "/api", nil)
@@ -341,7 +341,7 @@ func TestRateLimitMiddleware_TrustProxyHeader(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	mw := RateLimitMiddleware(ipLimiter, userLimiter, cfg, logger, nil)
+	mw := RateLimitMiddleware(ipLimiter, userLimiter, cfg, logger, nil, nil)
 	handler := mw(next)
 
 	r := httptest.NewRequest(http.MethodGet, "/api", nil)
@@ -378,7 +378,7 @@ func TestRateLimitMiddleware_RetryAfterRoundsUp(t *testing.T) {
 			logger := newTestLogger()
 			next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})
 
-			mw := RateLimitMiddleware(ipLimiter, allowAll(), defaultCfg(), logger, nil)
+			mw := RateLimitMiddleware(ipLimiter, allowAll(), defaultCfg(), logger, nil, nil)
 			handler := mw(next)
 
 			r := httptest.NewRequest(http.MethodGet, "/", nil)
@@ -411,7 +411,7 @@ func TestRateLimitMiddleware_StructuredLogEvent(t *testing.T) {
 	spy := &fakeEventLogger{}
 
 	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})
-	mw := RateLimitMiddleware(ipLimiter, allowAll(), defaultCfg(), newTestLogger(), spy)
+	mw := RateLimitMiddleware(ipLimiter, allowAll(), defaultCfg(), newTestLogger(), spy, nil)
 	handler := mw(next)
 
 	r := httptest.NewRequest(http.MethodGet, "/api/resource", nil)
@@ -452,7 +452,7 @@ func TestRateLimitMiddleware_EmptyClientIP_Returns403(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	mw := RateLimitMiddleware(ipLimiter, userLimiter, defaultCfg(), newTestLogger(), spy)
+	mw := RateLimitMiddleware(ipLimiter, userLimiter, defaultCfg(), newTestLogger(), spy, nil)
 	handler := mw(next)
 
 	// RemoteAddr with no port causes net.SplitHostPort to fail, which makes
@@ -491,7 +491,7 @@ func TestRateLimitMiddleware_AuthenticatedBothLimitsChecked(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	mw := RateLimitMiddleware(ipLimiter, userLimiter, defaultCfg(), logger, nil)
+	mw := RateLimitMiddleware(ipLimiter, userLimiter, defaultCfg(), logger, nil, nil)
 	handler := mw(next)
 
 	r := httptest.NewRequest(http.MethodGet, "/api/data", nil)
@@ -519,7 +519,7 @@ func TestRateLimitMiddleware_429IncludesRequestID(t *testing.T) {
 	// When tracing is disabled, a 429 response must include a request_id field.
 	ipLimiter := denyWithRetry(time.Second, 10, 20)
 	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})
-	mw := RateLimitMiddleware(ipLimiter, allowAll(), defaultCfg(), newTestLogger(), nil)
+	mw := RateLimitMiddleware(ipLimiter, allowAll(), defaultCfg(), newTestLogger(), nil, nil)
 	handler := mw(next)
 
 	r := httptest.NewRequest(http.MethodGet, "/api", nil)
@@ -550,7 +550,7 @@ func TestRateLimitMiddleware_403ForbiddenIsJSON(t *testing.T) {
 	ipLimiter := allowAll()
 	userLimiter := allowAll()
 	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})
-	mw := RateLimitMiddleware(ipLimiter, userLimiter, defaultCfg(), newTestLogger(), nil)
+	mw := RateLimitMiddleware(ipLimiter, userLimiter, defaultCfg(), newTestLogger(), nil, nil)
 	handler := mw(next)
 
 	// RemoteAddr with no port causes ExtractClientIP to return "".

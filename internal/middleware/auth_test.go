@@ -66,7 +66,7 @@ func TestAuthMiddleware_UnauthenticatedRequest(t *testing.T) {
 		LoginURL:          "/login",
 	}
 
-	mw := AuthMiddleware(checker, cfg, newTestLogger(), nil)
+	mw := AuthMiddleware(checker, cfg, newTestLogger(), nil, nil)
 	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
@@ -100,7 +100,7 @@ func TestAuthMiddleware_AuthenticatedRequest(t *testing.T) {
 	nextCalled := false
 	var nextCtx context.Context
 
-	mw := AuthMiddleware(checker, cfg, newTestLogger(), nil)
+	mw := AuthMiddleware(checker, cfg, newTestLogger(), nil, nil)
 	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		nextCalled = true
 		nextCtx = r.Context()
@@ -148,7 +148,7 @@ func TestAuthMiddleware_PublicPathBypass(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			nextCalled := false
-			mw := AuthMiddleware(checker, cfg, newTestLogger(), nil)
+			mw := AuthMiddleware(checker, cfg, newTestLogger(), nil, nil)
 			next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 				nextCalled = true
 				w.WriteHeader(http.StatusOK)
@@ -192,7 +192,7 @@ func TestAuthMiddleware_GlobPatternMatching(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			nextCalled := false
-			mw := AuthMiddleware(checker, cfg, newTestLogger(), nil)
+			mw := AuthMiddleware(checker, cfg, newTestLogger(), nil, nil)
 			next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 				nextCalled = true
 				w.WriteHeader(http.StatusOK)
@@ -227,7 +227,7 @@ func TestAuthMiddleware_ProviderUnavailable(t *testing.T) {
 		LoginURL:          "/login",
 	}
 
-	mw := AuthMiddleware(checker, cfg, newTestLogger(), nil)
+	mw := AuthMiddleware(checker, cfg, newTestLogger(), nil, nil)
 	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
@@ -256,7 +256,7 @@ func TestAuthMiddleware_XUserHeadersStripped(t *testing.T) {
 	}
 
 	var receivedHeaders http.Header
-	mw := AuthMiddleware(checker, cfg, newTestLogger(), nil)
+	mw := AuthMiddleware(checker, cfg, newTestLogger(), nil, nil)
 	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		receivedHeaders = r.Header.Clone()
 		w.WriteHeader(http.StatusOK)
@@ -298,7 +298,7 @@ func TestAuthMiddleware_XUserHeadersStrippedOnPublicPath(t *testing.T) {
 	}
 
 	var receivedHeaders http.Header
-	mw := AuthMiddleware(checker, cfg, newTestLogger(), nil)
+	mw := AuthMiddleware(checker, cfg, newTestLogger(), nil, nil)
 	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		receivedHeaders = r.Header.Clone()
 		w.WriteHeader(http.StatusOK)
@@ -336,7 +336,7 @@ func TestAuthMiddleware_VibewardenPrefixAlwaysPublic(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			nextCalled := false
-			mw := AuthMiddleware(checker, cfg, newTestLogger(), nil)
+			mw := AuthMiddleware(checker, cfg, newTestLogger(), nil, nil)
 			next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 				nextCalled = true
 				w.WriteHeader(http.StatusOK)
@@ -370,7 +370,7 @@ func TestAuthMiddleware_DefaultCookieNameAndLoginURL(t *testing.T) {
 		Enabled: true,
 	}
 
-	mw := AuthMiddleware(checker, cfg, newTestLogger(), nil)
+	mw := AuthMiddleware(checker, cfg, newTestLogger(), nil, nil)
 	nextCalled := false
 	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		nextCalled = true
@@ -417,7 +417,7 @@ func TestAuthMiddleware_InvalidSessionRedirects(t *testing.T) {
 				LoginURL:          "/login",
 			}
 
-			mw := AuthMiddleware(checker, cfg, newTestLogger(), nil)
+			mw := AuthMiddleware(checker, cfg, newTestLogger(), nil, nil)
 			next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 				w.WriteHeader(http.StatusOK)
 			})
@@ -451,7 +451,7 @@ func TestAuthMiddleware_EmitsAuthSuccessEvent(t *testing.T) {
 	}
 	spy := &fakeEventLogger{}
 
-	mw := AuthMiddleware(checker, cfg, newTestLogger(), spy)
+	mw := AuthMiddleware(checker, cfg, newTestLogger(), spy, nil)
 	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
@@ -488,7 +488,7 @@ func TestAuthMiddleware_EmitsAuthFailedEvent(t *testing.T) {
 	}
 	spy := &fakeEventLogger{}
 
-	mw := AuthMiddleware(checker, cfg, newTestLogger(), spy)
+	mw := AuthMiddleware(checker, cfg, newTestLogger(), spy, nil)
 	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
@@ -519,7 +519,7 @@ func TestAuthMiddleware_NilEventLoggerDoesNotPanic(t *testing.T) {
 		LoginURL:          "/login",
 	}
 
-	mw := AuthMiddleware(checker, cfg, newTestLogger(), nil)
+	mw := AuthMiddleware(checker, cfg, newTestLogger(), nil, nil)
 	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
@@ -541,7 +541,7 @@ func TestAuthMiddleware_503IsJSON(t *testing.T) {
 		LoginURL:          "/login",
 	}
 
-	mw := AuthMiddleware(checker, cfg, newTestLogger(), nil)
+	mw := AuthMiddleware(checker, cfg, newTestLogger(), nil, nil)
 	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})

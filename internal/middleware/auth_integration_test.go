@@ -40,7 +40,7 @@ func TestAuthMiddleware_Integration_UnauthenticatedRedirect(t *testing.T) {
 		LoginURL:          "/self-service/login/browser",
 	}
 
-	handler := AuthMiddleware(checker, cfg, slog.Default(), nil)(
+	handler := AuthMiddleware(checker, cfg, slog.Default(), nil, nil)(
 		http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			w.WriteHeader(http.StatusOK)
 		}),
@@ -75,7 +75,7 @@ func TestAuthMiddleware_Integration_PublicPathBypass(t *testing.T) {
 	}
 
 	nextCalled := false
-	handler := AuthMiddleware(alwaysErr, cfg, slog.Default(), nil)(
+	handler := AuthMiddleware(alwaysErr, cfg, slog.Default(), nil, nil)(
 		http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			nextCalled = true
 			w.WriteHeader(http.StatusOK)
@@ -118,7 +118,7 @@ func TestAuthMiddleware_Integration_AuthProviderUnavailable(t *testing.T) {
 		SessionCookieName: "ory_kratos_session",
 	}
 
-	handler := AuthMiddleware(checker, cfg, slog.Default(), nil)(
+	handler := AuthMiddleware(checker, cfg, slog.Default(), nil, nil)(
 		http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			w.WriteHeader(http.StatusOK)
 		}),
@@ -152,7 +152,7 @@ func TestAuthMiddleware_Integration_ValidSessionAllowsRequest(t *testing.T) {
 	}
 
 	nextCalled := false
-	handler := AuthMiddleware(checker, cfg, slog.Default(), nil)(
+	handler := AuthMiddleware(checker, cfg, slog.Default(), nil, nil)(
 		http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			nextCalled = true
 			w.WriteHeader(http.StatusOK)
@@ -193,7 +193,7 @@ func TestAuthMiddleware_Integration_KratosFlowPathsArePublic(t *testing.T) {
 		PublicPaths:       kratosFlowPaths,
 	}
 
-	handler := AuthMiddleware(alwaysErr, cfg, slog.Default(), nil)(
+	handler := AuthMiddleware(alwaysErr, cfg, slog.Default(), nil, nil)(
 		http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			w.WriteHeader(http.StatusOK)
 		}),

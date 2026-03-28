@@ -7,6 +7,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/vibewarden/vibewarden/internal/domain/audit"
 	"github.com/vibewarden/vibewarden/internal/domain/events"
 	domainresilience "github.com/vibewarden/vibewarden/internal/domain/resilience"
 	"github.com/vibewarden/vibewarden/internal/ports"
@@ -19,6 +20,10 @@ import (
 // On state transition the adapter emits a structured event via ports.EventLogger
 // and, when available, updates the vibewarden_circuit_breaker_state gauge via
 // ports.MetricsCollectorWithCircuitBreaker.
+//
+// When an auditLogger is provided, audit events (audit.circuit_breaker.opened,
+// audit.circuit_breaker.half_open, audit.circuit_breaker.closed) are emitted on
+// every state transition, regardless of operational log level.
 type InMemoryCircuitBreaker struct {
 	mu     sync.Mutex
 	cb     *domainresilience.CircuitBreaker
@@ -26,6 +31,8 @@ type InMemoryCircuitBreaker struct {
 	events ports.EventLogger
 	// metrics is optional; may be nil when metrics are disabled.
 	metrics ports.MetricsCollectorWithCircuitBreaker
+	// auditLogger is optional; may be nil when audit logging is disabled.
+	auditLogger ports.AuditEventLogger
 }
 
 // NewInMemoryCircuitBreaker creates an InMemoryCircuitBreaker from a ports config.
@@ -52,6 +59,16 @@ func NewInMemoryCircuitBreaker(
 	}, nil
 }
 
+// WithAuditLogger returns a new InMemoryCircuitBreaker that emits audit events
+// on every state transition via auditLogger. The original is not modified.
+// This follows the functional options pattern used for optional dependencies.
+func (a *InMemoryCircuitBreaker) WithAuditLogger(auditLogger ports.AuditEventLogger) *InMemoryCircuitBreaker {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.auditLogger = auditLogger
+	return a
+}
+
 // IsOpen implements ports.CircuitBreaker. It is safe for concurrent use.
 // When the circuit transitions from Open to HalfOpen (because the timeout
 // expired) a circuit_breaker.half_open event is emitted.
@@ -67,6 +84,8 @@ func (a *InMemoryCircuitBreaker) IsOpen() bool {
 		a.emitEvent(events.NewCircuitBreakerHalfOpen(events.CircuitBreakerHalfOpenParams{
 			TimeoutSeconds: a.cb.Config().Timeout.Seconds(),
 		}))
+		a.emitAuditEvent(context.Background(), audit.EventTypeCircuitBreakerHalfOpen,
+			map[string]any{"timeout_seconds": a.cb.Config().Timeout.Seconds()})
 		a.recordStateMetric(context.Background())
 	}
 
@@ -84,6 +103,7 @@ func (a *InMemoryCircuitBreaker) RecordSuccess() {
 	if previous == domainresilience.StateHalfOpen {
 		// Transition: HalfOpen → Closed.
 		a.emitEvent(events.NewCircuitBreakerClosed())
+		a.emitAuditEvent(context.Background(), audit.EventTypeCircuitBreakerClosed, nil)
 		a.recordStateMetric(context.Background())
 	}
 }
@@ -101,6 +121,11 @@ func (a *InMemoryCircuitBreaker) RecordFailure() {
 			Threshold:      a.cb.Config().Threshold,
 			TimeoutSeconds: a.cb.Config().Timeout.Seconds(),
 		}))
+		a.emitAuditEvent(context.Background(), audit.EventTypeCircuitBreakerOpened,
+			map[string]any{
+				"threshold":       a.cb.Config().Threshold,
+				"timeout_seconds": a.cb.Config().Timeout.Seconds(),
+			})
 		a.recordStateMetric(context.Background())
 	}
 }
@@ -122,6 +147,40 @@ func (a *InMemoryCircuitBreaker) emitEvent(ev events.Event) {
 		if a.logger != nil {
 			a.logger.Error("circuit_breaker: failed to emit event",
 				slog.String("event_type", ev.EventType),
+				slog.String("error", err.Error()),
+			)
+		}
+	}
+}
+
+// emitAuditEvent sends a security audit event for a circuit breaker state
+// transition. Failures are logged but do not interrupt request handling.
+// Must be called with a.mu held.
+func (a *InMemoryCircuitBreaker) emitAuditEvent(ctx context.Context, eventType audit.EventType, details map[string]any) {
+	if a.auditLogger == nil {
+		return
+	}
+	auditEv, err := audit.NewAuditEvent(
+		eventType,
+		audit.Actor{},
+		audit.Target{},
+		audit.OutcomeSuccess,
+		"",
+		details,
+	)
+	if err != nil {
+		if a.logger != nil {
+			a.logger.Error("circuit_breaker: failed to build audit event",
+				slog.String("event_type", string(eventType)),
+				slog.String("error", err.Error()),
+			)
+		}
+		return
+	}
+	if err := a.auditLogger.Log(ctx, auditEv); err != nil {
+		if a.logger != nil {
+			a.logger.Error("circuit_breaker: failed to emit audit event",
+				slog.String("event_type", string(eventType)),
 				slog.String("error", err.Error()),
 			)
 		}

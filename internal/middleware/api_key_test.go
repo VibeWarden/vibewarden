@@ -46,7 +46,7 @@ func TestAPIKeyMiddleware_MissingHeader(t *testing.T) {
 	validator := &fakeAPIKeyValidator{keys: map[string]*auth.APIKey{}}
 	cfg := ports.APIKeyConfig{Header: "X-API-Key"}
 
-	mw := APIKeyMiddleware(validator, cfg, nil)
+	mw := APIKeyMiddleware(validator, cfg, nil, nil)
 	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
@@ -71,7 +71,7 @@ func TestAPIKeyMiddleware_InvalidKey(t *testing.T) {
 	validator := &fakeAPIKeyValidator{keys: map[string]*auth.APIKey{}}
 	cfg := ports.APIKeyConfig{Header: "X-API-Key"}
 
-	mw := APIKeyMiddleware(validator, cfg, nil)
+	mw := APIKeyMiddleware(validator, cfg, nil, nil)
 	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
@@ -97,7 +97,7 @@ func TestAPIKeyMiddleware_ValidKey(t *testing.T) {
 
 	var nextCtx context.Context
 	nextCalled := false
-	mw := APIKeyMiddleware(validator, cfg, nil)
+	mw := APIKeyMiddleware(validator, cfg, nil, nil)
 	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		nextCalled = true
 		nextCtx = r.Context()
@@ -135,7 +135,7 @@ func TestAPIKeyMiddleware_CustomHeader(t *testing.T) {
 	cfg := ports.APIKeyConfig{Header: "Authorization"}
 
 	nextCalled := false
-	mw := APIKeyMiddleware(validator, cfg, nil)
+	mw := APIKeyMiddleware(validator, cfg, nil, nil)
 	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		nextCalled = true
 		w.WriteHeader(http.StatusOK)
@@ -180,7 +180,7 @@ func TestAPIKeyMiddleware_DefaultHeader(t *testing.T) {
 	cfg := ports.APIKeyConfig{}
 
 	nextCalled := false
-	mw := APIKeyMiddleware(validator, cfg, nil)
+	mw := APIKeyMiddleware(validator, cfg, nil, nil)
 	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		nextCalled = true
 		w.WriteHeader(http.StatusOK)
@@ -200,7 +200,7 @@ func TestAPIKeyMiddleware_401IsJSON(t *testing.T) {
 	validator := &fakeAPIKeyValidator{keys: map[string]*auth.APIKey{}}
 	cfg := ports.APIKeyConfig{}
 
-	mw := APIKeyMiddleware(validator, cfg, nil)
+	mw := APIKeyMiddleware(validator, cfg, nil, nil)
 	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
@@ -235,7 +235,7 @@ func TestAPIKeyMiddleware_EmitsSuccessEvent(t *testing.T) {
 	cfg := ports.APIKeyConfig{}
 	spy := &fakeEventLogger{}
 
-	mw := APIKeyMiddleware(validator, cfg, spy)
+	mw := APIKeyMiddleware(validator, cfg, spy, nil)
 	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
@@ -262,7 +262,7 @@ func TestAPIKeyMiddleware_EmitsFailedEventOnMissingKey(t *testing.T) {
 	cfg := ports.APIKeyConfig{}
 	spy := &fakeEventLogger{}
 
-	mw := APIKeyMiddleware(validator, cfg, spy)
+	mw := APIKeyMiddleware(validator, cfg, spy, nil)
 	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
@@ -285,7 +285,7 @@ func TestAPIKeyMiddleware_EmitsFailedEventOnInvalidKey(t *testing.T) {
 	cfg := ports.APIKeyConfig{}
 	spy := &fakeEventLogger{}
 
-	mw := APIKeyMiddleware(validator, cfg, spy)
+	mw := APIKeyMiddleware(validator, cfg, spy, nil)
 	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
@@ -308,7 +308,7 @@ func TestAPIKeyMiddleware_NilEventLoggerDoesNotPanic(t *testing.T) {
 	validator := &fakeAPIKeyValidator{keys: map[string]*auth.APIKey{}}
 	cfg := ports.APIKeyConfig{}
 
-	mw := APIKeyMiddleware(validator, cfg, nil)
+	mw := APIKeyMiddleware(validator, cfg, nil, nil)
 	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
@@ -345,7 +345,7 @@ func TestAPIKeyMiddleware_KeyScopesInContext(t *testing.T) {
 	cfg := ports.APIKeyConfig{}
 
 	var gotKey *auth.APIKey
-	mw := APIKeyMiddleware(validator, cfg, nil)
+	mw := APIKeyMiddleware(validator, cfg, nil, nil)
 	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotKey, _ = APIKeyFromContext(r.Context())
 		w.WriteHeader(http.StatusOK)
@@ -404,7 +404,7 @@ func TestAPIKeyMiddleware_ScopeEnforcement_AllowsWhenScopeSatisfied(t *testing.T
 	cfg := ports.APIKeyConfig{ScopeRules: scopeRules()}
 
 	nextCalled := false
-	mw := APIKeyMiddleware(validator, cfg, nil)
+	mw := APIKeyMiddleware(validator, cfg, nil, nil)
 	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		nextCalled = true
 		w.WriteHeader(http.StatusOK)
@@ -436,7 +436,7 @@ func TestAPIKeyMiddleware_ScopeEnforcement_Returns403WhenScopeMissing(t *testing
 	cfg := ports.APIKeyConfig{ScopeRules: scopeRules()}
 
 	nextCalled := false
-	mw := APIKeyMiddleware(validator, cfg, nil)
+	mw := APIKeyMiddleware(validator, cfg, nil, nil)
 	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		nextCalled = true
 		w.WriteHeader(http.StatusOK)
@@ -469,7 +469,7 @@ func TestAPIKeyMiddleware_ScopeEnforcement_NoMatchingRuleAllows(t *testing.T) {
 	cfg := ports.APIKeyConfig{ScopeRules: scopeRules()}
 
 	nextCalled := false
-	mw := APIKeyMiddleware(validator, cfg, nil)
+	mw := APIKeyMiddleware(validator, cfg, nil, nil)
 	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		nextCalled = true
 		w.WriteHeader(http.StatusOK)
@@ -503,7 +503,7 @@ func TestAPIKeyMiddleware_ScopeEnforcement_EmptyRulesAllowsAll(t *testing.T) {
 	cfg := ports.APIKeyConfig{ScopeRules: nil}
 
 	nextCalled := false
-	mw := APIKeyMiddleware(validator, cfg, nil)
+	mw := APIKeyMiddleware(validator, cfg, nil, nil)
 	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		nextCalled = true
 		w.WriteHeader(http.StatusOK)
@@ -535,7 +535,7 @@ func TestAPIKeyMiddleware_ScopeEnforcement_EmitsForbiddenEvent(t *testing.T) {
 	cfg := ports.APIKeyConfig{ScopeRules: scopeRules()}
 	spy := &fakeEventLogger{}
 
-	mw := APIKeyMiddleware(validator, cfg, spy)
+	mw := APIKeyMiddleware(validator, cfg, spy, nil)
 	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
@@ -569,7 +569,7 @@ func TestAPIKeyMiddleware_ScopeEnforcement_403IsJSON(t *testing.T) {
 	}
 	cfg := ports.APIKeyConfig{ScopeRules: scopeRules()}
 
-	mw := APIKeyMiddleware(validator, cfg, nil)
+	mw := APIKeyMiddleware(validator, cfg, nil, nil)
 	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
@@ -631,7 +631,7 @@ func TestAPIKeyMiddleware_ScopeEnforcement_AdminPathRequiresAdminScope(t *testin
 			}
 			cfg := ports.APIKeyConfig{ScopeRules: scopeRules()}
 
-			mw := APIKeyMiddleware(validator, cfg, nil)
+			mw := APIKeyMiddleware(validator, cfg, nil, nil)
 			next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 				w.WriteHeader(http.StatusOK)
 			})

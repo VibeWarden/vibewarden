@@ -11,6 +11,7 @@ import (
 	gocaddy "github.com/caddyserver/caddy/v2"
 	"github.com/caddyserver/caddy/v2/modules/caddyhttp"
 
+	auditadapter "github.com/vibewarden/vibewarden/internal/adapters/audit"
 	logadapter "github.com/vibewarden/vibewarden/internal/adapters/log"
 	ratelimitadapter "github.com/vibewarden/vibewarden/internal/adapters/ratelimit"
 	"github.com/vibewarden/vibewarden/internal/middleware"
@@ -117,8 +118,9 @@ func (h *RateLimitHandler) Provision(_ gocaddy.Context) error {
 	}
 
 	eventLogger := logadapter.NewSlogEventLogger(os.Stdout)
+	auditLogger := auditadapter.NewJSONWriter(os.Stdout)
 
-	h.handler = middleware.RateLimitMiddleware(h.ipLimiter, h.userLimiter, cfg, logger, eventLogger)
+	h.handler = middleware.RateLimitMiddleware(h.ipLimiter, h.userLimiter, cfg, logger, eventLogger, auditLogger)
 
 	return nil
 }

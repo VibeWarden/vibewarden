@@ -38,7 +38,7 @@ func TestAdminAuthMiddleware_NonAdminPaths(t *testing.T) {
 				w.WriteHeader(http.StatusOK)
 			})
 
-			mw := AdminAuthMiddleware(cfg)
+			mw := AdminAuthMiddleware(cfg, nil)
 			req := httptest.NewRequest(http.MethodGet, tt.path, nil)
 			w := httptest.NewRecorder()
 			mw(next).ServeHTTP(w, req)
@@ -55,7 +55,7 @@ func TestAdminAuthMiddleware_NonAdminPaths(t *testing.T) {
 
 func TestAdminAuthMiddleware_AdminDisabled(t *testing.T) {
 	cfg := ports.AdminAuthConfig{Enabled: false, Token: "secret"}
-	mw := AdminAuthMiddleware(cfg)
+	mw := AdminAuthMiddleware(cfg, nil)
 
 	tests := []struct {
 		name string
@@ -82,7 +82,7 @@ func TestAdminAuthMiddleware_AdminDisabled(t *testing.T) {
 func TestAdminAuthMiddleware_MisconfiguredNoToken(t *testing.T) {
 	// Admin enabled but no token configured — should return 500.
 	cfg := ports.AdminAuthConfig{Enabled: true, Token: ""}
-	mw := AdminAuthMiddleware(cfg)
+	mw := AdminAuthMiddleware(cfg, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/_vibewarden/admin/users", nil)
 	req.Header.Set(adminKeyHeader, "any-value")
@@ -96,7 +96,7 @@ func TestAdminAuthMiddleware_MisconfiguredNoToken(t *testing.T) {
 
 func TestAdminAuthMiddleware_MissingHeader(t *testing.T) {
 	cfg := ports.AdminAuthConfig{Enabled: true, Token: "secret-token"}
-	mw := AdminAuthMiddleware(cfg)
+	mw := AdminAuthMiddleware(cfg, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/_vibewarden/admin/users", nil)
 	// No X-Admin-Key header.
@@ -113,7 +113,7 @@ func TestAdminAuthMiddleware_MissingHeader(t *testing.T) {
 
 func TestAdminAuthMiddleware_WrongToken(t *testing.T) {
 	cfg := ports.AdminAuthConfig{Enabled: true, Token: "correct-token"}
-	mw := AdminAuthMiddleware(cfg)
+	mw := AdminAuthMiddleware(cfg, nil)
 
 	tests := []struct {
 		name  string
@@ -143,7 +143,7 @@ func TestAdminAuthMiddleware_WrongToken(t *testing.T) {
 
 func TestAdminAuthMiddleware_CorrectToken(t *testing.T) {
 	cfg := ports.AdminAuthConfig{Enabled: true, Token: "my-secret-admin-token"}
-	mw := AdminAuthMiddleware(cfg)
+	mw := AdminAuthMiddleware(cfg, nil)
 
 	tests := []struct {
 		name string
@@ -180,7 +180,7 @@ func TestAdminAuthMiddleware_CorrectToken(t *testing.T) {
 
 func TestAdminAuthMiddleware_WWWAuthenticateHeader(t *testing.T) {
 	cfg := ports.AdminAuthConfig{Enabled: true, Token: "secret"}
-	mw := AdminAuthMiddleware(cfg)
+	mw := AdminAuthMiddleware(cfg, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/_vibewarden/admin/users", nil)
 	req.Header.Set(adminKeyHeader, "wrong")
@@ -202,7 +202,7 @@ func TestAdminAuthMiddleware_401IsJSON(t *testing.T) {
 	// When the admin key is wrong, the 401 response must be JSON with a
 	// correlation ID (trace_id or request_id).
 	cfg := ports.AdminAuthConfig{Enabled: true, Token: "correct-token"}
-	mw := AdminAuthMiddleware(cfg)
+	mw := AdminAuthMiddleware(cfg, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/_vibewarden/admin/users", nil)
 	req.Header.Set(adminKeyHeader, "wrong-token")

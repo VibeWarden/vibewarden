@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 
+	"github.com/vibewarden/vibewarden/internal/domain/audit"
 	"github.com/vibewarden/vibewarden/internal/domain/auth"
 	"github.com/vibewarden/vibewarden/internal/domain/events"
 	"github.com/vibewarden/vibewarden/internal/ports"
@@ -41,10 +42,16 @@ const (
 // Keys are never logged; only the key name and scopes are emitted in events.
 //
 // If eventLogger is nil, event logging is skipped silently.
+//
+// The auditLogger receives security audit events (audit.auth.api_key.success,
+// audit.auth.api_key.failure, audit.auth.api_key.forbidden). Audit events are
+// always emitted regardless of operational log level. If auditLogger is nil,
+// audit logging is skipped silently.
 func APIKeyMiddleware(
 	validator ports.APIKeyValidator,
 	cfg ports.APIKeyConfig,
 	eventLogger ports.EventLogger,
+	auditLogger ports.AuditEventLogger,
 ) func(http.Handler) http.Handler {
 	header := cfg.Header
 	if header == "" {
@@ -56,6 +63,7 @@ func APIKeyMiddleware(
 			rawKey := r.Header.Get(header)
 			if rawKey == "" {
 				emitAPIKeyFailed(r, eventLogger, "missing api key")
+				emitAuditAPIKeyFailure(r, auditLogger, "", "missing api key")
 				WriteErrorResponse(w, r, http.StatusUnauthorized, "unauthorized", "API key required")
 				return
 			}
@@ -63,6 +71,7 @@ func APIKeyMiddleware(
 			apiKey, err := validator.Validate(r.Context(), rawKey)
 			if err != nil {
 				emitAPIKeyFailed(r, eventLogger, "invalid or inactive api key")
+				emitAuditAPIKeyFailure(r, auditLogger, "", "invalid or inactive api key")
 				WriteErrorResponse(w, r, http.StatusUnauthorized, "unauthorized", "invalid or inactive API key")
 				return
 			}
@@ -72,12 +81,14 @@ func APIKeyMiddleware(
 			if rule, ok := auth.MatchingScopeRule(cfg.ScopeRules, r.Method, r.URL.Path); ok {
 				if !rule.SatisfiedBy(apiKey.Scopes) {
 					emitAPIKeyForbidden(r, eventLogger, apiKey, rule.RequiredScopes)
+					emitAuditAPIKeyForbidden(r, auditLogger, apiKey, rule.RequiredScopes)
 					WriteErrorResponse(w, r, http.StatusForbidden, "forbidden", "insufficient scopes")
 					return
 				}
 			}
 
 			emitAPIKeySuccess(r, eventLogger, apiKey)
+			emitAuditAPIKeySuccess(r, auditLogger, apiKey)
 			ctx := contextWithAPIKey(r.Context(), apiKey)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
@@ -152,4 +163,95 @@ func emitAPIKeyForbidden(r *http.Request, eventLogger ports.EventLogger, key *au
 	})
 	// Best-effort: ignore logging errors so request processing is never blocked.
 	_ = eventLogger.Log(r.Context(), ev)
+}
+
+// emitAuditAPIKeySuccess emits an audit.auth.api_key.success event via the
+// AuditEventLogger port. If auditLogger is nil the call is a no-op.
+func emitAuditAPIKeySuccess(r *http.Request, auditLogger ports.AuditEventLogger, key *auth.APIKey) {
+	if auditLogger == nil {
+		return
+	}
+	scopes := make([]string, len(key.Scopes))
+	for i, s := range key.Scopes {
+		scopes[i] = string(s)
+	}
+	ev, err := audit.NewAuditEvent(
+		audit.EventTypeAuthAPIKeySuccess,
+		audit.Actor{
+			IP:         ExtractClientIP(r, false),
+			APIKeyName: key.Name,
+		},
+		audit.Target{Path: r.URL.Path},
+		audit.OutcomeSuccess,
+		CorrelationID(r.Context()),
+		map[string]any{
+			"method": r.Method,
+			"scopes": scopes,
+		},
+	)
+	if err != nil {
+		return
+	}
+	// Best-effort: ignore logging errors so request processing is never blocked.
+	_ = auditLogger.Log(r.Context(), ev)
+}
+
+// emitAuditAPIKeyFailure emits an audit.auth.api_key.failure event via the
+// AuditEventLogger port. If auditLogger is nil the call is a no-op.
+func emitAuditAPIKeyFailure(r *http.Request, auditLogger ports.AuditEventLogger, keyName, reason string) {
+	if auditLogger == nil {
+		return
+	}
+	ev, err := audit.NewAuditEvent(
+		audit.EventTypeAuthAPIKeyFailure,
+		audit.Actor{
+			IP:         ExtractClientIP(r, false),
+			APIKeyName: keyName,
+		},
+		audit.Target{Path: r.URL.Path},
+		audit.OutcomeFailure,
+		CorrelationID(r.Context()),
+		map[string]any{
+			"method": r.Method,
+			"reason": reason,
+		},
+	)
+	if err != nil {
+		return
+	}
+	// Best-effort: ignore logging errors so request processing is never blocked.
+	_ = auditLogger.Log(r.Context(), ev)
+}
+
+// emitAuditAPIKeyForbidden emits an audit.auth.api_key.forbidden event via the
+// AuditEventLogger port when a valid key lacks the required scopes.
+// If auditLogger is nil the call is a no-op.
+func emitAuditAPIKeyForbidden(r *http.Request, auditLogger ports.AuditEventLogger, key *auth.APIKey, requiredScopes []string) {
+	if auditLogger == nil {
+		return
+	}
+	keyScopes := make([]string, len(key.Scopes))
+	for i, s := range key.Scopes {
+		keyScopes[i] = string(s)
+	}
+	ev, err := audit.NewAuditEvent(
+		audit.EventTypeAuthAPIKeyForbidden,
+		audit.Actor{
+			IP:         ExtractClientIP(r, false),
+			APIKeyName: key.Name,
+		},
+		audit.Target{Path: r.URL.Path},
+		audit.OutcomeFailure,
+		CorrelationID(r.Context()),
+		map[string]any{
+			"method":          r.Method,
+			"key_scopes":      keyScopes,
+			"required_scopes": requiredScopes,
+		},
+	)
+	if err != nil {
+		return
+	}
+	// Best-effort: ignore logging errors so request processing is never blocked.
+	_ = auditLogger.Log(r.Context(), ev)
 }
