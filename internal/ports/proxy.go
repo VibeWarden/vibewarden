@@ -77,6 +77,30 @@ type ResilienceConfig struct {
 
 	// CircuitBreaker holds configuration for the circuit breaker middleware.
 	CircuitBreaker CircuitBreakerConfig
+
+	// Retry holds configuration for the retry-with-backoff middleware.
+	Retry RetryConfig
+}
+
+// RetryConfig holds configuration for the retry-with-exponential-backoff middleware.
+type RetryConfig struct {
+	// Enabled toggles the retry middleware.
+	Enabled bool
+
+	// MaxAttempts is the total number of attempts (including the initial request).
+	// Must be >= 2 when Enabled is true. Defaults to 3.
+	MaxAttempts int
+
+	// InitialBackoff is the wait duration before the first retry.
+	// Subsequent retries double the previous wait (capped at MaxBackoff). Defaults to 100ms.
+	InitialBackoff time.Duration
+
+	// MaxBackoff is the upper bound on the backoff duration. Defaults to 10s.
+	MaxBackoff time.Duration
+
+	// RetryOn is the set of HTTP status codes that should trigger a retry.
+	// Defaults to [502, 503, 504].
+	RetryOn []int
 }
 
 // IPFilterConfig holds configuration for IP-based access control.

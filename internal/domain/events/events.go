@@ -106,6 +106,11 @@ const (
 	// request is terminated and a 504 Gateway Timeout is returned to the
 	// client.
 	EventTypeUpstreamTimeout = "upstream.timeout"
+
+	// EventTypeUpstreamRetry is emitted each time the retry middleware retries
+	// a failed upstream request. One event is emitted per retry attempt; the
+	// initial request does not produce a retry event.
+	EventTypeUpstreamRetry = "upstream.retry"
 )
 
 // Event is the base structured log event.

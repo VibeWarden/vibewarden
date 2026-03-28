@@ -20,6 +20,7 @@ type OTelAdapter struct {
 	authDecisions       ports.Int64Counter
 	upstreamErrors      ports.Int64Counter
 	upstreamTimeouts    ports.Int64Counter
+	upstreamRetries     ports.Int64Counter
 	activeConnections   ports.Int64UpDownCounter
 	circuitBreakerState ports.Int64UpDownCounter
 	currentConns        atomic.Int64
@@ -79,6 +80,13 @@ func NewOTelAdapter(provider ports.OTelProvider, pathPatterns []string) (*OTelAd
 		return nil, err
 	}
 
+	upstreamRetries, err := meter.Int64Counter("vibewarden_upstream_retries_total",
+		ports.WithDescription("Total number of upstream retry attempts."),
+	)
+	if err != nil {
+		return nil, err
+	}
+
 	activeConnections, err := meter.Int64UpDownCounter("vibewarden_active_connections",
 		ports.WithDescription("Current number of active proxy connections."),
 	)
@@ -100,6 +108,7 @@ func NewOTelAdapter(provider ports.OTelProvider, pathPatterns []string) (*OTelAd
 		authDecisions:       authDecisions,
 		upstreamErrors:      upstreamErrors,
 		upstreamTimeouts:    upstreamTimeouts,
+		upstreamRetries:     upstreamRetries,
 		activeConnections:   activeConnections,
 		circuitBreakerState: circuitBreakerState,
 		pathMatcher:         NewPathMatcher(pathPatterns),
@@ -154,6 +163,13 @@ func (a *OTelAdapter) IncUpstreamError() {
 // IncUpstreamTimeout implements ports.MetricsCollector.
 func (a *OTelAdapter) IncUpstreamTimeout() {
 	a.upstreamTimeouts.Add(context.Background(), 1)
+}
+
+// IncUpstreamRetry implements ports.MetricsCollector.
+func (a *OTelAdapter) IncUpstreamRetry(method string) {
+	a.upstreamRetries.Add(context.Background(), 1,
+		ports.Attribute{Key: "method", Value: method},
+	)
 }
 
 // SetActiveConnections implements ports.MetricsCollector.

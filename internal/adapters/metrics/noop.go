@@ -30,6 +30,9 @@ func (NoOpMetricsCollector) IncUpstreamError() {}
 // IncUpstreamTimeout implements ports.MetricsCollector and does nothing.
 func (NoOpMetricsCollector) IncUpstreamTimeout() {}
 
+// IncUpstreamRetry implements ports.MetricsCollector and does nothing.
+func (NoOpMetricsCollector) IncUpstreamRetry(_ string) {}
+
 // SetActiveConnections implements ports.MetricsCollector and does nothing.
 func (NoOpMetricsCollector) SetActiveConnections(_ int) {}
 
