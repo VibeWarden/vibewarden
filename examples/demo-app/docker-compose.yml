@@ -1,5 +1,9 @@
 # VibeWarden Demo App — Profile-based Docker Compose
 #
+# NOTE: This file is manually maintained for the demo app. Normal user projects
+# should NOT commit a docker-compose.yml — instead run `vibewarden generate`
+# which writes a gitignored file to .vibewarden/generated/docker-compose.yml.
+#
 # Three profiles available via COMPOSE_PROFILES or --profile:
 #
 #   (default)       basic stack: demo-app, vibewarden, kratos, postgres, mailslurper, seed

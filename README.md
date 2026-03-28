@@ -36,11 +36,10 @@ curl -fsSL https://vibewarden.dev/vibew > vibew && chmod +x vibew
 That's it. Your app on port 3000 is now behind VibeWarden with TLS, auth,
 rate limiting, and security headers.
 
-### What `init` generates
+### What `init` creates
 
 ```
-vibewarden.yaml          # VibeWarden configuration
-docker-compose.yml       # Full stack: VibeWarden + Kratos + Postgres
+vibewarden.yaml          # VibeWarden configuration (commit this)
 vibew                    # Wrapper script (macOS/Linux)
 vibew.ps1                # Wrapper script (Windows)
 vibew.cmd                # Wrapper script (Windows)
@@ -49,6 +48,19 @@ vibew.cmd                # Wrapper script (Windows)
 .cursor/rules            # AI agent context (Cursor)
 AGENTS.md                # AI agent context (generic)
 ```
+
+Running `vibew dev` or `vibew generate` creates runtime files under
+`.vibewarden/generated/` (gitignored by default):
+
+```
+.vibewarden/generated/
+  docker-compose.yml                # Full stack: VibeWarden + Kratos + Postgres
+  kratos/kratos.yml                 # Ory Kratos configuration
+  kratos/identity.schema.json       # Identity schema
+```
+
+Do not edit the generated files — re-run `vibew generate` after changing
+`vibewarden.yaml` instead.
 
 ### Windows
 
