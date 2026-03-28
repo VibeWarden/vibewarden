@@ -1167,7 +1167,7 @@ func TestGenerate_Observability_NotPresent_WhenDisabled(t *testing.T) {
 	}
 	compose := renderCompose(t, cfg)
 
-	for _, svc := range []string{"prometheus:", "grafana:", "promtail:"} {
+	for _, svc := range []string{"prometheus:", "grafana:", "loki:", "promtail:"} {
 		if bytes.Contains(compose, []byte(svc)) {
 			t.Errorf("service %q must not appear when observability is disabled\ncompose:\n%s", svc, compose)
 		}
@@ -1177,12 +1177,4 @@ func TestGenerate_Observability_NotPresent_WhenDisabled(t *testing.T) {
 			t.Errorf("volume %q must not appear when observability is disabled\ncompose:\n%s", vol, compose)
 		}
 	}
-}
-
-// min returns the smaller of two ints. Used for safe slice bounds.
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }
