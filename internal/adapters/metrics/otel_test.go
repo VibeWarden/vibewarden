@@ -179,6 +179,18 @@ func TestOTelAdapter_IncUpstreamError(t *testing.T) {
 	}
 }
 
+func TestOTelAdapter_IncUpstreamTimeout(t *testing.T) {
+	a := newOTelTestAdapter(t, nil)
+
+	a.IncUpstreamTimeout()
+	a.IncUpstreamTimeout()
+
+	body := scrapeOTelMetrics(t, a)
+	if !strings.Contains(body, "vibewarden_upstream_timeouts_total") {
+		t.Errorf("expected vibewarden_upstream_timeouts_total in output\n\nFull output:\n%s", body)
+	}
+}
+
 func TestOTelAdapter_SetActiveConnections(t *testing.T) {
 	tests := []struct {
 		name       string

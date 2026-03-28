@@ -447,6 +447,7 @@ func buildProxyConfig(cfg *config.Config, registry *plugins.Registry) *ports.Pro
 			Addresses:         cfg.IPFilter.Addresses,
 			TrustProxyHeaders: cfg.IPFilter.TrustProxyHeaders,
 		},
+		Resilience: buildResiliencePortsConfig(cfg),
 	}
 }
 
@@ -480,6 +481,25 @@ func buildBodySizePortsConfig(cfg *config.Config) ports.BodySizeConfig {
 	}
 
 	return bodySizeCfg
+}
+
+// buildResiliencePortsConfig parses the resilience.timeout duration string and
+// returns a ports.ResilienceConfig. Unparseable values are replaced with the
+// 30-second default, consistent with how other duration fields are handled.
+func buildResiliencePortsConfig(cfg *config.Config) ports.ResilienceConfig {
+	raw := cfg.Resilience.Timeout
+	if raw == "" || raw == "0" {
+		return ports.ResilienceConfig{}
+	}
+	d, err := time.ParseDuration(raw)
+	if err != nil {
+		slog.Default().Warn("resilience.timeout parse error — using default 30s",
+			slog.String("error", err.Error()),
+			slog.String("value", raw),
+		)
+		return ports.ResilienceConfig{Timeout: 30 * time.Second}
+	}
+	return ports.ResilienceConfig{Timeout: d}
 }
 
 // buildEventLogger constructs the event logger used by the caddy adapter and

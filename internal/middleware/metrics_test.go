@@ -53,6 +53,8 @@ func (f *fakeMetricsCollector) IncUpstreamError() {
 	f.upstreamErrors++
 }
 
+func (f *fakeMetricsCollector) IncUpstreamTimeout() {}
+
 func (f *fakeMetricsCollector) SetActiveConnections(n int) {
 	f.activeConnections = n
 }

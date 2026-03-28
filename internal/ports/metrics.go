@@ -34,6 +34,11 @@ type MetricsCollector interface {
 	// IncUpstreamError increments the upstream error counter.
 	IncUpstreamError()
 
+	// IncUpstreamTimeout increments the upstream timeout counter.
+	// It is called once per request that is terminated with a 504 because the
+	// upstream did not respond within the configured resilience.timeout.
+	IncUpstreamTimeout()
+
 	// SetActiveConnections sets the current number of active connections.
 	SetActiveConnections(n int)
 }

@@ -80,6 +80,9 @@ type Config struct {
 	// hand-crafted config files instead of relying on VibeWarden's generation.
 	Overrides OverridesConfig `mapstructure:"overrides"`
 
+	// Resilience configures upstream resilience features such as request timeouts.
+	Resilience ResilienceConfig `mapstructure:"resilience"`
+
 	// CORS configures the Cross-Origin Resource Sharing plugin.
 	CORS CORSConfig `mapstructure:"cors"`
 
@@ -553,6 +556,15 @@ type OTLPExporterConfig struct {
 	// Protocol is "http" or "grpc" (default: "http").
 	// Only "http" is supported in this version.
 	Protocol string `mapstructure:"protocol"`
+}
+
+// ResilienceConfig holds resilience settings for upstream connections.
+type ResilienceConfig struct {
+	// Timeout is the maximum time to wait for the upstream application to
+	// respond, expressed as a duration string (e.g. "30s", "1m").
+	// A value of "0" or "" disables the timeout (no limit).
+	// Default: "30s".
+	Timeout string `mapstructure:"timeout"`
 }
 
 // BodySizeConfig holds request body size limit settings.
@@ -1091,6 +1103,7 @@ func Load(configPath string) (*Config, error) {
 	v.SetDefault("cors.exposed_headers", []string{})
 	v.SetDefault("cors.allow_credentials", false)
 	v.SetDefault("cors.max_age", 0)
+	v.SetDefault("resilience.timeout", "30s")
 	v.SetDefault("observability.enabled", false)
 	v.SetDefault("observability.grafana_port", 3001)
 	v.SetDefault("observability.prometheus_port", 9090)

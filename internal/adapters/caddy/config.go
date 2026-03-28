@@ -103,6 +103,19 @@ func BuildCaddyConfig(cfg *ports.ProxyConfig) (map[string]any, error) {
 		handlers = append(handlers, rlHandler)
 	}
 
+	// Add timeout handler wrapping the reverse proxy when a timeout is configured.
+	// The timeout handler must be the last middleware before the reverse proxy so
+	// that it constrains only the upstream I/O time, not the full middleware chain.
+	if cfg.Resilience.Timeout > 0 {
+		timeoutHandler, err := buildTimeoutHandlerJSON(cfg.Resilience)
+		if err != nil {
+			return nil, fmt.Errorf("building timeout handler config: %w", err)
+		}
+		if timeoutHandler != nil {
+			handlers = append(handlers, timeoutHandler)
+		}
+	}
+
 	// Add reverse proxy as final handler.
 	handlers = append(handlers, reverseProxyHandler)
 

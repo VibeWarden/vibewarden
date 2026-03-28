@@ -100,6 +100,12 @@ const (
 	// store becomes reachable again after a period of unavailability and the
 	// rate limiter switches back from the in-memory fallback.
 	EventTypeRateLimitStoreRecovered = "rate_limit.store_recovered"
+
+	// EventTypeUpstreamTimeout is emitted when the upstream application does
+	// not respond within the configured resilience.timeout duration. The
+	// request is terminated and a 504 Gateway Timeout is returned to the
+	// client.
+	EventTypeUpstreamTimeout = "upstream.timeout"
 )
 
 // Event is the base structured log event.
