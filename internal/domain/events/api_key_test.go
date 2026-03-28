@@ -39,3 +39,36 @@ func TestNewAPIKeyFailed(t *testing.T) {
 		t.Errorf("reason = %v, want %q", ev.Payload["reason"], "missing api key")
 	}
 }
+
+func TestNewAPIKeyForbidden(t *testing.T) {
+	ev := events.NewAPIKeyForbidden(events.APIKeyForbiddenParams{
+		Method:         "POST",
+		Path:           "/api/v1/users",
+		KeyName:        "read-only-service",
+		KeyScopes:      []string{"read"},
+		RequiredScopes: []string{"write"},
+	})
+
+	if ev.EventType != events.EventTypeAPIKeyForbidden {
+		t.Errorf("EventType = %q, want %q", ev.EventType, events.EventTypeAPIKeyForbidden)
+	}
+	if ev.SchemaVersion != events.SchemaVersion {
+		t.Errorf("SchemaVersion = %q, want %q", ev.SchemaVersion, events.SchemaVersion)
+	}
+	if ev.Payload["key_name"] != "read-only-service" {
+		t.Errorf("key_name = %v, want %q", ev.Payload["key_name"], "read-only-service")
+	}
+	if ev.Payload["path"] != "/api/v1/users" {
+		t.Errorf("path = %v, want %q", ev.Payload["path"], "/api/v1/users")
+	}
+	if ev.AISummary == "" {
+		t.Error("AISummary should not be empty")
+	}
+}
+
+func TestEventTypeAPIKeyForbidden_Value(t *testing.T) {
+	if events.EventTypeAPIKeyForbidden != "auth.api_key.forbidden" {
+		t.Errorf("EventTypeAPIKeyForbidden = %q, want %q",
+			events.EventTypeAPIKeyForbidden, "auth.api_key.forbidden")
+	}
+}

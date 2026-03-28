@@ -29,9 +29,14 @@ const (
 //  3. Call APIKeyValidator.Validate with the raw header value.
 //  4. If validation fails (invalid key, inactive key), reject with HTTP 401
 //     and emit an auth.api_key.failed event.
-//  5. On success, store the *auth.APIKey in the request context, emit an
+//  5. Evaluate cfg.ScopeRules for the request path and method. The first
+//     matching rule determines the required scopes. If the key does not hold
+//     all required scopes, reject with HTTP 403 and emit an
+//     auth.api_key.forbidden event.
+//  6. On success, store the *auth.APIKey in the request context, emit an
 //     auth.api_key.success event, and call the next handler.
 //
+// No matching scope rule means the request is allowed (open by default).
 // The validator implementation is responsible for constant-time comparison.
 // Keys are never logged; only the key name and scopes are emitted in events.
 //
@@ -60,6 +65,16 @@ func APIKeyMiddleware(
 				emitAPIKeyFailed(r, eventLogger, "invalid or inactive api key")
 				WriteErrorResponse(w, r, http.StatusUnauthorized, "unauthorized", "invalid or inactive API key")
 				return
+			}
+
+			// Scope enforcement: find the first matching scope rule and verify
+			// that the key holds all required scopes. No matching rule = allow.
+			if rule, ok := auth.MatchingScopeRule(cfg.ScopeRules, r.Method, r.URL.Path); ok {
+				if !rule.SatisfiedBy(apiKey.Scopes) {
+					emitAPIKeyForbidden(r, eventLogger, apiKey, rule.RequiredScopes)
+					WriteErrorResponse(w, r, http.StatusForbidden, "forbidden", "insufficient scopes")
+					return
+				}
 			}
 
 			emitAPIKeySuccess(r, eventLogger, apiKey)
@@ -112,6 +127,28 @@ func emitAPIKeyFailed(r *http.Request, eventLogger ports.EventLogger, reason str
 		Method: r.Method,
 		Path:   r.URL.Path,
 		Reason: reason,
+	})
+	// Best-effort: ignore logging errors so request processing is never blocked.
+	_ = eventLogger.Log(r.Context(), ev)
+}
+
+// emitAPIKeyForbidden logs an auth.api_key.forbidden event via the EventLogger
+// port when a valid key lacks the required scopes for the requested path+method.
+// If eventLogger is nil the call is a no-op.
+func emitAPIKeyForbidden(r *http.Request, eventLogger ports.EventLogger, key *auth.APIKey, requiredScopes []string) {
+	if eventLogger == nil {
+		return
+	}
+	keyScopes := make([]string, len(key.Scopes))
+	for i, s := range key.Scopes {
+		keyScopes[i] = string(s)
+	}
+	ev := events.NewAPIKeyForbidden(events.APIKeyForbiddenParams{
+		Method:         r.Method,
+		Path:           r.URL.Path,
+		KeyName:        key.Name,
+		KeyScopes:      keyScopes,
+		RequiredScopes: requiredScopes,
 	})
 	// Best-effort: ignore logging errors so request processing is never blocked.
 	_ = eventLogger.Log(r.Context(), ev)

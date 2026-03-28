@@ -333,6 +333,35 @@ type AuthAPIKeyConfig struct {
 	// before the next refresh. Accepts Go duration strings (e.g. "5m", "1h").
 	// Defaults to "5m". Ignored when OpenBaoPath is empty.
 	CacheTTL string `mapstructure:"cache_ttl"`
+
+	// ScopeRules is an ordered list of path+method authorization rules applied
+	// after successful key validation. The first matching rule determines the
+	// required scopes. When no rule matches, the request is allowed.
+	//
+	// Example:
+	//   scope_rules:
+	//     - path: "/api/v1/*"
+	//       methods: [GET, HEAD]
+	//       required_scopes: ["read"]
+	//     - path: "/admin/*"
+	//       required_scopes: ["admin"]
+	ScopeRules []ScopeRuleConfig `mapstructure:"scope_rules"`
+}
+
+// ScopeRuleConfig describes a single scope-based authorization rule for API
+// key requests. Rules are evaluated in order; the first match wins.
+type ScopeRuleConfig struct {
+	// Path is a glob pattern (stdlib path.Match syntax) matched against the
+	// request URL path. Example: "/api/v1/*"
+	Path string `mapstructure:"path"`
+
+	// Methods is the set of HTTP methods this rule applies to (e.g. ["GET",
+	// "HEAD"]). When empty, the rule applies to all HTTP methods.
+	Methods []string `mapstructure:"methods"`
+
+	// RequiredScopes is the set of scope strings the API key must possess for
+	// the request to be permitted.
+	RequiredScopes []string `mapstructure:"required_scopes"`
 }
 
 // APIKeyEntry represents a single registered API key in the configuration.

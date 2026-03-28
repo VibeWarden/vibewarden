@@ -366,3 +366,284 @@ func TestAPIKeyMiddleware_KeyScopesInContext(t *testing.T) {
 		t.Errorf("Scopes[0] = %q, want %q", gotKey.Scopes[0], "read:metrics")
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Scope enforcement tests
+// ---------------------------------------------------------------------------
+
+// scopeRules returns a representative set of scope rules for testing.
+func scopeRules() []auth.ScopeRule {
+	return []auth.ScopeRule{
+		{
+			Path:           "/api/v1/*",
+			Methods:        []string{"GET", "HEAD"},
+			RequiredScopes: []string{"read"},
+		},
+		{
+			Path:           "/api/v1/*",
+			Methods:        []string{"POST", "PUT", "DELETE"},
+			RequiredScopes: []string{"write"},
+		},
+		{
+			Path:           "/admin/*",
+			RequiredScopes: []string{"admin"},
+		},
+	}
+}
+
+func TestAPIKeyMiddleware_ScopeEnforcement_AllowsWhenScopeSatisfied(t *testing.T) {
+	apiKey := &auth.APIKey{
+		Name:    "read-service",
+		KeyHash: auth.HashKey("vw_read_key"),
+		Scopes:  []auth.Scope{"read"},
+		Active:  true,
+	}
+	validator := &fakeAPIKeyValidator{
+		keys: map[string]*auth.APIKey{"vw_read_key": apiKey},
+	}
+	cfg := ports.APIKeyConfig{ScopeRules: scopeRules()}
+
+	nextCalled := false
+	mw := APIKeyMiddleware(validator, cfg, nil)
+	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		nextCalled = true
+		w.WriteHeader(http.StatusOK)
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/users", nil)
+	req.Header.Set("X-API-Key", "vw_read_key")
+	w := httptest.NewRecorder()
+	mw(next).ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("status = %d, want %d (scope satisfied)", w.Code, http.StatusOK)
+	}
+	if !nextCalled {
+		t.Error("next handler should be called when scope is satisfied")
+	}
+}
+
+func TestAPIKeyMiddleware_ScopeEnforcement_Returns403WhenScopeMissing(t *testing.T) {
+	apiKey := &auth.APIKey{
+		Name:    "read-only-service",
+		KeyHash: auth.HashKey("vw_read_only_key"),
+		Scopes:  []auth.Scope{"read"},
+		Active:  true,
+	}
+	validator := &fakeAPIKeyValidator{
+		keys: map[string]*auth.APIKey{"vw_read_only_key": apiKey},
+	}
+	cfg := ports.APIKeyConfig{ScopeRules: scopeRules()}
+
+	nextCalled := false
+	mw := APIKeyMiddleware(validator, cfg, nil)
+	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		nextCalled = true
+		w.WriteHeader(http.StatusOK)
+	})
+
+	// POST requires "write" but key only has "read".
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/users", nil)
+	req.Header.Set("X-API-Key", "vw_read_only_key")
+	w := httptest.NewRecorder()
+	mw(next).ServeHTTP(w, req)
+
+	if w.Code != http.StatusForbidden {
+		t.Errorf("status = %d, want %d (403 Forbidden)", w.Code, http.StatusForbidden)
+	}
+	if nextCalled {
+		t.Error("next handler must not be called when scope is insufficient")
+	}
+}
+
+func TestAPIKeyMiddleware_ScopeEnforcement_NoMatchingRuleAllows(t *testing.T) {
+	apiKey := &auth.APIKey{
+		Name:    "any-service",
+		KeyHash: auth.HashKey("vw_any_key"),
+		Scopes:  []auth.Scope{},
+		Active:  true,
+	}
+	validator := &fakeAPIKeyValidator{
+		keys: map[string]*auth.APIKey{"vw_any_key": apiKey},
+	}
+	cfg := ports.APIKeyConfig{ScopeRules: scopeRules()}
+
+	nextCalled := false
+	mw := APIKeyMiddleware(validator, cfg, nil)
+	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		nextCalled = true
+		w.WriteHeader(http.StatusOK)
+	})
+
+	// /public/health matches no scope rule — should be allowed.
+	req := httptest.NewRequest(http.MethodGet, "/public/health", nil)
+	req.Header.Set("X-API-Key", "vw_any_key")
+	w := httptest.NewRecorder()
+	mw(next).ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("status = %d, want %d (no rule = allow)", w.Code, http.StatusOK)
+	}
+	if !nextCalled {
+		t.Error("next handler should be called when no scope rule matches")
+	}
+}
+
+func TestAPIKeyMiddleware_ScopeEnforcement_EmptyRulesAllowsAll(t *testing.T) {
+	apiKey := &auth.APIKey{
+		Name:    "any-service",
+		KeyHash: auth.HashKey("vw_any_key2"),
+		Scopes:  []auth.Scope{},
+		Active:  true,
+	}
+	validator := &fakeAPIKeyValidator{
+		keys: map[string]*auth.APIKey{"vw_any_key2": apiKey},
+	}
+	// Empty ScopeRules: all paths are open.
+	cfg := ports.APIKeyConfig{ScopeRules: nil}
+
+	nextCalled := false
+	mw := APIKeyMiddleware(validator, cfg, nil)
+	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		nextCalled = true
+		w.WriteHeader(http.StatusOK)
+	})
+
+	req := httptest.NewRequest(http.MethodDelete, "/admin/users/1", nil)
+	req.Header.Set("X-API-Key", "vw_any_key2")
+	w := httptest.NewRecorder()
+	mw(next).ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("status = %d, want %d (empty rules = allow all)", w.Code, http.StatusOK)
+	}
+	if !nextCalled {
+		t.Error("next handler should be called when no scope rules are configured")
+	}
+}
+
+func TestAPIKeyMiddleware_ScopeEnforcement_EmitsForbiddenEvent(t *testing.T) {
+	apiKey := &auth.APIKey{
+		Name:    "read-only",
+		KeyHash: auth.HashKey("vw_ro_key"),
+		Scopes:  []auth.Scope{"read"},
+		Active:  true,
+	}
+	validator := &fakeAPIKeyValidator{
+		keys: map[string]*auth.APIKey{"vw_ro_key": apiKey},
+	}
+	cfg := ports.APIKeyConfig{ScopeRules: scopeRules()}
+	spy := &fakeEventLogger{}
+
+	mw := APIKeyMiddleware(validator, cfg, spy)
+	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/items", nil)
+	req.Header.Set("X-API-Key", "vw_ro_key")
+	w := httptest.NewRecorder()
+	mw(next).ServeHTTP(w, req)
+
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusForbidden)
+	}
+	if !spy.hasEventType(events.EventTypeAPIKeyForbidden) {
+		t.Error("expected auth.api_key.forbidden event but none was logged")
+	}
+	ev := spy.logged[0]
+	if ev.Payload["key_name"] != "read-only" {
+		t.Errorf("payload.key_name = %v, want %q", ev.Payload["key_name"], "read-only")
+	}
+}
+
+func TestAPIKeyMiddleware_ScopeEnforcement_403IsJSON(t *testing.T) {
+	apiKey := &auth.APIKey{
+		Name:    "no-write",
+		KeyHash: auth.HashKey("vw_nowrite_key"),
+		Scopes:  []auth.Scope{"read"},
+		Active:  true,
+	}
+	validator := &fakeAPIKeyValidator{
+		keys: map[string]*auth.APIKey{"vw_nowrite_key": apiKey},
+	}
+	cfg := ports.APIKeyConfig{ScopeRules: scopeRules()}
+
+	mw := APIKeyMiddleware(validator, cfg, nil)
+	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/settings", nil)
+	req.Header.Set("X-API-Key", "vw_nowrite_key")
+	w := httptest.NewRecorder()
+	mw(next).ServeHTTP(w, req)
+
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusForbidden)
+	}
+	if ct := w.Header().Get("Content-Type"); ct != "application/json" {
+		t.Errorf("Content-Type = %q, want %q", ct, "application/json")
+	}
+	var body ErrorResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("403 response is not valid JSON: %v", err)
+	}
+	if body.Error != "forbidden" {
+		t.Errorf("error code = %q, want %q", body.Error, "forbidden")
+	}
+}
+
+func TestAPIKeyMiddleware_ScopeEnforcement_AdminPathRequiresAdminScope(t *testing.T) {
+	tests := []struct {
+		name       string
+		keyScopes  []auth.Scope
+		wantStatus int
+	}{
+		{
+			name:       "key with admin scope is allowed",
+			keyScopes:  []auth.Scope{"read", "admin"},
+			wantStatus: http.StatusOK,
+		},
+		{
+			name:       "key without admin scope is forbidden",
+			keyScopes:  []auth.Scope{"read", "write"},
+			wantStatus: http.StatusForbidden,
+		},
+		{
+			name:       "key with no scopes is forbidden",
+			keyScopes:  []auth.Scope{},
+			wantStatus: http.StatusForbidden,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			plaintext := "vw_admin_test_" + tt.name
+			apiKey := &auth.APIKey{
+				Name:    "admin-test-key",
+				KeyHash: auth.HashKey(plaintext),
+				Scopes:  tt.keyScopes,
+				Active:  true,
+			}
+			validator := &fakeAPIKeyValidator{
+				keys: map[string]*auth.APIKey{plaintext: apiKey},
+			}
+			cfg := ports.APIKeyConfig{ScopeRules: scopeRules()}
+
+			mw := APIKeyMiddleware(validator, cfg, nil)
+			next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(http.StatusOK)
+			})
+
+			req := httptest.NewRequest(http.MethodGet, "/admin/users", nil)
+			req.Header.Set("X-API-Key", plaintext)
+			w := httptest.NewRecorder()
+			mw(next).ServeHTTP(w, req)
+
+			if w.Code != tt.wantStatus {
+				t.Errorf("status = %d, want %d", w.Code, tt.wantStatus)
+			}
+		})
+	}
+}

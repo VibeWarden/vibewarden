@@ -119,6 +119,10 @@ const (
 	// EventTypeAPIKeyFailed is emitted when a request is rejected because the
 	// presented API key is missing, invalid, or belongs to an inactive key.
 	EventTypeAPIKeyFailed = "auth.api_key.failed"
+
+	// EventTypeAPIKeyForbidden is emitted when a valid API key is presented but
+	// lacks the required scopes to access the requested path+method combination.
+	EventTypeAPIKeyForbidden = "auth.api_key.forbidden"
 )
 
 // Event is the base structured log event.
