@@ -6,16 +6,17 @@ import (
 	"log/slog"
 
 	metricsadapter "github.com/vibewarden/vibewarden/internal/adapters/metrics"
+	oteladapter "github.com/vibewarden/vibewarden/internal/adapters/otel"
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
 
 // Plugin is the metrics plugin for VibeWarden.
 // It implements ports.Plugin, ports.CaddyContributor, and ports.InternalServerPlugin.
 //
-// On Init the plugin creates a PrometheusAdapter.
+// On Init the plugin creates an OTel provider and an OTelAdapter.
 // On Start the plugin starts an internal HTTP server that serves the Prometheus
 // handler at /metrics on a random localhost port.
-// On Stop the internal server is shut down gracefully.
+// On Stop the internal server is shut down gracefully and the OTel SDK is shut down.
 // ContributeCaddyRoutes returns a route that reverse-proxies the public path
 // /_vibewarden/metrics to the internal server, rewriting the path to /metrics.
 // InternalAddr returns the internal server address after a successful Start.
@@ -23,7 +24,8 @@ import (
 type Plugin struct {
 	cfg          Config
 	logger       *slog.Logger
-	prometheus   *metricsadapter.PrometheusAdapter
+	otelProvider *oteladapter.Provider
+	adapter      *metricsadapter.OTelAdapter
 	server       *metricsadapter.Server
 	internalAddr string
 	running      bool
@@ -42,14 +44,27 @@ func (p *Plugin) Name() string { return "metrics" }
 // Metrics is assigned priority 30 — after TLS (10) and security-headers (20).
 func (p *Plugin) Priority() int { return 30 }
 
-// Init creates the PrometheusAdapter.
+// Init creates the OTel provider and OTelAdapter.
 // It must be called once before Start.
-func (p *Plugin) Init(_ context.Context) error {
+func (p *Plugin) Init(ctx context.Context) error {
 	if !p.cfg.Enabled {
 		return nil
 	}
-	p.prometheus = metricsadapter.NewPrometheusAdapter(p.cfg.PathPatterns)
-	p.logger.Info("metrics plugin initialised",
+
+	// Initialize OTel provider.
+	p.otelProvider = oteladapter.NewProvider()
+	if err := p.otelProvider.Init(ctx, "vibewarden", Version); err != nil {
+		return fmt.Errorf("metrics plugin: initializing otel provider: %w", err)
+	}
+
+	// Create the OTel-backed metrics adapter.
+	adapter, err := metricsadapter.NewOTelAdapter(p.otelProvider, p.cfg.PathPatterns)
+	if err != nil {
+		return fmt.Errorf("metrics plugin: creating otel adapter: %w", err)
+	}
+	p.adapter = adapter
+
+	p.logger.Info("metrics plugin initialised with OTel SDK",
 		slog.Int("path_patterns", len(p.cfg.PathPatterns)),
 	)
 	return nil
@@ -59,11 +74,11 @@ func (p *Plugin) Init(_ context.Context) error {
 // The server binds a random localhost port; Caddy reverse-proxies
 // /_vibewarden/metrics to it.
 // Start must only be called after a successful Init.
-func (p *Plugin) Start(_ context.Context) error {
+func (p *Plugin) Start(ctx context.Context) error {
 	if !p.cfg.Enabled {
 		return nil
 	}
-	p.server = metricsadapter.NewServer(p.prometheus.Handler(), p.logger)
+	p.server = metricsadapter.NewServer(p.adapter.Handler(), p.logger)
 	if err := p.server.Start(); err != nil {
 		return fmt.Errorf("metrics plugin: starting internal server: %w", err)
 	}
@@ -75,14 +90,18 @@ func (p *Plugin) Start(_ context.Context) error {
 	return nil
 }
 
-// Stop gracefully shuts down the internal metrics server.
+// Stop gracefully shuts down the internal metrics server and the OTel SDK.
 func (p *Plugin) Stop(ctx context.Context) error {
-	if p.server == nil {
-		return nil
+	if p.server != nil {
+		p.running = false
+		if err := p.server.Stop(ctx); err != nil {
+			return fmt.Errorf("metrics plugin: stopping internal server: %w", err)
+		}
 	}
-	p.running = false
-	if err := p.server.Stop(ctx); err != nil {
-		return fmt.Errorf("metrics plugin: stopping internal server: %w", err)
+	if p.otelProvider != nil {
+		if err := p.otelProvider.Shutdown(ctx); err != nil {
+			return fmt.Errorf("metrics plugin: shutting down otel provider: %w", err)
+		}
 	}
 	return nil
 }
@@ -111,7 +130,7 @@ func (p *Plugin) Health() ports.HealthStatus {
 }
 
 // ContributeCaddyRoutes returns a single route that reverse-proxies
-// /_vibewarden/metrics to the internal Prometheus server at InternalAddr.
+// /_vibewarden/metrics to the internal metrics server at InternalAddr.
 // A rewrite handler translates /_vibewarden/metrics to /metrics before
 // the reverse_proxy handler forwards the request.
 // Returns nil when the plugin is disabled or has not been started yet.
@@ -135,6 +154,15 @@ func (p *Plugin) ContributeCaddyHandlers() []ports.CaddyHandler { return nil }
 // InternalAddr returns the host:port of the internal metrics HTTP server.
 // The address is only valid after a successful Start.
 func (p *Plugin) InternalAddr() string { return p.internalAddr }
+
+// Collector returns the MetricsCollector for use by middleware.
+// Returns a NoOpMetricsCollector if the plugin is disabled or not initialized.
+func (p *Plugin) Collector() ports.MetricsCollector {
+	if p.adapter == nil {
+		return metricsadapter.NoOpMetricsCollector{}
+	}
+	return p.adapter
+}
 
 // ---------------------------------------------------------------------------
 // Internal builders — pure functions, no side effects.
