@@ -10,6 +10,13 @@ upstream:
   host: "127.0.0.1"
   port: {{ .UpstreamPort }}
 
+# app configures how your application is included in the generated docker-compose.yml.
+# Set app.build to build from source (dev), or app.image to pull a pre-built image (prod).
+# Remove this section if you manage your app service manually.
+app:
+  build: "."
+  # image: "ghcr.io/your-org/your-app:latest"  # used in prod; overridden by VIBEWARDEN_APP_IMAGE
+
 log:
   level: "info"
   format: "json"

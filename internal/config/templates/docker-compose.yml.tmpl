@@ -3,6 +3,9 @@
 # To customise, set overrides.compose_file in vibewarden.yaml.
 #
 # Services:
+{{- if or .App.Build .App.Image }}
+#   app         — Your application
+{{- end }}
 #   vibewarden  — Security sidecar (listens on :{{ .Server.Port }}, forwards to app on :{{ .Upstream.Port }})
 {{- if .Auth.Enabled }}
 #   kratos      — Ory Kratos identity server
@@ -12,6 +15,25 @@
 version: "3.9"
 
 services:
+{{- if or .App.Build .App.Image }}
+  app:
+    restart: unless-stopped
+{{- if .App.Build }}
+    build:
+      context: {{ .App.Build }}
+{{- else if .App.Image }}
+    image: ${VIBEWARDEN_APP_IMAGE:-{{ .App.Image }}}
+{{- end }}
+    networks:
+      - vibewarden
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:{{ .Upstream.Port }}/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+{{- end }}
   vibewarden:
     image: ghcr.io/vibewarden/vibewarden:latest
     restart: unless-stopped
@@ -24,16 +46,30 @@ services:
       - vibewarden-data:/var/lib/vibewarden
 {{- end }}
     environment:
+{{- if or .App.Build .App.Image }}
+      - VIBEWARDEN_UPSTREAM_HOST=app
+{{- else }}
       - VIBEWARDEN_UPSTREAM_HOST=host.docker.internal
+{{- end }}
       - VIBEWARDEN_UPSTREAM_PORT={{ .Upstream.Port }}
+{{- if not (or .App.Build .App.Image) }}
     extra_hosts:
       - "host.docker.internal:host-gateway"
+{{- end }}
     networks:
       - vibewarden
-{{- if .Auth.Enabled }}
+{{- if or .Auth.Enabled .App.Build .App.Image }}
     depends_on:
+{{- if or .App.Build .App.Image }}
+      app:
+        condition: service_healthy
+{{- end }}
+{{- if .Auth.Enabled }}
       kratos:
         condition: service_healthy
+{{- end }}
+{{- end }}
+{{- if .Auth.Enabled }}
 
   kratos-db:
     image: postgres:17-alpine

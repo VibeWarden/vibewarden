@@ -10,9 +10,17 @@ import (
 	"path/filepath"
 	"testing"
 
+	templateadapter "github.com/vibewarden/vibewarden/internal/adapters/template"
 	"github.com/vibewarden/vibewarden/internal/app/generate"
 	"github.com/vibewarden/vibewarden/internal/config"
+	configtemplates "github.com/vibewarden/vibewarden/internal/config/templates"
 )
+
+// realRenderer returns a TemplateRenderer backed by the embedded config templates FS.
+// Use this for tests that need to verify actual template output.
+func realRenderer() *templateadapter.Renderer {
+	return templateadapter.NewRenderer(configtemplates.FS)
+}
 
 // fakeRenderer is a minimal ports.TemplateRenderer that records calls and
 // writes configurable content to the destination file.
@@ -513,5 +521,164 @@ func TestGenerate_WithSocialProviders_KratosTemplatePassesConfig(t *testing.T) {
 	}
 	if renderedCfg.Auth.SocialProviders[0].ClientID != "my-client-id" {
 		t.Errorf("expected ClientID %q, got %q", "my-client-id", renderedCfg.Auth.SocialProviders[0].ClientID)
+	}
+}
+
+// appServiceConfig returns a Config with the app section set according to the
+// supplied build and image values. The auth section is kept disabled so the
+// tests focus on the app service in isolation.
+func appServiceConfig(build, image string) *config.Config {
+	return &config.Config{
+		Server:   config.ServerConfig{Host: "127.0.0.1", Port: 8080},
+		Upstream: config.UpstreamConfig{Host: "127.0.0.1", Port: 3000},
+		App:      config.AppConfig{Build: build, Image: image},
+	}
+}
+
+// renderCompose runs Generate with the real template renderer and returns the
+// contents of the generated docker-compose.yml as a byte slice.
+func renderCompose(t *testing.T, cfg *config.Config) []byte {
+	t.Helper()
+	outputDir := t.TempDir()
+	svc := generate.NewService(realRenderer())
+	if err := svc.Generate(context.Background(), cfg, outputDir); err != nil {
+		t.Fatalf("Generate() unexpected error: %v", err)
+	}
+	data, err := os.ReadFile(filepath.Join(outputDir, "docker-compose.yml"))
+	if err != nil {
+		t.Fatalf("reading docker-compose.yml: %v", err)
+	}
+	return data
+}
+
+func TestGenerate_AppService_BuildMode(t *testing.T) {
+	cfg := appServiceConfig(".", "")
+	compose := renderCompose(t, cfg)
+
+	if !bytes.Contains(compose, []byte("app:")) {
+		t.Error("expected 'app:' service to be present")
+	}
+	if !bytes.Contains(compose, []byte("build:")) {
+		t.Error("expected 'build:' directive")
+	}
+	if !bytes.Contains(compose, []byte("context: .")) {
+		t.Error("expected 'context: .'")
+	}
+	if bytes.Contains(compose, []byte("image: ${VIBEWARDEN_APP_IMAGE")) {
+		t.Error("image: directive must not appear in build mode")
+	}
+}
+
+func TestGenerate_AppService_ImageMode(t *testing.T) {
+	cfg := appServiceConfig("", "ghcr.io/org/myapp:latest")
+	compose := renderCompose(t, cfg)
+
+	if !bytes.Contains(compose, []byte("app:")) {
+		t.Error("expected 'app:' service to be present")
+	}
+	if !bytes.Contains(compose, []byte("image: ${VIBEWARDEN_APP_IMAGE:-ghcr.io/org/myapp:latest}")) {
+		t.Error("expected image with VIBEWARDEN_APP_IMAGE env var override")
+	}
+	if bytes.Contains(compose, []byte("build:")) {
+		t.Error("build: directive must not appear in image mode")
+	}
+}
+
+func TestGenerate_AppService_BothSet_BuildTakesPrecedence(t *testing.T) {
+	cfg := appServiceConfig("./src", "ghcr.io/org/myapp:latest")
+	compose := renderCompose(t, cfg)
+
+	if !bytes.Contains(compose, []byte("build:")) {
+		t.Error("expected 'build:' directive when both build and image are set")
+	}
+	if !bytes.Contains(compose, []byte("context: ./src")) {
+		t.Error("expected 'context: ./src'")
+	}
+	// image: for the app service must not appear when build takes precedence.
+	// Note: "image:" still appears in vibewarden service itself so we check
+	// for the VIBEWARDEN_APP_IMAGE override pattern specifically.
+	if bytes.Contains(compose, []byte("image: ${VIBEWARDEN_APP_IMAGE")) {
+		t.Error("image: env-override directive must not appear when build takes precedence")
+	}
+}
+
+func TestGenerate_AppService_NeitherSet_NoAppService(t *testing.T) {
+	cfg := appServiceConfig("", "")
+	compose := renderCompose(t, cfg)
+
+	if bytes.Contains(compose, []byte("\n  app:")) {
+		t.Error("app service must not be rendered when neither build nor image is set")
+	}
+}
+
+func TestGenerate_AppService_DependsOn(t *testing.T) {
+	tests := []struct {
+		name      string
+		build     string
+		image     string
+		wantDepOn bool
+	}{
+		{"build mode has depends_on app", ".", "", true},
+		{"image mode has depends_on app", "", "ghcr.io/org/myapp:latest", true},
+		{"no app service has no depends_on app", "", "", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := appServiceConfig(tt.build, tt.image)
+			compose := renderCompose(t, cfg)
+
+			hasDepOn := bytes.Contains(compose, []byte("app:\n        condition: service_healthy"))
+			if hasDepOn != tt.wantDepOn {
+				t.Errorf("depends_on app present=%v, want %v\ncompose:\n%s", hasDepOn, tt.wantDepOn, compose)
+			}
+		})
+	}
+}
+
+func TestGenerate_AppService_UpstreamHost(t *testing.T) {
+	tests := []struct {
+		name             string
+		build            string
+		image            string
+		wantUpstreamHost string
+		wantExtraHosts   bool
+	}{
+		{
+			name:             "build mode uses app container name",
+			build:            ".",
+			image:            "",
+			wantUpstreamHost: "VIBEWARDEN_UPSTREAM_HOST=app",
+			wantExtraHosts:   false,
+		},
+		{
+			name:             "image mode uses app container name",
+			build:            "",
+			image:            "ghcr.io/org/myapp:latest",
+			wantUpstreamHost: "VIBEWARDEN_UPSTREAM_HOST=app",
+			wantExtraHosts:   false,
+		},
+		{
+			name:             "no app service falls back to host.docker.internal",
+			build:            "",
+			image:            "",
+			wantUpstreamHost: "VIBEWARDEN_UPSTREAM_HOST=host.docker.internal",
+			wantExtraHosts:   true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := appServiceConfig(tt.build, tt.image)
+			compose := renderCompose(t, cfg)
+
+			if !bytes.Contains(compose, []byte(tt.wantUpstreamHost)) {
+				t.Errorf("expected %q in compose output\ncompose:\n%s", tt.wantUpstreamHost, compose)
+			}
+			hasExtraHosts := bytes.Contains(compose, []byte("extra_hosts:"))
+			if hasExtraHosts != tt.wantExtraHosts {
+				t.Errorf("extra_hosts present=%v, want %v", hasExtraHosts, tt.wantExtraHosts)
+			}
+		})
 	}
 }
