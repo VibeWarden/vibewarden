@@ -1,5 +1,9 @@
 package metrics
 
+// Version is the current version of the metrics plugin.
+// It is used as the service version when initializing the OTel SDK.
+const Version = "1.0.0"
+
 // Description returns a short description of the metrics plugin.
 func (p *Plugin) Description() string {
 	return "Prometheus metrics endpoint at /_vibewarden/metrics"
