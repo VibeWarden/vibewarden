@@ -373,7 +373,7 @@
         {
           "refId": "A",
           "datasource": { "type": "loki", "uid": "loki" },
-          "expr": "{container=\"vibewarden\"} | json",
+          "expr": "{service=\"vibewarden\"} | json",
           "legendFormat": ""
         }
       ]
@@ -399,7 +399,7 @@
         {
           "refId": "A",
           "datasource": { "type": "loki", "uid": "loki" },
-          "expr": "{container=\"vibewarden\"} | json | event_type =~ \"auth.*\"",
+          "expr": "{service=\"vibewarden\"} | json | event_type =~ \"auth.*\"",
           "legendFormat": ""
         }
       ]
@@ -425,7 +425,7 @@
         {
           "refId": "A",
           "datasource": { "type": "loki", "uid": "loki" },
-          "expr": "{container=\"vibewarden\"} | json | event_type =~ \"rate_limit.*\"",
+          "expr": "{service=\"vibewarden\"} | json | event_type =~ \"rate_limit.*\"",
           "legendFormat": ""
         }
       ]
@@ -451,7 +451,7 @@
         {
           "refId": "A",
           "datasource": { "type": "loki", "uid": "loki" },
-          "expr": "{container=\"vibewarden\"} | json | event_type =~ \"security.*\" or event_type =~ \"blocked.*\" or event_type =~ \"suspicious.*\"",
+          "expr": "{service=\"vibewarden\"} | json | event_type =~ \"security.*\" or event_type =~ \"blocked.*\" or event_type =~ \"suspicious.*\"",
           "legendFormat": ""
         }
       ]
