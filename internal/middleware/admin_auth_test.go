@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -194,6 +195,35 @@ func TestAdminAuthMiddleware_WWWAuthenticateHeader(t *testing.T) {
 	got := w.Header().Get("WWW-Authenticate")
 	if got != want {
 		t.Errorf("WWW-Authenticate = %q, want %q", got, want)
+	}
+}
+
+func TestAdminAuthMiddleware_401IsJSON(t *testing.T) {
+	// When the admin key is wrong, the 401 response must be JSON with a
+	// correlation ID (trace_id or request_id).
+	cfg := ports.AdminAuthConfig{Enabled: true, Token: "correct-token"}
+	mw := AdminAuthMiddleware(cfg)
+
+	req := httptest.NewRequest(http.MethodGet, "/_vibewarden/admin/users", nil)
+	req.Header.Set(adminKeyHeader, "wrong-token")
+	w := httptest.NewRecorder()
+	mw(okHandler).ServeHTTP(w, req)
+
+	if w.Code != http.StatusUnauthorized {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusUnauthorized)
+	}
+	if ct := w.Header().Get("Content-Type"); ct != "application/json" {
+		t.Errorf("Content-Type = %q, want %q", ct, "application/json")
+	}
+	var body ErrorResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("failed to decode response body: %v", err)
+	}
+	if body.Error != "unauthorized" {
+		t.Errorf("error = %q, want %q", body.Error, "unauthorized")
+	}
+	if body.RequestID == "" && body.TraceID == "" {
+		t.Error("expected request_id or trace_id in 401 response body")
 	}
 }
 

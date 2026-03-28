@@ -1,12 +1,15 @@
 package caddy
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
 	gocaddy "github.com/caddyserver/caddy/v2"
 	"github.com/caddyserver/caddy/v2/modules/caddyhttp"
+
+	"github.com/vibewarden/vibewarden/internal/middleware"
 )
 
 // TestIPFilterHandler_CaddyModule verifies the Caddy module metadata.
@@ -331,5 +334,50 @@ func TestIPFilterHandler_UnknownMode_TreatedAsBlocklist(t *testing.T) {
 	}
 	if w.Code != http.StatusForbidden {
 		t.Errorf("status = %d, want %d", w.Code, http.StatusForbidden)
+	}
+}
+
+// TestIPFilterHandler_ServeHTTP_Blocked403IsJSON verifies that a blocked
+// request receives a JSON body with a correlation ID (trace_id or request_id)
+// rather than plain text.
+func TestIPFilterHandler_ServeHTTP_Blocked403IsJSON(t *testing.T) {
+	h := &IPFilterHandler{
+		Config: IPFilterHandlerConfig{
+			Mode:      "blocklist",
+			Addresses: []string{"10.0.0.1"},
+		},
+	}
+	if err := h.Provision(gocaddy.Context{}); err != nil {
+		t.Fatalf("Provision() error: %v", err)
+	}
+
+	next := caddyhttp.HandlerFunc(func(w http.ResponseWriter, r *http.Request) error {
+		w.WriteHeader(http.StatusOK)
+		return nil
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/api", nil)
+	req.RemoteAddr = "10.0.0.1:54321"
+	w := httptest.NewRecorder()
+
+	if err := h.ServeHTTP(w, req, next); err != nil {
+		t.Fatalf("ServeHTTP() unexpected error: %v", err)
+	}
+
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusForbidden)
+	}
+	if ct := w.Header().Get("Content-Type"); ct != "application/json" {
+		t.Errorf("Content-Type = %q, want %q", ct, "application/json")
+	}
+	var body middleware.ErrorResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("failed to decode response body: %v (body=%q)", err, w.Body.String())
+	}
+	if body.Error != "forbidden" {
+		t.Errorf("error = %q, want %q", body.Error, "forbidden")
+	}
+	if body.RequestID == "" && body.TraceID == "" {
+		t.Error("expected request_id or trace_id in 403 response body")
 	}
 }

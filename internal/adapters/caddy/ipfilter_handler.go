@@ -108,7 +108,7 @@ func (h *IPFilterHandler) ServeHTTP(w http.ResponseWriter, r *http.Request, next
 	blocked := h.isBlocked(matched)
 	if blocked {
 		h.emitBlockedEvent(r.Context(), clientIP, r.Method, r.URL.Path)
-		http.Error(w, "Forbidden", http.StatusForbidden)
+		middleware.WriteErrorResponse(w, r, http.StatusForbidden, "forbidden", "your IP address is not permitted to access this resource")
 		return nil
 	}
 
