@@ -55,6 +55,9 @@ type TimeoutHandler struct {
 
 	// eventLogger emits structured upstream.timeout events.
 	eventLogger ports.EventLogger
+
+	// metrics records timeout counters.
+	metrics ports.MetricsCollector
 }
 
 // CaddyModule returns the module metadata used to register it with Caddy.
@@ -126,6 +129,10 @@ func (h *TimeoutHandler) emitTimeoutEvent(r *http.Request, timeout time.Duration
 		if err := h.eventLogger.Log(r.Context(), ev); err != nil {
 			h.logger.Error("timeout: failed to emit upstream.timeout event", slog.String("error", err.Error()))
 		}
+	}
+
+	if h.metrics != nil {
+		h.metrics.IncUpstreamTimeout()
 	}
 }
 

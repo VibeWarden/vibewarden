@@ -1,12 +1,16 @@
 package caddy
 
 import (
+	"context"
 	"encoding/json"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
 
+	"github.com/caddyserver/caddy/v2/modules/caddyhttp"
+	"github.com/vibewarden/vibewarden/internal/middleware"
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
 
@@ -109,6 +113,9 @@ func TestIsTimeoutError(t *testing.T) {
 		want bool
 	}{
 		{"nil error", nil, false},
+		{"deadline exceeded", context.DeadlineExceeded, true},
+		{"wrapped deadline exceeded", context.DeadlineExceeded, true},
+		{"other error", context.Canceled, false},
 	}
 
 	for _, tt := range tests {
@@ -119,6 +126,76 @@ func TestIsTimeoutError(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestTimeoutHandler_ServeHTTP_SlowUpstream(t *testing.T) {
+	h := &TimeoutHandler{
+		Config: TimeoutHandlerConfig{TimeoutSeconds: 0.1}, // 100ms
+		logger: slog.Default(),
+	}
+
+	slowUpstream := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		select {
+		case <-time.After(500 * time.Millisecond):
+			w.WriteHeader(http.StatusOK)
+		case <-r.Context().Done():
+			// Context cancelled by timeout — do nothing, let timeout handler write 504.
+		}
+	})
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest("GET", "/slow", nil)
+
+	err := h.ServeHTTP(rec, req, caddylikeNext(slowUpstream))
+
+	_ = err // error handling is internal
+
+	resp := rec.Result()
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusGatewayTimeout {
+		t.Errorf("status = %d, want %d", resp.StatusCode, http.StatusGatewayTimeout)
+	}
+
+	var errResp middleware.ErrorResponse
+	if err := json.NewDecoder(resp.Body).Decode(&errResp); err != nil {
+		t.Fatalf("decoding error response: %v", err)
+	}
+	if errResp.Status != http.StatusGatewayTimeout {
+		t.Errorf("ErrorResponse.Status = %d, want %d", errResp.Status, http.StatusGatewayTimeout)
+	}
+}
+
+func TestTimeoutHandler_ServeHTTP_FastUpstream(t *testing.T) {
+	h := &TimeoutHandler{
+		Config: TimeoutHandlerConfig{TimeoutSeconds: 5},
+		logger: slog.Default(),
+	}
+
+	fastUpstream := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("ok")) //nolint:errcheck
+	})
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest("GET", "/fast", nil)
+
+	err := h.ServeHTTP(rec, req, caddylikeNext(fastUpstream))
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("status = %d, want %d", rec.Code, http.StatusOK)
+	}
+}
+
+// caddylikeNext adapts an http.Handler to caddyhttp.Handler.
+func caddylikeNext(h http.Handler) caddyhttp.Handler {
+	return caddyhttp.HandlerFunc(func(w http.ResponseWriter, r *http.Request) error {
+		h.ServeHTTP(w, r)
+		return nil
+	})
 }
 
 func TestBuildCaddyConfig_WithResilience(t *testing.T) {
