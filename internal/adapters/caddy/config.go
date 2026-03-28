@@ -146,7 +146,11 @@ func BuildCaddyConfig(cfg *ports.ProxyConfig) (map[string]any, error) {
 	handlers = append(handlers, reverseProxyHandler)
 
 	// Build the health check route (must come before the catch-all proxy route).
-	healthBody := fmt.Sprintf(`{"status":"ok","version":%q}`, cfg.Version)
+	// The static response includes the components field for backward-compatible
+	// aggregate health. The upstream status is reported as "unknown" here because
+	// this is a Caddy static_response handler; the Go HealthHandler middleware
+	// provides dynamic upstream status when used directly.
+	healthBody := fmt.Sprintf(`{"status":"ok","version":%q,"components":{"sidecar":"ok","upstream":"unknown"}}`, cfg.Version)
 	healthRoute := map[string]any{
 		"match": []map[string]any{
 			{"path": []string{"/_vibewarden/health"}},

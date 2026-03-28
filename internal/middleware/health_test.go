@@ -36,7 +36,7 @@ func TestHealthHandler(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			handler := HealthHandler(tt.version)
+			handler := HealthHandler(tt.version, nil)
 
 			req := httptest.NewRequest(http.MethodGet, "/_vibewarden/health", nil)
 			w := httptest.NewRecorder()
@@ -67,7 +67,7 @@ func TestHealthHandler(t *testing.T) {
 }
 
 func TestHealthMiddleware_HealthPath(t *testing.T) {
-	mw := HealthMiddleware("v0.1.0")
+	mw := HealthMiddleware("v0.1.0", nil)
 
 	nextCalled := false
 	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -99,7 +99,7 @@ func TestHealthMiddleware_HealthPath(t *testing.T) {
 }
 
 func TestHealthMiddleware_OtherPath(t *testing.T) {
-	mw := HealthMiddleware("v0.1.0")
+	mw := HealthMiddleware("v0.1.0", nil)
 
 	nextCalled := false
 	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
