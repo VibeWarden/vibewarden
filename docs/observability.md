@@ -202,13 +202,17 @@ telemetry:
 
 **OTel log record mapping:**
 
-| Event field | OTel log record field |
+| slog attribute | OTel log record field |
 |-------------|----------------------|
-| `Timestamp` | `Timestamp` |
-| `EventType` | Attribute: `event.type` |
-| `SchemaVersion` | Attribute: `vibewarden.schema_version` |
-| `AISummary` | `Body` (string) |
-| `Payload.*` | Attributes: `vibewarden.payload.<key>` |
+| `time` | `Timestamp` |
+| `event_type` | Attribute: `event_type` |
+| `schema_version` | Attribute: `schema_version` |
+| `ai_summary` | Attribute: `ai_summary` |
+| `payload` | Attribute: `payload` (JSON) |
+
+Note: the otelslog bridge maps slog attributes directly to OTel attributes
+with the same keys. The slog message is empty, so the OTel `Body` field is
+empty — all structured data lives in attributes.
 
 **Severity mapping:** Event types are mapped to OTel severity levels:
 
