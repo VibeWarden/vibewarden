@@ -366,3 +366,80 @@ func TestPlugin_Collector_EnabledReturnsAdapter(t *testing.T) {
 	// Should not panic when recording.
 	c.IncRequestTotal("GET", "200", "/test")
 }
+
+// ---------------------------------------------------------------------------
+// OTLP-only mode
+// ---------------------------------------------------------------------------
+
+func otlpOnlyConfig() metrics.Config {
+	return metrics.Config{
+		Enabled:           true,
+		PrometheusEnabled: false,
+		OTLPEnabled:       true,
+		OTLPEndpoint:      "http://localhost:4318",
+		OTLPProtocol:      "http",
+		OTLPInterval:      "30s",
+	}
+}
+
+func TestPlugin_OTLPOnly_Init(t *testing.T) {
+	p := newPlugin(otlpOnlyConfig())
+	if err := p.Init(context.Background()); err != nil {
+		t.Fatalf("Init() with OTLP-only config: %v", err)
+	}
+}
+
+func TestPlugin_OTLPOnly_StartIsNoOp(t *testing.T) {
+	p := newPlugin(otlpOnlyConfig())
+	if err := p.Init(context.Background()); err != nil {
+		t.Fatalf("Init() error: %v", err)
+	}
+	// Start should succeed without starting an internal HTTP server.
+	if err := p.Start(context.Background()); err != nil {
+		t.Fatalf("Start() error in OTLP-only mode: %v", err)
+	}
+	defer p.Stop(context.Background()) //nolint:errcheck
+
+	// InternalAddr should be empty — no Prometheus server running.
+	if addr := p.InternalAddr(); addr != "" {
+		t.Errorf("InternalAddr() = %q, want empty in OTLP-only mode", addr)
+	}
+}
+
+func TestPlugin_OTLPOnly_ContributeCaddyRoutes_ReturnsNil(t *testing.T) {
+	p := newPlugin(otlpOnlyConfig())
+	if err := p.Init(context.Background()); err != nil {
+		t.Fatalf("Init() error: %v", err)
+	}
+	if err := p.Start(context.Background()); err != nil {
+		t.Fatalf("Start() error: %v", err)
+	}
+	defer p.Stop(context.Background()) //nolint:errcheck
+
+	routes := p.ContributeCaddyRoutes()
+	if len(routes) != 0 {
+		t.Errorf("ContributeCaddyRoutes() returned %d routes in OTLP-only mode, want 0", len(routes))
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Invalid duration parsing
+// ---------------------------------------------------------------------------
+
+func TestPlugin_Init_InvalidOTLPInterval(t *testing.T) {
+	cfg := metrics.Config{
+		Enabled:           true,
+		PrometheusEnabled: true,
+		OTLPEnabled:       true,
+		OTLPEndpoint:      "http://localhost:4318",
+		OTLPInterval:      "not-a-duration",
+	}
+	p := newPlugin(cfg)
+	err := p.Init(context.Background())
+	if err == nil {
+		t.Fatal("Init() should fail with invalid OTLP interval")
+	}
+	if !strings.Contains(err.Error(), "invalid interval duration") {
+		t.Errorf("error = %v, want to contain 'invalid interval duration'", err)
+	}
+}

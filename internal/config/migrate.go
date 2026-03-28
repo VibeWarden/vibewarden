@@ -12,7 +12,7 @@ import "log/slog"
 func MigrateLegacyMetrics(cfg *Config, logger *slog.Logger) {
 	// Only migrate when the metrics section has been customised.
 	// "Customised" means the user explicitly disabled metrics or provided path patterns.
-	if cfg.Metrics.Enabled == true && len(cfg.Metrics.PathPatterns) == 0 {
+	if cfg.Metrics.Enabled && len(cfg.Metrics.PathPatterns) == 0 {
 		// Defaults — nothing to migrate.
 		return
 	}
