@@ -274,6 +274,16 @@ type RateLimitConfig struct {
 	// Enabled toggles rate limiting (default: true)
 	Enabled bool `mapstructure:"enabled"`
 
+	// Store selects the backing store for limiter state.
+	// Accepted values: "memory" (default), "redis".
+	// "memory" uses a per-process token bucket — no external dependencies.
+	// "redis" uses a Redis-backed distributed token bucket.
+	Store string `mapstructure:"store"`
+
+	// Redis holds connection settings for the Redis store.
+	// Only used when Store is "redis".
+	Redis RateLimitRedisConfig `mapstructure:"redis"`
+
 	// PerIP configures per-IP rate limits applied to all requests.
 	PerIP RateLimitRuleConfig `mapstructure:"per_ip"`
 
@@ -287,6 +297,34 @@ type RateLimitConfig struct {
 	// ExemptPaths is a list of glob patterns for paths that bypass rate limiting.
 	// The /_vibewarden/* prefix is always exempt and is added automatically.
 	ExemptPaths []string `mapstructure:"exempt_paths"`
+}
+
+// RateLimitRedisConfig holds Redis connection settings for the rate limit store.
+type RateLimitRedisConfig struct {
+	// Address is the Redis server address in host:port form (default: "localhost:6379").
+	// Required when rate_limit.store is "redis".
+	Address string `mapstructure:"address"`
+
+	// Password is the Redis AUTH password (default: empty, no auth).
+	Password string `mapstructure:"password"`
+
+	// DB is the Redis logical database index (default: 0).
+	DB int `mapstructure:"db"`
+
+	// KeyPrefix is the namespace prefix prepended to every Redis key
+	// (default: "vibewarden").
+	KeyPrefix string `mapstructure:"key_prefix"`
+
+	// Fallback controls whether the rate limiter falls back to the in-memory
+	// store when Redis is unavailable (default: true — fail-open).
+	// Set to false to enable fail-closed mode: requests are denied when
+	// Redis is unreachable.
+	Fallback bool `mapstructure:"fallback"`
+
+	// HealthCheckInterval is how often the background goroutine probes Redis
+	// for recovery after a failure, expressed as a duration string (e.g. "30s").
+	// Default: "30s".
+	HealthCheckInterval string `mapstructure:"health_check_interval"`
 }
 
 // RateLimitRuleConfig holds the sustained rate and burst size for a rate limit.
@@ -728,6 +766,21 @@ func (c *Config) Validate() error {
 		}
 	}
 
+	// rate_limit.store validation.
+	switch c.RateLimit.Store {
+	case "", "memory":
+		// valid — "memory" is the default
+	case "redis":
+		if c.RateLimit.Redis.Address == "" {
+			errs = append(errs, "rate_limit.redis.address is required when rate_limit.store is \"redis\"")
+		}
+	default:
+		errs = append(errs, fmt.Sprintf(
+			"rate_limit.store %q is invalid; accepted values: \"memory\", \"redis\"",
+			c.RateLimit.Store,
+		))
+	}
+
 	// cors validation.
 	if c.CORS.Enabled && c.CORS.AllowCredentials {
 		for _, o := range c.CORS.AllowedOrigins {
@@ -781,6 +834,13 @@ func Load(configPath string) (*Config, error) {
 	v.SetDefault("auth.ui.settings_url", "")
 	v.SetDefault("auth.ui.recovery_url", "")
 	v.SetDefault("rate_limit.enabled", true)
+	v.SetDefault("rate_limit.store", "memory")
+	v.SetDefault("rate_limit.redis.address", "")
+	v.SetDefault("rate_limit.redis.password", "")
+	v.SetDefault("rate_limit.redis.db", 0)
+	v.SetDefault("rate_limit.redis.key_prefix", "vibewarden")
+	v.SetDefault("rate_limit.redis.fallback", true)
+	v.SetDefault("rate_limit.redis.health_check_interval", "30s")
 	v.SetDefault("rate_limit.per_ip.requests_per_second", 10)
 	v.SetDefault("rate_limit.per_ip.burst", 20)
 	v.SetDefault("rate_limit.per_user.requests_per_second", 100)

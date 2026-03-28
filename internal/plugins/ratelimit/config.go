@@ -2,8 +2,10 @@
 //
 // It enforces per-IP and per-user token-bucket rate limits on every proxied
 // request via the vibewarden_rate_limit Caddy handler module. Limiters are
-// created from an in-memory factory on Init and closed on Stop to release the
-// background GC goroutines.
+// created from a factory on Init and closed on Stop to release background
+// resources. The factory is selected based on the Store field: "memory" uses
+// an in-process token bucket; "redis" uses a Redis-backed distributed bucket
+// with optional in-memory fallback.
 package ratelimit
 
 // Config holds all settings for the rate-limiting plugin.
@@ -13,9 +15,12 @@ type Config struct {
 	Enabled bool
 
 	// Store names the backing store for limiter state.
-	// The only supported value in v1 is "memory" (the default).
-	// "redis" is reserved for future work.
+	// Accepted values: "memory" (default), "redis".
 	Store string
+
+	// Redis holds connection settings for the Redis store.
+	// Only used when Store is "redis".
+	Redis RedisConfig
 
 	// PerIP configures the per-IP rate limit applied to every request.
 	PerIP RuleConfig
@@ -33,6 +38,30 @@ type Config struct {
 	// limiting entirely. The /_vibewarden/* prefix is always exempt and
 	// is added automatically by the middleware.
 	ExemptPaths []string
+}
+
+// RedisConfig holds connection settings for the Redis rate limit store.
+type RedisConfig struct {
+	// Address is the Redis server address in host:port form.
+	// Required when Store is "redis".
+	Address string
+
+	// Password is the Redis AUTH password.
+	Password string
+
+	// DB is the Redis logical database index.
+	DB int
+
+	// KeyPrefix is the namespace prefix prepended to every Redis key.
+	KeyPrefix string
+
+	// Fallback controls whether requests fall back to the in-memory store
+	// when Redis is unavailable. Default: true (fail-open).
+	Fallback bool
+
+	// HealthCheckInterval is how often the background goroutine probes Redis
+	// for recovery after a failure. Default: 30 seconds.
+	HealthCheckInterval string
 }
 
 // RuleConfig defines the sustained request rate and burst size for one rate
