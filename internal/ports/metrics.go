@@ -1,7 +1,12 @@
 // Package ports defines the interfaces (ports) for VibeWarden's hexagonal architecture.
 package ports
 
-import "time"
+import (
+	"context"
+	"time"
+
+	"github.com/vibewarden/vibewarden/internal/domain/resilience"
+)
 
 // MetricsCollector is the outbound port for recording application metrics.
 // Implementations emit metrics to a backend (e.g., Prometheus registry).
@@ -41,6 +46,11 @@ type MetricsCollector interface {
 
 	// SetActiveConnections sets the current number of active connections.
 	SetActiveConnections(n int)
+
+	// SetCircuitBreakerState records the current circuit breaker state as a
+	// gauge. The mapping is: 0=closed, 1=open, 2=half_open, matching the
+	// resilience.State constants.
+	SetCircuitBreakerState(ctx context.Context, state resilience.State)
 }
 
 // MetricsConfig holds configuration for the metrics subsystem.

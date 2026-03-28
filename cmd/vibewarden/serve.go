@@ -483,23 +483,56 @@ func buildBodySizePortsConfig(cfg *config.Config) ports.BodySizeConfig {
 	return bodySizeCfg
 }
 
-// buildResiliencePortsConfig parses the resilience.timeout duration string and
-// returns a ports.ResilienceConfig. Unparseable values are replaced with the
-// 30-second default, consistent with how other duration fields are handled.
+// buildResiliencePortsConfig parses the resilience duration strings and returns
+// a ports.ResilienceConfig. Unparseable timeout values are replaced with the
+// 30-second default. Unparseable circuit breaker timeout values fall back to 60s.
 func buildResiliencePortsConfig(cfg *config.Config) ports.ResilienceConfig {
+	result := ports.ResilienceConfig{}
+
+	// Parse request timeout.
 	raw := cfg.Resilience.Timeout
-	if raw == "" || raw == "0" {
-		return ports.ResilienceConfig{}
+	if raw != "" && raw != "0" {
+		d, err := time.ParseDuration(raw)
+		if err != nil {
+			slog.Default().Warn("resilience.timeout parse error — using default 30s",
+				slog.String("error", err.Error()),
+				slog.String("value", raw),
+			)
+			result.Timeout = 30 * time.Second
+		} else {
+			result.Timeout = d
+		}
 	}
-	d, err := time.ParseDuration(raw)
-	if err != nil {
-		slog.Default().Warn("resilience.timeout parse error — using default 30s",
-			slog.String("error", err.Error()),
-			slog.String("value", raw),
-		)
-		return ports.ResilienceConfig{Timeout: 30 * time.Second}
+
+	// Parse circuit breaker config.
+	cbCfg := cfg.Resilience.CircuitBreaker
+	if cbCfg.Enabled {
+		threshold := cbCfg.Threshold
+		if threshold <= 0 {
+			threshold = 5
+		}
+
+		cbTimeout := 60 * time.Second
+		if cbCfg.Timeout != "" && cbCfg.Timeout != "0" {
+			d, err := time.ParseDuration(cbCfg.Timeout)
+			if err != nil {
+				slog.Default().Warn("resilience.circuit_breaker.timeout parse error — using default 60s",
+					slog.String("error", err.Error()),
+					slog.String("value", cbCfg.Timeout),
+				)
+			} else {
+				cbTimeout = d
+			}
+		}
+
+		result.CircuitBreaker = ports.CircuitBreakerConfig{
+			Enabled:   true,
+			Threshold: threshold,
+			Timeout:   cbTimeout,
+		}
 	}
-	return ports.ResilienceConfig{Timeout: d}
+
+	return result
 }
 
 // buildEventLogger constructs the event logger used by the caddy adapter and

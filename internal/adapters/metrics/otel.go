@@ -6,6 +6,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/vibewarden/vibewarden/internal/domain/resilience"
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
 
@@ -13,16 +14,18 @@ import (
 // It creates counters and histograms via ports.Meter and records observations.
 // All methods are safe for concurrent use.
 type OTelAdapter struct {
-	requestsTotal     ports.Int64Counter
-	requestDuration   ports.Float64Histogram
-	rateLimitHits     ports.Int64Counter
-	authDecisions     ports.Int64Counter
-	upstreamErrors    ports.Int64Counter
-	upstreamTimeouts  ports.Int64Counter
-	activeConnections ports.Int64UpDownCounter
-	currentConns      atomic.Int64
-	pathMatcher       *PathMatcher
-	handler           http.Handler
+	requestsTotal       ports.Int64Counter
+	requestDuration     ports.Float64Histogram
+	rateLimitHits       ports.Int64Counter
+	authDecisions       ports.Int64Counter
+	upstreamErrors      ports.Int64Counter
+	upstreamTimeouts    ports.Int64Counter
+	activeConnections   ports.Int64UpDownCounter
+	circuitBreakerState ports.Int64UpDownCounter
+	currentConns        atomic.Int64
+	currentCBState      atomic.Int64
+	pathMatcher         *PathMatcher
+	handler             http.Handler
 }
 
 // NewOTelAdapter creates a new OTel-backed MetricsCollector.
@@ -83,16 +86,24 @@ func NewOTelAdapter(provider ports.OTelProvider, pathPatterns []string) (*OTelAd
 		return nil, err
 	}
 
+	circuitBreakerState, err := meter.Int64UpDownCounter("vibewarden_circuit_breaker_state",
+		ports.WithDescription("Current circuit breaker state: 0=closed, 1=open, 2=half_open."),
+	)
+	if err != nil {
+		return nil, err
+	}
+
 	return &OTelAdapter{
-		requestsTotal:     requestsTotal,
-		requestDuration:   requestDuration,
-		rateLimitHits:     rateLimitHits,
-		authDecisions:     authDecisions,
-		upstreamErrors:    upstreamErrors,
-		upstreamTimeouts:  upstreamTimeouts,
-		activeConnections: activeConnections,
-		pathMatcher:       NewPathMatcher(pathPatterns),
-		handler:           provider.Handler(),
+		requestsTotal:       requestsTotal,
+		requestDuration:     requestDuration,
+		rateLimitHits:       rateLimitHits,
+		authDecisions:       authDecisions,
+		upstreamErrors:      upstreamErrors,
+		upstreamTimeouts:    upstreamTimeouts,
+		activeConnections:   activeConnections,
+		circuitBreakerState: circuitBreakerState,
+		pathMatcher:         NewPathMatcher(pathPatterns),
+		handler:             provider.Handler(),
 	}, nil
 }
 
@@ -154,5 +165,19 @@ func (a *OTelAdapter) SetActiveConnections(n int) {
 	delta := next - prev
 	if delta != 0 {
 		a.activeConnections.Add(context.Background(), delta)
+	}
+}
+
+// SetCircuitBreakerState implements ports.MetricsCollector.
+// Records the current circuit breaker state as a gauge value:
+// 0=closed, 1=open, 2=half_open.
+// OTel's UpDownCounter only supports Add; this implementation tracks the
+// previous value atomically and emits only the delta.
+func (a *OTelAdapter) SetCircuitBreakerState(ctx context.Context, state resilience.State) {
+	next := int64(state)
+	prev := a.currentCBState.Swap(next)
+	delta := next - prev
+	if delta != 0 {
+		a.circuitBreakerState.Add(ctx, delta)
 	}
 }
