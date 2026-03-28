@@ -21,10 +21,11 @@
 #   redis       — Redis backing store for rate limiting
 {{- end }}
 {{- if .Observability.Enabled }}
-#   prometheus  — Metrics collection (profile: observability)
-#   loki        — Log aggregation (profile: observability)
-#   promtail    — Log collector (profile: observability)
-#   grafana     — Visualization (profile: observability)
+#   prometheus      — Metrics collection (profile: observability)
+#   loki            — Log aggregation (profile: observability)
+#   promtail        — Log collector for non-VibeWarden containers (profile: observability)
+#   otel-collector  — OTel Collector: receives OTLP from VibeWarden, exports to Prometheus and Loki (profile: observability)
+#   grafana         — Visualization (profile: observability)
 {{- end }}
 
 version: "3.9"
@@ -77,6 +78,11 @@ services:
 {{- end }}
 {{- if eq .RateLimit.Store "redis" }}
       - VIBEWARDEN_RATE_LIMIT_REDIS_ADDRESS=redis:6379
+{{- end }}
+{{- if .Observability.Enabled }}
+      - VIBEWARDEN_TELEMETRY_OTLP_ENABLED=true
+      - VIBEWARDEN_TELEMETRY_OTLP_ENDPOINT=http://otel-collector:4318
+      - VIBEWARDEN_TELEMETRY_LOGS_OTLP=true
 {{- end }}
 {{- if not (or .App.Build .App.Image) }}
     extra_hosts:
@@ -290,6 +296,25 @@ services:
       loki:
         condition: service_healthy
 
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.123.0
+    profiles:
+      - observability
+    restart: unless-stopped
+    command: ["--config=/etc/otelcol-contrib/config.yaml"]
+    volumes:
+      - ./.vibewarden/generated/observability/otel-collector/config.yaml:/etc/otelcol-contrib/config.yaml:ro
+    networks:
+      - vibewarden
+    depends_on:
+      loki:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:13133/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
   grafana:
     image: grafana/grafana:11.5.2
     profiles:
@@ -314,6 +339,8 @@ services:
       prometheus:
         condition: service_healthy
       loki:
+        condition: service_healthy
+      otel-collector:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "wget -q --spider http://localhost:3000/api/health || exit 1"]
