@@ -3567,3 +3567,6040 @@ Grafana Labs for self-hosted deployments.
 - Embedded dashboard vs generated: Embedded is simpler; generated would allow customization
 - Single-node Loki vs cluster: Single-node is sufficient for dev; prod should use external stack
 - Anonymous Grafana auth vs login: Anonymous is simpler for dev; prod should enable auth
+
+---
+
+## ADR-009: Generate .env Template with Secure Credential Management
+
+**Status:** Accepted
+**Issue:** #283
+**Date:** 2026-03-28
+
+### Context
+
+VibeWarden generates a Docker Compose stack that includes services requiring credentials:
+Postgres (for Kratos), Kratos secrets (cookie + cipher), Grafana admin password, and
+OpenBao dev root token. The current implementation references environment variables
+in docker-compose.yml.tmpl (e.g., `${KRATOS_DB_PASSWORD}`) but does not generate these
+values or any `.env` file.
+
+The security requirements from issue #283 are strict:
+
+1. **No secrets in .env, ever** — environment files are too easily committed to git
+2. **Every `vibewarden generate` run creates fresh random credentials** — no hardcoded defaults
+3. **Credentials stored in a sealed file** (`.credentials`, mode 0600, gitignored)
+4. **Init container seeds OpenBao from .credentials** — services read from OpenBao at runtime
+5. **Prod compose generation fails** if `secrets.enabled: false` — production requires OpenBao
+
+This design eliminates the risk of accidentally committing credentials while still providing
+a zero-friction dev experience.
+
+### Decision
+
+Implement secure credential generation with the following architecture:
+
+#### Domain Model Changes
+
+Add a new value object to `internal/domain/generate/`:
+
+```go
+// Package generate contains domain types for the stack generation subsystem.
+package generate
+
+// GeneratedCredentials holds the randomly generated credentials for a single
+// `vibewarden generate` run. It is a value object — immutable after construction.
+// The domain layer does not know how these are persisted or consumed.
+type GeneratedCredentials struct {
+    // PostgresPassword is the password for the Kratos Postgres database (32 chars).
+    PostgresPassword string
+
+    // KratosCookieSecret is the Kratos session cookie signing secret (32 chars).
+    KratosCookieSecret string
+
+    // KratosCipherSecret is the Kratos data encryption secret (32 chars).
+    KratosCipherSecret string
+
+    // GrafanaAdminPassword is the Grafana admin password (24 chars).
+    GrafanaAdminPassword string
+
+    // OpenBaoDevRootToken is the OpenBao dev mode root token (32 chars).
+    OpenBaoDevRootToken string
+}
+```
+
+#### Ports (Interfaces)
+
+Add a new outbound port to `internal/ports/credentials.go`:
+
+```go
+// Package ports defines the interfaces (ports) for VibeWarden's hexagonal architecture.
+package ports
+
+import (
+    "context"
+
+    "github.com/vibewarden/vibewarden/internal/domain/generate"
+)
+
+// CredentialGenerator generates cryptographically secure random credentials.
+// Implementations must use crypto/rand for all randomness.
+type CredentialGenerator interface {
+    // Generate creates a new set of random credentials.
+    Generate(ctx context.Context) (*generate.GeneratedCredentials, error)
+}
+
+// CredentialStore persists and retrieves generated credentials.
+// The store is responsible for file permissions and atomic writes.
+type CredentialStore interface {
+    // Write persists credentials to the backing store. Overwrites any existing data.
+    Write(ctx context.Context, creds *generate.GeneratedCredentials, outputDir string) error
+
+    // Read loads previously generated credentials. Returns os.ErrNotExist if none.
+    Read(ctx context.Context, outputDir string) (*generate.GeneratedCredentials, error)
+}
+```
+
+#### Adapters
+
+**CredentialGenerator adapter** (`internal/adapters/credentials/generator.go`):
+
+```go
+// Package credentials provides adapters for credential generation and storage.
+package credentials
+
+import (
+    "context"
+    "crypto/rand"
+    "encoding/base64"
+    "fmt"
+
+    "github.com/vibewarden/vibewarden/internal/domain/generate"
+)
+
+// Generator implements ports.CredentialGenerator using crypto/rand.
+type Generator struct{}
+
+// NewGenerator creates a Generator.
+func NewGenerator() *Generator {
+    return &Generator{}
+}
+
+// Generate creates cryptographically secure random credentials.
+func (g *Generator) Generate(ctx context.Context) (*generate.GeneratedCredentials, error) {
+    postgres, err := randomAlphanumeric(32)
+    if err != nil {
+        return nil, fmt.Errorf("generating postgres password: %w", err)
+    }
+
+    cookie, err := randomAlphanumeric(32)
+    if err != nil {
+        return nil, fmt.Errorf("generating kratos cookie secret: %w", err)
+    }
+
+    cipher, err := randomAlphanumeric(32)
+    if err != nil {
+        return nil, fmt.Errorf("generating kratos cipher secret: %w", err)
+    }
+
+    grafana, err := randomAlphanumeric(24)
+    if err != nil {
+        return nil, fmt.Errorf("generating grafana admin password: %w", err)
+    }
+
+    bao, err := randomAlphanumeric(32)
+    if err != nil {
+        return nil, fmt.Errorf("generating openbao root token: %w", err)
+    }
+
+    return &generate.GeneratedCredentials{
+        PostgresPassword:     postgres,
+        KratosCookieSecret:   cookie,
+        KratosCipherSecret:   cipher,
+        GrafanaAdminPassword: grafana,
+        OpenBaoDevRootToken:  bao,
+    }, nil
+}
+
+// randomAlphanumeric generates a random alphanumeric string of the specified length.
+func randomAlphanumeric(length int) (string, error) {
+    // Generate extra bytes to account for base64 expansion, then trim.
+    bytes := make([]byte, length)
+    if _, err := rand.Read(bytes); err != nil {
+        return "", err
+    }
+    // Use URL-safe base64 without padding for alphanumeric-ish output.
+    encoded := base64.RawURLEncoding.EncodeToString(bytes)
+    if len(encoded) < length {
+        return "", fmt.Errorf("encoded string too short: got %d, want %d", len(encoded), length)
+    }
+    return encoded[:length], nil
+}
+```
+
+**CredentialStore adapter** (`internal/adapters/credentials/store.go`):
+
+```go
+// Package credentials provides adapters for credential generation and storage.
+package credentials
+
+import (
+    "bufio"
+    "context"
+    "fmt"
+    "os"
+    "path/filepath"
+    "strings"
+
+    "github.com/vibewarden/vibewarden/internal/domain/generate"
+)
+
+const (
+    credentialsFileName = ".credentials"
+    // permSecretFile is the permission mode for the credentials file.
+    // Only owner can read/write — group and world have no access.
+    permSecretFile = os.FileMode(0o600)
+    permDir        = os.FileMode(0o750)
+)
+
+// Store implements ports.CredentialStore using a dotenv-formatted file.
+type Store struct{}
+
+// NewStore creates a Store.
+func NewStore() *Store {
+    return &Store{}
+}
+
+// Write persists credentials to .credentials in dotenv format.
+// The file is created with mode 0600 (owner read/write only).
+func (s *Store) Write(ctx context.Context, creds *generate.GeneratedCredentials, outputDir string) error {
+    if err := os.MkdirAll(outputDir, permDir); err != nil {
+        return fmt.Errorf("creating output directory: %w", err)
+    }
+
+    path := filepath.Join(outputDir, credentialsFileName)
+
+    content := fmt.Sprintf(`# Generated credentials — do not commit to version control.
+# Re-run 'vibewarden generate' to regenerate with fresh values.
+# Mode: 0600 (owner read/write only)
+
+POSTGRES_PASSWORD=%s
+KRATOS_SECRETS_COOKIE=%s
+KRATOS_SECRETS_CIPHER=%s
+GRAFANA_ADMIN_PASSWORD=%s
+OPENBAO_DEV_ROOT_TOKEN=%s
+`, creds.PostgresPassword, creds.KratosCookieSecret, creds.KratosCipherSecret,
+        creds.GrafanaAdminPassword, creds.OpenBaoDevRootToken)
+
+    if err := os.WriteFile(path, []byte(content), permSecretFile); err != nil {
+        return fmt.Errorf("writing credentials file: %w", err)
+    }
+
+    return nil
+}
+
+// Read loads credentials from .credentials file.
+func (s *Store) Read(ctx context.Context, outputDir string) (*generate.GeneratedCredentials, error) {
+    path := filepath.Join(outputDir, credentialsFileName)
+
+    file, err := os.Open(path)
+    if err != nil {
+        return nil, err
+    }
+    defer file.Close()
+
+    values := make(map[string]string)
+    scanner := bufio.NewScanner(file)
+    for scanner.Scan() {
+        line := strings.TrimSpace(scanner.Text())
+        if line == "" || strings.HasPrefix(line, "#") {
+            continue
+        }
+        parts := strings.SplitN(line, "=", 2)
+        if len(parts) == 2 {
+            values[parts[0]] = parts[1]
+        }
+    }
+    if err := scanner.Err(); err != nil {
+        return nil, fmt.Errorf("reading credentials file: %w", err)
+    }
+
+    return &generate.GeneratedCredentials{
+        PostgresPassword:     values["POSTGRES_PASSWORD"],
+        KratosCookieSecret:   values["KRATOS_SECRETS_COOKIE"],
+        KratosCipherSecret:   values["KRATOS_SECRETS_CIPHER"],
+        GrafanaAdminPassword: values["GRAFANA_ADMIN_PASSWORD"],
+        OpenBaoDevRootToken:  values["OPENBAO_DEV_ROOT_TOKEN"],
+    }, nil
+}
+```
+
+#### Application Service Changes
+
+Update `internal/app/generate/service.go` to:
+
+1. Accept `CredentialGenerator` and `CredentialStore` as dependencies
+2. Generate credentials on every run
+3. Write `.credentials` file
+4. Write `.env.template` file (non-secret config only)
+5. Update `seed-secrets.sh.tmpl` to read credentials from `.credentials`
+6. Validate prod profile requires `secrets.enabled: true`
+
+The service constructor becomes:
+
+```go
+// Service implements ports.ConfigGenerator using a ports.TemplateRenderer.
+type Service struct {
+    renderer   ports.TemplateRenderer
+    credGen    ports.CredentialGenerator
+    credStore  ports.CredentialStore
+}
+
+// NewService creates a generate Service with all dependencies.
+func NewService(
+    renderer ports.TemplateRenderer,
+    credGen ports.CredentialGenerator,
+    credStore ports.CredentialStore,
+) *Service {
+    return &Service{
+        renderer:  renderer,
+        credGen:   credGen,
+        credStore: credStore,
+    }
+}
+```
+
+Add prod profile validation in `Generate()`:
+
+```go
+// Validate prod profile requirements.
+if cfg.Profile == "prod" && !cfg.Secrets.Enabled {
+    return fmt.Errorf("prod profile requires secrets.enabled: true (OpenBao is mandatory for production)")
+}
+```
+
+#### Config Changes
+
+Add `Profile` field to `internal/config/config.go`:
+
+```go
+type Config struct {
+    // Profile selects the deployment profile: "dev", "tls", or "prod".
+    // Affects TLS settings, credential handling, and validation rules.
+    Profile string `mapstructure:"profile"`
+
+    // ... existing fields ...
+}
+```
+
+Set default in `Load()`:
+
+```go
+v.SetDefault("profile", "dev")
+```
+
+Add validation in `Validate()`:
+
+```go
+validProfiles := map[string]bool{"dev": true, "tls": true, "prod": true}
+if !validProfiles[cfg.Profile] {
+    return fmt.Errorf("profile must be 'dev', 'tls', or 'prod', got %q", cfg.Profile)
+}
+```
+
+#### File Layout
+
+New files:
+
+```
+internal/
+  domain/
+    generate/
+      credentials.go              # GeneratedCredentials value object
+  ports/
+    credentials.go                # CredentialGenerator, CredentialStore interfaces
+  adapters/
+    credentials/
+      generator.go                # crypto/rand implementation
+      generator_test.go           # unit tests
+      store.go                    # file-based storage
+      store_test.go               # unit tests
+  config/
+    templates/
+      env.template.tmpl           # .env.template template
+      seed-secrets.sh.tmpl        # (update existing)
+```
+
+Generated output:
+
+```
+.vibewarden/generated/
+  .credentials                    # mode 0600, contains all secrets
+  .env.template                   # non-secret config, safe to commit
+  docker-compose.yml              # references env vars from .credentials
+  seed-secrets.sh                 # reads .credentials, seeds OpenBao
+  kratos/...                      # unchanged
+  observability/...               # unchanged
+```
+
+#### Templates
+
+**.env.template.tmpl** (`internal/config/templates/env.template.tmpl`):
+
+```
+# VibeWarden Environment Template
+# Generated by `vibewarden generate` — safe to commit.
+# Copy to .env and customize values before running docker compose.
+#
+# IMPORTANT: Credentials are NOT stored here.
+# They are in .credentials (mode 0600, gitignored).
+# Run `vibew secret get <name>` to retrieve them.
+
+# --------------------------------------------------------------------------
+# Profile selection
+# --------------------------------------------------------------------------
+
+# Deployment profile: dev | tls | prod
+VIBEWARDEN_PROFILE={{ .Profile }}
+
+# --------------------------------------------------------------------------
+# App image (prod profile only — dev uses build context)
+# --------------------------------------------------------------------------
+{{- if .App.Image }}
+
+VIBEWARDEN_APP_IMAGE={{ .App.Image }}
+{{- else }}
+
+# VIBEWARDEN_APP_IMAGE=ghcr.io/your-org/your-app:latest
+{{- end }}
+
+# --------------------------------------------------------------------------
+# Compose profiles (uncomment to enable optional services)
+# --------------------------------------------------------------------------
+
+# Enable observability stack (Prometheus, Grafana, Loki, Promtail)
+# COMPOSE_PROFILES=observability
+```
+
+**seed-secrets.sh.tmpl** (update existing):
+
+```bash
+#!/usr/bin/env sh
+# seed-secrets.sh — Generated by VibeWarden to seed credentials into OpenBao.
+# Do not edit manually — re-run `vibewarden generate` to regenerate.
+
+set -eu
+
+CREDS_FILE="$(dirname "$0")/.credentials"
+
+# Load credentials from .credentials file
+if [ ! -f "$CREDS_FILE" ]; then
+  echo "ERROR: $CREDS_FILE not found. Run 'vibewarden generate' first." >&2
+  exit 1
+fi
+
+# Source the credentials file (dotenv format)
+set -a
+. "$CREDS_FILE"
+set +a
+
+echo "Waiting for OpenBao to be ready..."
+until bao status >/dev/null 2>&1; do
+  sleep 1
+done
+
+echo "Enabling KV v2 secrets engine at {{ .Secrets.OpenBao.MountPath }}/ ..."
+bao secrets enable -path={{ .Secrets.OpenBao.MountPath }} -version=2 kv 2>/dev/null || true
+
+echo "Seeding infrastructure credentials..."
+
+# Postgres credentials
+bao kv put {{ .Secrets.OpenBao.MountPath }}/infra/postgres \
+  password="$POSTGRES_PASSWORD"
+
+# Kratos secrets
+bao kv put {{ .Secrets.OpenBao.MountPath }}/infra/kratos \
+  cookie_secret="$KRATOS_SECRETS_COOKIE" \
+  cipher_secret="$KRATOS_SECRETS_CIPHER"
+
+# Grafana credentials
+bao kv put {{ .Secrets.OpenBao.MountPath }}/infra/grafana \
+  admin_password="$GRAFANA_ADMIN_PASSWORD"
+
+# OpenBao root token (for reference)
+bao kv put {{ .Secrets.OpenBao.MountPath }}/infra/openbao \
+  root_token="$OPENBAO_DEV_ROOT_TOKEN"
+{{- range .Secrets.Inject.Headers }}
+
+# Header injection: {{ .Header }}
+bao kv put {{ $.Secrets.OpenBao.MountPath }}/{{ .SecretPath }} \
+  {{ .SecretKey }}="demo-value-for-{{ .SecretKey }}"
+{{- end }}
+{{- range .Secrets.Inject.Env }}
+
+# Env injection: {{ .EnvVar }}
+bao kv put {{ $.Secrets.OpenBao.MountPath }}/{{ .SecretPath }} \
+  {{ .SecretKey }}="demo-value-for-{{ .SecretKey }}"
+{{- end }}
+
+echo "Done — OpenBao secrets seeded successfully."
+```
+
+**docker-compose.yml.tmpl changes**:
+
+Update the kratos-db service to source password from env var (already done, but ensure the
+seed-secrets container mounts .credentials):
+
+```yaml
+  seed-secrets:
+    image: quay.io/openbao/openbao:2.2.0
+    environment:
+      BAO_ADDR: http://openbao:8200
+      BAO_TOKEN: ${OPENBAO_DEV_ROOT_TOKEN}
+    volumes:
+      - ./.vibewarden/generated/seed-secrets.sh:/seed-secrets.sh:ro
+      - ./.vibewarden/generated/.credentials:/.credentials:ro
+    entrypoint: sh
+    command: /seed-secrets.sh
+    depends_on:
+      openbao:
+        condition: service_healthy
+    networks:
+      - vibewarden
+    restart: "no"
+```
+
+Update kratos-db to read from .credentials via env_file:
+
+```yaml
+  kratos-db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    env_file:
+      - ./.vibewarden/generated/.credentials
+    environment:
+      POSTGRES_DB: kratos
+      POSTGRES_USER: kratos
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    # ... rest unchanged
+```
+
+Similarly for kratos and grafana services.
+
+#### Sequence
+
+1. User runs `vibewarden generate`
+2. Service loads `vibewarden.yaml` config
+3. If `profile == "prod" && !secrets.enabled`, return error immediately
+4. CredentialGenerator creates fresh random credentials (crypto/rand)
+5. CredentialStore writes `.credentials` to `.vibewarden/generated/.credentials` (mode 0600)
+6. TemplateRenderer writes `.env.template` to `.vibewarden/generated/.env.template`
+7. TemplateRenderer writes `docker-compose.yml` with env_file references
+8. TemplateRenderer writes `seed-secrets.sh` that sources `.credentials`
+9. TemplateRenderer writes Kratos configs, observability configs (unchanged)
+10. User runs `docker compose up`
+11. OpenBao starts
+12. seed-secrets container starts, waits for OpenBao, sources `.credentials`, seeds all values
+13. kratos-db, kratos, grafana start with credentials from env_file
+14. vibewarden starts after dependencies are healthy
+
+#### Error Cases
+
+| Error | Condition | Handling |
+|-------|-----------|----------|
+| `ErrProdRequiresSecrets` | `profile == "prod" && !secrets.enabled` | Return error, do not generate any files |
+| `ErrCredentialGeneration` | crypto/rand failure | Return error with wrapped cause |
+| `ErrCredentialWrite` | Filesystem error on .credentials | Return error, partial generation may occur |
+| `ErrTemplateRender` | Template parsing/execution error | Return error with template name |
+
+#### Test Strategy
+
+**Unit Tests** (in `internal/adapters/credentials/generator_test.go`):
+
+| Test | Description |
+|------|-------------|
+| `TestGenerator_Generate_ReturnsUniqueValues` | Two calls return different credentials |
+| `TestGenerator_Generate_CorrectLengths` | Each field has correct character length |
+| `TestGenerator_Generate_Alphanumeric` | Output contains only URL-safe base64 chars |
+
+**Unit Tests** (in `internal/adapters/credentials/store_test.go`):
+
+| Test | Description |
+|------|-------------|
+| `TestStore_Write_CreatesFile` | File created at correct path |
+| `TestStore_Write_FilePermissions` | File has mode 0600 |
+| `TestStore_Write_DotenvFormat` | File contains valid KEY=VALUE lines |
+| `TestStore_Read_ParsesCorrectly` | Roundtrip write then read matches |
+| `TestStore_Read_NotExist` | Returns os.ErrNotExist when file missing |
+| `TestStore_Read_IgnoresComments` | Comment lines are skipped |
+
+**Unit Tests** (in `internal/app/generate/service_test.go`):
+
+| Test | Description |
+|------|-------------|
+| `TestGenerate_ProdProfile_RequiresSecrets` | Returns error when profile=prod, secrets.enabled=false |
+| `TestGenerate_DevProfile_AllowsNoSecrets` | Succeeds when profile=dev, secrets.enabled=false |
+| `TestGenerate_CredentialsWritten` | .credentials file created on every run |
+| `TestGenerate_EnvTemplateWritten` | .env.template file created |
+| `TestGenerate_EnvTemplateNoSecrets` | .env.template contains no passwords or tokens |
+| `TestGenerate_SeedSecretsSourcesCredentials` | seed-secrets.sh includes sourcing logic |
+
+**Integration Tests** (in `internal/app/generate/service_integration_test.go`):
+
+| Test | Description |
+|------|-------------|
+| `TestGenerate_Integration_CredentialLifecycle` | Full generate, verify .credentials mode, verify compose refs |
+| `TestGenerate_Integration_FreshCredentialsPerRun` | Two generate runs produce different credentials |
+
+#### New Dependencies
+
+None. Uses only Go standard library:
+- `crypto/rand` (stdlib) — cryptographically secure random number generation
+- `encoding/base64` (stdlib) — encoding random bytes to alphanumeric
+
+### Consequences
+
+**Positive:**
+- Credentials are never stored in `.env` — eliminates accidental commit risk
+- Fresh credentials on every `vibewarden generate` — no stale/shared secrets
+- `.credentials` file mode 0600 — not readable by other users on the system
+- Prod profile validation catches misconfiguration early
+- `.env.template` provides documentation without exposing secrets
+- Seamless dev experience — `docker compose up` just works after `vibewarden generate`
+
+**Negative:**
+- Additional complexity in the generate flow
+- Users must re-run `vibewarden generate` after `docker compose down -v` to get fresh credentials
+- `.credentials` file is plain text on disk — adequate for dev, not for prod (OpenBao handles prod)
+
+**Trade-offs:**
+- dotenv format for `.credentials` vs JSON/YAML: dotenv is simpler and compatible with shell sourcing
+- Storing root token in `.credentials`: necessary for dev mode, prod uses AppRole auth instead
+- env_file in compose vs environment: env_file keeps compose cleaner and avoids duplication
+
+---
+
+## ADR-010: Add `vibew secret get` and `vibew secret list` Commands
+
+**Status:** Accepted
+**Issue:** #286
+**Date:** 2026-03-28
+
+### Context
+
+With the no-secrets-on-disk approach from ADR-009, credentials are randomly generated per
+`vibewarden generate` run and seeded into OpenBao. Users need a simple way to retrieve
+them for debugging or connecting external tools (e.g. database GUIs, API testing).
+
+The existing `vibew secret` command group only has `vibew secret generate` for creating
+new random tokens. We need retrieval commands that:
+
+1. Support well-known aliases for common services (postgres, kratos, grafana, openbao)
+2. Allow arbitrary OpenBao path queries (e.g. `demo/api-key`)
+3. List all managed secret paths
+4. Output in human-readable, JSON, or env-export formats
+5. Fall back to the `.credentials` file when OpenBao is not running
+
+### Decision
+
+Add two new subcommands to the existing `vibew secret` command group:
+
+- `vibew secret get <alias-or-path>` — retrieve credentials for a service or path
+- `vibew secret list` — show all managed secret paths
+
+#### Domain Model Changes
+
+Add a new value object to `internal/domain/secret/`:
+
+```go
+// Package secret contains domain types for secret retrieval.
+package secret
+
+// RetrievedSecret holds the key/value pairs retrieved from a secret path.
+// It is a value object — immutable after construction.
+type RetrievedSecret struct {
+    // Path is the original path or resolved alias that was queried.
+    Path string
+
+    // Alias is the well-known alias if one was used, or empty string.
+    Alias string
+
+    // Data holds the key/value pairs of the secret.
+    Data map[string]string
+
+    // Source indicates where the secret was retrieved from.
+    Source SecretSource
+}
+
+// SecretSource indicates the origin of a retrieved secret.
+type SecretSource string
+
+const (
+    // SourceOpenBao indicates the secret was retrieved from OpenBao.
+    SourceOpenBao SecretSource = "openbao"
+
+    // SourceCredentialsFile indicates the secret was retrieved from .credentials.
+    SourceCredentialsFile SecretSource = "credentials_file"
+)
+```
+
+Add a well-known alias resolver:
+
+```go
+// WellKnownAlias maps user-friendly names to OpenBao paths and credential file keys.
+type WellKnownAlias struct {
+    // Name is the alias (e.g. "postgres", "kratos").
+    Name string
+
+    // OpenBaoPath is the static KV path in OpenBao (e.g. "infra/postgres").
+    OpenBaoPath string
+
+    // DynamicRole is the database secret engine role name for dynamic credentials.
+    // Empty string if this alias does not support dynamic credentials.
+    DynamicRole string
+
+    // CredentialsFileKeys maps .credentials file keys to output field names.
+    // e.g. {"POSTGRES_PASSWORD": "password"}
+    CredentialsFileKeys map[string]string
+
+    // EnvPrefix is the prefix for --env output (e.g. "POSTGRES_").
+    EnvPrefix string
+}
+
+// ResolveAlias returns the WellKnownAlias for the given name, or nil if not found.
+func ResolveAlias(name string) *WellKnownAlias
+
+// ListAliases returns all well-known aliases.
+func ListAliases() []WellKnownAlias
+```
+
+#### Ports (Interfaces)
+
+Add a new outbound port to `internal/ports/secrets.go` (extend existing file):
+
+```go
+// SecretRetriever provides read-only access to secrets from multiple sources.
+// It tries OpenBao first, then falls back to the credentials file.
+type SecretRetriever interface {
+    // Get retrieves a secret by alias or path. Tries OpenBao first, then
+    // falls back to the credentials file. Returns ErrSecretNotFound when
+    // neither source has the secret.
+    Get(ctx context.Context, aliasOrPath string) (*secret.RetrievedSecret, error)
+
+    // List returns all managed secret paths from both sources.
+    List(ctx context.Context) ([]string, error)
+}
+```
+
+#### Adapters
+
+**No new adapter files needed.** The application service will compose the existing adapters:
+
+- `internal/adapters/openbao/adapter.go` — already implements `ports.SecretStore`
+- `internal/adapters/credentials/store.go` — already implements `ports.CredentialStore`
+
+The secret retrieval logic will live in the application service, which orchestrates
+these two adapters with the fallback logic.
+
+#### Application Service
+
+Create `internal/app/secret/service.go`:
+
+```go
+// Package secret provides the application service for retrieving secrets.
+package secret
+
+import (
+    "context"
+    "errors"
+    "fmt"
+    "os"
+
+    "github.com/vibewarden/vibewarden/internal/domain/secret"
+    "github.com/vibewarden/vibewarden/internal/ports"
+)
+
+// ErrSecretNotFound is returned when a secret cannot be found in any source.
+var ErrSecretNotFound = errors.New("secret not found")
+
+// ErrNoSourceAvailable is returned when neither OpenBao nor the credentials file is available.
+var ErrNoSourceAvailable = errors.New("no secret source available: OpenBao is not running and .credentials file not found")
+
+// Service implements secret retrieval with OpenBao-first, credentials-file fallback.
+type Service struct {
+    secretStore   ports.SecretStore    // may be nil if OpenBao is not configured
+    credStore     ports.CredentialStore
+    outputDir     string               // directory containing .credentials
+}
+
+// NewService creates a secret retrieval service.
+// secretStore may be nil; in that case, only the credentials file is used.
+func NewService(
+    secretStore ports.SecretStore,
+    credStore ports.CredentialStore,
+    outputDir string,
+) *Service {
+    return &Service{
+        secretStore: secretStore,
+        credStore:   credStore,
+        outputDir:   outputDir,
+    }
+}
+
+// Get retrieves a secret by alias or path.
+func (s *Service) Get(ctx context.Context, aliasOrPath string) (*secret.RetrievedSecret, error)
+
+// List returns all managed secret paths.
+func (s *Service) List(ctx context.Context) ([]string, error)
+
+// tryOpenBao attempts to retrieve a secret from OpenBao.
+// Returns nil, nil when OpenBao is not available (not configured or health check fails).
+func (s *Service) tryOpenBao(ctx context.Context, path string) (map[string]string, error)
+
+// tryCredentialsFile attempts to retrieve a secret from the .credentials file.
+// Returns nil, nil when the file does not exist.
+func (s *Service) tryCredentialsFile(ctx context.Context, alias *secret.WellKnownAlias) (map[string]string, error)
+```
+
+#### File Layout
+
+New files to create:
+
+```
+internal/
+  domain/
+    secret/
+      secret.go              # RetrievedSecret, SecretSource value objects
+      alias.go               # WellKnownAlias, ResolveAlias, ListAliases
+      alias_test.go          # Unit tests for alias resolution
+  app/
+    secret/
+      service.go             # Secret retrieval application service
+      service_test.go        # Unit tests with mocked ports
+  cli/
+    cmd/
+      secret_get.go          # `vibew secret get` command implementation
+      secret_get_test.go     # CLI tests
+      secret_list.go         # `vibew secret list` command implementation
+      secret_list_test.go    # CLI tests
+```
+
+Modified files:
+
+```
+internal/
+  ports/
+    secrets.go               # Add SecretRetriever interface
+  cli/
+    cmd/
+      secret.go              # Add get and list subcommands
+```
+
+#### Sequence
+
+**`vibew secret get postgres` flow:**
+
+1. CLI parses arguments, resolves output format (default/json/env)
+2. CLI creates the SecretService with available adapters
+3. CLI calls `service.Get(ctx, "postgres")`
+4. Service checks if "postgres" is a well-known alias → yes, resolves to `WellKnownAlias`
+5. Service checks if OpenBao is available:
+   a. If secretStore is nil → skip to step 7
+   b. Call `secretStore.Health(ctx)` → if error, skip to step 7
+6. OpenBao available:
+   a. If alias has DynamicRole, try `database/creds/<role>` first
+   b. If dynamic fails or no DynamicRole, try static path `infra/postgres`
+   c. Return `RetrievedSecret{Source: SourceOpenBao, Data: ...}`
+7. OpenBao not available, try credentials file:
+   a. Call `credStore.Read(ctx, outputDir)`
+   b. If `os.ErrNotExist` → return `ErrNoSourceAvailable`
+   c. Map `.credentials` keys to output fields using alias.CredentialsFileKeys
+   d. Return `RetrievedSecret{Source: SourceCredentialsFile, Data: ...}`
+8. CLI formats output based on --json or --env flag
+
+**`vibew secret get demo/api-key` flow (arbitrary path):**
+
+1. CLI parses arguments
+2. Service checks if "demo/api-key" is a well-known alias → no
+3. Service checks if OpenBao is available → if no, return `ErrNoSourceAvailable`
+   (arbitrary paths cannot be resolved from .credentials)
+4. Service calls `secretStore.Get(ctx, "demo/api-key")`
+5. Return `RetrievedSecret{Source: SourceOpenBao, Data: ...}`
+
+**`vibew secret list` flow:**
+
+1. CLI calls `service.List(ctx)`
+2. Service collects paths from both sources:
+   a. All well-known alias paths
+   b. If OpenBao available: `secretStore.List(ctx, "infra/")` and `secretStore.List(ctx, "app/")`
+3. Deduplicate and sort paths
+4. CLI prints paths (one per line, or JSON array with --json)
+
+#### Well-Known Aliases
+
+| Alias | OpenBao Static Path | Dynamic Role | .credentials Keys | Env Prefix |
+|-------|---------------------|--------------|-------------------|------------|
+| `postgres` | `infra/postgres` | `app-readwrite` | `POSTGRES_PASSWORD` | `POSTGRES_` |
+| `kratos` | `infra/kratos` | — | `KRATOS_SECRETS_COOKIE`, `KRATOS_SECRETS_CIPHER` | `KRATOS_` |
+| `grafana` | `infra/grafana` | — | `GRAFANA_ADMIN_PASSWORD` | `GRAFANA_` |
+| `openbao` | — | — | `OPENBAO_DEV_ROOT_TOKEN` | `OPENBAO_` |
+
+Note: `openbao` alias only reads from .credentials file (the root token is not stored in OpenBao itself).
+
+#### Output Format Implementations
+
+**Default (human-readable):**
+```
+postgres credentials (source: openbao):
+  username: v-app-kX9mNp2q
+  password: A3bC7dE9fG1hJ2kL4mN6pQ8rS0tU
+  host:     localhost:5432
+  database: vibewarden
+```
+
+**`--json`:**
+```json
+{"username":"v-app-kX9mNp2q","password":"A3bC7dE9fG1hJ2kL4mN6pQ8rS0tU","host":"localhost:5432","database":"vibewarden"}
+```
+
+**`--env`:**
+```bash
+export POSTGRES_USER=v-app-kX9mNp2q
+export POSTGRES_PASSWORD=A3bC7dE9fG1hJ2kL4mN6pQ8rS0tU
+```
+
+#### Error Cases
+
+| Error | When | User message |
+|-------|------|--------------|
+| `ErrNoSourceAvailable` | OpenBao not running AND .credentials not found | "No secret source available. Run 'vibewarden generate' to create credentials, or start the stack with 'vibewarden dev'." |
+| `ErrSecretNotFound` | Path/alias not found in any available source | "Secret '<path>' not found." |
+| OpenBao connection error | Network/auth failure | "Failed to connect to OpenBao: <error>. Falling back to .credentials file." (warn, then try fallback) |
+| Invalid alias | User types unknown alias-like string | Treated as OpenBao path, then "Secret '<path>' not found in OpenBao. Use 'vibew secret list' to see available secrets." |
+
+#### Test Strategy
+
+**Unit tests (mocked ports):**
+
+| Test | What it verifies |
+|------|------------------|
+| `TestResolveAlias_WellKnown` | All 4 aliases resolve correctly |
+| `TestResolveAlias_Unknown` | Unknown returns nil |
+| `TestService_Get_OpenBaoFirst` | OpenBao is queried before .credentials |
+| `TestService_Get_FallbackToCredentials` | Falls back when OpenBao health fails |
+| `TestService_Get_ArbitraryPath` | Non-alias paths go directly to OpenBao |
+| `TestService_Get_ErrNoSourceAvailable` | Error when both sources unavailable |
+| `TestService_List_MergesSources` | Combines aliases + OpenBao paths |
+| `TestFormatHuman` | Human output formatting |
+| `TestFormatJSON` | JSON output formatting |
+| `TestFormatEnv` | Env export formatting |
+
+**CLI integration tests:**
+
+| Test | What it verifies |
+|------|------------------|
+| `TestSecretGet_HelpOutput` | Help text shows aliases and examples |
+| `TestSecretGet_UnknownAlias` | Appropriate error message |
+| `TestSecretList_HelpOutput` | Help text is correct |
+
+#### New Dependencies
+
+None. Uses only existing adapters and Go standard library.
+
+### Consequences
+
+**Positive:**
+- Users can retrieve credentials without inspecting `.credentials` or OpenBao UI
+- Machine-readable formats (`--json`, `--env`) enable scripting and tool integration
+- Well-known aliases abstract away OpenBao path structure
+- Fallback to .credentials works before `docker compose up`
+- Consistent with the secret management model from ADR-009
+
+**Negative:**
+- Arbitrary OpenBao paths require OpenBao to be running (no fallback)
+- `openbao` alias only works from .credentials (root token not in OpenBao)
+
+**Trade-offs:**
+- OpenBao-first vs credentials-first: OpenBao-first ensures dynamic credentials are fresh
+- Alias abstraction vs direct paths: aliases are user-friendly but hide implementation details
+
+---
+
+## ADR-011: Migrate Demo App to Use Generated docker-compose.yml
+
+**Date**: 2026-03-28
+**Issue**: #284
+**Status**: Accepted
+
+### Context
+
+This is the capstone story of Epic #277 (generate entire runtime stack from vibewarden.yaml).
+The demo app at `examples/demo-app/` currently uses a hand-crafted `docker-compose.yml` with
+~420 lines. All prerequisite stories are now complete:
+
+- ADR-006 (#279): App service in generated compose
+- ADR-007 (#281): Plugin-dependent services (OpenBao, Redis)
+- ADR-008 (#282): Observability profile
+- ADR-009 (#283): .env template with secure credential management
+- ADR-010 (#286): `vibew secret get` command
+
+The demo app should now showcase the intended workflow: commit only `vibewarden.yaml` and
+let `vibewarden generate` produce everything else. This validates that the generation
+system works end-to-end and serves as the canonical example for users.
+
+### Decision
+
+Migrate the demo app to use generated configuration:
+
+1. **Update `vibewarden.yaml`** to exercise all features
+2. **Remove hand-crafted `docker-compose.yml`** from version control
+3. **Update Makefile** to generate before composing
+4. **Keep seed scripts** (`seed-users.sh`, `seed-secrets.sh`) for demo data
+5. **Deprecate the committed `observability/` directory** (configs are now generated)
+6. **Update README** with new workflow
+
+#### Domain Model Changes
+
+No new domain entities. This is a configuration and workflow change.
+
+#### Ports (Interfaces)
+
+No new interfaces required.
+
+#### Adapters
+
+No new adapters required.
+
+#### Application Service
+
+No changes to the generate service. The existing `internal/app/generate/Service.Generate()`
+handles all required functionality.
+
+#### File Layout
+
+**Files to delete:**
+
+| File | Reason |
+|------|--------|
+| `examples/demo-app/docker-compose.yml` | Replaced by generated compose |
+| `examples/demo-app/docker-compose.local-demo.yml` | Superseded by profile system |
+| `examples/demo-app/docker-compose.prod.yml` | Superseded by profile system |
+| `examples/demo-app/vibewarden.local-demo.yaml` | Superseded by single config |
+| `examples/demo-app/vibewarden.prod.yaml` | Superseded by single config |
+| `observability/prometheus/prometheus.yml` | Now generated from template |
+| `observability/grafana/provisioning/datasources/prometheus.yml` | Now generated |
+| `observability/grafana/provisioning/dashboards/dashboard.yml` | Now generated |
+| `observability/grafana/dashboards/vibewarden.json` | Embedded in binary, generated on demand |
+| `observability/loki/loki-config.yml` | Now generated |
+| `observability/promtail/promtail-config.yml` | Now generated |
+
+The entire `observability/` directory can be removed once the demo migration is complete.
+
+**Files to keep:**
+
+| File | Purpose |
+|------|---------|
+| `examples/demo-app/vibewarden.yaml` | Single source of truth for demo config |
+| `examples/demo-app/.env.example` | Documents available env var overrides |
+| `examples/demo-app/Dockerfile` | App build context |
+| `examples/demo-app/main.go` | Demo app source |
+| `examples/demo-app/main_test.go` | Demo app tests |
+| `examples/demo-app/go.mod`, `go.sum` | Demo app dependencies |
+| `examples/demo-app/static/` | Demo UI assets |
+| `examples/demo-app/kratos/` | Kratos config overrides (identity schema, etc.) |
+| `examples/demo-app/scripts/seed-users.sh` | Seeds demo identities into Kratos |
+| `examples/demo-app/scripts/seed-secrets.sh` | Seeds demo secrets into OpenBao |
+| `examples/demo-app/README.md` | Documentation |
+| `examples/demo-app/CHALLENGE.md` | Challenge documentation |
+| `examples/demo-app/MONITORING.md` | Monitoring documentation |
+| `examples/demo-app/RECOVERY.md` | Recovery documentation |
+| `examples/demo-app/.gitignore` | Ignores generated files |
+
+**Files to modify:**
+
+| File | Change |
+|------|--------|
+| `examples/demo-app/vibewarden.yaml` | Update to use new config structure with app, observability, etc. |
+| `examples/demo-app/.env.example` | Update to match generated .env.template format |
+| `examples/demo-app/.gitignore` | Add `.vibewarden/generated/` |
+| `examples/demo-app/README.md` | Update with new workflow instructions |
+| `Makefile` | Update `demo` and `demo-down` targets |
+
+#### Updated vibewarden.yaml
+
+The new `examples/demo-app/vibewarden.yaml` exercises all major features:
+
+```yaml
+# VibeWarden Demo App Configuration
+# Single source of truth for the entire demo stack.
+#
+# Usage:
+#   vibewarden generate
+#   docker compose -f .vibewarden/generated/docker-compose.yml up
+#
+# Or simply: make demo
+
+# Deployment profile: dev | tls | prod
+profile: dev
+
+# User application
+app:
+  # Build from local Dockerfile (dev mode)
+  build: .
+  # Image for production (overridable via VIBEWARDEN_APP_IMAGE)
+  # image: ghcr.io/vibewarden/demo-app:latest
+
+server:
+  host: "0.0.0.0"
+  port: 8080
+
+upstream:
+  host: app
+  port: 3000
+
+tls:
+  enabled: false
+  # For TLS profile, set via env vars:
+  # VIBEWARDEN_TLS_ENABLED=true
+  # VIBEWARDEN_TLS_PROVIDER=self-signed
+
+kratos:
+  public_url: "http://kratos:4433"
+  admin_url: "http://kratos:4434"
+
+auth:
+  enabled: true
+  public_paths:
+    - "/"
+    - "/public"
+    - "/health"
+    - "/profile"
+    - "/static"
+    - "/auth"
+    - "/vuln"
+  session_cookie_name: "ory_kratos_session"
+
+rate_limit:
+  enabled: true
+  store: memory
+  per_ip:
+    requests_per_second: 5
+    burst: 10
+  per_user:
+    requests_per_second: 10
+    burst: 20
+  trust_proxy_headers: false
+  exempt_paths: []
+
+log:
+  level: "info"
+  format: "json"
+
+admin:
+  enabled: false
+
+metrics:
+  enabled: true
+  path_patterns:
+    - "/"
+    - "/public"
+    - "/me"
+    - "/headers"
+    - "/spam"
+    - "/health"
+
+secrets:
+  enabled: true
+  provider: openbao
+  openbao:
+    address: http://openbao:8200
+    auth:
+      method: token
+    mount_path: secret
+  inject:
+    headers:
+      - secret_path: demo/api-key
+        secret_key: token
+        header: X-Demo-Api-Key
+    env:
+      - secret_path: demo/app-config
+        secret_key: database_url
+        env_var: DEMO_DATABASE_URL
+      - secret_path: demo/app-config
+        secret_key: session_secret
+        env_var: DEMO_SESSION_SECRET
+  cache_ttl: "5m"
+
+security_headers:
+  enabled: true
+  hsts_max_age: 31536000
+  hsts_include_subdomains: true
+  hsts_preload: false
+  content_type_nosniff: true
+  frame_option: "DENY"
+  content_security_policy: "default-src 'self'; style-src 'self'; script-src 'self' 'unsafe-inline'"
+  referrer_policy: "strict-origin-when-cross-origin"
+
+observability:
+  enabled: true
+  grafana_port: 3001
+  prometheus_port: 9090
+  loki_port: 3100
+  retention_days: 7
+
+# Override paths for demo-specific configs
+overrides:
+  # Use demo-specific Kratos config with seed users
+  kratos_config: ""
+  identity_schema: ""
+```
+
+#### Updated .gitignore
+
+Add to `examples/demo-app/.gitignore`:
+
+```
+# Generated by vibewarden generate
+.vibewarden/
+```
+
+#### Updated Makefile Targets
+
+```makefile
+# Start the full local demo stack
+demo: ## Start the full local demo stack (https://localhost:8443, Grafana http://localhost:3001)
+	cd examples/demo-app && \
+	  ../../bin/vibewarden generate && \
+	  COMPOSE_PROFILES=observability \
+	  docker compose -f .vibewarden/generated/docker-compose.yml up -d
+	@echo ""
+	@echo "Demo stack is starting — wait ~30 s for all services to be healthy."
+	@echo ""
+	@echo "  App:        http://localhost:8080"
+	@echo "  Grafana:    http://localhost:3001"
+	@echo "  Prometheus: http://localhost:9090"
+	@echo ""
+	@echo "Demo credentials: demo@vibewarden.dev / demo1234"
+	@echo "Run 'vibew secret get postgres' to retrieve generated credentials."
+
+# Start demo with TLS
+demo-tls: ## Start the full local demo stack with self-signed TLS
+	cd examples/demo-app && \
+	  VIBEWARDEN_TLS_ENABLED=true \
+	  VIBEWARDEN_TLS_PROVIDER=self-signed \
+	  VIBEWARDEN_SERVER_PORT=8443 \
+	  ../../bin/vibewarden generate && \
+	  COMPOSE_PROFILES=observability \
+	  docker compose -f .vibewarden/generated/docker-compose.yml up -d
+	@echo ""
+	@echo "Demo stack is starting — wait ~30 s for all services to be healthy."
+	@echo ""
+	@echo "  App:        https://localhost:8443   (accept the self-signed cert warning)"
+	@echo "  Grafana:    http://localhost:3001"
+	@echo "  Prometheus: http://localhost:9090"
+	@echo ""
+	@echo "Demo credentials: demo@vibewarden.dev / demo1234"
+
+# Stop the full local demo stack
+demo-down: ## Stop the full local demo stack
+	cd examples/demo-app && \
+	  docker compose -f .vibewarden/generated/docker-compose.yml down
+
+# Stop and remove volumes
+demo-clean: ## Stop the demo stack and remove all volumes
+	cd examples/demo-app && \
+	  docker compose -f .vibewarden/generated/docker-compose.yml down -v && \
+	  rm -rf .vibewarden/generated/
+```
+
+#### Seed Scripts Mounting
+
+The generated `docker-compose.yml` template must mount the demo-specific seed scripts.
+Update `internal/config/templates/docker-compose.yml.tmpl` to support user-provided seed
+scripts via config or convention.
+
+For the demo app, we use the `overrides` mechanism or a convention where seed scripts
+in `scripts/` are automatically mounted. The simplest approach is to have the demo
+`vibewarden.yaml` use relative paths that the generated compose references.
+
+The existing seed containers in the template already mount `seed-secrets.sh` from the
+generated directory. For the demo-specific `seed-users.sh`, add a `seed` service that
+runs the Kratos user seeding.
+
+Add to `docker-compose.yml.tmpl` a configurable seed container:
+
+```yaml
+{{- if .Auth.Enabled }}
+  seed-users:
+    image: curlimages/curl:8.12.1
+    environment:
+      KRATOS_ADMIN_URL: http://kratos:4434
+    volumes:
+      - ./scripts/seed-users.sh:/seed-users.sh:ro
+    command: sh /seed-users.sh
+    depends_on:
+      kratos:
+        condition: service_healthy
+    networks:
+      - vibewarden
+    restart: "no"
+{{- end }}
+```
+
+Note: The `./scripts/seed-users.sh` path is relative to where `docker compose` is run.
+Since the demo runs `docker compose -f .vibewarden/generated/docker-compose.yml`, the
+working directory is `examples/demo-app/`, so `./scripts/seed-users.sh` resolves correctly.
+
+Alternatively, we can add a config option for custom seed scripts, but for the demo
+we rely on the convention that `scripts/seed-users.sh` exists when auth is enabled.
+
+#### Sequence
+
+1. User runs `make demo` (or `make demo-tls`)
+2. Makefile builds `bin/vibewarden` if needed (via dependency on `build`)
+3. Makefile runs `vibewarden generate` in `examples/demo-app/`:
+   - Generates `.vibewarden/generated/docker-compose.yml`
+   - Generates `.vibewarden/generated/.credentials` (fresh random credentials)
+   - Generates `.vibewarden/generated/.env.template`
+   - Generates `.vibewarden/generated/kratos/kratos.yml`
+   - Generates `.vibewarden/generated/kratos/identity.schema.json`
+   - Generates `.vibewarden/generated/seed-secrets.sh`
+   - Generates `.vibewarden/generated/observability/` configs
+4. Makefile runs `docker compose -f .vibewarden/generated/docker-compose.yml up -d`
+5. Docker Compose starts services in dependency order:
+   - postgres (kratos-db)
+   - openbao
+   - seed-secrets (populates OpenBao from `.credentials`)
+   - kratos (after postgres healthy)
+   - seed-users (after kratos healthy, seeds demo identities)
+   - app (after kratos healthy)
+   - vibewarden (after app, kratos, seed-secrets healthy/complete)
+   - prometheus, loki, promtail, grafana (observability profile)
+6. User accesses demo at http://localhost:8080 (or https://localhost:8443 for TLS)
+7. User can retrieve credentials via `vibew secret get postgres`
+
+#### Error Cases
+
+| Error | Handling |
+|-------|----------|
+| `vibewarden generate` fails | Makefile exits with error; no compose started |
+| Docker image pull fails | Docker Compose reports pull error |
+| Kratos healthcheck fails | Dependent services wait; eventually timeout |
+| seed-users.sh not found | Docker Compose fails with mount error; user must create script or disable auth |
+| Generated .credentials not found | seed-secrets.sh fails; vibewarden cannot connect |
+
+#### Template Change: Add seed-users Service
+
+The generated compose needs a `seed-users` service that mounts the user-provided seed script.
+This is a demo-specific feature but can be generalized.
+
+Add to `internal/config/templates/docker-compose.yml.tmpl` after the `seed-secrets` service:
+
+```yaml
+{{- if .Auth.Enabled }}
+{{- /* seed-users is optional: only rendered if scripts/seed-users.sh exists.
+       The template cannot check filesystem, so we always render it for auth-enabled configs.
+       If the script doesn't exist, docker compose will fail with a clear error. */ -}}
+  seed-users:
+    image: curlimages/curl:8.12.1
+    environment:
+      KRATOS_ADMIN_URL: http://kratos:4434
+    volumes:
+      - ./scripts/seed-users.sh:/seed-users.sh:ro
+    command: sh /seed-users.sh
+    depends_on:
+      kratos:
+        condition: service_healthy
+    networks:
+      - vibewarden
+    restart: "no"
+{{- end }}
+```
+
+Note: This assumes a convention that projects with auth enabled provide a
+`scripts/seed-users.sh` script. For projects without demo users to seed, they can
+create an empty script or use `overrides.compose_file` to provide a custom compose.
+
+For the demo app specifically, we already have `examples/demo-app/scripts/seed-users.sh`.
+
+#### Deprecation of observability/ Directory
+
+The `observability/` directory at the repository root contains hand-crafted configs that
+are now superseded by the generated templates in `internal/config/templates/observability/`.
+
+**Migration plan:**
+
+1. This ADR marks the files as deprecated
+2. The demo migration removes references to `../../observability/` paths
+3. A follow-up PR can delete the `observability/` directory entirely
+
+The generated configs in `internal/config/templates/observability/` are the source of truth.
+The committed `observability/` directory is only useful for reference during the transition.
+
+#### Test Strategy
+
+**Manual Testing Checklist:**
+
+| Test | Steps | Expected Result |
+|------|-------|-----------------|
+| `make demo` works | Run `make demo`, wait 30s | All services healthy, app at :8080 |
+| Auth works | Login with demo@vibewarden.dev / demo1234 | Successful login, session cookie set |
+| Protected routes work | Access /me when logged in | Returns user info |
+| Rate limiting works | Run `for i in $(seq 1 20); do curl -X POST localhost:8080/spam; done` | 429 after burst |
+| Security headers present | `curl -I localhost:8080/public` | HSTS, CSP, X-Frame-Options present |
+| Secrets injection works | Check X-Demo-Api-Key header | Header present with demo value |
+| Observability works | Access Grafana at :3001 | Dashboard shows metrics |
+| `make demo-down` works | Run `make demo-down` | All containers stopped |
+| `make demo-clean` works | Run `make demo-clean` | Containers stopped, volumes removed |
+| TLS profile works | Run `make demo-tls` | HTTPS at :8443 with self-signed cert |
+| Credentials retrieval | Run `vibew secret get postgres` | Shows generated password |
+
+**Automated Tests:**
+
+The existing tests in `internal/app/generate/service_test.go` cover the generation logic.
+No new automated tests are required for this migration, as it is primarily a configuration
+and documentation change.
+
+**CI Considerations:**
+
+The CI pipeline should verify that `make demo` succeeds:
+
+```yaml
+- name: Test demo workflow
+  run: |
+    make build
+    cd examples/demo-app
+    ../../bin/vibewarden generate
+    # Verify generated files exist
+    test -f .vibewarden/generated/docker-compose.yml
+    test -f .vibewarden/generated/.credentials
+    test -f .vibewarden/generated/kratos/kratos.yml
+```
+
+Full `docker compose up` is not tested in CI due to resource constraints.
+
+#### New Dependencies
+
+None. This migration uses existing functionality.
+
+### Consequences
+
+**Positive:**
+- Demo now showcases the intended user workflow
+- Single source of truth (`vibewarden.yaml`) for all demo configuration
+- Generated files are gitignored — no duplication between template and demo
+- Validates that the generate system works end-to-end
+- Reduces maintenance burden — updating templates updates the demo automatically
+- Users can copy the demo workflow for their own projects
+
+**Negative:**
+- `make demo` now requires a build step (`vibewarden generate`)
+- Additional complexity in Makefile targets
+- seed-users convention may surprise users who don't have a seed script
+
+**Trade-offs:**
+- Convention (scripts/seed-users.sh) vs configuration: Convention is simpler but less flexible
+- Keeping observability/ vs deleting immediately: Keeping allows reference during transition
+- Generated compose paths relative to working directory: Matches how users will run it
+
+---
+
+## ADR-012: OTel SDK Integration and MetricsCollector Port/Adapter Refactoring
+**Date**: 2026-03-28
+**Issue**: #285
+**Status**: Accepted
+
+### Context
+
+VibeWarden currently uses `prometheus/client_golang` directly for metrics collection (locked
+decision L-07). The existing `MetricsCollector` port and `PrometheusAdapter` implementation
+work well, but they are tightly coupled to Prometheus-specific types.
+
+Epic #280 (OpenTelemetry Integration) requires VibeWarden to adopt the OpenTelemetry SDK as
+the unified observability foundation. This enables:
+
+1. **OTLP export** — Push metrics to any OTLP-compatible backend (future story #286)
+2. **Unified SDK** — Single initialization path for metrics, traces, and logs
+3. **Prometheus bridge** — Continue serving `/_vibewarden/metrics` via OTel's Prometheus exporter
+4. **Fleet integration** — Future Pro tier can receive OTel-formatted telemetry
+
+The OTel Go SDK packages are already transitive dependencies through Caddy:
+- `go.opentelemetry.io/otel` v1.41.0
+- `go.opentelemetry.io/otel/metric` v1.41.0
+- `go.opentelemetry.io/otel/sdk` v1.41.0
+- `go.opentelemetry.io/otel/sdk/metric` v1.41.0
+- `go.opentelemetry.io/otel/exporters/prometheus` v0.62.0
+
+All are licensed under **Apache 2.0** (verified), which is on the approved list.
+
+This ADR covers the foundation story: OTel SDK initialization, updated port interface,
+and the new OTel adapter that replaces the direct Prometheus implementation.
+
+### Decision
+
+Refactor the metrics subsystem to use OpenTelemetry SDK as the metrics API while
+maintaining Prometheus export compatibility. The `MetricsCollector` port interface
+remains stable; only the adapter implementation changes.
+
+#### Domain Model Changes
+
+No domain model changes. Metrics are infrastructure concerns, not domain entities.
+
+#### Ports (Interfaces)
+
+The existing `ports.MetricsCollector` interface **remains unchanged**:
+
+```go
+// internal/ports/metrics.go
+type MetricsCollector interface {
+    IncRequestTotal(method, statusCode, pathPattern string)
+    ObserveRequestDuration(method, pathPattern string, duration time.Duration)
+    IncRateLimitHit(limitType string)
+    IncAuthDecision(decision string)
+    IncUpstreamError()
+    SetActiveConnections(n int)
+}
+```
+
+This interface is deliberately backend-agnostic. Callers (middleware, plugins) do not
+need to know whether the underlying implementation uses Prometheus directly or OTel.
+
+**New port interface** for OTel lifecycle management:
+
+```go
+// internal/ports/otel.go
+package ports
+
+import (
+    "context"
+    "net/http"
+)
+
+// OTelProvider manages the OpenTelemetry SDK lifecycle.
+// It initializes the MeterProvider and exposes an HTTP handler for Prometheus scraping.
+// Implementations must be safe for concurrent use after Init returns.
+type OTelProvider interface {
+    // Init initializes the OTel SDK with the given service name and version.
+    // It sets up the MeterProvider with a Prometheus exporter.
+    // Must be called once before any other methods.
+    Init(ctx context.Context, serviceName, serviceVersion string) error
+
+    // Shutdown gracefully shuts down the OTel SDK, flushing any buffered data.
+    // Must honour the context deadline.
+    Shutdown(ctx context.Context) error
+
+    // Handler returns an http.Handler that serves Prometheus metrics.
+    // Returns nil if Init has not been called.
+    Handler() http.Handler
+
+    // Meter returns a named OTel Meter for creating instruments.
+    // The scope name is "github.com/vibewarden/vibewarden".
+    Meter() Meter
+}
+
+// Meter is a subset of the OTel metric.Meter interface, exposing only the
+// instrument creation methods VibeWarden needs. This keeps the port layer
+// decoupled from the full OTel API.
+type Meter interface {
+    // Int64Counter creates a Counter instrument for incrementing metrics.
+    Int64Counter(name string, options ...InstrumentOption) (Int64Counter, error)
+
+    // Float64Histogram creates a Histogram instrument for recording distributions.
+    Float64Histogram(name string, options ...InstrumentOption) (Float64Histogram, error)
+
+    // Int64UpDownCounter creates an UpDownCounter for gauge-like values that can
+    // increase or decrease.
+    Int64UpDownCounter(name string, options ...InstrumentOption) (Int64UpDownCounter, error)
+}
+
+// InstrumentOption configures an OTel instrument (description, unit, etc.).
+// This is a placeholder type; the adapter translates to OTel SDK options.
+type InstrumentOption interface {
+    isInstrumentOption()
+}
+
+// Int64Counter is an OTel counter instrument for int64 increments.
+type Int64Counter interface {
+    Add(ctx context.Context, incr int64, attrs ...Attribute)
+}
+
+// Float64Histogram is an OTel histogram instrument for float64 observations.
+type Float64Histogram interface {
+    Record(ctx context.Context, value float64, attrs ...Attribute)
+}
+
+// Int64UpDownCounter is an OTel up-down counter for gauge-like int64 values.
+type Int64UpDownCounter interface {
+    Add(ctx context.Context, incr int64, attrs ...Attribute)
+}
+
+// Attribute is a key-value pair attached to metric observations.
+type Attribute struct {
+    Key   string
+    Value string
+}
+```
+
+**Why wrap OTel types?**
+
+The ports layer must not import external packages (hexagonal architecture principle).
+These thin wrapper types allow the domain/app layers to reference metric concepts
+without depending on `go.opentelemetry.io/otel/metric`. The adapter layer performs
+the type conversion.
+
+#### Adapters
+
+**New file:** `internal/adapters/otel/provider.go`
+
+```go
+// Package otel provides the OpenTelemetry SDK adapter for VibeWarden.
+//
+// It initializes the MeterProvider with a Prometheus exporter and implements
+// ports.OTelProvider. The provider is the single source of truth for OTel
+// SDK lifecycle management.
+package otel
+
+import (
+    "context"
+    "fmt"
+    "net/http"
+    "sync"
+
+    "github.com/prometheus/client_golang/prometheus"
+    "github.com/vibewarden/vibewarden/internal/ports"
+    "go.opentelemetry.io/otel"
+    "go.opentelemetry.io/otel/exporters/prometheus"
+    "go.opentelemetry.io/otel/metric"
+    sdkmetric "go.opentelemetry.io/otel/sdk/metric"
+    "go.opentelemetry.io/otel/sdk/resource"
+    semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
+)
+
+// Provider implements ports.OTelProvider using the OTel Go SDK.
+type Provider struct {
+    mu            sync.RWMutex
+    meterProvider *sdkmetric.MeterProvider
+    meter         metric.Meter
+    handler       http.Handler
+    registry      *prometheus.Registry
+}
+
+// NewProvider creates an uninitialized Provider.
+// Call Init before using any other methods.
+func NewProvider() *Provider {
+    return &Provider{}
+}
+
+// Init initializes the OTel SDK with a Prometheus exporter.
+func (p *Provider) Init(ctx context.Context, serviceName, serviceVersion string) error {
+    p.mu.Lock()
+    defer p.mu.Unlock()
+
+    if p.meterProvider != nil {
+        return fmt.Errorf("otel provider already initialized")
+    }
+
+    // Create a dedicated Prometheus registry (not the global default).
+    p.registry = prometheus.NewRegistry()
+
+    // Create Prometheus exporter with the isolated registry.
+    exporter, err := prometheus.New(
+        prometheus.WithRegisterer(p.registry),
+        prometheus.WithoutScopeInfo(),
+    )
+    if err != nil {
+        return fmt.Errorf("creating prometheus exporter: %w", err)
+    }
+
+    // Build resource with service identity.
+    res, err := resource.New(ctx,
+        resource.WithAttributes(
+            semconv.ServiceName(serviceName),
+            semconv.ServiceVersion(serviceVersion),
+        ),
+    )
+    if err != nil {
+        return fmt.Errorf("creating otel resource: %w", err)
+    }
+
+    // Create MeterProvider with the Prometheus exporter.
+    p.meterProvider = sdkmetric.NewMeterProvider(
+        sdkmetric.WithResource(res),
+        sdkmetric.WithReader(exporter),
+    )
+
+    // Set as global provider for any code that uses otel.GetMeterProvider().
+    otel.SetMeterProvider(p.meterProvider)
+
+    // Create the application meter.
+    p.meter = p.meterProvider.Meter("github.com/vibewarden/vibewarden")
+
+    // Create the HTTP handler for Prometheus scraping.
+    p.handler = promhttp.HandlerFor(p.registry, promhttp.HandlerOpts{
+        EnableOpenMetrics: true,
+    })
+
+    return nil
+}
+
+// Shutdown shuts down the MeterProvider.
+func (p *Provider) Shutdown(ctx context.Context) error {
+    p.mu.Lock()
+    defer p.mu.Unlock()
+
+    if p.meterProvider == nil {
+        return nil
+    }
+    return p.meterProvider.Shutdown(ctx)
+}
+
+// Handler returns the Prometheus metrics HTTP handler.
+func (p *Provider) Handler() http.Handler {
+    p.mu.RLock()
+    defer p.mu.RUnlock()
+    return p.handler
+}
+
+// Meter returns a ports.Meter wrapping the OTel SDK meter.
+func (p *Provider) Meter() ports.Meter {
+    p.mu.RLock()
+    defer p.mu.RUnlock()
+    return &meterAdapter{m: p.meter}
+}
+```
+
+**New file:** `internal/adapters/otel/meter.go`
+
+```go
+package otel
+
+import (
+    "context"
+
+    "github.com/vibewarden/vibewarden/internal/ports"
+    "go.opentelemetry.io/otel/attribute"
+    "go.opentelemetry.io/otel/metric"
+)
+
+// meterAdapter wraps an OTel metric.Meter to implement ports.Meter.
+type meterAdapter struct {
+    m metric.Meter
+}
+
+func (a *meterAdapter) Int64Counter(name string, opts ...ports.InstrumentOption) (ports.Int64Counter, error) {
+    c, err := a.m.Int64Counter(name, translateOptions(opts)...)
+    if err != nil {
+        return nil, err
+    }
+    return &int64CounterAdapter{c: c}, nil
+}
+
+func (a *meterAdapter) Float64Histogram(name string, opts ...ports.InstrumentOption) (ports.Float64Histogram, error) {
+    h, err := a.m.Float64Histogram(name, translateOptions(opts)...)
+    if err != nil {
+        return nil, err
+    }
+    return &float64HistogramAdapter{h: h}, nil
+}
+
+func (a *meterAdapter) Int64UpDownCounter(name string, opts ...ports.InstrumentOption) (ports.Int64UpDownCounter, error) {
+    c, err := a.m.Int64UpDownCounter(name, translateOptions(opts)...)
+    if err != nil {
+        return nil, err
+    }
+    return &int64UpDownCounterAdapter{c: c}, nil
+}
+
+// translateOptions converts ports.InstrumentOption to OTel SDK options.
+func translateOptions(opts []ports.InstrumentOption) []metric.Int64CounterOption {
+    // Implementation translates Description, Unit options.
+    // Simplified for ADR; full implementation in code.
+    return nil
+}
+
+// Instrument adapters...
+type int64CounterAdapter struct{ c metric.Int64Counter }
+
+func (a *int64CounterAdapter) Add(ctx context.Context, incr int64, attrs ...ports.Attribute) {
+    a.c.Add(ctx, incr, toOTelAttrs(attrs)...)
+}
+
+type float64HistogramAdapter struct{ h metric.Float64Histogram }
+
+func (a *float64HistogramAdapter) Record(ctx context.Context, value float64, attrs ...ports.Attribute) {
+    a.h.Record(ctx, value, toOTelAttrs(attrs)...)
+}
+
+type int64UpDownCounterAdapter struct{ c metric.Int64UpDownCounter }
+
+func (a *int64UpDownCounterAdapter) Add(ctx context.Context, incr int64, attrs ...ports.Attribute) {
+    a.c.Add(ctx, incr, toOTelAttrs(attrs)...)
+}
+
+func toOTelAttrs(attrs []ports.Attribute) []attribute.KeyValue {
+    kvs := make([]attribute.KeyValue, len(attrs))
+    for i, a := range attrs {
+        kvs[i] = attribute.String(a.Key, a.Value)
+    }
+    return kvs
+}
+```
+
+**Updated file:** `internal/adapters/metrics/otel.go` (replaces prometheus.go)
+
+```go
+// Package metrics provides metrics adapter implementations for VibeWarden.
+package metrics
+
+import (
+    "context"
+    "net/http"
+    "time"
+
+    "github.com/vibewarden/vibewarden/internal/ports"
+)
+
+// OTelAdapter implements ports.MetricsCollector using an OTel MeterProvider.
+// It creates counters and histograms via ports.Meter and records observations.
+type OTelAdapter struct {
+    requestsTotal     ports.Int64Counter
+    requestDuration   ports.Float64Histogram
+    rateLimitHits     ports.Int64Counter
+    authDecisions     ports.Int64Counter
+    upstreamErrors    ports.Int64Counter
+    activeConnections ports.Int64UpDownCounter
+    pathMatcher       *PathMatcher
+    handler           http.Handler
+}
+
+// NewOTelAdapter creates a new OTel-backed MetricsCollector.
+// The provider must be initialized before calling this function.
+func NewOTelAdapter(provider ports.OTelProvider, pathPatterns []string) (*OTelAdapter, error) {
+    meter := provider.Meter()
+
+    requestsTotal, err := meter.Int64Counter("vibewarden_requests_total",
+        ports.WithDescription("Total number of HTTP requests processed."),
+    )
+    if err != nil {
+        return nil, err
+    }
+
+    requestDuration, err := meter.Float64Histogram("vibewarden_request_duration_seconds",
+        ports.WithDescription("HTTP request duration in seconds."),
+        ports.WithUnit("s"),
+        ports.WithExplicitBuckets([]float64{0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10}),
+    )
+    if err != nil {
+        return nil, err
+    }
+
+    rateLimitHits, err := meter.Int64Counter("vibewarden_rate_limit_hits_total",
+        ports.WithDescription("Total number of rate limit hits."),
+    )
+    if err != nil {
+        return nil, err
+    }
+
+    authDecisions, err := meter.Int64Counter("vibewarden_auth_decisions_total",
+        ports.WithDescription("Total number of authentication decisions."),
+    )
+    if err != nil {
+        return nil, err
+    }
+
+    upstreamErrors, err := meter.Int64Counter("vibewarden_upstream_errors_total",
+        ports.WithDescription("Total number of upstream connection errors."),
+    )
+    if err != nil {
+        return nil, err
+    }
+
+    activeConnections, err := meter.Int64UpDownCounter("vibewarden_active_connections",
+        ports.WithDescription("Current number of active proxy connections."),
+    )
+    if err != nil {
+        return nil, err
+    }
+
+    return &OTelAdapter{
+        requestsTotal:     requestsTotal,
+        requestDuration:   requestDuration,
+        rateLimitHits:     rateLimitHits,
+        authDecisions:     authDecisions,
+        upstreamErrors:    upstreamErrors,
+        activeConnections: activeConnections,
+        pathMatcher:       NewPathMatcher(pathPatterns),
+        handler:           provider.Handler(),
+    }, nil
+}
+
+// Handler returns the Prometheus HTTP handler for scraping.
+func (a *OTelAdapter) Handler() http.Handler { return a.handler }
+
+// NormalizePath returns the matching pattern for a path.
+func (a *OTelAdapter) NormalizePath(path string) string {
+    return a.pathMatcher.Match(path)
+}
+
+// IncRequestTotal implements ports.MetricsCollector.
+func (a *OTelAdapter) IncRequestTotal(method, statusCode, pathPattern string) {
+    a.requestsTotal.Add(context.Background(), 1,
+        ports.Attribute{Key: "method", Value: method},
+        ports.Attribute{Key: "status_code", Value: statusCode},
+        ports.Attribute{Key: "path_pattern", Value: pathPattern},
+    )
+}
+
+// ObserveRequestDuration implements ports.MetricsCollector.
+func (a *OTelAdapter) ObserveRequestDuration(method, pathPattern string, duration time.Duration) {
+    a.requestDuration.Record(context.Background(), duration.Seconds(),
+        ports.Attribute{Key: "method", Value: method},
+        ports.Attribute{Key: "path_pattern", Value: pathPattern},
+    )
+}
+
+// IncRateLimitHit implements ports.MetricsCollector.
+func (a *OTelAdapter) IncRateLimitHit(limitType string) {
+    a.rateLimitHits.Add(context.Background(), 1,
+        ports.Attribute{Key: "limit_type", Value: limitType},
+    )
+}
+
+// IncAuthDecision implements ports.MetricsCollector.
+func (a *OTelAdapter) IncAuthDecision(decision string) {
+    a.authDecisions.Add(context.Background(), 1,
+        ports.Attribute{Key: "decision", Value: decision},
+    )
+}
+
+// IncUpstreamError implements ports.MetricsCollector.
+func (a *OTelAdapter) IncUpstreamError() {
+    a.upstreamErrors.Add(context.Background(), 1)
+}
+
+// SetActiveConnections implements ports.MetricsCollector.
+func (a *OTelAdapter) SetActiveConnections(n int) {
+    // OTel doesn't have a "set" operation for UpDownCounter.
+    // We need to track the previous value and add the delta.
+    // For simplicity in this foundation story, we use a synchronous approach.
+    // A production implementation would track state atomically.
+    a.activeConnections.Add(context.Background(), int64(n))
+}
+```
+
+**Note on SetActiveConnections:** OTel's UpDownCounter only supports Add, not Set.
+The implementation must track the previous value and compute the delta. This is
+a known OTel limitation. The adapter will maintain an atomic int64 to track current
+value and add/subtract the difference.
+
+#### Application Service
+
+No new application service. The metrics plugin orchestrates the OTel provider and adapter.
+
+**Updated metrics plugin:** `internal/plugins/metrics/plugin.go`
+
+```go
+package metrics
+
+import (
+    "context"
+    "fmt"
+    "log/slog"
+
+    metricsadapter "github.com/vibewarden/vibewarden/internal/adapters/metrics"
+    oteladapter "github.com/vibewarden/vibewarden/internal/adapters/otel"
+    "github.com/vibewarden/vibewarden/internal/ports"
+)
+
+type Plugin struct {
+    cfg          Config
+    logger       *slog.Logger
+    otelProvider *oteladapter.Provider
+    adapter      *metricsadapter.OTelAdapter
+    server       *metricsadapter.Server
+    internalAddr string
+    running      bool
+}
+
+func New(cfg Config, logger *slog.Logger) *Plugin {
+    return &Plugin{cfg: cfg, logger: logger}
+}
+
+func (p *Plugin) Name() string { return "metrics" }
+func (p *Plugin) Priority() int { return 30 }
+
+func (p *Plugin) Init(ctx context.Context) error {
+    if !p.cfg.Enabled {
+        return nil
+    }
+
+    // Initialize OTel provider.
+    p.otelProvider = oteladapter.NewProvider()
+    if err := p.otelProvider.Init(ctx, "vibewarden", Version); err != nil {
+        return fmt.Errorf("metrics plugin: initializing otel provider: %w", err)
+    }
+
+    // Create the OTel-backed metrics adapter.
+    adapter, err := metricsadapter.NewOTelAdapter(p.otelProvider, p.cfg.PathPatterns)
+    if err != nil {
+        return fmt.Errorf("metrics plugin: creating otel adapter: %w", err)
+    }
+    p.adapter = adapter
+
+    p.logger.Info("metrics plugin initialised with OTel SDK",
+        slog.Int("path_patterns", len(p.cfg.PathPatterns)),
+    )
+    return nil
+}
+
+func (p *Plugin) Start(ctx context.Context) error {
+    if !p.cfg.Enabled {
+        return nil
+    }
+    p.server = metricsadapter.NewServer(p.adapter.Handler(), p.logger)
+    if err := p.server.Start(); err != nil {
+        return fmt.Errorf("metrics plugin: starting internal server: %w", err)
+    }
+    p.internalAddr = p.server.Addr()
+    p.running = true
+    p.logger.Info("metrics plugin started",
+        slog.String("internal_addr", p.internalAddr),
+    )
+    return nil
+}
+
+func (p *Plugin) Stop(ctx context.Context) error {
+    if p.server != nil {
+        p.running = false
+        if err := p.server.Stop(ctx); err != nil {
+            return fmt.Errorf("metrics plugin: stopping internal server: %w", err)
+        }
+    }
+    if p.otelProvider != nil {
+        if err := p.otelProvider.Shutdown(ctx); err != nil {
+            return fmt.Errorf("metrics plugin: shutting down otel provider: %w", err)
+        }
+    }
+    return nil
+}
+
+// Collector returns the MetricsCollector for use by middleware.
+// Returns nil if the plugin is disabled or not initialized.
+func (p *Plugin) Collector() ports.MetricsCollector {
+    if p.adapter == nil {
+        return metricsadapter.NoOpMetricsCollector{}
+    }
+    return p.adapter
+}
+
+// ... Health, ContributeCaddyRoutes, InternalAddr unchanged ...
+```
+
+#### File Layout
+
+**New files:**
+
+```
+internal/
+  ports/
+    otel.go                    # OTelProvider, Meter, Instrument interfaces
+  adapters/
+    otel/
+      provider.go              # Provider implementing ports.OTelProvider
+      provider_test.go         # Unit tests for Provider
+      meter.go                 # meterAdapter, instrument adapters
+      meter_test.go            # Unit tests for meter adapters
+    metrics/
+      otel.go                  # OTelAdapter implementing ports.MetricsCollector
+      otel_test.go             # Unit tests for OTelAdapter
+```
+
+**Deprecated files (to be removed in follow-up):**
+
+```
+internal/
+  adapters/
+    metrics/
+      prometheus.go            # DEPRECATED: replaced by otel.go
+      prometheus_test.go       # DEPRECATED: replaced by otel_test.go
+```
+
+**Unchanged files:**
+
+```
+internal/
+  ports/
+    metrics.go                 # MetricsCollector interface (unchanged)
+  adapters/
+    metrics/
+      noop.go                  # NoOpMetricsCollector (unchanged)
+      noop_test.go             # Tests (unchanged)
+      path_matcher.go          # PathMatcher (unchanged, reused by OTelAdapter)
+      path_matcher_test.go     # Tests (unchanged)
+      server.go                # Internal HTTP server (unchanged)
+      server_test.go           # Tests (unchanged)
+  plugins/
+    metrics/
+      plugin.go                # Updated to use OTel provider
+      plugin_test.go           # Updated tests
+      config.go                # Unchanged
+      meta.go                  # Unchanged
+  middleware/
+    metrics.go                 # Unchanged (uses ports.MetricsCollector)
+    metrics_test.go            # Unchanged
+```
+
+#### Sequence
+
+**Initialization flow:**
+
+1. `main()` loads config, creates metrics plugin with `metrics.New(cfg, logger)`
+2. Plugin registry calls `plugin.Init(ctx)`:
+   a. Create `oteladapter.Provider` (uninitialized)
+   b. Call `provider.Init(ctx, "vibewarden", version)`:
+      - Create Prometheus registry
+      - Create Prometheus exporter with registry
+      - Create OTel Resource with service name/version
+      - Create MeterProvider with exporter
+      - Set global MeterProvider
+      - Create Meter for scope "github.com/vibewarden/vibewarden"
+      - Create promhttp.Handler for the registry
+   c. Create `metricsadapter.OTelAdapter(provider, pathPatterns)`:
+      - Get Meter from provider
+      - Create Int64Counter for requests_total
+      - Create Float64Histogram for request_duration
+      - Create counters for rate_limit_hits, auth_decisions, upstream_errors
+      - Create Int64UpDownCounter for active_connections
+      - Store handler from provider
+3. Plugin registry calls `plugin.Start(ctx)`:
+   a. Create internal HTTP server with adapter.Handler()
+   b. Server binds random localhost port
+   c. Store internal address for Caddy reverse-proxy
+
+**Request flow (unchanged from caller's perspective):**
+
+1. HTTP request arrives at Caddy
+2. `MetricsMiddleware` intercepts, records start time
+3. Request proceeds through handler chain
+4. On response, middleware calls:
+   - `mc.IncRequestTotal(method, statusCode, pathPattern)`
+   - `mc.ObserveRequestDuration(method, pathPattern, duration)`
+5. OTelAdapter forwards to OTel instruments with attributes
+6. OTel SDK aggregates observations in memory
+7. Prometheus exporter exposes aggregated metrics at `/_vibewarden/metrics`
+
+**Shutdown flow:**
+
+1. Plugin registry calls `plugin.Stop(ctx)`
+2. Plugin stops internal HTTP server
+3. Plugin calls `provider.Shutdown(ctx)`
+4. MeterProvider flushes any pending data
+5. Exporter is released
+
+#### Error Cases
+
+| Error | Cause | Handling |
+|-------|-------|----------|
+| `otel provider already initialized` | Init called twice | Return error, log warning |
+| `creating prometheus exporter` | Registry conflict | Return error, plugin fails to init |
+| `creating otel resource` | Invalid resource attributes | Return error, plugin fails to init |
+| Instrument creation fails | Invalid metric name | Return error from NewOTelAdapter |
+| Nil provider.Handler() | Init not called | Return nil, internal server fails |
+| Context cancelled during Init | Timeout | Return ctx.Err() |
+| Shutdown with pending data | Exporter blocked | Honour context deadline, may lose data |
+
+All errors are wrapped with context and propagated to the plugin registry, which
+logs them and marks the plugin as unhealthy.
+
+#### Test Strategy
+
+**Unit tests:**
+
+| File | Coverage |
+|------|----------|
+| `internal/adapters/otel/provider_test.go` | Init, Shutdown, Handler, Meter accessors |
+| `internal/adapters/otel/meter_test.go` | Instrument creation, Add/Record calls, attribute conversion |
+| `internal/adapters/metrics/otel_test.go` | All MetricsCollector methods, path normalization |
+| `internal/plugins/metrics/plugin_test.go` | Updated for OTel provider lifecycle |
+
+**Unit test approach:**
+
+- Use `go.opentelemetry.io/otel/sdk/metric/metrictest` for in-memory reading of recorded values
+- Verify correct metric names, descriptions, and attribute labels
+- Test SetActiveConnections delta calculation
+- Mock provider for adapter tests
+
+**Integration tests:**
+
+| Test | Coverage |
+|------|----------|
+| `internal/adapters/metrics/otel_integration_test.go` | Full stack: Provider → Adapter → HTTP scrape |
+
+**Integration test approach:**
+
+- Start real OTel provider with Prometheus exporter
+- Record metrics through adapter
+- Scrape `/_vibewarden/metrics` endpoint
+- Verify Prometheus format output contains expected metrics
+- Verify Go runtime metrics are still present
+
+**What to mock vs. what to test real:**
+
+- Mock: Nothing at unit level; OTel SDK is fast and deterministic
+- Real: Full integration test with HTTP scraping
+- Skip: External OTLP export (future story #286)
+
+#### New Dependencies
+
+| Package | Version | License | Reason |
+|---------|---------|---------|--------|
+| `go.opentelemetry.io/otel` | v1.41.0 | Apache 2.0 | Core OTel API |
+| `go.opentelemetry.io/otel/sdk` | v1.41.0 | Apache 2.0 | MeterProvider implementation |
+| `go.opentelemetry.io/otel/sdk/metric` | v1.41.0 | Apache 2.0 | Metric SDK |
+| `go.opentelemetry.io/otel/exporters/prometheus` | v0.62.0 | Apache 2.0 | Prometheus exporter |
+| `go.opentelemetry.io/otel/semconv/v1.26.0` | v1.41.0 | Apache 2.0 | Semantic conventions |
+
+**License verification:** All packages are part of the `opentelemetry-go` repository,
+which is licensed under Apache 2.0 (verified by reading LICENSE file from
+https://github.com/open-telemetry/opentelemetry-go). This license is on the
+approved list per CLAUDE.md.
+
+**Note:** These packages are already transitive dependencies through Caddy.
+Promoting them to direct dependencies does not increase the binary size.
+
+### Consequences
+
+**Positive:**
+
+- **Unified SDK:** Single OTel MeterProvider for all metrics, enabling future
+  traces and logs integration with consistent resource attributes.
+- **OTLP-ready:** Adding OTLP export (story #286) becomes a one-line change
+  to add another reader to the MeterProvider.
+- **Prometheus compatible:** Existing scrapers and dashboards work unchanged.
+- **No breaking changes:** The `MetricsCollector` port interface is stable;
+  callers do not need modification.
+- **Vendor-neutral:** OTel is CNCF graduated; no vendor lock-in.
+
+**Negative:**
+
+- **SetActiveConnections complexity:** OTel UpDownCounter lacks Set semantics,
+  requiring delta tracking in the adapter. This adds state management overhead.
+- **Transitive dependency size:** While already present via Caddy, the OTel SDK
+  is larger than prometheus/client_golang alone. Acceptable trade-off for
+  observability standardization.
+- **Learning curve:** Developers must understand OTel concepts (MeterProvider,
+  Meter, Instruments, Attributes) vs. simpler Prometheus registry model.
+
+**Trade-offs:**
+
+- **Port wrapper types vs. direct OTel imports:** Chose wrappers to maintain
+  hexagonal purity. Cost: more adapter code. Benefit: domain/app layers remain
+  decoupled from OTel specifics.
+- **Global MeterProvider:** Setting OTel's global provider simplifies integration
+  with any code that uses `otel.GetMeterProvider()`. Risk: potential conflicts
+  if user code also sets globals. Mitigation: documented behavior.
+- **Deprecate vs. delete prometheus.go:** Chose deprecation in this story,
+  deletion in follow-up. Allows rollback if issues discovered.
+
+**Migration path:**
+
+1. This story implements OTel adapter alongside existing Prometheus adapter
+2. Plugin switched to use OTel adapter (breaking change for plugin internals only)
+3. Follow-up story deletes deprecated prometheus.go
+4. Future story #286 adds OTLP exporter configuration
+
+**Locked decision update:**
+
+L-07 currently reads: "Metrics: prometheus/client_golang (Apache 2.0)".
+
+This ADR does **not** change the locked decision. Prometheus remains the export
+format; we're changing the internal SDK from prometheus/client_golang to OTel SDK
+with Prometheus exporter. The user-facing `/_vibewarden/metrics` endpoint remains
+Prometheus-compatible.
+
+A future ADR may update L-07 to "Metrics: OpenTelemetry SDK with Prometheus export"
+once this migration is complete and validated.
+
+---
+
+## ADR-013: OTLP Exporter Configuration and Telemetry Plugin Refactor
+**Date**: 2026-03-28
+**Issue**: #287
+**Status**: Accepted
+
+### Context
+
+ADR-012 introduced the OpenTelemetry SDK as the metrics foundation, using the Prometheus
+exporter for pull-based metrics at `/_vibewarden/metrics`. Epic #280 (OpenTelemetry
+Integration) requires push-based OTLP export as the primary telemetry path.
+
+The issue is that the current architecture:
+
+1. Only supports Prometheus pull-based export (scraping)
+2. Requires opening inbound endpoints, conflicting with localhost-only security model
+3. Has a `MetricsConfig` that is too narrow for the broader telemetry scope
+
+OTLP export is push-based: the sidecar initiates outbound connections to send telemetry
+to a collector endpoint. This aligns with VibeWarden's security model (localhost-only,
+no inbound ports beyond the reverse proxy).
+
+The acceptance criteria from issue #287:
+- Refactor config to support both OTLP and Prometheus exporters
+- Configure OTLP HTTP exporter with endpoint, headers, and interval
+- Allow both exporters to run simultaneously
+- Graceful shutdown with pending telemetry flush
+- Backward compatibility: map legacy `metrics:` config to `telemetry:`
+
+### Decision
+
+Add OTLP HTTP exporter support to the OTelProvider and introduce a new `TelemetryConfig`
+configuration section that replaces the narrow `MetricsConfig`. The system supports
+running both Prometheus and OTLP exporters simultaneously.
+
+#### Domain Model Changes
+
+No domain model changes. Telemetry configuration is infrastructure concern.
+
+#### Ports (Interfaces)
+
+**Update `internal/ports/otel.go`** to add telemetry configuration types:
+
+```go
+// TelemetryConfig holds all telemetry export settings.
+// It is passed to OTelProvider.Init to configure exporters.
+type TelemetryConfig struct {
+    // Prometheus enables the Prometheus pull-based exporter.
+    // When enabled, metrics are available at /_vibewarden/metrics.
+    Prometheus PrometheusExporterConfig
+
+    // OTLP enables the OTLP push-based exporter.
+    // When enabled, metrics are pushed to the configured endpoint.
+    OTLP OTLPExporterConfig
+}
+
+// PrometheusExporterConfig configures the Prometheus pull-based exporter.
+type PrometheusExporterConfig struct {
+    // Enabled toggles the Prometheus exporter (default: true).
+    Enabled bool
+}
+
+// OTLPExporterConfig configures the OTLP push-based exporter.
+type OTLPExporterConfig struct {
+    // Enabled toggles the OTLP exporter (default: false).
+    Enabled bool
+
+    // Endpoint is the OTLP HTTP endpoint URL (e.g., "http://localhost:4318").
+    // Required when Enabled is true.
+    Endpoint string
+
+    // Headers are optional HTTP headers for authentication (e.g., API keys).
+    // Keys are header names, values are header values.
+    Headers map[string]string
+
+    // Interval is the export interval (default: 30s).
+    // Metrics are batched and pushed at this interval.
+    Interval time.Duration
+
+    // Protocol specifies the OTLP protocol: "http" or "grpc" (default: "http").
+    // This story only implements "http"; "grpc" is reserved for future use.
+    Protocol string
+}
+```
+
+**Update `OTelProvider` interface:**
+
+```go
+// OTelProvider manages the OpenTelemetry SDK lifecycle.
+// It initializes the MeterProvider with configured exporters and exposes
+// an HTTP handler for Prometheus scraping (when Prometheus exporter is enabled).
+// Implementations must be safe for concurrent use after Init returns.
+type OTelProvider interface {
+    // Init initializes the OTel SDK with the given service identity and telemetry config.
+    // It sets up the MeterProvider with the configured exporters (Prometheus, OTLP, or both).
+    // Must be called once before any other methods.
+    Init(ctx context.Context, serviceName, serviceVersion string, cfg TelemetryConfig) error
+
+    // Shutdown gracefully shuts down the OTel SDK, flushing any buffered data.
+    // For OTLP exporter, this flushes pending metrics to the endpoint.
+    // Must honour the context deadline.
+    Shutdown(ctx context.Context) error
+
+    // Handler returns an http.Handler that serves Prometheus metrics.
+    // Returns nil if Prometheus exporter is disabled or Init has not been called.
+    Handler() http.Handler
+
+    // Meter returns a named OTel Meter for creating instruments.
+    // The scope name is "github.com/vibewarden/vibewarden".
+    Meter() Meter
+
+    // PrometheusEnabled returns true if the Prometheus exporter is active.
+    PrometheusEnabled() bool
+
+    // OTLPEnabled returns true if the OTLP exporter is active.
+    OTLPEnabled() bool
+}
+```
+
+#### Adapters
+
+**Update `internal/adapters/otel/provider.go`:**
+
+```go
+package otel
+
+import (
+    "context"
+    "fmt"
+    "net/http"
+    "sync"
+    "time"
+
+    prometheusclient "github.com/prometheus/client_golang/prometheus"
+    "github.com/prometheus/client_golang/prometheus/promhttp"
+    "github.com/vibewarden/vibewarden/internal/ports"
+    "go.opentelemetry.io/otel"
+    otelprom "go.opentelemetry.io/otel/exporters/prometheus"
+    "go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp"
+    otelmetric "go.opentelemetry.io/otel/metric"
+    sdkmetric "go.opentelemetry.io/otel/sdk/metric"
+    "go.opentelemetry.io/otel/sdk/resource"
+    semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
+)
+
+// Provider implements ports.OTelProvider using the OTel Go SDK.
+// It supports both Prometheus and OTLP exporters, configured via Init.
+type Provider struct {
+    mu            sync.RWMutex
+    meterProvider *sdkmetric.MeterProvider
+    meter         otelmetric.Meter
+    handler       http.Handler
+    registry      *prometheusclient.Registry
+
+    promEnabled bool
+    otlpEnabled bool
+}
+
+// NewProvider creates an uninitialized Provider.
+// Call Init before using any other methods.
+func NewProvider() *Provider {
+    return &Provider{}
+}
+
+// Init initializes the OTel SDK with configured exporters.
+// serviceName and serviceVersion are recorded as OTel resource attributes.
+// Returns an error if Init has already been called, if no exporters are enabled,
+// or if OTLP is enabled without an endpoint.
+func (p *Provider) Init(ctx context.Context, serviceName, serviceVersion string, cfg ports.TelemetryConfig) error {
+    p.mu.Lock()
+    defer p.mu.Unlock()
+
+    if p.meterProvider != nil {
+        return fmt.Errorf("otel provider already initialized")
+    }
+
+    // Validate config.
+    if !cfg.Prometheus.Enabled && !cfg.OTLP.Enabled {
+        return fmt.Errorf("at least one exporter must be enabled")
+    }
+    if cfg.OTLP.Enabled && cfg.OTLP.Endpoint == "" {
+        return fmt.Errorf("OTLP endpoint required when OTLP exporter is enabled")
+    }
+
+    // Build resource with service identity.
+    res, err := resource.New(ctx,
+        resource.WithAttributes(
+            semconv.ServiceName(serviceName),
+            semconv.ServiceVersion(serviceVersion),
+        ),
+    )
+    if err != nil {
+        return fmt.Errorf("creating otel resource: %w", err)
+    }
+
+    // Collect readers for each enabled exporter.
+    var readers []sdkmetric.Option
+
+    // Prometheus exporter (pull-based).
+    if cfg.Prometheus.Enabled {
+        p.registry = prometheusclient.NewRegistry()
+        promExporter, err := otelprom.New(
+            otelprom.WithRegisterer(p.registry),
+            otelprom.WithoutScopeInfo(),
+        )
+        if err != nil {
+            return fmt.Errorf("creating prometheus exporter: %w", err)
+        }
+        readers = append(readers, sdkmetric.WithReader(promExporter))
+        p.handler = promhttp.HandlerFor(p.registry, promhttp.HandlerOpts{
+            EnableOpenMetrics: true,
+        })
+        p.promEnabled = true
+    }
+
+    // OTLP HTTP exporter (push-based).
+    if cfg.OTLP.Enabled {
+        interval := cfg.OTLP.Interval
+        if interval == 0 {
+            interval = 30 * time.Second
+        }
+
+        // Build OTLP HTTP exporter options.
+        otlpOpts := []otlpmetrichttp.Option{
+            otlpmetrichttp.WithEndpointURL(cfg.OTLP.Endpoint),
+        }
+        if len(cfg.OTLP.Headers) > 0 {
+            otlpOpts = append(otlpOpts, otlpmetrichttp.WithHeaders(cfg.OTLP.Headers))
+        }
+
+        otlpExporter, err := otlpmetrichttp.New(ctx, otlpOpts...)
+        if err != nil {
+            return fmt.Errorf("creating otlp exporter: %w", err)
+        }
+
+        // Periodic reader pushes metrics at the configured interval.
+        periodicReader := sdkmetric.NewPeriodicReader(otlpExporter,
+            sdkmetric.WithInterval(interval),
+        )
+        readers = append(readers, sdkmetric.WithReader(periodicReader))
+        p.otlpEnabled = true
+    }
+
+    // Create MeterProvider with all configured readers.
+    opts := []sdkmetric.Option{sdkmetric.WithResource(res)}
+    opts = append(opts, readers...)
+    p.meterProvider = sdkmetric.NewMeterProvider(opts...)
+
+    // Set as global provider.
+    otel.SetMeterProvider(p.meterProvider)
+
+    // Create the application meter.
+    p.meter = p.meterProvider.Meter("github.com/vibewarden/vibewarden")
+
+    return nil
+}
+
+// Shutdown gracefully shuts down the MeterProvider, flushing any buffered data.
+// For OTLP exporter, this ensures pending metrics are pushed to the endpoint.
+func (p *Provider) Shutdown(ctx context.Context) error {
+    p.mu.Lock()
+    defer p.mu.Unlock()
+
+    if p.meterProvider == nil {
+        return nil
+    }
+    return p.meterProvider.Shutdown(ctx)
+}
+
+// Handler returns the Prometheus metrics HTTP handler.
+// Returns nil if Prometheus exporter is disabled or Init has not been called.
+func (p *Provider) Handler() http.Handler {
+    p.mu.RLock()
+    defer p.mu.RUnlock()
+    return p.handler
+}
+
+// Meter returns a ports.Meter wrapping the OTel SDK meter.
+// Returns nil if Init has not been called.
+func (p *Provider) Meter() ports.Meter {
+    p.mu.RLock()
+    defer p.mu.RUnlock()
+    if p.meter == nil {
+        return nil
+    }
+    return &meterAdapter{m: p.meter}
+}
+
+// PrometheusEnabled returns true if the Prometheus exporter is active.
+func (p *Provider) PrometheusEnabled() bool {
+    p.mu.RLock()
+    defer p.mu.RUnlock()
+    return p.promEnabled
+}
+
+// OTLPEnabled returns true if the OTLP exporter is active.
+func (p *Provider) OTLPEnabled() bool {
+    p.mu.RLock()
+    defer p.mu.RUnlock()
+    return p.otlpEnabled
+}
+```
+
+#### Application Service
+
+**Update `internal/config/config.go`:**
+
+Add new `TelemetryConfig` struct and deprecate `MetricsConfig`:
+
+```go
+// TelemetryConfig holds all telemetry export settings.
+// This replaces the narrower MetricsConfig and supports both pull (Prometheus)
+// and push (OTLP) export modes.
+type TelemetryConfig struct {
+    // Enabled toggles telemetry collection entirely (default: true).
+    Enabled bool `mapstructure:"enabled"`
+
+    // PathPatterns is a list of URL path normalization patterns using :param syntax.
+    // Example: "/users/:id", "/api/v1/items/:item_id/comments/:comment_id"
+    // Paths that don't match any pattern are recorded as "other".
+    PathPatterns []string `mapstructure:"path_patterns"`
+
+    // Prometheus configures the pull-based Prometheus exporter.
+    Prometheus PrometheusExporterConfig `mapstructure:"prometheus"`
+
+    // OTLP configures the push-based OTLP exporter.
+    OTLP OTLPExporterConfig `mapstructure:"otlp"`
+}
+
+// PrometheusExporterConfig configures the Prometheus pull-based exporter.
+type PrometheusExporterConfig struct {
+    // Enabled toggles the Prometheus exporter (default: true).
+    // When enabled, metrics are served at /_vibewarden/metrics.
+    Enabled bool `mapstructure:"enabled"`
+}
+
+// OTLPExporterConfig configures the OTLP push-based exporter.
+type OTLPExporterConfig struct {
+    // Enabled toggles the OTLP exporter (default: false).
+    Enabled bool `mapstructure:"enabled"`
+
+    // Endpoint is the OTLP HTTP endpoint URL (e.g., "http://localhost:4318").
+    // Required when Enabled is true.
+    Endpoint string `mapstructure:"endpoint"`
+
+    // Headers are optional HTTP headers for authentication.
+    // Example: {"Authorization": "Bearer <token>"}
+    Headers map[string]string `mapstructure:"headers"`
+
+    // Interval is the export interval as a duration string (default: "30s").
+    // Metrics are batched and pushed at this interval.
+    Interval string `mapstructure:"interval"`
+
+    // Protocol is "http" or "grpc" (default: "http").
+    // Only "http" is supported in this version.
+    Protocol string `mapstructure:"protocol"`
+}
+
+// MetricsConfig is DEPRECATED. Use TelemetryConfig instead.
+// This struct remains for backward compatibility and is mapped to TelemetryConfig
+// during config loading.
+type MetricsConfig struct {
+    // Enabled toggles metrics collection and the /_vibewarden/metrics endpoint (default: true).
+    Enabled bool `mapstructure:"enabled"`
+
+    // PathPatterns is a list of URL path normalization patterns using :param syntax.
+    PathPatterns []string `mapstructure:"path_patterns"`
+}
+```
+
+**Add to `Load()` function:**
+
+```go
+// Defaults for telemetry.
+v.SetDefault("telemetry.enabled", true)
+v.SetDefault("telemetry.prometheus.enabled", true)
+v.SetDefault("telemetry.otlp.enabled", false)
+v.SetDefault("telemetry.otlp.interval", "30s")
+v.SetDefault("telemetry.otlp.protocol", "http")
+```
+
+**Add migration helper in `internal/config/migrate.go`:**
+
+```go
+// MigrateLegacyMetrics converts legacy metrics config to telemetry config.
+// If the user has a metrics: section but no telemetry: section, this function
+// copies settings and logs a deprecation warning.
+func MigrateLegacyMetrics(cfg *Config, logger *slog.Logger) {
+    // Only migrate if telemetry is at defaults and metrics is customized.
+    if cfg.Metrics.Enabled == false || len(cfg.Metrics.PathPatterns) > 0 {
+        // User has customized metrics config, migrate it.
+        cfg.Telemetry.Enabled = cfg.Metrics.Enabled
+        cfg.Telemetry.PathPatterns = cfg.Metrics.PathPatterns
+        cfg.Telemetry.Prometheus.Enabled = cfg.Metrics.Enabled
+
+        logger.Warn("DEPRECATED: 'metrics:' config section is deprecated, use 'telemetry:' instead",
+            slog.Bool("metrics_enabled", cfg.Metrics.Enabled),
+            slog.Int("path_patterns", len(cfg.Metrics.PathPatterns)),
+        )
+    }
+}
+```
+
+#### File Layout
+
+**New files:**
+
+```
+internal/
+  config/
+    migrate.go                 # Legacy config migration helpers
+    migrate_test.go            # Tests for migration
+  adapters/
+    otel/
+      otlp.go                  # OTLP exporter helpers (optional, if extraction needed)
+      otlp_test.go             # OTLP-specific unit tests
+```
+
+**Modified files:**
+
+```
+internal/
+  ports/
+    otel.go                    # Add TelemetryConfig, update OTelProvider interface
+  config/
+    config.go                  # Add TelemetryConfig, deprecate MetricsConfig
+  adapters/
+    otel/
+      provider.go              # Add OTLP exporter support, update Init signature
+      provider_test.go         # Add tests for OTLP exporter, dual-exporter mode
+  plugins/
+    metrics/
+      plugin.go                # Update to use TelemetryConfig, pass to provider
+      config.go                # Update Config struct to use TelemetryConfig fields
+      plugin_test.go           # Update tests
+```
+
+#### Sequence
+
+**Initialization flow (updated):**
+
+1. `main()` loads config with `config.Load()`
+2. `config.MigrateLegacyMetrics()` checks for deprecated `metrics:` section
+3. If `metrics:` found but no `telemetry:`, copy settings and log warning
+4. Plugin registry creates metrics plugin with `metrics.New(cfg, logger)`
+5. Plugin registry calls `plugin.Init(ctx)`:
+   a. Build `ports.TelemetryConfig` from config
+   b. Create `oteladapter.Provider`
+   c. Call `provider.Init(ctx, "vibewarden", version, telemetryCfg)`:
+      - Validate: at least one exporter enabled
+      - Validate: OTLP endpoint present if OTLP enabled
+      - Create OTel Resource with service name/version
+      - **If Prometheus enabled:**
+        - Create Prometheus registry
+        - Create Prometheus exporter with registry
+        - Add to readers list
+        - Create promhttp.Handler
+      - **If OTLP enabled:**
+        - Parse interval duration
+        - Build OTLP HTTP exporter with endpoint, headers
+        - Create PeriodicReader with exporter and interval
+        - Add to readers list
+      - Create MeterProvider with all readers
+      - Set global MeterProvider
+      - Create Meter for scope
+   d. Create `metricsadapter.OTelAdapter(provider, pathPatterns)`
+6. Plugin registry calls `plugin.Start(ctx)`:
+   a. **If Prometheus enabled:**
+      - Create internal HTTP server with adapter.Handler()
+      - Server binds random localhost port
+      - Store internal address for Caddy reverse-proxy
+   b. **If only OTLP enabled:**
+      - No internal server needed (push-based)
+      - Plugin still contributes no Caddy routes
+
+**OTLP push flow:**
+
+1. HTTP request arrives at Caddy
+2. `MetricsMiddleware` intercepts, records start time
+3. Request proceeds through handler chain
+4. On response, middleware calls MetricsCollector methods
+5. OTelAdapter forwards to OTel instruments with attributes
+6. OTel SDK aggregates observations in memory
+7. **PeriodicReader** (every 30s by default):
+   - Collects aggregated metrics from MeterProvider
+   - Pushes to OTLP endpoint via HTTP POST
+   - Endpoint returns 200 OK on success
+8. On shutdown, `provider.Shutdown()` forces final flush
+
+**Shutdown flow (updated):**
+
+1. Plugin registry calls `plugin.Stop(ctx)`
+2. **If Prometheus enabled:** Plugin stops internal HTTP server
+3. Plugin calls `provider.Shutdown(ctx)`
+4. MeterProvider triggers final export on all readers:
+   - Prometheus exporter: no-op (pull-based)
+   - OTLP exporter: flush pending metrics to endpoint
+5. Wait for flush or context deadline
+6. Exporters released
+
+#### Error Cases
+
+| Error | Cause | Handling |
+|-------|-------|----------|
+| `at least one exporter must be enabled` | Both Prometheus and OTLP disabled | Return error from Init |
+| `OTLP endpoint required when OTLP exporter is enabled` | OTLP enabled but endpoint empty | Return error from Init |
+| `creating otlp exporter` | Invalid endpoint URL | Return error from Init |
+| `invalid interval duration` | Malformed interval string | Return error during config parsing |
+| OTLP push fails (network error) | Collector unreachable | OTel SDK retries with backoff, logs warning |
+| OTLP push fails (auth error) | Invalid headers/API key | OTel SDK logs error, continues trying |
+| Shutdown timeout | Flush takes too long | Context deadline exceeded, may lose pending data |
+| `unsupported protocol: grpc` | Protocol set to grpc | Return error from Init (grpc not implemented) |
+
+**OTLP error handling philosophy:**
+
+The OTel SDK handles transient OTLP export failures gracefully:
+- Automatic retry with exponential backoff
+- Logs export failures but does not crash
+- Continues collecting metrics locally
+- Next push interval attempts again
+
+This matches the sidecar's resilience requirements: telemetry loss is acceptable,
+crashes are not.
+
+#### Test Strategy
+
+**Unit tests:**
+
+| File | Coverage |
+|------|----------|
+| `internal/adapters/otel/provider_test.go` | Init with various TelemetryConfig combinations |
+| `internal/adapters/otel/otlp_test.go` | OTLP exporter creation, option translation |
+| `internal/config/config_test.go` | TelemetryConfig parsing, defaults |
+| `internal/config/migrate_test.go` | Legacy metrics config migration |
+| `internal/plugins/metrics/plugin_test.go` | Updated plugin lifecycle with TelemetryConfig |
+
+**Unit test cases for provider:**
+
+1. Init with Prometheus only (current behavior, regression test)
+2. Init with OTLP only (new behavior)
+3. Init with both Prometheus and OTLP (dual-exporter)
+4. Init with neither (error case)
+5. Init with OTLP enabled but no endpoint (error case)
+6. Init with custom OTLP headers
+7. Init with custom OTLP interval
+8. Shutdown flushes OTLP (verify call to exporter.Shutdown)
+9. PrometheusEnabled/OTLPEnabled return correct values
+
+**Integration tests:**
+
+| Test | Coverage |
+|------|----------|
+| `internal/adapters/otel/provider_integration_test.go` | Full OTLP export to mock server |
+
+**Integration test approach for OTLP:**
+
+1. Start mock OTLP HTTP server (net/http/httptest)
+2. Configure provider with mock server endpoint
+3. Record metrics through adapter
+4. Trigger manual flush via shutdown or short interval
+5. Verify mock server received expected OTLP payload
+6. Verify metric names, labels, values in payload
+
+**What to mock vs. what to test real:**
+
+- Mock: OTLP collector endpoint (httptest server)
+- Real: Full OTel SDK stack, Prometheus exporter
+- Skip: Real OTel Collector (tested in Docker Compose story #290)
+
+#### New Dependencies
+
+| Package | Version | License | Reason |
+|---------|---------|---------|--------|
+| `go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp` | v1.40.0 | Apache 2.0 | OTLP HTTP exporter for push-based metrics |
+
+**License verification:** This package is part of the `opentelemetry-go` repository,
+which is licensed under Apache 2.0 (verified in ADR-012). The package is already
+a transitive dependency through Caddy (line 185 of go.mod), so promoting it to
+a direct dependency does not increase binary size.
+
+**No new transitive dependencies** are introduced; all required packages are
+already in the dependency tree.
+
+### Consequences
+
+**Positive:**
+
+- **Push-based export:** OTLP enables outbound-only telemetry, aligning with
+  localhost-only security model. No inbound scrape ports needed.
+- **Dual-mode support:** Users can run Prometheus (for local /metrics) AND OTLP
+  (for central collection) simultaneously. Gradual migration path.
+- **Fleet-ready:** Future Pro tier fleet dashboard can receive OTLP directly
+  from local instances without scraping.
+- **Vendor-neutral:** OTLP is CNCF standard; works with any OTLP-compatible backend
+  (Grafana Cloud, Datadog, Honeycomb, self-hosted OTel Collector).
+- **Backward compatible:** Legacy `metrics:` config continues to work with
+  deprecation warning. No breaking changes for existing users.
+
+**Negative:**
+
+- **Configuration complexity:** TelemetryConfig has more options than MetricsConfig.
+  Mitigated by sensible defaults (Prometheus enabled, OTLP disabled).
+- **Network dependency:** OTLP requires network access to collector. If collector
+  is down, metrics are lost after SDK buffer fills. Acceptable for observability.
+- **No gRPC support yet:** Only HTTP protocol implemented. gRPC requires additional
+  dependency (`otlpmetricgrpc`). Can be added in follow-up if needed.
+
+**Trade-offs:**
+
+- **Immediate flush vs. batching:** Chose batching with PeriodicReader (default 30s)
+  for efficiency. Trade-off: up to 30s telemetry lag. Users can configure shorter
+  intervals if needed.
+- **Prometheus as default:** Kept Prometheus enabled by default for backward
+  compatibility. New users may prefer OTLP-only, but this requires explicit opt-in.
+- **Single OTLP endpoint:** No support for multiple OTLP endpoints. Users needing
+  fan-out should use OTel Collector as aggregator.
+
+**Migration path:**
+
+1. **This story (ADR-013):** Add OTLP support, TelemetryConfig, deprecate MetricsConfig
+2. **Story #288:** Prometheus fallback (ensure Prometheus still works as expected)
+3. **Story #290:** OTel Collector in Docker Compose (OTLP receiver)
+4. **Future:** Remove deprecated MetricsConfig after 2 minor versions
+
+**Example `vibewarden.yaml` configurations:**
+
+```yaml
+# Prometheus only (current default, backward compatible)
+telemetry:
+  enabled: true
+  prometheus:
+    enabled: true
+  otlp:
+    enabled: false
+
+# OTLP only (push to Grafana Cloud)
+telemetry:
+  enabled: true
+  prometheus:
+    enabled: false
+  otlp:
+    enabled: true
+    endpoint: https://otlp-gateway-prod-us-central-0.grafana.net/otlp
+    headers:
+      Authorization: "Basic ${GRAFANA_OTLP_TOKEN}"
+    interval: 30s
+
+# Dual-mode (local scraping + central push)
+telemetry:
+  enabled: true
+  path_patterns:
+    - "/users/:id"
+    - "/api/v1/items/:item_id"
+  prometheus:
+    enabled: true
+  otlp:
+    enabled: true
+    endpoint: http://otel-collector:4318
+    interval: 15s
+
+# Legacy config (will be migrated with warning)
+metrics:
+  enabled: true
+  path_patterns:
+    - "/users/:id"
+```
+
+---
+
+## ADR-014: Prometheus Fallback Exporter for Backward Compatibility
+**Date**: 2026-03-28
+**Issue**: #288
+**Status**: Accepted
+
+### Context
+
+ADR-012 and ADR-013 established the OpenTelemetry SDK as the metrics foundation, with both
+Prometheus (pull-based) and OTLP (push-based) export capabilities. The implementation uses
+`go.opentelemetry.io/otel/exporters/prometheus` as the OTel-to-Prometheus bridge.
+
+Issue #288 requires completing this migration by:
+
+1. Removing the deprecated `prometheus/client_golang` direct adapter
+2. Ensuring `/_vibewarden/metrics` continues to work as before
+3. Validating that Prometheus is the automatic fallback when OTLP is not configured
+4. Verifying metric names and labels remain identical (no breaking changes for dashboards)
+
+**Current state after ADR-012/013:**
+
+- OTel provider at `internal/adapters/otel/provider.go` already supports Prometheus export
+- Metrics plugin already uses `OTelAdapter` for metric collection
+- Config defaults: `prometheus.enabled = true`, `otlp.enabled = false`
+- Legacy `prometheus.go` adapter still exists but is unused by the plugin
+
+The old `PrometheusAdapter` in `internal/adapters/metrics/prometheus.go` is now dead code.
+Some tests still reference it, creating maintenance burden and potential confusion.
+
+### Decision
+
+Complete the OTel migration by removing deprecated prometheus/client_golang adapter code
+and updating all tests to use the OTel-based implementation. Add explicit integration tests
+verifying backward compatibility of the `/_vibewarden/metrics` endpoint.
+
+#### Domain Model Changes
+
+None. This is a cleanup story with no domain impact.
+
+#### Ports (Interfaces)
+
+No changes. The existing `ports.MetricsCollector` and `ports.OTelProvider` interfaces
+remain stable.
+
+#### Adapters
+
+**Files to delete:**
+
+```
+internal/adapters/metrics/prometheus.go           # REMOVE: replaced by otel.go
+internal/adapters/metrics/prometheus_test.go      # REMOVE: replaced by otel_test.go
+internal/adapters/metrics/prometheus_integration_test.go  # REMOVE: consolidate into otel tests
+```
+
+**Files to update:**
+
+```
+internal/adapters/metrics/server_test.go          # UPDATE: use OTelAdapter instead of PrometheusAdapter
+internal/adapters/caddy/metrics_integration_test.go  # UPDATE: use OTelAdapter
+```
+
+#### Application Service
+
+No changes to application services.
+
+#### File Layout
+
+**Files to delete:**
+
+| File | Reason |
+|------|--------|
+| `internal/adapters/metrics/prometheus.go` | Replaced by `otel.go` |
+| `internal/adapters/metrics/prometheus_test.go` | Replaced by `otel_test.go` |
+| `internal/adapters/metrics/prometheus_integration_test.go` | Tests migrated to `otel_integration_test.go` |
+
+**Files to modify:**
+
+| File | Changes |
+|------|---------|
+| `internal/adapters/metrics/server_test.go` | Replace `NewPrometheusAdapter` with `NewOTelAdapter` using test provider |
+| `internal/adapters/caddy/metrics_integration_test.go` | Replace `PrometheusAdapter` with `OTelAdapter` |
+| `internal/adapters/otel/provider.go` | Add doc comment clarifying fallback behavior |
+| `internal/config/config.go` | Add doc comment about Prometheus as default fallback |
+
+**Files unchanged:**
+
+| File | Status |
+|------|--------|
+| `internal/adapters/metrics/otel.go` | Already implements MetricsCollector via OTel |
+| `internal/adapters/metrics/otel_test.go` | Already tests OTelAdapter |
+| `internal/adapters/metrics/otel_integration_test.go` | Already tests HTTP scrape |
+| `internal/adapters/metrics/noop.go` | Unchanged |
+| `internal/adapters/metrics/path_matcher.go` | Unchanged, used by OTelAdapter |
+| `internal/adapters/metrics/server.go` | Unchanged |
+| `internal/plugins/metrics/plugin.go` | Already uses OTelAdapter |
+
+#### Sequence
+
+This story does not change any runtime sequences. The flows established in ADR-012
+and ADR-013 remain unchanged:
+
+1. On startup, metrics plugin builds `TelemetryConfig` from config
+2. If `prometheus.enabled = true` (default), OTelProvider creates Prometheus exporter
+3. If `otlp.enabled = true` AND endpoint provided, OTelProvider also creates OTLP exporter
+4. If neither enabled, Init returns error "at least one exporter must be enabled"
+5. Internal HTTP server serves `/metrics` via OTel Prometheus handler
+6. Caddy reverse-proxies `/_vibewarden/metrics` to internal server
+
+**Fallback behavior (clarified):**
+
+With default config (no explicit `telemetry:` block):
+- `prometheus.enabled = true` (default)
+- `otlp.enabled = false` (default)
+- Result: Prometheus-only export, same behavior as pre-OTel migration
+
+This ensures zero-config backward compatibility.
+
+#### Error Cases
+
+No new error cases. Existing validation:
+
+| Error | When | Handling |
+|-------|------|----------|
+| `at least one exporter must be enabled` | Both exporters explicitly disabled | Error from provider.Init |
+| Invalid OTLP endpoint | OTLP enabled, bad URL | Error from provider.Init |
+
+The key guarantee: users cannot accidentally end up with no metrics export unless
+they explicitly disable both exporters, which is a conscious choice.
+
+#### Test Strategy
+
+**Unit tests to update:**
+
+| File | Changes |
+|------|---------|
+| `internal/adapters/metrics/server_test.go` | Create test OTelProvider, pass to NewOTelAdapter |
+
+The server tests need a handler; currently they use `NewPrometheusAdapter(nil).Handler()`.
+After this change, they will use an OTel-backed handler via a test helper.
+
+**Test helper to add in `internal/adapters/otel/testing.go`:**
+
+```go
+// NewTestProvider creates an OTelProvider with Prometheus enabled for testing.
+// It initializes the provider and returns it ready for use.
+func NewTestProvider(ctx context.Context) (*Provider, error) {
+    p := NewProvider()
+    cfg := ports.TelemetryConfig{
+        Prometheus: ports.PrometheusExporterConfig{Enabled: true},
+        OTLP:       ports.OTLPExporterConfig{Enabled: false},
+    }
+    if err := p.Init(ctx, "vibewarden-test", "0.0.0-test", cfg); err != nil {
+        return nil, err
+    }
+    return p, nil
+}
+```
+
+**Integration tests to update:**
+
+| File | Changes |
+|------|---------|
+| `internal/adapters/caddy/metrics_integration_test.go` | Use OTelAdapter with test provider |
+
+**Integration tests to verify (already exist in otel_integration_test.go):**
+
+1. `/_vibewarden/metrics` returns HTTP 200
+2. Response is valid Prometheus text format
+3. Response contains expected metric names: `vibewarden_requests_total`, `vibewarden_request_duration_seconds`, etc.
+4. Metric labels match expected format (method, status_code, path_pattern, etc.)
+5. Go runtime metrics present (go_goroutines, go_memstats_*, etc.)
+
+**New test case to add in otel_integration_test.go:**
+
+```go
+func TestOTelAdapter_MetricNamesMatchLegacyPrometheus(t *testing.T) {
+    // Verify that all metric names exported via OTel Prometheus bridge
+    // match the names that were exported by the direct Prometheus adapter.
+    // This ensures dashboard compatibility.
+    expectedMetrics := []string{
+        "vibewarden_requests_total",
+        "vibewarden_request_duration_seconds",
+        "vibewarden_rate_limit_hits_total",
+        "vibewarden_auth_decisions_total",
+        "vibewarden_upstream_errors_total",
+        "vibewarden_active_connections",
+    }
+    // ... scrape /_vibewarden/metrics and verify all expected metrics present
+}
+```
+
+**What to mock vs. what to test real:**
+
+- Real: Full OTel SDK, Prometheus exporter, HTTP scraping
+- Mock: Nothing at unit level (OTel SDK is fast and deterministic)
+
+#### New Dependencies
+
+None. All required dependencies are already present:
+
+| Package | Status | License |
+|---------|--------|---------|
+| `go.opentelemetry.io/otel/exporters/prometheus` | Already in go.mod | Apache 2.0 |
+| `prometheus/client_golang` | Remains as transitive dep of OTel exporter | Apache 2.0 |
+
+Note: `prometheus/client_golang` will remain in go.mod as a transitive dependency
+of the OTel Prometheus exporter. We are removing direct usage, not the dependency itself.
+
+### Consequences
+
+**Positive:**
+
+- **Cleaner codebase:** Remove ~300 lines of dead code (prometheus.go + tests)
+- **Single path:** All metrics flow through OTel SDK, simplifying debugging
+- **Consistent testing:** All tests use the same adapter type
+- **Dashboard compatibility:** Metric names and labels unchanged
+- **Fallback guaranteed:** Default config always enables Prometheus
+
+**Negative:**
+
+- **Test churn:** Several test files need updates (one-time cost)
+- **Transitive dependency:** `prometheus/client_golang` remains in dependency tree
+  via OTel exporter (unavoidable; OTel bridge requires it)
+
+**Trade-offs:**
+
+- **Keep vs. delete prometheus.go:** Chose deletion. Keeping dead code creates
+  maintenance burden and confusion. The OTel bridge provides identical functionality.
+- **Test helper vs. inline setup:** Chose helper (`NewTestProvider`) for DRY tests
+  and clearer intent. Trade-off: one more file to maintain.
+
+**Migration complete:**
+
+After this story, the Prometheus export path is:
+
+```
+MetricsCollector interface
+    -> OTelAdapter (internal/adapters/metrics/otel.go)
+        -> OTel Meter instruments
+            -> OTel MeterProvider
+                -> Prometheus exporter (go.opentelemetry.io/otel/exporters/prometheus)
+                    -> promhttp.Handler
+                        -> /_vibewarden/metrics
+```
+
+The old path (`PrometheusAdapter -> prometheus.Registry -> promhttp.Handler`) is removed.
+
+**Locked decision impact:**
+
+CLAUDE.md line 33 states: "Metrics: prometheus/client_golang (Apache 2.0)"
+
+This locked decision refers to the export format and backward compatibility, not the
+internal SDK. The change is compliant because:
+
+1. `/_vibewarden/metrics` still serves Prometheus format
+2. `prometheus/client_golang` remains in the dependency tree (via OTel bridge)
+3. Existing Prometheus scrapers and dashboards continue working
+
+A future ADR may update the locked decision text to "Metrics: OpenTelemetry SDK
+with Prometheus export" for accuracy, but this is documentation, not a breaking change.
+
+---
+
+## ADR-015: Bridge slog Structured Events to OTel Logs
+**Date**: 2026-03-28
+**Issue**: #289
+**Status**: Accepted
+
+### Context
+
+VibeWarden's structured event logging follows a v1 schema with `schema_version`, `event_type`,
+`timestamp`, `ai_summary`, and `payload` fields. This schema is the project's key differentiator
+for AI-readable logs. Currently, events are emitted via the `ports.EventLogger` interface,
+implemented by `SlogEventLogger` which writes JSON to stdout.
+
+Issue #289 (part of epic #280 "Switch telemetry from Prometheus to OpenTelemetry") adds the
+ability to export these structured events to an OpenTelemetry Collector via OTLP. This enables
+users to:
+
+1. Centralize logs alongside metrics in their observability backend (Grafana Cloud, Datadog, etc.)
+2. Correlate log events with traces (future: when distributed tracing is added)
+3. Use OTel's standard log pipeline for filtering, sampling, and routing
+
+**Design constraints from the epic:**
+
+- slog stays as the primary logging interface (locked decision L-08)
+- OTel is an export path, not a replacement for stdout logging
+- Use the OTel log bridge for slog (`go.opentelemetry.io/contrib/bridges/otelslog`)
+- Bridge structured events to OTel log records, preserving the full schema
+- OTLP log exporter shares the same endpoint config as metrics
+
+**Current state:**
+
+- `internal/adapters/log/slog_adapter.go` implements `ports.EventLogger` using a `slog.JSONHandler`
+- `internal/adapters/otel/provider.go` initializes the `MeterProvider` for metrics
+- OTel log SDK packages are already transitive dependencies (via Caddy):
+  - `go.opentelemetry.io/otel/log v0.16.0`
+  - `go.opentelemetry.io/otel/sdk/log v0.16.0`
+  - `go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp v0.16.0`
+
+### Decision
+
+Add OTel log export as an optional, additive feature alongside stdout JSON logging.
+When `telemetry.logs.otlp: true` is configured, structured events are written to both
+stdout (existing behavior) and to the OTel Collector (new behavior).
+
+#### Domain Model Changes
+
+None. The `events.Event` struct remains unchanged. The domain layer has no knowledge of
+OTel or log export mechanisms.
+
+#### Ports (Interfaces)
+
+**New interface in `internal/ports/otel.go`:**
+
+```go
+// LoggerProvider manages the OTel Log SDK lifecycle.
+// It creates LoggerProviders that bridge slog events to OTel log records.
+type LoggerProvider interface {
+    // Handler returns an slog.Handler that bridges log records to OTel.
+    // The handler emits logs with the configured service identity and resource attributes.
+    // Returns nil if log export is disabled or Init has not been called.
+    Handler() slog.Handler
+
+    // Shutdown gracefully shuts down the LoggerProvider, flushing any buffered logs.
+    Shutdown(ctx context.Context) error
+}
+```
+
+**Extend `TelemetryConfig` in `internal/ports/otel.go`:**
+
+```go
+// TelemetryConfig holds all telemetry export settings.
+type TelemetryConfig struct {
+    // Prometheus enables the Prometheus pull-based exporter for metrics.
+    Prometheus PrometheusExporterConfig
+
+    // OTLP enables the OTLP push-based exporter for metrics.
+    OTLP OTLPExporterConfig
+
+    // Logs configures log export settings.
+    Logs LogExportConfig
+}
+
+// LogExportConfig configures log export via OTLP.
+type LogExportConfig struct {
+    // OTLPEnabled toggles OTLP log export (default: false).
+    // When enabled, logs are exported to the same OTLP endpoint as metrics.
+    OTLPEnabled bool
+}
+```
+
+**Note:** `EventLogger` interface remains unchanged. The bridging happens at the adapter level,
+not the port level.
+
+#### Adapters
+
+**New file: `internal/adapters/otel/log_provider.go`**
+
+Implements `ports.LoggerProvider`. Initializes the OTel `LoggerProvider` with an OTLP HTTP
+exporter using the same endpoint as metrics. Creates an `otelslog.Handler` that bridges
+slog records to OTel log records.
+
+```go
+// LogProvider implements ports.LoggerProvider using the OTel Log SDK.
+type LogProvider struct {
+    mu             sync.RWMutex
+    loggerProvider *sdklog.LoggerProvider
+    handler        slog.Handler
+}
+
+// NewLogProvider creates an uninitialized LogProvider.
+func NewLogProvider() *LogProvider
+
+// Init initializes the OTel LoggerProvider with an OTLP HTTP exporter.
+// serviceName and serviceVersion are recorded as OTel resource attributes.
+// otlpEndpoint must be provided when OTLPEnabled is true in cfg.
+func (p *LogProvider) Init(ctx context.Context, serviceName, serviceVersion, otlpEndpoint string, cfg ports.LogExportConfig) error
+
+// Handler returns the otelslog.Handler, or nil if Init has not been called or logs disabled.
+func (p *LogProvider) Handler() slog.Handler
+
+// Shutdown gracefully shuts down the LoggerProvider.
+func (p *LogProvider) Shutdown(ctx context.Context) error
+```
+
+**Modify: `internal/adapters/log/slog_adapter.go`**
+
+Add a multi-handler variant that fans out to multiple slog handlers:
+
+```go
+// MultiHandler is an slog.Handler that dispatches to multiple handlers.
+// All handlers receive every log record. Errors are silently ignored
+// (best-effort logging).
+type MultiHandler struct {
+    handlers []slog.Handler
+}
+
+// NewMultiHandler creates a handler that dispatches to all given handlers.
+func NewMultiHandler(handlers ...slog.Handler) *MultiHandler
+
+// Enabled returns true if any underlying handler is enabled for the level.
+func (h *MultiHandler) Enabled(ctx context.Context, level slog.Level) bool
+
+// Handle dispatches the record to all handlers.
+func (h *MultiHandler) Handle(ctx context.Context, r slog.Record) error
+
+// WithAttrs returns a new MultiHandler with the given attrs added to each handler.
+func (h *MultiHandler) WithAttrs(attrs []slog.Attr) slog.Handler
+
+// WithGroup returns a new MultiHandler with the given group name.
+func (h *MultiHandler) WithGroup(name string) slog.Handler
+```
+
+**Modify: `internal/adapters/log/slog_adapter.go`**
+
+Update `SlogEventLogger` to accept an optional list of additional handlers:
+
+```go
+// NewSlogEventLogger creates a SlogEventLogger that writes JSON to w.
+// Additional handlers (e.g., OTel bridge) can be provided; events are
+// dispatched to all handlers.
+func NewSlogEventLogger(w io.Writer, additionalHandlers ...slog.Handler) *SlogEventLogger
+```
+
+When additional handlers are provided, the logger uses a `MultiHandler` combining the
+JSON handler with the additional handlers.
+
+#### Application Service
+
+No changes to application services.
+
+#### File Layout
+
+**New files:**
+
+| File | Purpose |
+|------|---------|
+| `internal/adapters/otel/log_provider.go` | OTel LoggerProvider adapter |
+| `internal/adapters/otel/log_provider_test.go` | Unit tests for LogProvider |
+| `internal/adapters/log/multi_handler.go` | MultiHandler implementation |
+| `internal/adapters/log/multi_handler_test.go` | Unit tests for MultiHandler |
+
+**Modified files:**
+
+| File | Changes |
+|------|---------|
+| `internal/ports/otel.go` | Add `LoggerProvider` interface, `LogExportConfig` struct, extend `TelemetryConfig` |
+| `internal/adapters/log/slog_adapter.go` | Accept additional handlers in constructor |
+| `internal/adapters/log/slog_adapter_test.go` | Test multi-handler dispatch |
+| `internal/config/config.go` | Add `Logs` field to `TelemetryConfig`, add config defaults |
+| `internal/plugins/metrics/plugin.go` | Initialize LogProvider when logs.otlp enabled |
+| `internal/plugins/metrics/config.go` | Add `LogsOTLPEnabled` field |
+| `cmd/vibewarden/serve.go` | Pass OTel handler to event logger when enabled |
+
+#### Sequence
+
+**Startup (logs.otlp enabled):**
+
+1. Config loads `telemetry.logs.otlp: true`
+2. Metrics plugin `Init`:
+   a. Creates OTel MeterProvider (existing)
+   b. Creates OTel LoggerProvider with OTLP HTTP exporter (new)
+   c. LoggerProvider uses same endpoint as metrics OTLP exporter
+3. `serve.go` retrieves OTel log handler from metrics plugin
+4. Creates `SlogEventLogger` with JSON handler + OTel handler (multi-handler)
+5. Events logged via `EventLogger.Log()` are dispatched to both handlers
+
+**Runtime (event emitted):**
+
+```
+1. app/middleware calls EventLogger.Log(event)
+2. SlogEventLogger.Log() serializes event to slog.LogAttrs()
+3. MultiHandler.Handle() dispatches to:
+   a. JSON handler -> stdout (existing behavior)
+   b. OTel handler -> LoggerProvider -> BatchProcessor -> OTLP exporter
+4. OTLP exporter batches and pushes to collector endpoint
+```
+
+**Shutdown:**
+
+1. Plugin Stop called
+2. LoggerProvider.Shutdown() flushes pending log batches
+3. MeterProvider.Shutdown() flushes pending metrics (existing)
+
+#### OTel Log Record Mapping
+
+Each VibeWarden event maps to an OTel log record as follows:
+
+| Event field | OTel log record field |
+|-------------|----------------------|
+| `Timestamp` | `Timestamp` |
+| `EventType` | Attribute: `event.type` |
+| `SchemaVersion` | Attribute: `vibewarden.schema_version` |
+| `AISummary` | `Body` (string) |
+| `Payload.*` | Attributes: `vibewarden.payload.<key>` |
+
+**Severity mapping:**
+
+Event types are mapped to OTel severity levels based on their semantic meaning:
+
+| Event type pattern | OTel Severity |
+|-------------------|---------------|
+| `*.failed`, `*.blocked`, `*.hit` | WARN (13) |
+| `*.unavailable`, `*_failed` | ERROR (17) |
+| `*.success`, `*.created`, `*.started`, `*.recovered` | INFO (9) |
+| Default | INFO (9) |
+
+The severity mapping is implemented as a pure function in `log_provider.go`:
+
+```go
+func severityForEventType(eventType string) log.Severity {
+    switch {
+    case strings.HasSuffix(eventType, ".failed"),
+         strings.HasSuffix(eventType, ".blocked"),
+         strings.HasSuffix(eventType, ".hit"):
+        return log.SeverityWarn
+    case strings.HasSuffix(eventType, ".unavailable"),
+         strings.HasSuffix(eventType, "_failed"):
+        return log.SeverityError
+    default:
+        return log.SeverityInfo
+    }
+}
+```
+
+#### Error Cases
+
+| Error | When | Handling |
+|-------|------|----------|
+| OTLP endpoint missing | `logs.otlp: true` but no `otlp.endpoint` | Error from LogProvider.Init |
+| Collector unreachable | Network failure | OTLP exporter retries with backoff; logs are dropped after retry exhaustion (best-effort) |
+| Invalid log record | Malformed event payload | OTel SDK logs warning; record skipped |
+
+**Graceful degradation:**
+
+- Stdout logging always works (direct I/O, no network)
+- OTel log export is best-effort; failures do not block request processing
+- If LogProvider fails to initialize, serve.go falls back to stdout-only logging
+
+#### Test Strategy
+
+**Unit tests:**
+
+| File | Tests |
+|------|-------|
+| `internal/adapters/otel/log_provider_test.go` | Init with valid config; Init fails without endpoint; Shutdown idempotent |
+| `internal/adapters/log/multi_handler_test.go` | Dispatches to all handlers; WithAttrs/WithGroup propagate; Enabled returns true if any enabled |
+| `internal/adapters/log/slog_adapter_test.go` | Log with additional handlers; verify both handlers receive records |
+
+**Integration tests:**
+
+| File | Tests |
+|------|-------|
+| `internal/adapters/otel/log_provider_integration_test.go` | Full roundtrip: emit event -> verify log record attributes |
+
+**What to mock vs. real:**
+
+- Real: OTel LoggerProvider, MultiHandler, SlogEventLogger
+- Mock: OTLP endpoint (use `httptest.Server` to capture exported logs)
+
+**Test helper (add to `internal/adapters/otel/testing.go`):**
+
+```go
+// NewTestLogProvider creates a LoggerProvider with an in-memory exporter for testing.
+// Returns the provider and a function to retrieve exported log records.
+func NewTestLogProvider(ctx context.Context) (*LogProvider, func() []sdklog.ReadOnlyLogRecord, error)
+```
+
+#### New Dependencies
+
+**Direct dependency to add:**
+
+| Package | Version | License | Purpose |
+|---------|---------|---------|---------|
+| `go.opentelemetry.io/contrib/bridges/otelslog` | latest | Apache 2.0 | Bridge slog to OTel log SDK |
+
+**License verification:**
+
+The `opentelemetry-go-contrib` repository is licensed under Apache 2.0:
+https://github.com/open-telemetry/opentelemetry-go-contrib/blob/main/LICENSE
+
+All packages in the contrib repository share this license, including `bridges/otelslog`.
+
+**Already transitive dependencies (no action needed):**
+
+| Package | Version | License |
+|---------|---------|---------|
+| `go.opentelemetry.io/otel/log` | v0.16.0 | Apache 2.0 |
+| `go.opentelemetry.io/otel/sdk/log` | v0.16.0 | Apache 2.0 |
+| `go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp` | v0.16.0 | Apache 2.0 |
+
+#### Configuration
+
+**New config fields in `vibewarden.yaml`:**
+
+```yaml
+telemetry:
+  # Existing fields...
+  prometheus:
+    enabled: true
+  otlp:
+    enabled: true
+    endpoint: http://localhost:4318
+  # New field:
+  logs:
+    otlp: false  # default: false (opt-in)
+```
+
+**Config struct changes in `internal/config/config.go`:**
+
+```go
+type TelemetryConfig struct {
+    Enabled      bool                     `mapstructure:"enabled"`
+    PathPatterns []string                 `mapstructure:"path_patterns"`
+    Prometheus   PrometheusExporterConfig `mapstructure:"prometheus"`
+    OTLP         OTLPExporterConfig       `mapstructure:"otlp"`
+    Logs         LogsConfig               `mapstructure:"logs"`
+}
+
+type LogsConfig struct {
+    // OTLP toggles OTLP log export (default: false).
+    // When enabled, structured events are exported to the same OTLP endpoint as metrics.
+    // Requires telemetry.otlp.endpoint to be configured.
+    OTLP bool `mapstructure:"otlp"`
+}
+```
+
+**Defaults:**
+
+```go
+v.SetDefault("telemetry.logs.otlp", false)
+```
+
+**Validation:**
+
+```go
+// If logs.otlp enabled, otlp.endpoint must be set
+if c.Telemetry.Logs.OTLP && c.Telemetry.OTLP.Endpoint == "" {
+    errs = append(errs, "telemetry.logs.otlp requires telemetry.otlp.endpoint")
+}
+```
+
+### Consequences
+
+**Positive:**
+
+- **Unified observability:** Logs, metrics, and (future) traces all flow through OTel
+- **AI-readable logs preserved:** Schema unchanged; OTel is purely an export path
+- **Stdout always works:** OTel export is additive; existing behavior unchanged
+- **Shared config:** Logs use same OTLP endpoint as metrics (DRY)
+- **Future-proof:** When distributed tracing is added, logs can be correlated via trace context
+
+**Negative:**
+
+- **New dependency:** `otelslog` bridge adds to binary size (~small)
+- **Complexity:** Multi-handler dispatch adds a layer of indirection
+- **Batch delay:** OTLP export is batched; logs appear with ~1-30s delay in collector
+
+**Trade-offs:**
+
+- **Multi-handler vs. separate loggers:** Chose multi-handler. Alternative was to have
+  two separate `EventLogger` implementations called sequentially. Multi-handler is more
+  composable and follows slog idioms.
+
+- **Severity in event vs. derived:** Chose derived from event_type. Alternative was to
+  add a Severity field to `events.Event`. Derived keeps domain layer clean and works
+  well for the current event type taxonomy.
+
+- **Same endpoint vs. separate:** Chose same endpoint. Alternative was separate
+  `telemetry.logs.endpoint`. Shared endpoint is simpler and matches how most users
+  deploy OTel Collector (single receiver for all signals).
+
+**Limitations:**
+
+- Log export is push-only (no pull equivalent like Prometheus metrics)
+- OTel log SDK is still maturing (v0.x); API may change in future OTel releases
+- No trace correlation yet (requires #293: distributed tracing setup)
+
+---
+
+## ADR-016: OTel Collector in Docker Compose Observability Stack
+**Date**: 2026-03-28
+**Issue**: #290
+**Status**: Accepted
+
+### Context
+
+Epic #280 ("Switch telemetry from Prometheus to OpenTelemetry") transitions VibeWarden from
+pull-based Prometheus scraping to push-based OTLP. Previous stories in this epic added:
+
+- ADR-012: OTel SDK integration and MetricsCollector port/adapter refactoring
+- ADR-013: OTLP exporter configuration
+- ADR-014: Prometheus fallback exporter for backward compatibility
+- ADR-015: Bridge slog structured events to OTel logs
+
+The current observability stack (docker-compose observability profile) has:
+
+- **Prometheus**: Scrapes `/_vibewarden/metrics` from the sidecar (pull)
+- **Promtail**: Scrapes Docker container logs and pushes to Loki
+- **Loki**: Receives logs from Promtail
+- **Grafana**: Visualizes Prometheus metrics and Loki logs
+
+With OTel, the sidecar now pushes metrics and logs via OTLP. The stack needs an
+**OTel Collector** to receive OTLP from the sidecar and export to Prometheus and Loki.
+This replaces the direct Prometheus scraping model.
+
+**Goals from issue #290:**
+
+1. Add `otel-collector` service to Docker Compose observability profile
+2. Collector receives OTLP HTTP on port 4318 from VibeWarden
+3. Collector exports metrics to Prometheus (via Prometheus exporter for scraping)
+4. Collector exports logs to Loki via loki exporter
+5. Remove or deprecate Promtail (OTel Collector replaces its function for VibeWarden logs)
+6. Keep Grafana dashboards working with minimal changes
+7. Healthcheck on collector service
+
+### Decision
+
+Add the OpenTelemetry Collector Contrib as the telemetry hub in the Docker Compose
+observability stack. The collector acts as a central aggregation point:
+
+```
+VibeWarden --OTLP--> OTel Collector --metrics--> Prometheus --scrape--> Prometheus
+                                    --logs--> Loki
+```
+
+**Architecture change:**
+
+| Before (pull) | After (push via collector) |
+|---------------|---------------------------|
+| VibeWarden exposes `/_vibewarden/metrics` | VibeWarden pushes OTLP to collector |
+| Prometheus scrapes VibeWarden directly | Prometheus scrapes collector's Prometheus exporter |
+| Promtail scrapes Docker logs | OTel Collector receives OTLP logs from VibeWarden |
+| | Collector pushes logs to Loki |
+
+**Key decisions:**
+
+1. **Use `otel/opentelemetry-collector-contrib` image**: The contrib distribution includes
+   the `lokiexporter` required for Loki integration. License: Apache 2.0.
+
+2. **Prometheus exporter (not remote write)**: The collector exposes a `/metrics` endpoint
+   that Prometheus scrapes. This keeps Prometheus in its natural pull mode and requires
+   minimal Prometheus config changes. Alternative was `prometheusremotewrite` exporter,
+   but that requires enabling remote-write receiver in Prometheus and adds complexity.
+
+3. **Keep Promtail for non-VibeWarden logs**: Promtail continues to scrape Docker logs
+   for other containers (app, kratos, etc.). The OTel Collector handles only VibeWarden's
+   structured event logs via OTLP. This avoids losing logs from services that do not
+   speak OTLP.
+
+4. **Collector port 4318 (OTLP HTTP)**: Standard OTLP HTTP port. The collector binds to
+   4318 inside the Docker network; VibeWarden's default `telemetry.otlp.endpoint` in dev
+   compose points to `http://otel-collector:4318`.
+
+5. **Collector metrics endpoint on 8889**: The Prometheus exporter exposes metrics at
+   `otel-collector:8889/metrics`. Prometheus scrapes this instead of VibeWarden directly.
+
+#### Domain Model Changes
+
+None. This story is pure infrastructure (Docker Compose and config templates). No changes
+to domain entities, value objects, or events.
+
+#### Ports (Interfaces)
+
+None. No new Go interfaces. The OTel Collector is an external container, not embedded
+in the VibeWarden binary.
+
+#### Adapters
+
+None. No Go adapter changes. The existing OTLP exporter in `internal/adapters/otel/`
+already supports pushing to any OTLP endpoint.
+
+#### Application Service
+
+**Modify: `internal/app/generate/service.go`**
+
+Add rendering of the OTel Collector config template. Update `generateObservability()` to:
+
+1. Create `observability/otel-collector/` directory
+2. Render `otel-collector-config.yml.tmpl` to `observability/otel-collector/config.yaml`
+
+```go
+// In generateObservability():
+
+// Create otel-collector directory
+dirs := []string{
+    // ... existing dirs ...
+    filepath.Join(obsDir, "otel-collector"),
+}
+
+// Render OTel Collector config
+if err := s.renderer.RenderToFile(
+    "observability/otel-collector-config.yml.tmpl",
+    cfg,
+    filepath.Join(obsDir, "otel-collector", "config.yaml"),
+    true,
+); err != nil {
+    return fmt.Errorf("rendering otel-collector config: %w", err)
+}
+```
+
+#### File Layout
+
+**New files:**
+
+| File | Purpose |
+|------|---------|
+| `internal/config/templates/observability/otel-collector-config.yml.tmpl` | OTel Collector YAML config template |
+
+**Modified files:**
+
+| File | Changes |
+|------|---------|
+| `internal/config/templates/docker-compose.yml.tmpl` | Add `otel-collector` service under observability profile |
+| `internal/config/templates/observability/prometheus.yml.tmpl` | Scrape `otel-collector:8889` instead of `vibewarden` |
+| `internal/app/generate/service.go` | Add otel-collector directory creation and config rendering |
+| `internal/app/generate/service_test.go` | Add test for otel-collector config generation |
+
+#### New Template: otel-collector-config.yml.tmpl
+
+```yaml
+# OTel Collector configuration — Generated by VibeWarden
+# Do not edit manually — re-run `vibewarden generate` to regenerate.
+#
+# Receives OTLP from VibeWarden sidecar, exports to Prometheus and Loki.
+
+receivers:
+  otlp:
+    protocols:
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  batch:
+    timeout: 10s
+    send_batch_size: 1024
+
+exporters:
+  # Prometheus exporter: exposes /metrics for Prometheus to scrape
+  prometheus:
+    endpoint: 0.0.0.0:8889
+    namespace: vibewarden
+    const_labels:
+      source: otel_collector
+
+  # Loki exporter: pushes logs to Loki
+  loki:
+    endpoint: http://loki:3100/loki/api/v1/push
+    default_labels_enabled:
+      exporter: false
+      job: true
+    labels:
+      attributes:
+        event.type: "event_type"
+        vibewarden.schema_version: "schema_version"
+      resource:
+        service.name: "service"
+
+  # Debug exporter for troubleshooting (logs to stdout)
+  debug:
+    verbosity: basic
+
+service:
+  telemetry:
+    logs:
+      level: warn
+    metrics:
+      level: none
+  pipelines:
+    metrics:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [prometheus]
+    logs:
+      receivers: [otlp]
+      processors: [batch]
+      exporters: [loki]
+```
+
+#### Modified Template: docker-compose.yml.tmpl
+
+Add under observability services (after promtail, before grafana):
+
+```yaml
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.123.0
+    profiles:
+      - observability
+    restart: unless-stopped
+    command: ["--config=/etc/otelcol-contrib/config.yaml"]
+    volumes:
+      - ./.vibewarden/generated/observability/otel-collector/config.yaml:/etc/otelcol-contrib/config.yaml:ro
+    networks:
+      - vibewarden
+    depends_on:
+      loki:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:13133/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+```
+
+**Notes:**
+- Port 13133 is the OTel Collector's default health check extension port
+- Port 4318 (OTLP HTTP) is exposed only within the Docker network (no host binding needed)
+- Port 8889 (Prometheus exporter) is exposed only within the Docker network
+- Collector depends on Loki being healthy (for log export)
+
+**Update vibewarden service environment:**
+
+When observability is enabled, set the OTLP endpoint to point to the collector:
+
+```yaml
+{{- if .Observability.Enabled }}
+      - VIBEWARDEN_TELEMETRY_OTLP_ENABLED=true
+      - VIBEWARDEN_TELEMETRY_OTLP_ENDPOINT=http://otel-collector:4318
+      - VIBEWARDEN_TELEMETRY_LOGS_OTLP=true
+{{- end }}
+```
+
+**Update Grafana depends_on:**
+
+Grafana should also depend on otel-collector for a clean startup sequence:
+
+```yaml
+    depends_on:
+      prometheus:
+        condition: service_healthy
+      loki:
+        condition: service_healthy
+      otel-collector:
+        condition: service_healthy
+```
+
+#### Modified Template: prometheus.yml.tmpl
+
+Change the vibewarden scrape target to scrape the OTel Collector's Prometheus exporter:
+
+```yaml
+# Prometheus configuration — Generated by VibeWarden
+# Do not edit manually — re-run `vibewarden generate` to regenerate.
+
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+scrape_configs:
+  - job_name: 'otel-collector'
+    metrics_path: '/metrics'
+    static_configs:
+      - targets: ['otel-collector:8889']
+        labels:
+          instance: 'vibewarden-sidecar'
+
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+```
+
+**Note:** The job_name remains descriptive. The `instance` label preserves dashboard
+compatibility. Metric names remain unchanged because the OTel SDK produces the same
+metric names as before.
+
+#### Sequence
+
+**Startup sequence (docker compose --profile observability up):**
+
+1. Loki starts and becomes healthy
+2. OTel Collector starts, depends on Loki healthy
+3. Prometheus starts, scrapes OTel Collector
+4. Promtail starts, scrapes Docker logs (non-VibeWarden containers)
+5. Grafana starts, depends on Prometheus and Loki healthy
+6. VibeWarden starts, pushes OTLP to OTel Collector
+
+**Runtime telemetry flow:**
+
+```
+VibeWarden sidecar
+    |
+    +-- OTLP HTTP (metrics + logs) --> otel-collector:4318
+                                              |
+                                              +-- metrics --> :8889/metrics
+                                              |                   |
+                                              |                   v
+                                              |            Prometheus scrapes
+                                              |                   |
+                                              |                   v
+                                              |              Grafana
+                                              |
+                                              +-- logs --> loki:3100
+                                                               |
+                                                               v
+                                                           Grafana
+```
+
+**Promtail parallel flow (unchanged):**
+
+```
+Docker containers (app, kratos, etc.)
+    |
+    +-- Docker logs --> Promtail --> Loki --> Grafana
+```
+
+#### Error Cases
+
+| Error | When | Handling |
+|-------|------|----------|
+| Collector not reachable | Network partition, collector down | OTLP exporter retries with exponential backoff; sidecar continues operating (telemetry is best-effort) |
+| Loki not reachable | Loki down | Collector buffers logs, retries; eventually drops if buffer full |
+| Prometheus not scraping | Prometheus down | Metrics accumulate in collector; no data loss until collector restart |
+| Invalid OTLP payload | Bug in sidecar | Collector logs error, drops invalid records |
+| Collector unhealthy | Crash loop | Grafana won't start (depends_on); Docker restarts collector |
+
+**Graceful degradation:**
+
+- VibeWarden sidecar continues operating even if collector is unreachable
+- Prometheus fallback exporter (`/_vibewarden/metrics`) remains available for direct scraping
+- Promtail continues collecting non-VibeWarden logs independently
+
+#### Test Strategy
+
+**Unit tests:**
+
+| File | Tests |
+|------|-------|
+| `internal/app/generate/service_test.go` | Verify otel-collector directory created; verify config.yaml rendered; verify docker-compose includes otel-collector service |
+
+**Integration tests (manual or CI):**
+
+| Test | Verification |
+|------|--------------|
+| `docker compose --profile observability up` | All services start and become healthy |
+| Send request through sidecar | Metrics appear in Prometheus via collector |
+| Trigger structured event | Log appears in Loki via collector |
+| Grafana dashboard | Existing dashboards show data |
+
+**What to mock vs. real:**
+
+- Real: Template rendering, file system operations
+- Mock: None needed for unit tests (template rendering is deterministic)
+
+#### New Dependencies
+
+**Docker image (not a Go dependency):**
+
+| Image | Version | License | Purpose |
+|-------|---------|---------|---------|
+| `otel/opentelemetry-collector-contrib` | 0.123.0 | Apache 2.0 | OTel Collector with Loki exporter |
+
+**License verification:**
+
+The OpenTelemetry Collector Contrib repository is licensed under Apache 2.0:
+https://github.com/open-telemetry/opentelemetry-collector-contrib/blob/main/LICENSE
+
+Verified via:
+```bash
+curl -s https://raw.githubusercontent.com/open-telemetry/opentelemetry-collector-contrib/main/LICENSE | head -5
+```
+
+Output confirms Apache License Version 2.0.
+
+**No new Go dependencies.** The OTel Collector runs as a separate container.
+
+#### Configuration
+
+**No new config fields in vibewarden.yaml.** The OTLP endpoint is set via environment
+variables in docker-compose.yml when the observability profile is active.
+
+**Environment variables set by docker-compose (observability profile):**
+
+| Variable | Value | Purpose |
+|----------|-------|---------|
+| `VIBEWARDEN_TELEMETRY_OTLP_ENABLED` | `true` | Enable OTLP export |
+| `VIBEWARDEN_TELEMETRY_OTLP_ENDPOINT` | `http://otel-collector:4318` | Collector endpoint |
+| `VIBEWARDEN_TELEMETRY_LOGS_OTLP` | `true` | Enable log export via OTLP |
+
+Users can override these in their own compose files or environment if they want to
+point to a different collector.
+
+### Consequences
+
+**Positive:**
+
+- **Unified telemetry hub:** Metrics and logs flow through a single collector
+- **Push-based model:** No need for sidecar to expose metrics endpoint to external scrapers
+- **Vendor-neutral:** Users can swap the collector's exporters to send data anywhere
+- **Standard OTel pipeline:** Follows industry best practices for observability
+- **Backward compatible:** Grafana dashboards work unchanged (metric names preserved)
+- **Promtail coexists:** Non-VibeWarden logs still flow via Promtail
+
+**Negative:**
+
+- **Additional container:** One more service to run (small resource footprint)
+- **Complexity:** Adds a hop between sidecar and backends
+- **Version management:** Must track OTel Collector Contrib releases
+
+**Trade-offs:**
+
+- **Prometheus exporter vs. remote write:** Chose exporter. Remote write requires
+  Prometheus config changes (enable receiver) and is less common in local dev setups.
+  Exporter keeps Prometheus in its natural pull mode.
+
+- **Keep Promtail vs. remove:** Chose keep. Removing Promtail would lose logs from
+  other containers (app, kratos) that do not speak OTLP. Promtail is lightweight and
+  handles non-VibeWarden logs.
+
+- **Single collector vs. per-signal:** Chose single collector with multiple pipelines.
+  Simpler to operate than separate collectors for metrics and logs.
+
+**Future considerations:**
+
+- When distributed tracing is added (#293), the collector will handle traces too
+- Fleet dashboard (Pro tier) can point to a cloud-hosted OTel Collector instead of local
+- Users with existing collectors can disable the bundled one and point sidecar directly
+
+## ADR-017: Update Grafana Dashboards for OTel-Sourced Metrics
+**Date**: 2026-03-28
+**Issue**: #291
+**Status**: Accepted
+
+### Context
+
+Epic #280 ("Switch telemetry from Prometheus to OpenTelemetry") transitions VibeWarden from
+pull-based Prometheus scraping to push-based OTLP. Previous stories in this epic added:
+
+- ADR-012: OTel SDK integration and MetricsCollector port/adapter refactoring
+- ADR-016: OTel Collector in Docker Compose observability stack
+
+The existing Grafana dashboard (`vibewarden-dashboard.json`) has PromQL and LogQL queries
+designed for the original telemetry path:
+
+1. **Metrics**: Prometheus scraped VibeWarden directly at `/_vibewarden/metrics`
+2. **Logs**: Promtail scraped Docker container logs with label `container="vibewarden"`
+
+With the new OTel pipeline:
+
+1. **Metrics**: VibeWarden pushes OTLP to OTel Collector, which exports to Prometheus
+2. **Logs**: VibeWarden pushes OTLP logs to OTel Collector, which exports to Loki
+
+**Issue #1: Double namespace prefix**
+
+The OTel Collector config (`otel-collector-config.yml.tmpl`) has:
+
+```yaml
+exporters:
+  prometheus:
+    namespace: vibewarden
+```
+
+Meanwhile, the OTel adapter (`internal/adapters/metrics/otel.go`) already names metrics with
+the `vibewarden_` prefix:
+
+- `vibewarden_requests_total`
+- `vibewarden_request_duration_seconds`
+- `vibewarden_rate_limit_hits_total`
+- etc.
+
+The combination produces double-prefixed metric names like `vibewarden_vibewarden_requests_total`,
+which breaks all dashboard PromQL queries.
+
+**Issue #2: Loki label changes**
+
+The dashboard LogQL queries use `{container="vibewarden"}`:
+
+```
+{container="vibewarden"} | json
+{container="vibewarden"} | json | event_type =~ "auth.*"
+```
+
+This relies on Promtail's automatic `container` label from Docker. With OTel Collector's Loki
+exporter, logs arrive with different labels. Per ADR-016, the Loki exporter is configured to
+use `service.name` resource attribute mapped to `service` label:
+
+```yaml
+exporters:
+  loki:
+    labels:
+      resource:
+        service.name: "service"
+```
+
+Logs from VibeWarden will have `{service="vibewarden"}`, not `{container="vibewarden"}`.
+
+**Issue #3: OTel scope labels**
+
+The OTel Prometheus exporter may add `otel_scope_name` and `otel_scope_version` labels to
+metrics. Dashboard queries should be resilient to these additional labels.
+
+### Decision
+
+Fix the OTel Collector configuration and update the Grafana dashboard to work with
+OTel-sourced metrics and logs. This is a configuration-only change (no Go code changes).
+
+#### Domain Model Changes
+
+None. This story is pure infrastructure (config templates and dashboard JSON).
+
+#### Ports (Interfaces)
+
+None. No Go code changes.
+
+#### Adapters
+
+None. No Go code changes.
+
+#### Application Service
+
+None. No Go code changes.
+
+#### File Layout
+
+**Modified files:**
+
+| File | Changes |
+|------|---------|
+| `internal/config/templates/observability/otel-collector-config.yml.tmpl` | Remove `namespace: vibewarden` from Prometheus exporter |
+| `internal/config/templates/observability/vibewarden-dashboard.json` | Update Loki queries from `container="vibewarden"` to `service="vibewarden"` |
+
+No new files.
+
+#### Changes
+
+**1. Fix OTel Collector Prometheus exporter (remove double prefix)**
+
+In `internal/config/templates/observability/otel-collector-config.yml.tmpl`, change:
+
+```yaml
+exporters:
+  prometheus:
+    endpoint: 0.0.0.0:8889
+    namespace: vibewarden  # REMOVE THIS LINE
+    const_labels:
+      source: otel_collector
+```
+
+To:
+
+```yaml
+exporters:
+  prometheus:
+    endpoint: 0.0.0.0:8889
+    const_labels:
+      source: otel_collector
+```
+
+**Why:** The OTel adapter already names metrics with `vibewarden_` prefix. The Prometheus
+exporter's `namespace` option prepends another prefix, resulting in `vibewarden_vibewarden_*`.
+Removing the namespace preserves the original metric names that the dashboard expects.
+
+**2. Update Loki queries in dashboard**
+
+In `internal/config/templates/observability/vibewarden-dashboard.json`, update all Loki
+queries from `{container="vibewarden"}` to `{service="vibewarden"}`:
+
+| Panel ID | Panel Title | Old Query | New Query |
+|----------|-------------|-----------|-----------|
+| 20 | Log Stream | `{container="vibewarden"} \| json` | `{service="vibewarden"} \| json` |
+| 21 | Auth Events | `{container="vibewarden"} \| json \| event_type =~ "auth.*"` | `{service="vibewarden"} \| json \| event_type =~ "auth.*"` |
+| 22 | Rate Limit Events | `{container="vibewarden"} \| json \| event_type =~ "rate_limit.*"` | `{service="vibewarden"} \| json \| event_type =~ "rate_limit.*"` |
+| 23 | Security Events | `{container="vibewarden"} \| json \| event_type =~ "security.*" or ...` | `{service="vibewarden"} \| json \| event_type =~ "security.*" or ...` |
+
+**Why:** OTel Collector's Loki exporter uses the `service.name` resource attribute (mapped to
+`service` label) instead of Docker's `container` label. VibeWarden sets `service.name` to
+`"vibewarden"` in the OTel provider initialization.
+
+**3. PromQL queries remain unchanged**
+
+The existing PromQL queries do not need changes:
+
+- `sum(rate(vibewarden_requests_total[5m])) by (status_code)` — works as-is
+- `histogram_quantile(0.50, sum(rate(vibewarden_request_duration_seconds_bucket[5m])) by (le))` — works as-is
+- etc.
+
+The OTel Prometheus exporter may add `otel_scope_name` and `otel_scope_version` labels, but
+these are stripped by the `sum(...) by (label)` aggregations in all queries. No changes needed.
+
+#### Sequence
+
+No runtime sequence changes. This is a configuration fix.
+
+**Verification sequence:**
+
+1. Run `vibewarden generate` to regenerate observability configs
+2. Start the observability stack: `docker compose --profile observability up -d`
+3. Send traffic through the sidecar to generate metrics and logs
+4. Open Grafana at `http://localhost:3000`
+5. Navigate to the VibeWarden dashboard
+6. Verify all 8 metric panels render data (panels 1-7)
+7. Verify all 4 log panels show logs (panels 20-23)
+
+#### Error Cases
+
+| Error | When | Handling |
+|-------|------|----------|
+| Metrics missing in Grafana | OTel Collector not running or unhealthy | Check `docker compose ps` for collector health |
+| Logs missing in Grafana | Loki exporter misconfigured | Check collector logs for Loki export errors |
+| No data in dashboard | Sidecar not sending OTLP | Verify `VIBEWARDEN_TELEMETRY_OTLP_ENABLED=true` |
+
+#### Test Strategy
+
+**Unit tests:**
+
+None. Config file changes; no Go code.
+
+**Integration tests (manual or CI):**
+
+| Test | Verification |
+|------|--------------|
+| Start observability stack | `docker compose --profile observability up -d` succeeds |
+| Send requests | `curl http://localhost:8080/health` generates metrics |
+| Check Prometheus | Query `vibewarden_requests_total` returns data (not `vibewarden_vibewarden_requests_total`) |
+| Check Grafana metrics | All 7 metric panels (1-7) render charts with data |
+| Check Grafana logs | All 4 log panels (20-23) show log entries |
+
+**What to mock vs. real:**
+
+- Real: Full observability stack (Docker Compose)
+- Mock: None (end-to-end verification required)
+
+#### New Dependencies
+
+None. No new Go dependencies or Docker images.
+
+### Consequences
+
+**Positive:**
+
+- **Dashboard works with OTel pipeline:** All panels render correctly after the fix
+- **No metric name changes:** Preserves original metric names for backward compatibility
+- **Clean label scheme:** Logs use semantic `service` label instead of Docker-specific `container`
+- **No code changes:** Pure configuration fix, minimal risk
+
+**Negative:**
+
+- **Promtail logs incompatible:** If users also run Promtail for VibeWarden logs (not recommended),
+  they will see `container="vibewarden"` labels while OTel logs have `service="vibewarden"`.
+  This is acceptable because ADR-016 established that VibeWarden logs should flow via OTLP,
+  not Promtail.
+
+**Trade-offs:**
+
+- **Dual label compatibility vs. clean break:** Could have made Loki queries match both
+  `{container="vibewarden"} or {service="vibewarden"}`, but this adds complexity and the
+  Promtail path is deprecated for VibeWarden logs. Clean break is simpler.
+
+---
+
+## ADR-018: Telemetry Documentation and Configuration Guide
+**Date**: 2026-03-28
+**Issue**: #292
+**Status**: Accepted
+
+### Context
+
+Epic #280 ("Switch telemetry from Prometheus to OpenTelemetry") established a comprehensive
+OTel-based telemetry pipeline through six implementation stories (ADR-012 through ADR-017):
+
+- ADR-012: OTel SDK integration and MetricsCollector port/adapter refactoring
+- ADR-013: OTLP exporter configuration and TelemetryConfig refactor
+- ADR-014: Prometheus fallback exporter for backward compatibility
+- ADR-015: Bridge slog structured events to OTel logs
+- ADR-016: OTel Collector in Docker Compose observability stack
+- ADR-017: Update Grafana dashboards for OTel-sourced metrics
+
+Issue #292 is the documentation capstone for this epic. Users need clear documentation
+explaining:
+
+1. The new `telemetry:` config section and all its options
+2. The three export modes: Prometheus-only (default), OTLP-only, dual-export
+3. How the OTel Collector fits into the observability stack
+4. How slog structured events are bridged to OTel logs
+5. Migration path from legacy `metrics:` config to new `telemetry:` config
+6. Example configurations for common backends
+
+**Target audience:** Vibe coders who want zero-to-secure in minutes. Documentation must be
+concise and practical, not an OTel tutorial.
+
+### Decision
+
+Create comprehensive telemetry documentation by:
+
+1. Updating `docs/observability.md` with a new "Telemetry Configuration" section
+2. Updating `vibewarden.example.yaml` with the full `telemetry:` section and comments
+3. Adding migration guidance for users with existing `metrics:` config
+
+This is a docs-only story. No Go code changes are expected.
+
+#### Domain Model Changes
+
+None. Documentation only.
+
+#### Ports (Interfaces)
+
+None. Documentation only.
+
+#### Adapters
+
+None. Documentation only.
+
+#### Application Service
+
+None. Documentation only.
+
+#### File Layout
+
+**Modified files:**
+
+| File | Changes |
+|------|---------|
+| `docs/observability.md` | Add "Telemetry Configuration" section covering all export modes, OTel Collector architecture, slog-to-OTel bridge, migration guide |
+| `vibewarden.example.yaml` | Add `telemetry:` section with all options and inline documentation |
+
+**No new files.** All documentation is consolidated into existing files.
+
+#### Documentation Structure
+
+**1. Update `docs/observability.md`**
+
+Add new sections after the existing "Quick Start" section:
+
+```markdown
+## Telemetry Configuration
+
+VibeWarden uses OpenTelemetry as its telemetry foundation, supporting both pull-based
+Prometheus scraping and push-based OTLP export. The `telemetry:` section in
+`vibewarden.yaml` controls all telemetry behavior.
+
+### Export Modes
+
+VibeWarden supports three telemetry export modes:
+
+| Mode | Prometheus | OTLP | Use Case |
+|------|------------|------|----------|
+| **Prometheus-only** (default) | Enabled | Disabled | Local development, single-instance deployments |
+| **OTLP-only** | Disabled | Enabled | Cloud backends (Grafana Cloud, Datadog), fleet deployments |
+| **Dual-export** | Enabled | Enabled | Migration, local + central collection |
+
+### Prometheus-Only Mode (Default)
+
+This is the zero-config default. VibeWarden exposes metrics at `/_vibewarden/metrics`
+in Prometheus text format. No outbound connections are made.
+
+```yaml
+telemetry:
+  enabled: true
+  prometheus:
+    enabled: true
+  otlp:
+    enabled: false
+```
+
+Or simply omit the `telemetry:` block entirely — the defaults match this configuration.
+
+**When to use:** Local development, single-instance production where you run your own
+Prometheus and scrape VibeWarden directly.
+
+### OTLP-Only Mode
+
+Metrics are pushed to an OTLP-compatible collector or backend. The `/_vibewarden/metrics`
+endpoint is disabled. All telemetry flows outbound.
+
+```yaml
+telemetry:
+  enabled: true
+  prometheus:
+    enabled: false
+  otlp:
+    enabled: true
+    endpoint: https://otlp-gateway.example.com/otlp
+    headers:
+      Authorization: "Bearer ${OTLP_API_KEY}"
+    interval: 30s
+```
+
+**When to use:** Cloud observability backends (Grafana Cloud, Datadog, Honeycomb, etc.),
+fleet deployments where a central collector aggregates telemetry from multiple instances.
+
+### Dual-Export Mode
+
+Both Prometheus and OTLP exporters run simultaneously. Use this for gradual migration
+or when you need both local scraping and central collection.
+
+```yaml
+telemetry:
+  enabled: true
+  prometheus:
+    enabled: true
+  otlp:
+    enabled: true
+    endpoint: http://otel-collector:4318
+    interval: 15s
+```
+
+**When to use:** Migration from Prometheus-only to OTLP, or hybrid setups where local
+dashboards coexist with central fleet observability.
+
+### Configuration Reference
+
+#### telemetry.enabled
+**Type:** boolean
+**Default:** `true`
+
+Master switch for all telemetry collection. When `false`, no metrics are collected or
+exported, and the `/_vibewarden/metrics` endpoint returns 404.
+
+#### telemetry.path_patterns
+**Type:** list of strings
+**Default:** `[]`
+
+URL path normalization patterns using colon-param syntax. Without patterns, all paths
+are recorded as `"other"`. Configure the routes your app exposes to prevent
+high-cardinality metric labels.
+
+```yaml
+telemetry:
+  path_patterns:
+    - "/users/:id"
+    - "/api/v1/items/:item_id/comments/:comment_id"
+```
+
+#### telemetry.prometheus.enabled
+**Type:** boolean
+**Default:** `true`
+
+Enables the Prometheus pull-based exporter. When enabled, metrics are served at
+`/_vibewarden/metrics` in Prometheus text format with OpenMetrics compatibility.
+
+#### telemetry.otlp.enabled
+**Type:** boolean
+**Default:** `false`
+
+Enables the OTLP push-based exporter. Requires `telemetry.otlp.endpoint` to be set.
+
+#### telemetry.otlp.endpoint
+**Type:** string
+**Default:** `""`
+
+OTLP HTTP endpoint URL. Required when `telemetry.otlp.enabled` is `true`.
+
+Examples:
+- Local OTel Collector: `http://localhost:4318`
+- Docker Compose: `http://otel-collector:4318`
+- Grafana Cloud: `https://otlp-gateway-prod-us-central-0.grafana.net/otlp`
+
+#### telemetry.otlp.headers
+**Type:** map of string to string
+**Default:** `{}`
+
+HTTP headers to include with OTLP requests. Use for authentication.
+
+```yaml
+telemetry:
+  otlp:
+    headers:
+      Authorization: "Basic ${GRAFANA_OTLP_TOKEN}"
+      X-Custom-Header: "value"
+```
+
+#### telemetry.otlp.interval
+**Type:** duration string
+**Default:** `"30s"`
+
+How often metrics are batched and pushed to the OTLP endpoint. Shorter intervals
+reduce telemetry lag but increase network overhead.
+
+Valid formats: `"15s"`, `"1m"`, `"30s"`.
+
+#### telemetry.otlp.protocol
+**Type:** string
+**Default:** `"http"`
+
+OTLP transport protocol. Only `"http"` is supported in this version. `"grpc"` is
+reserved for future use.
+
+#### telemetry.logs.otlp
+**Type:** boolean
+**Default:** `false`
+
+Enables OTLP log export. When enabled, structured events (the AI-readable logs) are
+exported to the same OTLP endpoint as metrics. Requires `telemetry.otlp.endpoint`
+to be configured.
+
+Logs are exported in addition to stdout JSON output — existing log collection via
+stdout remains unchanged.
+
+### Structured Event Log Export
+
+VibeWarden's structured event logs (with `schema_version`, `event_type`, `ai_summary`,
+and `payload` fields) can be exported via OTLP alongside metrics. Enable with:
+
+```yaml
+telemetry:
+  otlp:
+    enabled: true
+    endpoint: http://otel-collector:4318
+  logs:
+    otlp: true
+```
+
+**How it works:**
+
+1. Events are logged to stdout as JSON (existing behavior, always active)
+2. Events are simultaneously sent to the OTel LoggerProvider
+3. The LoggerProvider batches and pushes logs to the OTLP endpoint
+4. OTel Collector receives logs and routes them to Loki (or any configured backend)
+
+**OTel log record mapping:**
+
+| Event field | OTel log record field |
+|-------------|----------------------|
+| `Timestamp` | `Timestamp` |
+| `EventType` | Attribute: `event.type` |
+| `SchemaVersion` | Attribute: `vibewarden.schema_version` |
+| `AISummary` | `Body` (string) |
+| `Payload.*` | Attributes: `vibewarden.payload.<key>` |
+
+**Severity mapping:** Event types are mapped to OTel severity levels:
+
+| Event type pattern | OTel Severity |
+|-------------------|---------------|
+| `*.failed`, `*.blocked`, `*.hit` | WARN |
+| `*.unavailable`, `*_failed` | ERROR |
+| All others | INFO |
+
+### OTel Collector Architecture
+
+When the observability profile is enabled (`docker compose --profile observability up`),
+VibeWarden generates an OTel Collector configuration that acts as a telemetry hub:
+
+```
+VibeWarden --OTLP--> OTel Collector --metrics--> Prometheus (scrapes :8889)
+                              |
+                              +--logs--> Loki
+```
+
+The collector:
+- Receives OTLP on port 4318 (HTTP)
+- Exports metrics via Prometheus exporter on port 8889 (Prometheus scrapes this)
+- Exports logs to Loki via the Loki exporter
+
+**Collector config location:** `.vibewarden/generated/observability/otel-collector/config.yaml`
+
+**Why a collector?**
+
+- Decouples VibeWarden from backend details
+- Enables batching, retry, and buffering
+- Standard OTel pipeline that works with any OTLP-compatible backend
+- Future-proof for distributed tracing
+
+### Migrating from metrics: to telemetry:
+
+The legacy `metrics:` config section is deprecated. VibeWarden automatically migrates
+settings at startup and logs a warning.
+
+**Before (deprecated):**
+
+```yaml
+metrics:
+  enabled: true
+  path_patterns:
+    - "/users/:id"
+```
+
+**After (recommended):**
+
+```yaml
+telemetry:
+  enabled: true
+  path_patterns:
+    - "/users/:id"
+  prometheus:
+    enabled: true
+```
+
+**Migration behavior:**
+
+1. If `metrics:` is present but `telemetry:` is not, settings are copied automatically
+2. A deprecation warning is logged at startup
+3. The `/_vibewarden/metrics` endpoint works unchanged
+4. Existing Prometheus scrapers and Grafana dashboards continue working
+
+**When to migrate:** Update your config before the next major version. The `metrics:`
+section will be removed in a future release.
+
+### Example Configurations
+
+#### Local Development (default)
+
+No config needed. The defaults enable Prometheus-only mode:
+
+```yaml
+# Nothing required — defaults are:
+# telemetry.enabled: true
+# telemetry.prometheus.enabled: true
+# telemetry.otlp.enabled: false
+```
+
+#### Grafana Cloud
+
+Push metrics and logs to Grafana Cloud OTLP gateway:
+
+```yaml
+telemetry:
+  enabled: true
+  path_patterns:
+    - "/api/v1/users/:id"
+    - "/api/v1/orders/:order_id"
+  prometheus:
+    enabled: false  # Use OTLP instead
+  otlp:
+    enabled: true
+    endpoint: https://otlp-gateway-prod-us-central-0.grafana.net/otlp
+    headers:
+      Authorization: "Basic ${GRAFANA_OTLP_TOKEN}"
+    interval: 30s
+  logs:
+    otlp: true
+```
+
+Set `GRAFANA_OTLP_TOKEN` in your environment (base64-encoded `instanceId:apiKey`).
+
+#### Self-Hosted OTel Collector
+
+Push to your own OTel Collector while keeping local Prometheus scraping:
+
+```yaml
+telemetry:
+  enabled: true
+  path_patterns:
+    - "/users/:id"
+  prometheus:
+    enabled: true  # Keep local /_vibewarden/metrics
+  otlp:
+    enabled: true
+    endpoint: http://otel-collector.monitoring.svc:4318
+    interval: 15s
+  logs:
+    otlp: true
+```
+
+#### Docker Compose Observability Stack
+
+When using `docker compose --profile observability up`, the generated compose file
+automatically sets these environment variables:
+
+```
+VIBEWARDEN_TELEMETRY_OTLP_ENABLED=true
+VIBEWARDEN_TELEMETRY_OTLP_ENDPOINT=http://otel-collector:4318
+VIBEWARDEN_TELEMETRY_LOGS_OTLP=true
+```
+
+No manual config changes needed — just enable the observability profile.
+```
+
+**2. Update `vibewarden.example.yaml`**
+
+Add new `telemetry:` section after the `metrics:` section (which will be marked deprecated):
+
+```yaml
+# Telemetry configuration
+# VibeWarden uses OpenTelemetry as its telemetry foundation. This section controls
+# all metrics and log export behavior.
+#
+# Export modes:
+#   - Prometheus-only (default): Metrics scraped at /_vibewarden/metrics
+#   - OTLP-only: Metrics pushed to OTLP endpoint (no local metrics endpoint)
+#   - Dual-export: Both Prometheus scraping and OTLP push active
+#
+# See docs/observability.md for full configuration guide.
+telemetry:
+  # Master switch for telemetry collection (default: true)
+  enabled: true
+
+  # URL path normalization patterns using :param syntax.
+  # Configure the routes your app exposes to prevent high-cardinality labels.
+  # Example:
+  #   path_patterns:
+  #     - "/users/:id"
+  #     - "/api/v1/items/:item_id/comments/:comment_id"
+  path_patterns: []
+
+  # Prometheus pull-based exporter (metrics served at /_vibewarden/metrics)
+  prometheus:
+    # Enable Prometheus exporter (default: true)
+    # When enabled, metrics are available at /_vibewarden/metrics in Prometheus format.
+    enabled: true
+
+  # OTLP push-based exporter (metrics pushed to collector/backend)
+  otlp:
+    # Enable OTLP exporter (default: false)
+    # Requires endpoint to be set.
+    enabled: false
+
+    # OTLP HTTP endpoint URL.
+    # Examples:
+    #   Local collector: http://localhost:4318
+    #   Docker Compose:  http://otel-collector:4318
+    #   Grafana Cloud:   https://otlp-gateway-prod-us-central-0.grafana.net/otlp
+    endpoint: ""
+
+    # HTTP headers for OTLP requests (e.g., authentication).
+    # Example:
+    #   headers:
+    #     Authorization: "Basic ${GRAFANA_OTLP_TOKEN}"
+    headers: {}
+
+    # Export interval — how often metrics are batched and pushed (default: 30s).
+    # Shorter intervals reduce telemetry lag but increase network overhead.
+    interval: "30s"
+
+    # Transport protocol: "http" (supported) or "grpc" (reserved for future).
+    protocol: "http"
+
+  # Structured event log export
+  logs:
+    # Enable OTLP log export (default: false).
+    # When enabled, structured events (AI-readable logs) are exported to the same
+    # OTLP endpoint as metrics. Logs are also written to stdout (unchanged behavior).
+    # Requires telemetry.otlp.endpoint to be configured.
+    otlp: false
+```
+
+**3. Add deprecation notice to existing metrics: section**
+
+Update the `metrics:` section comment in `vibewarden.example.yaml`:
+
+```yaml
+# DEPRECATED: Use telemetry: section instead.
+# This section remains for backward compatibility. Settings are automatically
+# migrated to telemetry: at startup with a deprecation warning.
+# This section will be removed in a future major version.
+#
+# Prometheus metrics
+# VibeWarden exposes a Prometheus-compatible metrics endpoint at /_vibewarden/metrics.
+metrics:
+  # Enable metrics endpoint at /_vibewarden/metrics (recommended: true)
+  enabled: true
+  # Path normalization patterns (moved to telemetry.path_patterns)
+  path_patterns: []
+```
+
+#### Sequence
+
+Not applicable. This is a documentation story with no runtime changes.
+
+#### Error Cases
+
+Not applicable. Documentation only.
+
+#### Test Strategy
+
+**Manual verification:**
+
+1. Read through updated `docs/observability.md` and verify clarity
+2. Read through updated `vibewarden.example.yaml` and verify comments are accurate
+3. Verify all code snippets in documentation match actual config struct fields
+4. Verify example configurations are valid YAML and match TelemetryConfig schema
+5. Cross-reference with ADR-012 through ADR-017 to ensure consistency
+
+**Automated checks:**
+
+1. YAML lint on `vibewarden.example.yaml` (existing CI)
+2. Markdown lint on `docs/observability.md` (existing CI)
+
+No new Go tests required — this is documentation only.
+
+#### New Dependencies
+
+None. Documentation only.
+
+### Consequences
+
+**Positive:**
+
+- **Complete documentation:** Users have a single reference for all telemetry config
+- **Clear migration path:** Existing users know how to migrate from `metrics:` to `telemetry:`
+- **Example configs:** Practical examples for common backends reduce trial-and-error
+- **Architecture clarity:** OTel Collector role is documented for users who want to understand the stack
+- **Consistent with code:** Documentation reflects the actual config structs and behavior
+
+**Negative:**
+
+- **Documentation maintenance:** Must be updated when telemetry features change
+- **Length:** The observability.md file grows significantly
+
+**Trade-offs:**
+
+- **Single file vs. multiple:** Chose to extend `docs/observability.md` rather than create
+  a separate `docs/telemetry.md`. The telemetry config is part of the observability story,
+  and splitting would fragment related content.
+
+- **Depth vs. brevity:** Chose comprehensive coverage over minimal docs. Target users are
+  vibe coders, but those who do read docs want complete information.
+
+- **Code examples vs. full config:** Chose snippets over full files. Users can reference
+  `vibewarden.example.yaml` for the complete structure.
+
+---
+
+## ADR-019: TracerProvider Initialization and HTTP Tracing Middleware
+**Date**: 2026-03-28
+**Issue**: #307
+**Status**: Accepted
+
+### Context
+
+Epic #306 ("Distributed tracing with request correlation") establishes the need for OTel
+tracing in VibeWarden. Currently, the sidecar has metrics (MeterProvider) and logs
+(LoggerProvider) but no tracing. Requests pass through without generating trace context,
+making it impossible to correlate logs and metrics with specific request flows.
+
+Issue #307 is the first story in this epic. It introduces:
+1. TracerProvider initialization in the OTel provider adapter
+2. HTTP middleware that wraps each request in a span
+3. Config toggle `telemetry.traces.enabled`
+
+The middleware must be the outermost middleware so it captures the full request lifecycle
+including auth, rate limiting, and proxy latency. The span context must be stored in the
+request context for downstream use (log correlation in #308, error responses in #309).
+
+**Constraints:**
+- Must reuse the existing OTLP endpoint configuration (same as metrics/logs)
+- TracerProvider lifecycle must integrate with existing Shutdown path
+- Middleware must not break existing tests or integration tests
+- Default `traces.enabled: false` for backward compatibility
+
+### Decision
+
+Extend the existing OTel adapter with TracerProvider support and add tracing middleware
+as a new Caddy handler contributed by the metrics plugin. The tracing middleware is
+integrated into the Caddy catch-all handler chain at the outermost position (lowest
+priority number).
+
+#### Domain Model Changes
+
+None. Tracing is an infrastructure concern, not a domain concept. The trace_id and span_id
+are observability context, not domain entities.
+
+#### Ports (Interfaces)
+
+**1. Extend `ports.TelemetryConfig` with traces config**
+
+Add a new field to `ports.TelemetryConfig` in `internal/ports/otel.go`:
+
+```go
+// TelemetryConfig holds all telemetry export settings.
+type TelemetryConfig struct {
+    // ... existing fields ...
+
+    // Traces configures distributed tracing settings.
+    Traces TraceExportConfig
+}
+
+// TraceExportConfig configures OTel tracing.
+type TraceExportConfig struct {
+    // Enabled toggles tracing (default: false).
+    // When enabled, a span is created for each HTTP request.
+    Enabled bool
+}
+```
+
+**2. Extend `ports.OTelProvider` interface**
+
+Add a method to expose the tracer:
+
+```go
+type OTelProvider interface {
+    // ... existing methods ...
+
+    // Tracer returns an OTel Tracer for creating spans.
+    // Returns nil if tracing is disabled or Init has not been called.
+    Tracer() Tracer
+
+    // TracingEnabled returns true if the tracing exporter is active.
+    TracingEnabled() bool
+}
+```
+
+**3. New `ports.Tracer` interface**
+
+Create a minimal tracer interface that decouples application code from the full OTel API:
+
+```go
+// Tracer is a subset of the OTel trace.Tracer interface.
+// It exposes only the span creation method VibeWarden needs.
+type Tracer interface {
+    // Start creates a span and a context containing the newly-created span.
+    // The span must be ended by calling span.End() when the operation completes.
+    Start(ctx context.Context, spanName string, opts ...SpanStartOption) (context.Context, Span)
+}
+
+// Span represents a single operation within a trace.
+type Span interface {
+    // End marks the span as complete. Must be called exactly once.
+    End()
+
+    // SetStatus sets the span status.
+    SetStatus(code SpanStatusCode, description string)
+
+    // SetAttributes sets attributes on the span.
+    SetAttributes(attrs ...Attribute)
+
+    // RecordError records an error as a span event.
+    RecordError(err error)
+}
+
+// SpanStartOption configures span creation.
+type SpanStartOption interface {
+    isSpanStartOption()
+}
+
+// SpanStatusCode represents the status of a span.
+type SpanStatusCode int
+
+const (
+    SpanStatusUnset SpanStatusCode = iota
+    SpanStatusOK
+    SpanStatusError
+)
+
+// WithSpanKind returns a SpanStartOption that sets the span kind.
+func WithSpanKind(kind SpanKind) SpanStartOption
+
+// SpanKind is the type of span.
+type SpanKind int
+
+const (
+    SpanKindInternal SpanKind = iota
+    SpanKindServer
+    SpanKindClient
+)
+```
+
+#### Adapters
+
+**1. Extend `internal/adapters/otel/provider.go`**
+
+Add TracerProvider initialization alongside MeterProvider:
+
+```go
+type Provider struct {
+    mu            sync.RWMutex
+    meterProvider *sdkmetric.MeterProvider
+    tracerProvider *sdktrace.TracerProvider  // NEW
+    meter         otelmetric.Meter
+    tracer        trace.Tracer              // NEW
+    handler       http.Handler
+    registry      *prometheusclient.Registry
+
+    promEnabled bool
+    otlpEnabled bool
+    traceEnabled bool                        // NEW
+}
+```
+
+In `Init()`, when `cfg.Traces.Enabled` is true and OTLP is configured:
+1. Create an OTLP trace exporter using `otlptracehttp.New()`
+2. Create a BatchSpanProcessor with the exporter
+3. Create a TracerProvider with the resource and processor
+4. Set as global tracer provider via `otel.SetTracerProvider()`
+5. Create the application tracer via `tracerProvider.Tracer("github.com/vibewarden/vibewarden")`
+
+In `Shutdown()`, shut down TracerProvider before MeterProvider (traces may reference metrics).
+
+**2. New `internal/adapters/otel/tracer.go`**
+
+Implement `ports.Tracer` by wrapping the OTel SDK tracer:
+
+```go
+// tracerAdapter wraps an OTel trace.Tracer to implement ports.Tracer.
+type tracerAdapter struct {
+    t trace.Tracer
+}
+
+func (a *tracerAdapter) Start(ctx context.Context, spanName string, opts ...ports.SpanStartOption) (context.Context, ports.Span) {
+    // Convert ports.SpanStartOption to trace.SpanStartOption
+    var traceOpts []trace.SpanStartOption
+    for _, opt := range opts {
+        if k, ok := opt.(spanKindOption); ok {
+            traceOpts = append(traceOpts, trace.WithSpanKind(convertSpanKind(k.kind)))
+        }
+    }
+    ctx, span := a.t.Start(ctx, spanName, traceOpts...)
+    return ctx, &spanAdapter{s: span}
+}
+
+// spanAdapter wraps an OTel trace.Span to implement ports.Span.
+type spanAdapter struct {
+    s trace.Span
+}
+
+func (a *spanAdapter) End() {
+    a.s.End()
+}
+
+func (a *spanAdapter) SetStatus(code ports.SpanStatusCode, description string) {
+    a.s.SetStatus(convertStatusCode(code), description)
+}
+
+func (a *spanAdapter) SetAttributes(attrs ...ports.Attribute) {
+    otelAttrs := make([]attribute.KeyValue, len(attrs))
+    for i, attr := range attrs {
+        otelAttrs[i] = attribute.String(attr.Key, attr.Value)
+    }
+    a.s.SetAttributes(otelAttrs...)
+}
+
+func (a *spanAdapter) RecordError(err error) {
+    a.s.RecordError(err)
+}
+```
+
+**3. New `internal/middleware/tracing.go`**
+
+HTTP middleware that creates a span for each request:
+
+```go
+// TracingMiddleware returns HTTP middleware that creates an OTel span for each request.
+// It must be the outermost middleware (first in, last out) to capture the full
+// request lifecycle including auth, rate limiting, and proxy latency.
+//
+// The middleware sets standard HTTP span attributes:
+//   - http.request.method
+//   - url.path
+//   - http.response.status_code
+//   - http.route (normalized path pattern)
+//
+// The span context is stored in the request context for downstream use
+// (log correlation, error responses).
+//
+// Requests to /_vibewarden/* paths are NOT traced to avoid self-referential noise.
+func TracingMiddleware(
+    tracer ports.Tracer,
+    normalizePathFn func(string) string,
+) func(http.Handler) http.Handler {
+    return func(next http.Handler) http.Handler {
+        return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+            // Skip tracing for internal endpoints.
+            if strings.HasPrefix(r.URL.Path, "/_vibewarden/") {
+                next.ServeHTTP(w, r)
+                return
+            }
+
+            // Create span with server kind.
+            ctx, span := tracer.Start(r.Context(), "HTTP "+r.Method,
+                ports.WithSpanKind(ports.SpanKindServer))
+            defer span.End()
+
+            // Set initial attributes.
+            route := normalizePathFn(r.URL.Path)
+            span.SetAttributes(
+                ports.Attribute{Key: "http.request.method", Value: r.Method},
+                ports.Attribute{Key: "url.path", Value: r.URL.Path},
+                ports.Attribute{Key: "http.route", Value: route},
+            )
+
+            // Wrap response writer to capture status code.
+            rw := &tracingResponseWriter{ResponseWriter: w, statusCode: http.StatusOK}
+
+            // Serve with span context.
+            next.ServeHTTP(rw, r.WithContext(ctx))
+
+            // Set final attributes.
+            span.SetAttributes(
+                ports.Attribute{Key: "http.response.status_code", Value: strconv.Itoa(rw.statusCode)},
+            )
+
+            // Set span status based on HTTP status.
+            if rw.statusCode >= 500 {
+                span.SetStatus(ports.SpanStatusError, http.StatusText(rw.statusCode))
+            } else {
+                span.SetStatus(ports.SpanStatusOK, "")
+            }
+        })
+    }
+}
+
+// tracingResponseWriter wraps http.ResponseWriter to capture the status code.
+type tracingResponseWriter struct {
+    http.ResponseWriter
+    statusCode int
+    written    bool
+}
+
+func (rw *tracingResponseWriter) WriteHeader(code int) {
+    if !rw.written {
+        rw.statusCode = code
+        rw.written = true
+    }
+    rw.ResponseWriter.WriteHeader(code)
+}
+
+func (rw *tracingResponseWriter) Write(b []byte) (int, error) {
+    if !rw.written {
+        rw.statusCode = http.StatusOK
+        rw.written = true
+    }
+    return rw.ResponseWriter.Write(b)
+}
+```
+
+#### Application Service
+
+No application service changes. Tracing is infrastructure-level, handled by middleware and adapters.
+
+#### File Layout
+
+**New files:**
+
+| File | Purpose |
+|------|---------|
+| `internal/adapters/otel/tracer.go` | `tracerAdapter` and `spanAdapter` implementations |
+| `internal/adapters/otel/tracer_test.go` | Unit tests for tracer adapter |
+| `internal/middleware/tracing.go` | `TracingMiddleware` implementation |
+| `internal/middleware/tracing_test.go` | Unit tests for tracing middleware |
+
+**Modified files:**
+
+| File | Changes |
+|------|---------|
+| `internal/ports/otel.go` | Add `TraceExportConfig`, `Tracer`, `Span` interfaces |
+| `internal/adapters/otel/provider.go` | Add TracerProvider initialization and shutdown |
+| `internal/adapters/otel/provider_test.go` | Add tests for TracerProvider lifecycle |
+| `internal/config/config.go` | Add `TracesConfig` struct to `TelemetryConfig` |
+| `internal/plugins/metrics/config.go` | Add `TracesEnabled` field |
+| `internal/plugins/metrics/plugin.go` | Initialize tracer, contribute tracing handler to Caddy |
+
+#### Sequence
+
+**Request flow with tracing enabled:**
+
+1. HTTP request arrives at Caddy
+2. Caddy handler chain starts; tracing handler is first (priority 5)
+3. Tracing handler creates span via `tracer.Start()`
+4. Span context stored in request context
+5. Next handlers execute (security headers, auth, rate limit, proxy)
+6. Response written by reverse proxy
+7. Tracing handler captures status code from wrapped ResponseWriter
+8. Tracing handler sets final attributes (status_code) and span status
+9. Tracing handler calls `span.End()` (deferred)
+10. Span is batched by BatchSpanProcessor
+11. Batch is exported via OTLP HTTP to collector on configured interval
+
+**TracerProvider initialization:**
+
+1. Metrics plugin `Init()` calls `provider.Init()` with config
+2. If `cfg.Traces.Enabled && cfg.OTLP.Enabled`:
+   - Create OTLP HTTP trace exporter with same endpoint
+   - Create BatchSpanProcessor with exporter
+   - Create TracerProvider with resource and processor
+   - Set global tracer provider
+   - Create application tracer
+3. Provider stores tracer for later retrieval
+
+**TracerProvider shutdown:**
+
+1. Metrics plugin `Stop()` calls `provider.Shutdown()`
+2. TracerProvider is shut down first (flushes pending spans)
+3. MeterProvider is shut down second
+
+#### Error Cases
+
+| Error | Handling |
+|-------|----------|
+| Traces enabled but OTLP disabled | Return error from `provider.Init()`: "traces require OTLP exporter to be enabled" |
+| OTLP exporter creation fails | Return error from `provider.Init()` with wrapped exporter error |
+| TracerProvider shutdown fails | Log error, continue shutdown (best effort) |
+| Span creation panics | Should not happen with valid tracer; if it does, recover in middleware and serve without tracing |
+
+#### Test Strategy
+
+**Unit tests:**
+
+| Test | Location | What it verifies |
+|------|----------|------------------|
+| `TestTracerAdapter_Start` | `internal/adapters/otel/tracer_test.go` | Span creation, context propagation |
+| `TestSpanAdapter_SetAttributes` | `internal/adapters/otel/tracer_test.go` | Attribute setting |
+| `TestSpanAdapter_SetStatus` | `internal/adapters/otel/tracer_test.go` | Status code mapping |
+| `TestTracingMiddleware_CreatesSpan` | `internal/middleware/tracing_test.go` | Span is created for each request |
+| `TestTracingMiddleware_SetsAttributes` | `internal/middleware/tracing_test.go` | HTTP attributes are set correctly |
+| `TestTracingMiddleware_SkipsInternalPaths` | `internal/middleware/tracing_test.go` | `/_vibewarden/*` paths are not traced |
+| `TestTracingMiddleware_CapturesStatusCode` | `internal/middleware/tracing_test.go` | Status code is captured from response |
+| `TestTracingMiddleware_SetsErrorStatus` | `internal/middleware/tracing_test.go` | 5xx responses set error status |
+
+**Integration tests:**
+
+| Test | Location | What it verifies |
+|------|----------|------------------|
+| `TestProvider_TracerProvider_Init` | `internal/adapters/otel/provider_test.go` | TracerProvider initializes when traces enabled |
+| `TestProvider_TracerProvider_RequiresOTLP` | `internal/adapters/otel/provider_test.go` | Error when traces enabled without OTLP |
+| `TestProvider_Shutdown_TracerProvider` | `internal/adapters/otel/provider_test.go` | TracerProvider shuts down gracefully |
+
+**Mock tracer for tests:**
+
+Create a mock tracer in `internal/adapters/otel/testing.go` for use in middleware tests:
+
+```go
+// MockTracer implements ports.Tracer for testing.
+type MockTracer struct {
+    StartCalls []struct {
+        Name string
+        Opts []ports.SpanStartOption
+    }
+    SpanToReturn *MockSpan
+}
+
+// MockSpan implements ports.Span for testing.
+type MockSpan struct {
+    Ended      bool
+    StatusCode ports.SpanStatusCode
+    StatusDesc string
+    Attrs      []ports.Attribute
+    Errors     []error
+}
+```
+
+#### New Dependencies
+
+**None.** The required OTel tracing packages are already in `go.mod` as indirect dependencies:
+
+| Package | Version | License | Status |
+|---------|---------|---------|--------|
+| `go.opentelemetry.io/otel/sdk/trace` | v1.42.0 | Apache 2.0 | Already indirect |
+| `go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp` | v1.41.0 | Apache 2.0 | Already indirect |
+
+The implementation will promote these to direct dependencies. No new licenses are introduced.
+
+#### Config Schema
+
+**Add to `config.TelemetryConfig`:**
+
+```go
+// TracesConfig holds tracing settings.
+type TracesConfig struct {
+    // Enabled toggles distributed tracing (default: false).
+    // When enabled, a span is created for each HTTP request and exported via OTLP.
+    // Requires telemetry.otlp.enabled to be true.
+    Enabled bool `mapstructure:"enabled"`
+}
+```
+
+**YAML example:**
+
+```yaml
+telemetry:
+  enabled: true
+  otlp:
+    enabled: true
+    endpoint: http://otel-collector:4318
+  traces:
+    enabled: true
+```
+
+### Consequences
+
+**Positive:**
+
+- Each HTTP request gets a trace context (trace_id, span_id)
+- Span context is available in request context for downstream features (#308, #309)
+- Traces are exported via OTLP to the same collector as metrics and logs
+- TracerProvider shutdown flushes pending spans before exit
+- Middleware pattern is consistent with existing metrics middleware
+- Default false preserves backward compatibility
+
+**Negative:**
+
+- Small overhead per request (span creation, context propagation)
+- Traces require OTLP to be enabled (no standalone traces-only mode)
+- Additional complexity in provider lifecycle management
+
+**Trade-offs:**
+
+- **Trace all requests vs. sampling:** Chose to trace all requests (100% sampling) in v1
+  for simplicity. Sampling can be added later via config. For the target vibe coder,
+  having complete traces is more valuable than optimizing overhead.
+
+- **Middleware priority:** Chose priority 5 (lower than security headers at 10) so tracing
+  captures the full lifecycle. This means the span includes security header injection time,
+  which is intentional — we want to measure end-to-end latency.
+
+- **Skip internal paths:** Chose to skip `/_vibewarden/*` paths to avoid self-referential
+  noise. This is consistent with the metrics middleware behavior.
+
+- **No span propagation yet:** This ADR does not implement trace context propagation to
+  upstream apps (that is #311). The span created here is a root span. Propagation will
+  be added in a later story.
+
+---
+
+## ADR-020: Inject trace_id and span_id into slog context
+**Date**: 2026-03-28
+**Issue**: #308
+**Status**: Accepted
+
+### Context
+
+Epic #306 ("Distributed tracing with request correlation") requires that log lines can be
+correlated with traces. ADR-019 introduced the TracerProvider and HTTP tracing middleware,
+which creates a span for each request and stores the span context in the request context.
+
+Currently, when `SlogEventLogger.Log()` is called with the request context, it does not
+extract or include the trace_id and span_id. This means log lines have no request correlation.
+When multiple requests are processed concurrently, it is impossible to tell which log lines
+belong to which request.
+
+Issue #308 addresses this by extracting trace_id and span_id from the span context and
+injecting them as slog attributes. Every log line emitted during request processing will
+automatically include these fields.
+
+**Constraints:**
+- Must not add trace fields when tracing is disabled (no empty strings)
+- Must work with both stdout JSON handler and OTel log bridge
+- Must not introduce new dependencies beyond what OTel SDK already provides
+- Must not break existing log format (additive change only)
+
+### Decision
+
+Modify `SlogEventLogger.Log()` to extract trace context from the request context and add
+`trace_id` and `span_id` as slog attributes when a valid span context is present.
+
+#### Domain Model Changes
+
+None. Trace IDs are observability infrastructure, not domain concepts.
+
+#### Ports (Interfaces)
+
+No port changes required. The `ports.EventLogger` interface remains unchanged.
+The context passed to `Log(ctx, event)` already carries the span context after
+the tracing middleware runs.
+
+#### Adapters
+
+**Modify `internal/adapters/log/slog_adapter.go`**
+
+Update the `Log()` method to extract trace context and add trace attributes:
+
+```go
+import (
+    // ... existing imports ...
+    "go.opentelemetry.io/otel/trace"
+)
+
+// Log writes the event as a single JSON line to the configured writer.
+// When the context contains a valid OTel span context (from TracingMiddleware),
+// trace_id and span_id are added as top-level fields for request correlation.
+func (l *SlogEventLogger) Log(ctx context.Context, event events.Event) error {
+    // Serialize the payload map to a json.RawMessage (existing code)
+    payload := event.Payload
+    if payload == nil {
+        payload = map[string]any{}
+    }
+    payloadBytes, err := json.Marshal(payload)
+    if err != nil {
+        return fmt.Errorf("marshalling event payload: %w", err)
+    }
+
+    // Build the list of attributes.
+    attrs := []slog.Attr{
+        slog.String("schema_version", event.SchemaVersion),
+        slog.String("event_type", event.EventType),
+        slog.Time("timestamp", event.Timestamp),
+        slog.String("ai_summary", event.AISummary),
+        slog.Any("payload", json.RawMessage(payloadBytes)),
+    }
+
+    // Extract trace context if present and valid.
+    if sc := trace.SpanContextFromContext(ctx); sc.IsValid() {
+        attrs = append(attrs,
+            slog.String("trace_id", sc.TraceID().String()),
+            slog.String("span_id", sc.SpanID().String()),
+        )
+    }
+
+    l.logger.LogAttrs(ctx, slog.LevelInfo, "", attrs...)
+
+    return nil
+}
+```
+
+Key implementation details:
+
+1. **Use `trace.SpanContextFromContext(ctx)`** — This is more efficient than
+   `trace.SpanFromContext(ctx).SpanContext()` because it avoids creating a no-op
+   span when the context has no span.
+
+2. **Check `sc.IsValid()`** — Returns false when:
+   - Tracing is disabled (no span in context)
+   - The span context has invalid/zero trace ID or span ID
+   This ensures we never emit empty string fields.
+
+3. **Append to attrs slice** — Trace fields appear after payload in the JSON output.
+   Order is: schema_version, event_type, timestamp, ai_summary, payload, trace_id, span_id.
+
+4. **String representation** — `TraceID().String()` returns a 32-character hex string.
+   `SpanID().String()` returns a 16-character hex string. These match the W3C Trace
+   Context format that OTel collectors expect.
+
+#### Application Service
+
+No application service changes. The trace context flows through automatically via
+the request context.
+
+#### File Layout
+
+**Modified files:**
+
+| File | Change |
+|------|--------|
+| `internal/adapters/log/slog_adapter.go` | Add trace context extraction in `Log()` |
+| `internal/adapters/log/slog_adapter_test.go` | Add tests for trace context injection |
+
+**No new files required.** This is a minimal, focused change to the existing adapter.
+
+#### Sequence
+
+Request flow with trace context injection:
+
+1. Request arrives at VibeWarden
+2. TracingMiddleware creates span, stores in context via `r.WithContext(ctx)`
+3. Request flows through auth, rate limiting, other middleware
+4. Middleware or handler calls `eventLogger.Log(r.Context(), ev)`
+5. `SlogEventLogger.Log()` extracts span context: `trace.SpanContextFromContext(ctx)`
+6. If `sc.IsValid()`, appends trace_id and span_id to slog attrs
+7. `logger.LogAttrs()` writes JSON with trace fields
+8. Log line includes trace_id and span_id for correlation
+
+For non-traced requests (tracing disabled or internal paths):
+
+1. Request arrives at VibeWarden
+2. TracingMiddleware skips span creation (or is not in middleware chain)
+3. Request flows through middleware
+4. Middleware calls `eventLogger.Log(r.Context(), ev)`
+5. `SlogEventLogger.Log()` extracts span context: returns invalid SpanContext
+6. `sc.IsValid()` returns false, no trace fields added
+7. Log line has no trace_id or span_id fields (not empty strings, completely absent)
+
+#### Error Cases
+
+| Scenario | Handling |
+|----------|----------|
+| Context is nil | `SpanContextFromContext(nil)` returns invalid SpanContext; no trace fields added |
+| Context has no span | `SpanContextFromContext` returns invalid SpanContext; no trace fields added |
+| Span context is invalid | `sc.IsValid()` returns false; no trace fields added |
+| TraceID or SpanID is zero | `sc.IsValid()` returns false; no trace fields added |
+
+There are no error cases that require special handling. The design gracefully degrades
+to no trace fields when tracing is not active.
+
+#### Test Strategy
+
+**Unit tests in `internal/adapters/log/slog_adapter_test.go`:**
+
+| Test | What it verifies |
+|------|------------------|
+| `TestSlogEventLogger_Log_WithTraceContext` | When context has valid span, trace_id and span_id appear in JSON |
+| `TestSlogEventLogger_Log_WithoutTraceContext` | When context has no span, trace_id and span_id are absent (not empty strings) |
+| `TestSlogEventLogger_Log_WithInvalidSpanContext` | When span context is invalid, trace_id and span_id are absent |
+
+Test implementation approach:
+
+```go
+func TestSlogEventLogger_Log_WithTraceContext(t *testing.T) {
+    // Create a real span using OTel SDK in-memory exporter.
+    // This ensures we test with actual OTel span context, not mocks.
+    tp := sdktrace.NewTracerProvider()
+    tracer := tp.Tracer("test")
+    ctx, span := tracer.Start(context.Background(), "test-span")
+    defer span.End()
+
+    var buf bytes.Buffer
+    logger := log.NewSlogEventLogger(&buf)
+
+    ev := events.Event{
+        SchemaVersion: "v1",
+        EventType:     "test.event",
+        Timestamp:     time.Now(),
+        AISummary:     "Test event",
+        Payload:       map[string]any{},
+    }
+    _ = logger.Log(ctx, ev)
+
+    var out map[string]any
+    _ = json.Unmarshal(buf.Bytes(), &out)
+
+    // Verify trace_id is present and valid (32 hex chars).
+    traceID, ok := out["trace_id"].(string)
+    if !ok || len(traceID) != 32 {
+        t.Errorf("trace_id = %q, want 32-char hex string", traceID)
+    }
+
+    // Verify span_id is present and valid (16 hex chars).
+    spanID, ok := out["span_id"].(string)
+    if !ok || len(spanID) != 16 {
+        t.Errorf("span_id = %q, want 16-char hex string", spanID)
+    }
+}
+
+func TestSlogEventLogger_Log_WithoutTraceContext(t *testing.T) {
+    var buf bytes.Buffer
+    logger := log.NewSlogEventLogger(&buf)
+
+    ev := events.Event{
+        SchemaVersion: "v1",
+        EventType:     "test.event",
+        Timestamp:     time.Now(),
+        AISummary:     "Test event",
+        Payload:       map[string]any{},
+    }
+    _ = logger.Log(context.Background(), ev)
+
+    var out map[string]any
+    _ = json.Unmarshal(buf.Bytes(), &out)
+
+    // Verify trace_id and span_id are completely absent, not empty strings.
+    if _, ok := out["trace_id"]; ok {
+        t.Error("trace_id should be absent when no span context")
+    }
+    if _, ok := out["span_id"]; ok {
+        t.Error("span_id should be absent when no span context")
+    }
+}
+```
+
+**No integration tests needed.** The trace context injection is purely in-memory
+manipulation of slog attributes. The existing integration tests for the tracing
+middleware (ADR-019) already verify that span context is stored in the request context.
+
+#### New Dependencies
+
+**None.** The `go.opentelemetry.io/otel/trace` package is already a direct dependency
+(used by the tracer adapter in ADR-019). No new imports are introduced.
+
+Existing dependency:
+| Package | Version | License | Status |
+|---------|---------|---------|--------|
+| `go.opentelemetry.io/otel/trace` | v1.42.0 | Apache 2.0 | Already direct |
+
+### Consequences
+
+**Positive:**
+
+- Every log line during a traced request includes trace_id and span_id
+- Log aggregators (Grafana Loki, etc.) can correlate logs with traces
+- No trace fields when tracing is disabled (clean output)
+- Works with both stdout JSON and OTel log bridge
+- Zero new dependencies
+- Minimal code change (~10 lines)
+
+**Negative:**
+
+- Slight increase in log line size (48 bytes for trace fields)
+- Import of `go.opentelemetry.io/otel/trace` in slog adapter (couples adapter to OTel)
+
+**Trade-offs:**
+
+- **Coupling slog adapter to OTel vs. using a port:** Chose direct OTel import
+  because creating a port for trace context extraction would be over-engineering.
+  The slog adapter is already an infrastructure adapter, and the OTel trace package
+  is a stable, minimal API. If we ever need a non-OTel tracing library, we would
+  need a new adapter anyway.
+
+- **Always checking span context vs. configurable:** Chose to always check span
+  context because `SpanContextFromContext` is cheap (single map lookup) and
+  the conditional add is simpler than config-based logic. No performance concern.
+
+- **Field names `trace_id`/`span_id` vs. OTel convention `traceID`/`spanID`:**
+  Chose snake_case to match the existing VibeWarden log schema (schema_version,
+  event_type, ai_summary). Consistency within our schema trumps OTel naming.
+
+---
+
+## ADR-021: Include trace_id in JSON Error Responses
+**Date**: 2026-03-28
+**Issue**: #309
+**Status**: Accepted
+
+### Context
+
+Epic #306 ("Distributed tracing with request correlation") requires that users can correlate
+error responses with sidecar logs. Currently, when a user encounters a 429, 403, or 500 error,
+they receive a JSON response like:
+
+```json
+{"error": "rate_limit_exceeded", "retry_after_seconds": 5}
+```
+
+There is no way to correlate this response with the corresponding log entry in the sidecar.
+Support tickets often say "I got a 429" with no way to find the exact request in logs.
+
+ADR-019 introduced TracingMiddleware which creates a span for each request and stores the
+span context in the request context. ADR-020 injected trace_id and span_id into log lines.
+This story completes the correlation loop by including the trace_id (or a fallback request_id)
+in the JSON error response body.
+
+**Error response locations in the codebase:**
+
+1. **Rate limiter middleware** (`internal/middleware/ratelimit.go`):
+   - 429 Too Many Requests with JSON body `{"error":"rate_limit_exceeded","retry_after_seconds":N}`
+   - 403 Forbidden (unidentified client) with plain text
+
+2. **Auth middleware** (`internal/middleware/auth.go`):
+   - 503 Service Unavailable (Kratos unavailable) with plain text
+   - Redirects (302) do not need trace_id
+
+3. **IP filter Caddy handler** (`internal/adapters/caddy/ipfilter_handler.go`):
+   - 403 Forbidden with plain text
+
+4. **Body size Caddy handler** (`internal/adapters/caddy/bodysize_handler.go`):
+   - 413 Payload Too Large via `http.MaxBytesReader` (handled by net/http, not our code)
+
+5. **Admin auth middleware** (`internal/middleware/admin_auth.go`):
+   - 401 Unauthorized with plain text
+
+**Constraints:**
+
+- Must include `trace_id` when tracing is enabled (span context is valid)
+- Must include `request_id` as fallback when tracing is disabled
+- The ID in the response must match the ID in the corresponding log line
+- Must not break existing API contracts (additive field only)
+- Plain text responses should become JSON responses for consistency
+
+### Decision
+
+Create a shared error response helper in `internal/middleware/error_response.go` that:
+
+1. Extracts trace_id from the span context when available
+2. Generates a lightweight request_id when tracing is disabled
+3. Writes a consistent JSON error response with the correlation ID
+4. Stores the correlation ID in the request context for logging
+
+All middleware and handlers that return error responses will use this helper.
+
+#### Domain Model Changes
+
+None. Request IDs and trace IDs are observability infrastructure, not domain concepts.
+
+#### Ports (Interfaces)
+
+No new ports required. The helper is a pure function that operates on `context.Context`
+and `http.ResponseWriter`. It does not need abstraction since it is tightly coupled to
+HTTP error handling.
+
+#### Adapters
+
+**New file: `internal/middleware/error_response.go`**
+
+Provides a centralized helper for writing JSON error responses with correlation IDs:
+
+```go
+// ErrorResponse is the JSON structure for all error responses from VibeWarden middleware.
+// It always includes a correlation ID for log matching.
+type ErrorResponse struct {
+    // Error is the machine-readable error code (e.g., "rate_limit_exceeded", "forbidden").
+    Error string `json:"error"`
+
+    // Status is the HTTP status code.
+    Status int `json:"status"`
+
+    // Message is a human-readable error description (optional).
+    Message string `json:"message,omitempty"`
+
+    // TraceID is the OTel trace ID when tracing is enabled.
+    // Mutually exclusive with RequestID.
+    TraceID string `json:"trace_id,omitempty"`
+
+    // RequestID is a generated ID when tracing is disabled.
+    // Mutually exclusive with TraceID.
+    RequestID string `json:"request_id,omitempty"`
+
+    // RetryAfterSeconds is set only for 429 responses.
+    RetryAfterSeconds int `json:"retry_after_seconds,omitempty"`
+}
+
+// WriteErrorResponse writes a JSON error response with a correlation ID.
+// When the context contains a valid OTel span context, trace_id is used.
+// Otherwise, a request_id is generated.
+//
+// The correlation ID is also stored in the request context under the
+// correlationIDKey for use by event logging.
+func WriteErrorResponse(w http.ResponseWriter, r *http.Request, status int, errorCode, message string) {
+    // Extract trace_id or generate request_id
+    var traceID, requestID string
+    if sc := trace.SpanContextFromContext(r.Context()); sc.IsValid() {
+        traceID = sc.TraceID().String()
+    } else {
+        requestID = generateRequestID()
+    }
+
+    resp := ErrorResponse{
+        Error:     errorCode,
+        Status:    status,
+        Message:   message,
+        TraceID:   traceID,
+        RequestID: requestID,
+    }
+
+    w.Header().Set("Content-Type", "application/json")
+    w.WriteHeader(status)
+    _ = json.NewEncoder(w).Encode(resp)
+}
+
+// WriteRateLimitResponse writes a 429 response with retry information.
+// It sets the Retry-After header and includes retry_after_seconds in the body.
+func WriteRateLimitResponse(w http.ResponseWriter, r *http.Request, retryAfterSeconds int) {
+    var traceID, requestID string
+    if sc := trace.SpanContextFromContext(r.Context()); sc.IsValid() {
+        traceID = sc.TraceID().String()
+    } else {
+        requestID = generateRequestID()
+    }
+
+    resp := ErrorResponse{
+        Error:             "rate_limit_exceeded",
+        Status:            http.StatusTooManyRequests,
+        TraceID:           traceID,
+        RequestID:         requestID,
+        RetryAfterSeconds: retryAfterSeconds,
+    }
+
+    w.Header().Set("Content-Type", "application/json")
+    w.Header().Set("Retry-After", strconv.Itoa(retryAfterSeconds))
+    w.WriteHeader(http.StatusTooManyRequests)
+    _ = json.NewEncoder(w).Encode(resp)
+}
+
+// generateRequestID creates a short, URL-safe request ID.
+// Format: "req_" + 12 random base32 characters (e.g., "req_A3BKDMF7HQLN").
+// Uses crypto/rand for unpredictability.
+func generateRequestID() string {
+    b := make([]byte, 8) // 8 bytes = 64 bits of randomness
+    _, _ = rand.Read(b)  // crypto/rand never fails for 8 bytes
+    return "req_" + base32.StdEncoding.WithPadding(base32.NoPadding).EncodeToString(b)[:12]
+}
+
+// CorrelationID extracts the trace_id or request_id from the context.
+// Returns the trace_id if a valid span context exists, otherwise returns
+// any previously stored request_id, or generates a new one.
+// This is used by event loggers to ensure logs match error responses.
+func CorrelationID(ctx context.Context) string {
+    if sc := trace.SpanContextFromContext(ctx); sc.IsValid() {
+        return sc.TraceID().String()
+    }
+    if id := requestIDFromContext(ctx); id != "" {
+        return id
+    }
+    return generateRequestID()
+}
+```
+
+**Request ID context storage:**
+
+When a request_id is generated, it must be stored in the context so that subsequent
+log calls include the same ID. Add context key and helpers:
+
+```go
+type contextKey int
+
+const requestIDContextKey contextKey = iota
+
+// ContextWithRequestID returns a new context with the request ID stored.
+func ContextWithRequestID(ctx context.Context, id string) context.Context {
+    return context.WithValue(ctx, requestIDContextKey, id)
+}
+
+// requestIDFromContext retrieves a previously stored request ID.
+func requestIDFromContext(ctx context.Context) string {
+    if id, ok := ctx.Value(requestIDContextKey).(string); ok {
+        return id
+    }
+    return ""
+}
+```
+
+**Modify: `internal/middleware/ratelimit.go`**
+
+Replace `writeRateLimitResponse()` with the new helper:
+
+```go
+// Before:
+func writeRateLimitResponse(w http.ResponseWriter, result ports.RateLimitResult) {
+    retrySeconds := retryAfterSeconds(result.RetryAfter)
+    w.Header().Set("Content-Type", "application/json")
+    w.Header().Set("Retry-After", strconv.Itoa(retrySeconds))
+    w.WriteHeader(http.StatusTooManyRequests)
+    body := rateLimitErrorBody{
+        Error:             "rate_limit_exceeded",
+        RetryAfterSeconds: retrySeconds,
+    }
+    _ = json.NewEncoder(w).Encode(body)
+}
+
+// After:
+// Remove writeRateLimitResponse, use WriteRateLimitResponse from error_response.go
+```
+
+Update the middleware to pass the request to the error helper:
+
+```go
+if !ipResult.Allowed {
+    emitRateLimitHit(r, eventLogger, "ip", clientIP, "", ipResult)
+    WriteRateLimitResponse(w, r, retryAfterSeconds(ipResult.RetryAfter))
+    return
+}
+```
+
+For the 403 "unidentified client" case, convert to JSON:
+
+```go
+// Before:
+http.Error(w, "Forbidden", http.StatusForbidden)
+
+// After:
+WriteErrorResponse(w, r, http.StatusForbidden, "unidentified_client",
+    "Could not identify client IP address")
+```
+
+**Modify: `internal/middleware/auth.go`**
+
+Convert 503 responses to JSON:
+
+```go
+// Before:
+http.Error(w, "Service Unavailable", http.StatusServiceUnavailable)
+
+// After:
+WriteErrorResponse(w, r, http.StatusServiceUnavailable, "auth_provider_unavailable",
+    "Authentication service is temporarily unavailable")
+```
+
+**Modify: `internal/adapters/caddy/ipfilter_handler.go`**
+
+Convert 403 responses to JSON. The handler needs access to the request context
+for trace extraction:
+
+```go
+// Before:
+http.Error(w, "Forbidden", http.StatusForbidden)
+
+// After:
+middleware.WriteErrorResponse(w, r, http.StatusForbidden, "ip_blocked",
+    "Access denied by IP filter")
+```
+
+**Modify: `internal/middleware/admin_auth.go`**
+
+Convert 401 responses to JSON:
+
+```go
+// Before:
+http.Error(w, "Unauthorized", http.StatusUnauthorized)
+
+// After:
+WriteErrorResponse(w, r, http.StatusUnauthorized, "unauthorized",
+    "Admin authentication required")
+```
+
+**Note on body size handler:**
+
+The `http.MaxBytesReader` error is handled by net/http, not our code. When the
+body exceeds the limit, the reader returns an error and net/http writes a 413
+response. We cannot intercept this easily without wrapping the response writer,
+which adds complexity. The body size handler is therefore **out of scope** for
+this story. A future story could wrap the response writer to intercept 413 errors.
+
+#### Application Service
+
+No application service changes.
+
+#### File Layout
+
+**New files:**
+
+| File | Purpose |
+|------|---------|
+| `internal/middleware/error_response.go` | Shared error response helper with trace/request ID |
+| `internal/middleware/error_response_test.go` | Unit tests for error response helper |
+
+**Modified files:**
+
+| File | Changes |
+|------|---------|
+| `internal/middleware/ratelimit.go` | Use `WriteRateLimitResponse`, convert 403 to JSON |
+| `internal/middleware/ratelimit_test.go` | Update tests for new response format |
+| `internal/middleware/auth.go` | Use `WriteErrorResponse` for 503 |
+| `internal/middleware/auth_test.go` | Update tests for new response format |
+| `internal/middleware/admin_auth.go` | Use `WriteErrorResponse` for 401 |
+| `internal/middleware/admin_auth_test.go` | Update tests for new response format |
+| `internal/adapters/caddy/ipfilter_handler.go` | Use `WriteErrorResponse` for 403 |
+| `internal/adapters/caddy/ipfilter_handler_test.go` | Update tests for new response format |
+
+#### Sequence
+
+**Error response with tracing enabled:**
+
+1. Request arrives at VibeWarden
+2. TracingMiddleware creates span, stores span context in request context
+3. Rate limiter (or other middleware) determines request should be rejected
+4. Middleware calls `WriteRateLimitResponse(w, r, retrySeconds)`
+5. Helper extracts trace_id via `trace.SpanContextFromContext(r.Context())`
+6. Helper writes JSON: `{"error":"rate_limit_exceeded","status":429,"trace_id":"abc123...","retry_after_seconds":5}`
+7. Event logger also extracts trace_id from same context
+8. Log line includes matching trace_id for correlation
+
+**Error response with tracing disabled:**
+
+1. Request arrives at VibeWarden
+2. TracingMiddleware skips span creation (or is disabled)
+3. Rate limiter determines request should be rejected
+4. Middleware calls `WriteRateLimitResponse(w, r, retrySeconds)`
+5. Helper finds no valid span context
+6. Helper generates request_id: "req_A3BKDMF7HQLN"
+7. Helper writes JSON: `{"error":"rate_limit_exceeded","status":429,"request_id":"req_A3BKDMF7HQLN","retry_after_seconds":5}`
+8. (Future enhancement: event logger includes same request_id)
+
+#### Error Cases
+
+| Scenario | Handling |
+|----------|----------|
+| Context is nil | `SpanContextFromContext(nil)` returns invalid context; generate request_id |
+| JSON encoding fails | Encoding a struct with string fields never fails; silently ignore |
+| crypto/rand fails | For 8 bytes, crypto/rand never fails on any OS |
+| Response already written | Standard Go behavior; second WriteHeader is ignored |
+
+#### Test Strategy
+
+**Unit tests in `internal/middleware/error_response_test.go`:**
+
+| Test | What it verifies |
+|------|------------------|
+| `TestWriteErrorResponse_WithTraceContext` | trace_id in response when span context valid |
+| `TestWriteErrorResponse_WithoutTraceContext` | request_id in response when no span context |
+| `TestWriteRateLimitResponse_IncludesRetryAfter` | retry_after_seconds and Retry-After header |
+| `TestGenerateRequestID_Format` | Format is "req_" + 12 chars, unique per call |
+| `TestCorrelationID_WithTrace` | Returns trace_id when span context valid |
+| `TestCorrelationID_WithRequestID` | Returns stored request_id when present |
+| `TestCorrelationID_GeneratesNew` | Generates new ID when nothing in context |
+
+**Updated tests in existing files:**
+
+| File | Test changes |
+|------|--------------|
+| `internal/middleware/ratelimit_test.go` | Verify JSON response includes trace_id or request_id |
+| `internal/middleware/auth_test.go` | Verify 503 is JSON with trace_id or request_id |
+| `internal/middleware/admin_auth_test.go` | Verify 401 is JSON with trace_id or request_id |
+| `internal/adapters/caddy/ipfilter_handler_test.go` | Verify 403 is JSON with trace_id or request_id |
+
+**Test helper for creating span context:**
+
+Reuse the pattern from ADR-020 tests:
+
+```go
+func withTraceContext(ctx context.Context) context.Context {
+    tp := sdktrace.NewTracerProvider()
+    tracer := tp.Tracer("test")
+    ctx, _ = tracer.Start(ctx, "test-span")
+    return ctx
+}
+```
+
+**What to mock vs. real:**
+
+- Real: OTel SDK for span context (cheap, no external calls)
+- Real: crypto/rand for request ID generation (deterministic enough for tests)
+- Mock: Nothing needed
+
+#### New Dependencies
+
+**None.** All required packages are already in use:
+
+| Package | Status | License |
+|---------|--------|---------|
+| `go.opentelemetry.io/otel/trace` | Already direct (ADR-019/020) | Apache 2.0 |
+| `crypto/rand` | stdlib | N/A |
+| `encoding/base32` | stdlib | N/A |
+
+### Consequences
+
+**Positive:**
+
+- Every error response includes a correlation ID (trace_id or request_id)
+- Users can include the ID in support tickets for fast log lookup
+- IDs match between response and log lines (same extraction logic)
+- Consistent JSON format for all error responses
+- No new dependencies
+
+**Negative:**
+
+- Breaking change to response format (plain text -> JSON) for some errors
+- Body size 413 errors are not covered (net/http limitation)
+- Slightly larger response bodies (~50 bytes for ID)
+
+**Trade-offs:**
+
+- **JSON vs. plain text for all errors:** Chose JSON for consistency and machine
+  readability. The target vibe coder audience is building APIs, so JSON errors
+  are expected. Frontends parsing "Forbidden" text strings is fragile anyway.
+
+- **trace_id vs. request_id field naming:** Chose separate fields (`trace_id`
+  when tracing enabled, `request_id` when disabled) rather than a generic
+  `correlation_id`. This makes it explicit which ID type is being used and
+  matches the log field names from ADR-020.
+
+- **Request ID format:** Chose "req_" prefix + base32 for:
+  - Human recognizable as a request ID
+  - URL-safe (no special characters)
+  - Short (16 chars total) but sufficient entropy (64 bits)
+  - Different format from trace_id (32 hex chars) to avoid confusion
+
+- **Body size 413 not covered:** Chose to exclude rather than wrap ResponseWriter.
+  The added complexity of intercepting net/http errors is not worth it for v1.
+  Body size errors are rare (misconfigured clients) and the rate limiter/auth
+  paths are the common support ticket cases.

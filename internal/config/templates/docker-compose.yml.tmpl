@@ -24,7 +24,8 @@
 #   prometheus      — Metrics collection (profile: observability)
 #   loki            — Log aggregation (profile: observability)
 #   promtail        — Log collector for non-VibeWarden containers (profile: observability)
-#   otel-collector  — OTel Collector: receives OTLP from VibeWarden, exports to Prometheus and Loki (profile: observability)
+#   otel-collector  — OTel Collector: receives OTLP from VibeWarden, exports to Prometheus, Loki, and Jaeger (profile: observability)
+#   jaeger          — Distributed tracing backend (profile: observability)
 #   grafana         — Visualization (profile: observability)
 {{- end }}
 
@@ -309,8 +310,27 @@ services:
     depends_on:
       loki:
         condition: service_healthy
+      jaeger:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:13133/"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  jaeger:
+    image: jaegertracing/jaeger:2.6.0
+    profiles:
+      - observability
+    restart: unless-stopped
+    ports:
+      - "16686:16686"
+    environment:
+      COLLECTOR_OTLP_ENABLED: "true"
+    networks:
+      - vibewarden
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:16687/ || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -341,6 +361,8 @@ services:
       loki:
         condition: service_healthy
       otel-collector:
+        condition: service_healthy
+      jaeger:
         condition: service_healthy
     healthcheck:
       test: ["CMD-SHELL", "wget -q --spider http://localhost:3000/api/health || exit 1"]

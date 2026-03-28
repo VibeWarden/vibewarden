@@ -1077,6 +1077,9 @@ func TestGenerate_Observability_GrafanaDatasources(t *testing.T) {
 	if !bytes.Contains(data, []byte("http://loki:3100")) {
 		t.Errorf("datasources.yml should reference http://loki:3100, content:\n%s", data)
 	}
+	if !bytes.Contains(data, []byte("http://jaeger:16686")) {
+		t.Errorf("datasources.yml should reference http://jaeger:16686, content:\n%s", data)
+	}
 }
 
 func TestGenerate_Observability_Dashboard(t *testing.T) {
@@ -1106,7 +1109,7 @@ func TestGenerate_Observability_ComposeServices(t *testing.T) {
 	cfg := observabilityConfig(3001, 9090, 3100, 7)
 	compose := renderCompose(t, cfg)
 
-	for _, svc := range []string{"prometheus:", "loki:", "promtail:", "otel-collector:", "grafana:"} {
+	for _, svc := range []string{"prometheus:", "loki:", "promtail:", "otel-collector:", "jaeger:", "grafana:"} {
 		if !bytes.Contains(compose, []byte(svc)) {
 			t.Errorf("expected service %q in compose output when observability enabled", svc)
 		}
@@ -1117,10 +1120,10 @@ func TestGenerate_Observability_ComposeProfiles(t *testing.T) {
 	cfg := observabilityConfig(3001, 9090, 3100, 7)
 	compose := renderCompose(t, cfg)
 
-	// All five observability services should carry the observability profile.
+	// All six observability services should carry the observability profile.
 	count := bytes.Count(compose, []byte("- observability"))
-	if count < 5 {
-		t.Errorf("expected at least 5 occurrences of '- observability' profile annotation, got %d\ncompose:\n%s", count, compose)
+	if count < 6 {
+		t.Errorf("expected at least 6 occurrences of '- observability' profile annotation, got %d\ncompose:\n%s", count, compose)
 	}
 }
 
@@ -1172,7 +1175,7 @@ func TestGenerate_Observability_NotPresent_WhenDisabled(t *testing.T) {
 	}
 	compose := renderCompose(t, cfg)
 
-	for _, svc := range []string{"prometheus:", "grafana:", "loki:", "promtail:", "otel-collector:"} {
+	for _, svc := range []string{"prometheus:", "grafana:", "loki:", "promtail:", "otel-collector:", "jaeger:"} {
 		if bytes.Contains(compose, []byte(svc)) {
 			t.Errorf("service %q must not appear when observability is disabled\ncompose:\n%s", svc, compose)
 		}
@@ -1313,6 +1316,75 @@ func TestGenerate_OtelCollector_NotPresent_WhenDisabled(t *testing.T) {
 		t.Errorf("otel-collector directory must not be created when observability is disabled: %q", collectorDir)
 	}
 }
+
+// --- Jaeger tests ---
+
+func TestGenerate_Jaeger_ComposeService(t *testing.T) {
+	cfg := observabilityConfig(3001, 9090, 3100, 7)
+	compose := renderCompose(t, cfg)
+
+	if !bytes.Contains(compose, []byte("jaegertracing/jaeger:")) {
+		t.Errorf("expected jaegertracing/jaeger image in compose output\ncompose:\n%s", compose)
+	}
+	if !bytes.Contains(compose, []byte("16686:16686")) {
+		t.Errorf("expected Jaeger UI port 16686 exposed\ncompose:\n%s", compose)
+	}
+}
+
+func TestGenerate_Jaeger_ComposeDependsOn(t *testing.T) {
+	cfg := observabilityConfig(3001, 9090, 3100, 7)
+	compose := renderCompose(t, cfg)
+
+	// otel-collector depends on jaeger being healthy.
+	if !bytes.Contains(compose, []byte("jaeger:\n        condition: service_healthy")) {
+		t.Errorf("expected otel-collector and grafana depends_on jaeger with service_healthy\ncompose:\n%s", compose)
+	}
+}
+
+func TestGenerate_Jaeger_OtelCollector_TracesPipeline(t *testing.T) {
+	cfg := observabilityConfig(3001, 9090, 3100, 7)
+	outputDir := t.TempDir()
+	svc := generate.NewService(realRenderer())
+
+	if err := svc.Generate(context.Background(), cfg, outputDir); err != nil {
+		t.Fatalf("Generate() unexpected error: %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(outputDir, "observability", "otel-collector", "config.yaml"))
+	if err != nil {
+		t.Fatalf("reading otel-collector config.yaml: %v", err)
+	}
+
+	checks := []struct {
+		desc    string
+		contain []byte
+	}{
+		{"Jaeger exporter section", []byte("otlp/jaeger:")},
+		{"Jaeger endpoint", []byte("jaeger:4317")},
+		{"traces pipeline", []byte("traces:")},
+		{"traces receivers", []byte("[otlp]")},
+		{"traces exporters referencing jaeger", []byte("[otlp/jaeger]")},
+	}
+
+	for _, c := range checks {
+		t.Run(c.desc, func(t *testing.T) {
+			if !bytes.Contains(data, c.contain) {
+				t.Errorf("otel-collector config.yaml missing %s (%q), content:\n%s", c.desc, c.contain, data)
+			}
+		})
+	}
+}
+
+func TestGenerate_Jaeger_NotPresent_WhenDisabled(t *testing.T) {
+	cfg := &config.Config{} // observability not enabled
+	compose := renderCompose(t, cfg)
+
+	if bytes.Contains(compose, []byte("jaeger:")) {
+		t.Error("jaeger service should not be in compose when observability is disabled")
+	}
+}
+
+// TestGenerate_Tempo_NotPresent_WhenDisabled is replaced by TestGenerate_Jaeger_NotPresent_WhenDisabled above.
 
 // --- Credential generation tests ---
 

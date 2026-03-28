@@ -55,6 +55,34 @@ func TestOtelCollectorConfig_PrometheusExporterPresent(t *testing.T) {
 	}
 }
 
+// TestOtelCollectorConfig_TracesPipelinePresent verifies that the OTel Collector
+// config includes a traces pipeline that forwards to Jaeger.
+func TestOtelCollectorConfig_TracesPipelinePresent(t *testing.T) {
+	data, err := templates.FS.ReadFile("observability/otel-collector-config.yml.tmpl")
+	if err != nil {
+		t.Fatalf("reading otel-collector-config.yml.tmpl: %v", err)
+	}
+	content := string(data)
+
+	checks := []struct {
+		name    string
+		present string
+	}{
+		{"jaeger exporter section", "otlp/jaeger:"},
+		{"jaeger endpoint", "jaeger:4317"},
+		{"traces pipeline", "traces:"},
+		{"traces exporters", "[otlp/jaeger]"},
+	}
+
+	for _, tc := range checks {
+		t.Run(tc.name, func(t *testing.T) {
+			if !strings.Contains(content, tc.present) {
+				t.Errorf("otel-collector-config.yml.tmpl must contain %q", tc.present)
+			}
+		})
+	}
+}
+
 // TestDashboard_LokiQueriesUseServiceLabel verifies that all four Loki log panel
 // queries in the Grafana dashboard use the OTel-sourced {service="vibewarden"}
 // label selector instead of the Promtail-sourced {container="vibewarden"} selector.
