@@ -2,6 +2,7 @@ package caddy
 
 import (
 	"context"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -380,4 +381,60 @@ type caddyHandlerFunc func(w http.ResponseWriter, r *http.Request) error
 
 func (f caddyHandlerFunc) ServeHTTP(w http.ResponseWriter, r *http.Request) error {
 	return f(w, r)
+}
+
+func TestRetryHandler_RetryAfterHeader_OnExhaustedAttempts(t *testing.T) {
+	handler := &RetryHandler{
+		Config: RetryHandlerConfig{
+			MaxAttempts:      3,
+			InitialBackoffMs: 100,
+			MaxBackoffMs:     5000,
+			RetryOn:          []int{503},
+		},
+		logger:  slog.Default(),
+		metrics: &fakeMetrics{},
+	}
+
+	always503 := caddyHandlerFunc(func(w http.ResponseWriter, r *http.Request) error {
+		w.WriteHeader(http.StatusServiceUnavailable)
+		return nil
+	})
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest("GET", "/", nil)
+
+	_ = handler.ServeHTTP(rec, req, always503)
+
+	retryAfter := rec.Header().Get("Retry-After")
+	if retryAfter == "" {
+		t.Error("expected Retry-After header when all retry attempts exhausted with 503")
+	}
+}
+
+func TestRetryHandler_NoRetryAfterHeader_OnNon503(t *testing.T) {
+	handler := &RetryHandler{
+		Config: RetryHandlerConfig{
+			MaxAttempts:      2,
+			InitialBackoffMs: 10,
+			MaxBackoffMs:     1000,
+			RetryOn:          []int{502},
+		},
+		logger:  slog.Default(),
+		metrics: &fakeMetrics{},
+	}
+
+	always502 := caddyHandlerFunc(func(w http.ResponseWriter, r *http.Request) error {
+		w.WriteHeader(http.StatusBadGateway)
+		return nil
+	})
+
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest("GET", "/", nil)
+
+	_ = handler.ServeHTTP(rec, req, always502)
+
+	retryAfter := rec.Header().Get("Retry-After")
+	if retryAfter != "" {
+		t.Errorf("Retry-After should only be set for 503 responses, got %q", retryAfter)
+	}
 }

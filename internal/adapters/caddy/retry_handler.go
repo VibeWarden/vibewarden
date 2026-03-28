@@ -9,6 +9,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"strconv"
 	"time"
 
 	gocaddy "github.com/caddyserver/caddy/v2"
@@ -180,8 +181,19 @@ func (h *RetryHandler) ServeHTTP(w http.ResponseWriter, r *http.Request, next ca
 		}
 	}
 
-	// All attempts exhausted — flush the last buffered response to the client.
+	// All attempts exhausted — add Retry-After hint and flush the last response.
 	if lastBuf != nil {
+		if lastBuf.status == http.StatusServiceUnavailable {
+			backoffMs := h.Config.InitialBackoffMs * float64(int(1)<<uint(h.Config.MaxAttempts-1))
+			if backoffMs > h.Config.MaxBackoffMs {
+				backoffMs = h.Config.MaxBackoffMs
+			}
+			retryAfter := int(backoffMs / 1000)
+			if retryAfter < 1 {
+				retryAfter = 1
+			}
+			lastBuf.Header().Set("Retry-After", strconv.Itoa(retryAfter))
+		}
 		lastBuf.flush()
 	}
 	return nil
