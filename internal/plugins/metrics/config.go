@@ -43,4 +43,9 @@ type Config struct {
 	// OTLPProtocol is the OTLP protocol. Only "http" is supported in this version.
 	// Default: "http".
 	OTLPProtocol string
+
+	// LogsOTLPEnabled toggles OTLP log export (default: false).
+	// When enabled, structured events are exported to the same OTLP endpoint as metrics.
+	// Requires OTLPEndpoint to be configured.
+	LogsOTLPEnabled bool
 }

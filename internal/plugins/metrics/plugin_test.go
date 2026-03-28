@@ -433,6 +433,29 @@ func TestPlugin_OTLPOnly_ContributeCaddyRoutes_ReturnsNil(t *testing.T) {
 // Invalid duration parsing
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// LogHandler
+// ---------------------------------------------------------------------------
+
+func TestPlugin_LogHandler_DisabledReturnsNil(t *testing.T) {
+	p := newPlugin(disabledConfig())
+	if h := p.LogHandler(); h != nil {
+		t.Errorf("LogHandler() = %v, want nil when disabled", h)
+	}
+}
+
+func TestPlugin_LogHandler_NoLogsConfigReturnsNil(t *testing.T) {
+	cfg := enabledConfig()
+	cfg.LogsOTLPEnabled = false
+	p := newPlugin(cfg)
+	if err := p.Init(context.Background()); err != nil {
+		t.Fatalf("Init() error: %v", err)
+	}
+	if h := p.LogHandler(); h != nil {
+		t.Errorf("LogHandler() = %v, want nil when logs not enabled", h)
+	}
+}
+
 func TestPlugin_Init_InvalidOTLPInterval(t *testing.T) {
 	cfg := metrics.Config{
 		Enabled:           true,

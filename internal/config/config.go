@@ -502,6 +502,17 @@ type TelemetryConfig struct {
 
 	// OTLP configures the push-based OTLP exporter.
 	OTLP OTLPExporterConfig `mapstructure:"otlp"`
+
+	// Logs configures structured event log export settings.
+	Logs LogsConfig `mapstructure:"logs"`
+}
+
+// LogsConfig holds log export settings.
+type LogsConfig struct {
+	// OTLP toggles OTLP log export (default: false).
+	// When enabled, structured events are exported to the same OTLP endpoint as metrics.
+	// Requires telemetry.otlp.endpoint to be configured.
+	OTLP bool `mapstructure:"otlp"`
 }
 
 // PrometheusExporterConfig configures the Prometheus pull-based exporter.
@@ -906,6 +917,11 @@ func (c *Config) Validate() error {
 		))
 	}
 
+	// telemetry.logs.otlp requires telemetry.otlp.endpoint.
+	if c.Telemetry.Logs.OTLP && c.Telemetry.OTLP.Endpoint == "" {
+		errs = append(errs, "telemetry.logs.otlp requires telemetry.otlp.endpoint")
+	}
+
 	// cors validation.
 	if c.CORS.Enabled && c.CORS.AllowCredentials {
 		for _, o := range c.CORS.AllowedOrigins {
@@ -1028,6 +1044,7 @@ func Load(configPath string) (*Config, error) {
 	v.SetDefault("telemetry.otlp.headers", map[string]string{})
 	v.SetDefault("telemetry.otlp.interval", "30s")
 	v.SetDefault("telemetry.otlp.protocol", "http")
+	v.SetDefault("telemetry.logs.otlp", false)
 	v.SetDefault("body_size.max", "1MB")
 	v.SetDefault("body_size.overrides", []BodySizeOverrideConfig{})
 	v.SetDefault("ip_filter.enabled", false)

@@ -70,12 +70,15 @@ func runServe(configPath string) error {
 		slog.String("upstream", fmt.Sprintf("%s:%d", cfg.Upstream.Host, cfg.Upstream.Port)),
 	)
 
-	// Initialize the EventLogger — writes structured JSON events to stdout.
-	eventLogger := logadapter.NewSlogEventLogger(os.Stdout)
-
 	// Build the plugin registry and register all compiled-in plugins.
+	// At registration time we use a stdout-only event logger. After InitAll,
+	// we upgrade to a multi-handler logger (stdout + OTel) when log export is
+	// enabled. The caddy adapter — the main consumer of the event logger —
+	// is created after StartAll, so it always gets the upgraded logger.
+	initialEventLogger := logadapter.NewSlogEventLogger(os.Stdout)
+
 	registry := plugins.NewRegistry(logger)
-	registerPlugins(registry, cfg, eventLogger, logger)
+	registerPlugins(registry, cfg, initialEventLogger, logger)
 
 	// Set up OS signal handling before Init/Start so that a slow Init can
 	// still be interrupted.
@@ -95,6 +98,10 @@ func runServe(configPath string) error {
 	if err := registry.InitAll(ctx); err != nil {
 		return fmt.Errorf("initialising plugins: %w", err)
 	}
+
+	// After InitAll, retrieve the OTel log handler from the metrics plugin
+	// (if log export is enabled) and build the final event logger.
+	eventLogger := buildEventLogger(registry, logger)
 
 	// Start all plugins (background servers, etc.).
 	if err := registry.StartAll(ctx); err != nil {
@@ -224,6 +231,7 @@ func registerPlugins(
 		OTLPHeaders:       cfg.Telemetry.OTLP.Headers,
 		OTLPInterval:      cfg.Telemetry.OTLP.Interval,
 		OTLPProtocol:      cfg.Telemetry.OTLP.Protocol,
+		LogsOTLPEnabled:   cfg.Telemetry.Logs.OTLP,
 	}, logger))
 
 	// Rate limiting — priority 50
@@ -471,6 +479,23 @@ func buildBodySizePortsConfig(cfg *config.Config) ports.BodySizeConfig {
 	}
 
 	return bodySizeCfg
+}
+
+// buildEventLogger constructs the event logger used by the caddy adapter and
+// other consumers. When the metrics plugin has an OTel log handler available,
+// the logger fans out to both stdout JSON and OTel via a MultiHandler.
+// Falls back to stdout-only when log export is disabled or unavailable.
+func buildEventLogger(registry *plugins.Registry, logger *slog.Logger) ports.EventLogger {
+	for _, p := range registry.Plugins() {
+		if mp, ok := p.(*metricsplugin.Plugin); ok {
+			if h := mp.LogHandler(); h != nil {
+				logger.Info("event logger: OTel log export enabled")
+				return logadapter.NewSlogEventLogger(os.Stdout, h)
+			}
+			break
+		}
+	}
+	return logadapter.NewSlogEventLogger(os.Stdout)
 }
 
 // buildLogger creates an slog.Logger from the log configuration.

@@ -15,10 +15,13 @@ import (
 // It implements ports.Plugin, ports.CaddyContributor, and ports.InternalServerPlugin.
 //
 // On Init the plugin creates an OTel provider and an OTelAdapter using the
-// configured exporters (Prometheus, OTLP, or both).
+// configured exporters (Prometheus, OTLP, or both). When logs.otlp is enabled
+// it also creates an OTel LogProvider and makes an slog.Handler available via
+// LogHandler for use by the event logger.
 // On Start the plugin starts an internal HTTP server that serves the Prometheus
 // handler at /metrics on a random localhost port (only when Prometheus exporter is enabled).
-// On Stop the internal server is shut down gracefully and the OTel SDK is shut down.
+// On Stop the internal server is shut down gracefully, the OTel log SDK and metrics
+// SDK are shut down in order.
 // ContributeCaddyRoutes returns a route that reverse-proxies the public path
 // /_vibewarden/metrics to the internal server, rewriting the path to /metrics.
 // This route is only contributed when the Prometheus exporter is active.
@@ -28,6 +31,7 @@ type Plugin struct {
 	cfg          Config
 	logger       *slog.Logger
 	otelProvider *oteladapter.Provider
+	logProvider  *oteladapter.LogProvider
 	adapter      *metricsadapter.OTelAdapter
 	server       *metricsadapter.Server
 	internalAddr string
@@ -66,6 +70,16 @@ func (p *Plugin) Init(ctx context.Context) error {
 		return fmt.Errorf("metrics plugin: initializing otel provider: %w", err)
 	}
 
+	// Initialize OTel LogProvider when log OTLP export is enabled.
+	if p.cfg.LogsOTLPEnabled {
+		p.logProvider = oteladapter.NewLogProvider()
+		if err := p.logProvider.Init(ctx, "vibewarden", Version, p.cfg.OTLPEndpoint, ports.LogExportConfig{
+			OTLPEnabled: true,
+		}); err != nil {
+			return fmt.Errorf("metrics plugin: initializing log provider: %w", err)
+		}
+	}
+
 	// Create the OTel-backed metrics adapter.
 	adapter, err := metricsadapter.NewOTelAdapter(p.otelProvider, p.cfg.PathPatterns)
 	if err != nil {
@@ -77,6 +91,7 @@ func (p *Plugin) Init(ctx context.Context) error {
 		slog.Int("path_patterns", len(p.cfg.PathPatterns)),
 		slog.Bool("prometheus_enabled", p.otelProvider.PrometheusEnabled()),
 		slog.Bool("otlp_enabled", p.otelProvider.OTLPEnabled()),
+		slog.Bool("logs_otlp_enabled", p.cfg.LogsOTLPEnabled),
 	)
 	return nil
 }
@@ -105,12 +120,18 @@ func (p *Plugin) Start(ctx context.Context) error {
 	return nil
 }
 
-// Stop gracefully shuts down the internal metrics server and the OTel SDK.
+// Stop gracefully shuts down the internal metrics server, the OTel log SDK,
+// and the OTel metrics SDK, in that order.
 func (p *Plugin) Stop(ctx context.Context) error {
 	if p.server != nil {
 		p.running = false
 		if err := p.server.Stop(ctx); err != nil {
 			return fmt.Errorf("metrics plugin: stopping internal server: %w", err)
+		}
+	}
+	if p.logProvider != nil {
+		if err := p.logProvider.Shutdown(ctx); err != nil {
+			return fmt.Errorf("metrics plugin: shutting down log provider: %w", err)
 		}
 	}
 	if p.otelProvider != nil {
@@ -185,6 +206,16 @@ func (p *Plugin) Collector() ports.MetricsCollector {
 		return metricsadapter.NoOpMetricsCollector{}
 	}
 	return p.adapter
+}
+
+// LogHandler returns the OTel slog.Handler for bridging structured events to OTel logs.
+// Returns nil if the metrics plugin is disabled, log export is not configured,
+// or Init has not been called. Callers should check for nil before use.
+func (p *Plugin) LogHandler() slog.Handler {
+	if p.logProvider == nil {
+		return nil
+	}
+	return p.logProvider.Handler()
 }
 
 // ---------------------------------------------------------------------------

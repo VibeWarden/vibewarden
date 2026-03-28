@@ -1754,3 +1754,29 @@ func TestLoad_ProfileFromFile(t *testing.T) {
 		t.Errorf("Profile from file = %q, want %q", cfg.Profile, "tls")
 	}
 }
+
+func TestValidate_LogsOTLPRequiresEndpoint(t *testing.T) {
+	cfg, _ := config.Load("")
+	cfg.Telemetry.Logs.OTLP = true
+	cfg.Telemetry.OTLP.Endpoint = "" // missing
+
+	err := cfg.Validate()
+	if err == nil {
+		t.Fatal("Validate() should fail when logs.otlp is true without endpoint")
+	}
+	if !strings.Contains(err.Error(), "telemetry.logs.otlp requires telemetry.otlp.endpoint") {
+		t.Errorf("Validate() error = %v, want to contain 'telemetry.logs.otlp requires telemetry.otlp.endpoint'", err)
+	}
+}
+
+func TestValidate_LogsOTLPWithEndpointPasses(t *testing.T) {
+	cfg, _ := config.Load("")
+	cfg.Telemetry.Logs.OTLP = true
+	cfg.Telemetry.OTLP.Endpoint = "http://localhost:4318"
+	cfg.Telemetry.OTLP.Enabled = true
+
+	err := cfg.Validate()
+	if err != nil && strings.Contains(err.Error(), "telemetry.logs.otlp requires telemetry.otlp.endpoint") {
+		t.Errorf("Validate() should not return logs.otlp error when endpoint is set, got: %v", err)
+	}
+}
