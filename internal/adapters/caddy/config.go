@@ -62,7 +62,7 @@ func BuildCaddyConfig(cfg *ports.ProxyConfig) (map[string]any, error) {
 	}
 
 	// Build route handlers (middleware chain + reverse proxy).
-	// Middleware order: StripUserHeaders → SecurityHeaders → AdminAuth → BodySize → RateLimit → ReverseProxy
+	// Middleware order: StripUserHeaders → SecurityHeaders → AdminAuth → BodySize → RateLimit → CircuitBreaker → Timeout → ReverseProxy
 	//
 	// The header strip handler MUST be first so that spoofed X-User-* headers sent
 	// by clients are removed before any other handler (including auth) runs.
@@ -101,6 +101,19 @@ func BuildCaddyConfig(cfg *ports.ProxyConfig) (map[string]any, error) {
 			return nil, fmt.Errorf("building rate limit handler config: %w", err)
 		}
 		handlers = append(handlers, rlHandler)
+	}
+
+	// Add circuit breaker handler before the timeout handler. The circuit breaker
+	// must run first so that open-circuit requests are rejected immediately,
+	// before the timeout budget is even started.
+	if cfg.Resilience.CircuitBreaker.Enabled {
+		cbHandler, err := buildCircuitBreakerHandlerJSON(cfg.Resilience)
+		if err != nil {
+			return nil, fmt.Errorf("building circuit breaker handler config: %w", err)
+		}
+		if cbHandler != nil {
+			handlers = append(handlers, cbHandler)
+		}
 	}
 
 	// Add timeout handler wrapping the reverse proxy when a timeout is configured.

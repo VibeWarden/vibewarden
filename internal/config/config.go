@@ -565,6 +565,26 @@ type ResilienceConfig struct {
 	// A value of "0" or "" disables the timeout (no limit).
 	// Default: "30s".
 	Timeout string `mapstructure:"timeout"`
+
+	// CircuitBreaker configures the circuit breaker middleware.
+	CircuitBreaker CircuitBreakerConfig `mapstructure:"circuit_breaker"`
+}
+
+// CircuitBreakerConfig holds circuit breaker settings.
+type CircuitBreakerConfig struct {
+	// Enabled toggles the circuit breaker middleware.
+	Enabled bool `mapstructure:"enabled"`
+
+	// Threshold is the number of consecutive failures required to trip the
+	// circuit from Closed to Open. Must be > 0 when Enabled is true.
+	// Default: 5.
+	Threshold int `mapstructure:"threshold"`
+
+	// Timeout is how long the circuit stays Open before transitioning to
+	// HalfOpen to allow a probe request, expressed as a duration string
+	// (e.g. "60s", "1m"). Must be > 0 when Enabled is true.
+	// Default: "60s".
+	Timeout string `mapstructure:"timeout"`
 }
 
 // BodySizeConfig holds request body size limit settings.

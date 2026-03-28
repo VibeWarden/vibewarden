@@ -1,12 +1,14 @@
 package middleware
 
 import (
+	"context"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
 
 	vibemetrics "github.com/vibewarden/vibewarden/internal/adapters/metrics"
+	"github.com/vibewarden/vibewarden/internal/domain/resilience"
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
 
@@ -58,6 +60,9 @@ func (f *fakeMetricsCollector) IncUpstreamTimeout() {}
 func (f *fakeMetricsCollector) SetActiveConnections(n int) {
 	f.activeConnections = n
 }
+
+// SetCircuitBreakerState implements ports.MetricsCollector and does nothing.
+func (f *fakeMetricsCollector) SetCircuitBreakerState(_ context.Context, _ resilience.State) {}
 
 // Compile-time check: fakeMetricsCollector satisfies ports.MetricsCollector.
 var _ ports.MetricsCollector = (*fakeMetricsCollector)(nil)

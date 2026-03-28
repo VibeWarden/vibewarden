@@ -74,6 +74,9 @@ type ResilienceConfig struct {
 	// respond before returning 504 Gateway Timeout.
 	// A zero value disables the timeout (no limit).
 	Timeout time.Duration
+
+	// CircuitBreaker holds configuration for the circuit breaker middleware.
+	CircuitBreaker CircuitBreakerConfig
 }
 
 // IPFilterConfig holds configuration for IP-based access control.

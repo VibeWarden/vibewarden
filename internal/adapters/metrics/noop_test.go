@@ -1,10 +1,12 @@
 package metrics_test
 
 import (
+	"context"
 	"testing"
 	"time"
 
 	"github.com/vibewarden/vibewarden/internal/adapters/metrics"
+	"github.com/vibewarden/vibewarden/internal/domain/resilience"
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
 
@@ -29,4 +31,7 @@ func TestNoOpMetricsCollector_AllMethodsAreNoOps(t *testing.T) {
 	mc.IncUpstreamTimeout()
 	mc.SetActiveConnections(0)
 	mc.SetActiveConnections(42)
+	mc.SetCircuitBreakerState(context.Background(), resilience.StateClosed)
+	mc.SetCircuitBreakerState(context.Background(), resilience.StateOpen)
+	mc.SetCircuitBreakerState(context.Background(), resilience.StateHalfOpen)
 }

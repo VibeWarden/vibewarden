@@ -1,6 +1,11 @@
 package metrics
 
-import "time"
+import (
+	"context"
+	"time"
+
+	"github.com/vibewarden/vibewarden/internal/domain/resilience"
+)
 
 // NoOpMetricsCollector is a MetricsCollector implementation that discards all
 // observations. Use it when metrics collection is disabled to satisfy the
@@ -27,3 +32,6 @@ func (NoOpMetricsCollector) IncUpstreamTimeout() {}
 
 // SetActiveConnections implements ports.MetricsCollector and does nothing.
 func (NoOpMetricsCollector) SetActiveConnections(_ int) {}
+
+// SetCircuitBreakerState implements ports.MetricsCollector and does nothing.
+func (NoOpMetricsCollector) SetCircuitBreakerState(_ context.Context, _ resilience.State) {}
