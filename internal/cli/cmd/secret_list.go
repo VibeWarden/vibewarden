@@ -3,7 +3,6 @@ package cmd
 import (
 	"encoding/json"
 	"fmt"
-	"strings"
 
 	"github.com/spf13/cobra"
 )
@@ -74,16 +73,4 @@ func printListJSON(cmd *cobra.Command, paths []string) error {
 	}
 	fmt.Fprintln(cmd.OutOrStdout(), string(out)) //nolint:errcheck
 	return nil
-}
-
-// splitLines splits s on newlines, returning non-empty trimmed lines.
-// Used by tests to parse command output.
-func splitLines(s string) []string {
-	var lines []string
-	for _, l := range strings.Split(strings.TrimSpace(s), "\n") {
-		if l != "" {
-			lines = append(lines, l)
-		}
-	}
-	return lines
 }

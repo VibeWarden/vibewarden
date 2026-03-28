@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -142,12 +143,12 @@ func formatSecretGetError(err error, aliasOrPath string) error {
 
 // isErrNoSourceAvailable reports whether err wraps ErrNoSourceAvailable.
 func isErrNoSourceAvailable(err error) bool {
-	return strings.Contains(err.Error(), appsecret.ErrNoSourceAvailable.Error())
+	return errors.Is(err, appsecret.ErrNoSourceAvailable)
 }
 
 // isErrSecretNotFound reports whether err wraps ErrSecretNotFound.
 func isErrSecretNotFound(err error) bool {
-	return strings.Contains(err.Error(), appsecret.ErrSecretNotFound.Error())
+	return errors.Is(err, appsecret.ErrSecretNotFound)
 }
 
 // printSecretHuman writes human-readable key: value output to cmd's stdout.

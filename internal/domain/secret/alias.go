@@ -66,9 +66,10 @@ var wellKnownAliases = []WellKnownAlias{
 // ResolveAlias returns the WellKnownAlias for the given name, or nil if not found.
 // The lookup is case-sensitive and exact.
 func ResolveAlias(name string) *WellKnownAlias {
-	for i := range wellKnownAliases {
-		if wellKnownAliases[i].Name == name {
-			return &wellKnownAliases[i]
+	for _, a := range wellKnownAliases {
+		if a.Name == name {
+			cpy := a
+			return &cpy
 		}
 	}
 	return nil
