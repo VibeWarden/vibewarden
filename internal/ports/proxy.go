@@ -1,7 +1,10 @@
 // Package ports defines the interfaces (ports) for VibeWarden's hexagonal architecture.
 package ports
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
 // ProxyServer defines the interface for the reverse proxy server.
 // Implementations handle incoming HTTP(S) requests and forward them to upstream.
@@ -59,6 +62,18 @@ type ProxyConfig struct {
 
 	// IPFilter configuration — controls IP-based access control.
 	IPFilter IPFilterConfig
+
+	// Resilience configuration — controls upstream timeout and similar
+	// protective features.
+	Resilience ResilienceConfig
+}
+
+// ResilienceConfig holds configuration for upstream resilience features.
+type ResilienceConfig struct {
+	// Timeout is the maximum duration to wait for the upstream application to
+	// respond before returning 504 Gateway Timeout.
+	// A zero value disables the timeout (no limit).
+	Timeout time.Duration
 }
 
 // IPFilterConfig holds configuration for IP-based access control.

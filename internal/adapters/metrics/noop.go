@@ -22,5 +22,8 @@ func (NoOpMetricsCollector) IncAuthDecision(_ string) {}
 // IncUpstreamError implements ports.MetricsCollector and does nothing.
 func (NoOpMetricsCollector) IncUpstreamError() {}
 
+// IncUpstreamTimeout implements ports.MetricsCollector and does nothing.
+func (NoOpMetricsCollector) IncUpstreamTimeout() {}
+
 // SetActiveConnections implements ports.MetricsCollector and does nothing.
 func (NoOpMetricsCollector) SetActiveConnections(_ int) {}

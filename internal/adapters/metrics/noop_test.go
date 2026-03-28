@@ -26,6 +26,7 @@ func TestNoOpMetricsCollector_AllMethodsAreNoOps(t *testing.T) {
 	mc.IncAuthDecision("allowed")
 	mc.IncAuthDecision("blocked")
 	mc.IncUpstreamError()
+	mc.IncUpstreamTimeout()
 	mc.SetActiveConnections(0)
 	mc.SetActiveConnections(42)
 }
