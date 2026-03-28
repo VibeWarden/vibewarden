@@ -7,7 +7,10 @@ import (
 	"log/slog"
 
 	"github.com/vibewarden/vibewarden/internal/domain/audit"
+	"github.com/vibewarden/vibewarden/internal/ports"
 )
+
+var _ ports.AuditEventLogger = (*OTelWriter)(nil)
 
 // OTelWriter implements ports.AuditEventLogger by forwarding AuditEvents as
 // slog records to the provided slog.Handler. When the handler is the OTel

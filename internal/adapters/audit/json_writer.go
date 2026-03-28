@@ -10,7 +10,10 @@ import (
 	"os"
 
 	"github.com/vibewarden/vibewarden/internal/domain/audit"
+	"github.com/vibewarden/vibewarden/internal/ports"
 )
+
+var _ ports.AuditEventLogger = (*JSONWriter)(nil)
 
 // jsonRecord is the wire format written by JSONWriter.
 // All fields use JSON snake_case to match the VibeWarden v1 event schema style.

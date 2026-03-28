@@ -8,6 +8,8 @@ import (
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
 
+var _ ports.AuditEventLogger = (*MultiWriter)(nil)
+
 // MultiWriter implements ports.AuditEventLogger by fanning out every
 // AuditEvent to a list of underlying loggers. All loggers receive every event.
 // If one or more loggers return an error, MultiWriter joins all errors and
