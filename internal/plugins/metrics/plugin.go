@@ -92,6 +92,7 @@ func (p *Plugin) Init(ctx context.Context) error {
 		slog.Bool("prometheus_enabled", p.otelProvider.PrometheusEnabled()),
 		slog.Bool("otlp_enabled", p.otelProvider.OTLPEnabled()),
 		slog.Bool("logs_otlp_enabled", p.cfg.LogsOTLPEnabled),
+		slog.Bool("tracing_enabled", p.otelProvider.TracingEnabled()),
 	)
 	return nil
 }
@@ -192,8 +193,20 @@ func (p *Plugin) ContributeCaddyRoutes() []ports.CaddyRoute {
 }
 
 // ContributeCaddyHandlers returns nil.
-// The metrics plugin does not add catch-all handlers; it uses a named route.
+// The metrics plugin does not add catch-all handlers to the Caddy config directly.
+// Tracing is wired into the handler chain via the Tracer() accessor, which callers
+// use to construct the TracingMiddleware themselves.
 func (p *Plugin) ContributeCaddyHandlers() []ports.CaddyHandler { return nil }
+
+// Tracer returns a ports.Tracer if tracing is enabled and the provider is initialized.
+// Returns nil if the plugin is disabled, tracing is not configured, or Init has not
+// been called. Callers should check for nil before using.
+func (p *Plugin) Tracer() ports.Tracer {
+	if p.otelProvider == nil {
+		return nil
+	}
+	return p.otelProvider.Tracer()
+}
 
 // InternalAddr returns the host:port of the internal metrics HTTP server.
 // The address is only valid after a successful Start with Prometheus enabled.
@@ -234,6 +247,9 @@ func (p *Plugin) buildTelemetryConfig() (ports.TelemetryConfig, error) {
 			Endpoint: p.cfg.OTLPEndpoint,
 			Headers:  p.cfg.OTLPHeaders,
 			Protocol: p.cfg.OTLPProtocol,
+		},
+		Traces: ports.TraceExportConfig{
+			Enabled: p.cfg.TracesEnabled,
 		},
 	}
 
