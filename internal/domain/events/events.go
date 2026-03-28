@@ -111,6 +111,14 @@ const (
 	// a failed upstream request. One event is emitted per retry attempt; the
 	// initial request does not produce a retry event.
 	EventTypeUpstreamRetry = "upstream.retry"
+
+	// EventTypeAPIKeySuccess is emitted when a request is authenticated
+	// successfully via an API key.
+	EventTypeAPIKeySuccess = "auth.api_key.success"
+
+	// EventTypeAPIKeyFailed is emitted when a request is rejected because the
+	// presented API key is missing, invalid, or belongs to an inactive key.
+	EventTypeAPIKeyFailed = "auth.api_key.failed"
 )
 
 // Event is the base structured log event.
