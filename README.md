@@ -275,6 +275,8 @@ internal/
 migrations/              # Database migrations
 ```
 
+Architectural decisions are documented in [`docs/decisions.md`](docs/decisions.md).
+
 ## License
 
 Apache 2.0 — see [LICENSE](LICENSE).

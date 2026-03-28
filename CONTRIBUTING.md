@@ -78,6 +78,8 @@ internal/
   config/       Configuration loading and validation.
 ```
 
+Architectural decisions are documented in [`docs/decisions.md`](docs/decisions.md).
+
 **Dependency rule**: inner layers never import outer layers.
 
 ```

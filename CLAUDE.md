@@ -104,7 +104,8 @@ internal/
 migrations/           # golang-migrate SQL files
 .claude/
   agents/             # subagent definitions
-  decisions.md        # living architectural decisions log
+docs/
+  decisions.md        # living architectural decisions log (ADRs)
 ```
 
 ---
@@ -148,7 +149,7 @@ The standard flow for any GitHub issue:
 PM Agent → Architect Agent → Dev Agent → Reviewer Agent → (your PR review) → repeat until merged
 ```
 
-Status values used in `.claude/decisions.md` and issue comments:
+Status values used in `docs/decisions.md` and issue comments:
 - `READY_FOR_ARCH` — PM done, architect should pick up
 - `READY_FOR_DEV` — Architect done, dev should pick up
 - `READY_FOR_REVIEW` — Dev done, reviewer should pick up
