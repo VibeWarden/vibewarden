@@ -39,7 +39,7 @@ func (c *countingChecker) CheckDependency(_ context.Context) ports.DependencySta
 }
 
 func TestHealthHandler_NoDependencies_ReturnsOK(t *testing.T) {
-	handler := HealthHandler("v1.0.0")
+	handler := HealthHandler("v1.0.0", nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/_vibewarden/health", nil)
 	w := httptest.NewRecorder()
@@ -66,7 +66,7 @@ func TestHealthHandler_AllDepsHealthy_ReturnsOK(t *testing.T) {
 		name:   "kratos",
 		status: ports.DependencyStatus{Status: "healthy", LatencyMS: 5},
 	}
-	handler := HealthHandler("dev", checker)
+	handler := HealthHandler("dev", nil, checker)
 
 	req := httptest.NewRequest(http.MethodGet, "/_vibewarden/health", nil)
 	w := httptest.NewRecorder()
@@ -99,7 +99,7 @@ func TestHealthHandler_UnhealthyDep_ReturnsDegraded(t *testing.T) {
 			Error:  "connection refused",
 		},
 	}
-	handler := HealthHandler("dev", checker)
+	handler := HealthHandler("dev", nil, checker)
 
 	req := httptest.NewRequest(http.MethodGet, "/_vibewarden/health", nil)
 	w := httptest.NewRecorder()
@@ -158,7 +158,7 @@ func TestHealthHandler_MixedDeps_ReturnsDegraded(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			handler := HealthHandler("dev", tt.checkers...)
+			handler := HealthHandler("dev", nil, tt.checkers...)
 
 			req := httptest.NewRequest(http.MethodGet, "/_vibewarden/health", nil)
 			w := httptest.NewRecorder()
@@ -184,7 +184,7 @@ func TestHealthHandler_CachesResults(t *testing.T) {
 	// Use a very short TTL is hard to control in a test, so we rely on the
 	// real cache TTL (5s) and verify that two back-to-back requests only call
 	// CheckDependency once.
-	handler := HealthHandler("dev", checker)
+	handler := HealthHandler("dev", nil, checker)
 
 	for i := 0; i < 5; i++ {
 		req := httptest.NewRequest(http.MethodGet, "/_vibewarden/health", nil)
@@ -221,7 +221,7 @@ func TestHealthHandler_CacheExpires(t *testing.T) {
 
 func TestHealthHandler_VersionInResponse(t *testing.T) {
 	const wantVersion = "v2.3.4"
-	handler := HealthHandler(wantVersion)
+	handler := HealthHandler(wantVersion, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/_vibewarden/health", nil)
 	w := httptest.NewRecorder()
@@ -241,7 +241,7 @@ func TestHealthMiddleware_WithDependencyCheckers(t *testing.T) {
 		name:   "kratos",
 		status: ports.DependencyStatus{Status: "unhealthy", Error: "connection refused"},
 	}
-	mw := HealthMiddleware("v1.0.0", checker)
+	mw := HealthMiddleware("v1.0.0", nil, checker)
 
 	nextCalled := false
 	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
@@ -279,7 +279,7 @@ func TestHealthHandler_DependencyErrorFieldOmittedWhenHealthy(t *testing.T) {
 		name:   "kratos",
 		status: ports.DependencyStatus{Status: "healthy", LatencyMS: 3},
 	}
-	handler := HealthHandler("dev", checker)
+	handler := HealthHandler("dev", nil, checker)
 
 	req := httptest.NewRequest(http.MethodGet, "/_vibewarden/health", nil)
 	w := httptest.NewRecorder()

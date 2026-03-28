@@ -18,6 +18,19 @@ const depCacheTTL = 5 * time.Second
 // depProbeTimeout is the per-dependency probe timeout.
 const depProbeTimeout = 3 * time.Second
 
+// ComponentStatus holds the per-component health strings included in the
+// health response under the "components" key.
+type ComponentStatus struct {
+	// Sidecar is the health of the VibeWarden sidecar itself.
+	// It is always "ok" when the sidecar is able to serve this response.
+	Sidecar string `json:"sidecar"`
+
+	// Upstream is the health of the upstream application as reported by the
+	// background health checker. Possible values: "healthy", "unhealthy",
+	// "unknown". Omitted when no upstream health checker is configured.
+	Upstream string `json:"upstream,omitempty"`
+}
+
 // HealthResponse is the JSON response from the health endpoint.
 type HealthResponse struct {
 	// Status is the overall health status: "ok", "degraded", or "unhealthy".
@@ -25,6 +38,9 @@ type HealthResponse struct {
 
 	// Version is the running VibeWarden binary version.
 	Version string `json:"version"`
+
+	// Components contains per-component health status.
+	Components ComponentStatus `json:"components"`
 
 	// Dependencies maps dependency name to its current health status.
 	// Only present when the health handler was constructed with checkers.
@@ -78,21 +94,41 @@ func (c *depStatusCache) set(name string, status ports.DependencyStatus) {
 // 5-second cache to avoid hammering dependencies on every request) and the
 // results are included in the JSON response.
 //
-// The overall "status" field is derived from dependency results:
-//   - "ok"       — all dependencies healthy (or no checkers configured)
-//   - "degraded" — one or more dependencies unhealthy; sidecar is still serving
-func HealthHandler(version string, checkers ...ports.DependencyChecker) http.HandlerFunc {
+// When an upstream health checker is provided its most-recently-observed
+// status is included in the response under components.upstream.
+//
+// The overall "status" field is derived from component and dependency results:
+//   - "ok"       — all components and dependencies healthy (or none configured)
+//   - "degraded" — one or more dependencies or the upstream unhealthy; sidecar
+//     is still serving traffic (HTTP 200)
+//   - "unhealthy" — sidecar itself has critical issues (HTTP 503)
+//
+// HTTP status codes: 200 for "ok" and "degraded", 503 for "unhealthy".
+func HealthHandler(version string, upstreamChecker ports.UpstreamHealthChecker, checkers ...ports.DependencyChecker) http.HandlerFunc {
 	cache := newDepStatusCache(depCacheTTL)
 
 	return func(w http.ResponseWriter, r *http.Request) {
 		resp := HealthResponse{
 			Status:  string(ports.HealthSummaryOK),
 			Version: version,
+			Components: ComponentStatus{
+				Sidecar: "ok",
+			},
+		}
+
+		// Populate upstream component status from the background checker.
+		allComponentsHealthy := true
+		if upstreamChecker != nil {
+			upstreamStatus := upstreamChecker.CurrentStatus().String()
+			resp.Components.Upstream = upstreamStatus
+			if upstreamStatus != "healthy" {
+				allComponentsHealthy = false
+			}
 		}
 
 		if len(checkers) > 0 {
 			deps := make(map[string]ports.DependencyStatus, len(checkers))
-			allHealthy := true
+			allDepsHealthy := true
 
 			for _, checker := range checkers {
 				name := checker.DependencyName()
@@ -109,18 +145,27 @@ func HealthHandler(version string, checkers ...ports.DependencyChecker) http.Han
 
 				deps[name] = status
 				if status.Status != "healthy" {
-					allHealthy = false
+					allDepsHealthy = false
 				}
 			}
 
 			resp.Dependencies = deps
-			if !allHealthy {
-				resp.Status = string(ports.HealthSummaryDegraded)
+			if !allDepsHealthy {
+				allComponentsHealthy = false
 			}
 		}
 
+		if !allComponentsHealthy {
+			resp.Status = string(ports.HealthSummaryDegraded)
+		}
+
+		httpStatus := http.StatusOK
+		if resp.Status == string(ports.HealthSummaryUnhealthy) {
+			httpStatus = http.StatusServiceUnavailable
+		}
+
 		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
+		w.WriteHeader(httpStatus)
 
 		if err := json.NewEncoder(w).Encode(resp); err != nil {
 			// Best-effort: headers already sent, cannot write error response.
@@ -131,10 +176,12 @@ func HealthHandler(version string, checkers ...ports.DependencyChecker) http.Han
 
 // HealthMiddleware intercepts requests to /_vibewarden/health and serves
 // the health response. All other requests pass through to the next handler.
+//
+// upstreamChecker may be nil when upstream health monitoring is not configured.
 // When dependency checkers are provided they are forwarded to HealthHandler
 // for live dependency status reporting.
-func HealthMiddleware(version string, checkers ...ports.DependencyChecker) func(next http.Handler) http.Handler {
-	healthHandler := HealthHandler(version, checkers...)
+func HealthMiddleware(version string, upstreamChecker ports.UpstreamHealthChecker, checkers ...ports.DependencyChecker) func(next http.Handler) http.Handler {
+	healthHandler := HealthHandler(version, upstreamChecker, checkers...)
 
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
