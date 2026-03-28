@@ -682,3 +682,259 @@ func TestGenerate_AppService_UpstreamHost(t *testing.T) {
 		})
 	}
 }
+
+// secretsConfig returns a Config with the secrets section configured as requested.
+func secretsConfig(enabled bool, headers []config.SecretsHeaderInjection, env []config.SecretsEnvInjection) *config.Config {
+	return &config.Config{
+		Server:   config.ServerConfig{Host: "127.0.0.1", Port: 8080},
+		Upstream: config.UpstreamConfig{Host: "127.0.0.1", Port: 3000},
+		Secrets: config.SecretsConfig{
+			Enabled: enabled,
+			OpenBao: config.SecretsOpenBaoConfig{
+				MountPath: "secret",
+			},
+			Inject: config.SecretsInjectConfig{
+				Headers: headers,
+				Env:     env,
+			},
+		},
+	}
+}
+
+func TestGenerate_OpenBaoService_SecretEnabled(t *testing.T) {
+	cfg := secretsConfig(true, nil, nil)
+	compose := renderCompose(t, cfg)
+
+	if !bytes.Contains(compose, []byte("openbao:")) {
+		t.Error("expected 'openbao:' service when secrets.enabled is true")
+	}
+	if !bytes.Contains(compose, []byte("quay.io/openbao/openbao:")) {
+		t.Error("expected openbao image reference")
+	}
+	if !bytes.Contains(compose, []byte("BAO_DEV_ROOT_TOKEN_ID:")) {
+		t.Error("expected BAO_DEV_ROOT_TOKEN_ID env var")
+	}
+	if !bytes.Contains(compose, []byte("VIBEWARDEN_SECRETS_OPENBAO_ADDRESS=http://openbao:8200")) {
+		t.Error("expected VIBEWARDEN_SECRETS_OPENBAO_ADDRESS env var in vibewarden service")
+	}
+	if !bytes.Contains(compose, []byte("VIBEWARDEN_SECRETS_OPENBAO_AUTH_TOKEN=")) {
+		t.Error("expected VIBEWARDEN_SECRETS_OPENBAO_AUTH_TOKEN env var in vibewarden service")
+	}
+}
+
+func TestGenerate_OpenBaoService_SecretDisabled(t *testing.T) {
+	cfg := secretsConfig(false, nil, nil)
+	compose := renderCompose(t, cfg)
+
+	if bytes.Contains(compose, []byte("openbao:")) {
+		t.Error("openbao service must not be present when secrets.enabled is false")
+	}
+	if bytes.Contains(compose, []byte("VIBEWARDEN_SECRETS_OPENBAO_ADDRESS")) {
+		t.Error("VIBEWARDEN_SECRETS_OPENBAO_ADDRESS must not be present when secrets.enabled is false")
+	}
+}
+
+func TestGenerate_SeedSecretsService_WithInjectHeaders(t *testing.T) {
+	headers := []config.SecretsHeaderInjection{
+		{SecretPath: "app/api-key", SecretKey: "value", Header: "X-API-Key"},
+	}
+	cfg := secretsConfig(true, headers, nil)
+	compose := renderCompose(t, cfg)
+
+	if !bytes.Contains(compose, []byte("seed-secrets:")) {
+		t.Error("expected 'seed-secrets:' service when secrets.enabled and inject.headers are configured")
+	}
+	if !bytes.Contains(compose, []byte("seed-secrets.sh")) {
+		t.Error("expected seed-secrets.sh volume mount in seed-secrets service")
+	}
+	if !bytes.Contains(compose, []byte("service_completed_successfully")) {
+		t.Error("expected vibewarden depends_on seed-secrets with condition service_completed_successfully")
+	}
+}
+
+func TestGenerate_SeedSecretsService_WithInjectEnv(t *testing.T) {
+	env := []config.SecretsEnvInjection{
+		{SecretPath: "app/db-pass", SecretKey: "password", EnvVar: "DB_PASSWORD"},
+	}
+	cfg := secretsConfig(true, nil, env)
+	compose := renderCompose(t, cfg)
+
+	if !bytes.Contains(compose, []byte("seed-secrets:")) {
+		t.Error("expected 'seed-secrets:' service when secrets.enabled and inject.env are configured")
+	}
+	if !bytes.Contains(compose, []byte("service_completed_successfully")) {
+		t.Error("expected vibewarden depends_on seed-secrets with condition service_completed_successfully")
+	}
+}
+
+func TestGenerate_SeedSecretsService_NoInject_NoSeedContainer(t *testing.T) {
+	cfg := secretsConfig(true, nil, nil)
+	compose := renderCompose(t, cfg)
+
+	if bytes.Contains(compose, []byte("seed-secrets:")) {
+		t.Error("seed-secrets service must not be present when inject is empty")
+	}
+	// openbao should be directly depended upon instead
+	if !bytes.Contains(compose, []byte("openbao:\n        condition: service_healthy")) {
+		t.Errorf("expected vibewarden depends_on openbao with service_healthy when no inject entries\ncompose:\n%s", compose)
+	}
+}
+
+func TestGenerate_RedisService_StoreRedis(t *testing.T) {
+	cfg := &config.Config{
+		Server:    config.ServerConfig{Host: "127.0.0.1", Port: 8080},
+		Upstream:  config.UpstreamConfig{Host: "127.0.0.1", Port: 3000},
+		RateLimit: config.RateLimitConfig{Store: "redis"},
+	}
+	compose := renderCompose(t, cfg)
+
+	if !bytes.Contains(compose, []byte("redis:")) {
+		t.Error("expected 'redis:' service when rate_limit.store is redis")
+	}
+	if !bytes.Contains(compose, []byte("redis:7-alpine")) {
+		t.Error("expected redis:7-alpine image")
+	}
+	if !bytes.Contains(compose, []byte("redis-data:")) {
+		t.Error("expected redis-data volume")
+	}
+	if !bytes.Contains(compose, []byte("VIBEWARDEN_RATE_LIMIT_REDIS_ADDRESS=redis:6379")) {
+		t.Error("expected VIBEWARDEN_RATE_LIMIT_REDIS_ADDRESS env var in vibewarden service")
+	}
+}
+
+func TestGenerate_RedisService_StoreMemory(t *testing.T) {
+	cfg := &config.Config{
+		Server:    config.ServerConfig{Host: "127.0.0.1", Port: 8080},
+		Upstream:  config.UpstreamConfig{Host: "127.0.0.1", Port: 3000},
+		RateLimit: config.RateLimitConfig{Store: "memory"},
+	}
+	compose := renderCompose(t, cfg)
+
+	if bytes.Contains(compose, []byte("\n  redis:")) {
+		t.Error("redis service must not be present when rate_limit.store is memory")
+	}
+	if bytes.Contains(compose, []byte("VIBEWARDEN_RATE_LIMIT_REDIS_ADDRESS")) {
+		t.Error("VIBEWARDEN_RATE_LIMIT_REDIS_ADDRESS must not be present when store is memory")
+	}
+}
+
+func TestGenerate_RedisService_DependsOn(t *testing.T) {
+	cfg := &config.Config{
+		Server:    config.ServerConfig{Host: "127.0.0.1", Port: 8080},
+		Upstream:  config.UpstreamConfig{Host: "127.0.0.1", Port: 3000},
+		RateLimit: config.RateLimitConfig{Store: "redis"},
+	}
+	compose := renderCompose(t, cfg)
+
+	if !bytes.Contains(compose, []byte("redis:\n        condition: service_healthy")) {
+		t.Errorf("expected vibewarden depends_on redis with service_healthy\ncompose:\n%s", compose)
+	}
+}
+
+func TestGenerate_RedisVolume_InVolumesSection(t *testing.T) {
+	cfg := &config.Config{
+		Server:    config.ServerConfig{Host: "127.0.0.1", Port: 8080},
+		Upstream:  config.UpstreamConfig{Host: "127.0.0.1", Port: 3000},
+		RateLimit: config.RateLimitConfig{Store: "redis"},
+	}
+	compose := renderCompose(t, cfg)
+
+	if !bytes.Contains(compose, []byte("volumes:")) {
+		t.Error("expected volumes section when redis is enabled")
+	}
+	if !bytes.Contains(compose, []byte("  redis-data:")) {
+		t.Error("expected redis-data volume in volumes section")
+	}
+}
+
+func TestGenerate_SeedSecretsFile_GeneratedWhenNeeded(t *testing.T) {
+	headers := []config.SecretsHeaderInjection{
+		{SecretPath: "app/api-key", SecretKey: "value", Header: "X-API-Key"},
+	}
+	cfg := secretsConfig(true, headers, nil)
+
+	outputDir := t.TempDir()
+	svc := generate.NewService(realRenderer())
+	if err := svc.Generate(context.Background(), cfg, outputDir); err != nil {
+		t.Fatalf("Generate() unexpected error: %v", err)
+	}
+
+	seedPath := filepath.Join(outputDir, "seed-secrets.sh")
+	data, err := os.ReadFile(seedPath)
+	if err != nil {
+		t.Fatalf("expected seed-secrets.sh to exist: %v", err)
+	}
+	if !bytes.Contains(data, []byte("bao kv put")) {
+		t.Errorf("seed-secrets.sh does not contain 'bao kv put': %s", data)
+	}
+	if !bytes.Contains(data, []byte("app/api-key")) {
+		t.Errorf("seed-secrets.sh does not contain secret path 'app/api-key': %s", data)
+	}
+}
+
+func TestGenerate_SeedSecretsFile_NotGeneratedWhenNotNeeded(t *testing.T) {
+	cfg := secretsConfig(true, nil, nil)
+
+	outputDir := t.TempDir()
+	svc := generate.NewService(realRenderer())
+	if err := svc.Generate(context.Background(), cfg, outputDir); err != nil {
+		t.Fatalf("Generate() unexpected error: %v", err)
+	}
+
+	seedPath := filepath.Join(outputDir, "seed-secrets.sh")
+	if _, err := os.Stat(seedPath); err == nil {
+		t.Error("seed-secrets.sh must not be generated when no inject entries are configured")
+	}
+}
+
+func TestGenerate_SeedSecretsFile_NotGeneratedWhenSecretsDisabled(t *testing.T) {
+	headers := []config.SecretsHeaderInjection{
+		{SecretPath: "app/api-key", SecretKey: "value", Header: "X-API-Key"},
+	}
+	cfg := secretsConfig(false, headers, nil)
+
+	outputDir := t.TempDir()
+	svc := generate.NewService(realRenderer())
+	if err := svc.Generate(context.Background(), cfg, outputDir); err != nil {
+		t.Fatalf("Generate() unexpected error: %v", err)
+	}
+
+	seedPath := filepath.Join(outputDir, "seed-secrets.sh")
+	if _, err := os.Stat(seedPath); err == nil {
+		t.Error("seed-secrets.sh must not be generated when secrets.enabled is false")
+	}
+}
+
+func TestGenerate_SeedSecretsFile_ContainsBothHeadersAndEnv(t *testing.T) {
+	headers := []config.SecretsHeaderInjection{
+		{SecretPath: "app/api-key", SecretKey: "api_key", Header: "X-API-Key"},
+	}
+	env := []config.SecretsEnvInjection{
+		{SecretPath: "app/db-pass", SecretKey: "password", EnvVar: "DB_PASSWORD"},
+	}
+	cfg := secretsConfig(true, headers, env)
+
+	outputDir := t.TempDir()
+	svc := generate.NewService(realRenderer())
+	if err := svc.Generate(context.Background(), cfg, outputDir); err != nil {
+		t.Fatalf("Generate() unexpected error: %v", err)
+	}
+
+	seedPath := filepath.Join(outputDir, "seed-secrets.sh")
+	data, err := os.ReadFile(seedPath)
+	if err != nil {
+		t.Fatalf("reading seed-secrets.sh: %v", err)
+	}
+	if !bytes.Contains(data, []byte("app/api-key")) {
+		t.Errorf("seed-secrets.sh missing header secret path: %s", data)
+	}
+	if !bytes.Contains(data, []byte("X-API-Key")) {
+		t.Errorf("seed-secrets.sh missing header name: %s", data)
+	}
+	if !bytes.Contains(data, []byte("app/db-pass")) {
+		t.Errorf("seed-secrets.sh missing env secret path: %s", data)
+	}
+	if !bytes.Contains(data, []byte("DB_PASSWORD")) {
+		t.Errorf("seed-secrets.sh missing env var name: %s", data)
+	}
+}

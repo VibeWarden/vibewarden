@@ -17,6 +17,9 @@ import (
 	"os"
 	"path/filepath"
 	"text/template"
+
+	"github.com/vibewarden/vibewarden/internal/app/generate"
+	"github.com/vibewarden/vibewarden/internal/config"
 )
 
 // File permission constants.
@@ -46,7 +49,13 @@ func (r *Renderer) Render(templateName string, data any) ([]byte, error) {
 		return nil, fmt.Errorf("reading template %q: %w", templateName, err)
 	}
 
-	tmpl, err := template.New(templateName).Parse(string(src))
+	funcMap := template.FuncMap{
+		"needsOpenBao":     func(cfg *config.Config) bool { return generate.NeedsOpenBao(cfg) },
+		"needsRedis":       func(cfg *config.Config) bool { return generate.NeedsRedis(cfg) },
+		"needsSeedSecrets": func(cfg *config.Config) bool { return generate.NeedsSeedSecrets(cfg) },
+	}
+
+	tmpl, err := template.New(templateName).Funcs(funcMap).Parse(string(src))
 	if err != nil {
 		return nil, fmt.Errorf("parsing template %q: %w", templateName, err)
 	}
