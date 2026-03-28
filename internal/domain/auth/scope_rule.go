@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"fmt"
 	"path"
 )
 
@@ -82,7 +83,7 @@ func MatchingScopeRule(rules []ScopeRule, method, requestPath string) (ScopeRule
 func ValidateScopeRules(rules []ScopeRule) error {
 	for _, r := range rules {
 		if _, err := path.Match(r.Path, ""); err != nil {
-			return err
+			return fmt.Errorf("invalid scope rule path pattern %q: %w", r.Path, err)
 		}
 	}
 	return nil
