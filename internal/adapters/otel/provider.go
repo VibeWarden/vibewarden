@@ -19,6 +19,7 @@ package otel
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"sync"
 	"time"
@@ -198,8 +199,7 @@ func (p *Provider) Shutdown(ctx context.Context) error {
 	// Shut down TracerProvider first (flushes pending spans).
 	if p.tracerProvider != nil {
 		if err := p.tracerProvider.Shutdown(ctx); err != nil {
-			// Log and continue — best effort.
-			_ = err
+			slog.ErrorContext(ctx, "shutting down tracer provider", slog.Any("error", err))
 		}
 	}
 
