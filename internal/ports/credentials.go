@@ -1,3 +1,4 @@
+// Package ports defines the interfaces (ports) for VibeWarden's hexagonal architecture.
 package ports
 
 import (
