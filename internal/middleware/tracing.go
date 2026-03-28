@@ -32,9 +32,26 @@ func (rw *tracingResponseWriter) Write(b []byte) (int, error) {
 	return rw.ResponseWriter.Write(b)
 }
 
+// httpHeaderCarrier adapts http.Header to implement ports.TextMapCarrier.
+type httpHeaderCarrier http.Header
+
+func (c httpHeaderCarrier) Get(key string) string { return http.Header(c).Get(key) }
+func (c httpHeaderCarrier) Set(key, value string) { http.Header(c).Set(key, value) }
+func (c httpHeaderCarrier) Keys() []string {
+	keys := make([]string, 0, len(c))
+	for k := range c {
+		keys = append(keys, k)
+	}
+	return keys
+}
+
 // TracingMiddleware returns HTTP middleware that creates an OTel span for each request.
 // It must be the outermost middleware (first in, last out) to capture the full
 // request lifecycle including auth, rate limiting, and proxy latency.
+//
+// When a non-nil propagator is provided, it extracts the W3C traceparent header
+// from the incoming request, making the new span a child of any upstream trace.
+// Pass nil for propagator to disable context extraction (no-op, root span only).
 //
 // The middleware sets standard HTTP span attributes:
 //   - http.request.method
@@ -49,6 +66,7 @@ func (rw *tracingResponseWriter) Write(b []byte) (int, error) {
 func TracingMiddleware(
 	tracer ports.Tracer,
 	normalizePathFn func(string) string,
+	propagator ports.TextMapPropagator,
 ) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -58,8 +76,15 @@ func TracingMiddleware(
 				return
 			}
 
+			// Extract incoming trace context (W3C traceparent) when a propagator
+			// is configured. This makes the new span a child of any upstream trace.
+			ctx := r.Context()
+			if propagator != nil {
+				ctx = propagator.Extract(ctx, httpHeaderCarrier(r.Header))
+			}
+
 			// Create span with server kind.
-			ctx, span := tracer.Start(r.Context(), "HTTP "+r.Method,
+			ctx, span := tracer.Start(ctx, "HTTP "+r.Method,
 				ports.WithSpanKind(ports.SpanKindServer))
 			defer span.End()
 

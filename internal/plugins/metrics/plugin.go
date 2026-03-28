@@ -208,6 +208,16 @@ func (p *Plugin) Tracer() ports.Tracer {
 	return p.otelProvider.Tracer()
 }
 
+// Propagator returns a ports.TextMapPropagator for W3C traceparent extraction and
+// injection. Returns nil if the plugin is disabled, tracing is not configured, or
+// Init has not been called. Callers should check for nil before using.
+func (p *Plugin) Propagator() ports.TextMapPropagator {
+	if p.otelProvider == nil {
+		return nil
+	}
+	return p.otelProvider.Propagator()
+}
+
 // InternalAddr returns the host:port of the internal metrics HTTP server.
 // The address is only valid after a successful Start with Prometheus enabled.
 func (p *Plugin) InternalAddr() string { return p.internalAddr }

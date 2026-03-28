@@ -206,3 +206,109 @@ func TestMockSpan_RecordsState(t *testing.T) {
 		t.Errorf("Errors = %v, want 1 error", span.Errors)
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Propagator
+// ---------------------------------------------------------------------------
+
+func TestProvider_PropagatorBeforeInit_ReturnsNil(t *testing.T) {
+	p := oteladapter.NewProvider()
+	if prop := p.Propagator(); prop != nil {
+		t.Error("Propagator() before Init should return nil")
+	}
+}
+
+func TestProvider_PropagatorWithoutTracing_ReturnsNil(t *testing.T) {
+	p := oteladapter.NewProvider()
+	cfg := ports.TelemetryConfig{
+		Prometheus: ports.PrometheusExporterConfig{Enabled: true},
+	}
+	if err := p.Init(context.Background(), "test", "0.0.1", cfg); err != nil {
+		t.Fatalf("Init() failed: %v", err)
+	}
+	t.Cleanup(func() { _ = p.Shutdown(context.Background()) })
+
+	if prop := p.Propagator(); prop != nil {
+		t.Error("Propagator() should return nil when tracing is disabled")
+	}
+}
+
+func TestProvider_PropagatorWithTracing_ReturnsNonNil(t *testing.T) {
+	p, cleanup := newTracerProvider(t)
+	defer cleanup()
+
+	prop := p.Propagator()
+	if prop == nil {
+		t.Fatal("Propagator() should return non-nil when tracing is enabled")
+	}
+}
+
+func TestProvider_Propagator_ImplementsPort(t *testing.T) {
+	p, cleanup := newTracerProvider(t)
+	defer cleanup()
+
+	var _ ports.TextMapPropagator = p.Propagator()
+}
+
+func TestProvider_Propagator_Extract_ReturnsContext(t *testing.T) {
+	p, cleanup := newTracerProvider(t)
+	defer cleanup()
+
+	prop := p.Propagator()
+	carrier := &mapCarrier{m: map[string]string{
+		"traceparent": "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
+	}}
+	ctx := prop.Extract(context.Background(), carrier)
+	if ctx == nil {
+		t.Error("Extract() should return a non-nil context")
+	}
+}
+
+func TestProvider_Propagator_Inject_WritesHeader(t *testing.T) {
+	p, cleanup := newTracerProvider(t)
+	defer cleanup()
+
+	prop := p.Propagator()
+	// First extract to get a valid span context in ctx.
+	carrier := &mapCarrier{m: map[string]string{
+		"traceparent": "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01",
+	}}
+	ctx := prop.Extract(context.Background(), carrier)
+
+	// Inject into a new carrier.
+	out := &mapCarrier{m: map[string]string{}}
+	prop.Inject(ctx, out)
+
+	if tp := out.m["traceparent"]; tp == "" {
+		t.Error("Inject() should write a traceparent header")
+	}
+}
+
+func TestProvider_Propagator_Extract_InvalidTraceparent_NoError(t *testing.T) {
+	p, cleanup := newTracerProvider(t)
+	defer cleanup()
+
+	prop := p.Propagator()
+	// An invalid traceparent should not cause a panic; it simply results in
+	// no parent context being set.
+	carrier := &mapCarrier{m: map[string]string{
+		"traceparent": "not-a-valid-traceparent",
+	}}
+	ctx := prop.Extract(context.Background(), carrier)
+	if ctx == nil {
+		t.Error("Extract() with invalid traceparent should still return a non-nil context")
+	}
+}
+
+// mapCarrier is a simple ports.TextMapCarrier backed by a map, used in tests.
+type mapCarrier struct{ m map[string]string }
+
+func (c *mapCarrier) Get(key string) string { return c.m[key] }
+func (c *mapCarrier) Set(key, value string) { c.m[key] = value }
+func (c *mapCarrier) Keys() []string {
+	keys := make([]string, 0, len(c.m))
+	for k := range c.m {
+		keys = append(keys, k)
+	}
+	return keys
+}

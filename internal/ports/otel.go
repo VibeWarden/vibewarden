@@ -97,6 +97,11 @@ type OTelProvider interface {
 	// Returns nil if tracing is disabled or Init has not been called.
 	Tracer() Tracer
 
+	// Propagator returns a TextMapPropagator that extracts and injects W3C
+	// traceparent headers. Returns nil if tracing is disabled or Init has not
+	// been called.
+	Propagator() TextMapPropagator
+
 	// PrometheusEnabled returns true if the Prometheus exporter is active.
 	PrometheusEnabled() bool
 
@@ -114,6 +119,26 @@ type Tracer interface {
 	// Start creates a span and a context containing the newly-created span.
 	// The span must be ended by calling span.End() when the operation completes.
 	Start(ctx context.Context, spanName string, opts ...SpanStartOption) (context.Context, Span)
+}
+
+// TextMapCarrier is a key-value store used by a TextMapPropagator.
+// It maps to the W3C Trace Context HTTP header model.
+type TextMapCarrier interface {
+	// Get returns the value for the given key. The key is case-insensitive.
+	Get(key string) string
+	// Set stores the key-value pair.
+	Set(key, value string)
+	// Keys lists all keys stored in this carrier.
+	Keys() []string
+}
+
+// TextMapPropagator injects and extracts trace context across process boundaries
+// using a carrier (e.g., HTTP headers). It implements W3C Trace Context propagation.
+type TextMapPropagator interface {
+	// Extract reads trace context from the carrier into the returned context.
+	Extract(ctx context.Context, carrier TextMapCarrier) context.Context
+	// Inject writes trace context from ctx into the carrier.
+	Inject(ctx context.Context, carrier TextMapCarrier)
 }
 
 // Span represents a single operation within a trace.
