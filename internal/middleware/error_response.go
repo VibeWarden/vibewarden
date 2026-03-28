@@ -45,8 +45,9 @@ type ErrorResponse struct {
 
 // WriteErrorResponse writes a JSON error response to w. When the request
 // context contains a valid OTel span context, the trace_id field is
-// populated. Otherwise a short request_id is generated and stored in the
-// request context for subsequent log correlation.
+// populated. Otherwise a short request_id is generated. The generated ID
+// is NOT stored in the context; callers that need persistence across
+// middleware must use ContextWithRequestID explicitly.
 //
 // The function sets Content-Type: application/json and writes the given
 // HTTP status code before encoding the body. Any encoding error is silently
