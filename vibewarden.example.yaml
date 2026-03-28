@@ -234,6 +234,11 @@ admin:
   # Bearer token for authentication (use env var VIBEWARDEN_ADMIN_TOKEN in production)
   token: ""
 
+# DEPRECATED: Use telemetry: section instead.
+# This section remains for backward compatibility. Settings are automatically
+# migrated to telemetry: at startup with a deprecation warning.
+# This section will be removed in a future major version.
+#
 # Prometheus metrics
 # VibeWarden exposes a Prometheus-compatible metrics endpoint at /_vibewarden/metrics.
 # An internal HTTP server is started on a random localhost port; Caddy reverse-proxies
@@ -251,14 +256,70 @@ admin:
 metrics:
   # Enable metrics endpoint at /_vibewarden/metrics (recommended: true)
   enabled: true
-  # Path normalization patterns (colon-param syntax).
-  # Without patterns, all paths are recorded as "other".
+  # Path normalization patterns (moved to telemetry.path_patterns)
+  path_patterns: []
+
+# Telemetry configuration
+# VibeWarden uses OpenTelemetry as its telemetry foundation. This section controls
+# all metrics and log export behavior.
+#
+# Export modes:
+#   - Prometheus-only (default): Metrics scraped at /_vibewarden/metrics
+#   - OTLP-only: Metrics pushed to OTLP endpoint (no local metrics endpoint)
+#   - Dual-export: Both Prometheus scraping and OTLP push active
+#
+# See docs/observability.md for full configuration guide.
+telemetry:
+  # Master switch for telemetry collection (default: true)
+  enabled: true
+
+  # URL path normalization patterns using :param syntax.
   # Configure the routes your app exposes to prevent high-cardinality labels.
   # Example:
   #   path_patterns:
   #     - "/users/:id"
   #     - "/api/v1/items/:item_id/comments/:comment_id"
   path_patterns: []
+
+  # Prometheus pull-based exporter (metrics served at /_vibewarden/metrics)
+  prometheus:
+    # Enable Prometheus exporter (default: true)
+    # When enabled, metrics are available at /_vibewarden/metrics in Prometheus format.
+    enabled: true
+
+  # OTLP push-based exporter (metrics pushed to collector/backend)
+  otlp:
+    # Enable OTLP exporter (default: false)
+    # Requires endpoint to be set.
+    enabled: false
+
+    # OTLP HTTP endpoint URL.
+    # Examples:
+    #   Local collector: http://localhost:4318
+    #   Docker Compose:  http://otel-collector:4318
+    #   Grafana Cloud:   https://otlp-gateway-prod-us-central-0.grafana.net/otlp
+    endpoint: ""
+
+    # HTTP headers for OTLP requests (e.g., authentication).
+    # Example:
+    #   headers:
+    #     Authorization: "Basic ${GRAFANA_OTLP_TOKEN}"
+    headers: {}
+
+    # Export interval — how often metrics are batched and pushed (default: 30s).
+    # Shorter intervals reduce telemetry lag but increase network overhead.
+    interval: "30s"
+
+    # Transport protocol: "http" (supported) or "grpc" (reserved for future).
+    protocol: "http"
+
+  # Structured event log export
+  logs:
+    # Enable OTLP log export (default: false).
+    # When enabled, structured events (AI-readable logs) are exported to the same
+    # OTLP endpoint as metrics. Logs are also written to stdout (unchanged behavior).
+    # Requires telemetry.otlp.endpoint to be configured.
+    otlp: false
 
 # CORS (Cross-Origin Resource Sharing)
 # Injects Access-Control-* headers and handles OPTIONS preflight requests.
