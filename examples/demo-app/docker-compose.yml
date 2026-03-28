@@ -42,6 +42,8 @@ x-vibewarden-base: &vibewarden-base
       condition: service_healthy
     demo-app:
       condition: service_healthy
+    seed-secrets:
+      condition: service_completed_successfully
   networks:
     - demo
 
@@ -139,6 +141,32 @@ services:
       - demo
 
   # --------------------------------------------------------------------------
+  # OpenBao — dev-mode secret vault for the secrets plugin
+  #
+  # Dev mode: in-memory storage, pre-set root token, no TLS.
+  # UI available at: http://localhost:8200  (token: demo-root-token)
+  # --------------------------------------------------------------------------
+  openbao:
+    image: quay.io/openbao/openbao:2.2.0
+    container_name: demo-openbao
+    restart: unless-stopped
+    cap_add:
+      - IPC_LOCK
+    environment:
+      BAO_DEV_ROOT_TOKEN_ID: demo-root-token
+      BAO_DEV_LISTEN_ADDRESS: "0.0.0.0:8200"
+    ports:
+      - "8200:8200"
+    networks:
+      - demo
+    healthcheck:
+      test: ["CMD-SHELL", "BAO_ADDR=http://127.0.0.1:8200 bao status"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
+  # --------------------------------------------------------------------------
   # Seed — seeds demo identities into Kratos once on first boot, then exits.
   #
   # Creates:
@@ -157,6 +185,30 @@ services:
     command: sh /seed-users.sh
     depends_on:
       kratos:
+        condition: service_healthy
+    networks:
+      - demo
+    restart: "no"
+
+  # --------------------------------------------------------------------------
+  # Seed secrets — populates OpenBao with demo secrets, then exits.
+  #
+  # Creates KV v2 secrets used by the VibeWarden secrets plugin:
+  #   secret/demo/api-key      — example API key injected as a header
+  #   secret/demo/app-config   — example env secrets written to .env file
+  # --------------------------------------------------------------------------
+  seed-secrets:
+    image: quay.io/openbao/openbao:2.2.0
+    container_name: demo-seed-secrets
+    environment:
+      BAO_ADDR: http://openbao:8200
+      BAO_TOKEN: demo-root-token
+    volumes:
+      - ./scripts/seed-secrets.sh:/seed-secrets.sh:ro
+    entrypoint: sh
+    command: /seed-secrets.sh
+    depends_on:
+      openbao:
         condition: service_healthy
     networks:
       - demo
@@ -221,6 +273,10 @@ services:
       VIBEWARDEN_TLS_DOMAIN:                           ${VIBEWARDEN_TLS_DOMAIN:-}
       VIBEWARDEN_RATE_LIMIT_PER_IP_REQUESTS_PER_SECOND: ${VIBEWARDEN_RATE_LIMIT_PER_IP_REQUESTS_PER_SECOND:-}
       VIBEWARDEN_RATE_LIMIT_PER_IP_BURST:              ${VIBEWARDEN_RATE_LIMIT_PER_IP_BURST:-}
+      # Secrets plugin — connects to OpenBao dev instance
+      VIBEWARDEN_SECRETS_ENABLED:                       "true"
+      VIBEWARDEN_SECRETS_OPENBAO_ADDRESS:               http://openbao:8200
+      VIBEWARDEN_SECRETS_OPENBAO_AUTH_TOKEN:             demo-root-token
     healthcheck:
       test: ["CMD-SHELL", "if [ \"$VIBEWARDEN_TLS_ENABLED\" = 'true' ]; then wget -q --no-check-certificate --spider https://localhost:${VIBEWARDEN_HTTP_PORT:-8080}/_vibewarden/health; else wget -q --spider http://localhost:${VIBEWARDEN_HTTP_PORT:-8080}/_vibewarden/health; fi"]
       interval: 10s
