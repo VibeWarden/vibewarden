@@ -8,6 +8,10 @@ import (
 	"testing"
 	"time"
 
+	"go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
+	oteltrace "go.opentelemetry.io/otel/trace"
+
 	"github.com/vibewarden/vibewarden/internal/adapters/log"
 	"github.com/vibewarden/vibewarden/internal/domain/events"
 )
@@ -455,5 +459,98 @@ func TestSlogEventLogger_NoAdditionalHandlers(t *testing.T) {
 	}
 	if buf.Len() == 0 {
 		t.Error("JSON writer produced no output")
+	}
+}
+
+// traceEvent returns a minimal Event suitable for trace context tests.
+func traceEvent() events.Event {
+	return events.Event{
+		SchemaVersion: events.SchemaVersion,
+		EventType:     events.EventTypeAuthSuccess,
+		Timestamp:     time.Now(),
+		AISummary:     "Test event for trace context",
+		Payload:       map[string]any{},
+	}
+}
+
+// logAndDecodeWithCtx writes a single event using the given context and decodes
+// the JSON output. It fails the test if the output is not valid JSON.
+func logAndDecodeWithCtx(t *testing.T, ctx context.Context, event events.Event) map[string]any {
+	t.Helper()
+	var buf bytes.Buffer
+	logger := log.NewSlogEventLogger(&buf)
+	if err := logger.Log(ctx, event); err != nil {
+		t.Fatalf("Log() returned unexpected error: %v", err)
+	}
+	out := buf.Bytes()
+	if len(out) == 0 {
+		t.Fatal("Log() produced no output")
+	}
+	var result map[string]any
+	if err := json.Unmarshal(out, &result); err != nil {
+		t.Fatalf("output is not valid JSON: %v\noutput: %s", err, out)
+	}
+	return result
+}
+
+// TestSlogEventLogger_Log_WithTraceContext verifies that when the context carries
+// a valid OTel span, the emitted JSON includes trace_id (32 hex chars) and
+// span_id (16 hex chars) as top-level fields.
+func TestSlogEventLogger_Log_WithTraceContext(t *testing.T) {
+	// Use an in-memory exporter so the span is recorded without a live backend.
+	exp := tracetest.NewInMemoryExporter()
+	tp := trace.NewTracerProvider(trace.WithSyncer(exp))
+	defer func() { _ = tp.Shutdown(context.Background()) }()
+
+	ctx, span := tp.Tracer("test").Start(context.Background(), "test-span")
+	defer span.End()
+
+	result := logAndDecodeWithCtx(t, ctx, traceEvent())
+
+	traceID, ok := result["trace_id"].(string)
+	if !ok || len(traceID) != 32 {
+		t.Errorf("trace_id = %q, want 32-char hex string", traceID)
+	}
+
+	spanID, ok := result["span_id"].(string)
+	if !ok || len(spanID) != 16 {
+		t.Errorf("span_id = %q, want 16-char hex string", spanID)
+	}
+}
+
+// TestSlogEventLogger_Log_WithoutTraceContext verifies that when the context has
+// no span, trace_id and span_id are completely absent from the emitted JSON
+// (not present as empty strings).
+func TestSlogEventLogger_Log_WithoutTraceContext(t *testing.T) {
+	result := logAndDecodeWithCtx(t, context.Background(), traceEvent())
+
+	if _, ok := result["trace_id"]; ok {
+		t.Error("trace_id should be absent when no span context, but it was present")
+	}
+	if _, ok := result["span_id"]; ok {
+		t.Error("span_id should be absent when no span context, but it was present")
+	}
+}
+
+// TestSlogEventLogger_Log_WithInvalidSpanContext verifies that a context carrying
+// an invalid span context (zero trace ID / zero span ID) produces no trace fields.
+func TestSlogEventLogger_Log_WithInvalidSpanContext(t *testing.T) {
+	// Construct a span context where IsValid() returns false.
+	// A zero-value SpanContext has an all-zero TraceID and SpanID, which IsValid()
+	// treats as invalid.
+	invalidSC := oteltrace.NewSpanContext(oteltrace.SpanContextConfig{
+		TraceID:    oteltrace.TraceID{},
+		SpanID:     oteltrace.SpanID{},
+		TraceFlags: oteltrace.FlagsSampled,
+	})
+	ctx := oteltrace.ContextWithSpanContext(context.Background(), invalidSC)
+
+	result := logAndDecodeWithCtx(t, ctx, traceEvent())
+
+	if _, ok := result["trace_id"]; ok {
+		t.Error("trace_id should be absent for invalid span context, but it was present")
+	}
+	if _, ok := result["span_id"]; ok {
+		t.Error("span_id should be absent for invalid span context, but it was present")
 	}
 }

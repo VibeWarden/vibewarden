@@ -11,6 +11,8 @@ import (
 	"log/slog"
 	"os"
 
+	"go.opentelemetry.io/otel/trace"
+
 	"github.com/vibewarden/vibewarden/internal/domain/events"
 )
 
@@ -74,8 +76,15 @@ func NewSlogEventLogger(w io.Writer, additionalHandlers ...slog.Handler) *SlogEv
 //	  "event_type":     "auth.success",
 //	  "timestamp":      "2026-03-26T12:00:00Z",
 //	  "ai_summary":     "...",
-//	  "payload": { ... }
+//	  "payload":        { ... },
+//	  "trace_id":       "4bf92f3577b34da6a3ce929d0e0e4736",  // present only when tracing is active
+//	  "span_id":        "00f067aa0ba902b7"                   // present only when tracing is active
 //	}
+//
+// When the context contains a valid OTel span context (injected by TracingMiddleware),
+// trace_id and span_id are appended as top-level fields for request correlation.
+// When tracing is disabled or no span is present, those fields are completely absent
+// (never emitted as empty strings).
 func (l *SlogEventLogger) Log(ctx context.Context, event events.Event) error {
 	// Serialize the payload map to a json.RawMessage so that:
 	//  - An empty payload emits {} rather than being omitted (slog.Group with
@@ -90,15 +99,29 @@ func (l *SlogEventLogger) Log(ctx context.Context, event events.Event) error {
 		return fmt.Errorf("marshalling event payload: %w", err)
 	}
 
-	l.logger.LogAttrs(
-		ctx,
-		slog.LevelInfo,
-		"", // message field is suppressed by ReplaceAttr above
+	attrs := []slog.Attr{
 		slog.String("schema_version", event.SchemaVersion),
 		slog.String("event_type", event.EventType),
 		slog.Time("timestamp", event.Timestamp),
 		slog.String("ai_summary", event.AISummary),
 		slog.Any("payload", json.RawMessage(payloadBytes)),
+	}
+
+	// Extract trace context if the request context carries a valid OTel span.
+	// SpanContextFromContext is a cheap map lookup and returns an invalid
+	// SpanContext when no span has been stored — no allocation occurs.
+	if sc := trace.SpanContextFromContext(ctx); sc.IsValid() {
+		attrs = append(attrs,
+			slog.String("trace_id", sc.TraceID().String()),
+			slog.String("span_id", sc.SpanID().String()),
+		)
+	}
+
+	l.logger.LogAttrs(
+		ctx,
+		slog.LevelInfo,
+		"", // message field is suppressed by ReplaceAttr above
+		attrs...,
 	)
 
 	// slog.JSONHandler does not surface write errors through the API.
