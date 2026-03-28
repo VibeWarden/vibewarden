@@ -296,6 +296,46 @@ type AuthUIConfig struct {
 	RecoveryURL string `mapstructure:"recovery_url"`
 }
 
+// AuthMode selects the active authentication strategy for incoming requests.
+type AuthMode string
+
+const (
+	// AuthModeKratos uses Ory Kratos session-cookie authentication (default).
+	AuthModeKratos AuthMode = "kratos"
+
+	// AuthModeAPIKey uses API key header authentication.
+	AuthModeAPIKey AuthMode = "api-key"
+
+	// AuthModeNone disables authentication entirely. Use only in trusted
+	// environments or when authentication is handled upstream.
+	AuthModeNone AuthMode = "none"
+)
+
+// AuthAPIKeyConfig holds settings specific to the API key authentication mode.
+type AuthAPIKeyConfig struct {
+	// Header is the request header from which the API key is extracted.
+	// Defaults to "X-API-Key" when empty.
+	Header string `mapstructure:"header"`
+
+	// Keys is the list of pre-shared API keys recognized by the validator.
+	// Each entry must supply a name, a SHA-256 hex hash of the plaintext key,
+	// and an optional list of scopes.
+	Keys []APIKeyEntry `mapstructure:"keys"`
+}
+
+// APIKeyEntry represents a single registered API key in the configuration.
+type APIKeyEntry struct {
+	// Name is a human-readable label for the key (e.g. "ci-deploy").
+	Name string `mapstructure:"name"`
+
+	// Hash is the hex-encoded SHA-256 digest of the plaintext key.
+	// Generate with: echo -n "<key>" | sha256sum
+	Hash string `mapstructure:"hash"`
+
+	// Scopes is an optional list of permission scopes granted to this key.
+	Scopes []string `mapstructure:"scopes"`
+}
+
 // AuthConfig holds auth middleware settings.
 // Authentication is enabled automatically when Kratos.PublicURL is non-empty.
 type AuthConfig struct {
@@ -303,6 +343,14 @@ type AuthConfig struct {
 	// When true, all requests must present a valid Kratos session cookie unless
 	// the path matches one of the PublicPaths patterns.
 	Enabled bool `mapstructure:"enabled"`
+
+	// Mode selects the authentication strategy.
+	// Accepted values: "kratos" (default), "api-key", "none".
+	// When empty, "kratos" is assumed for backwards compatibility.
+	Mode AuthMode `mapstructure:"mode"`
+
+	// APIKey holds settings used when Mode is "api-key".
+	APIKey AuthAPIKeyConfig `mapstructure:"api_key"`
 
 	// IdentitySchema selects the identity schema to use.
 	// Accepted values: "email_password" (default), "email_only", "username_password",
