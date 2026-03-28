@@ -24,8 +24,9 @@ func discardLogger() *slog.Logger {
 
 func enabledConfig() metrics.Config {
 	return metrics.Config{
-		Enabled:      true,
-		PathPatterns: []string{"/users/:id", "/api/v1/*"},
+		Enabled:           true,
+		PathPatterns:      []string{"/users/:id", "/api/v1/*"},
+		PrometheusEnabled: true,
 	}
 }
 
@@ -67,7 +68,7 @@ func TestPlugin_Init(t *testing.T) {
 	}{
 		{"enabled", enabledConfig(), false},
 		{"disabled", disabledConfig(), false},
-		{"enabled no patterns", metrics.Config{Enabled: true}, false},
+		{"enabled no patterns", metrics.Config{Enabled: true, PrometheusEnabled: true}, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -349,7 +350,7 @@ func TestPlugin_Collector_DisabledReturnsNoOp(t *testing.T) {
 }
 
 func TestPlugin_Collector_EnabledReturnsAdapter(t *testing.T) {
-	p := metrics.New(metrics.Config{Enabled: true}, slog.New(slog.NewTextHandler(&noopWriter{}, nil)))
+	p := metrics.New(metrics.Config{Enabled: true, PrometheusEnabled: true}, slog.New(slog.NewTextHandler(&noopWriter{}, nil)))
 	if err := p.Init(context.Background()); err != nil {
 		t.Fatalf("Init() error: %v", err)
 	}

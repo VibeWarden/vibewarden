@@ -1,7 +1,7 @@
 // Package otel provides the OpenTelemetry SDK adapter for VibeWarden.
 //
-// It initializes the MeterProvider with a Prometheus exporter and implements
-// ports.OTelProvider. The provider is the single source of truth for OTel
+// It initializes the MeterProvider with configured exporters (Prometheus, OTLP, or both)
+// and implements ports.OTelProvider. The provider is the single source of truth for OTel
 // SDK lifecycle management.
 package otel
 
@@ -10,11 +10,13 @@ import (
 	"fmt"
 	"net/http"
 	"sync"
+	"time"
 
 	prometheusclient "github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/vibewarden/vibewarden/internal/ports"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp"
 	otelprom "go.opentelemetry.io/otel/exporters/prometheus"
 	otelmetric "go.opentelemetry.io/otel/metric"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
@@ -23,7 +25,7 @@ import (
 )
 
 // Provider implements ports.OTelProvider using the OTel Go SDK.
-// It must be created with NewProvider and initialized with Init before use.
+// It supports both Prometheus and OTLP exporters, configured via Init.
 // All methods are safe for concurrent use after Init returns.
 type Provider struct {
 	mu            sync.RWMutex
@@ -31,6 +33,9 @@ type Provider struct {
 	meter         otelmetric.Meter
 	handler       http.Handler
 	registry      *prometheusclient.Registry
+
+	promEnabled bool
+	otlpEnabled bool
 }
 
 // NewProvider creates an uninitialized Provider.
@@ -39,10 +44,11 @@ func NewProvider() *Provider {
 	return &Provider{}
 }
 
-// Init initializes the OTel SDK with a Prometheus exporter.
+// Init initializes the OTel SDK with configured exporters.
 // serviceName and serviceVersion are recorded as OTel resource attributes.
-// Returns an error if Init has already been called or if initialization fails.
-func (p *Provider) Init(ctx context.Context, serviceName, serviceVersion string) error {
+// Returns an error if Init has already been called, if no exporters are enabled,
+// if OTLP is enabled without an endpoint, or if an unsupported protocol is requested.
+func (p *Provider) Init(ctx context.Context, serviceName, serviceVersion string, cfg ports.TelemetryConfig) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
@@ -50,16 +56,15 @@ func (p *Provider) Init(ctx context.Context, serviceName, serviceVersion string)
 		return fmt.Errorf("otel provider already initialized")
 	}
 
-	// Create a dedicated Prometheus registry (not the global default).
-	p.registry = prometheusclient.NewRegistry()
-
-	// Create Prometheus exporter with the isolated registry.
-	exporter, err := otelprom.New(
-		otelprom.WithRegisterer(p.registry),
-		otelprom.WithoutScopeInfo(),
-	)
-	if err != nil {
-		return fmt.Errorf("creating prometheus exporter: %w", err)
+	// Validate config.
+	if !cfg.Prometheus.Enabled && !cfg.OTLP.Enabled {
+		return fmt.Errorf("at least one exporter must be enabled")
+	}
+	if cfg.OTLP.Enabled && cfg.OTLP.Endpoint == "" {
+		return fmt.Errorf("OTLP endpoint required when OTLP exporter is enabled")
+	}
+	if cfg.OTLP.Enabled && cfg.OTLP.Protocol != "" && cfg.OTLP.Protocol != "http" {
+		return fmt.Errorf("unsupported protocol: %s", cfg.OTLP.Protocol)
 	}
 
 	// Build resource with service identity.
@@ -73,11 +78,57 @@ func (p *Provider) Init(ctx context.Context, serviceName, serviceVersion string)
 		return fmt.Errorf("creating otel resource: %w", err)
 	}
 
-	// Create MeterProvider with the Prometheus exporter.
-	p.meterProvider = sdkmetric.NewMeterProvider(
-		sdkmetric.WithResource(res),
-		sdkmetric.WithReader(exporter),
-	)
+	// Collect options for each enabled exporter.
+	var opts []sdkmetric.Option
+	opts = append(opts, sdkmetric.WithResource(res))
+
+	// Prometheus exporter (pull-based).
+	if cfg.Prometheus.Enabled {
+		p.registry = prometheusclient.NewRegistry()
+		promExporter, err := otelprom.New(
+			otelprom.WithRegisterer(p.registry),
+			otelprom.WithoutScopeInfo(),
+		)
+		if err != nil {
+			return fmt.Errorf("creating prometheus exporter: %w", err)
+		}
+		opts = append(opts, sdkmetric.WithReader(promExporter))
+		p.handler = promhttp.HandlerFor(p.registry, promhttp.HandlerOpts{
+			EnableOpenMetrics: true,
+		})
+		p.promEnabled = true
+	}
+
+	// OTLP HTTP exporter (push-based).
+	if cfg.OTLP.Enabled {
+		interval := cfg.OTLP.Interval
+		if interval == 0 {
+			interval = 30 * time.Second
+		}
+
+		// Build OTLP HTTP exporter options.
+		otlpOpts := []otlpmetrichttp.Option{
+			otlpmetrichttp.WithEndpointURL(cfg.OTLP.Endpoint),
+		}
+		if len(cfg.OTLP.Headers) > 0 {
+			otlpOpts = append(otlpOpts, otlpmetrichttp.WithHeaders(cfg.OTLP.Headers))
+		}
+
+		otlpExporter, err := otlpmetrichttp.New(ctx, otlpOpts...)
+		if err != nil {
+			return fmt.Errorf("creating otlp exporter: %w", err)
+		}
+
+		// Periodic reader pushes metrics at the configured interval.
+		periodicReader := sdkmetric.NewPeriodicReader(otlpExporter,
+			sdkmetric.WithInterval(interval),
+		)
+		opts = append(opts, sdkmetric.WithReader(periodicReader))
+		p.otlpEnabled = true
+	}
+
+	// Create MeterProvider with all configured readers.
+	p.meterProvider = sdkmetric.NewMeterProvider(opts...)
 
 	// Set as global provider for any code that uses otel.GetMeterProvider().
 	otel.SetMeterProvider(p.meterProvider)
@@ -85,15 +136,11 @@ func (p *Provider) Init(ctx context.Context, serviceName, serviceVersion string)
 	// Create the application meter.
 	p.meter = p.meterProvider.Meter("github.com/vibewarden/vibewarden")
 
-	// Create the HTTP handler for Prometheus scraping.
-	p.handler = promhttp.HandlerFor(p.registry, promhttp.HandlerOpts{
-		EnableOpenMetrics: true,
-	})
-
 	return nil
 }
 
 // Shutdown gracefully shuts down the MeterProvider, flushing any buffered data.
+// For OTLP exporter, this ensures pending metrics are pushed to the endpoint.
 // It is safe to call Shutdown on an uninitialized provider; it returns nil.
 func (p *Provider) Shutdown(ctx context.Context) error {
 	p.mu.Lock()
@@ -106,7 +153,7 @@ func (p *Provider) Shutdown(ctx context.Context) error {
 }
 
 // Handler returns the Prometheus metrics HTTP handler for scraping.
-// Returns nil if Init has not been called.
+// Returns nil if Prometheus exporter is disabled or Init has not been called.
 func (p *Provider) Handler() http.Handler {
 	p.mu.RLock()
 	defer p.mu.RUnlock()
@@ -122,4 +169,18 @@ func (p *Provider) Meter() ports.Meter {
 		return nil
 	}
 	return &meterAdapter{m: p.meter}
+}
+
+// PrometheusEnabled returns true if the Prometheus exporter is active.
+func (p *Provider) PrometheusEnabled() bool {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	return p.promEnabled
+}
+
+// OTLPEnabled returns true if the OTLP exporter is active.
+func (p *Provider) OTLPEnabled() bool {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	return p.otlpEnabled
 }

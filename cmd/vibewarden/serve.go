@@ -61,6 +61,9 @@ func runServe(configPath string) error {
 
 	logger := buildLogger(cfg.Log)
 
+	// Migrate legacy metrics: config to telemetry: if needed.
+	config.MigrateLegacyMetrics(cfg, logger)
+
 	logger.Info("VibeWarden starting",
 		slog.String("version", version),
 		slog.String("listen", fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port)),
@@ -213,8 +216,14 @@ func registerPlugins(
 
 	// Metrics — priority 30
 	registry.Register(metricsplugin.New(metricsplugin.Config{
-		Enabled:      cfg.Metrics.Enabled,
-		PathPatterns: cfg.Metrics.PathPatterns,
+		Enabled:           cfg.Telemetry.Enabled,
+		PathPatterns:      cfg.Telemetry.PathPatterns,
+		PrometheusEnabled: cfg.Telemetry.Prometheus.Enabled,
+		OTLPEnabled:       cfg.Telemetry.OTLP.Enabled,
+		OTLPEndpoint:      cfg.Telemetry.OTLP.Endpoint,
+		OTLPHeaders:       cfg.Telemetry.OTLP.Headers,
+		OTLPInterval:      cfg.Telemetry.OTLP.Interval,
+		OTLPProtocol:      cfg.Telemetry.OTLP.Protocol,
 	}, logger))
 
 	// Rate limiting — priority 50
@@ -355,7 +364,7 @@ func buildProxyConfig(cfg *config.Config, registry *plugins.Registry) *ports.Pro
 			switch p.Name() {
 			case "metrics":
 				metricsCfg = ports.MetricsProxyConfig{
-					Enabled:      cfg.Metrics.Enabled,
+					Enabled:      cfg.Telemetry.Enabled && cfg.Telemetry.Prometheus.Enabled,
 					InternalAddr: isp.InternalAddr(),
 				}
 			case "user-management":
