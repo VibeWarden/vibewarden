@@ -198,6 +198,22 @@ services:
       - vibewarden
     restart: "no"
 {{- end }}
+{{- if .Auth.Enabled }}
+
+  seed-users:
+    image: curlimages/curl:8.12.1
+    environment:
+      KRATOS_ADMIN_URL: http://kratos:4434
+    volumes:
+      - ./scripts/seed-users.sh:/seed-users.sh:ro
+    command: sh /seed-users.sh
+    depends_on:
+      kratos:
+        condition: service_healthy
+    networks:
+      - vibewarden
+    restart: "no"
+{{- end }}
 {{- if eq .RateLimit.Store "redis" }}
 
   redis:
