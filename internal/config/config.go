@@ -21,6 +21,11 @@ type Config struct {
 	// Upstream application configuration
 	Upstream UpstreamConfig `mapstructure:"upstream"`
 
+	// App configures how the user's application is included in the generated
+	// Docker Compose file. When neither App.Build nor App.Image is set, no app
+	// service is rendered and the existing host.docker.internal fallback is used.
+	App AppConfig `mapstructure:"app"`
+
 	// TLS configuration
 	TLS TLSConfig `mapstructure:"tls"`
 
@@ -91,6 +96,24 @@ type UpstreamConfig struct {
 	Host string `mapstructure:"host"`
 	// Port of the upstream application (default: 3000)
 	Port int `mapstructure:"port"`
+}
+
+// AppConfig configures the user's application in the generated Docker Compose.
+// Either Build or Image should be set, depending on whether the user wants
+// to build from source (dev) or use a pre-built image (prod).
+// When both are set, Build takes precedence (dev-first workflow).
+// When neither is set, no app service is rendered and VibeWarden falls back
+// to forwarding to host.docker.internal.
+type AppConfig struct {
+	// Build is the Docker build context path (e.g., "." for the current directory).
+	// Used in dev/tls profiles. When set, the app service is rendered with
+	// a build: context directive.
+	Build string `mapstructure:"build"`
+
+	// Image is the Docker image reference (e.g., "ghcr.io/org/myapp:latest").
+	// Used in prod profile. Can be overridden at runtime via the
+	// VIBEWARDEN_APP_IMAGE environment variable.
+	Image string `mapstructure:"image"`
 }
 
 // TLSConfig holds TLS-related settings.
