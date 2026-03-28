@@ -12,7 +12,7 @@
 # The script assumes:
 #   - The remote VM has Docker + Docker Compose v2 installed.
 #   - The demo repo is checked out at DEMO_DIR (default: ~/vibewarden).
-#   - A .env file already exists in examples/demo-app/ with production secrets.
+#   - The vibewarden binary is available on the remote VM.
 
 set -euo pipefail
 
@@ -20,7 +20,8 @@ set -euo pipefail
 # Configuration — override via env vars if needed.
 # --------------------------------------------------------------------------
 DEMO_DIR="${DEMO_DIR:-~/vibewarden}"
-COMPOSE_FILE="examples/demo-app/docker-compose.prod.yml"
+APP_DIR="examples/demo-app"
+GEN_COMPOSE=".vibewarden/generated/docker-compose.yml"
 
 # --------------------------------------------------------------------------
 # Argument parsing
@@ -84,15 +85,10 @@ rollback() {
 
     remote bash -s <<EOF
 set -euo pipefail
-cd ${DEMO_DIR}/${COMPOSE_FILE%/*}
 
-# Compose file lives inside examples/demo-app/; change into that dir so
-# relative paths in the file resolve correctly.
-COMPOSE_DIR="${DEMO_DIR}/examples/demo-app"
+COMPOSE_DIR="${DEMO_DIR}/${APP_DIR}"
 cd "\$COMPOSE_DIR"
 
-# Revert by tagging the previous images back and restarting.
-# We track the previous digest in a local file written during the last deploy.
 PREV_FILE=".previous-images"
 if [[ ! -f "\$PREV_FILE" ]]; then
     echo "error: no previous-images file found — cannot roll back" >&2
@@ -100,21 +96,21 @@ if [[ ! -f "\$PREV_FILE" ]]; then
 fi
 
 echo "==> Stopping current stack..."
-docker compose -f docker-compose.prod.yml down --remove-orphans
+docker compose -f ${GEN_COMPOSE} down --remove-orphans
 
 echo "==> Restoring previous images..."
 while IFS='=' read -r service image; do
     [[ -z "\$service" || -z "\$image" ]] && continue
     echo "  \$service => \$image"
-    docker tag "\$image" "\$(docker compose -f docker-compose.prod.yml config --format json | \
+    docker tag "\$image" "\$(docker compose -f ${GEN_COMPOSE} config --format json | \
         python3 -c "import sys,json; d=json.load(sys.stdin); print(d['services']['\$service']['image'])" 2>/dev/null || echo "\$image")"
 done < "\$PREV_FILE"
 
 echo "==> Starting stack with previous images..."
-docker compose -f docker-compose.prod.yml up -d --remove-orphans
+docker compose -f ${GEN_COMPOSE} up -d --remove-orphans
 
 echo "==> Stack status after rollback:"
-docker compose -f docker-compose.prod.yml ps
+docker compose -f ${GEN_COMPOSE} ps
 EOF
 
     log "Rollback complete."
@@ -129,8 +125,7 @@ deploy() {
     remote bash -s <<EOF
 set -euo pipefail
 
-COMPOSE_DIR="${DEMO_DIR}/examples/demo-app"
-cd "\$COMPOSE_DIR"
+COMPOSE_DIR="${DEMO_DIR}/${APP_DIR}"
 
 echo "==> Pulling latest code..."
 cd "${DEMO_DIR}"
@@ -139,8 +134,11 @@ git pull --ff-only
 
 cd "\$COMPOSE_DIR"
 
+echo "==> Regenerating runtime configuration..."
+vibewarden generate --config vibewarden.yaml
+
 echo "==> Saving current image digests for rollback..."
-docker compose -f docker-compose.prod.yml ps --format json 2>/dev/null | \
+docker compose -f ${GEN_COMPOSE} ps --format json 2>/dev/null | \
     python3 -c "
 import sys, json
 lines = sys.stdin.read().strip()
@@ -149,7 +147,6 @@ if not lines:
 try:
     services = json.loads(lines)
 except json.JSONDecodeError:
-    # older Compose emits one JSON object per line
     services = [json.loads(l) for l in lines.splitlines() if l.strip()]
 if isinstance(services, dict):
     services = [services]
@@ -161,13 +158,13 @@ for svc in services:
 " > .previous-images || true
 
 echo "==> Pulling latest images..."
-docker compose -f docker-compose.prod.yml pull --quiet
+docker compose -f ${GEN_COMPOSE} pull --quiet
 
 echo "==> Starting updated stack..."
-docker compose -f docker-compose.prod.yml up -d --remove-orphans
+docker compose -f ${GEN_COMPOSE} up -d --remove-orphans
 
 echo "==> Stack status after deployment:"
-docker compose -f docker-compose.prod.yml ps
+docker compose -f ${GEN_COMPOSE} ps
 EOF
 
     log "Deployment to $SSH_TARGET complete."

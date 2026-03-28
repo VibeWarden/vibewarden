@@ -7,28 +7,25 @@ via Docker Compose profiles so they do not run unless explicitly requested.
 
 ## Quick Start
 
-Start the full stack including Prometheus and Grafana:
+Enable observability in `vibewarden.yaml`:
+
+```yaml
+observability:
+  enabled: true
+  grafana_port: 3001
+```
+
+Generate and start:
 
 ```bash
-make observability-up
-# equivalent to:
-docker compose --profile observability up -d
+vibewarden generate
+COMPOSE_PROFILES=observability docker compose -f .vibewarden/generated/docker-compose.yml up -d
 ```
 
 Stop the stack:
 
 ```bash
-make observability-down
-# equivalent to:
-docker compose --profile observability down
-```
-
-Open the dashboards in your browser:
-
-```bash
-make grafana-open      # opens http://localhost:3000
-make prometheus-open   # opens http://localhost:9090
-make loki-open         # opens http://localhost:3100/ready
+COMPOSE_PROFILES=observability docker compose -f .vibewarden/generated/docker-compose.yml down
 ```
 
 ## Accessing the UIs
@@ -58,9 +55,9 @@ contains the following panels:
 | Auth Decisions (Total) | Pie chart | Authentication allow vs. block counts | `vibewarden_auth_decisions_total` |
 | Upstream Errors/sec | Time series | Rate of upstream connection failures | `vibewarden_upstream_errors_total` |
 
-The dashboard JSON definition lives at
-`observability/grafana/dashboards/vibewarden.json` and is loaded automatically by
-the Grafana provisioning config in `observability/grafana/provisioning/`.
+The dashboard JSON is embedded in the VibeWarden binary and generated to
+`.vibewarden/generated/observability/grafana/dashboards/vibewarden.json` when
+observability is enabled. It is loaded automatically by Grafana's provisioning config.
 
 ## Metrics Reference
 
@@ -104,11 +101,10 @@ Prometheus collectors:
 [Docker container logs]  -->  [Promtail]  -->  [Loki :3100] --+
 ```
 
-Prometheus scrapes VibeWarden every 15 seconds (configured in
-`observability/prometheus/prometheus.yml`). Promtail discovers all running Docker
+Prometheus scrapes VibeWarden every 15 seconds. Promtail discovers all running Docker
 containers via the Docker socket, tails their log files, and ships log entries to Loki.
-Grafana queries both Prometheus and Loki as data sources (provisioned automatically in
-`observability/grafana/provisioning/datasources/prometheus.yml`).
+Grafana queries both Prometheus and Loki as data sources. All configs are generated
+under `.vibewarden/generated/observability/` by `vibewarden generate`.
 
 ## Loki Log Aggregation
 
@@ -160,21 +156,21 @@ Promtail parses each VibeWarden log line as JSON and:
 3. Promotes `ai_summary` as Loki structured metadata so it appears in the Grafana log
    details panel without bloating the label index.
 
-Configuration lives in `observability/promtail/promtail-config.yml`.
+Configuration is generated to `.vibewarden/generated/observability/promtail/promtail-config.yml`.
 
 ## Adding Custom Dashboards
 
-1. Build your dashboard in the Grafana UI at http://localhost:3000.
+1. Build your dashboard in the Grafana UI.
 2. Export it: **Dashboard menu → Share → Export → Save to file**.
-3. Place the exported JSON file in `observability/grafana/dashboards/`.
+3. Place the exported JSON file in `.vibewarden/generated/observability/grafana/dashboards/`.
 4. Restart Grafana to pick up the new file:
    ```bash
-   docker compose restart grafana
+   docker compose -f .vibewarden/generated/docker-compose.yml restart grafana
    ```
 
-The provisioning config (`observability/grafana/provisioning/dashboards/dashboard.yml`)
-watches the `observability/grafana/dashboards/` directory, so any `.json` file placed
-there is loaded automatically on startup.
+Note: custom dashboards placed in the generated directory will be overwritten on the
+next `vibewarden generate` run. For persistent custom dashboards, use Grafana's
+built-in provisioning or import them via the Grafana API.
 
 ## Troubleshooting
 
@@ -206,12 +202,12 @@ ports:
 
 ### Grafana starts but the dashboard is not visible
 
-The dashboard is provisioned from
-`observability/grafana/dashboards/vibewarden.json`. If the file is missing or
-malformed, Grafana will start without it. Check the Grafana container logs:
+The dashboard is generated to
+`.vibewarden/generated/observability/grafana/dashboards/vibewarden.json`. If the file
+is missing, run `vibewarden generate` again. Check the Grafana container logs:
 
 ```bash
-docker compose logs grafana
+docker compose -f .vibewarden/generated/docker-compose.yml logs grafana
 ```
 
 ### Loki shows no logs in Grafana
