@@ -7,6 +7,39 @@ import (
 	"github.com/vibewarden/vibewarden/internal/config"
 )
 
+func TestNeedsObservability(t *testing.T) {
+	tests := []struct {
+		name string
+		cfg  *config.Config
+		want bool
+	}{
+		{
+			name: "observability enabled returns true",
+			cfg:  &config.Config{Observability: config.ObservabilityConfig{Enabled: true}},
+			want: true,
+		},
+		{
+			name: "observability disabled returns false",
+			cfg:  &config.Config{Observability: config.ObservabilityConfig{Enabled: false}},
+			want: false,
+		},
+		{
+			name: "zero value config returns false",
+			cfg:  &config.Config{},
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := generate.NeedsObservability(tt.cfg)
+			if got != tt.want {
+				t.Errorf("NeedsObservability() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestNeedsOpenBao(t *testing.T) {
 	tests := []struct {
 		name string

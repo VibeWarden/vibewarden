@@ -20,6 +20,12 @@
 {{- if eq .RateLimit.Store "redis" }}
 #   redis       — Redis backing store for rate limiting
 {{- end }}
+{{- if .Observability.Enabled }}
+#   prometheus  — Metrics collection (profile: observability)
+#   loki        — Log aggregation (profile: observability)
+#   promtail    — Log collector (profile: observability)
+#   grafana     — Visualization (profile: observability)
+{{- end }}
 
 version: "3.9"
 
@@ -195,11 +201,100 @@ services:
       timeout: 5s
       retries: 5
 {{- end }}
+{{- if .Observability.Enabled }}
+
+  prometheus:
+    image: prom/prometheus:v3.2.1
+    profiles:
+      - observability
+    restart: unless-stopped
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+    ports:
+      - "{{ .Observability.PrometheusPort }}:9090"
+    volumes:
+      - ./.vibewarden/generated/observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    networks:
+      - vibewarden
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9090/-/healthy"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  loki:
+    image: grafana/loki:3.4.3
+    profiles:
+      - observability
+    restart: unless-stopped
+    command: -config.file=/etc/loki/loki-config.yml
+    ports:
+      - "{{ .Observability.LokiPort }}:3100"
+    volumes:
+      - ./.vibewarden/generated/observability/loki/loki-config.yml:/etc/loki/loki-config.yml:ro
+      - loki-data:/loki
+    networks:
+      - vibewarden
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:3100/ready || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  promtail:
+    image: grafana/promtail:3.4.3
+    profiles:
+      - observability
+    restart: unless-stopped
+    command: -config.file=/etc/promtail/promtail-config.yml
+    volumes:
+      - ./.vibewarden/generated/observability/promtail/promtail-config.yml:/etc/promtail/promtail-config.yml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+    networks:
+      - vibewarden
+    depends_on:
+      loki:
+        condition: service_healthy
+
+  grafana:
+    image: grafana/grafana:11.5.2
+    profiles:
+      - observability
+    restart: unless-stopped
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: "Admin"
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+      GF_SECURITY_ADMIN_PASSWORD: "admin"
+    ports:
+      - "{{ .Observability.GrafanaPort }}:3000"
+    volumes:
+      - ./.vibewarden/generated/observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./.vibewarden/generated/observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    networks:
+      - vibewarden
+    depends_on:
+      prometheus:
+        condition: service_healthy
+      loki:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:3000/api/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+{{- end }}
 
 networks:
   vibewarden:
     driver: bridge
-{{- if or .Auth.Enabled .TLS.Enabled (eq .RateLimit.Store "redis") }}
+{{- if or .Auth.Enabled .TLS.Enabled (eq .RateLimit.Store "redis") .Observability.Enabled }}
 
 volumes:
 {{- if .Auth.Enabled }}
@@ -210,5 +305,10 @@ volumes:
 {{- end }}
 {{- if eq .RateLimit.Store "redis" }}
   redis-data:
+{{- end }}
+{{- if .Observability.Enabled }}
+  prometheus-data:
+  loki-data:
+  grafana-data:
 {{- end }}
 {{- end }}

@@ -17,6 +17,12 @@ func NeedsRedis(cfg *config.Config) bool {
 	return cfg.RateLimit.Store == "redis"
 }
 
+// NeedsObservability returns true if the config requires the observability
+// stack (Prometheus, Grafana, Loki, Promtail) in the generated compose.
+func NeedsObservability(cfg *config.Config) bool {
+	return cfg.Observability.Enabled
+}
+
 // NeedsSeedSecrets returns true if dev mode should seed OpenBao with demo
 // secrets. This is true when the secrets plugin is enabled AND at least one
 // header or env injection entry is configured.

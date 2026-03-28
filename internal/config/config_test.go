@@ -1509,3 +1509,183 @@ func TestValidate_Webhooks(t *testing.T) {
 		})
 	}
 }
+
+// TestValidate_Observability verifies validation rules for the observability config section.
+func TestValidate_Observability(t *testing.T) {
+	validObs := config.ObservabilityConfig{
+		Enabled:        true,
+		GrafanaPort:    3001,
+		PrometheusPort: 9090,
+		LokiPort:       3100,
+		RetentionDays:  7,
+	}
+
+	tests := []struct {
+		name    string
+		cfg     config.Config
+		wantErr bool
+		errMsg  string
+	}{
+		{
+			name: "valid observability config passes",
+			cfg: config.Config{
+				Observability: validObs,
+			},
+			wantErr: false,
+		},
+		{
+			name: "observability disabled skips port validation",
+			cfg: config.Config{
+				Observability: config.ObservabilityConfig{
+					Enabled:        false,
+					GrafanaPort:    0,
+					PrometheusPort: 0,
+					LokiPort:       0,
+					RetentionDays:  0,
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "grafana_port zero is invalid",
+			cfg: config.Config{
+				Observability: config.ObservabilityConfig{
+					Enabled:        true,
+					GrafanaPort:    0,
+					PrometheusPort: 9090,
+					LokiPort:       3100,
+					RetentionDays:  7,
+				},
+			},
+			wantErr: true,
+			errMsg:  "observability.grafana_port",
+		},
+		{
+			name: "grafana_port negative is invalid",
+			cfg: config.Config{
+				Observability: config.ObservabilityConfig{
+					Enabled:        true,
+					GrafanaPort:    -1,
+					PrometheusPort: 9090,
+					LokiPort:       3100,
+					RetentionDays:  7,
+				},
+			},
+			wantErr: true,
+			errMsg:  "observability.grafana_port",
+		},
+		{
+			name: "grafana_port over 65535 is invalid",
+			cfg: config.Config{
+				Observability: config.ObservabilityConfig{
+					Enabled:        true,
+					GrafanaPort:    65536,
+					PrometheusPort: 9090,
+					LokiPort:       3100,
+					RetentionDays:  7,
+				},
+			},
+			wantErr: true,
+			errMsg:  "observability.grafana_port",
+		},
+		{
+			name: "prometheus_port zero is invalid",
+			cfg: config.Config{
+				Observability: config.ObservabilityConfig{
+					Enabled:        true,
+					GrafanaPort:    3001,
+					PrometheusPort: 0,
+					LokiPort:       3100,
+					RetentionDays:  7,
+				},
+			},
+			wantErr: true,
+			errMsg:  "observability.prometheus_port",
+		},
+		{
+			name: "prometheus_port over 65535 is invalid",
+			cfg: config.Config{
+				Observability: config.ObservabilityConfig{
+					Enabled:        true,
+					GrafanaPort:    3001,
+					PrometheusPort: 65536,
+					LokiPort:       3100,
+					RetentionDays:  7,
+				},
+			},
+			wantErr: true,
+			errMsg:  "observability.prometheus_port",
+		},
+		{
+			name: "loki_port zero is invalid",
+			cfg: config.Config{
+				Observability: config.ObservabilityConfig{
+					Enabled:        true,
+					GrafanaPort:    3001,
+					PrometheusPort: 9090,
+					LokiPort:       0,
+					RetentionDays:  7,
+				},
+			},
+			wantErr: true,
+			errMsg:  "observability.loki_port",
+		},
+		{
+			name: "loki_port over 65535 is invalid",
+			cfg: config.Config{
+				Observability: config.ObservabilityConfig{
+					Enabled:        true,
+					GrafanaPort:    3001,
+					PrometheusPort: 9090,
+					LokiPort:       65536,
+					RetentionDays:  7,
+				},
+			},
+			wantErr: true,
+			errMsg:  "observability.loki_port",
+		},
+		{
+			name: "retention_days zero is invalid",
+			cfg: config.Config{
+				Observability: config.ObservabilityConfig{
+					Enabled:        true,
+					GrafanaPort:    3001,
+					PrometheusPort: 9090,
+					LokiPort:       3100,
+					RetentionDays:  0,
+				},
+			},
+			wantErr: true,
+			errMsg:  "observability.retention_days",
+		},
+		{
+			name: "retention_days negative is invalid",
+			cfg: config.Config{
+				Observability: config.ObservabilityConfig{
+					Enabled:        true,
+					GrafanaPort:    3001,
+					PrometheusPort: 9090,
+					LokiPort:       3100,
+					RetentionDays:  -1,
+				},
+			},
+			wantErr: true,
+			errMsg:  "observability.retention_days",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.cfg.Validate()
+			if (err != nil) != tt.wantErr {
+				t.Errorf("Validate() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if tt.wantErr && tt.errMsg != "" {
+				if !strings.Contains(err.Error(), tt.errMsg) {
+					t.Errorf("Validate() error = %q, want it to contain %q", err.Error(), tt.errMsg)
+				}
+			}
+		})
+	}
+}
