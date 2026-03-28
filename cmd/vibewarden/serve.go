@@ -27,6 +27,7 @@ import (
 	sechdrs "github.com/vibewarden/vibewarden/internal/plugins/securityheaders"
 	tlsplugin "github.com/vibewarden/vibewarden/internal/plugins/tls"
 	usermgmtplugin "github.com/vibewarden/vibewarden/internal/plugins/usermgmt"
+	wafplugin "github.com/vibewarden/vibewarden/internal/plugins/waf"
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
 
@@ -171,6 +172,14 @@ func registerPlugins(
 		ExposedHeaders:   cfg.CORS.ExposedHeaders,
 		AllowCredentials: cfg.CORS.AllowCredentials,
 		MaxAge:           cfg.CORS.MaxAge,
+	}, logger))
+
+	// WAF — priority 25 (after security headers at 20, before admin auth at 30)
+	registry.Register(wafplugin.New(wafplugin.Config{
+		ContentTypeValidation: wafplugin.ContentTypeValidationConfig{
+			Enabled: cfg.WAF.ContentTypeValidation.Enabled,
+			Allowed: cfg.WAF.ContentTypeValidation.Allowed,
+		},
 	}, logger))
 
 	// Security headers — priority 20
