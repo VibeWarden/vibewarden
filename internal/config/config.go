@@ -321,6 +321,18 @@ type AuthAPIKeyConfig struct {
 	// Each entry must supply a name, a SHA-256 hex hash of the plaintext key,
 	// and an optional list of scopes.
 	Keys []APIKeyEntry `mapstructure:"keys"`
+
+	// OpenBaoPath is the KV path inside OpenBao where API keys are stored.
+	// When set, the OpenBao adapter is used instead of the static config adapter.
+	// The KV secret at this path must contain string fields whose keys are the
+	// key names and whose values are the SHA-256 hex hashes of the plaintext keys.
+	// Example: openbao_path: "auth/api-keys"
+	OpenBaoPath string `mapstructure:"openbao_path"`
+
+	// CacheTTL is how long the keys fetched from OpenBao are held in memory
+	// before the next refresh. Accepts Go duration strings (e.g. "5m", "1h").
+	// Defaults to "5m". Ignored when OpenBaoPath is empty.
+	CacheTTL string `mapstructure:"cache_ttl"`
 }
 
 // APIKeyEntry represents a single registered API key in the configuration.
@@ -1161,6 +1173,8 @@ func Load(configPath string) (*Config, error) {
 	v.SetDefault("kratos.smtp.host", "localhost")
 	v.SetDefault("kratos.smtp.port", 1025)
 	v.SetDefault("kratos.smtp.from", "no-reply@vibewarden.local")
+	v.SetDefault("auth.api_key.openbao_path", "")
+	v.SetDefault("auth.api_key.cache_ttl", "5m")
 	v.SetDefault("auth.enabled", false)
 	v.SetDefault("auth.identity_schema", "email_password")
 	v.SetDefault("auth.public_paths", []string{})
