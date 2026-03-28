@@ -111,16 +111,16 @@ func (rs RuleSet) ScanRequest(r *http.Request) ([]Detection, error) {
 		if err != nil && err != io.EOF && err != io.ErrUnexpectedEOF {
 			return nil, err
 		}
-		_ = r.Body.Close()
 
 		if n > 0 {
 			bodySnippet := string(chunk[:n])
-			// Restore the body so downstream handlers can read it. We already
-			// consumed up to 8 KB; the rest (if any) is still in the original
-			// reader. To keep things simple we restore only the consumed portion.
+			// Restore the body so downstream handlers can read it. The
+			// original r.Body is NOT closed here — it is passed as the
+			// remainder reader so bodies larger than 8 KB are preserved
+			// for downstream handlers.
 			r.Body = io.NopCloser(io.MultiReader(
 				&stringReader{s: bodySnippet},
-				r.Body, // remainder (may be empty)
+				r.Body, // remainder beyond 8 KB
 			))
 			all = append(all, rs.Evaluate(LocationBody, "body", bodySnippet)...)
 		}
