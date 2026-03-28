@@ -26,4 +26,11 @@ type APIKeyConfig struct {
 	// Header is the request header from which the API key is extracted.
 	// Defaults to "X-API-Key" when empty.
 	Header string
+
+	// ScopeRules is an ordered list of path+method authorization rules applied
+	// after successful key validation. The first matching rule determines the
+	// required scopes. When no rule matches, the request is allowed (open by
+	// default). Rules must contain valid path.Match patterns; invalid patterns
+	// are silently skipped during matching.
+	ScopeRules []auth.ScopeRule
 }
