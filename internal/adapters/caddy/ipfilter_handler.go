@@ -182,7 +182,7 @@ func (h *IPFilterHandler) emitAuditBlockedEvent(ctx context.Context, clientIP, m
 		audit.Actor{IP: clientIP},
 		audit.Target{Path: path},
 		audit.OutcomeFailure,
-		"",
+		middleware.CorrelationID(ctx),
 		map[string]any{
 			"method": method,
 			"mode":   h.Config.Mode,
