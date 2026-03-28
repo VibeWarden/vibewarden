@@ -142,7 +142,7 @@ func TestRateLimitMiddleware_IPLimitExceeded(t *testing.T) {
 		t.Errorf("Retry-After = %q, want %q", got, "3")
 	}
 	// JSON body.
-	var body rateLimitErrorBody
+	var body ErrorResponse
 	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
 		t.Fatalf("failed to decode response body: %v", err)
 	}
@@ -194,7 +194,7 @@ func TestRateLimitMiddleware_UserLimitExceeded(t *testing.T) {
 	if got != "2" {
 		t.Errorf("Retry-After = %q, want %q", got, "2")
 	}
-	var body rateLimitErrorBody
+	var body ErrorResponse
 	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
 		t.Fatalf("failed to decode response body: %v", err)
 	}
@@ -393,7 +393,7 @@ func TestRateLimitMiddleware_RetryAfterRoundsUp(t *testing.T) {
 			}
 
 			// Also verify JSON body matches.
-			var body rateLimitErrorBody
+			var body ErrorResponse
 			if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
 				t.Fatalf("failed to decode response body: %v", err)
 			}
@@ -512,5 +512,67 @@ func TestRateLimitMiddleware_AuthenticatedBothLimitsChecked(t *testing.T) {
 	}
 	if userLimiter.calledKeys[0] != "user-xyz" {
 		t.Errorf("user limiter called with %q, want %q", userLimiter.calledKeys[0], "user-xyz")
+	}
+}
+
+func TestRateLimitMiddleware_429IncludesRequestID(t *testing.T) {
+	// When tracing is disabled, a 429 response must include a request_id field.
+	ipLimiter := denyWithRetry(time.Second, 10, 20)
+	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})
+	mw := RateLimitMiddleware(ipLimiter, allowAll(), defaultCfg(), newTestLogger(), nil)
+	handler := mw(next)
+
+	r := httptest.NewRequest(http.MethodGet, "/api", nil)
+	r.RemoteAddr = "10.0.0.9:9999"
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusTooManyRequests {
+		t.Fatalf("expected 429, got %d", w.Code)
+	}
+	var body ErrorResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("failed to decode response body: %v", err)
+	}
+	if body.RequestID == "" && body.TraceID == "" {
+		t.Error("expected request_id or trace_id in 429 response body")
+	}
+	if body.Error != "rate_limit_exceeded" {
+		t.Errorf("error = %q, want %q", body.Error, "rate_limit_exceeded")
+	}
+	if body.Status != http.StatusTooManyRequests {
+		t.Errorf("status = %d, want %d", body.Status, http.StatusTooManyRequests)
+	}
+}
+
+func TestRateLimitMiddleware_403ForbiddenIsJSON(t *testing.T) {
+	// When the client IP cannot be determined, the 403 response must be JSON.
+	ipLimiter := allowAll()
+	userLimiter := allowAll()
+	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {})
+	mw := RateLimitMiddleware(ipLimiter, userLimiter, defaultCfg(), newTestLogger(), nil)
+	handler := mw(next)
+
+	// RemoteAddr with no port causes ExtractClientIP to return "".
+	r := httptest.NewRequest(http.MethodGet, "/api/data", nil)
+	r.RemoteAddr = "no-port-addr"
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("expected 403, got %d", w.Code)
+	}
+	if ct := w.Header().Get("Content-Type"); ct != "application/json" {
+		t.Errorf("Content-Type = %q, want %q", ct, "application/json")
+	}
+	var body ErrorResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("failed to decode response body: %v", err)
+	}
+	if body.Error != "forbidden" {
+		t.Errorf("error = %q, want %q", body.Error, "forbidden")
+	}
+	if body.RequestID == "" && body.TraceID == "" {
+		t.Error("expected request_id or trace_id in 403 response body")
 	}
 }

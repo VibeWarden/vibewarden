@@ -1,22 +1,14 @@
 package middleware
 
 import (
-	"encoding/json"
 	"log/slog"
 	"math"
 	"net/http"
-	"strconv"
 	"time"
 
 	"github.com/vibewarden/vibewarden/internal/domain/events"
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
-
-// rateLimitErrorBody is the JSON body returned when a rate limit is exceeded.
-type rateLimitErrorBody struct {
-	Error             string `json:"error"`
-	RetryAfterSeconds int    `json:"retry_after_seconds"`
-}
 
 // RateLimitMiddleware returns HTTP middleware that enforces rate limits.
 // It applies per-IP limits to all requests and per-user limits to authenticated
@@ -71,7 +63,7 @@ func RateLimitMiddleware(
 			clientIP := ExtractClientIP(r, cfg.TrustProxyHeaders)
 			if clientIP == "" {
 				emitRateLimitUnidentified(r, eventLogger)
-				http.Error(w, "Forbidden", http.StatusForbidden)
+				WriteErrorResponse(w, r, http.StatusForbidden, "forbidden", "client IP could not be determined")
 				return
 			}
 
@@ -79,7 +71,7 @@ func RateLimitMiddleware(
 			ipResult := ipLimiter.Allow(r.Context(), clientIP)
 			if !ipResult.Allowed {
 				emitRateLimitHit(r, eventLogger, "ip", clientIP, "", ipResult)
-				writeRateLimitResponse(w, ipResult)
+				writeRateLimitResponse(w, r, ipResult)
 				return
 			}
 
@@ -89,7 +81,7 @@ func RateLimitMiddleware(
 				userResult := userLimiter.Allow(r.Context(), userID)
 				if !userResult.Allowed {
 					emitRateLimitHit(r, eventLogger, "user", userID, clientIP, userResult)
-					writeRateLimitResponse(w, userResult)
+					writeRateLimitResponse(w, r, userResult)
 					return
 				}
 			}
@@ -101,22 +93,10 @@ func RateLimitMiddleware(
 }
 
 // writeRateLimitResponse writes the 429 Too Many Requests HTTP response.
-// It sets the Retry-After header and a JSON body.
-func writeRateLimitResponse(w http.ResponseWriter, result ports.RateLimitResult) {
-	retrySeconds := retryAfterSeconds(result.RetryAfter)
-
-	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Retry-After", strconv.Itoa(retrySeconds))
-	w.WriteHeader(http.StatusTooManyRequests)
-
-	body := rateLimitErrorBody{
-		Error:             "rate_limit_exceeded",
-		RetryAfterSeconds: retrySeconds,
-	}
-
-	// Encoding errors on w are unrecoverable at this point; we have already
-	// written the status code. Ignore the error — best effort.
-	_ = json.NewEncoder(w).Encode(body)
+// It delegates to WriteRateLimitResponse which sets the Retry-After header,
+// Content-Type: application/json, and a JSON body with a correlation ID.
+func writeRateLimitResponse(w http.ResponseWriter, r *http.Request, result ports.RateLimitResult) {
+	WriteRateLimitResponse(w, r, retryAfterSeconds(result.RetryAfter))
 }
 
 // retryAfterSeconds converts a retry duration to whole seconds, always rounding

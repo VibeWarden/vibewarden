@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -528,4 +529,42 @@ func TestAuthMiddleware_NilEventLoggerDoesNotPanic(t *testing.T) {
 
 	// Must not panic.
 	mw(next).ServeHTTP(w, req)
+}
+
+func TestAuthMiddleware_503IsJSON(t *testing.T) {
+	// When Kratos is unavailable, the 503 response must be JSON with a
+	// correlation ID (trace_id or request_id).
+	checker := &fakeSessionChecker{err: ports.ErrAuthProviderUnavailable}
+	cfg := ports.AuthConfig{
+		Enabled:           true,
+		SessionCookieName: "ory_kratos_session",
+		LoginURL:          "/login",
+	}
+
+	mw := AuthMiddleware(checker, cfg, newTestLogger(), nil)
+	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/dashboard", nil)
+	req.AddCookie(&http.Cookie{Name: "ory_kratos_session", Value: "some-token"})
+	w := httptest.NewRecorder()
+	mw(next).ServeHTTP(w, req)
+
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want %d", w.Code, http.StatusServiceUnavailable)
+	}
+	if ct := w.Header().Get("Content-Type"); ct != "application/json" {
+		t.Errorf("Content-Type = %q, want %q", ct, "application/json")
+	}
+	var body ErrorResponse
+	if err := json.Unmarshal(w.Body.Bytes(), &body); err != nil {
+		t.Fatalf("failed to decode response body: %v", err)
+	}
+	if body.Error != "auth_provider_unavailable" {
+		t.Errorf("error = %q, want %q", body.Error, "auth_provider_unavailable")
+	}
+	if body.RequestID == "" && body.TraceID == "" {
+		t.Error("expected request_id or trace_id in 503 response body")
+	}
 }

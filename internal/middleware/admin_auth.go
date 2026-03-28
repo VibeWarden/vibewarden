@@ -57,7 +57,7 @@ func AdminAuthMiddleware(cfg ports.AdminAuthConfig) func(http.Handler) http.Hand
 			provided := r.Header.Get(adminKeyHeader)
 			if !secureEqual(provided, cfg.Token) {
 				w.Header().Set("WWW-Authenticate", `Bearer realm="vibewarden-admin"`)
-				http.Error(w, "Unauthorized", http.StatusUnauthorized)
+				WriteErrorResponse(w, r, http.StatusUnauthorized, "unauthorized", "missing or invalid admin key")
 				return
 			}
 

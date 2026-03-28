@@ -122,12 +122,12 @@ func AuthMiddleware(
 						emitKratosUnavailable(r, eventLogger, kratosURL, err.Error())
 					}
 					emitAuthFailed(r, eventLogger, "auth provider unavailable", err.Error())
-					http.Error(w, "Service Unavailable", http.StatusServiceUnavailable)
+					WriteErrorResponse(w, r, http.StatusServiceUnavailable, "auth_provider_unavailable", "authentication service is temporarily unavailable")
 
 				default:
 					// Unknown error — fail closed.
 					emitAuthFailed(r, eventLogger, "unexpected auth error", err.Error())
-					http.Error(w, "Service Unavailable", http.StatusServiceUnavailable)
+					WriteErrorResponse(w, r, http.StatusServiceUnavailable, "auth_provider_unavailable", "authentication service is temporarily unavailable")
 				}
 				return
 			}
