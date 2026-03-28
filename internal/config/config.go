@@ -90,6 +90,9 @@ type Config struct {
 	// Observability configures the optional observability stack (Prometheus,
 	// Grafana, Loki, Promtail) generated under the "observability" compose profile.
 	Observability ObservabilityConfig `mapstructure:"observability"`
+
+	// Audit configures the security audit log sink.
+	Audit AuditConfig `mapstructure:"audit"`
 }
 
 // DatabaseConfig holds PostgreSQL connection settings used for audit logging
@@ -957,6 +960,21 @@ type ObservabilityConfig struct {
 
 	// RetentionDays is how long Loki retains log data (default: 7).
 	RetentionDays int `mapstructure:"retention_days"`
+}
+
+// AuditConfig holds settings for the security audit log sink.
+type AuditConfig struct {
+	// Enabled toggles the audit log sink (default: true).
+	// When true, every security-relevant event is written to the configured output.
+	Enabled bool `mapstructure:"enabled"`
+
+	// Output selects the write destination.
+	// Accepted values:
+	//   "stdout"       — write JSONL to standard output (default)
+	//   <file path>   — append JSONL to the file at the given path; the file is
+	//                   created if it does not exist.
+	// When Output is empty, "stdout" is assumed.
+	Output string `mapstructure:"output"`
 }
 
 // Validate checks the loaded configuration for logical consistency.
