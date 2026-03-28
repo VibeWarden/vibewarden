@@ -38,6 +38,13 @@ func NewRenderer(f fs.ReadFileFS) *Renderer {
 	return &Renderer{fs: f}
 }
 
+// funcMap defines the custom template functions available to all templates.
+var funcMap = template.FuncMap{
+	// mul multiplies two integers and returns the product.
+	// Used in loki-config.yml.tmpl to convert retention days to hours.
+	"mul": func(a, b int) int { return a * b },
+}
+
 // Render executes the named template with data and returns the rendered bytes.
 // templateName must be the filename as stored in the FS (e.g. "vibewarden.yaml.tmpl").
 func (r *Renderer) Render(templateName string, data any) ([]byte, error) {
@@ -46,7 +53,7 @@ func (r *Renderer) Render(templateName string, data any) ([]byte, error) {
 		return nil, fmt.Errorf("reading template %q: %w", templateName, err)
 	}
 
-	tmpl, err := template.New(templateName).Parse(string(src))
+	tmpl, err := template.New(templateName).Funcs(funcMap).Parse(string(src))
 	if err != nil {
 		return nil, fmt.Errorf("parsing template %q: %w", templateName, err)
 	}

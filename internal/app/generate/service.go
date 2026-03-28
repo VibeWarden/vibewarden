@@ -132,6 +132,96 @@ func (s *Service) Generate(ctx context.Context, cfg *config.Config, outputDir st
 		}
 	}
 
+	// Generate observability configs when enabled.
+	if cfg.Observability.Enabled {
+		if err := s.generateObservability(cfg, outputDir); err != nil {
+			return fmt.Errorf("generating observability configs: %w", err)
+		}
+	}
+
+	return nil
+}
+
+// generateObservability writes all observability config files to
+// <outputDir>/observability/.
+func (s *Service) generateObservability(cfg *config.Config, outputDir string) error {
+	obsDir := filepath.Join(outputDir, "observability")
+
+	// Create directory structure.
+	dirs := []string{
+		filepath.Join(obsDir, "prometheus"),
+		filepath.Join(obsDir, "grafana", "provisioning", "datasources"),
+		filepath.Join(obsDir, "grafana", "provisioning", "dashboards"),
+		filepath.Join(obsDir, "grafana", "dashboards"),
+		filepath.Join(obsDir, "loki"),
+		filepath.Join(obsDir, "promtail"),
+	}
+	for _, dir := range dirs {
+		if err := os.MkdirAll(dir, permDir); err != nil {
+			return fmt.Errorf("creating directory %q: %w", dir, err)
+		}
+	}
+
+	// Render Prometheus config.
+	if err := s.renderer.RenderToFile(
+		"observability/prometheus.yml.tmpl",
+		cfg,
+		filepath.Join(obsDir, "prometheus", "prometheus.yml"),
+		true,
+	); err != nil {
+		return fmt.Errorf("rendering prometheus.yml: %w", err)
+	}
+
+	// Render Grafana datasources.
+	if err := s.renderer.RenderToFile(
+		"observability/grafana-datasources.yml.tmpl",
+		cfg,
+		filepath.Join(obsDir, "grafana", "provisioning", "datasources", "datasources.yml"),
+		true,
+	); err != nil {
+		return fmt.Errorf("rendering grafana datasources: %w", err)
+	}
+
+	// Render Grafana dashboard provisioner.
+	if err := s.renderer.RenderToFile(
+		"observability/grafana-dashboards.yml.tmpl",
+		cfg,
+		filepath.Join(obsDir, "grafana", "provisioning", "dashboards", "dashboards.yml"),
+		true,
+	); err != nil {
+		return fmt.Errorf("rendering grafana dashboard provisioner: %w", err)
+	}
+
+	// Copy Grafana dashboard JSON (static, not a template).
+	dashboardJSON, err := templates.FS.ReadFile("observability/vibewarden-dashboard.json")
+	if err != nil {
+		return fmt.Errorf("reading embedded dashboard JSON: %w", err)
+	}
+	dashboardPath := filepath.Join(obsDir, "grafana", "dashboards", "vibewarden.json")
+	if err := os.WriteFile(dashboardPath, dashboardJSON, permConfig); err != nil {
+		return fmt.Errorf("writing dashboard JSON: %w", err)
+	}
+
+	// Render Loki config.
+	if err := s.renderer.RenderToFile(
+		"observability/loki-config.yml.tmpl",
+		cfg,
+		filepath.Join(obsDir, "loki", "loki-config.yml"),
+		true,
+	); err != nil {
+		return fmt.Errorf("rendering loki-config.yml: %w", err)
+	}
+
+	// Render Promtail config.
+	if err := s.renderer.RenderToFile(
+		"observability/promtail-config.yml.tmpl",
+		cfg,
+		filepath.Join(obsDir, "promtail", "promtail-config.yml"),
+		true,
+	); err != nil {
+		return fmt.Errorf("rendering promtail-config.yml: %w", err)
+	}
+
 	return nil
 }
 

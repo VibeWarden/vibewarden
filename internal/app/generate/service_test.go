@@ -945,3 +945,244 @@ func TestGenerate_SeedSecretsFile_ContainsBothHeadersAndEnv(t *testing.T) {
 		t.Errorf("seed-secrets.sh missing env var name: %s", data)
 	}
 }
+
+// observabilityConfig returns a Config with observability enabled and the
+// given custom values. Zero values fall back to the supplied defaults.
+func observabilityConfig(grafanaPort, prometheusPort, lokiPort, retentionDays int) *config.Config {
+	return &config.Config{
+		Server:   config.ServerConfig{Host: "127.0.0.1", Port: 8080},
+		Upstream: config.UpstreamConfig{Host: "127.0.0.1", Port: 3000},
+		Observability: config.ObservabilityConfig{
+			Enabled:        true,
+			GrafanaPort:    grafanaPort,
+			PrometheusPort: prometheusPort,
+			LokiPort:       lokiPort,
+			RetentionDays:  retentionDays,
+		},
+	}
+}
+
+func TestGenerate_Observability_WhenEnabled(t *testing.T) {
+	cfg := observabilityConfig(3001, 9090, 3100, 7)
+	outputDir := t.TempDir()
+	svc := generate.NewService(realRenderer())
+
+	if err := svc.Generate(context.Background(), cfg, outputDir); err != nil {
+		t.Fatalf("Generate() unexpected error: %v", err)
+	}
+
+	expectedFiles := []string{
+		filepath.Join(outputDir, "observability", "prometheus", "prometheus.yml"),
+		filepath.Join(outputDir, "observability", "grafana", "provisioning", "datasources", "datasources.yml"),
+		filepath.Join(outputDir, "observability", "grafana", "provisioning", "dashboards", "dashboards.yml"),
+		filepath.Join(outputDir, "observability", "grafana", "dashboards", "vibewarden.json"),
+		filepath.Join(outputDir, "observability", "loki", "loki-config.yml"),
+		filepath.Join(outputDir, "observability", "promtail", "promtail-config.yml"),
+	}
+
+	for _, f := range expectedFiles {
+		t.Run(filepath.Base(f), func(t *testing.T) {
+			if _, err := os.Stat(f); err != nil {
+				t.Errorf("expected file %q to exist: %v", f, err)
+			}
+		})
+	}
+}
+
+func TestGenerate_Observability_WhenDisabled(t *testing.T) {
+	cfg := &config.Config{
+		Server:        config.ServerConfig{Host: "127.0.0.1", Port: 8080},
+		Upstream:      config.UpstreamConfig{Host: "127.0.0.1", Port: 3000},
+		Observability: config.ObservabilityConfig{Enabled: false},
+	}
+	outputDir := t.TempDir()
+	svc := generate.NewService(realRenderer())
+
+	if err := svc.Generate(context.Background(), cfg, outputDir); err != nil {
+		t.Fatalf("Generate() unexpected error: %v", err)
+	}
+
+	obsDir := filepath.Join(outputDir, "observability")
+	if _, err := os.Stat(obsDir); err == nil {
+		t.Errorf("observability directory must not be created when observability is disabled: %q", obsDir)
+	}
+}
+
+func TestGenerate_Observability_PrometheusConfig(t *testing.T) {
+	cfg := observabilityConfig(3001, 9090, 3100, 7)
+	// Use a non-default port to verify template substitution.
+	cfg.Server.Port = 9999
+	outputDir := t.TempDir()
+	svc := generate.NewService(realRenderer())
+
+	if err := svc.Generate(context.Background(), cfg, outputDir); err != nil {
+		t.Fatalf("Generate() unexpected error: %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(outputDir, "observability", "prometheus", "prometheus.yml"))
+	if err != nil {
+		t.Fatalf("reading prometheus.yml: %v", err)
+	}
+
+	if !bytes.Contains(data, []byte("vibewarden:9999")) {
+		t.Errorf("prometheus.yml should target vibewarden:9999, content:\n%s", data)
+	}
+	if !bytes.Contains(data, []byte("/_vibewarden/metrics")) {
+		t.Errorf("prometheus.yml should specify /_vibewarden/metrics path, content:\n%s", data)
+	}
+}
+
+func TestGenerate_Observability_LokiRetention(t *testing.T) {
+	cfg := observabilityConfig(3001, 9090, 3100, 14)
+	outputDir := t.TempDir()
+	svc := generate.NewService(realRenderer())
+
+	if err := svc.Generate(context.Background(), cfg, outputDir); err != nil {
+		t.Fatalf("Generate() unexpected error: %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(outputDir, "observability", "loki", "loki-config.yml"))
+	if err != nil {
+		t.Fatalf("reading loki-config.yml: %v", err)
+	}
+
+	// 14 days * 24 hours = 336h
+	if !bytes.Contains(data, []byte("336h")) {
+		t.Errorf("loki-config.yml should have retention_period: 336h for 14 days, content:\n%s", data)
+	}
+}
+
+func TestGenerate_Observability_GrafanaDatasources(t *testing.T) {
+	cfg := observabilityConfig(3001, 9090, 3100, 7)
+	outputDir := t.TempDir()
+	svc := generate.NewService(realRenderer())
+
+	if err := svc.Generate(context.Background(), cfg, outputDir); err != nil {
+		t.Fatalf("Generate() unexpected error: %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(outputDir, "observability", "grafana", "provisioning", "datasources", "datasources.yml"))
+	if err != nil {
+		t.Fatalf("reading datasources.yml: %v", err)
+	}
+
+	if !bytes.Contains(data, []byte("http://prometheus:9090")) {
+		t.Errorf("datasources.yml should reference http://prometheus:9090, content:\n%s", data)
+	}
+	if !bytes.Contains(data, []byte("http://loki:3100")) {
+		t.Errorf("datasources.yml should reference http://loki:3100, content:\n%s", data)
+	}
+}
+
+func TestGenerate_Observability_Dashboard(t *testing.T) {
+	cfg := observabilityConfig(3001, 9090, 3100, 7)
+	outputDir := t.TempDir()
+	svc := generate.NewService(realRenderer())
+
+	if err := svc.Generate(context.Background(), cfg, outputDir); err != nil {
+		t.Fatalf("Generate() unexpected error: %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(outputDir, "observability", "grafana", "dashboards", "vibewarden.json"))
+	if err != nil {
+		t.Fatalf("reading vibewarden.json: %v", err)
+	}
+
+	// Verify it is valid JSON.
+	if !bytes.HasPrefix(bytes.TrimSpace(data), []byte("{")) {
+		t.Errorf("vibewarden.json should be a JSON object, got: %q...", data[:min(50, len(data))])
+	}
+	if len(data) == 0 {
+		t.Error("vibewarden.json should not be empty")
+	}
+}
+
+func TestGenerate_Observability_ComposeServices(t *testing.T) {
+	cfg := observabilityConfig(3001, 9090, 3100, 7)
+	compose := renderCompose(t, cfg)
+
+	for _, svc := range []string{"prometheus:", "loki:", "promtail:", "grafana:"} {
+		if !bytes.Contains(compose, []byte(svc)) {
+			t.Errorf("expected service %q in compose output when observability enabled", svc)
+		}
+	}
+}
+
+func TestGenerate_Observability_ComposeProfiles(t *testing.T) {
+	cfg := observabilityConfig(3001, 9090, 3100, 7)
+	compose := renderCompose(t, cfg)
+
+	// All four observability services should carry the observability profile.
+	count := bytes.Count(compose, []byte("- observability"))
+	if count < 4 {
+		t.Errorf("expected at least 4 occurrences of '- observability' profile annotation, got %d\ncompose:\n%s", count, compose)
+	}
+}
+
+func TestGenerate_Observability_ComposeVolumes(t *testing.T) {
+	cfg := observabilityConfig(3001, 9090, 3100, 7)
+	compose := renderCompose(t, cfg)
+
+	for _, vol := range []string{"prometheus-data:", "loki-data:", "grafana-data:"} {
+		if !bytes.Contains(compose, []byte(vol)) {
+			t.Errorf("expected volume %q in compose volumes section, content:\n%s", vol, compose)
+		}
+	}
+}
+
+func TestGenerate_Observability_ComposePorts(t *testing.T) {
+	cfg := observabilityConfig(3001, 9091, 3101, 7)
+	compose := renderCompose(t, cfg)
+
+	if !bytes.Contains(compose, []byte(`"9091:9090"`)) {
+		t.Errorf("expected prometheus port mapping 9091:9090\ncompose:\n%s", compose)
+	}
+	if !bytes.Contains(compose, []byte(`"3101:3100"`)) {
+		t.Errorf("expected loki port mapping 3101:3100\ncompose:\n%s", compose)
+	}
+	if !bytes.Contains(compose, []byte(`"3001:3000"`)) {
+		t.Errorf("expected grafana port mapping 3001:3000\ncompose:\n%s", compose)
+	}
+}
+
+func TestGenerate_Observability_ComposeDependsOn(t *testing.T) {
+	cfg := observabilityConfig(3001, 9090, 3100, 7)
+	compose := renderCompose(t, cfg)
+
+	// Promtail depends on loki being healthy.
+	if !bytes.Contains(compose, []byte("loki:\n        condition: service_healthy")) {
+		t.Errorf("expected promtail depends_on loki with service_healthy\ncompose:\n%s", compose)
+	}
+	// Grafana depends on prometheus and loki being healthy.
+	if !bytes.Contains(compose, []byte("prometheus:\n        condition: service_healthy")) {
+		t.Errorf("expected grafana depends_on prometheus with service_healthy\ncompose:\n%s", compose)
+	}
+}
+
+func TestGenerate_Observability_NotPresent_WhenDisabled(t *testing.T) {
+	cfg := &config.Config{
+		Server:        config.ServerConfig{Host: "127.0.0.1", Port: 8080},
+		Upstream:      config.UpstreamConfig{Host: "127.0.0.1", Port: 3000},
+		Observability: config.ObservabilityConfig{Enabled: false},
+	}
+	compose := renderCompose(t, cfg)
+
+	for _, svc := range []string{"prometheus:", "grafana:", "promtail:"} {
+		if bytes.Contains(compose, []byte(svc)) {
+			t.Errorf("service %q must not appear when observability is disabled\ncompose:\n%s", svc, compose)
+		}
+	}
+	for _, vol := range []string{"prometheus-data:", "loki-data:", "grafana-data:"} {
+		if bytes.Contains(compose, []byte(vol)) {
+			t.Errorf("volume %q must not appear when observability is disabled\ncompose:\n%s", vol, compose)
+		}
+	}
+}
+
+// min returns the smaller of two ints. Used for safe slice bounds.
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}

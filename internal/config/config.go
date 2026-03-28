@@ -71,6 +71,10 @@ type Config struct {
 
 	// CORS configures the Cross-Origin Resource Sharing plugin.
 	CORS CORSConfig `mapstructure:"cors"`
+
+	// Observability configures the optional observability stack (Prometheus,
+	// Grafana, Loki, Promtail) generated under the "observability" compose profile.
+	Observability ObservabilityConfig `mapstructure:"observability"`
 }
 
 // DatabaseConfig holds PostgreSQL connection settings used for audit logging
@@ -666,6 +670,27 @@ type OverridesConfig struct {
 	IdentitySchema string `mapstructure:"identity_schema"`
 }
 
+// ObservabilityConfig holds settings for the optional observability stack.
+// When enabled, vibewarden generate produces Prometheus, Grafana, Loki, and
+// Promtail configs under .vibewarden/generated/observability/.
+type ObservabilityConfig struct {
+	// Enabled toggles generation of the observability stack (default: false).
+	Enabled bool `mapstructure:"enabled"`
+
+	// GrafanaPort is the host port Grafana binds to (default: 3001).
+	// This avoids conflict with common app ports like 3000.
+	GrafanaPort int `mapstructure:"grafana_port"`
+
+	// PrometheusPort is the host port Prometheus binds to (default: 9090).
+	PrometheusPort int `mapstructure:"prometheus_port"`
+
+	// LokiPort is the host port Loki binds to (default: 3100).
+	LokiPort int `mapstructure:"loki_port"`
+
+	// RetentionDays is how long Loki retains log data (default: 7).
+	RetentionDays int `mapstructure:"retention_days"`
+}
+
 // Validate checks the loaded configuration for logical consistency.
 // It returns a combined error listing all violations found.
 // Call Validate after Load to catch misconfiguration early.
@@ -814,6 +839,34 @@ func (c *Config) Validate() error {
 		}
 	}
 
+	// observability validation.
+	if c.Observability.Enabled {
+		if c.Observability.GrafanaPort <= 0 || c.Observability.GrafanaPort > 65535 {
+			errs = append(errs, fmt.Sprintf(
+				"observability.grafana_port %d is invalid; must be 1-65535",
+				c.Observability.GrafanaPort,
+			))
+		}
+		if c.Observability.PrometheusPort <= 0 || c.Observability.PrometheusPort > 65535 {
+			errs = append(errs, fmt.Sprintf(
+				"observability.prometheus_port %d is invalid; must be 1-65535",
+				c.Observability.PrometheusPort,
+			))
+		}
+		if c.Observability.LokiPort <= 0 || c.Observability.LokiPort > 65535 {
+			errs = append(errs, fmt.Sprintf(
+				"observability.loki_port %d is invalid; must be 1-65535",
+				c.Observability.LokiPort,
+			))
+		}
+		if c.Observability.RetentionDays <= 0 {
+			errs = append(errs, fmt.Sprintf(
+				"observability.retention_days %d is invalid; must be > 0",
+				c.Observability.RetentionDays,
+			))
+		}
+	}
+
 	if len(errs) > 0 {
 		return fmt.Errorf("%s", strings.Join(errs, "; "))
 	}
@@ -924,6 +977,11 @@ func Load(configPath string) (*Config, error) {
 	v.SetDefault("cors.exposed_headers", []string{})
 	v.SetDefault("cors.allow_credentials", false)
 	v.SetDefault("cors.max_age", 0)
+	v.SetDefault("observability.enabled", false)
+	v.SetDefault("observability.grafana_port", 3001)
+	v.SetDefault("observability.prometheus_port", 9090)
+	v.SetDefault("observability.loki_port", 3100)
+	v.SetDefault("observability.retention_days", 7)
 
 	// Config file
 	if configPath != "" {
