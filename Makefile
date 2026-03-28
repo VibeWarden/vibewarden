@@ -1,6 +1,6 @@
 # VibeWarden Makefile
 
-.PHONY: build test lint run docker-up docker-down observability-up observability-down grafana-open prometheus-open loki-open clean check setup-hooks demo demo-down deploy-demo
+.PHONY: build test lint run docker-up docker-down observability-up observability-down grafana-open prometheus-open loki-open clean check setup-hooks demo demo-tls demo-down demo-clean deploy-demo
 
 # Build variables
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
@@ -71,29 +71,50 @@ check: ## Run all quality checks (build, format, vet, tests)
 	cd examples/demo-app && go vet ./... && go build ./... && go test -race ./...
 	@echo "==> All checks passed!"
 
-# Start the full local demo stack (observability profile + self-signed TLS)
-demo: ## Start the full local demo stack (https://localhost:8443, Grafana http://localhost:3001)
+# Start the full local demo stack
+demo: build ## Start the full local demo stack (http://localhost:8080, Grafana http://localhost:3001)
 	cd examples/demo-app && \
-	  VIBEWARDEN_PROFILE=tls \
-	  VIBEWARDEN_HTTP_PORT=8443 \
-	  VIBEWARDEN_SERVER_PORT=8443 \
+	  ../../bin/vibewarden generate && \
+	  COMPOSE_PROFILES=observability \
+	  docker compose -f .vibewarden/generated/docker-compose.yml up -d
+	@echo ""
+	@echo "Demo stack is starting — wait ~30 s for all services to be healthy."
+	@echo ""
+	@echo "  App:        http://localhost:8080"
+	@echo "  Grafana:    http://localhost:3001"
+	@echo "  Prometheus: http://localhost:9090"
+	@echo ""
+	@echo "Demo credentials: demo@vibewarden.dev / demo1234"
+	@echo "Run 'vibew secret get postgres' to retrieve generated credentials."
+
+# Start demo with TLS
+demo-tls: build ## Start the full local demo stack with self-signed TLS (https://localhost:8443)
+	cd examples/demo-app && \
 	  VIBEWARDEN_TLS_ENABLED=true \
 	  VIBEWARDEN_TLS_PROVIDER=self-signed \
-	  KRATOS_PUBLIC_BASE_URL=https://localhost:8443/ \
+	  VIBEWARDEN_SERVER_PORT=8443 \
+	  ../../bin/vibewarden generate && \
 	  COMPOSE_PROFILES=observability \
-	  docker compose up -d
+	  docker compose -f .vibewarden/generated/docker-compose.yml up -d
 	@echo ""
 	@echo "Demo stack is starting — wait ~30 s for all services to be healthy."
 	@echo ""
 	@echo "  App:        https://localhost:8443   (accept the self-signed cert warning)"
-	@echo "  Grafana:    http://localhost:3001    (admin / admin)"
+	@echo "  Grafana:    http://localhost:3001"
 	@echo "  Prometheus: http://localhost:9090"
 	@echo ""
 	@echo "Demo credentials: demo@vibewarden.dev / demo1234"
 
 # Stop the full local demo stack
 demo-down: ## Stop the full local demo stack
-	cd examples/demo-app && COMPOSE_PROFILES=observability docker compose down
+	cd examples/demo-app && \
+	  docker compose -f .vibewarden/generated/docker-compose.yml down
+
+# Stop and remove volumes
+demo-clean: ## Stop the demo stack and remove all volumes
+	cd examples/demo-app && \
+	  docker compose -f .vibewarden/generated/docker-compose.yml down -v && \
+	  rm -rf .vibewarden/generated/
 
 # Deploy the public demo to a remote VM via SSH.
 # Usage: make deploy-demo SSH=root@challenge.vibewarden.dev

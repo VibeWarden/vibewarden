@@ -4,134 +4,88 @@ A minimal Go HTTP server (stdlib only) that demonstrates every major VibeWarden
 feature.  The app itself performs no authentication — it simply trusts the
 headers injected by the VibeWarden sidecar.
 
-## Profiles
+## Workflow
 
-All demo variants now live in a single `docker-compose.yml`.
-Pick a profile with the `VIBEWARDEN_PROFILE` and `COMPOSE_PROFILES` environment
-variables.
+This demo showcases the intended VibeWarden user workflow:
 
-### Default — HTTP dev stack
+1. Commit only `vibewarden.yaml` — the single source of truth
+2. Run `vibewarden generate` — generates the full runtime stack
+3. Run `docker compose -f .vibewarden/generated/docker-compose.yml up`
+
+Generated files are written to `.vibewarden/generated/` which is gitignored.
+
+### Quick start
 
 ```bash
 cd examples/demo-app
-docker compose up -d
+make demo
 # Visit http://localhost:8080
 ```
 
-Wait ~15 seconds for the full stack to be healthy.  Your browser will be
-redirected to the demo UI at `http://localhost:8080/static/index.html`.
-
-| Service | URL | Credentials |
-|---|---|---|
-| Demo app (via VibeWarden) | http://localhost:8080 | see Demo credentials below |
-| Kratos public API | http://localhost:4433 | — |
-| Kratos admin API | http://localhost:4434 | — |
-| Mailslurper (email UI) | http://localhost:4437 | — |
-
-### TLS — self-signed HTTPS
-
-```bash
-cd examples/demo-app
-VIBEWARDEN_PROFILE=tls \
-VIBEWARDEN_HTTP_PORT=8443 \
-VIBEWARDEN_SERVER_PORT=8443 \
-VIBEWARDEN_TLS_ENABLED=true \
-VIBEWARDEN_TLS_PROVIDER=self-signed \
-KRATOS_PUBLIC_BASE_URL=https://localhost:8443/ \
-docker compose up -d
-# Visit https://localhost:8443  (accept the self-signed certificate warning)
-```
-
-Or put the variables in a `.env` file (copy `.env.example` as a starting point):
-
-```bash
-cp .env.example .env
-# Set VIBEWARDEN_PROFILE=tls and the related variables in .env
-docker compose up -d
-```
-
-### Observability — HTTP + Prometheus / Grafana / Loki
-
-```bash
-cd examples/demo-app
-COMPOSE_PROFILES=observability docker compose up -d
-# Demo app: http://localhost:8080
-# Grafana:  http://localhost:3001  (admin / admin)
-```
-
-Wait ~30 seconds for all services to become healthy.
+Wait ~30 seconds for the full stack to be healthy.
 
 | Service | URL | Credentials |
 |---|---|---|
 | Demo app (via VibeWarden) | http://localhost:8080 | see Demo credentials below |
 | Grafana | http://localhost:3001 | admin / admin |
 | Prometheus | http://localhost:9090 | — |
-| Loki (ready check) | http://localhost:3100/ready | — |
 | Kratos public API | http://localhost:4433 | — |
-| Mailslurper (email UI) | http://localhost:4437 | — |
+| OpenBao (secrets) | http://localhost:8200 | token: see `.vibewarden/generated/.credentials` |
 
-### Full — TLS + observability
+Or step by step:
 
 ```bash
 cd examples/demo-app
-VIBEWARDEN_PROFILE=tls \
-VIBEWARDEN_HTTP_PORT=8443 \
-VIBEWARDEN_SERVER_PORT=8443 \
-VIBEWARDEN_TLS_ENABLED=true \
-VIBEWARDEN_TLS_PROVIDER=self-signed \
-KRATOS_PUBLIC_BASE_URL=https://localhost:8443/ \
-COMPOSE_PROFILES=full \
-docker compose up -d
+../../bin/vibewarden generate
+COMPOSE_PROFILES=observability \
+  docker compose -f .vibewarden/generated/docker-compose.yml up -d
+```
+
+### TLS — self-signed HTTPS
+
+```bash
+make demo-tls
 # Visit https://localhost:8443  (accept the self-signed certificate warning)
 # Grafana: http://localhost:3001
 ```
 
-### Production — Let's Encrypt (public server)
+Or manually:
 
 ```bash
 cd examples/demo-app
-cp .env.example .env
-# Edit .env: set VIBEWARDEN_PROFILE=prod, DOMAIN, POSTGRES_PASSWORD, GRAFANA_ADMIN_PASSWORD, etc.
-COMPOSE_PROFILES=observability docker compose up -d
+VIBEWARDEN_TLS_ENABLED=true \
+VIBEWARDEN_TLS_PROVIDER=self-signed \
+VIBEWARDEN_SERVER_PORT=8443 \
+  ../../bin/vibewarden generate
+COMPOSE_PROFILES=observability \
+  docker compose -f .vibewarden/generated/docker-compose.yml up -d
 ```
-
-Required `.env` variables for prod:
-
-| Variable | Example |
-|---|---|
-| `VIBEWARDEN_PROFILE` | `prod` |
-| `VIBEWARDEN_HTTP_PORT` | `443` |
-| `VIBEWARDEN_SERVER_PORT` | `443` |
-| `VIBEWARDEN_TLS_ENABLED` | `true` |
-| `VIBEWARDEN_TLS_PROVIDER` | `letsencrypt` |
-| `VIBEWARDEN_TLS_DOMAIN` | `challenge.vibewarden.dev` |
-| `KRATOS_PUBLIC_BASE_URL` | `https://challenge.vibewarden.dev/` |
-| `POSTGRES_PASSWORD` | _(strong secret)_ |
-| `GRAFANA_ADMIN_PASSWORD` | _(strong secret)_ |
-
-## What each profile demonstrates
-
-| Profile | TLS | Observability | Rate limits |
-|---|---|---|---|
-| `dev` (default) | HTTP | none | 5 req/s per IP |
-| `tls` | self-signed HTTPS | none | 5 req/s per IP |
-| `observability` | HTTP | Prometheus + Grafana + Loki | 5 req/s per IP |
-| `full` | self-signed HTTPS | Prometheus + Grafana + Loki | 5 req/s per IP |
-| `prod` | Let's Encrypt | optional | configurable |
-
-The landing page at `/static/index.html` detects the active profile and
-shows or hides sections accordingly (TLS badge, observability links, etc.).
 
 ## Teardown
 
 ```bash
-docker compose down           # stop containers, keep volumes
-docker compose down -v        # stop containers and remove volumes
-
-# With a non-default profile:
-COMPOSE_PROFILES=observability docker compose down
-COMPOSE_PROFILES=observability docker compose down -v
+make demo-down          # stop containers, keep volumes
+make demo-clean         # stop containers and remove all volumes + generated files
 ```
+
+Or manually:
+
+```bash
+cd examples/demo-app
+docker compose -f .vibewarden/generated/docker-compose.yml down
+docker compose -f .vibewarden/generated/docker-compose.yml down -v
+```
+
+## What this demo exercises
+
+| Feature | Config key | What you see |
+|---|---|---|
+| Auth (Ory Kratos) | `auth.enabled: true` | Login redirect, session cookie, `X-User-*` headers |
+| Rate limiting | `rate_limit.enabled: true` | 429 after 10 requests burst |
+| Security headers | `security_headers.enabled: true` | HSTS, CSP, X-Frame-Options on every response |
+| Secrets injection | `secrets.enabled: true` | `X-Demo-Api-Key` header injected from OpenBao |
+| Metrics | `metrics.enabled: true` | Prometheus scrapes VibeWarden metrics |
+| Observability | `observability.enabled: true` | Grafana dashboard, Loki log aggregation |
 
 ## Demo UI
 
@@ -140,7 +94,7 @@ build step required).  Four pages showcase each VibeWarden feature visually:
 
 | Page | URL | What it shows |
 |---|---|---|
-| Home | `/static/index.html` | Auth status, VibeWarden health badge, profile banner, login / register / logout |
+| Home | `/static/index.html` | Auth status, VibeWarden health badge, login / register / logout |
 | My Profile | `/static/me.html` | User ID, email, and verification status from VibeWarden headers |
 | Headers Inspector | `/static/headers.html` | All response headers, security headers highlighted green / red |
 | Rate Limit Test | `/static/ratelimit.html` | Fire 20 rapid requests and watch 429s appear in real time |
@@ -153,10 +107,10 @@ for a clean, classless style with zero build tooling.
 ```
 Browser / curl
     |
-    | :8080 (dev) or :8443 (tls) or :443 (prod)
+    | :8080 (dev) or :8443 (tls)
     v
 +-------------------+
-|    VibeWarden      |  <-- auth check (Kratos), rate limiting, security headers
+|    VibeWarden      |  <-- auth check (Kratos), rate limiting, security headers, secrets injection
 +-------------------+
     |
     | :3000 (internal)
@@ -164,6 +118,18 @@ Browser / curl
 +-------------------+
 |    demo-app        |  <-- your Go application (trusts sidecar headers)
 +-------------------+
+```
+
+Generated stack:
+
+```
+.vibewarden/generated/
+  docker-compose.yml        # full stack definition
+  .credentials              # auto-generated secrets (gitignored)
+  .env.template             # non-secret config template
+  kratos/                   # Kratos identity server config
+  seed-secrets.sh           # seeds OpenBao with demo secrets
+  observability/            # Prometheus, Grafana, Loki, Promtail configs
 ```
 
 ## Endpoints
@@ -176,7 +142,6 @@ Returns a personalised greeting when logged in, or a generic welcome when not.
 from the validated Kratos session.
 
 ```bash
-# Unauthenticated
 curl http://localhost:8080/
 # {"authenticated":false,"message":"Welcome! Please log in."}
 ```
