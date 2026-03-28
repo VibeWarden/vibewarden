@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"regexp"
 	"strings"
+	"time"
 
 	"github.com/spf13/viper"
 )
@@ -114,6 +115,34 @@ type UpstreamConfig struct {
 	Host string `mapstructure:"host"`
 	// Port of the upstream application (default: 3000)
 	Port int `mapstructure:"port"`
+	// Health configures the active upstream health checker.
+	Health UpstreamHealthConfig `mapstructure:"health"`
+}
+
+// UpstreamHealthConfig holds settings for the active upstream health checker.
+type UpstreamHealthConfig struct {
+	// Enabled toggles the background health checker (default: false).
+	Enabled bool `mapstructure:"enabled"`
+
+	// Path is the HTTP path probed on the upstream (default: "/health").
+	// Must return a 2xx status code within Timeout to be considered healthy.
+	Path string `mapstructure:"path"`
+
+	// Interval is the time between consecutive probes, as a duration string
+	// (e.g. "10s", "1m"). Default: "10s".
+	Interval string `mapstructure:"interval"`
+
+	// Timeout is the maximum time to wait for a probe response, as a duration
+	// string (e.g. "5s"). Default: "5s".
+	Timeout string `mapstructure:"timeout"`
+
+	// UnhealthyThreshold is the number of consecutive failures required to
+	// transition to Unhealthy. Default: 3.
+	UnhealthyThreshold int `mapstructure:"unhealthy_threshold"`
+
+	// HealthyThreshold is the number of consecutive successes required to
+	// transition to Healthy. Default: 2.
+	HealthyThreshold int `mapstructure:"healthy_threshold"`
 }
 
 // AppConfig configures the user's application in the generated Docker Compose.
@@ -990,6 +1019,35 @@ func (c *Config) Validate() error {
 		errs = append(errs, "telemetry.logs.otlp requires telemetry.otlp.endpoint")
 	}
 
+	// upstream.health validation.
+	if c.Upstream.Health.Enabled {
+		if c.Upstream.Health.Path == "" {
+			errs = append(errs, "upstream.health.path must not be empty when upstream.health.enabled is true")
+		}
+		if c.Upstream.Health.Interval != "" {
+			if _, err := time.ParseDuration(c.Upstream.Health.Interval); err != nil {
+				errs = append(errs, fmt.Sprintf("upstream.health.interval %q is not a valid duration: %s", c.Upstream.Health.Interval, err.Error()))
+			}
+		}
+		if c.Upstream.Health.Timeout != "" {
+			if _, err := time.ParseDuration(c.Upstream.Health.Timeout); err != nil {
+				errs = append(errs, fmt.Sprintf("upstream.health.timeout %q is not a valid duration: %s", c.Upstream.Health.Timeout, err.Error()))
+			}
+		}
+		if c.Upstream.Health.UnhealthyThreshold <= 0 {
+			errs = append(errs, fmt.Sprintf(
+				"upstream.health.unhealthy_threshold %d is invalid; must be > 0",
+				c.Upstream.Health.UnhealthyThreshold,
+			))
+		}
+		if c.Upstream.Health.HealthyThreshold <= 0 {
+			errs = append(errs, fmt.Sprintf(
+				"upstream.health.healthy_threshold %d is invalid; must be > 0",
+				c.Upstream.Health.HealthyThreshold,
+			))
+		}
+	}
+
 	// cors validation.
 	if c.CORS.Enabled && c.CORS.AllowCredentials {
 		for _, o := range c.CORS.AllowedOrigins {
@@ -1149,6 +1207,12 @@ func Load(configPath string) (*Config, error) {
 	v.SetDefault("cors.allow_credentials", false)
 	v.SetDefault("cors.max_age", 0)
 	v.SetDefault("resilience.timeout", "30s")
+	v.SetDefault("upstream.health.enabled", false)
+	v.SetDefault("upstream.health.path", "/health")
+	v.SetDefault("upstream.health.interval", "10s")
+	v.SetDefault("upstream.health.timeout", "5s")
+	v.SetDefault("upstream.health.unhealthy_threshold", 3)
+	v.SetDefault("upstream.health.healthy_threshold", 2)
 	v.SetDefault("observability.enabled", false)
 	v.SetDefault("observability.grafana_port", 3001)
 	v.SetDefault("observability.prometheus_port", 9090)
