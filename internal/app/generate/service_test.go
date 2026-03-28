@@ -860,9 +860,16 @@ func TestGenerate_SeedSecretsFile_GeneratedWhenNeeded(t *testing.T) {
 	}
 
 	seedPath := filepath.Join(outputDir, "seed-secrets.sh")
-	data, err := os.ReadFile(seedPath)
+	info, err := os.Stat(seedPath)
 	if err != nil {
 		t.Fatalf("expected seed-secrets.sh to exist: %v", err)
+	}
+	if perm := info.Mode().Perm(); perm != 0o750 {
+		t.Errorf("seed-secrets.sh permissions = %o, want 0750", perm)
+	}
+	data, err := os.ReadFile(seedPath)
+	if err != nil {
+		t.Fatalf("reading seed-secrets.sh: %v", err)
 	}
 	if !bytes.Contains(data, []byte("bao kv put")) {
 		t.Errorf("seed-secrets.sh does not contain 'bao kv put': %s", data)
