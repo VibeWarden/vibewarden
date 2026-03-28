@@ -3,6 +3,17 @@
 // It initializes the MeterProvider with configured exporters (Prometheus, OTLP, or both)
 // and implements ports.OTelProvider. The provider is the single source of truth for OTel
 // SDK lifecycle management.
+//
+// # Prometheus fallback behavior
+//
+// When no explicit telemetry configuration is provided, Prometheus export is enabled by
+// default (telemetry.prometheus.enabled = true) and OTLP is disabled. This guarantees
+// that /_vibewarden/metrics always serves valid Prometheus text format out of the box,
+// preserving backward compatibility with existing scrapers and dashboards.
+//
+// Users who want push-based export can enable OTLP alongside or instead of Prometheus.
+// The only invalid configuration is disabling both exporters simultaneously, which causes
+// Init to return an error ("at least one exporter must be enabled").
 package otel
 
 import (
