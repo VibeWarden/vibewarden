@@ -24,8 +24,9 @@ func discardLogger() *slog.Logger {
 
 func enabledConfig() metrics.Config {
 	return metrics.Config{
-		Enabled:      true,
-		PathPatterns: []string{"/users/:id", "/api/v1/*"},
+		Enabled:           true,
+		PathPatterns:      []string{"/users/:id", "/api/v1/*"},
+		PrometheusEnabled: true,
 	}
 }
 
@@ -67,7 +68,7 @@ func TestPlugin_Init(t *testing.T) {
 	}{
 		{"enabled", enabledConfig(), false},
 		{"disabled", disabledConfig(), false},
-		{"enabled no patterns", metrics.Config{Enabled: true}, false},
+		{"enabled no patterns", metrics.Config{Enabled: true, PrometheusEnabled: true}, false},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -161,6 +162,13 @@ func TestPlugin_Health(t *testing.T) {
 		{
 			name:           "enabled and running",
 			cfg:            enabledConfig(),
+			initAndStart:   true,
+			wantHealthy:    true,
+			wantMsgContain: "running",
+		},
+		{
+			name:           "OTLP-only running",
+			cfg:            otlpOnlyConfig(),
 			initAndStart:   true,
 			wantHealthy:    true,
 			wantMsgContain: "running",
@@ -349,7 +357,7 @@ func TestPlugin_Collector_DisabledReturnsNoOp(t *testing.T) {
 }
 
 func TestPlugin_Collector_EnabledReturnsAdapter(t *testing.T) {
-	p := metrics.New(metrics.Config{Enabled: true}, slog.New(slog.NewTextHandler(&noopWriter{}, nil)))
+	p := metrics.New(metrics.Config{Enabled: true, PrometheusEnabled: true}, slog.New(slog.NewTextHandler(&noopWriter{}, nil)))
 	if err := p.Init(context.Background()); err != nil {
 		t.Fatalf("Init() error: %v", err)
 	}
@@ -364,4 +372,81 @@ func TestPlugin_Collector_EnabledReturnsAdapter(t *testing.T) {
 	}
 	// Should not panic when recording.
 	c.IncRequestTotal("GET", "200", "/test")
+}
+
+// ---------------------------------------------------------------------------
+// OTLP-only mode
+// ---------------------------------------------------------------------------
+
+func otlpOnlyConfig() metrics.Config {
+	return metrics.Config{
+		Enabled:           true,
+		PrometheusEnabled: false,
+		OTLPEnabled:       true,
+		OTLPEndpoint:      "http://localhost:4318",
+		OTLPProtocol:      "http",
+		OTLPInterval:      "30s",
+	}
+}
+
+func TestPlugin_OTLPOnly_Init(t *testing.T) {
+	p := newPlugin(otlpOnlyConfig())
+	if err := p.Init(context.Background()); err != nil {
+		t.Fatalf("Init() with OTLP-only config: %v", err)
+	}
+}
+
+func TestPlugin_OTLPOnly_StartIsNoOp(t *testing.T) {
+	p := newPlugin(otlpOnlyConfig())
+	if err := p.Init(context.Background()); err != nil {
+		t.Fatalf("Init() error: %v", err)
+	}
+	// Start should succeed without starting an internal HTTP server.
+	if err := p.Start(context.Background()); err != nil {
+		t.Fatalf("Start() error in OTLP-only mode: %v", err)
+	}
+	defer p.Stop(context.Background()) //nolint:errcheck
+
+	// InternalAddr should be empty — no Prometheus server running.
+	if addr := p.InternalAddr(); addr != "" {
+		t.Errorf("InternalAddr() = %q, want empty in OTLP-only mode", addr)
+	}
+}
+
+func TestPlugin_OTLPOnly_ContributeCaddyRoutes_ReturnsNil(t *testing.T) {
+	p := newPlugin(otlpOnlyConfig())
+	if err := p.Init(context.Background()); err != nil {
+		t.Fatalf("Init() error: %v", err)
+	}
+	if err := p.Start(context.Background()); err != nil {
+		t.Fatalf("Start() error: %v", err)
+	}
+	defer p.Stop(context.Background()) //nolint:errcheck
+
+	routes := p.ContributeCaddyRoutes()
+	if len(routes) != 0 {
+		t.Errorf("ContributeCaddyRoutes() returned %d routes in OTLP-only mode, want 0", len(routes))
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Invalid duration parsing
+// ---------------------------------------------------------------------------
+
+func TestPlugin_Init_InvalidOTLPInterval(t *testing.T) {
+	cfg := metrics.Config{
+		Enabled:           true,
+		PrometheusEnabled: true,
+		OTLPEnabled:       true,
+		OTLPEndpoint:      "http://localhost:4318",
+		OTLPInterval:      "not-a-duration",
+	}
+	p := newPlugin(cfg)
+	err := p.Init(context.Background())
+	if err == nil {
+		t.Fatal("Init() should fail with invalid OTLP interval")
+	}
+	if !strings.Contains(err.Error(), "invalid interval duration") {
+		t.Errorf("error = %v, want to contain 'invalid interval duration'", err)
+	}
 }

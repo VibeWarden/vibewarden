@@ -52,8 +52,14 @@ type Config struct {
 	// Security headers configuration
 	SecurityHeaders SecurityHeadersConfig `mapstructure:"security_headers"`
 
-	// Metrics configuration
+	// Metrics configuration (DEPRECATED: use Telemetry instead).
+	// This field remains for backward compatibility. On load, MigrateLegacyMetrics
+	// copies any customised metrics settings into Telemetry and logs a deprecation warning.
 	Metrics MetricsConfig `mapstructure:"metrics"`
+
+	// Telemetry configures all telemetry export settings (Prometheus and OTLP).
+	// This replaces the narrower Metrics config and is the preferred section.
+	Telemetry TelemetryConfig `mapstructure:"telemetry"`
 
 	// Database configuration
 	Database DatabaseConfig `mapstructure:"database"`
@@ -457,6 +463,9 @@ type CORSConfig struct {
 }
 
 // MetricsConfig holds Prometheus metrics settings.
+//
+// Deprecated: Use TelemetryConfig instead. MetricsConfig remains only for backward
+// compatibility. Settings are migrated to TelemetryConfig at startup via MigrateLegacyMetrics.
 type MetricsConfig struct {
 	// Enabled toggles metrics collection and the /_vibewarden/metrics endpoint (default: true).
 	Enabled bool `mapstructure:"enabled"`
@@ -465,6 +474,54 @@ type MetricsConfig struct {
 	// Example: "/users/:id", "/api/v1/items/:item_id/comments/:comment_id"
 	// Paths that don't match any pattern are recorded as "other".
 	PathPatterns []string `mapstructure:"path_patterns"`
+}
+
+// TelemetryConfig holds all telemetry export settings.
+// This replaces the narrower MetricsConfig and supports both pull (Prometheus)
+// and push (OTLP) export modes.
+type TelemetryConfig struct {
+	// Enabled toggles telemetry collection entirely (default: true).
+	Enabled bool `mapstructure:"enabled"`
+
+	// PathPatterns is a list of URL path normalization patterns using :param syntax.
+	// Example: "/users/:id", "/api/v1/items/:item_id/comments/:comment_id"
+	// Paths that don't match any pattern are recorded as "other".
+	PathPatterns []string `mapstructure:"path_patterns"`
+
+	// Prometheus configures the pull-based Prometheus exporter.
+	Prometheus PrometheusExporterConfig `mapstructure:"prometheus"`
+
+	// OTLP configures the push-based OTLP exporter.
+	OTLP OTLPExporterConfig `mapstructure:"otlp"`
+}
+
+// PrometheusExporterConfig configures the Prometheus pull-based exporter.
+type PrometheusExporterConfig struct {
+	// Enabled toggles the Prometheus exporter (default: true).
+	// When enabled, metrics are served at /_vibewarden/metrics.
+	Enabled bool `mapstructure:"enabled"`
+}
+
+// OTLPExporterConfig configures the OTLP push-based exporter.
+type OTLPExporterConfig struct {
+	// Enabled toggles the OTLP exporter (default: false).
+	Enabled bool `mapstructure:"enabled"`
+
+	// Endpoint is the OTLP HTTP endpoint URL (e.g., "http://localhost:4318").
+	// Required when Enabled is true.
+	Endpoint string `mapstructure:"endpoint"`
+
+	// Headers are optional HTTP headers for authentication.
+	// Example: {"Authorization": "Bearer <token>"}
+	Headers map[string]string `mapstructure:"headers"`
+
+	// Interval is the export interval as a duration string (default: "30s").
+	// Metrics are batched and pushed at this interval.
+	Interval string `mapstructure:"interval"`
+
+	// Protocol is "http" or "grpc" (default: "http").
+	// Only "http" is supported in this version.
+	Protocol string `mapstructure:"protocol"`
 }
 
 // BodySizeConfig holds request body size limit settings.
@@ -954,6 +1011,14 @@ func Load(configPath string) (*Config, error) {
 	v.SetDefault("security_headers.suppress_via_header", true)
 	v.SetDefault("metrics.enabled", true)
 	v.SetDefault("metrics.path_patterns", []string{})
+	v.SetDefault("telemetry.enabled", true)
+	v.SetDefault("telemetry.path_patterns", []string{})
+	v.SetDefault("telemetry.prometheus.enabled", true)
+	v.SetDefault("telemetry.otlp.enabled", false)
+	v.SetDefault("telemetry.otlp.endpoint", "")
+	v.SetDefault("telemetry.otlp.headers", map[string]string{})
+	v.SetDefault("telemetry.otlp.interval", "30s")
+	v.SetDefault("telemetry.otlp.protocol", "http")
 	v.SetDefault("body_size.max", "1MB")
 	v.SetDefault("body_size.overrides", []BodySizeOverrideConfig{})
 	v.SetDefault("ip_filter.enabled", false)

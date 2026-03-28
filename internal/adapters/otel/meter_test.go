@@ -8,12 +8,16 @@ import (
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
 
-// newInitializedProvider creates and initializes a provider for testing.
+// newInitializedProvider creates and initializes a provider for testing
+// with the Prometheus exporter enabled (legacy default behaviour).
 // The caller must call Shutdown when done.
 func newInitializedProvider(t *testing.T) *oteladapter.Provider {
 	t.Helper()
 	p := oteladapter.NewProvider()
-	if err := p.Init(context.Background(), "test", "0.0.0"); err != nil {
+	cfg := ports.TelemetryConfig{
+		Prometheus: ports.PrometheusExporterConfig{Enabled: true},
+	}
+	if err := p.Init(context.Background(), "test", "0.0.0", cfg); err != nil {
 		t.Fatalf("Init() failed: %v", err)
 	}
 	t.Cleanup(func() { _ = p.Shutdown(context.Background()) })
