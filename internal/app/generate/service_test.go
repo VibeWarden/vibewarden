@@ -981,6 +981,7 @@ func TestGenerate_Observability_WhenEnabled(t *testing.T) {
 		filepath.Join(outputDir, "observability", "loki", "loki-config.yml"),
 		filepath.Join(outputDir, "observability", "promtail", "promtail-config.yml"),
 		filepath.Join(outputDir, "observability", "otel-collector", "config.yaml"),
+		filepath.Join(outputDir, "observability", "tempo", "tempo-config.yml"),
 	}
 
 	for _, f := range expectedFiles {
@@ -1077,6 +1078,9 @@ func TestGenerate_Observability_GrafanaDatasources(t *testing.T) {
 	if !bytes.Contains(data, []byte("http://loki:3100")) {
 		t.Errorf("datasources.yml should reference http://loki:3100, content:\n%s", data)
 	}
+	if !bytes.Contains(data, []byte("http://tempo:3200")) {
+		t.Errorf("datasources.yml should reference http://tempo:3200, content:\n%s", data)
+	}
 }
 
 func TestGenerate_Observability_Dashboard(t *testing.T) {
@@ -1106,7 +1110,7 @@ func TestGenerate_Observability_ComposeServices(t *testing.T) {
 	cfg := observabilityConfig(3001, 9090, 3100, 7)
 	compose := renderCompose(t, cfg)
 
-	for _, svc := range []string{"prometheus:", "loki:", "promtail:", "otel-collector:", "grafana:"} {
+	for _, svc := range []string{"prometheus:", "loki:", "promtail:", "otel-collector:", "tempo:", "grafana:"} {
 		if !bytes.Contains(compose, []byte(svc)) {
 			t.Errorf("expected service %q in compose output when observability enabled", svc)
 		}
@@ -1117,10 +1121,10 @@ func TestGenerate_Observability_ComposeProfiles(t *testing.T) {
 	cfg := observabilityConfig(3001, 9090, 3100, 7)
 	compose := renderCompose(t, cfg)
 
-	// All five observability services should carry the observability profile.
+	// All six observability services should carry the observability profile.
 	count := bytes.Count(compose, []byte("- observability"))
-	if count < 5 {
-		t.Errorf("expected at least 5 occurrences of '- observability' profile annotation, got %d\ncompose:\n%s", count, compose)
+	if count < 6 {
+		t.Errorf("expected at least 6 occurrences of '- observability' profile annotation, got %d\ncompose:\n%s", count, compose)
 	}
 }
 
@@ -1128,7 +1132,7 @@ func TestGenerate_Observability_ComposeVolumes(t *testing.T) {
 	cfg := observabilityConfig(3001, 9090, 3100, 7)
 	compose := renderCompose(t, cfg)
 
-	for _, vol := range []string{"prometheus-data:", "loki-data:", "grafana-data:"} {
+	for _, vol := range []string{"prometheus-data:", "loki-data:", "grafana-data:", "tempo-data:"} {
 		if !bytes.Contains(compose, []byte(vol)) {
 			t.Errorf("expected volume %q in compose volumes section, content:\n%s", vol, compose)
 		}
@@ -1172,12 +1176,12 @@ func TestGenerate_Observability_NotPresent_WhenDisabled(t *testing.T) {
 	}
 	compose := renderCompose(t, cfg)
 
-	for _, svc := range []string{"prometheus:", "grafana:", "loki:", "promtail:", "otel-collector:"} {
+	for _, svc := range []string{"prometheus:", "grafana:", "loki:", "promtail:", "otel-collector:", "tempo:"} {
 		if bytes.Contains(compose, []byte(svc)) {
 			t.Errorf("service %q must not appear when observability is disabled\ncompose:\n%s", svc, compose)
 		}
 	}
-	for _, vol := range []string{"prometheus-data:", "loki-data:", "grafana-data:"} {
+	for _, vol := range []string{"prometheus-data:", "loki-data:", "grafana-data:", "tempo-data:"} {
 		if bytes.Contains(compose, []byte(vol)) {
 			t.Errorf("volume %q must not appear when observability is disabled\ncompose:\n%s", vol, compose)
 		}
@@ -1311,6 +1315,136 @@ func TestGenerate_OtelCollector_NotPresent_WhenDisabled(t *testing.T) {
 	collectorDir := filepath.Join(outputDir, "observability", "otel-collector")
 	if _, err := os.Stat(collectorDir); err == nil {
 		t.Errorf("otel-collector directory must not be created when observability is disabled: %q", collectorDir)
+	}
+}
+
+// --- Tempo tests ---
+
+func TestGenerate_Tempo_ConfigFileCreated(t *testing.T) {
+	cfg := observabilityConfig(3001, 9090, 3100, 7)
+	outputDir := t.TempDir()
+	svc := generate.NewService(realRenderer())
+
+	if err := svc.Generate(context.Background(), cfg, outputDir); err != nil {
+		t.Fatalf("Generate() unexpected error: %v", err)
+	}
+
+	configPath := filepath.Join(outputDir, "observability", "tempo", "tempo-config.yml")
+	if _, err := os.Stat(configPath); err != nil {
+		t.Errorf("expected tempo config to exist at %q: %v", configPath, err)
+	}
+}
+
+func TestGenerate_Tempo_ConfigContents(t *testing.T) {
+	cfg := observabilityConfig(3001, 9090, 3100, 7)
+	outputDir := t.TempDir()
+	svc := generate.NewService(realRenderer())
+
+	if err := svc.Generate(context.Background(), cfg, outputDir); err != nil {
+		t.Fatalf("Generate() unexpected error: %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(outputDir, "observability", "tempo", "tempo-config.yml"))
+	if err != nil {
+		t.Fatalf("reading tempo-config.yml: %v", err)
+	}
+
+	checks := []struct {
+		desc    string
+		contain []byte
+	}{
+		{"HTTP listen port", []byte("http_listen_port: 3200")},
+		{"OTLP gRPC receiver", []byte("grpc:")},
+		{"OTLP gRPC endpoint", []byte("0.0.0.0:4317")},
+		{"local storage backend", []byte("backend: local")},
+		{"traces storage path", []byte("/var/tempo/traces")},
+		{"WAL path", []byte("/var/tempo/wal")},
+	}
+
+	for _, c := range checks {
+		t.Run(c.desc, func(t *testing.T) {
+			if !bytes.Contains(data, c.contain) {
+				t.Errorf("tempo-config.yml missing %s (%q), content:\n%s", c.desc, c.contain, data)
+			}
+		})
+	}
+}
+
+func TestGenerate_Tempo_ComposeService(t *testing.T) {
+	cfg := observabilityConfig(3001, 9090, 3100, 7)
+	compose := renderCompose(t, cfg)
+
+	if !bytes.Contains(compose, []byte("grafana/tempo:")) {
+		t.Errorf("expected grafana/tempo image in compose output\ncompose:\n%s", compose)
+	}
+	if !bytes.Contains(compose, []byte("tempo/tempo-config.yml:/etc/tempo/tempo-config.yml")) {
+		t.Errorf("expected tempo config volume mount\ncompose:\n%s", compose)
+	}
+	if !bytes.Contains(compose, []byte("localhost:3200/ready")) {
+		t.Errorf("expected tempo healthcheck on port 3200\ncompose:\n%s", compose)
+	}
+}
+
+func TestGenerate_Tempo_ComposeDependsOn(t *testing.T) {
+	cfg := observabilityConfig(3001, 9090, 3100, 7)
+	compose := renderCompose(t, cfg)
+
+	// otel-collector depends on tempo being healthy.
+	if !bytes.Contains(compose, []byte("tempo:\n        condition: service_healthy")) {
+		t.Errorf("expected otel-collector and grafana depends_on tempo with service_healthy\ncompose:\n%s", compose)
+	}
+}
+
+func TestGenerate_Tempo_OtelCollector_TracesPipeline(t *testing.T) {
+	cfg := observabilityConfig(3001, 9090, 3100, 7)
+	outputDir := t.TempDir()
+	svc := generate.NewService(realRenderer())
+
+	if err := svc.Generate(context.Background(), cfg, outputDir); err != nil {
+		t.Fatalf("Generate() unexpected error: %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(outputDir, "observability", "otel-collector", "config.yaml"))
+	if err != nil {
+		t.Fatalf("reading otel-collector config.yaml: %v", err)
+	}
+
+	checks := []struct {
+		desc    string
+		contain []byte
+	}{
+		{"Tempo exporter section", []byte("otlp/tempo:")},
+		{"Tempo endpoint", []byte("http://tempo:4317")},
+		{"traces pipeline", []byte("traces:")},
+		{"traces receivers", []byte("[otlp]")},
+		{"traces exporters referencing tempo", []byte("[otlp/tempo]")},
+	}
+
+	for _, c := range checks {
+		t.Run(c.desc, func(t *testing.T) {
+			if !bytes.Contains(data, c.contain) {
+				t.Errorf("otel-collector config.yaml missing %s (%q), content:\n%s", c.desc, c.contain, data)
+			}
+		})
+	}
+}
+
+func TestGenerate_Tempo_NotPresent_WhenDisabled(t *testing.T) {
+	cfg := &config.Config{
+		Server:        config.ServerConfig{Host: "127.0.0.1", Port: 8080},
+		Upstream:      config.UpstreamConfig{Host: "127.0.0.1", Port: 3000},
+		Observability: config.ObservabilityConfig{Enabled: false},
+	}
+	outputDir := t.TempDir()
+	svc := generate.NewService(realRenderer())
+
+	if err := svc.Generate(context.Background(), cfg, outputDir); err != nil {
+		t.Fatalf("Generate() unexpected error: %v", err)
+	}
+
+	tempoDir := filepath.Join(outputDir, "observability", "tempo")
+	if _, err := os.Stat(tempoDir); err == nil {
+		t.Errorf("tempo directory must not be created when observability is disabled: %q", tempoDir)
 	}
 }
 
