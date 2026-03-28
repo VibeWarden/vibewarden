@@ -486,6 +486,7 @@ func buildBodySizePortsConfig(cfg *config.Config) ports.BodySizeConfig {
 // buildResiliencePortsConfig parses the resilience duration strings and returns
 // a ports.ResilienceConfig. Unparseable timeout values are replaced with the
 // 30-second default. Unparseable circuit breaker timeout values fall back to 60s.
+// Unparseable retry backoff values fall back to their defaults.
 func buildResiliencePortsConfig(cfg *config.Config) ports.ResilienceConfig {
 	result := ports.ResilienceConfig{}
 
@@ -529,6 +530,54 @@ func buildResiliencePortsConfig(cfg *config.Config) ports.ResilienceConfig {
 			Enabled:   true,
 			Threshold: threshold,
 			Timeout:   cbTimeout,
+		}
+	}
+
+	// Parse retry config.
+	retryCfg := cfg.Resilience.Retry
+	if retryCfg.Enabled {
+		maxAttempts := retryCfg.MaxAttempts
+		if maxAttempts < 2 {
+			maxAttempts = 3
+		}
+
+		initialBackoff := 100 * time.Millisecond
+		if retryCfg.InitialBackoff != "" && retryCfg.InitialBackoff != "0" {
+			d, err := time.ParseDuration(retryCfg.InitialBackoff)
+			if err != nil {
+				slog.Default().Warn("resilience.retry.backoff parse error — using default 100ms",
+					slog.String("error", err.Error()),
+					slog.String("value", retryCfg.InitialBackoff),
+				)
+			} else {
+				initialBackoff = d
+			}
+		}
+
+		maxBackoff := 10 * time.Second
+		if retryCfg.MaxBackoff != "" && retryCfg.MaxBackoff != "0" {
+			d, err := time.ParseDuration(retryCfg.MaxBackoff)
+			if err != nil {
+				slog.Default().Warn("resilience.retry.max_backoff parse error — using default 10s",
+					slog.String("error", err.Error()),
+					slog.String("value", retryCfg.MaxBackoff),
+				)
+			} else {
+				maxBackoff = d
+			}
+		}
+
+		retryOn := retryCfg.RetryOn
+		if len(retryOn) == 0 {
+			retryOn = []int{502, 503, 504}
+		}
+
+		result.Retry = ports.RetryConfig{
+			Enabled:        true,
+			MaxAttempts:    maxAttempts,
+			InitialBackoff: initialBackoff,
+			MaxBackoff:     maxBackoff,
+			RetryOn:        retryOn,
 		}
 	}
 

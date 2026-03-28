@@ -44,6 +44,11 @@ type MetricsCollector interface {
 	// upstream did not respond within the configured resilience.timeout.
 	IncUpstreamTimeout()
 
+	// IncUpstreamRetry increments the upstream retry counter.
+	// It is called once for each retry attempt (not the initial request).
+	// The method label is the HTTP method of the retried request.
+	IncUpstreamRetry(method string)
+
 	// SetActiveConnections sets the current number of active connections.
 	SetActiveConnections(n int)
 

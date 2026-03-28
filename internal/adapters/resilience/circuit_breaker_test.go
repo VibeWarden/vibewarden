@@ -71,6 +71,7 @@ func (f *fakeMetrics) IncRateLimitHit(_ string)                            {}
 func (f *fakeMetrics) IncAuthDecision(_ string)                            {}
 func (f *fakeMetrics) IncUpstreamError()                                   {}
 func (f *fakeMetrics) IncUpstreamTimeout()                                 {}
+func (f *fakeMetrics) IncUpstreamRetry(_ string)                           {}
 func (f *fakeMetrics) SetActiveConnections(_ int)                          {}
 
 var _ ports.MetricsCollectorWithCircuitBreaker = (*fakeMetrics)(nil)

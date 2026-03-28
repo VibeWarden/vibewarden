@@ -568,6 +568,31 @@ type ResilienceConfig struct {
 
 	// CircuitBreaker configures the circuit breaker middleware.
 	CircuitBreaker CircuitBreakerConfig `mapstructure:"circuit_breaker"`
+
+	// Retry configures the retry-with-exponential-backoff middleware.
+	Retry RetryConfig `mapstructure:"retry"`
+}
+
+// RetryConfig holds retry-with-exponential-backoff settings.
+type RetryConfig struct {
+	// Enabled toggles the retry middleware (default: false).
+	Enabled bool `mapstructure:"enabled"`
+
+	// MaxAttempts is the total number of attempts including the initial request.
+	// Must be >= 2 when Enabled is true. Default: 3.
+	MaxAttempts int `mapstructure:"max_attempts"`
+
+	// InitialBackoff is the wait before the first retry, as a duration string
+	// (e.g. "100ms", "500ms"). Default: "100ms".
+	InitialBackoff string `mapstructure:"backoff"`
+
+	// MaxBackoff is the upper bound on the computed backoff, as a duration string
+	// (e.g. "10s"). Default: "10s".
+	MaxBackoff string `mapstructure:"max_backoff"`
+
+	// RetryOn is the list of HTTP status codes that trigger a retry.
+	// Default: [502, 503, 504].
+	RetryOn []int `mapstructure:"retry_on"`
 }
 
 // CircuitBreakerConfig holds circuit breaker settings.
