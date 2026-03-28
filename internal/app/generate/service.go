@@ -196,6 +196,7 @@ func (s *Service) generateObservability(cfg *config.Config, outputDir string) er
 		filepath.Join(obsDir, "grafana", "dashboards"),
 		filepath.Join(obsDir, "loki"),
 		filepath.Join(obsDir, "promtail"),
+		filepath.Join(obsDir, "otel-collector"),
 	}
 	for _, dir := range dirs {
 		if err := os.MkdirAll(dir, permDir); err != nil {
@@ -261,6 +262,16 @@ func (s *Service) generateObservability(cfg *config.Config, outputDir string) er
 		true,
 	); err != nil {
 		return fmt.Errorf("rendering promtail-config.yml: %w", err)
+	}
+
+	// Render OTel Collector config.
+	if err := s.renderer.RenderToFile(
+		"observability/otel-collector-config.yml.tmpl",
+		cfg,
+		filepath.Join(obsDir, "otel-collector", "config.yaml"),
+		true,
+	); err != nil {
+		return fmt.Errorf("rendering otel-collector config: %w", err)
 	}
 
 	return nil

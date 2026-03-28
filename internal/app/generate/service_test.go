@@ -980,6 +980,7 @@ func TestGenerate_Observability_WhenEnabled(t *testing.T) {
 		filepath.Join(outputDir, "observability", "grafana", "dashboards", "vibewarden.json"),
 		filepath.Join(outputDir, "observability", "loki", "loki-config.yml"),
 		filepath.Join(outputDir, "observability", "promtail", "promtail-config.yml"),
+		filepath.Join(outputDir, "observability", "otel-collector", "config.yaml"),
 	}
 
 	for _, f := range expectedFiles {
@@ -1012,8 +1013,6 @@ func TestGenerate_Observability_WhenDisabled(t *testing.T) {
 
 func TestGenerate_Observability_PrometheusConfig(t *testing.T) {
 	cfg := observabilityConfig(3001, 9090, 3100, 7)
-	// Use a non-default port to verify template substitution.
-	cfg.Server.Port = 9999
 	outputDir := t.TempDir()
 	svc := generate.NewService(realRenderer())
 
@@ -1026,11 +1025,15 @@ func TestGenerate_Observability_PrometheusConfig(t *testing.T) {
 		t.Fatalf("reading prometheus.yml: %v", err)
 	}
 
-	if !bytes.Contains(data, []byte("vibewarden:9999")) {
-		t.Errorf("prometheus.yml should target vibewarden:9999, content:\n%s", data)
+	// Prometheus now scrapes the OTel Collector's Prometheus exporter, not VibeWarden directly.
+	if !bytes.Contains(data, []byte("otel-collector:8889")) {
+		t.Errorf("prometheus.yml should target otel-collector:8889, content:\n%s", data)
 	}
-	if !bytes.Contains(data, []byte("/_vibewarden/metrics")) {
-		t.Errorf("prometheus.yml should specify /_vibewarden/metrics path, content:\n%s", data)
+	if !bytes.Contains(data, []byte("job_name: 'otel-collector'")) {
+		t.Errorf("prometheus.yml should have job_name 'otel-collector', content:\n%s", data)
+	}
+	if bytes.Contains(data, []byte("/_vibewarden/metrics")) {
+		t.Errorf("prometheus.yml must not scrape /_vibewarden/metrics directly when observability is enabled, content:\n%s", data)
 	}
 }
 
@@ -1103,7 +1106,7 @@ func TestGenerate_Observability_ComposeServices(t *testing.T) {
 	cfg := observabilityConfig(3001, 9090, 3100, 7)
 	compose := renderCompose(t, cfg)
 
-	for _, svc := range []string{"prometheus:", "loki:", "promtail:", "grafana:"} {
+	for _, svc := range []string{"prometheus:", "loki:", "promtail:", "otel-collector:", "grafana:"} {
 		if !bytes.Contains(compose, []byte(svc)) {
 			t.Errorf("expected service %q in compose output when observability enabled", svc)
 		}
@@ -1114,10 +1117,10 @@ func TestGenerate_Observability_ComposeProfiles(t *testing.T) {
 	cfg := observabilityConfig(3001, 9090, 3100, 7)
 	compose := renderCompose(t, cfg)
 
-	// All four observability services should carry the observability profile.
+	// All five observability services should carry the observability profile.
 	count := bytes.Count(compose, []byte("- observability"))
-	if count < 4 {
-		t.Errorf("expected at least 4 occurrences of '- observability' profile annotation, got %d\ncompose:\n%s", count, compose)
+	if count < 5 {
+		t.Errorf("expected at least 5 occurrences of '- observability' profile annotation, got %d\ncompose:\n%s", count, compose)
 	}
 }
 
@@ -1169,7 +1172,7 @@ func TestGenerate_Observability_NotPresent_WhenDisabled(t *testing.T) {
 	}
 	compose := renderCompose(t, cfg)
 
-	for _, svc := range []string{"prometheus:", "grafana:", "loki:", "promtail:"} {
+	for _, svc := range []string{"prometheus:", "grafana:", "loki:", "promtail:", "otel-collector:"} {
 		if bytes.Contains(compose, []byte(svc)) {
 			t.Errorf("service %q must not appear when observability is disabled\ncompose:\n%s", svc, compose)
 		}
@@ -1178,6 +1181,136 @@ func TestGenerate_Observability_NotPresent_WhenDisabled(t *testing.T) {
 		if bytes.Contains(compose, []byte(vol)) {
 			t.Errorf("volume %q must not appear when observability is disabled\ncompose:\n%s", vol, compose)
 		}
+	}
+}
+
+// --- OTel Collector tests ---
+
+func TestGenerate_OtelCollector_ConfigFileCreated(t *testing.T) {
+	cfg := observabilityConfig(3001, 9090, 3100, 7)
+	outputDir := t.TempDir()
+	svc := generate.NewService(realRenderer())
+
+	if err := svc.Generate(context.Background(), cfg, outputDir); err != nil {
+		t.Fatalf("Generate() unexpected error: %v", err)
+	}
+
+	configPath := filepath.Join(outputDir, "observability", "otel-collector", "config.yaml")
+	if _, err := os.Stat(configPath); err != nil {
+		t.Errorf("expected otel-collector config.yaml to exist at %q: %v", configPath, err)
+	}
+}
+
+func TestGenerate_OtelCollector_ConfigContainsReceivers(t *testing.T) {
+	cfg := observabilityConfig(3001, 9090, 3100, 7)
+	outputDir := t.TempDir()
+	svc := generate.NewService(realRenderer())
+
+	if err := svc.Generate(context.Background(), cfg, outputDir); err != nil {
+		t.Fatalf("Generate() unexpected error: %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(outputDir, "observability", "otel-collector", "config.yaml"))
+	if err != nil {
+		t.Fatalf("reading otel-collector config.yaml: %v", err)
+	}
+
+	checks := []struct {
+		desc    string
+		contain []byte
+	}{
+		{"OTLP receiver", []byte("otlp:")},
+		{"OTLP HTTP endpoint", []byte("0.0.0.0:4318")},
+		{"Prometheus exporter endpoint", []byte("0.0.0.0:8889")},
+		{"Loki exporter endpoint", []byte("http://loki:3100/loki/api/v1/push")},
+		{"metrics pipeline", []byte("metrics:")},
+		{"logs pipeline", []byte("logs:")},
+		{"batch processor", []byte("batch:")},
+	}
+
+	for _, c := range checks {
+		if !bytes.Contains(data, c.contain) {
+			t.Errorf("otel-collector config.yaml missing %s (%q), content:\n%s", c.desc, c.contain, data)
+		}
+	}
+}
+
+func TestGenerate_OtelCollector_ComposeService(t *testing.T) {
+	cfg := observabilityConfig(3001, 9090, 3100, 7)
+	compose := renderCompose(t, cfg)
+
+	if !bytes.Contains(compose, []byte("otel/opentelemetry-collector-contrib:")) {
+		t.Errorf("expected otel-collector-contrib image in compose output\ncompose:\n%s", compose)
+	}
+	if !bytes.Contains(compose, []byte("otel-collector/config.yaml:/etc/otelcol-contrib/config.yaml")) {
+		t.Errorf("expected otel-collector config volume mount\ncompose:\n%s", compose)
+	}
+	if !bytes.Contains(compose, []byte("localhost:13133")) {
+		t.Errorf("expected otel-collector healthcheck on port 13133\ncompose:\n%s", compose)
+	}
+}
+
+func TestGenerate_OtelCollector_ComposeDependsOn(t *testing.T) {
+	cfg := observabilityConfig(3001, 9090, 3100, 7)
+	compose := renderCompose(t, cfg)
+
+	// otel-collector depends on loki being healthy.
+	// grafana depends on otel-collector being healthy.
+	if !bytes.Contains(compose, []byte("otel-collector:\n        condition: service_healthy")) {
+		t.Errorf("expected grafana depends_on otel-collector with service_healthy\ncompose:\n%s", compose)
+	}
+}
+
+func TestGenerate_OtelCollector_OtlpEnvVars(t *testing.T) {
+	cfg := observabilityConfig(3001, 9090, 3100, 7)
+	compose := renderCompose(t, cfg)
+
+	if !bytes.Contains(compose, []byte("VIBEWARDEN_TELEMETRY_OTLP_ENABLED=true")) {
+		t.Errorf("expected VIBEWARDEN_TELEMETRY_OTLP_ENABLED=true in compose when observability enabled\ncompose:\n%s", compose)
+	}
+	if !bytes.Contains(compose, []byte("VIBEWARDEN_TELEMETRY_OTLP_ENDPOINT=http://otel-collector:4318")) {
+		t.Errorf("expected VIBEWARDEN_TELEMETRY_OTLP_ENDPOINT env var pointing to collector\ncompose:\n%s", compose)
+	}
+	if !bytes.Contains(compose, []byte("VIBEWARDEN_TELEMETRY_LOGS_OTLP=true")) {
+		t.Errorf("expected VIBEWARDEN_TELEMETRY_LOGS_OTLP=true in compose when observability enabled\ncompose:\n%s", compose)
+	}
+}
+
+func TestGenerate_OtelCollector_OtlpEnvVars_AbsentWhenDisabled(t *testing.T) {
+	cfg := &config.Config{
+		Server:        config.ServerConfig{Host: "127.0.0.1", Port: 8080},
+		Upstream:      config.UpstreamConfig{Host: "127.0.0.1", Port: 3000},
+		Observability: config.ObservabilityConfig{Enabled: false},
+	}
+	compose := renderCompose(t, cfg)
+
+	if bytes.Contains(compose, []byte("VIBEWARDEN_TELEMETRY_OTLP_ENABLED")) {
+		t.Errorf("VIBEWARDEN_TELEMETRY_OTLP_ENABLED must not appear when observability is disabled\ncompose:\n%s", compose)
+	}
+	if bytes.Contains(compose, []byte("VIBEWARDEN_TELEMETRY_OTLP_ENDPOINT")) {
+		t.Errorf("VIBEWARDEN_TELEMETRY_OTLP_ENDPOINT must not appear when observability is disabled\ncompose:\n%s", compose)
+	}
+	if bytes.Contains(compose, []byte("VIBEWARDEN_TELEMETRY_LOGS_OTLP")) {
+		t.Errorf("VIBEWARDEN_TELEMETRY_LOGS_OTLP must not appear when observability is disabled\ncompose:\n%s", compose)
+	}
+}
+
+func TestGenerate_OtelCollector_NotPresent_WhenDisabled(t *testing.T) {
+	cfg := &config.Config{
+		Server:        config.ServerConfig{Host: "127.0.0.1", Port: 8080},
+		Upstream:      config.UpstreamConfig{Host: "127.0.0.1", Port: 3000},
+		Observability: config.ObservabilityConfig{Enabled: false},
+	}
+	outputDir := t.TempDir()
+	svc := generate.NewService(realRenderer())
+
+	if err := svc.Generate(context.Background(), cfg, outputDir); err != nil {
+		t.Fatalf("Generate() unexpected error: %v", err)
+	}
+
+	collectorDir := filepath.Join(outputDir, "observability", "otel-collector")
+	if _, err := os.Stat(collectorDir); err == nil {
+		t.Errorf("otel-collector directory must not be created when observability is disabled: %q", collectorDir)
 	}
 }
 
