@@ -24,15 +24,6 @@ exporters:
   # Loki exporter: pushes logs to Loki
   loki:
     endpoint: http://loki:3100/loki/api/v1/push
-    default_labels_enabled:
-      exporter: false
-      job: true
-    labels:
-      attributes:
-        event.type: "event_type"
-        vibewarden.schema_version: "schema_version"
-      resource:
-        service.name: "service"
 
   # Jaeger exporter: pushes traces to Jaeger via OTLP/gRPC
   otlp/jaeger:
