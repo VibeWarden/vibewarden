@@ -93,6 +93,9 @@ type Config struct {
 
 	// Audit configures the security audit log sink.
 	Audit AuditConfig `mapstructure:"audit"`
+
+	// WAF configures the Web Application Firewall plugins.
+	WAF WAFConfig `mapstructure:"waf"`
 }
 
 // DatabaseConfig holds PostgreSQL connection settings used for audit logging
@@ -554,6 +557,23 @@ type SecurityHeadersConfig struct {
 
 	// SuppressViaHeader removes the Via header from proxied responses (default: true)
 	SuppressViaHeader bool `mapstructure:"suppress_via_header"`
+}
+
+// WAFConfig holds Web Application Firewall settings.
+type WAFConfig struct {
+	// ContentTypeValidation configures the Content-Type validation middleware.
+	ContentTypeValidation ContentTypeValidationConfig `mapstructure:"content_type_validation"`
+}
+
+// ContentTypeValidationConfig holds settings for the Content-Type validation middleware.
+type ContentTypeValidationConfig struct {
+	// Enabled toggles Content-Type validation on body-bearing requests (default: false).
+	Enabled bool `mapstructure:"enabled"`
+
+	// Allowed is the list of permitted media types.
+	// Requests with a Content-Type not in this list receive 415 Unsupported Media Type.
+	// Default: ["application/json", "application/x-www-form-urlencoded", "multipart/form-data"]
+	Allowed []string `mapstructure:"allowed"`
 }
 
 // CORSConfig holds Cross-Origin Resource Sharing settings.
@@ -1327,6 +1347,12 @@ func Load(configPath string) (*Config, error) {
 	v.SetDefault("observability.prometheus_port", 9090)
 	v.SetDefault("observability.loki_port", 3100)
 	v.SetDefault("observability.retention_days", 7)
+	v.SetDefault("waf.content_type_validation.enabled", false)
+	v.SetDefault("waf.content_type_validation.allowed", []string{
+		"application/json",
+		"application/x-www-form-urlencoded",
+		"multipart/form-data",
+	})
 
 	// Config file
 	if configPath != "" {

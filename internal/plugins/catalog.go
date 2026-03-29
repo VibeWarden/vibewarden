@@ -24,6 +24,21 @@ type PluginDescriptor struct {
 // The order reflects the recommended initialisation priority.
 var Catalog = []PluginDescriptor{
 	{
+		Name:        "waf",
+		Description: "WAF: Content-Type validation blocks body requests with missing or disallowed media types",
+		ConfigSchema: map[string]string{
+			"content_type_validation.enabled": "Enable Content-Type validation on POST, PUT, PATCH requests (default: false)",
+			"content_type_validation.allowed": "List of permitted media types (default: application/json, application/x-www-form-urlencoded, multipart/form-data)",
+		},
+		Example: `  waf:
+    content_type_validation:
+      enabled: true
+      allowed:
+        - "application/json"
+        - "application/x-www-form-urlencoded"
+        - "multipart/form-data"`,
+	},
+	{
 		Name:        "cors",
 		Description: "CORS: sets Access-Control-* headers and handles OPTIONS preflight requests",
 		ConfigSchema: map[string]string{
