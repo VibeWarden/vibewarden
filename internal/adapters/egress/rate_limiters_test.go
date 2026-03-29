@@ -25,6 +25,7 @@ func newTestProxyWithRL(
 	t.Helper()
 	resolver := egressadapter.NewRouteResolver(routes)
 	cfg := egressadapter.ProxyConfig{
+		AllowInsecure:  true, // test server is HTTP
 		Listen:         "127.0.0.1:0",
 		DefaultPolicy:  policy,
 		DefaultTimeout: 5 * time.Second,
@@ -179,6 +180,7 @@ func TestRateLimiterRegistry_HTTP429OnExceeded(t *testing.T) {
 
 	resolver := egressadapter.NewRouteResolver([]domainegress.Route{route})
 	cfg := egressadapter.ProxyConfig{
+		AllowInsecure:  true, // test server is HTTP
 		Listen:         "127.0.0.1:0",
 		DefaultPolicy:  domainegress.PolicyDeny,
 		DefaultTimeout: 5 * time.Second,

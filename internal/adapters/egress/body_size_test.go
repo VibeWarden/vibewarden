@@ -33,6 +33,7 @@ func newTestProxyWithLimits(
 		Routes:                   routes,
 		DefaultBodySizeLimit:     defaultBodyLimit,
 		DefaultResponseSizeLimit: defaultRespLimit,
+		AllowInsecure:            true, // test servers are HTTP
 	}
 	return egressadapter.NewProxy(cfg, resolver, client, nil)
 }
@@ -202,6 +203,7 @@ func TestHTTPHandler_RequestBodyLimit_Returns413(t *testing.T) {
 	)
 	resolver := egressadapter.NewRouteResolver([]domainegress.Route{route})
 	cfg := egressadapter.ProxyConfig{
+		AllowInsecure:  true, // test server is HTTP
 		Listen:         "127.0.0.1:0",
 		DefaultPolicy:  domainegress.PolicyDeny,
 		DefaultTimeout: 5 * time.Second,
@@ -254,6 +256,7 @@ func TestHTTPHandler_ResponseSizeLimit_Truncates(t *testing.T) {
 	)
 	resolver := egressadapter.NewRouteResolver([]domainegress.Route{route})
 	cfg := egressadapter.ProxyConfig{
+		AllowInsecure:  true, // test server is HTTP
 		Listen:         "127.0.0.1:0",
 		DefaultPolicy:  domainegress.PolicyDeny,
 		DefaultTimeout: 5 * time.Second,
@@ -316,6 +319,7 @@ func TestHTTPHandler_ResponseSizeLimit_NoTruncation(t *testing.T) {
 	)
 	resolver := egressadapter.NewRouteResolver([]domainegress.Route{route})
 	cfg := egressadapter.ProxyConfig{
+		AllowInsecure:  true, // test server is HTTP
 		Listen:         "127.0.0.1:0",
 		DefaultPolicy:  domainegress.PolicyDeny,
 		DefaultTimeout: 5 * time.Second,
@@ -367,6 +371,7 @@ func TestHTTPHandler_DefaultResponseSizeLimit(t *testing.T) {
 	route := newTestRoute(t, "api", upstream.URL+"/v1/*") // no per-route limit
 	resolver := egressadapter.NewRouteResolver([]domainegress.Route{route})
 	cfg := egressadapter.ProxyConfig{
+		AllowInsecure:            true, // test server is HTTP
 		Listen:                   "127.0.0.1:0",
 		DefaultPolicy:            domainegress.PolicyDeny,
 		DefaultTimeout:           5 * time.Second,
@@ -424,6 +429,7 @@ func TestHTTPHandler_PerRouteResponseLimitOverridesDefault(t *testing.T) {
 	)
 	resolver := egressadapter.NewRouteResolver([]domainegress.Route{route})
 	cfg := egressadapter.ProxyConfig{
+		AllowInsecure:            true, // test server is HTTP
 		Listen:                   "127.0.0.1:0",
 		DefaultPolicy:            domainegress.PolicyDeny,
 		DefaultTimeout:           5 * time.Second,

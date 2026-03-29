@@ -242,6 +242,7 @@ func TestProxy_SecretInjection_PerRoute(t *testing.T) {
 
 	resolver := egressadapter.NewRouteResolver([]domainegress.Route{route})
 	cfg := egressadapter.ProxyConfig{
+		AllowInsecure:  true, // test server is HTTP
 		Listen:         "127.0.0.1:0",
 		DefaultPolicy:  domainegress.PolicyDeny,
 		DefaultTimeout: 5 * time.Second,
@@ -293,6 +294,7 @@ func TestProxy_SecretInjection_DynamicHeader(t *testing.T) {
 
 	resolver := egressadapter.NewRouteResolver([]domainegress.Route{route})
 	cfg := egressadapter.ProxyConfig{
+		AllowInsecure:  true, // test server is HTTP
 		Listen:         "127.0.0.1:0",
 		DefaultPolicy:  domainegress.PolicyDeny,
 		DefaultTimeout: 5 * time.Second,
@@ -347,6 +349,7 @@ func TestProxy_SecretInjection_FailClosed(t *testing.T) {
 
 	resolver := egressadapter.NewRouteResolver([]domainegress.Route{route})
 	cfg := egressadapter.ProxyConfig{
+		AllowInsecure:  true, // test server is HTTP
 		Listen:         "127.0.0.1:0",
 		DefaultPolicy:  domainegress.PolicyDeny,
 		DefaultTimeout: 5 * time.Second,
@@ -392,6 +395,7 @@ func TestProxy_SecretInjection_NoInjectorConfigured(t *testing.T) {
 
 	resolver := egressadapter.NewRouteResolver([]domainegress.Route{route})
 	cfg := egressadapter.ProxyConfig{
+		AllowInsecure:  true, // test server is HTTP
 		Listen:         "127.0.0.1:0",
 		DefaultPolicy:  domainegress.PolicyDeny,
 		DefaultTimeout: 5 * time.Second,
@@ -431,6 +435,7 @@ func TestProxy_SecretInjection_XInjectSecretStripped(t *testing.T) {
 
 	resolver := egressadapter.NewRouteResolver([]domainegress.Route{route})
 	cfg := egressadapter.ProxyConfig{
+		AllowInsecure:  true, // test server is HTTP
 		Listen:         "127.0.0.1:0",
 		DefaultPolicy:  domainegress.PolicyDeny,
 		DefaultTimeout: 5 * time.Second,
@@ -482,6 +487,7 @@ func TestProxy_SecretInjection_HTTPHandler_FailClosed(t *testing.T) {
 
 	resolver := egressadapter.NewRouteResolver([]domainegress.Route{route})
 	cfg := egressadapter.ProxyConfig{
+		AllowInsecure:  true, // test server is HTTP
 		Listen:         "127.0.0.1:0",
 		DefaultPolicy:  domainegress.PolicyDeny,
 		DefaultTimeout: 5 * time.Second,

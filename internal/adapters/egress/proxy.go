@@ -6,6 +6,7 @@ package egress
 
 import (
 	"context"
+	"crypto/tls"
 	"errors"
 	"fmt"
 	"io"
@@ -122,6 +123,11 @@ type ProxyConfig struct {
 	// 429 Too Many Requests response before any upstream contact is made. When
 	// nil, per-route rate limiting is disabled regardless of route configuration.
 	RateLimiters *RateLimiterRegistry
+
+	// AllowInsecure, when true, permits plain HTTP egress requests globally.
+	// By default only HTTPS targets are allowed. Individual routes can also
+	// override this with their AllowInsecure field.
+	AllowInsecure bool
 }
 
 // Proxy is an HTTP server that listens on a dedicated localhost port and
@@ -167,6 +173,13 @@ func NewProxy(cfg ProxyConfig, resolver ports.RouteResolver, client *http.Client
 		transport := http.DefaultTransport.(*http.Transport).Clone()
 		if cfg.SSRFGuard != nil {
 			transport.DialContext = cfg.SSRFGuard.DialContext
+		}
+		// Enforce TLS 1.2 as minimum version on all outbound connections.
+		if transport.TLSClientConfig == nil {
+			transport.TLSClientConfig = &tls.Config{MinVersion: tls.VersionTLS12}
+		} else {
+			transport.TLSClientConfig = transport.TLSClientConfig.Clone()
+			transport.TLSClientConfig.MinVersion = tls.VersionTLS12
 		}
 		client = &http.Client{
 			Timeout:   cfg.DefaultTimeout,
@@ -246,6 +259,21 @@ func (p *Proxy) HandleRequest(ctx context.Context, req domainegress.EgressReques
 	if !match.Matched {
 		if p.cfg.DefaultPolicy == domainegress.PolicyDeny {
 			return domainegress.EgressResponse{}, ErrDeniedByPolicy
+		}
+	}
+
+	// Enforce TLS: reject plain HTTP targets unless explicitly permitted.
+	// The effective allow_insecure flag is: per-route flag OR global flag.
+	if strings.HasPrefix(req.URL, "http://") {
+		routeAllows := match.Matched && match.Route.AllowInsecure()
+		if !routeAllows && !p.cfg.AllowInsecure {
+			p.logger.WarnContext(ctx, "egress.tls_error",
+				slog.String("event_type", "egress.tls_error"),
+				slog.String("url", req.URL),
+				slog.String("method", req.Method),
+				slog.String("reason", "plain HTTP not allowed"),
+			)
+			return domainegress.EgressResponse{}, ErrInsecureURL
 		}
 	}
 
@@ -387,6 +415,16 @@ func (p *Proxy) handleRequest(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		if err == ErrDeniedByPolicy {
 			http.Error(w, "403 Forbidden: request denied by egress policy", http.StatusForbidden)
+			return
+		}
+		if err == ErrInsecureURL {
+			p.logger.WarnContext(r.Context(), "egress.tls_error",
+				slog.String("event_type", "egress.tls_error"),
+				slog.String("target", targetURL),
+				slog.String("method", r.Method),
+				slog.String("reason", "plain HTTP not allowed"),
+			)
+			http.Error(w, "400 Bad Request: "+ErrInsecureURL.Error(), http.StatusBadRequest)
 			return
 		}
 		if err == ErrRequestBodyTooLarge {

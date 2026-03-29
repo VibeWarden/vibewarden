@@ -35,6 +35,7 @@ func TestForward_PerRouteTimeout_Returns504(t *testing.T) {
 		DefaultPolicy:  domainegress.PolicyDeny,
 		DefaultTimeout: 5 * time.Second,
 		Routes:         []domainegress.Route{route},
+		AllowInsecure:  true, // test server is HTTP
 	}
 	proxy := egressadapter.NewProxy(cfg, resolver, upstream.Client(), nil)
 
@@ -80,6 +81,7 @@ func TestForward_DefaultTimeout_Returns504(t *testing.T) {
 		DefaultPolicy:  domainegress.PolicyDeny,
 		DefaultTimeout: 50 * time.Millisecond, // very short global timeout
 		Routes:         []domainegress.Route{route},
+		AllowInsecure:  true, // test server is HTTP
 	}
 	proxy := egressadapter.NewProxy(cfg, resolver, upstream.Client(), nil)
 
@@ -141,6 +143,7 @@ func TestForward_RetryOnTransientStatus(t *testing.T) {
 		DefaultPolicy:  domainegress.PolicyDeny,
 		DefaultTimeout: 5 * time.Second,
 		Routes:         []domainegress.Route{route},
+		AllowInsecure:  true, // test server is HTTP
 	}
 	proxy := egressadapter.NewProxy(cfg, resolver, upstream.Client(), nil)
 
@@ -210,6 +213,7 @@ func TestForward_NoRetryOnNonIdempotentMethod(t *testing.T) {
 		DefaultPolicy:  domainegress.PolicyDeny,
 		DefaultTimeout: 5 * time.Second,
 		Routes:         []domainegress.Route{route},
+		AllowInsecure:  true, // test server is HTTP
 	}
 	proxy := egressadapter.NewProxy(cfg, resolver, upstream.Client(), nil)
 

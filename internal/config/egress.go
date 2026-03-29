@@ -15,6 +15,11 @@ type EgressConfig struct {
 	// match any configured route. Accepted values: "allow", "deny" (default: "deny").
 	DefaultPolicy string `mapstructure:"default_policy"`
 
+	// AllowInsecure, when true, permits plain HTTP egress requests globally.
+	// By default only HTTPS targets are allowed. Individual routes can also
+	// override this with their own allow_insecure field.
+	AllowInsecure bool `mapstructure:"allow_insecure"`
+
 	// DefaultTimeout is the global request timeout applied when a route does not
 	// specify its own timeout. Accepts Go duration strings (e.g. "30s"). Default: "30s".
 	DefaultTimeout string `mapstructure:"default_timeout"`
@@ -100,6 +105,11 @@ type EgressRouteConfig struct {
 	// this limit it is truncated and a warning header is added to the response.
 	// When empty, EgressConfig.DefaultResponseSizeLimit is used.
 	ResponseSizeLimit string `mapstructure:"response_size_limit"`
+
+	// AllowInsecure, when true, permits plain HTTP egress requests for this
+	// specific route, overriding the global egress.allow_insecure setting.
+	// When false (default), only HTTPS targets are accepted.
+	AllowInsecure bool `mapstructure:"allow_insecure"`
 }
 
 // EgressCircuitBreakerConfig holds circuit breaker parameters for an egress route.

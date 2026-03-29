@@ -107,6 +107,7 @@ type Route struct {
 	retry             RetryConfig
 	bodySizeLimit     int64
 	responseSizeLimit int64
+	allowInsecure     bool
 }
 
 // routeOptions carries optional fields supplied via functional options.
@@ -120,6 +121,7 @@ type routeOptions struct {
 	retry             RetryConfig
 	bodySizeLimit     int64
 	responseSizeLimit int64
+	allowInsecure     bool
 }
 
 // RouteOption is a functional option for NewRoute.
@@ -176,6 +178,13 @@ func WithHeaders(cfg HeadersConfig) RouteOption {
 	return func(o *routeOptions) { o.headers = cfg }
 }
 
+// WithAllowInsecure permits plain HTTP egress requests for this route,
+// overriding the global egress.allow_insecure setting.
+// When not set, the proxy-level default governs whether HTTP is allowed.
+func WithAllowInsecure(allow bool) RouteOption {
+	return func(o *routeOptions) { o.allowInsecure = allow }
+}
+
 // NewRoute constructs a Route value object.
 // Returns an error when name is empty, pattern is empty, or the pattern is
 // not a valid URL glob (as accepted by path.Match).
@@ -207,6 +216,7 @@ func NewRoute(name, pattern string, opts ...RouteOption) (Route, error) {
 		retry:             o.retry,
 		bodySizeLimit:     o.bodySizeLimit,
 		responseSizeLimit: o.responseSizeLimit,
+		allowInsecure:     o.allowInsecure,
 	}, nil
 }
 
@@ -247,6 +257,11 @@ func (r Route) ResponseSizeLimit() int64 { return r.responseSizeLimit }
 
 // Headers returns the per-route header manipulation configuration.
 func (r Route) Headers() HeadersConfig { return r.headers }
+
+// AllowInsecure reports whether plain HTTP egress requests are permitted for
+// this route. When true, HTTP targets are accepted regardless of the proxy-level
+// default. When false, the proxy-level setting governs.
+func (r Route) AllowInsecure() bool { return r.allowInsecure }
 
 // MatchesMethod reports whether the given HTTP method is allowed by this route.
 // When Methods is empty, all methods are considered a match.

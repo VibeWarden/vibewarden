@@ -129,6 +129,43 @@ func TestNewRoute_SizeLimitDefaults(t *testing.T) {
 	}
 }
 
+// TestNewRoute_AllowInsecure verifies the AllowInsecure accessor and option.
+func TestNewRoute_AllowInsecure(t *testing.T) {
+	tests := []struct {
+		name         string
+		opts         []egress.RouteOption
+		wantInsecure bool
+	}{
+		{
+			name:         "default is false",
+			opts:         nil,
+			wantInsecure: false,
+		},
+		{
+			name:         "WithAllowInsecure(true) sets true",
+			opts:         []egress.RouteOption{egress.WithAllowInsecure(true)},
+			wantInsecure: true,
+		},
+		{
+			name:         "WithAllowInsecure(false) keeps false",
+			opts:         []egress.RouteOption{egress.WithAllowInsecure(false)},
+			wantInsecure: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			r, err := egress.NewRoute("r", "https://example.com/**", tt.opts...)
+			if err != nil {
+				t.Fatalf("NewRoute() unexpected error: %v", err)
+			}
+			if got := r.AllowInsecure(); got != tt.wantInsecure {
+				t.Errorf("AllowInsecure() = %v, want %v", got, tt.wantInsecure)
+			}
+		})
+	}
+}
+
 func TestRetryConfig_IsRetryableMethod(t *testing.T) {
 	tests := []struct {
 		name   string

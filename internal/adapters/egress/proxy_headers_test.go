@@ -98,6 +98,7 @@ func TestHandleRequest_XInjectSecretAlwaysStripped(t *testing.T) {
 	route := newTestRoute(t, "api", upstream.URL+"/v1/*")
 	resolver := egressadapter.NewRouteResolver([]domainegress.Route{route})
 	cfg := egressadapter.ProxyConfig{
+		AllowInsecure:  true, // test server is HTTP
 		Listen:         "127.0.0.1:0",
 		DefaultPolicy:  domainegress.PolicyDeny,
 		DefaultTimeout: 5 * time.Second,
@@ -142,6 +143,7 @@ func TestHandleRequest_XInjectSecretStrippedOnAllowPolicy(t *testing.T) {
 	// No routes — request falls through to allow policy, but injection still happens.
 	resolver := egressadapter.NewRouteResolver(nil)
 	cfg := egressadapter.ProxyConfig{
+		AllowInsecure:  true, // test server is HTTP
 		Listen:         "127.0.0.1:0",
 		DefaultPolicy:  domainegress.PolicyAllow,
 		DefaultTimeout: 5 * time.Second,
@@ -283,6 +285,7 @@ func TestHTTPHandler_InjectHeaderEndToEnd(t *testing.T) {
 	route := newTestRoute(t, "api", upstream.URL+"/v1/*", domainegress.WithHeaders(hdrCfg))
 	resolver := egressadapter.NewRouteResolver([]domainegress.Route{route})
 	cfg := egressadapter.ProxyConfig{
+		AllowInsecure:  true, // test server is HTTP
 		Listen:         "127.0.0.1:0",
 		DefaultPolicy:  domainegress.PolicyDeny,
 		DefaultTimeout: 5 * time.Second,
@@ -333,6 +336,7 @@ func TestHTTPHandler_SensitiveResponseHeadersStrippedEndToEnd(t *testing.T) {
 	route := newTestRoute(t, "api", upstream.URL+"/v1/*")
 	resolver := egressadapter.NewRouteResolver([]domainegress.Route{route})
 	cfg := egressadapter.ProxyConfig{
+		AllowInsecure:  true, // test server is HTTP
 		Listen:         "127.0.0.1:0",
 		DefaultPolicy:  domainegress.PolicyDeny,
 		DefaultTimeout: 5 * time.Second,
