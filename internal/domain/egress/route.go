@@ -96,28 +96,30 @@ type SecretConfig struct {
 //
 // Routes are equal when their names are equal — name is the natural key.
 type Route struct {
-	name           string
-	pattern        string
-	methods        []string
-	timeout        time.Duration
-	secret         SecretConfig
-	headers        HeadersConfig
-	rateLimit      string
-	circuitBreaker CircuitBreakerConfig
-	retry          RetryConfig
-	bodySizeLimit  int64
+	name              string
+	pattern           string
+	methods           []string
+	timeout           time.Duration
+	secret            SecretConfig
+	headers           HeadersConfig
+	rateLimit         string
+	circuitBreaker    CircuitBreakerConfig
+	retry             RetryConfig
+	bodySizeLimit     int64
+	responseSizeLimit int64
 }
 
 // routeOptions carries optional fields supplied via functional options.
 type routeOptions struct {
-	methods        []string
-	timeout        time.Duration
-	secret         SecretConfig
-	headers        HeadersConfig
-	rateLimit      string
-	circuitBreaker CircuitBreakerConfig
-	retry          RetryConfig
-	bodySizeLimit  int64
+	methods           []string
+	timeout           time.Duration
+	secret            SecretConfig
+	headers           HeadersConfig
+	rateLimit         string
+	circuitBreaker    CircuitBreakerConfig
+	retry             RetryConfig
+	bodySizeLimit     int64
+	responseSizeLimit int64
 }
 
 // RouteOption is a functional option for NewRoute.
@@ -154,10 +156,19 @@ func WithRetry(cfg RetryConfig) RouteOption {
 	return func(o *routeOptions) { o.retry = cfg }
 }
 
-// WithBodySizeLimit sets the maximum allowed response body size in bytes.
-// A value of 0 means no limit.
+// WithBodySizeLimit sets the maximum allowed request body size in bytes for this
+// route. Requests whose body exceeds this limit are rejected with 413. A value
+// of 0 means no per-route limit (the proxy default applies).
 func WithBodySizeLimit(bytes int64) RouteOption {
 	return func(o *routeOptions) { o.bodySizeLimit = bytes }
+}
+
+// WithResponseSizeLimit sets the maximum allowed response body size in bytes for
+// this route. When the upstream response body exceeds this limit the body is
+// truncated and a warning header is added. A value of 0 means no per-route limit
+// (the proxy default applies).
+func WithResponseSizeLimit(bytes int64) RouteOption {
+	return func(o *routeOptions) { o.responseSizeLimit = bytes }
 }
 
 // WithHeaders configures per-route header injection and stripping rules.
@@ -185,16 +196,17 @@ func NewRoute(name, pattern string, opts ...RouteOption) (Route, error) {
 	}
 
 	return Route{
-		name:           name,
-		pattern:        pattern,
-		methods:        o.methods,
-		timeout:        o.timeout,
-		secret:         o.secret,
-		headers:        o.headers,
-		rateLimit:      o.rateLimit,
-		circuitBreaker: o.circuitBreaker,
-		retry:          o.retry,
-		bodySizeLimit:  o.bodySizeLimit,
+		name:              name,
+		pattern:           pattern,
+		methods:           o.methods,
+		timeout:           o.timeout,
+		secret:            o.secret,
+		headers:           o.headers,
+		rateLimit:         o.rateLimit,
+		circuitBreaker:    o.circuitBreaker,
+		retry:             o.retry,
+		bodySizeLimit:     o.bodySizeLimit,
+		responseSizeLimit: o.responseSizeLimit,
 	}, nil
 }
 
@@ -225,9 +237,13 @@ func (r Route) CircuitBreaker() CircuitBreakerConfig { return r.circuitBreaker }
 // Retry returns the retry configuration for this route.
 func (r Route) Retry() RetryConfig { return r.retry }
 
-// BodySizeLimit returns the maximum allowed body size in bytes for this route.
-// A value of 0 means no limit.
+// BodySizeLimit returns the maximum allowed request body size in bytes for this
+// route. A value of 0 means no per-route limit.
 func (r Route) BodySizeLimit() int64 { return r.bodySizeLimit }
+
+// ResponseSizeLimit returns the maximum allowed response body size in bytes for
+// this route. A value of 0 means no per-route limit.
+func (r Route) ResponseSizeLimit() int64 { return r.responseSizeLimit }
 
 // Headers returns the per-route header manipulation configuration.
 func (r Route) Headers() HeadersConfig { return r.headers }

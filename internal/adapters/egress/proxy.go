@@ -45,6 +45,10 @@ const (
 	// defaultListen is the default address the egress proxy binds to.
 	defaultListen = "127.0.0.1:8081"
 
+	// headerResponseTruncated is set on responses whose body was truncated
+	// because it exceeded the configured response size limit.
+	headerResponseTruncated = "X-Egress-Response-Truncated"
+
 	// defaultTimeout is used when the configuration does not specify a timeout.
 	defaultTimeout = 30 * time.Second
 
@@ -80,6 +84,16 @@ type ProxyConfig struct {
 	// DefaultTimeout is the global request timeout applied when a route does not
 	// specify its own timeout.
 	DefaultTimeout time.Duration
+
+	// DefaultBodySizeLimit is the global maximum allowed request body size in
+	// bytes. Applied when the matched route does not set its own BodySizeLimit.
+	// A value of 0 means no global limit.
+	DefaultBodySizeLimit int64
+
+	// DefaultResponseSizeLimit is the global maximum allowed response body size
+	// in bytes. Applied when the matched route does not set its own
+	// ResponseSizeLimit. A value of 0 means no global limit.
+	DefaultResponseSizeLimit int64
 
 	// Routes is the ordered list of configured egress routes.
 	// Routes are evaluated in declaration order; the first matching route wins.
@@ -222,7 +236,7 @@ func (p *Proxy) Stop(ctx context.Context) error {
 
 // HandleRequest implements ports.EgressProxy. It resolves the route for the
 // request, enforces the default policy, checks the per-route circuit breaker,
-// and forwards the request upstream.
+// enforces body size limits, and forwards the request upstream.
 func (p *Proxy) HandleRequest(ctx context.Context, req domainegress.EgressRequest) (domainegress.EgressResponse, error) {
 	match, err := p.resolver.Resolve(ctx, req)
 	if err != nil {
@@ -257,8 +271,96 @@ func (p *Proxy) HandleRequest(ctx context.Context, req domainegress.EgressReques
 		}
 	}
 
-	return p.forward(ctx, req, match)
+	// Enforce request body size limit. The effective limit is the per-route
+	// value when set, otherwise the proxy-level default.
+	bodySizeLimit := p.cfg.DefaultBodySizeLimit
+	if match.Matched && match.Route.BodySizeLimit() > 0 {
+		bodySizeLimit = match.Route.BodySizeLimit()
+	}
+	if bodySizeLimit > 0 {
+		limited, limitErr := p.enforceRequestBodyLimit(ctx, req, bodySizeLimit)
+		if limitErr != nil {
+			return domainegress.EgressResponse{}, limitErr
+		}
+		req = limited
+	}
+
+	resp, forwardErr := p.forward(ctx, req, match)
+	if forwardErr != nil {
+		// Unwrap transport errors that wrap ErrRequestBodyTooLarge — this happens
+		// when the HTTP client tries to send a body that exceeds the limit.
+		if errors.Is(forwardErr, ErrRequestBodyTooLarge) {
+			p.logger.WarnContext(ctx, "egress.body_size_exceeded",
+				slog.String("event_type", "egress.body_size_exceeded"),
+				slog.String("kind", "request"),
+				slog.String("url", req.URL),
+				slog.String("method", req.Method),
+				slog.Int64("limit_bytes", bodySizeLimit),
+			)
+			return domainegress.EgressResponse{}, ErrRequestBodyTooLarge
+		}
+		return domainegress.EgressResponse{}, forwardErr
+	}
+	return resp, nil
 }
+
+// enforceRequestBodyLimit checks whether the request body exceeds the limit and
+// returns a (possibly modified) EgressRequest.
+//
+// Fast path: when Content-Length is present and already exceeds the limit,
+// ErrRequestBodyTooLarge is returned immediately without reading the body.
+//
+// Slow path: the body is wrapped with a limitedBody reader that returns
+// ErrRequestBodyTooLarge if more than limit bytes are read.
+func (p *Proxy) enforceRequestBodyLimit(ctx context.Context, req domainegress.EgressRequest, limit int64) (domainegress.EgressRequest, error) {
+	// Fast path: check Content-Length header first to avoid reading the body.
+	if cl := req.Header.Get("Content-Length"); cl != "" {
+		var n int64
+		if _, err := fmt.Sscanf(cl, "%d", &n); err == nil && n > limit {
+			p.logger.WarnContext(ctx, "egress.body_size_exceeded",
+				slog.String("event_type", "egress.body_size_exceeded"),
+				slog.String("kind", "request"),
+				slog.String("url", req.URL),
+				slog.String("method", req.Method),
+				slog.Int64("limit_bytes", limit),
+				slog.Int64("content_length", n),
+			)
+			return req, ErrRequestBodyTooLarge
+		}
+	}
+
+	// Slow path: wrap the body so over-limit reads surface as ErrRequestBodyTooLarge.
+	if body, ok := req.BodyRef.(io.Reader); ok && body != nil {
+		req.BodyRef = &limitedBody{
+			r:     io.LimitReader(body, limit+1),
+			limit: limit,
+		}
+	}
+	return req, nil
+}
+
+// limitedBody is an io.ReadCloser that wraps an io.LimitReader and returns
+// ErrRequestBodyTooLarge when the caller attempts to read more than limit bytes.
+type limitedBody struct {
+	r     io.Reader
+	limit int64
+	read  int64
+}
+
+// Read implements io.Reader. It returns ErrRequestBodyTooLarge when more than
+// limit bytes have been read from the underlying stream.
+func (lb *limitedBody) Read(p []byte) (int, error) {
+	n, err := lb.r.Read(p)
+	lb.read += int64(n)
+	if lb.read > lb.limit {
+		return n, ErrRequestBodyTooLarge
+	}
+	return n, err
+}
+
+// Close implements io.Closer. It is a no-op because the underlying LimitReader
+// does not implement io.Closer.
+func (lb *limitedBody) Close() error { return nil }
 
 // handleRequest is the net/http handler registered on the proxy mux. It
 // extracts the egress request from the incoming HTTP request, delegates to
@@ -285,6 +387,16 @@ func (p *Proxy) handleRequest(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		if err == ErrDeniedByPolicy {
 			http.Error(w, "403 Forbidden: request denied by egress policy", http.StatusForbidden)
+			return
+		}
+		if err == ErrRequestBodyTooLarge {
+			p.logger.WarnContext(r.Context(), "egress.body_size_exceeded",
+				slog.String("event_type", "egress.body_size_exceeded"),
+				slog.String("kind", "request"),
+				slog.String("target", targetURL),
+				slog.String("method", r.Method),
+			)
+			http.Error(w, "413 Request Entity Too Large: request body exceeds egress size limit", http.StatusRequestEntityTooLarge)
 			return
 		}
 		if err == ErrCircuitOpen {
@@ -349,7 +461,19 @@ func (p *Proxy) handleRequest(w http.ResponseWriter, r *http.Request) {
 	// Write the upstream response back to the caller.
 	respBody, _ := egressResp.BodyRef.(io.ReadCloser)
 
-	for key, vals := range cloneAndStripHopByHop(egressResp.Header) {
+	// Determine the effective response size limit before sending headers so we
+	// can declare the truncation trailer key in advance.
+	respSizeLimit := p.responseSizeLimitFor(egressReq)
+
+	respHeaders := cloneAndStripHopByHop(egressResp.Header)
+	// When a response size limit is active we cannot forward Content-Length
+	// because the actual bytes written may be fewer than the upstream reported.
+	// Removing it forces chunked transfer encoding, which is required for
+	// HTTP/1.1 trailers to work correctly.
+	if respSizeLimit > 0 {
+		respHeaders.Del("Content-Length")
+	}
+	for key, vals := range respHeaders {
 		for _, v := range vals {
 			w.Header().Add(key, v)
 		}
@@ -358,14 +482,54 @@ func (p *Proxy) handleRequest(w http.ResponseWriter, r *http.Request) {
 	if egressResp.Attempts > 0 {
 		w.Header().Set(headerEgressAttempts, fmt.Sprintf("%d", egressResp.Attempts))
 	}
+	// Announce the truncation trailer so HTTP/1.1 clients can read it after the body.
+	if respSizeLimit > 0 {
+		w.Header().Add("Trailer", headerResponseTruncated)
+	}
 	w.WriteHeader(egressResp.StatusCode)
 
 	if respBody != nil {
 		defer respBody.Close() //nolint:errcheck
-		if _, err := io.Copy(w, respBody); err != nil {
-			p.logger.WarnContext(r.Context(), "writing egress response body", "err", err)
+
+		if respSizeLimit > 0 {
+			// Copy at most respSizeLimit bytes.
+			written, copyErr := io.Copy(w, io.LimitReader(respBody, respSizeLimit))
+			// Try to read one more byte to detect whether the body was truncated.
+			var probe [1]byte
+			n, _ := respBody.Read(probe[:])
+			if n > 0 {
+				// Body exceeded the limit — log and set the truncation trailer.
+				p.logger.WarnContext(r.Context(), "egress.body_size_exceeded",
+					slog.String("event_type", "egress.body_size_exceeded"),
+					slog.String("kind", "response"),
+					slog.String("target", targetURL),
+					slog.String("method", r.Method),
+					slog.Int64("limit_bytes", respSizeLimit),
+					slog.Int64("bytes_written", written),
+				)
+				w.Header().Set(headerResponseTruncated, "true")
+			}
+			if copyErr != nil {
+				p.logger.WarnContext(r.Context(), "writing egress response body", "err", copyErr)
+			}
+		} else {
+			if _, err := io.Copy(w, respBody); err != nil {
+				p.logger.WarnContext(r.Context(), "writing egress response body", "err", err)
+			}
 		}
 	}
+}
+
+// responseSizeLimitFor returns the effective response size limit for the given
+// egress request. The per-route limit takes precedence over the proxy default.
+func (p *Proxy) responseSizeLimitFor(req domainegress.EgressRequest) int64 {
+	// Re-resolve the route to get per-route settings. We use a background
+	// context because this is a cheap in-memory lookup.
+	match, err := p.resolver.Resolve(context.Background(), req)
+	if err == nil && match.Matched && match.Route.ResponseSizeLimit() > 0 {
+		return match.Route.ResponseSizeLimit()
+	}
+	return p.cfg.DefaultResponseSizeLimit
 }
 
 // resolveTargetURL determines the destination URL from the HTTP request using
