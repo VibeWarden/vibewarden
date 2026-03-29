@@ -306,7 +306,8 @@ type AuthUIConfig struct {
 type AuthMode string
 
 const (
-	// AuthModeKratos uses Ory Kratos session-cookie authentication (default).
+	// AuthModeKratos uses Ory Kratos session-cookie authentication.
+	// Users must opt in explicitly by setting auth.mode: "kratos".
 	AuthModeKratos AuthMode = "kratos"
 
 	// AuthModeJWT uses JWT/OIDC Bearer token authentication.
@@ -439,8 +440,10 @@ type AuthConfig struct {
 	Enabled bool `mapstructure:"enabled"`
 
 	// Mode selects the authentication strategy.
-	// Accepted values: "kratos" (default), "jwt", "api-key", "none".
-	// When empty, "kratos" is assumed for backwards compatibility.
+	// Accepted values: "none" (default), "kratos", "jwt", "api-key".
+	// "none" disables all authentication — use only in trusted environments.
+	// "kratos" activates Ory Kratos session-cookie authentication.
+	// When empty, "none" is used.
 	Mode AuthMode `mapstructure:"mode"`
 
 	// JWT holds settings used when Mode is "jwt".
@@ -1100,7 +1103,8 @@ func (c *Config) Validate() error {
 		}
 	}
 
-	// auth.mode validation.
+	// auth.mode validation. Empty string is accepted here for robustness
+	// (SetDefault ensures "none" is used in practice).
 	switch c.Auth.Mode {
 	case "", AuthModeKratos, AuthModeJWT, AuthModeAPIKey, AuthModeNone:
 		// valid
@@ -1318,6 +1322,7 @@ func Load(configPath string) (*Config, error) {
 	v.SetDefault("auth.api_key.openbao_path", "")
 	v.SetDefault("auth.api_key.cache_ttl", "5m")
 	v.SetDefault("auth.enabled", false)
+	v.SetDefault("auth.mode", "none")
 	v.SetDefault("auth.identity_schema", "email_password")
 	v.SetDefault("auth.public_paths", []string{})
 	v.SetDefault("auth.session_cookie_name", "ory_kratos_session")

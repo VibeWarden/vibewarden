@@ -68,6 +68,7 @@ func minimalConfig() *config.Config {
 		},
 		Auth: config.AuthConfig{
 			Enabled:        true,
+			Mode:           config.AuthModeKratos,
 			IdentitySchema: "email_password",
 		},
 	}
@@ -1650,5 +1651,154 @@ func TestGenerate_NoCredentialAdapters_SkipsCredentials(t *testing.T) {
 	credPath := filepath.Join(outputDir, ".credentials")
 	if _, err := os.Stat(credPath); err == nil {
 		t.Error("expected .credentials NOT to exist when no credential adapters are configured")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Mode-aware Kratos file generation — issue #386
+// ---------------------------------------------------------------------------
+
+// TestGenerate_NonKratosMode_NoKratosFiles verifies that when auth.mode is not
+// "kratos", the generate service does not create the kratos/ directory or any
+// Kratos-specific files.
+func TestGenerate_NonKratosMode_NoKratosFiles(t *testing.T) {
+	modes := []config.AuthMode{
+		config.AuthModeNone,
+		config.AuthModeJWT,
+		config.AuthModeAPIKey,
+	}
+
+	for _, mode := range modes {
+		t.Run(string(mode), func(t *testing.T) {
+			dir := t.TempDir()
+			outputDir := filepath.Join(dir, "generated")
+
+			svc := generate.NewService(templateadapter.NewRenderer(configtemplates.FS))
+
+			cfg := &config.Config{
+				Server:   config.ServerConfig{Host: "127.0.0.1", Port: 8080},
+				Upstream: config.UpstreamConfig{Host: "127.0.0.1", Port: 3000},
+				Auth: config.AuthConfig{
+					Enabled: true,
+					Mode:    mode,
+				},
+			}
+
+			if err := svc.Generate(context.Background(), cfg, outputDir); err != nil {
+				t.Fatalf("Generate() error = %v", err)
+			}
+
+			kratosDir := filepath.Join(outputDir, "kratos")
+			if _, err := os.Stat(kratosDir); err == nil {
+				t.Errorf("kratos/ directory exists for mode %q, want absent", mode)
+			}
+
+			kratosYML := filepath.Join(outputDir, "kratos", "kratos.yml")
+			if _, err := os.Stat(kratosYML); err == nil {
+				t.Errorf("kratos.yml exists for mode %q, want absent", mode)
+			}
+
+			schemaJSON := filepath.Join(outputDir, "kratos", "identity.schema.json")
+			if _, err := os.Stat(schemaJSON); err == nil {
+				t.Errorf("identity.schema.json exists for mode %q, want absent", mode)
+			}
+		})
+	}
+}
+
+// TestGenerate_KratosMode_CreatesKratosFiles verifies that when auth.mode is
+// "kratos", the generate service creates the Kratos-specific files as before.
+func TestGenerate_KratosMode_CreatesKratosFiles(t *testing.T) {
+	dir := t.TempDir()
+	outputDir := filepath.Join(dir, "generated")
+
+	svc := generate.NewService(templateadapter.NewRenderer(configtemplates.FS))
+
+	cfg := &config.Config{
+		Server:   config.ServerConfig{Host: "127.0.0.1", Port: 8080},
+		Upstream: config.UpstreamConfig{Host: "127.0.0.1", Port: 3000},
+		Kratos: config.KratosConfig{
+			PublicURL: "http://localhost:4433",
+			AdminURL:  "http://localhost:4434",
+			DSN:       "postgres://kratos:secret@localhost:5432/kratos?sslmode=disable",
+			SMTP:      config.KratosSMTPConfig{Host: "localhost", Port: 1025, From: "no-reply@vibewarden.local"},
+		},
+		Auth: config.AuthConfig{
+			Enabled:        true,
+			Mode:           config.AuthModeKratos,
+			IdentitySchema: "email_password",
+		},
+	}
+
+	if err := svc.Generate(context.Background(), cfg, outputDir); err != nil {
+		t.Fatalf("Generate() error = %v", err)
+	}
+
+	for _, f := range []string{
+		filepath.Join(outputDir, "kratos", "kratos.yml"),
+		filepath.Join(outputDir, "kratos", "identity.schema.json"),
+	} {
+		if _, err := os.Stat(f); err != nil {
+			t.Errorf("expected file %q to exist for kratos mode: %v", f, err)
+		}
+	}
+}
+
+// TestGenerate_Compose_KratosServicesPresent verifies that the generated
+// docker-compose.yml includes Kratos services when auth.mode is "kratos".
+func TestGenerate_Compose_KratosServicesPresent(t *testing.T) {
+	cfg := &config.Config{
+		Server:   config.ServerConfig{Host: "127.0.0.1", Port: 8080},
+		Upstream: config.UpstreamConfig{Host: "127.0.0.1", Port: 3000},
+		Kratos: config.KratosConfig{
+			PublicURL: "http://localhost:4433",
+			AdminURL:  "http://localhost:4434",
+			DSN:       "postgres://kratos:secret@localhost:5432/kratos?sslmode=disable",
+			SMTP:      config.KratosSMTPConfig{Host: "localhost", Port: 1025, From: "no-reply@vibewarden.local"},
+		},
+		Auth: config.AuthConfig{
+			Enabled:        true,
+			Mode:           config.AuthModeKratos,
+			IdentitySchema: "email_password",
+		},
+	}
+
+	compose := renderCompose(t, cfg)
+
+	for _, want := range []string{"kratos:", "kratos-db:", "kratos-migrate:"} {
+		if !bytes.Contains(compose, []byte(want)) {
+			t.Errorf("expected %q to appear in docker-compose.yml for kratos mode", want)
+		}
+	}
+}
+
+// TestGenerate_Compose_KratosServicesAbsent verifies that the generated
+// docker-compose.yml omits Kratos services when auth.mode is not "kratos".
+func TestGenerate_Compose_KratosServicesAbsent(t *testing.T) {
+	modes := []config.AuthMode{
+		config.AuthModeNone,
+		config.AuthModeJWT,
+		config.AuthModeAPIKey,
+	}
+
+	for _, mode := range modes {
+		t.Run(string(mode), func(t *testing.T) {
+			cfg := &config.Config{
+				Server:   config.ServerConfig{Host: "127.0.0.1", Port: 8080},
+				Upstream: config.UpstreamConfig{Host: "127.0.0.1", Port: 3000},
+				Auth: config.AuthConfig{
+					Enabled: true,
+					Mode:    mode,
+				},
+			}
+
+			compose := renderCompose(t, cfg)
+
+			for _, absent := range []string{"kratos-db:", "kratos-migrate:", "oryd/kratos"} {
+				if bytes.Contains(compose, []byte(absent)) {
+					t.Errorf("docker-compose.yml contains %q for mode %q, want absent", absent, mode)
+				}
+			}
+		})
 	}
 }

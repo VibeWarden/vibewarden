@@ -77,8 +77,16 @@ func (s *Service) Generate(ctx context.Context, cfg *config.Config, outputDir st
 		return fmt.Errorf("prod profile requires secrets.enabled: true (OpenBao is mandatory for production)")
 	}
 
-	if err := os.MkdirAll(filepath.Join(outputDir, "kratos"), permDir); err != nil {
-		return fmt.Errorf("creating output directories: %w", err)
+	// kratosMode is true only when auth is enabled and mode is "kratos".
+	// An empty mode string is also treated as Kratos for defensive backwards
+	// compatibility with code that constructs config.Config structs directly
+	// When kratosMode is false, Kratos-specific files are not generated.
+	kratosMode := cfg.Auth.Enabled && cfg.Auth.Mode == config.AuthModeKratos
+
+	if kratosMode {
+		if err := os.MkdirAll(filepath.Join(outputDir, "kratos"), permDir); err != nil {
+			return fmt.Errorf("creating output directories: %w", err)
+		}
 	}
 
 	// Generate and persist credentials when the adapters are configured.
@@ -109,45 +117,49 @@ func (s *Service) Generate(ctx context.Context, cfg *config.Config, outputDir st
 		return fmt.Errorf("rendering .env.template: %w", err)
 	}
 
-	// Resolve identity schema — override path takes priority over the preset
-	// selected by auth.identity_schema.
-	schemaJSON, err := resolveIdentitySchema(cfg)
-	if err != nil {
-		return fmt.Errorf("resolving identity schema: %w", err)
-	}
-
-	// Write identity.schema.json.
-	schemaPath := filepath.Join(outputDir, "kratos", "identity.schema.json")
-	if err := os.WriteFile(schemaPath, schemaJSON, permConfig); err != nil {
-		return fmt.Errorf("writing identity schema: %w", err)
-	}
-
-	// Generate kratos.yml unless an override path is configured.
-	kratosYMLPath := filepath.Join(outputDir, "kratos", "kratos.yml")
-	if cfg.Overrides.KratosConfig != "" {
-		// Sanitise the user-supplied override path before reading from it.
-		overridePath := filepath.Clean(cfg.Overrides.KratosConfig)
-		data, err := os.ReadFile(overridePath)
+	// Kratos configuration files are only generated when mode is "kratos".
+	// When auth.mode is "jwt", "api-key", or "none", no Kratos files are written.
+	if kratosMode {
+		// Resolve identity schema — override path takes priority over the preset
+		// selected by auth.identity_schema.
+		schemaJSON, err := resolveIdentitySchema(cfg)
 		if err != nil {
-			return fmt.Errorf("reading kratos override config %q: %w", overridePath, err)
+			return fmt.Errorf("resolving identity schema: %w", err)
 		}
-		// kratosYMLPath is constructed from the already-cleaned outputDir and
-		// constant path segments — the destination is safe. The G703 taint
-		// tracks the content bytes read from the override file, which is a
-		// false positive for path traversal in the write destination.
-		if err := os.WriteFile(kratosYMLPath, data, permConfig); err != nil { //#nosec G703 -- destination is filepath.Join(cleanOutputDir, "kratos", "kratos.yml")
-			return fmt.Errorf("writing kratos.yml from override: %w", err)
-		}
-	} else {
-		if err := s.renderer.RenderToFile("kratos.yml.tmpl", cfg, kratosYMLPath, true); err != nil {
-			return fmt.Errorf("rendering kratos.yml: %w", err)
-		}
-	}
 
-	// Generate OIDC mapper files if social providers are configured.
-	if len(cfg.Auth.SocialProviders) > 0 {
-		if err := s.generateMappers(cfg, outputDir); err != nil {
-			return fmt.Errorf("generating OIDC mappers: %w", err)
+		// Write identity.schema.json.
+		schemaPath := filepath.Join(outputDir, "kratos", "identity.schema.json")
+		if err := os.WriteFile(schemaPath, schemaJSON, permConfig); err != nil {
+			return fmt.Errorf("writing identity schema: %w", err)
+		}
+
+		// Generate kratos.yml unless an override path is configured.
+		kratosYMLPath := filepath.Join(outputDir, "kratos", "kratos.yml")
+		if cfg.Overrides.KratosConfig != "" {
+			// Sanitise the user-supplied override path before reading from it.
+			overridePath := filepath.Clean(cfg.Overrides.KratosConfig)
+			data, err := os.ReadFile(overridePath)
+			if err != nil {
+				return fmt.Errorf("reading kratos override config %q: %w", overridePath, err)
+			}
+			// kratosYMLPath is constructed from the already-cleaned outputDir and
+			// constant path segments — the destination is safe. The G703 taint
+			// tracks the content bytes read from the override file, which is a
+			// false positive for path traversal in the write destination.
+			if err := os.WriteFile(kratosYMLPath, data, permConfig); err != nil { //#nosec G703 -- destination is filepath.Join(cleanOutputDir, "kratos", "kratos.yml")
+				return fmt.Errorf("writing kratos.yml from override: %w", err)
+			}
+		} else {
+			if err := s.renderer.RenderToFile("kratos.yml.tmpl", cfg, kratosYMLPath, true); err != nil {
+				return fmt.Errorf("rendering kratos.yml: %w", err)
+			}
+		}
+
+		// Generate OIDC mapper files if social providers are configured.
+		if len(cfg.Auth.SocialProviders) > 0 {
+			if err := s.generateMappers(cfg, outputDir); err != nil {
+				return fmt.Errorf("generating OIDC mappers: %w", err)
+			}
 		}
 	}
 
