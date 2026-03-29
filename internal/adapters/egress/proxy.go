@@ -379,6 +379,17 @@ func (p *Proxy) HandleRequest(ctx context.Context, req domainegress.EgressReques
 		return domainegress.EgressResponse{}, forwardErr
 	}
 
+	// Validate the upstream response against per-route rules when configured.
+	if match.Matched {
+		if err := p.validateResponse(ctx, req, match, resp); err != nil {
+			// Close the upstream body — we will not forward it.
+			if rc, ok := resp.BodyRef.(io.ReadCloser); ok && rc != nil {
+				rc.Close() //nolint:errcheck
+			}
+			return domainegress.EgressResponse{}, err
+		}
+	}
+
 	// Store a cacheable response in the route's in-memory cache.
 	// The body is fully read and buffered; the response returned to the caller
 	// gets a fresh reader over the same bytes.
@@ -416,6 +427,76 @@ func (p *Proxy) emitBlocked(ctx context.Context, match domainegress.RouteMatch, 
 	}
 	if p.cfg.Metrics != nil {
 		p.cfg.Metrics.IncEgressErrorTotal(routeNameOf(match))
+	}
+}
+
+// validateResponse checks the upstream response against the per-route
+// validate_response rules. It returns ErrResponseValidationFailed (with context)
+// when the status code or content type is not in the configured allowlists, and
+// emits an egress.response_invalid structured event. It returns nil when the
+// route has no validation config or the response passes all checks.
+func (p *Proxy) validateResponse(ctx context.Context, req domainegress.EgressRequest, match domainegress.RouteMatch, resp domainegress.EgressResponse) error {
+	valCfg := match.Route.ValidateResponse()
+	if valCfg.IsZero() {
+		return nil
+	}
+
+	routeName := routeNameOf(match)
+
+	// Check status code allowlist.
+	if !valCfg.MatchesStatusCode(resp.StatusCode) {
+		reason := fmt.Sprintf("status code %d not in allowed list", resp.StatusCode)
+		ct := resp.Header.Get("Content-Type")
+		p.logger.WarnContext(ctx, "egress.response_invalid",
+			slog.String("event_type", "egress.response_invalid"),
+			slog.String("route", routeName),
+			slog.String("url", req.URL),
+			slog.String("method", req.Method),
+			slog.Int("status_code", resp.StatusCode),
+			slog.String("content_type", ct),
+			slog.String("reason", reason),
+		)
+		p.emitResponseInvalid(ctx, req, routeName, resp.StatusCode, ct, reason)
+		return fmt.Errorf("%w: %s", ErrResponseValidationFailed, reason)
+	}
+
+	// Check content type allowlist.
+	ct := resp.Header.Get("Content-Type")
+	if !valCfg.MatchesContentType(ct) {
+		reason := fmt.Sprintf("content type %q not in allowed list", ct)
+		p.logger.WarnContext(ctx, "egress.response_invalid",
+			slog.String("event_type", "egress.response_invalid"),
+			slog.String("route", routeName),
+			slog.String("url", req.URL),
+			slog.String("method", req.Method),
+			slog.Int("status_code", resp.StatusCode),
+			slog.String("content_type", ct),
+			slog.String("reason", reason),
+		)
+		p.emitResponseInvalid(ctx, req, routeName, resp.StatusCode, ct, reason)
+		return fmt.Errorf("%w: %s", ErrResponseValidationFailed, reason)
+	}
+
+	return nil
+}
+
+// emitResponseInvalid emits an egress.response_invalid structured event and
+// increments the egress error metric.
+func (p *Proxy) emitResponseInvalid(ctx context.Context, req domainegress.EgressRequest, routeName string, statusCode int, contentType, reason string) {
+	if p.cfg.EventLogger != nil {
+		ev := events.NewEgressResponseInvalid(events.EgressResponseInvalidParams{
+			Route:       routeName,
+			Method:      req.Method,
+			URL:         req.URL,
+			StatusCode:  statusCode,
+			ContentType: contentType,
+			Reason:      reason,
+			TraceID:     traceIDFromContext(ctx),
+		})
+		_ = p.cfg.EventLogger.Log(ctx, ev)
+	}
+	if p.cfg.Metrics != nil {
+		p.cfg.Metrics.IncEgressErrorTotal(routeName)
 	}
 }
 
@@ -552,6 +633,16 @@ func (p *Proxy) handleRequest(w http.ResponseWriter, r *http.Request) {
 			)
 			w.Header().Set("Retry-After", retryAfter)
 			http.Error(w, "429 Too Many Requests: egress rate limit exceeded", http.StatusTooManyRequests)
+			return
+		}
+		if errors.Is(err, ErrResponseValidationFailed) {
+			p.logger.WarnContext(r.Context(), "egress.response_invalid",
+				slog.String("event_type", "egress.response_invalid"),
+				slog.String("target", targetURL),
+				slog.String("method", r.Method),
+				slog.String("err", err.Error()),
+			)
+			http.Error(w, "502 Bad Gateway: "+err.Error(), http.StatusBadGateway)
 			return
 		}
 		if errors.Is(err, ErrMTLSHandshakeFailed) {

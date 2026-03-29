@@ -86,6 +86,28 @@ type RouteConfig struct {
 
 	// AllowInsecure permits plain HTTP for this specific route.
 	AllowInsecure bool
+
+	// ValidateResponse holds per-route upstream response validation settings.
+	// When non-zero, each upstream response is checked against the configured
+	// allowed status code ranges and content types. Responses that fail
+	// validation are dropped and the caller receives a 502 Bad Gateway.
+	ValidateResponse ResponseValidationConfig
+}
+
+// ResponseValidationConfig holds per-route upstream response validation
+// parameters for the egress proxy.
+type ResponseValidationConfig struct {
+	// StatusCodes is a list of allowed HTTP status code range expressions.
+	// Supported formats: exact code ("200"), class wildcard ("2xx", "3xx", "4xx",
+	// "5xx"). When empty, no status code validation is performed.
+	// Example: ["2xx", "301", "302"]
+	StatusCodes []string
+
+	// ContentTypes is a list of allowed MIME type prefixes for the upstream
+	// response Content-Type header (parameters are ignored).
+	// When empty, no Content-Type validation is performed.
+	// Example: ["application/json", "text/plain"]
+	ContentTypes []string
 }
 
 // CircuitBreakerConfig holds circuit breaker parameters for a route.

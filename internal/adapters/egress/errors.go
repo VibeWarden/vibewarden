@@ -32,3 +32,9 @@ var ErrInsecureURL = errors.New("egress: plain HTTP is not allowed; use HTTPS or
 // to emit a structured egress.mtls_error event and log the failure with
 // additional context.
 var ErrMTLSHandshakeFailed = errors.New("egress: mTLS handshake failed")
+
+// ErrResponseValidationFailed is returned by Proxy.HandleRequest when the
+// upstream response fails the per-route validate_response rules (disallowed
+// status code or content type). The HTTP handler converts this into a 502 Bad
+// Gateway response.
+var ErrResponseValidationFailed = errors.New("egress: upstream response failed validation")

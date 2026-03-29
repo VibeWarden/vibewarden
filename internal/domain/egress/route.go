@@ -98,6 +98,89 @@ func (m MTLSConfig) IsZero() bool {
 	return m.CertPath == "" && m.KeyPath == "" && m.CAPath == ""
 }
 
+// ResponseValidationConfig holds per-route response validation parameters.
+// When non-zero, the egress proxy validates each upstream response against the
+// configured rules and returns 502 Bad Gateway if the response does not match.
+type ResponseValidationConfig struct {
+	// StatusCodes is a list of allowed HTTP status code range expressions.
+	// Supported formats: exact code ("200"), class wildcard ("2xx", "3xx"),
+	// or both together. When empty, no status code validation is performed.
+	// Example: ["2xx", "301", "302"]
+	StatusCodes []string
+
+	// ContentTypes is a list of allowed MIME type prefixes for the upstream
+	// response Content-Type header. The comparison ignores parameters (e.g.
+	// "application/json" matches "application/json; charset=utf-8").
+	// When empty, no Content-Type validation is performed.
+	// Example: ["application/json", "text/plain"]
+	ContentTypes []string
+}
+
+// IsZero reports whether this ResponseValidationConfig is the zero value
+// (no validation configured).
+func (v ResponseValidationConfig) IsZero() bool {
+	return len(v.StatusCodes) == 0 && len(v.ContentTypes) == 0
+}
+
+// MatchesStatusCode reports whether statusCode satisfies at least one entry
+// in the StatusCodes allowlist. Returns true when StatusCodes is empty.
+func (v ResponseValidationConfig) MatchesStatusCode(statusCode int) bool {
+	if len(v.StatusCodes) == 0 {
+		return true
+	}
+	for _, expr := range v.StatusCodes {
+		if matchStatusCodeExpr(expr, statusCode) {
+			return true
+		}
+	}
+	return false
+}
+
+// MatchesContentType reports whether the given Content-Type header value
+// satisfies at least one entry in the ContentTypes allowlist. The comparison
+// is case-insensitive and ignores parameters (charset, boundary, etc.).
+// Returns true when ContentTypes is empty.
+func (v ResponseValidationConfig) MatchesContentType(contentType string) bool {
+	if len(v.ContentTypes) == 0 {
+		return true
+	}
+	// Strip parameters: "application/json; charset=utf-8" → "application/json"
+	mediaType := strings.ToLower(strings.TrimSpace(contentType))
+	if idx := strings.IndexByte(mediaType, ';'); idx >= 0 {
+		mediaType = strings.TrimSpace(mediaType[:idx])
+	}
+	for _, allowed := range v.ContentTypes {
+		if strings.ToLower(strings.TrimSpace(allowed)) == mediaType {
+			return true
+		}
+	}
+	return false
+}
+
+// matchStatusCodeExpr returns true when statusCode matches the expression expr.
+// Supported expressions: "2xx" / "3xx" / "4xx" / "5xx" class wildcards, or any
+// three-digit decimal string representing an exact status code.
+func matchStatusCodeExpr(expr string, statusCode int) bool {
+	if len(expr) == 3 {
+		switch expr {
+		case "2xx":
+			return statusCode >= 200 && statusCode < 300
+		case "3xx":
+			return statusCode >= 300 && statusCode < 400
+		case "4xx":
+			return statusCode >= 400 && statusCode < 500
+		case "5xx":
+			return statusCode >= 500 && statusCode < 600
+		}
+	}
+	// Try exact match.
+	var code int
+	if _, err := fmt.Sscanf(expr, "%d", &code); err == nil {
+		return code == statusCode
+	}
+	return false
+}
+
 // CacheConfig holds per-route response caching parameters.
 // Caching applies only to GET and HEAD requests that receive a 2xx response.
 type CacheConfig struct {
@@ -156,6 +239,7 @@ type Route struct {
 	sanitize          SanitizeConfig
 	mtls              MTLSConfig
 	cache             CacheConfig
+	validateResponse  ResponseValidationConfig
 }
 
 // routeOptions carries optional fields supplied via functional options.
@@ -173,6 +257,7 @@ type routeOptions struct {
 	sanitize          SanitizeConfig
 	mtls              MTLSConfig
 	cache             CacheConfig
+	validateResponse  ResponseValidationConfig
 }
 
 // RouteOption is a functional option for NewRoute.
@@ -261,6 +346,14 @@ func WithCache(cfg CacheConfig) RouteOption {
 	return func(o *routeOptions) { o.cache = cfg }
 }
 
+// WithValidateResponse configures per-route upstream response validation.
+// When non-zero, each upstream response is checked against the allowed status
+// code ranges and content types. Responses that fail validation are dropped and
+// the caller receives a 502 Bad Gateway instead of the upstream body.
+func WithValidateResponse(cfg ResponseValidationConfig) RouteOption {
+	return func(o *routeOptions) { o.validateResponse = cfg }
+}
+
 // NewRoute constructs a Route value object.
 // Returns an error when name is empty, pattern is empty, or the pattern is
 // not a valid URL glob (as accepted by path.Match).
@@ -296,6 +389,7 @@ func NewRoute(name, pattern string, opts ...RouteOption) (Route, error) {
 		sanitize:          o.sanitize,
 		mtls:              o.mtls,
 		cache:             o.cache,
+		validateResponse:  o.validateResponse,
 	}, nil
 }
 
@@ -353,6 +447,10 @@ func (r Route) MTLS() MTLSConfig { return r.mtls }
 // Cache returns the per-route response caching configuration.
 // A zero CacheConfig (Enabled == false) means no caching is configured.
 func (r Route) Cache() CacheConfig { return r.cache }
+
+// ValidateResponse returns the per-route upstream response validation
+// configuration. A zero ResponseValidationConfig means no validation is applied.
+func (r Route) ValidateResponse() ResponseValidationConfig { return r.validateResponse }
 
 // MatchesMethod reports whether the given HTTP method is allowed by this route.
 // When Methods is empty, all methods are considered a match.
