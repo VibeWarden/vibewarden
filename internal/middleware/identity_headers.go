@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -27,6 +28,21 @@ import (
 // If no identity is present in the context (public path or auth disabled)
 // the middleware is a no-op and simply calls the next handler.
 func IdentityHeadersMiddleware(logger *slog.Logger) func(http.Handler) http.Handler {
+	return IdentityHeadersMiddlewareWithClaims(logger, nil)
+}
+
+// IdentityHeadersMiddlewareWithClaims returns HTTP middleware that injects user
+// identity headers into the proxied request, including additional headers mapped
+// from JWT claims.
+//
+// The claimsToHeaders map controls additional claim-to-header mappings applied
+// when a domain Identity is present in the request context. For example,
+// {"name": "X-User-Name", "roles": "X-User-Roles"} injects those headers from
+// the identity's claims. Nil or empty map disables additional claim injection.
+//
+// The standard headers (X-User-Id, X-User-Email, X-User-Verified) are always
+// injected when an identity or session is present.
+func IdentityHeadersMiddlewareWithClaims(logger *slog.Logger, claimsToHeaders map[string]string) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// Prefer the new domain Identity stored by the IdentityProvider flow.
@@ -35,6 +51,13 @@ func IdentityHeadersMiddleware(logger *slog.Logger) func(http.Handler) http.Hand
 				r.Header.Set("X-User-Id", ident.ID())
 				r.Header.Set("X-User-Email", ident.Email())
 				r.Header.Set("X-User-Verified", strconv.FormatBool(ident.EmailVerified()))
+
+				// Inject additional claims as configured by the JWT adapter.
+				for claim, header := range claimsToHeaders {
+					if val := ident.Claim(claim); val != nil {
+						r.Header.Set(header, claimValueToString(val))
+					}
+				}
 
 				logger.DebugContext(r.Context(), "identity headers injected",
 					slog.String("identity_id", ident.ID()),
@@ -60,4 +83,14 @@ func IdentityHeadersMiddleware(logger *slog.Logger) func(http.Handler) http.Hand
 			next.ServeHTTP(w, r)
 		})
 	}
+}
+
+// claimValueToString converts a JWT claim value to a string suitable for use as
+// an HTTP header value. Strings are returned as-is; other types are formatted
+// with fmt.Sprintf using the %v verb.
+func claimValueToString(v any) string {
+	if s, ok := v.(string); ok {
+		return s
+	}
+	return fmt.Sprintf("%v", v)
 }

@@ -213,3 +213,91 @@ func TestIdentityHeadersMiddleware_NextAlwaysCalled(t *testing.T) {
 		t.Errorf("status = %d, want %d", w.Code, http.StatusAccepted)
 	}
 }
+
+func TestIdentityHeadersMiddlewareWithClaims_InjectsAdditionalHeaders(t *testing.T) {
+	tests := []struct {
+		name            string
+		claims          map[string]any
+		claimsToHeaders map[string]string
+		wantHeaders     map[string]string
+	}{
+		{
+			name: "string claim mapped to header",
+			claims: map[string]any{
+				"name": "Alice Smith",
+			},
+			claimsToHeaders: map[string]string{
+				"name": "X-User-Name",
+			},
+			wantHeaders: map[string]string{
+				"X-User-Name": "Alice Smith",
+			},
+		},
+		{
+			name: "multiple claims mapped",
+			claims: map[string]any{
+				"name":  "Bob",
+				"dept":  "engineering",
+				"level": "senior",
+			},
+			claimsToHeaders: map[string]string{
+				"name":  "X-User-Name",
+				"dept":  "X-User-Dept",
+				"level": "X-User-Level",
+			},
+			wantHeaders: map[string]string{
+				"X-User-Name":  "Bob",
+				"X-User-Dept":  "engineering",
+				"X-User-Level": "senior",
+			},
+		},
+		{
+			name: "missing claim does not inject header",
+			claims: map[string]any{
+				"name": "Carol",
+			},
+			claimsToHeaders: map[string]string{
+				"roles": "X-User-Roles", // not in claims
+				"name":  "X-User-Name",
+			},
+			wantHeaders: map[string]string{
+				"X-User-Name":  "Carol",
+				"X-User-Roles": "", // should not be set
+			},
+		},
+		{
+			name:            "nil mapping is a no-op",
+			claims:          map[string]any{"name": "Dave"},
+			claimsToHeaders: nil,
+			wantHeaders:     map[string]string{},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var gotHeaders http.Header
+			mw := IdentityHeadersMiddlewareWithClaims(newTestLogger(), tt.claimsToHeaders)
+			next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				gotHeaders = r.Header.Clone()
+				w.WriteHeader(http.StatusOK)
+			})
+
+			ident, err := identity.NewIdentity("user-x", "user@example.com", "jwt", true, tt.claims)
+			if err != nil {
+				t.Fatalf("NewIdentity: %v", err)
+			}
+
+			req := httptest.NewRequest(http.MethodGet, "/app", nil)
+			req = req.WithContext(contextWithIdentity(req.Context(), ident))
+
+			mw(next).ServeHTTP(httptest.NewRecorder(), req)
+
+			for header, want := range tt.wantHeaders {
+				got := gotHeaders.Get(header)
+				if got != want {
+					t.Errorf("header %q = %q, want %q", header, got, want)
+				}
+			}
+		})
+	}
+}

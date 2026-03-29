@@ -1780,3 +1780,101 @@ func TestValidate_LogsOTLPWithEndpointPasses(t *testing.T) {
 		t.Errorf("Validate() should not return logs.otlp error when endpoint is set, got: %v", err)
 	}
 }
+
+// TestValidate_JWTConfig verifies that auth.mode = "jwt" requires the correct sub-fields.
+func TestValidate_JWTConfig(t *testing.T) {
+	tests := []struct {
+		name        string
+		mutate      func(cfg *config.Config)
+		wantErr     bool
+		wantContain string
+	}{
+		{
+			name: "valid jwt config with jwks_url",
+			mutate: func(cfg *config.Config) {
+				cfg.Auth.Mode = config.AuthModeJWT
+				cfg.Auth.JWT.JWKSURL = "https://auth.example.com/.well-known/jwks.json"
+				cfg.Auth.JWT.Issuer = "https://auth.example.com/"
+				cfg.Auth.JWT.Audience = "my-api"
+			},
+			wantErr: false,
+		},
+		{
+			name: "valid jwt config with issuer_url",
+			mutate: func(cfg *config.Config) {
+				cfg.Auth.Mode = config.AuthModeJWT
+				cfg.Auth.JWT.IssuerURL = "https://auth.example.com/"
+				cfg.Auth.JWT.Issuer = "https://auth.example.com/"
+				cfg.Auth.JWT.Audience = "my-api"
+			},
+			wantErr: false,
+		},
+		{
+			name: "jwt mode missing both jwks_url and issuer_url",
+			mutate: func(cfg *config.Config) {
+				cfg.Auth.Mode = config.AuthModeJWT
+				cfg.Auth.JWT.Issuer = "https://auth.example.com/"
+				cfg.Auth.JWT.Audience = "my-api"
+			},
+			wantErr:     true,
+			wantContain: "either jwks_url or issuer_url is required",
+		},
+		{
+			name: "jwt mode missing issuer",
+			mutate: func(cfg *config.Config) {
+				cfg.Auth.Mode = config.AuthModeJWT
+				cfg.Auth.JWT.JWKSURL = "https://auth.example.com/.well-known/jwks.json"
+				cfg.Auth.JWT.Audience = "my-api"
+			},
+			wantErr:     true,
+			wantContain: "auth.jwt.issuer is required",
+		},
+		{
+			name: "jwt mode missing audience",
+			mutate: func(cfg *config.Config) {
+				cfg.Auth.Mode = config.AuthModeJWT
+				cfg.Auth.JWT.JWKSURL = "https://auth.example.com/.well-known/jwks.json"
+				cfg.Auth.JWT.Issuer = "https://auth.example.com/"
+			},
+			wantErr:     true,
+			wantContain: "auth.jwt.audience is required",
+		},
+		{
+			name: "jwt config fields not validated when mode is not jwt",
+			mutate: func(cfg *config.Config) {
+				cfg.Auth.Mode = config.AuthModeKratos
+				// JWT fields deliberately left empty — should not trigger validation.
+			},
+			wantErr: false,
+		},
+		{
+			name: "invalid auth mode",
+			mutate: func(cfg *config.Config) {
+				cfg.Auth.Mode = "invalid-mode"
+			},
+			wantErr:     true,
+			wantContain: "auth.mode",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg, err := config.Load("")
+			if err != nil {
+				t.Fatalf("Load(): %v", err)
+			}
+			tt.mutate(cfg)
+
+			err = cfg.Validate()
+			if (err != nil) != tt.wantErr {
+				t.Errorf("Validate() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if tt.wantErr && tt.wantContain != "" {
+				if !strings.Contains(err.Error(), tt.wantContain) {
+					t.Errorf("Validate() error = %q, want it to contain %q", err.Error(), tt.wantContain)
+				}
+			}
+		})
+	}
+}
