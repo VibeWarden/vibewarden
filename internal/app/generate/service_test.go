@@ -1802,3 +1802,83 @@ func TestGenerate_Compose_KratosServicesAbsent(t *testing.T) {
 		})
 	}
 }
+
+// TestGenerate_Compose_ExternalKratosOmitsLocalContainers verifies that when
+// kratos.external is true the generated docker-compose.yml does not include the
+// local Kratos, kratos-migrate, kratos-db, or seed-users containers, but the
+// vibewarden service is still present.
+func TestGenerate_Compose_ExternalKratosOmitsLocalContainers(t *testing.T) {
+	cfg := &config.Config{
+		Server:   config.ServerConfig{Host: "127.0.0.1", Port: 8080},
+		Upstream: config.UpstreamConfig{Host: "127.0.0.1", Port: 3000},
+		Kratos: config.KratosConfig{
+			External:  true,
+			PublicURL: "https://kratos.example.com",
+			AdminURL:  "https://kratos-admin.example.com",
+		},
+		Auth: config.AuthConfig{
+			Enabled:        true,
+			Mode:           config.AuthModeKratos,
+			IdentitySchema: "email_password",
+		},
+	}
+
+	compose := renderCompose(t, cfg)
+
+	// Local Kratos infrastructure must be absent.
+	for _, absent := range []string{
+		"kratos:",
+		"kratos-db:",
+		"kratos-migrate:",
+		"seed-users:",
+		"oryd/kratos",
+		"kratos-db-data:",
+	} {
+		if bytes.Contains(compose, []byte(absent)) {
+			t.Errorf("docker-compose.yml contains %q but it should be absent when kratos.external is true", absent)
+		}
+	}
+
+	// vibewarden service must still be present.
+	if !bytes.Contains(compose, []byte("vibewarden:")) {
+		t.Error("expected 'vibewarden:' service to be present in docker-compose.yml")
+	}
+}
+
+// TestGenerate_Compose_ExternalKratosSkipsKratosFiles verifies that when
+// kratos.external is true the generate service does not write Kratos config
+// files (kratos.yml, identity.schema.json) under the output directory.
+func TestGenerate_Compose_ExternalKratosSkipsKratosFiles(t *testing.T) {
+	outputDir := t.TempDir()
+	cfg := &config.Config{
+		Server:   config.ServerConfig{Host: "127.0.0.1", Port: 8080},
+		Upstream: config.UpstreamConfig{Host: "127.0.0.1", Port: 3000},
+		Kratos: config.KratosConfig{
+			External:  true,
+			PublicURL: "https://kratos.example.com",
+			AdminURL:  "https://kratos-admin.example.com",
+		},
+		Auth: config.AuthConfig{
+			Enabled:        true,
+			Mode:           config.AuthModeKratos,
+			IdentitySchema: "email_password",
+		},
+	}
+
+	svc := generate.NewService(realRenderer())
+	if err := svc.Generate(context.Background(), cfg, outputDir); err != nil {
+		t.Fatalf("Generate() unexpected error: %v", err)
+	}
+
+	// kratos/ subdirectory must not exist.
+	kratosDir := filepath.Join(outputDir, "kratos")
+	if _, err := os.Stat(kratosDir); err == nil {
+		t.Errorf("kratos/ directory %q should not be created when kratos.external is true", kratosDir)
+	}
+
+	// docker-compose.yml must exist.
+	composePath := filepath.Join(outputDir, "docker-compose.yml")
+	if _, err := os.Stat(composePath); err != nil {
+		t.Errorf("docker-compose.yml should exist: %v", err)
+	}
+}

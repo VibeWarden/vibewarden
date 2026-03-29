@@ -1878,3 +1878,98 @@ func TestValidate_JWTConfig(t *testing.T) {
 		})
 	}
 }
+
+// TestValidate_KratosExternal verifies that kratos.external requires public_url and admin_url.
+func TestValidate_KratosExternal(t *testing.T) {
+	tests := []struct {
+		name        string
+		mutate      func(cfg *config.Config)
+		wantErr     bool
+		wantContain string
+	}{
+		{
+			name: "external with both URLs",
+			mutate: func(cfg *config.Config) {
+				cfg.Auth.Mode = config.AuthModeKratos
+				cfg.Kratos.External = true
+				cfg.Kratos.PublicURL = "https://kratos.example.com"
+				cfg.Kratos.AdminURL = "https://kratos-admin.example.com"
+			},
+			wantErr: false,
+		},
+		{
+			name: "external missing public_url",
+			mutate: func(cfg *config.Config) {
+				cfg.Auth.Mode = config.AuthModeKratos
+				cfg.Kratos.External = true
+				cfg.Kratos.PublicURL = ""
+				cfg.Kratos.AdminURL = "https://kratos-admin.example.com"
+			},
+			wantErr:     true,
+			wantContain: "kratos.public_url is required when kratos.external is true",
+		},
+		{
+			name: "external missing admin_url",
+			mutate: func(cfg *config.Config) {
+				cfg.Auth.Mode = config.AuthModeKratos
+				cfg.Kratos.External = true
+				cfg.Kratos.PublicURL = "https://kratos.example.com"
+				cfg.Kratos.AdminURL = ""
+			},
+			wantErr:     true,
+			wantContain: "kratos.admin_url is required when kratos.external is true",
+		},
+		{
+			name: "external missing both URLs",
+			mutate: func(cfg *config.Config) {
+				cfg.Auth.Mode = config.AuthModeKratos
+				cfg.Kratos.External = true
+				cfg.Kratos.PublicURL = ""
+				cfg.Kratos.AdminURL = ""
+			},
+			wantErr:     true,
+			wantContain: "kratos.public_url is required when kratos.external is true",
+		},
+		{
+			name: "external false does not trigger URL validation",
+			mutate: func(cfg *config.Config) {
+				cfg.Auth.Mode = config.AuthModeKratos
+				cfg.Kratos.External = false
+				cfg.Kratos.PublicURL = ""
+				cfg.Kratos.AdminURL = ""
+			},
+			wantErr: false,
+		},
+		{
+			name: "external true but mode is not kratos — no URL validation",
+			mutate: func(cfg *config.Config) {
+				cfg.Auth.Mode = config.AuthModeNone
+				cfg.Kratos.External = true
+				cfg.Kratos.PublicURL = ""
+				cfg.Kratos.AdminURL = ""
+			},
+			wantErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg, err := config.Load("")
+			if err != nil {
+				t.Fatalf("Load(): %v", err)
+			}
+			tt.mutate(cfg)
+
+			err = cfg.Validate()
+			if (err != nil) != tt.wantErr {
+				t.Errorf("Validate() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if tt.wantErr && tt.wantContain != "" {
+				if !strings.Contains(err.Error(), tt.wantContain) {
+					t.Errorf("Validate() error = %q, want it to contain %q", err.Error(), tt.wantContain)
+				}
+			}
+		})
+	}
+}
