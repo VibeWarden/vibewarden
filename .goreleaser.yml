@@ -1,0 +1,162 @@
+# VibeWarden GoReleaser configuration.
+#
+# Produces:
+#   - Multi-platform static binaries (linux/amd64, linux/arm64, darwin/amd64, darwin/arm64)
+#   - SHA-256 checksums file
+#   - Docker image pushed to ghcr.io/vibewarden/vibewarden
+#   - GitHub Release with changelog generated from conventional commits
+#
+# License: goreleaser is MIT — approved for this project.
+
+version: 2
+
+project_name: vibewarden
+
+# ---------------------------------------------------------------------------
+# Build
+# ---------------------------------------------------------------------------
+builds:
+  - id: vibewarden
+    main: ./cmd/vibewarden
+    binary: vibewarden
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -X main.version={{ .Version }}
+    goos:
+      - linux
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+
+# ---------------------------------------------------------------------------
+# Archives
+# ---------------------------------------------------------------------------
+archives:
+  - id: vibewarden
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    formats:
+      - tar.gz
+    format_overrides:
+      - goos: windows
+        formats:
+          - zip
+    files:
+      - LICENSE
+      - README.md
+      - vibewarden.example.yaml
+
+# ---------------------------------------------------------------------------
+# Checksums
+# ---------------------------------------------------------------------------
+checksum:
+  name_template: "checksums.txt"
+  algorithm: sha256
+
+# ---------------------------------------------------------------------------
+# Docker images
+# ---------------------------------------------------------------------------
+dockers:
+  - id: vibewarden-amd64
+    goos: linux
+    goarch: amd64
+    image_templates:
+      - "ghcr.io/vibewarden/vibewarden:{{ .Version }}-amd64"
+      - "ghcr.io/vibewarden/vibewarden:latest-amd64"
+    dockerfile: Dockerfile.goreleaser
+    use: buildx
+    build_flag_templates:
+      - "--platform=linux/amd64"
+      - "--label=org.opencontainers.image.created={{ .Date }}"
+      - "--label=org.opencontainers.image.title={{ .ProjectName }}"
+      - "--label=org.opencontainers.image.description=Security sidecar for vibe-coded apps"
+      - "--label=org.opencontainers.image.url=https://vibewarden.dev"
+      - "--label=org.opencontainers.image.source=https://github.com/vibewarden/vibewarden"
+      - "--label=org.opencontainers.image.version={{ .Version }}"
+      - "--label=org.opencontainers.image.revision={{ .FullCommit }}"
+      - "--label=org.opencontainers.image.licenses=Apache-2.0"
+
+  - id: vibewarden-arm64
+    goos: linux
+    goarch: arm64
+    image_templates:
+      - "ghcr.io/vibewarden/vibewarden:{{ .Version }}-arm64"
+      - "ghcr.io/vibewarden/vibewarden:latest-arm64"
+    dockerfile: Dockerfile.goreleaser
+    use: buildx
+    build_flag_templates:
+      - "--platform=linux/arm64"
+      - "--label=org.opencontainers.image.created={{ .Date }}"
+      - "--label=org.opencontainers.image.title={{ .ProjectName }}"
+      - "--label=org.opencontainers.image.description=Security sidecar for vibe-coded apps"
+      - "--label=org.opencontainers.image.url=https://vibewarden.dev"
+      - "--label=org.opencontainers.image.source=https://github.com/vibewarden/vibewarden"
+      - "--label=org.opencontainers.image.version={{ .Version }}"
+      - "--label=org.opencontainers.image.revision={{ .FullCommit }}"
+      - "--label=org.opencontainers.image.licenses=Apache-2.0"
+
+# Multi-arch manifest lists so users can `docker pull` without specifying a
+# platform suffix.
+docker_manifests:
+  - name_template: "ghcr.io/vibewarden/vibewarden:{{ .Version }}"
+    image_templates:
+      - "ghcr.io/vibewarden/vibewarden:{{ .Version }}-amd64"
+      - "ghcr.io/vibewarden/vibewarden:{{ .Version }}-arm64"
+
+  - name_template: "ghcr.io/vibewarden/vibewarden:latest"
+    image_templates:
+      - "ghcr.io/vibewarden/vibewarden:latest-amd64"
+      - "ghcr.io/vibewarden/vibewarden:latest-arm64"
+
+# ---------------------------------------------------------------------------
+# Changelog
+# ---------------------------------------------------------------------------
+changelog:
+  sort: asc
+  use: github
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
+      - "Merge pull request"
+      - "Merge branch"
+  groups:
+    - title: "Features"
+      regexp: "^feat"
+      order: 0
+    - title: "Bug fixes"
+      regexp: "^fix"
+      order: 1
+    - title: "Other"
+      order: 999
+
+# ---------------------------------------------------------------------------
+# GitHub Release
+# ---------------------------------------------------------------------------
+release:
+  github:
+    owner: vibewarden
+    name: vibewarden
+  draft: false
+  prerelease: auto
+  name_template: "{{ .ProjectName }} {{ .Version }}"
+  header: |
+    ## VibeWarden {{ .Version }}
+
+    Security sidecar for vibe-coded apps. Zero-to-secure in minutes.
+
+    ### Quick start
+
+    ```bash
+    # Docker (recommended)
+    docker pull ghcr.io/vibewarden/vibewarden:{{ .Version }}
+
+    # Binary install
+    curl -fsSL https://vibewarden.dev/install.sh | sh
+    ```
+  footer: |
+    **Full Changelog**: https://github.com/vibewarden/vibewarden/compare/{{ .PreviousTag }}...{{ .Tag }}
