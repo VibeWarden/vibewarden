@@ -211,6 +211,13 @@ type KratosConfig struct {
 	DSN string `mapstructure:"dsn"`
 	// SMTP holds email delivery settings for Kratos.
 	SMTP KratosSMTPConfig `mapstructure:"smtp"`
+	// External indicates that VibeWarden should connect to a user-managed Kratos
+	// instance instead of spinning up a local one.
+	// When true, the generated Docker Compose file omits the kratos,
+	// kratos-migrate, kratos-db, and seed-users containers.
+	// Requires PublicURL and AdminURL to be set to the external instance URLs.
+	// Default: false.
+	External bool `mapstructure:"external"`
 }
 
 // SupportedSocialProviders is the set of accepted provider names for social login.
@@ -1126,6 +1133,17 @@ func (c *Config) Validate() error {
 		}
 		if jwt.Audience == "" {
 			errs = append(errs, "auth.jwt.audience is required when auth.mode is \"jwt\"")
+		}
+	}
+
+	// kratos.external validation: when external is true, public_url and admin_url
+	// must point to the external instance (they cannot be empty).
+	if c.Auth.Mode == AuthModeKratos && c.Kratos.External {
+		if c.Kratos.PublicURL == "" {
+			errs = append(errs, "kratos.public_url is required when kratos.external is true")
+		}
+		if c.Kratos.AdminURL == "" {
+			errs = append(errs, "kratos.admin_url is required when kratos.external is true")
 		}
 	}
 

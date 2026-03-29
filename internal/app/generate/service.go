@@ -77,11 +77,12 @@ func (s *Service) Generate(ctx context.Context, cfg *config.Config, outputDir st
 		return fmt.Errorf("prod profile requires secrets.enabled: true (OpenBao is mandatory for production)")
 	}
 
-	// kratosMode is true only when auth is enabled and mode is "kratos".
+	// kratosMode is true only when auth is enabled and mode is "kratos" and
+	// the Kratos instance is not managed externally.
 	// An empty mode string is also treated as Kratos for defensive backwards
-	// compatibility with code that constructs config.Config structs directly
+	// compatibility with code that constructs config.Config structs directly.
 	// When kratosMode is false, Kratos-specific files are not generated.
-	kratosMode := cfg.Auth.Enabled && cfg.Auth.Mode == config.AuthModeKratos
+	kratosMode := cfg.Auth.Enabled && cfg.Auth.Mode == config.AuthModeKratos && !cfg.Kratos.External
 
 	if kratosMode {
 		if err := os.MkdirAll(filepath.Join(outputDir, "kratos"), permDir); err != nil {

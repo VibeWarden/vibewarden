@@ -7,7 +7,7 @@
 #   app         — Your application
 {{- end }}
 #   vibewarden  — Security sidecar (listens on :{{ .Server.Port }}, forwards to app on :{{ .Upstream.Port }})
-{{- if and .Auth.Enabled (eq (printf "%s" .Auth.Mode) "kratos") }}
+{{- if and .Auth.Enabled (eq (printf "%s" .Auth.Mode) "kratos") (not .Kratos.External) }}
 #   kratos      — Ory Kratos identity server
 #   kratos-db   — PostgreSQL for Kratos
 {{- end }}
@@ -90,13 +90,13 @@ services:
 {{- end }}
     networks:
       - vibewarden
-{{- if or (and .Auth.Enabled (eq (printf "%s" .Auth.Mode) "kratos")) .App.Build .App.Image .Secrets.Enabled (eq .RateLimit.Store "redis") }}
+{{- if or (and .Auth.Enabled (eq (printf "%s" .Auth.Mode) "kratos") (not .Kratos.External)) .App.Build .App.Image .Secrets.Enabled (eq .RateLimit.Store "redis") }}
     depends_on:
 {{- if or .App.Build .App.Image }}
       app:
         condition: service_healthy
 {{- end }}
-{{- if and .Auth.Enabled (eq (printf "%s" .Auth.Mode) "kratos") }}
+{{- if and .Auth.Enabled (eq (printf "%s" .Auth.Mode) "kratos") (not .Kratos.External) }}
       kratos:
         condition: service_healthy
 {{- end }}
@@ -112,7 +112,7 @@ services:
         condition: service_healthy
 {{- end }}
 {{- end }}
-{{- if and .Auth.Enabled (eq (printf "%s" .Auth.Mode) "kratos") }}
+{{- if and .Auth.Enabled (eq (printf "%s" .Auth.Mode) "kratos") (not .Kratos.External) }}
 
   kratos-db:
     image: postgres:17-alpine
@@ -220,7 +220,7 @@ services:
       - vibewarden
     restart: "no"
 {{- end }}
-{{- if and .Auth.Enabled (eq (printf "%s" .Auth.Mode) "kratos") }}
+{{- if and .Auth.Enabled (eq (printf "%s" .Auth.Mode) "kratos") (not .Kratos.External) }}
 
   seed-users:
     image: curlimages/curl:8.12.1
@@ -386,10 +386,10 @@ services:
 networks:
   vibewarden:
     driver: bridge
-{{- if or (and .Auth.Enabled (eq (printf "%s" .Auth.Mode) "kratos")) .TLS.Enabled (eq .RateLimit.Store "redis") .Observability.Enabled }}
+{{- if or (and .Auth.Enabled (eq (printf "%s" .Auth.Mode) "kratos") (not .Kratos.External)) .TLS.Enabled (eq .RateLimit.Store "redis") .Observability.Enabled }}
 
 volumes:
-{{- if and .Auth.Enabled (eq (printf "%s" .Auth.Mode) "kratos") }}
+{{- if and .Auth.Enabled (eq (printf "%s" .Auth.Mode) "kratos") (not .Kratos.External) }}
   kratos-db-data:
 {{- end }}
 {{- if .TLS.Enabled }}
