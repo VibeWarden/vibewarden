@@ -5,9 +5,84 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/vibewarden/vibewarden/internal/domain/identity"
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
 
+func TestIdentityHeadersMiddleware_WithIdentity(t *testing.T) {
+	tests := []struct {
+		name          string
+		id            string
+		email         string
+		emailVerified bool
+		wantID        string
+		wantEmail     string
+		wantVerified  string
+	}{
+		{
+			name:          "verified user",
+			id:            "user-abc",
+			email:         "alice@example.com",
+			emailVerified: true,
+			wantID:        "user-abc",
+			wantEmail:     "alice@example.com",
+			wantVerified:  "true",
+		},
+		{
+			name:          "unverified user",
+			id:            "user-def",
+			email:         "bob@example.com",
+			emailVerified: false,
+			wantID:        "user-def",
+			wantEmail:     "bob@example.com",
+			wantVerified:  "false",
+		},
+		{
+			name:         "no email",
+			id:           "user-ghi",
+			email:        "",
+			wantID:       "user-ghi",
+			wantEmail:    "",
+			wantVerified: "false",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var gotHeaders http.Header
+			mw := IdentityHeadersMiddleware(newTestLogger())
+			next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				gotHeaders = r.Header.Clone()
+				w.WriteHeader(http.StatusOK)
+			})
+
+			ident, err := identity.NewIdentity(tt.id, tt.email, "kratos", tt.emailVerified, nil)
+			if err != nil {
+				t.Fatalf("NewIdentity() error: %v", err)
+			}
+
+			req := httptest.NewRequest(http.MethodGet, "/app", nil)
+			req = req.WithContext(contextWithIdentity(req.Context(), ident))
+
+			w := httptest.NewRecorder()
+			mw(next).ServeHTTP(w, req)
+
+			if got := gotHeaders.Get("X-User-Id"); got != tt.wantID {
+				t.Errorf("X-User-Id = %q, want %q", got, tt.wantID)
+			}
+			if got := gotHeaders.Get("X-User-Email"); got != tt.wantEmail {
+				t.Errorf("X-User-Email = %q, want %q", got, tt.wantEmail)
+			}
+			if got := gotHeaders.Get("X-User-Verified"); got != tt.wantVerified {
+				t.Errorf("X-User-Verified = %q, want %q", got, tt.wantVerified)
+			}
+		})
+	}
+}
+
+// TestIdentityHeadersMiddleware_WithSession verifies backward compatibility:
+// the middleware falls back to reading from the deprecated ports.Session when
+// no domain Identity is present in the context.
 func TestIdentityHeadersMiddleware_WithSession(t *testing.T) {
 	tests := []struct {
 		name         string
@@ -17,7 +92,7 @@ func TestIdentityHeadersMiddleware_WithSession(t *testing.T) {
 		wantVerified string
 	}{
 		{
-			name: "verified user",
+			name: "verified user (legacy session)",
 			session: &ports.Session{
 				ID:     "sess-1",
 				Active: true,
@@ -32,7 +107,7 @@ func TestIdentityHeadersMiddleware_WithSession(t *testing.T) {
 			wantVerified: "true",
 		},
 		{
-			name: "unverified user",
+			name: "unverified user (legacy session)",
 			session: &ports.Session{
 				ID:     "sess-2",
 				Active: true,
@@ -47,7 +122,7 @@ func TestIdentityHeadersMiddleware_WithSession(t *testing.T) {
 			wantVerified: "false",
 		},
 		{
-			name: "no email",
+			name: "no email (legacy session)",
 			session: &ports.Session{
 				ID:     "sess-3",
 				Active: true,
@@ -73,7 +148,7 @@ func TestIdentityHeadersMiddleware_WithSession(t *testing.T) {
 			})
 
 			req := httptest.NewRequest(http.MethodGet, "/app", nil)
-			// Store the session in the context as AuthMiddleware would.
+			// Store the session in the context using the deprecated path.
 			req = req.WithContext(contextWithSession(req.Context(), tt.session))
 
 			w := httptest.NewRecorder()
@@ -103,7 +178,7 @@ func TestIdentityHeadersMiddleware_NoSession(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	// No session in context (public path scenario).
+	// No session or identity in context (public path scenario).
 	req := httptest.NewRequest(http.MethodGet, "/public", nil)
 	w := httptest.NewRecorder()
 	mw(next).ServeHTTP(w, req)
@@ -114,7 +189,7 @@ func TestIdentityHeadersMiddleware_NoSession(t *testing.T) {
 
 	for _, h := range []string{"X-User-Id", "X-User-Email", "X-User-Verified"} {
 		if gotHeaders.Get(h) != "" {
-			t.Errorf("header %q should not be set when no session in context, got %q", h, gotHeaders.Get(h))
+			t.Errorf("header %q should not be set when no identity in context, got %q", h, gotHeaders.Get(h))
 		}
 	}
 }

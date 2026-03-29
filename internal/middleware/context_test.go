@@ -4,6 +4,7 @@ import (
 	"context"
 	"testing"
 
+	"github.com/vibewarden/vibewarden/internal/domain/identity"
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
 
@@ -114,5 +115,79 @@ func TestContextWithSession_WrongTypeStoredElsewhere(t *testing.T) {
 	}
 	if session != nil {
 		t.Errorf("SessionFromContext should return nil session when nothing stored, got %v", session)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// IdentityFromContext / contextWithIdentity tests
+// ---------------------------------------------------------------------------
+
+func TestIdentityFromContext_NoIdentity(t *testing.T) {
+	ctx := context.Background()
+
+	ident, ok := IdentityFromContext(ctx)
+	if ok {
+		t.Error("IdentityFromContext on empty context: ok = true, want false")
+	}
+	if !ident.IsZero() {
+		t.Error("IdentityFromContext on empty context: identity is not zero")
+	}
+}
+
+func TestIdentityFromContext_ZeroIdentityStored(t *testing.T) {
+	// Storing a zero Identity should be treated as "no identity".
+	ctx := contextWithIdentity(context.Background(), identity.Identity{})
+
+	ident, ok := IdentityFromContext(ctx)
+	if ok {
+		t.Error("IdentityFromContext with zero identity stored: ok = true, want false")
+	}
+	if !ident.IsZero() {
+		t.Error("IdentityFromContext with zero identity: returned non-zero identity")
+	}
+}
+
+func TestIdentityFromContext_ValidIdentity(t *testing.T) {
+	want, err := identity.NewIdentity("user-abc", "user@example.com", "kratos", true, nil)
+	if err != nil {
+		t.Fatalf("NewIdentity() error: %v", err)
+	}
+
+	ctx := contextWithIdentity(context.Background(), want)
+
+	got, ok := IdentityFromContext(ctx)
+	if !ok {
+		t.Fatal("IdentityFromContext with valid identity: ok = false, want true")
+	}
+	if got.ID() != want.ID() {
+		t.Errorf("Identity.ID() = %q, want %q", got.ID(), want.ID())
+	}
+	if got.Email() != want.Email() {
+		t.Errorf("Identity.Email() = %q, want %q", got.Email(), want.Email())
+	}
+	if got.Provider() != want.Provider() {
+		t.Errorf("Identity.Provider() = %q, want %q", got.Provider(), want.Provider())
+	}
+}
+
+func TestContextWithIdentity_DoesNotMutateParent(t *testing.T) {
+	parent := context.Background()
+	ident, _ := identity.NewIdentity("user-1", "a@b.com", "kratos", false, nil)
+
+	child := contextWithIdentity(parent, ident)
+
+	// The parent context must remain unaffected.
+	_, ok := IdentityFromContext(parent)
+	if ok {
+		t.Error("parent context should not be affected by contextWithIdentity")
+	}
+
+	// The child context must carry the identity.
+	got, ok := IdentityFromContext(child)
+	if !ok {
+		t.Error("child context should carry the identity")
+	}
+	if got.ID() != ident.ID() {
+		t.Errorf("child identity.ID() = %q, want %q", got.ID(), ident.ID())
 	}
 }

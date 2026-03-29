@@ -9,6 +9,7 @@ import (
 
 	"github.com/vibewarden/vibewarden/internal/domain/audit"
 	"github.com/vibewarden/vibewarden/internal/domain/auth"
+	"github.com/vibewarden/vibewarden/internal/domain/identity"
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
 
@@ -52,11 +53,9 @@ var _ ports.AuditEventLogger = (*fakeAuditEventLogger)(nil)
 // ---------------------------------------------------------------------------
 
 func TestAuthMiddleware_EmitsAuditAuthSuccessEvent(t *testing.T) {
-	sess := validSession()
-	checker := &fakeSessionChecker{
-		sessions: map[string]*ports.Session{
-			"ory_kratos_session=valid-token": sess,
-		},
+	ident, _ := identity.NewIdentity("user-uuid", "user@example.com", "kratos", true, nil)
+	provider := &fakeIdentityProvider{
+		result: identity.Success(ident),
 	}
 	cfg := ports.AuthConfig{
 		Enabled:           true,
@@ -65,7 +64,7 @@ func TestAuthMiddleware_EmitsAuditAuthSuccessEvent(t *testing.T) {
 	}
 	auditSpy := &fakeAuditEventLogger{}
 
-	mw := AuthMiddleware(checker, cfg, newTestLogger(), nil, auditSpy)
+	mw := AuthMiddleware(provider, cfg, newTestLogger(), nil, auditSpy)
 	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
@@ -85,8 +84,8 @@ func TestAuthMiddleware_EmitsAuditAuthSuccessEvent(t *testing.T) {
 	if ev.Outcome != audit.OutcomeSuccess {
 		t.Errorf("outcome = %q, want %q", ev.Outcome, audit.OutcomeSuccess)
 	}
-	if ev.Actor.UserID != sess.Identity.ID {
-		t.Errorf("actor.user_id = %q, want %q", ev.Actor.UserID, sess.Identity.ID)
+	if ev.Actor.UserID != ident.ID() {
+		t.Errorf("actor.user_id = %q, want %q", ev.Actor.UserID, ident.ID())
 	}
 	if ev.Target.Path != "/dashboard" {
 		t.Errorf("target.path = %q, want %q", ev.Target.Path, "/dashboard")
@@ -97,7 +96,9 @@ func TestAuthMiddleware_EmitsAuditAuthSuccessEvent(t *testing.T) {
 }
 
 func TestAuthMiddleware_EmitsAuditAuthFailureOnMissingCookie(t *testing.T) {
-	checker := &fakeSessionChecker{sessions: map[string]*ports.Session{}}
+	provider := &fakeIdentityProvider{
+		result: identity.Failure("no_credentials", "missing session cookie"),
+	}
 	cfg := ports.AuthConfig{
 		Enabled:           true,
 		SessionCookieName: "ory_kratos_session",
@@ -105,7 +106,7 @@ func TestAuthMiddleware_EmitsAuditAuthFailureOnMissingCookie(t *testing.T) {
 	}
 	auditSpy := &fakeAuditEventLogger{}
 
-	mw := AuthMiddleware(checker, cfg, newTestLogger(), nil, auditSpy)
+	mw := AuthMiddleware(provider, cfg, newTestLogger(), nil, auditSpy)
 	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
@@ -130,7 +131,9 @@ func TestAuthMiddleware_EmitsAuditAuthFailureOnMissingCookie(t *testing.T) {
 }
 
 func TestAuthMiddleware_EmitsAuditAuthFailureOnInvalidSession(t *testing.T) {
-	checker := &fakeSessionChecker{err: ports.ErrSessionInvalid}
+	provider := &fakeIdentityProvider{
+		result: identity.Failure("session_invalid", "session is invalid or expired"),
+	}
 	cfg := ports.AuthConfig{
 		Enabled:           true,
 		SessionCookieName: "ory_kratos_session",
@@ -138,7 +141,7 @@ func TestAuthMiddleware_EmitsAuditAuthFailureOnInvalidSession(t *testing.T) {
 	}
 	auditSpy := &fakeAuditEventLogger{}
 
-	mw := AuthMiddleware(checker, cfg, newTestLogger(), nil, auditSpy)
+	mw := AuthMiddleware(provider, cfg, newTestLogger(), nil, auditSpy)
 	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
@@ -154,7 +157,9 @@ func TestAuthMiddleware_EmitsAuditAuthFailureOnInvalidSession(t *testing.T) {
 }
 
 func TestAuthMiddleware_NilAuditLoggerDoesNotPanic(t *testing.T) {
-	checker := &fakeSessionChecker{sessions: map[string]*ports.Session{}}
+	provider := &fakeIdentityProvider{
+		result: identity.Failure("no_credentials", "no session cookie"),
+	}
 	cfg := ports.AuthConfig{
 		Enabled:           true,
 		SessionCookieName: "ory_kratos_session",
@@ -162,7 +167,7 @@ func TestAuthMiddleware_NilAuditLoggerDoesNotPanic(t *testing.T) {
 	}
 
 	// nil auditLogger must not cause a panic.
-	mw := AuthMiddleware(checker, cfg, newTestLogger(), nil, nil)
+	mw := AuthMiddleware(provider, cfg, newTestLogger(), nil, nil)
 	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})

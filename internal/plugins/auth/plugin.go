@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/vibewarden/vibewarden/internal/adapters/authui"
+	"github.com/vibewarden/vibewarden/internal/domain/identity"
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
 
@@ -58,10 +59,10 @@ const healthCheckTimeout = 3 * time.Second
 type Plugin struct {
 	cfg    Config
 	logger *slog.Logger
-	// sessionChecker is injected at construction time or created during Init
+	// identityProvider is injected at construction time or created during Init
 	// from cfg.KratosPublicURL. Storing it as an interface makes the plugin
 	// unit-testable without a live Kratos instance.
-	sessionChecker ports.SessionChecker
+	identityProvider ports.IdentityProvider
 	// uiHandler is the built-in auth UI HTTP server.
 	// It is nil when UI.Mode != "built-in" or when the plugin is disabled.
 	uiHandler *authui.Handler
@@ -72,12 +73,12 @@ type Plugin struct {
 }
 
 // New creates a new auth Plugin with the given configuration and logger.
-// sessionChecker may be nil; when nil, Init creates a real Kratos adapter.
-func New(cfg Config, logger *slog.Logger, sessionChecker ports.SessionChecker) *Plugin {
+// identityProvider may be nil; when nil, Init creates a real Kratos adapter.
+func New(cfg Config, logger *slog.Logger, identityProvider ports.IdentityProvider) *Plugin {
 	return &Plugin{
-		cfg:            cfg,
-		logger:         logger,
-		sessionChecker: sessionChecker,
+		cfg:              cfg,
+		logger:           logger,
+		identityProvider: identityProvider,
 	}
 }
 
@@ -127,8 +128,8 @@ func (p *Plugin) Init(_ context.Context) error {
 	}
 
 	// Create the real Kratos adapter when no fake was injected.
-	if p.sessionChecker == nil {
-		p.sessionChecker = kratosAdapterFunc(p.cfg.KratosPublicURL, p.logger)
+	if p.identityProvider == nil {
+		p.identityProvider = kratosAdapterFunc(p.cfg.KratosPublicURL, p.logger)
 	}
 
 	// Start the built-in auth UI server when the mode is "built-in" (default).
@@ -480,37 +481,49 @@ func urlToDialAddr(rawURL string) string {
 	return net.JoinHostPort(host, port)
 }
 
-// kratosAdapterFunc is the factory used to create a Kratos SessionChecker
-// during Init when no sessionChecker was injected. Tests can replace this
-// variable with a factory that returns a fake.
+// kratosAdapterFunc is the factory used to create an IdentityProvider during
+// Init when no identityProvider was injected. Tests can replace this variable
+// with a factory that returns a fake.
 var kratosAdapterFunc = defaultKratosAdapterFactory
 
-// defaultKratosAdapterFactory creates a real Kratos HTTP adapter.
-// It is the production implementation of kratosAdapterFunc.
-func defaultKratosAdapterFactory(publicURL string, logger *slog.Logger) ports.SessionChecker {
+// defaultKratosAdapterFactory creates a real Kratos HTTP adapter that implements
+// IdentityProvider. It is the production implementation of kratosAdapterFunc.
+func defaultKratosAdapterFactory(publicURL string, logger *slog.Logger) ports.IdentityProvider {
 	return &kratosHTTPChecker{publicURL: publicURL, logger: logger}
 }
 
-// kratosHTTPChecker is a minimal SessionChecker that wraps the real Kratos
-// adapter without importing the adapters/kratos package directly from here
-// (avoiding circular deps). The plugin package imports only ports and stdlib.
-// The real Kratos adapter is injected via New() in the wiring layer (serve.go).
+// kratosHTTPChecker is a minimal IdentityProvider that validates sessions
+// against the Kratos /sessions/whoami endpoint. It is used by the auth plugin
+// when no external IdentityProvider is injected, without importing the
+// adapters/kratos package (avoiding circular deps).
+//
+// In production the real Kratos adapter is injected via New() from serve.go;
+// this type serves as the in-process fallback.
 type kratosHTTPChecker struct {
 	publicURL string
 	logger    *slog.Logger
 }
 
-// CheckSession implements ports.SessionChecker.
-// Delegates to a real HTTP call against the Kratos /sessions/whoami endpoint.
-func (c *kratosHTTPChecker) CheckSession(ctx context.Context, sessionCookie string) (*ports.Session, error) {
-	if sessionCookie == "" {
-		return nil, ports.ErrSessionNotFound
+// Name implements ports.IdentityProvider.
+func (c *kratosHTTPChecker) Name() string { return "kratos" }
+
+// Authenticate implements ports.IdentityProvider.
+// It extracts the Ory Kratos session cookie, validates it against the Kratos
+// /sessions/whoami endpoint, and returns an AuthResult.
+func (c *kratosHTTPChecker) Authenticate(ctx context.Context, r *http.Request) identity.AuthResult {
+	const cookieName = "ory_kratos_session"
+
+	cookie, err := r.Cookie(cookieName)
+	if err != nil {
+		return identity.Failure("no_credentials", "no session cookie")
 	}
+
+	sessionCookie := cookieName + "=" + cookie.Value
 
 	reqURL := c.publicURL + "/sessions/whoami"
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
 	if err != nil {
-		return nil, fmt.Errorf("building whoami request: %w", err)
+		return identity.Failure("auth_error", fmt.Sprintf("building whoami request: %s", err))
 	}
 	req.Header.Set("Cookie", sessionCookie)
 	req.Header.Set("Accept", "application/json")
@@ -518,19 +531,25 @@ func (c *kratosHTTPChecker) CheckSession(ctx context.Context, sessionCookie stri
 	client := &http.Client{Timeout: 5 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, fmt.Errorf("kratos unreachable: %w", ports.ErrAuthProviderUnavailable)
+		return identity.Failure("provider_unavailable", fmt.Sprintf("kratos unreachable: %s", err))
 	}
 	defer resp.Body.Close()
 
 	switch {
 	case resp.StatusCode == http.StatusOK:
-		// Valid session — caller handles parse.
-		return &ports.Session{Active: true}, nil
+		// Return a minimal success identity; the full session details are not
+		// parsed in this lightweight checker. Use a placeholder ID from the
+		// cookie value so the identity is non-zero.
+		ident, iErr := identity.NewIdentity(cookie.Value, "", "kratos", false, nil)
+		if iErr != nil {
+			return identity.Failure("invalid_identity", iErr.Error())
+		}
+		return identity.Success(ident)
 	case resp.StatusCode == http.StatusUnauthorized:
-		return nil, ports.ErrSessionInvalid
+		return identity.Failure("session_invalid", "session is invalid or expired")
 	case resp.StatusCode >= 500:
-		return nil, fmt.Errorf("kratos responded with %d: %w", resp.StatusCode, ports.ErrAuthProviderUnavailable)
+		return identity.Failure("provider_unavailable", fmt.Sprintf("kratos responded with %d", resp.StatusCode))
 	default:
-		return nil, fmt.Errorf("unexpected kratos status %d: %w", resp.StatusCode, ports.ErrSessionInvalid)
+		return identity.Failure("session_invalid", fmt.Sprintf("unexpected kratos status %d", resp.StatusCode))
 	}
 }

@@ -1,22 +1,22 @@
 package middleware
 
 import (
-	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
 	"github.com/vibewarden/vibewarden/internal/domain/events"
+	"github.com/vibewarden/vibewarden/internal/domain/identity"
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
 
 // TestAuthMiddleware_KratosUnavailable_EmitsAvailabilityEvent verifies that
-// when Kratos becomes unavailable the middleware emits a single
+// when the provider becomes unavailable the middleware emits a single
 // auth.provider_unavailable event (only on the first failure, not on every
 // subsequent request).
 func TestAuthMiddleware_KratosUnavailable_EmitsAvailabilityEvent(t *testing.T) {
-	checker := &fakeSessionChecker{
-		err: fmt.Errorf("dial error: %w", ports.ErrAuthProviderUnavailable),
+	provider := &fakeIdentityProvider{
+		result: identity.Failure("provider_unavailable", "dial error: auth provider unavailable"),
 	}
 	cfg := ports.AuthConfig{
 		Enabled:           true,
@@ -26,12 +26,12 @@ func TestAuthMiddleware_KratosUnavailable_EmitsAvailabilityEvent(t *testing.T) {
 	}
 	spy := &fakeEventLogger{}
 
-	mw := AuthMiddleware(checker, cfg, newTestLogger(), spy, nil)
+	mw := AuthMiddleware(provider, cfg, newTestLogger(), spy, nil)
 	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	// First request — Kratos is down.
+	// First request — provider is down.
 	req1 := httptest.NewRequest(http.MethodGet, "/dashboard", nil)
 	req1.AddCookie(&http.Cookie{Name: "ory_kratos_session", Value: "some-token"})
 	mw(next).ServeHTTP(httptest.NewRecorder(), req1)
@@ -47,7 +47,7 @@ func TestAuthMiddleware_KratosUnavailable_EmitsAvailabilityEvent(t *testing.T) {
 		}
 	}
 
-	// Second request — Kratos still down. No additional availability event.
+	// Second request — provider still down. No additional availability event.
 	spy.logged = nil
 	req2 := httptest.NewRequest(http.MethodGet, "/dashboard", nil)
 	req2.AddCookie(&http.Cookie{Name: "ory_kratos_session", Value: "some-token"})
@@ -62,13 +62,13 @@ func TestAuthMiddleware_KratosUnavailable_EmitsAvailabilityEvent(t *testing.T) {
 }
 
 // TestAuthMiddleware_KratosRecovery_EmitsRecoveredEvent verifies that when
-// Kratos becomes available again after an outage, the middleware emits an
+// the provider becomes available again after an outage, the middleware emits an
 // auth.provider_recovered event exactly once.
 func TestAuthMiddleware_KratosRecovery_EmitsRecoveredEvent(t *testing.T) {
-	sess := validSession()
+	ident := validIdentity()
 	// Start unhealthy.
-	checker := &fakeSessionChecker{
-		err: fmt.Errorf("dial error: %w", ports.ErrAuthProviderUnavailable),
+	provider := &fakeIdentityProvider{
+		result: identity.Failure("provider_unavailable", "dial error: auth provider unavailable"),
 	}
 	cfg := ports.AuthConfig{
 		Enabled:           true,
@@ -78,7 +78,7 @@ func TestAuthMiddleware_KratosRecovery_EmitsRecoveredEvent(t *testing.T) {
 	}
 	spy := &fakeEventLogger{}
 
-	mw := AuthMiddleware(checker, cfg, newTestLogger(), spy, nil)
+	mw := AuthMiddleware(provider, cfg, newTestLogger(), spy, nil)
 	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
@@ -88,19 +88,16 @@ func TestAuthMiddleware_KratosRecovery_EmitsRecoveredEvent(t *testing.T) {
 	req1.AddCookie(&http.Cookie{Name: "ory_kratos_session", Value: "any-token"})
 	mw(next).ServeHTTP(httptest.NewRecorder(), req1)
 
-	// Now Kratos comes back — inject a valid session.
+	// Now provider comes back — inject a valid result.
 	spy.logged = nil
-	checker.err = nil
-	checker.sessions = map[string]*ports.Session{
-		"ory_kratos_session=valid-token": sess,
-	}
+	provider.result = identity.Success(ident)
 
 	req2 := httptest.NewRequest(http.MethodGet, "/dashboard", nil)
 	req2.AddCookie(&http.Cookie{Name: "ory_kratos_session", Value: "valid-token"})
 	mw(next).ServeHTTP(httptest.NewRecorder(), req2)
 
 	if !spy.hasEventType(events.EventTypeAuthProviderRecovered) {
-		t.Error("expected auth.provider_recovered event after Kratos came back, got none")
+		t.Error("expected auth.provider_recovered event after provider came back, got none")
 	}
 }
 
@@ -108,9 +105,9 @@ func TestAuthMiddleware_KratosRecovery_EmitsRecoveredEvent(t *testing.T) {
 // second successful request after recovery does not emit another
 // auth.provider_recovered event.
 func TestAuthMiddleware_KratosRecovery_NoDoubleRecoveryEvent(t *testing.T) {
-	sess := validSession()
-	checker := &fakeSessionChecker{
-		err: fmt.Errorf("dial error: %w", ports.ErrAuthProviderUnavailable),
+	ident := validIdentity()
+	provider := &fakeIdentityProvider{
+		result: identity.Failure("provider_unavailable", "dial error: auth provider unavailable"),
 	}
 	cfg := ports.AuthConfig{
 		Enabled:           true,
@@ -118,7 +115,7 @@ func TestAuthMiddleware_KratosRecovery_NoDoubleRecoveryEvent(t *testing.T) {
 		LoginURL:          "/login",
 	}
 	spy := &fakeEventLogger{}
-	mw := AuthMiddleware(checker, cfg, newTestLogger(), spy, nil)
+	mw := AuthMiddleware(provider, cfg, newTestLogger(), spy, nil)
 	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
 
 	// Fail once to set unavailable state.
@@ -127,8 +124,7 @@ func TestAuthMiddleware_KratosRecovery_NoDoubleRecoveryEvent(t *testing.T) {
 	mw(next).ServeHTTP(httptest.NewRecorder(), req1)
 
 	// Recover.
-	checker.err = nil
-	checker.sessions = map[string]*ports.Session{"ory_kratos_session=valid": sess}
+	provider.result = identity.Success(ident)
 	req2 := httptest.NewRequest(http.MethodGet, "/dashboard", nil)
 	req2.AddCookie(&http.Cookie{Name: "ory_kratos_session", Value: "valid"})
 	mw(next).ServeHTTP(httptest.NewRecorder(), req2)
@@ -151,8 +147,8 @@ func TestAuthMiddleware_KratosRecovery_NoDoubleRecoveryEvent(t *testing.T) {
 func TestAuthMiddleware_AvailabilityEvent_PayloadContainsProviderURL(t *testing.T) {
 	const wantURL = "http://127.0.0.1:4433"
 
-	checker := &fakeSessionChecker{
-		err: fmt.Errorf("down: %w", ports.ErrAuthProviderUnavailable),
+	provider := &fakeIdentityProvider{
+		result: identity.Failure("provider_unavailable", "down: auth provider unavailable"),
 	}
 	cfg := ports.AuthConfig{
 		Enabled:           true,
@@ -161,7 +157,7 @@ func TestAuthMiddleware_AvailabilityEvent_PayloadContainsProviderURL(t *testing.
 		KratosPublicURL:   wantURL,
 	}
 	spy := &fakeEventLogger{}
-	mw := AuthMiddleware(checker, cfg, newTestLogger(), spy, nil)
+	mw := AuthMiddleware(provider, cfg, newTestLogger(), spy, nil)
 	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
 
 	req := httptest.NewRequest(http.MethodGet, "/protected", nil)
@@ -187,8 +183,8 @@ func TestAuthMiddleware_AvailabilityEvent_PayloadContainsProviderURL(t *testing.
 // TestAuthMiddleware_KratosUnavailable_Returns503 confirms the default
 // fail-closed behavior (503 for all protected paths).
 func TestAuthMiddleware_KratosUnavailable_Returns503(t *testing.T) {
-	checker := &fakeSessionChecker{
-		err: fmt.Errorf("dial: %w", ports.ErrAuthProviderUnavailable),
+	provider := &fakeIdentityProvider{
+		result: identity.Failure("provider_unavailable", "dial: auth provider unavailable"),
 	}
 	cfg := ports.AuthConfig{
 		Enabled:             true,
@@ -196,7 +192,7 @@ func TestAuthMiddleware_KratosUnavailable_Returns503(t *testing.T) {
 		LoginURL:            "/login",
 		OnKratosUnavailable: ports.KratosUnavailable503,
 	}
-	mw := AuthMiddleware(checker, cfg, newTestLogger(), nil, nil)
+	mw := AuthMiddleware(provider, cfg, newTestLogger(), nil, nil)
 	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
 
 	req := httptest.NewRequest(http.MethodGet, "/dashboard", nil)
