@@ -111,6 +111,67 @@ func TestNeedsRedis(t *testing.T) {
 	}
 }
 
+func TestNeedsLocalKratosDB(t *testing.T) {
+	tests := []struct {
+		name string
+		cfg  *config.Config
+		want bool
+	}{
+		{
+			name: "auth disabled returns false",
+			cfg: &config.Config{
+				Auth: config.AuthConfig{Enabled: false, Mode: config.AuthModeKratos},
+			},
+			want: false,
+		},
+		{
+			name: "kratos mode enabled no external url returns true",
+			cfg: &config.Config{
+				Auth:     config.AuthConfig{Enabled: true, Mode: config.AuthModeKratos},
+				Database: config.DatabaseConfig{ExternalURL: ""},
+			},
+			want: true,
+		},
+		{
+			name: "kratos mode enabled with external url returns false",
+			cfg: &config.Config{
+				Auth:     config.AuthConfig{Enabled: true, Mode: config.AuthModeKratos},
+				Database: config.DatabaseConfig{ExternalURL: "postgres://user:pass@db.example.com:5432/kratos"},
+			},
+			want: false,
+		},
+		{
+			name: "kratos.external true returns false",
+			cfg: &config.Config{
+				Auth:   config.AuthConfig{Enabled: true, Mode: config.AuthModeKratos},
+				Kratos: config.KratosConfig{External: true},
+			},
+			want: false,
+		},
+		{
+			name: "jwt mode returns false",
+			cfg: &config.Config{
+				Auth: config.AuthConfig{Enabled: true, Mode: config.AuthModeJWT},
+			},
+			want: false,
+		},
+		{
+			name: "zero value config returns false",
+			cfg:  &config.Config{},
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := generate.NeedsLocalKratosDB(tt.cfg)
+			if got != tt.want {
+				t.Errorf("NeedsLocalKratosDB() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestNeedsSeedSecrets(t *testing.T) {
 	tests := []struct {
 		name string

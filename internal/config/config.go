@@ -3,6 +3,7 @@ package config
 
 import (
 	"fmt"
+	"net/url"
 	"regexp"
 	"strings"
 	"time"
@@ -105,6 +106,14 @@ type DatabaseConfig struct {
 	// Example: "postgres://user:pass@localhost:5432/vibewarden?sslmode=disable"
 	// Can be set via VIBEWARDEN_DATABASE_URL env var.
 	URL string `mapstructure:"url"`
+
+	// ExternalURL is the connection URL for an external PostgreSQL instance.
+	// When set, the generated Docker Compose omits the local kratos-db container
+	// and uses this URL as the Kratos DSN instead of the local Postgres service.
+	// Must be a valid postgres:// URL.
+	// Example: "postgres://user:pass@db.example.com:5432/kratos?sslmode=require"
+	// Can be set via VIBEWARDEN_DATABASE_EXTERNAL_URL env var.
+	ExternalURL string `mapstructure:"external_url"`
 }
 
 // ServerConfig holds server-related settings.
@@ -1310,8 +1319,31 @@ func (c *Config) Validate() error {
 		}
 	}
 
+	// database.external_url validation: when set, must be a valid postgres:// URL.
+	if c.Database.ExternalURL != "" {
+		if err := validatePostgresURL(c.Database.ExternalURL); err != nil {
+			errs = append(errs, fmt.Sprintf("database.external_url: %s", err.Error()))
+		}
+	}
+
 	if len(errs) > 0 {
 		return fmt.Errorf("%s", strings.Join(errs, "; "))
+	}
+	return nil
+}
+
+// validatePostgresURL returns an error if s is not a valid postgres:// URL.
+// It accepts both "postgres://" and "postgresql://" schemes.
+func validatePostgresURL(s string) error {
+	u, err := url.Parse(s)
+	if err != nil {
+		return fmt.Errorf("must be a valid URL: %w", err)
+	}
+	if u.Scheme != "postgres" && u.Scheme != "postgresql" {
+		return fmt.Errorf("must use postgres:// or postgresql:// scheme, got %q", u.Scheme)
+	}
+	if u.Host == "" {
+		return fmt.Errorf("must include a host")
 	}
 	return nil
 }
@@ -1405,6 +1437,7 @@ func Load(configPath string) (*Config, error) {
 	v.SetDefault("ip_filter.addresses", []string{})
 	v.SetDefault("ip_filter.trust_proxy_headers", false)
 	v.SetDefault("database.url", "")
+	v.SetDefault("database.external_url", "")
 	v.SetDefault("webhooks.endpoints", []WebhookEndpointConfig{})
 	v.SetDefault("secrets.enabled", false)
 	v.SetDefault("secrets.provider", "openbao")

@@ -9,7 +9,9 @@
 #   vibewarden  — Security sidecar (listens on :{{ .Server.Port }}, forwards to app on :{{ .Upstream.Port }})
 {{- if and .Auth.Enabled (eq (printf "%s" .Auth.Mode) "kratos") (not .Kratos.External) }}
 #   kratos      — Ory Kratos identity server
-#   kratos-db   — PostgreSQL for Kratos
+{{- if eq .Database.ExternalURL "" }}
+#   kratos-db   — PostgreSQL for Kratos (local container; set database.external_url to use an external instance)
+{{- end }}
 {{- end }}
 {{- if .Secrets.Enabled }}
 #   openbao     — OpenBao secret store
@@ -113,6 +115,7 @@ services:
 {{- end }}
 {{- end }}
 {{- if and .Auth.Enabled (eq (printf "%s" .Auth.Mode) "kratos") (not .Kratos.External) }}
+{{- if eq .Database.ExternalURL "" }}
 
   kratos-db:
     image: postgres:17-alpine
@@ -148,6 +151,7 @@ services:
         condition: service_healthy
     networks:
       - vibewarden
+{{- end }}
 
   kratos:
     image: oryd/kratos:v1.3.1
@@ -156,7 +160,11 @@ services:
     env_file:
       - ./.credentials
     environment:
+{{- if eq .Database.ExternalURL "" }}
       DSN: "postgres://kratos:${POSTGRES_PASSWORD}@kratos-db:5432/kratos?sslmode=disable"
+{{- else }}
+      DSN: "{{ .Database.ExternalURL }}"
+{{- end }}
       SECRETS_COOKIE: "${KRATOS_SECRETS_COOKIE}"
       SECRETS_CIPHER: "${KRATOS_SECRETS_CIPHER}"
     ports:
@@ -166,9 +174,11 @@ services:
       - ./kratos:/etc/kratos:ro
     networks:
       - vibewarden
+{{- if eq .Database.ExternalURL "" }}
     depends_on:
       kratos-migrate:
         condition: service_completed_successfully
+{{- end }}
     healthcheck:
       test: ["CMD-SHELL", "wget -q --spider http://localhost:4433/health/alive || exit 1"]
       interval: 10s
@@ -386,10 +396,10 @@ services:
 networks:
   vibewarden:
     driver: bridge
-{{- if or (and .Auth.Enabled (eq (printf "%s" .Auth.Mode) "kratos") (not .Kratos.External)) .TLS.Enabled (eq .RateLimit.Store "redis") .Observability.Enabled }}
+{{- if or (and .Auth.Enabled (eq (printf "%s" .Auth.Mode) "kratos") (not .Kratos.External) (eq .Database.ExternalURL "")) .TLS.Enabled (eq .RateLimit.Store "redis") .Observability.Enabled }}
 
 volumes:
-{{- if and .Auth.Enabled (eq (printf "%s" .Auth.Mode) "kratos") (not .Kratos.External) }}
+{{- if and .Auth.Enabled (eq (printf "%s" .Auth.Mode) "kratos") (not .Kratos.External) (eq .Database.ExternalURL "") }}
   kratos-db-data:
 {{- end }}
 {{- if .TLS.Enabled }}

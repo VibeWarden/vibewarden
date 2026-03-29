@@ -13,6 +13,81 @@ import (
 	"github.com/vibewarden/vibewarden/internal/config/templates"
 )
 
+// TestGenerate_Integration_ExternalPostgres verifies that the docker-compose
+// template omits the local kratos-db container and kratos-migrate init container
+// when database.external_url is set, and uses the external URL as the Kratos DSN.
+func TestGenerate_Integration_ExternalPostgres(t *testing.T) {
+	renderer := template.NewRenderer(templates.FS)
+	svc := generate.NewService(renderer)
+
+	const externalURL = "postgres://user:pass@db.example.com:5432/kratos?sslmode=require"
+
+	tests := []struct {
+		name           string
+		externalURL    string
+		wantSubstrings []string
+		wantAbsent     []string
+	}{
+		{
+			name:        "no external_url — local kratos-db included",
+			externalURL: "",
+			wantSubstrings: []string{
+				"kratos-db:",
+				"kratos-migrate:",
+				"postgres://kratos:${POSTGRES_PASSWORD}@kratos-db:5432/kratos?sslmode=disable",
+				"kratos-db-data:",
+				"kratos-migrate:\n        condition: service_completed_successfully",
+			},
+			wantAbsent: []string{
+				externalURL,
+			},
+		},
+		{
+			name:        "external_url set — kratos-db and kratos-migrate omitted",
+			externalURL: externalURL,
+			wantSubstrings: []string{
+				"kratos:",
+				externalURL,
+			},
+			wantAbsent: []string{
+				"kratos-db:",
+				"kratos-migrate:",
+				"kratos-db-data:",
+				"postgres://kratos:${POSTGRES_PASSWORD}@kratos-db:5432/kratos?sslmode=disable",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			outputDir := t.TempDir()
+			cfg := minimalConfig()
+			cfg.Database.ExternalURL = tt.externalURL
+
+			if err := svc.Generate(context.Background(), cfg, outputDir); err != nil {
+				t.Fatalf("Generate() unexpected error: %v", err)
+			}
+
+			composePath := filepath.Join(outputDir, "docker-compose.yml")
+			data, err := os.ReadFile(composePath)
+			if err != nil {
+				t.Fatalf("reading docker-compose.yml: %v", err)
+			}
+
+			for _, want := range tt.wantSubstrings {
+				if !bytes.Contains(data, []byte(want)) {
+					t.Errorf("docker-compose.yml missing expected substring %q\n--- content ---\n%s", want, data)
+				}
+			}
+			for _, absent := range tt.wantAbsent {
+				if bytes.Contains(data, []byte(absent)) {
+					t.Errorf("docker-compose.yml contains unexpected substring %q\n--- content ---\n%s", absent, data)
+				}
+			}
+		})
+	}
+}
+
 // TestGenerate_Integration_KratosOIDCRendering verifies that the real template
 // renderer produces a kratos.yml that includes the OIDC method block when
 // social providers are configured and omits it when they are not.
