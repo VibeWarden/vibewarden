@@ -150,6 +150,12 @@ type ProxyConfig struct {
 	// headers (W3C traceparent). Requires Tracer to also be set.
 	// When nil, no trace context is propagated.
 	Propagator ports.TextMapPropagator
+
+	// MTLSClients is an optional per-route map of *http.Client instances that
+	// carry route-specific mTLS client certificates. When a matched route has
+	// an entry in this map, its dedicated client is used for that request
+	// instead of the proxy default client. Build this map with BuildMTLSClients.
+	MTLSClients MTLSClientMap
 }
 
 // Proxy is an HTTP server that listens on a dedicated localhost port and
@@ -510,6 +516,16 @@ func (p *Proxy) handleRequest(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "429 Too Many Requests: egress rate limit exceeded", http.StatusTooManyRequests)
 			return
 		}
+		if errors.Is(err, ErrMTLSHandshakeFailed) {
+			p.logger.ErrorContext(r.Context(), "egress.mtls_error",
+				slog.String("event_type", "egress.mtls_error"),
+				slog.String("target", targetURL),
+				slog.String("method", r.Method),
+				slog.String("err", err.Error()),
+			)
+			http.Error(w, "502 Bad Gateway: mTLS handshake failed", http.StatusBadGateway)
+			return
+		}
 		var ssrfErr *SSRFBlockedError
 		if errors.As(err, &ssrfErr) {
 			p.logger.WarnContext(r.Context(), "egress SSRF protection blocked request",
@@ -833,11 +849,37 @@ func (p *Proxy) forward(ctx context.Context, req domainegress.EgressRequest, mat
 			p.cfg.Propagator.Inject(reqCtx, httpHeaderCarrier(httpReq.Header))
 		}
 
-		resp, err := p.client.Do(httpReq)
+		// Use a per-route mTLS client when one has been configured for this
+		// route; otherwise fall back to the proxy default client.
+		activeClient := p.client
+		if match.Matched {
+			if mtlsClient, ok := p.cfg.MTLSClients[match.Route.Name()]; ok {
+				activeClient = mtlsClient
+			}
+		}
+
+		resp, err := activeClient.Do(httpReq)
 
 		if err != nil {
 			lastErr = err
 			lastResp = nil
+
+			// A TLS handshake failure on a route with an mTLS client certificate
+			// is logged as a structured egress.mtls_error event and surfaced
+			// immediately without retrying (the cert mismatch will not resolve
+			// itself on retry).
+			if match.Matched && !match.Route.MTLS().IsZero() && isMTLSError(err) {
+				p.logger.ErrorContext(ctx, "egress.mtls_error",
+					slog.String("event_type", "egress.mtls_error"),
+					slog.String("url", req.URL),
+					slog.String("method", req.Method),
+					slog.String("route", routeName),
+					slog.String("err", err.Error()),
+				)
+				wrappedErr := fmt.Errorf("%w: %w", ErrMTLSHandshakeFailed, err)
+				p.recordEgressError(spanCtx, span, match, req, routeName, attempt, time.Since(start), wrappedErr)
+				return domainegress.EgressResponse{}, wrappedErr
+			}
 
 			// A context deadline/cancellation is a timeout — do not retry, surface
 			// it immediately so the caller can return 504.
