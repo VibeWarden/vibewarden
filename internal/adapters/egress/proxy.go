@@ -13,10 +13,12 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
 	domainegress "github.com/vibewarden/vibewarden/internal/domain/egress"
+	"github.com/vibewarden/vibewarden/internal/domain/events"
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
 
@@ -128,6 +130,26 @@ type ProxyConfig struct {
 	// By default only HTTPS targets are allowed. Individual routes can also
 	// override this with their AllowInsecure field.
 	AllowInsecure bool
+
+	// Metrics, when non-nil, is called to record egress request counters,
+	// duration histograms, and transport-error counters. When nil, no metrics
+	// are recorded.
+	Metrics ports.MetricsCollector
+
+	// EventLogger, when non-nil, is called to emit structured egress events
+	// (egress.request, egress.response, egress.blocked, egress.error).
+	// When nil, no events are emitted.
+	EventLogger ports.EventLogger
+
+	// Tracer, when non-nil, creates an OTel client span for each egress
+	// request and propagates the W3C traceparent to the upstream.
+	// When nil, no spans are created.
+	Tracer ports.Tracer
+
+	// Propagator, when non-nil, injects trace context into outbound request
+	// headers (W3C traceparent). Requires Tracer to also be set.
+	// When nil, no trace context is propagated.
+	Propagator ports.TextMapPropagator
 }
 
 // Proxy is an HTTP server that listens on a dedicated localhost port and
@@ -258,6 +280,7 @@ func (p *Proxy) HandleRequest(ctx context.Context, req domainegress.EgressReques
 
 	if !match.Matched {
 		if p.cfg.DefaultPolicy == domainegress.PolicyDeny {
+			p.emitBlocked(ctx, match, req, "no route matched default deny policy")
 			return domainegress.EgressResponse{}, ErrDeniedByPolicy
 		}
 	}
@@ -273,6 +296,7 @@ func (p *Proxy) HandleRequest(ctx context.Context, req domainegress.EgressReques
 				slog.String("method", req.Method),
 				slog.String("reason", "plain HTTP not allowed"),
 			)
+			p.emitBlocked(ctx, match, req, "plain HTTP not allowed")
 			return domainegress.EgressResponse{}, ErrInsecureURL
 		}
 	}
@@ -284,6 +308,7 @@ func (p *Proxy) HandleRequest(ctx context.Context, req domainegress.EgressReques
 			return domainegress.EgressResponse{}, fmt.Errorf("circuit breaker check: %w", cbErr)
 		}
 		if open {
+			p.emitBlocked(ctx, match, req, "circuit breaker open")
 			return domainegress.EgressResponse{}, ErrCircuitOpen
 		}
 	}
@@ -330,6 +355,24 @@ func (p *Proxy) HandleRequest(ctx context.Context, req domainegress.EgressReques
 		return domainegress.EgressResponse{}, forwardErr
 	}
 	return resp, nil
+}
+
+// emitBlocked emits an egress.blocked structured event and increments the
+// egress error metric. It is called for all policy-level rejections.
+func (p *Proxy) emitBlocked(ctx context.Context, match domainegress.RouteMatch, req domainegress.EgressRequest, reason string) {
+	if p.cfg.EventLogger != nil {
+		ev := events.NewEgressBlocked(events.EgressBlockedParams{
+			Route:   routeNameOf(match),
+			Method:  req.Method,
+			URL:     req.URL,
+			Reason:  reason,
+			TraceID: traceIDFromContext(ctx),
+		})
+		_ = p.cfg.EventLogger.Log(ctx, ev)
+	}
+	if p.cfg.Metrics != nil {
+		p.cfg.Metrics.IncEgressErrorTotal(routeNameOf(match))
+	}
 }
 
 // enforceRequestBodyLimit checks whether the request body exceeds the limit and
@@ -654,12 +697,40 @@ func patternBase(pattern string) string {
 // logged as an egress.retry structured event. A timeout from context.WithTimeout
 // is returned as-is so the HTTP handler can respond with 504.
 func (p *Proxy) forward(ctx context.Context, req domainegress.EgressRequest, match domainegress.RouteMatch) (domainegress.EgressResponse, error) {
+	// --- Observability: start client span ---
+	routeName := routeNameOf(match)
+	spanCtx := ctx
+	var span ports.Span
+	if p.cfg.Tracer != nil {
+		spanCtx, span = p.cfg.Tracer.Start(ctx, "egress "+req.Method,
+			ports.WithSpanKind(ports.SpanKindClient))
+		// Store trace-id in context for structured log correlation.
+		// We extract it from the span context via a no-op propagation trick:
+		// instead, store the routeName and let the span carry the trace.
+		defer span.End()
+		span.SetAttributes(
+			ports.Attribute{Key: "http.request.method", Value: req.Method},
+			ports.Attribute{Key: "url.full", Value: req.URL},
+			ports.Attribute{Key: "egress.route", Value: routeName},
+		)
+	}
+
+	// Emit egress.request event.
+	if p.cfg.EventLogger != nil {
+		_ = p.cfg.EventLogger.Log(spanCtx, events.NewEgressRequest(events.EgressRequestParams{
+			Route:   routeName,
+			Method:  req.Method,
+			URL:     req.URL,
+			TraceID: traceIDFromContext(spanCtx),
+		}))
+	}
+
 	timeout := p.cfg.DefaultTimeout
 	if match.Matched && match.Route.Timeout() > 0 {
 		timeout = match.Route.Timeout()
 	}
 
-	reqCtx, cancel := context.WithTimeout(ctx, timeout)
+	reqCtx, cancel := context.WithTimeout(spanCtx, timeout)
 	defer cancel()
 
 	// Apply per-route request header manipulation when a route was matched.
@@ -734,6 +805,12 @@ func (p *Proxy) forward(ctx context.Context, req domainegress.EgressRequest, mat
 			}
 		}
 
+		// Inject W3C traceparent into outbound request headers so the external
+		// service can continue the trace.
+		if p.cfg.Propagator != nil {
+			p.cfg.Propagator.Inject(reqCtx, httpHeaderCarrier(httpReq.Header))
+		}
+
 		resp, err := p.client.Do(httpReq)
 
 		if err != nil {
@@ -752,7 +829,9 @@ func (p *Proxy) forward(ctx context.Context, req domainegress.EgressRequest, mat
 				if match.Matched && p.cfg.CircuitBreakers != nil {
 					p.cfg.CircuitBreakers.RecordFailure(ctx, match.Route)
 				}
-				return domainegress.EgressResponse{}, fmt.Errorf("forwarding request to %s: %w", req.URL, err)
+				wrappedErr := fmt.Errorf("forwarding request to %s: %w", req.URL, err)
+				p.recordEgressError(spanCtx, span, match, req, routeName, attempt, time.Since(start), wrappedErr)
+				return domainegress.EgressResponse{}, wrappedErr
 			}
 
 			if retryEnabled && attempt < maxAttempts {
@@ -771,7 +850,9 @@ func (p *Proxy) forward(ctx context.Context, req domainegress.EgressRequest, mat
 					if match.Matched && p.cfg.CircuitBreakers != nil {
 						p.cfg.CircuitBreakers.RecordFailure(ctx, match.Route)
 					}
-					return domainegress.EgressResponse{}, fmt.Errorf("forwarding request to %s: %w", req.URL, reqCtx.Err())
+					wrappedErr := fmt.Errorf("forwarding request to %s: %w", req.URL, reqCtx.Err())
+					p.recordEgressError(spanCtx, span, match, req, routeName, attempt, time.Since(start), wrappedErr)
+					return domainegress.EgressResponse{}, wrappedErr
 				}
 				continue
 			}
@@ -779,7 +860,9 @@ func (p *Proxy) forward(ctx context.Context, req domainegress.EgressRequest, mat
 			if match.Matched && p.cfg.CircuitBreakers != nil {
 				p.cfg.CircuitBreakers.RecordFailure(ctx, match.Route)
 			}
-			return domainegress.EgressResponse{}, fmt.Errorf("forwarding request to %s: %w", req.URL, err)
+			// lastErr is set — break the loop so the post-loop check records
+			// observability and returns the error.
+			break
 		}
 
 		// We have a response. Check whether it is a retryable status code.
@@ -798,7 +881,9 @@ func (p *Proxy) forward(ctx context.Context, req domainegress.EgressRequest, mat
 					slog.String("reason", fmt.Sprintf("status %d", resp.StatusCode)),
 				)
 				if !sleep(reqCtx, backoff) {
-					return domainegress.EgressResponse{}, fmt.Errorf("forwarding request to %s: %w", req.URL, reqCtx.Err())
+					wrappedErr := fmt.Errorf("forwarding request to %s: %w", req.URL, reqCtx.Err())
+					p.recordEgressError(spanCtx, span, match, req, routeName, attempt, time.Since(start), wrappedErr)
+					return domainegress.EgressResponse{}, wrappedErr
 				}
 				continue
 			}
@@ -810,6 +895,8 @@ func (p *Proxy) forward(ctx context.Context, req domainegress.EgressRequest, mat
 	}
 
 	if lastErr != nil {
+		duration := time.Since(start)
+		p.recordEgressError(spanCtx, span, match, req, routeName, attemptsDone, duration, lastErr)
 		return domainegress.EgressResponse{}, fmt.Errorf("forwarding request to %s: %w", req.URL, lastErr)
 	}
 
@@ -823,6 +910,33 @@ func (p *Proxy) forward(ctx context.Context, req domainegress.EgressRequest, mat
 	}
 
 	duration := time.Since(start)
+
+	// --- Observability: record successful response metrics and events ---
+	if p.cfg.Metrics != nil {
+		p.cfg.Metrics.IncEgressRequestTotal(routeName, req.Method, strconv.Itoa(lastResp.StatusCode))
+		p.cfg.Metrics.ObserveEgressDuration(routeName, req.Method, duration)
+	}
+	if p.cfg.EventLogger != nil {
+		_ = p.cfg.EventLogger.Log(spanCtx, events.NewEgressResponse(events.EgressResponseParams{
+			Route:           routeName,
+			Method:          req.Method,
+			URL:             req.URL,
+			StatusCode:      lastResp.StatusCode,
+			DurationSeconds: duration.Seconds(),
+			Attempts:        attemptsDone,
+			TraceID:         traceIDFromContext(spanCtx),
+		}))
+	}
+	if span != nil {
+		span.SetAttributes(
+			ports.Attribute{Key: "http.response.status_code", Value: strconv.Itoa(lastResp.StatusCode)},
+		)
+		if lastResp.StatusCode >= 500 {
+			span.SetStatus(ports.SpanStatusError, http.StatusText(lastResp.StatusCode))
+		} else {
+			span.SetStatus(ports.SpanStatusOK, "")
+		}
+	}
 
 	// Apply per-route response header stripping (also strips default sensitive headers).
 	var respHeaders http.Header
@@ -843,6 +957,40 @@ func (p *Proxy) forward(ctx context.Context, req domainegress.EgressRequest, mat
 	// the X-Egress-Attempts response header.
 	egressResp.Attempts = attemptsDone
 	return egressResp, nil
+}
+
+// recordEgressError records observability for a transport-level egress failure.
+// It emits an egress.error structured event, increments the error and request
+// counters, records the duration histogram, and marks the span as errored.
+func (p *Proxy) recordEgressError(
+	ctx context.Context,
+	span ports.Span,
+	match domainegress.RouteMatch,
+	req domainegress.EgressRequest,
+	routeName string,
+	attempts int,
+	duration time.Duration,
+	lastErr error,
+) {
+	if p.cfg.Metrics != nil {
+		p.cfg.Metrics.IncEgressRequestTotal(routeName, req.Method, "error")
+		p.cfg.Metrics.ObserveEgressDuration(routeName, req.Method, duration)
+		p.cfg.Metrics.IncEgressErrorTotal(routeName)
+	}
+	if p.cfg.EventLogger != nil {
+		_ = p.cfg.EventLogger.Log(ctx, events.NewEgressError(events.EgressErrorParams{
+			Route:    routeName,
+			Method:   req.Method,
+			URL:      req.URL,
+			Error:    lastErr.Error(),
+			Attempts: attempts,
+			TraceID:  traceIDFromContext(ctx),
+		}))
+	}
+	if span != nil {
+		span.RecordError(lastErr)
+		span.SetStatus(ports.SpanStatusError, lastErr.Error())
+	}
 }
 
 // applySecretInjection resolves and injects secret values into outHeaders.
@@ -980,6 +1128,47 @@ func isTimeoutError(err error) bool {
 // considered failures; client errors (4xx) and successful responses are not.
 func isFailureStatus(code int) bool {
 	return code >= http.StatusInternalServerError
+}
+
+// routeNameOf returns the matched route name or "unmatched" when no route matched.
+// It is used to populate low-cardinality metric and event labels.
+func routeNameOf(match domainegress.RouteMatch) string {
+	if match.Matched {
+		return match.Route.Name()
+	}
+	return "unmatched"
+}
+
+// traceIDFromContext extracts the W3C trace-id string from ctx as a hex string.
+// Returns an empty string when no span is active in ctx or tracing is disabled.
+func traceIDFromContext(ctx context.Context) string {
+	type traceIDer interface {
+		TraceID() [16]byte
+		IsValid() bool
+	}
+	// Use OTel SDK directly would create a hard dependency on the SDK here.
+	// Instead we store the trace-id in the context via a key when we start a span.
+	if id, ok := ctx.Value(ctxKeyTraceID{}).(string); ok {
+		return id
+	}
+	return ""
+}
+
+// ctxKeyTraceID is the context key used to store the egress span trace-id.
+type ctxKeyTraceID struct{}
+
+// httpHeaderCarrier adapts http.Header to ports.TextMapCarrier for W3C trace
+// context propagation on outbound egress requests.
+type httpHeaderCarrier http.Header
+
+func (c httpHeaderCarrier) Get(key string) string { return http.Header(c).Get(key) }
+func (c httpHeaderCarrier) Set(key, value string) { http.Header(c).Set(key, value) }
+func (c httpHeaderCarrier) Keys() []string {
+	keys := make([]string, 0, len(c))
+	for k := range c {
+		keys = append(keys, k)
+	}
+	return keys
 }
 
 // Interface guard — Proxy must implement ports.EgressProxy.

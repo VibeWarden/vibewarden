@@ -269,3 +269,88 @@ func TestOTelAdapter_SetActiveConnections_DeltaTracking(t *testing.T) {
 		t.Errorf("expected vibewarden_active_connections in output\n\nFull output:\n%s", body)
 	}
 }
+
+// --- Egress metrics ---
+
+func TestOTelAdapter_IncEgressRequestTotal(t *testing.T) {
+	a := newOTelTestAdapter(t, nil)
+
+	a.IncEgressRequestTotal("stripe", "POST", "200")
+	a.IncEgressRequestTotal("stripe", "POST", "503")
+	a.IncEgressRequestTotal("unmatched", "GET", "error")
+
+	body := scrapeOTelMetrics(t, a)
+	if !strings.Contains(body, "vibewarden_egress_requests_total") {
+		t.Errorf("expected vibewarden_egress_requests_total in output\n\nFull output:\n%s", body)
+	}
+}
+
+func TestOTelAdapter_IncEgressRequestTotal_Labels(t *testing.T) {
+	tests := []struct {
+		name       string
+		route      string
+		method     string
+		statusCode string
+	}{
+		{"named route success", "stripe", "POST", "200"},
+		{"named route error", "github", "GET", "error"},
+		{"unmatched allow", "unmatched", "DELETE", "204"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			a := newOTelTestAdapter(t, nil)
+			// Must not panic with any combination of label values.
+			a.IncEgressRequestTotal(tt.route, tt.method, tt.statusCode)
+		})
+	}
+}
+
+func TestOTelAdapter_ObserveEgressDuration(t *testing.T) {
+	a := newOTelTestAdapter(t, nil)
+
+	a.ObserveEgressDuration("stripe", "POST", 150*time.Millisecond)
+	a.ObserveEgressDuration("github", "GET", 5*time.Second)
+	a.ObserveEgressDuration("unmatched", "PUT", 50*time.Millisecond)
+
+	body := scrapeOTelMetrics(t, a)
+	if !strings.Contains(body, "vibewarden_egress_request_duration_seconds") {
+		t.Errorf("expected vibewarden_egress_request_duration_seconds in output\n\nFull output:\n%s", body)
+	}
+}
+
+func TestOTelAdapter_IncEgressErrorTotal(t *testing.T) {
+	a := newOTelTestAdapter(t, nil)
+
+	a.IncEgressErrorTotal("stripe")
+	a.IncEgressErrorTotal("stripe")
+	a.IncEgressErrorTotal("unmatched")
+
+	body := scrapeOTelMetrics(t, a)
+	if !strings.Contains(body, "vibewarden_egress_errors_total") {
+		t.Errorf("expected vibewarden_egress_errors_total in output\n\nFull output:\n%s", body)
+	}
+}
+
+func TestOTelAdapter_EgressMetrics_AllPresentAfterCalls(t *testing.T) {
+	// Verify that all three egress metric families appear in the Prometheus output
+	// after a single call to each.
+	a := newOTelTestAdapter(t, nil)
+
+	a.IncEgressRequestTotal("payments", "POST", "201")
+	a.ObserveEgressDuration("payments", "POST", 200*time.Millisecond)
+	a.IncEgressErrorTotal("payments")
+
+	body := scrapeOTelMetrics(t, a)
+
+	wantMetrics := []string{
+		"vibewarden_egress_requests_total",
+		"vibewarden_egress_request_duration_seconds",
+		"vibewarden_egress_errors_total",
+	}
+	for _, metric := range wantMetrics {
+		if !strings.Contains(body, metric) {
+			t.Errorf("missing metric %q in Prometheus output\n\nFull output:\n%s", metric, body)
+		}
+	}
+}

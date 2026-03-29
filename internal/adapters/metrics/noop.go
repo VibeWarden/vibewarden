@@ -44,3 +44,12 @@ func (NoOpMetricsCollector) SetUpstreamHealthy(_ context.Context, _ bool) {}
 
 // IncWAFDetection implements ports.MetricsCollector and does nothing.
 func (NoOpMetricsCollector) IncWAFDetection(_, _ string) {}
+
+// IncEgressRequestTotal implements ports.MetricsCollector and does nothing.
+func (NoOpMetricsCollector) IncEgressRequestTotal(_, _, _ string) {}
+
+// ObserveEgressDuration implements ports.MetricsCollector and does nothing.
+func (NoOpMetricsCollector) ObserveEgressDuration(_, _ string, _ time.Duration) {}
+
+// IncEgressErrorTotal implements ports.MetricsCollector and does nothing.
+func (NoOpMetricsCollector) IncEgressErrorTotal(_ string) {}

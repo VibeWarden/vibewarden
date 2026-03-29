@@ -45,6 +45,9 @@ func (f *fakeWAFCollector) SetCircuitBreakerState(_ context.Context, _ resilienc
 func (f *fakeWAFCollector) IncWAFDetection(rule, mode string) {
 	f.detections = append(f.detections, wafDetectionCall{rule: rule, mode: mode})
 }
+func (f *fakeWAFCollector) IncEgressRequestTotal(_, _, _ string)               {}
+func (f *fakeWAFCollector) ObserveEgressDuration(_, _ string, _ time.Duration) {}
+func (f *fakeWAFCollector) IncEgressErrorTotal(_ string)                       {}
 
 // fakeWAFAuditLogger records audit events.
 type fakeWAFAuditLogger struct {

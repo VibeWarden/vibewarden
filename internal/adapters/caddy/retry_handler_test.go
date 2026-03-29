@@ -31,6 +31,9 @@ func (f *fakeMetrics) IncUpstreamRetry(method string) {
 func (f *fakeMetrics) SetActiveConnections(_ int)                                   {}
 func (f *fakeMetrics) SetCircuitBreakerState(_ context.Context, _ resilience.State) {}
 func (f *fakeMetrics) IncWAFDetection(_, _ string)                                  {}
+func (f *fakeMetrics) IncEgressRequestTotal(_, _, _ string)                         {}
+func (f *fakeMetrics) ObserveEgressDuration(_, _ string, _ time.Duration)           {}
+func (f *fakeMetrics) IncEgressErrorTotal(_ string)                                 {}
 
 // sequentialHandler calls each inner handler in sequence, one per ServeHTTP call.
 type sequentialHandler struct {
