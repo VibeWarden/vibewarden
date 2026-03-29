@@ -19,6 +19,17 @@ import (
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
 
+// retryableStatusCodes is the set of HTTP status codes that are considered
+// transient and eligible for retry.
+var retryableStatusCodes = map[int]struct{}{
+	http.StatusRequestTimeout:      {}, // 408
+	http.StatusTooManyRequests:     {}, // 429
+	http.StatusInternalServerError: {}, // 500
+	http.StatusBadGateway:          {}, // 502
+	http.StatusServiceUnavailable:  {}, // 503
+	http.StatusGatewayTimeout:      {}, // 504
+}
+
 const (
 	// namedRoutePrefix is the URL path prefix for named-route requests.
 	namedRoutePrefix = "/_egress/"
@@ -27,11 +38,19 @@ const (
 	// The caller sets this header to the full target URL when POSTing to the proxy.
 	headerEgressURL = "X-Egress-URL"
 
+	// headerEgressAttempts is the response header that reports the total number
+	// of upstream attempts made (initial + retries).
+	headerEgressAttempts = "X-Egress-Attempts"
+
 	// defaultListen is the default address the egress proxy binds to.
 	defaultListen = "127.0.0.1:8081"
 
 	// defaultTimeout is used when the configuration does not specify a timeout.
 	defaultTimeout = 30 * time.Second
+
+	// defaultRetryInitialBackoff is the base wait duration before the first retry
+	// when RetryConfig.InitialBackoff is zero.
+	defaultRetryInitialBackoff = 100 * time.Millisecond
 
 	// hopByHopHeaders lists headers that must not be forwarded to the upstream.
 	// These are connection-specific and must be stripped per RFC 7230 §6.1.
@@ -243,6 +262,16 @@ func (p *Proxy) handleRequest(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "403 Forbidden: "+ssrfErr.Error(), http.StatusForbidden)
 			return
 		}
+		// A deadline-exceeded error from context.WithTimeout in forward() means
+		// the upstream did not respond within the configured timeout.
+		if isTimeoutError(err) {
+			p.logger.WarnContext(r.Context(), "egress request timed out",
+				slog.String("target", targetURL),
+				slog.String("method", r.Method),
+			)
+			http.Error(w, "504 Gateway Timeout: upstream did not respond in time", http.StatusGatewayTimeout)
+			return
+		}
 		p.logger.ErrorContext(r.Context(), "egress forwarding error",
 			slog.String("target", targetURL),
 			slog.String("method", r.Method),
@@ -259,6 +288,10 @@ func (p *Proxy) handleRequest(w http.ResponseWriter, r *http.Request) {
 		for _, v := range vals {
 			w.Header().Add(key, v)
 		}
+	}
+	// Report total attempt count (initial + retries) to the caller.
+	if egressResp.Attempts > 0 {
+		w.Header().Set(headerEgressAttempts, fmt.Sprintf("%d", egressResp.Attempts))
 	}
 	w.WriteHeader(egressResp.StatusCode)
 
@@ -348,6 +381,11 @@ func patternBase(pattern string) string {
 //     carries a SecretConfig or the request carries an X-Inject-Secret header.
 //  2. After receiving: per-route and default sensitive response headers are
 //     stripped before the response is returned to the caller.
+//
+// When the matched route has a RetryConfig, transient failures on idempotent
+// methods are retried with exponential or fixed backoff. Each retry attempt is
+// logged as an egress.retry structured event. A timeout from context.WithTimeout
+// is returned as-is so the HTTP handler can respond with 504.
 func (p *Proxy) forward(ctx context.Context, req domainegress.EgressRequest, match domainegress.RouteMatch) (domainegress.EgressResponse, error) {
 	timeout := p.cfg.DefaultTimeout
 	if match.Matched && match.Route.Timeout() > 0 {
@@ -384,39 +422,141 @@ func (p *Proxy) forward(ctx context.Context, req domainegress.EgressRequest, mat
 		return domainegress.EgressResponse{}, fmt.Errorf("secret injection: %w", err)
 	}
 
-	body, _ := req.BodyRef.(io.Reader)
-	httpReq, err := http.NewRequestWithContext(reqCtx, req.Method, req.URL, body)
-	if err != nil {
-		return domainegress.EgressResponse{}, fmt.Errorf("building upstream request: %w", err)
-	}
-	for key, vals := range outHeaders {
-		for _, v := range vals {
-			httpReq.Header.Add(key, v)
+	// Determine retry parameters. Retry is only attempted for matched routes
+	// that carry a RetryConfig with Max > 0 and an idempotent method.
+	retryCfg := domainegress.RetryConfig{}
+	retryEnabled := false
+	if match.Matched {
+		rc := match.Route.Retry()
+		if rc.Max > 0 && rc.IsRetryableMethod(req.Method) {
+			retryCfg = rc
+			retryEnabled = true
 		}
 	}
 
-	start := time.Now()
-	resp, err := p.client.Do(httpReq)
-	if err != nil {
-		return domainegress.EgressResponse{}, fmt.Errorf("forwarding request to %s: %w", req.URL, err)
+	maxAttempts := 1
+	if retryEnabled {
+		maxAttempts = 1 + retryCfg.Max
 	}
+
+	initialBackoff := retryCfg.InitialBackoff
+	if initialBackoff <= 0 {
+		initialBackoff = defaultRetryInitialBackoff
+	}
+
+	var (
+		lastResp     *http.Response
+		lastErr      error
+		start        = time.Now()
+		attemptsDone int
+	)
+
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		attemptsDone = attempt
+
+		// Each attempt needs a fresh HTTP request because the body and context
+		// cannot be reused after the first send.
+		body, _ := req.BodyRef.(io.Reader)
+		httpReq, err := http.NewRequestWithContext(reqCtx, req.Method, req.URL, body)
+		if err != nil {
+			return domainegress.EgressResponse{}, fmt.Errorf("building upstream request: %w", err)
+		}
+		for key, vals := range outHeaders {
+			for _, v := range vals {
+				httpReq.Header.Add(key, v)
+			}
+		}
+
+		resp, err := p.client.Do(httpReq)
+
+		if err != nil {
+			lastErr = err
+			lastResp = nil
+
+			// A context deadline/cancellation is a timeout — do not retry, surface
+			// it immediately so the caller can return 504.
+			if isTimeoutError(err) {
+				p.logger.WarnContext(ctx, "egress.timeout",
+					slog.String("event_type", "egress.timeout"),
+					slog.String("url", req.URL),
+					slog.String("method", req.Method),
+					slog.Int("attempt", attempt),
+				)
+				return domainegress.EgressResponse{}, fmt.Errorf("forwarding request to %s: %w", req.URL, err)
+			}
+
+			if retryEnabled && attempt < maxAttempts {
+				backoff := computeBackoff(retryCfg.Backoff, initialBackoff, attempt)
+				p.logger.WarnContext(ctx, "egress.retry",
+					slog.String("event_type", "egress.retry"),
+					slog.String("url", req.URL),
+					slog.String("method", req.Method),
+					slog.Int("attempt", attempt),
+					slog.Int("max_attempts", maxAttempts),
+					slog.String("backoff", backoff.String()),
+					slog.String("reason", err.Error()),
+				)
+				if !sleep(reqCtx, backoff) {
+					// Context cancelled during backoff — surface timeout.
+					return domainegress.EgressResponse{}, fmt.Errorf("forwarding request to %s: %w", req.URL, reqCtx.Err())
+				}
+				continue
+			}
+
+			return domainegress.EgressResponse{}, fmt.Errorf("forwarding request to %s: %w", req.URL, err)
+		}
+
+		// We have a response. Check whether it is a retryable status code.
+		if retryEnabled && attempt < maxAttempts {
+			if _, retryable := retryableStatusCodes[resp.StatusCode]; retryable {
+				// Drain and close the body before retrying to free the connection.
+				resp.Body.Close() //nolint:errcheck
+				backoff := computeBackoff(retryCfg.Backoff, initialBackoff, attempt)
+				p.logger.WarnContext(ctx, "egress.retry",
+					slog.String("event_type", "egress.retry"),
+					slog.String("url", req.URL),
+					slog.String("method", req.Method),
+					slog.Int("attempt", attempt),
+					slog.Int("max_attempts", maxAttempts),
+					slog.String("backoff", backoff.String()),
+					slog.String("reason", fmt.Sprintf("status %d", resp.StatusCode)),
+				)
+				if !sleep(reqCtx, backoff) {
+					return domainegress.EgressResponse{}, fmt.Errorf("forwarding request to %s: %w", req.URL, reqCtx.Err())
+				}
+				continue
+			}
+		}
+
+		lastResp = resp
+		lastErr = nil
+		break
+	}
+
+	if lastErr != nil {
+		return domainegress.EgressResponse{}, fmt.Errorf("forwarding request to %s: %w", req.URL, lastErr)
+	}
+
 	duration := time.Since(start)
 
 	// Apply per-route response header stripping (also strips default sensitive headers).
 	var respHeaders http.Header
 	if match.Matched {
-		respHeaders = match.Route.Headers().ApplyToResponse(resp.Header)
+		respHeaders = match.Route.Headers().ApplyToResponse(lastResp.Header)
 	} else {
 		// Apply default sensitive-header stripping on unmatched requests too.
-		respHeaders = domainegress.HeadersConfig{}.ApplyToResponse(resp.Header)
+		respHeaders = domainegress.HeadersConfig{}.ApplyToResponse(lastResp.Header)
 	}
 
-	egressResp, err := domainegress.NewEgressResponse(resp.StatusCode, respHeaders, resp.Body, duration)
+	egressResp, err := domainegress.NewEgressResponse(lastResp.StatusCode, respHeaders, lastResp.Body, duration)
 	if err != nil {
-		resp.Body.Close() //nolint:errcheck
+		lastResp.Body.Close() //nolint:errcheck
 		return domainegress.EgressResponse{}, fmt.Errorf("building egress response: %w", err)
 	}
 
+	// Record the total number of upstream attempts so the HTTP handler can set
+	// the X-Egress-Attempts response header.
+	egressResp.Attempts = attemptsDone
 	return egressResp, nil
 }
 
@@ -502,6 +642,52 @@ func cloneAndStripHopByHop(h http.Header) http.Header {
 		}
 	}
 	return out
+}
+
+// computeBackoff returns the wait duration before attempt number n (1-based)
+// using the given strategy. For exponential backoff the base is doubled on each
+// attempt: base * 2^(n-1). For fixed backoff the same base is always returned.
+func computeBackoff(strategy domainegress.RetryBackoff, base time.Duration, attempt int) time.Duration {
+	if strategy == domainegress.RetryBackoffFixed {
+		return base
+	}
+	// Default: exponential. Shift by (attempt-1) doublings.
+	shift := attempt - 1
+	if shift > 30 {
+		shift = 30 // guard against overflow on absurdly high Max values
+	}
+	return base * (1 << uint(shift))
+}
+
+// sleep blocks for d using a timer that respects context cancellation.
+// Returns true if the sleep completed, false if the context was cancelled first.
+func sleep(ctx context.Context, d time.Duration) bool {
+	t := time.NewTimer(d)
+	defer t.Stop()
+	select {
+	case <-ctx.Done():
+		return false
+	case <-t.C:
+		return true
+	}
+}
+
+// isTimeoutError reports whether err represents a context deadline exceeded or
+// context cancellation originating from the per-request timeout. It also covers
+// net/http timeout errors that wrap url.Error with a Timeout() method.
+func isTimeoutError(err error) bool {
+	if err == nil {
+		return false
+	}
+	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, context.Canceled) {
+		return true
+	}
+	// net/http wraps transport errors in *url.Error; check the Timeout() method.
+	var netErr interface{ Timeout() bool }
+	if errors.As(err, &netErr) {
+		return netErr.Timeout()
+	}
+	return false
 }
 
 // Interface guard — Proxy must implement ports.EgressProxy.

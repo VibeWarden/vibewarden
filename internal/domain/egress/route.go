@@ -37,11 +37,42 @@ type RetryConfig struct {
 	Max int
 
 	// Methods is the set of HTTP methods eligible for retry (e.g. ["GET", "PUT"]).
-	// When empty, all methods are retried.
+	// When empty the default idempotent set is used (GET, HEAD, PUT, DELETE).
 	Methods []string
 
 	// Backoff selects the backoff strategy. Defaults to exponential when empty.
 	Backoff RetryBackoff
+
+	// InitialBackoff is the base wait duration before the first retry.
+	// Defaults to 100 ms when zero.
+	InitialBackoff time.Duration
+}
+
+// defaultIdempotentMethods is the set of HTTP methods that are safe to retry
+// by default because they are idempotent per RFC 9110.
+var defaultIdempotentMethods = map[string]struct{}{
+	"GET":    {},
+	"HEAD":   {},
+	"PUT":    {},
+	"DELETE": {},
+}
+
+// IsRetryableMethod reports whether method is eligible for retry under this
+// RetryConfig. When Methods is empty the default idempotent set is used
+// (GET, HEAD, PUT, DELETE). Otherwise only methods listed in Methods are
+// eligible.
+func (r RetryConfig) IsRetryableMethod(method string) bool {
+	upper := strings.ToUpper(method)
+	if len(r.Methods) == 0 {
+		_, ok := defaultIdempotentMethods[upper]
+		return ok
+	}
+	for _, m := range r.Methods {
+		if strings.ToUpper(m) == upper {
+			return true
+		}
+	}
+	return false
 }
 
 // SecretConfig holds secret injection parameters for a route.

@@ -110,6 +110,85 @@ func TestNewRoute_Accessors(t *testing.T) {
 	}
 }
 
+func TestRetryConfig_IsRetryableMethod(t *testing.T) {
+	tests := []struct {
+		name   string
+		cfg    egress.RetryConfig
+		method string
+		want   bool
+	}{
+		{
+			name:   "empty methods: GET is retryable by default",
+			cfg:    egress.RetryConfig{},
+			method: "GET",
+			want:   true,
+		},
+		{
+			name:   "empty methods: HEAD is retryable by default",
+			cfg:    egress.RetryConfig{},
+			method: "HEAD",
+			want:   true,
+		},
+		{
+			name:   "empty methods: PUT is retryable by default",
+			cfg:    egress.RetryConfig{},
+			method: "PUT",
+			want:   true,
+		},
+		{
+			name:   "empty methods: DELETE is retryable by default",
+			cfg:    egress.RetryConfig{},
+			method: "DELETE",
+			want:   true,
+		},
+		{
+			name:   "empty methods: POST is NOT retryable by default",
+			cfg:    egress.RetryConfig{},
+			method: "POST",
+			want:   false,
+		},
+		{
+			name:   "empty methods: PATCH is NOT retryable by default",
+			cfg:    egress.RetryConfig{},
+			method: "PATCH",
+			want:   false,
+		},
+		{
+			name:   "explicit methods: listed method is retryable",
+			cfg:    egress.RetryConfig{Methods: []string{"GET", "POST"}},
+			method: "POST",
+			want:   true,
+		},
+		{
+			name:   "explicit methods: unlisted method is not retryable",
+			cfg:    egress.RetryConfig{Methods: []string{"GET"}},
+			method: "DELETE",
+			want:   false,
+		},
+		{
+			name:   "case insensitive match in explicit methods",
+			cfg:    egress.RetryConfig{Methods: []string{"get"}},
+			method: "GET",
+			want:   true,
+		},
+		{
+			name:   "case insensitive match in default idempotent set",
+			cfg:    egress.RetryConfig{},
+			method: "get",
+			want:   true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tt.cfg.IsRetryableMethod(tt.method)
+			if got != tt.want {
+				t.Errorf("IsRetryableMethod(%q) = %v, want %v", tt.method, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestRoute_MatchesMethod(t *testing.T) {
 	tests := []struct {
 		name         string
