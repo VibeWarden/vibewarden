@@ -103,6 +103,74 @@ func TestValidate_TLSExternal(t *testing.T) {
 	}
 }
 
+// TestValidate_DatabaseExternalURL verifies validation of database.external_url.
+func TestValidate_DatabaseExternalURL(t *testing.T) {
+	tests := []struct {
+		name        string
+		externalURL string
+		wantErr     bool
+		wantContain string
+	}{
+		{
+			name:        "empty is valid (use local postgres)",
+			externalURL: "",
+			wantErr:     false,
+		},
+		{
+			name:        "valid postgres:// URL",
+			externalURL: "postgres://user:pass@db.example.com:5432/kratos?sslmode=require",
+			wantErr:     false,
+		},
+		{
+			name:        "valid postgresql:// URL",
+			externalURL: "postgresql://user:pass@db.example.com:5432/kratos?sslmode=require",
+			wantErr:     false,
+		},
+		{
+			name:        "invalid scheme mysql",
+			externalURL: "mysql://user:pass@db.example.com:3306/kratos",
+			wantErr:     true,
+			wantContain: "database.external_url",
+		},
+		{
+			name:        "invalid scheme http",
+			externalURL: "http://db.example.com/kratos",
+			wantErr:     true,
+			wantContain: "database.external_url",
+		},
+		{
+			name:        "missing host",
+			externalURL: "postgres:///kratos",
+			wantErr:     true,
+			wantContain: "database.external_url",
+		},
+		{
+			name:        "not a URL",
+			externalURL: "not-a-url",
+			wantErr:     true,
+			wantContain: "database.external_url",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := config.Config{
+				Database: config.DatabaseConfig{ExternalURL: tt.externalURL},
+			}
+			err := cfg.Validate()
+			if (err != nil) != tt.wantErr {
+				t.Errorf("Validate() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if tt.wantErr && tt.wantContain != "" && err != nil {
+				if !strings.Contains(err.Error(), tt.wantContain) {
+					t.Errorf("Validate() error = %q, want it to contain %q", err.Error(), tt.wantContain)
+				}
+			}
+		})
+	}
+}
+
 // TestLoad_TLSExternalValidation verifies that Load returns an error when
 // provider=external is configured without cert_path and/or key_path.
 func TestLoad_TLSExternalValidation(t *testing.T) {
