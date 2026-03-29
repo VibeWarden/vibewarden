@@ -25,6 +25,11 @@ type EgressResponse struct {
 	// Duration is the wall-clock time elapsed from sending the request to
 	// receiving the response headers from the upstream service.
 	Duration time.Duration
+
+	// Attempts is the total number of upstream attempts made to obtain this
+	// response, counting the initial request and any retries. A value of 1
+	// means no retries were performed. Zero means the field was not set.
+	Attempts int
 }
 
 // NewEgressResponse constructs an EgressResponse.
