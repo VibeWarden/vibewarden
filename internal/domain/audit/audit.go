@@ -97,6 +97,17 @@ const (
 	// EventTypeAdminAPIKeyRevoked is recorded when an admin revokes (deactivates)
 	// an API key.
 	EventTypeAdminAPIKeyRevoked EventType = "audit.admin.api_key_revoked"
+
+	// --- waf ---
+
+	// EventTypeWAFDetection is recorded when the WAF rule engine matches an
+	// attack pattern in detect mode. The request is passed through to the
+	// upstream application unchanged.
+	EventTypeWAFDetection EventType = "audit.waf.detection"
+
+	// EventTypeWAFBlocked is recorded when the WAF rule engine matches an
+	// attack pattern in block mode. The request is rejected with 403 Forbidden.
+	EventTypeWAFBlocked EventType = "audit.waf.blocked"
 )
 
 // Outcome describes whether the audited action succeeded or failed.

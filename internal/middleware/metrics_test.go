@@ -66,6 +66,9 @@ func (f *fakeMetricsCollector) SetActiveConnections(n int) {
 // SetCircuitBreakerState implements ports.MetricsCollector and does nothing.
 func (f *fakeMetricsCollector) SetCircuitBreakerState(_ context.Context, _ resilience.State) {}
 
+// IncWAFDetection implements ports.MetricsCollector and does nothing.
+func (f *fakeMetricsCollector) IncWAFDetection(_, _ string) {}
+
 // Compile-time check: fakeMetricsCollector satisfies ports.MetricsCollector.
 var _ ports.MetricsCollector = (*fakeMetricsCollector)(nil)
 

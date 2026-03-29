@@ -41,3 +41,6 @@ func (NoOpMetricsCollector) SetCircuitBreakerState(_ context.Context, _ resilien
 
 // SetUpstreamHealthy implements ports.MetricsCollectorWithUpstreamHealth and does nothing.
 func (NoOpMetricsCollector) SetUpstreamHealthy(_ context.Context, _ bool) {}
+
+// IncWAFDetection implements ports.MetricsCollector and does nothing.
+func (NoOpMetricsCollector) IncWAFDetection(_, _ string) {}

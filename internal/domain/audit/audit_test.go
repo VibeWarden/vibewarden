@@ -71,6 +71,32 @@ func TestNewAuditEvent_Valid(t *testing.T) {
 			traceID:   "",
 			details:   map[string]any{"threshold": 5},
 		},
+		{
+			name:      "waf detection in detect mode",
+			eventType: audit.EventTypeWAFDetection,
+			actor:     audit.Actor{IP: "10.0.0.1"},
+			target:    audit.Target{Path: "/api/search"},
+			outcome:   audit.OutcomeSuccess,
+			traceID:   "trace-waf-1",
+			details: map[string]any{
+				"rule":     "sqli-union-select",
+				"category": "sqli",
+				"mode":     "detect",
+			},
+		},
+		{
+			name:      "waf blocked in block mode",
+			eventType: audit.EventTypeWAFBlocked,
+			actor:     audit.Actor{IP: "10.0.0.2"},
+			target:    audit.Target{Path: "/api/data"},
+			outcome:   audit.OutcomeFailure,
+			traceID:   "trace-waf-2",
+			details: map[string]any{
+				"rule":     "xss-script-tag",
+				"category": "xss",
+				"mode":     "block",
+			},
+		},
 	}
 
 	for _, tt := range tests {

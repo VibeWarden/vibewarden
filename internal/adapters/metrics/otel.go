@@ -24,6 +24,7 @@ type OTelAdapter struct {
 	activeConnections      ports.Int64UpDownCounter
 	circuitBreakerState    ports.Int64UpDownCounter
 	upstreamHealthy        ports.Int64UpDownCounter
+	wafDetections          ports.Int64Counter
 	currentConns           atomic.Int64
 	currentCBState         atomic.Int64
 	currentUpstreamHealthy atomic.Int64
@@ -110,6 +111,13 @@ func NewOTelAdapter(provider ports.OTelProvider, pathPatterns []string) (*OTelAd
 		return nil, err
 	}
 
+	wafDetections, err := meter.Int64Counter("vibewarden_waf_detections_total",
+		ports.WithDescription("Total number of WAF rule detections."),
+	)
+	if err != nil {
+		return nil, err
+	}
+
 	return &OTelAdapter{
 		requestsTotal:       requestsTotal,
 		requestDuration:     requestDuration,
@@ -121,6 +129,7 @@ func NewOTelAdapter(provider ports.OTelProvider, pathPatterns []string) (*OTelAd
 		activeConnections:   activeConnections,
 		circuitBreakerState: circuitBreakerState,
 		upstreamHealthy:     upstreamHealthy,
+		wafDetections:       wafDetections,
 		pathMatcher:         NewPathMatcher(pathPatterns),
 		handler:             provider.Handler(),
 	}, nil
@@ -222,4 +231,12 @@ func (a *OTelAdapter) SetUpstreamHealthy(ctx context.Context, healthy bool) {
 	if delta != 0 {
 		a.upstreamHealthy.Add(ctx, delta)
 	}
+}
+
+// IncWAFDetection implements ports.MetricsCollector.
+func (a *OTelAdapter) IncWAFDetection(rule, mode string) {
+	a.wafDetections.Add(context.Background(), 1,
+		ports.Attribute{Key: "rule", Value: rule},
+		ports.Attribute{Key: "mode", Value: mode},
+	)
 }

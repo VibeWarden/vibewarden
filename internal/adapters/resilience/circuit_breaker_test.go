@@ -73,6 +73,7 @@ func (f *fakeMetrics) IncUpstreamError()                                   {}
 func (f *fakeMetrics) IncUpstreamTimeout()                                 {}
 func (f *fakeMetrics) IncUpstreamRetry(_ string)                           {}
 func (f *fakeMetrics) SetActiveConnections(_ int)                          {}
+func (f *fakeMetrics) IncWAFDetection(_, _ string)                         {}
 
 var _ ports.MetricsCollectorWithCircuitBreaker = (*fakeMetrics)(nil)
 
