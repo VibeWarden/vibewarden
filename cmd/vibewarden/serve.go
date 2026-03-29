@@ -285,6 +285,7 @@ func registerPlugins(
 	}
 	registry.Register(authplugin.New(authplugin.Config{
 		Enabled:           cfg.Auth.Enabled,
+		Mode:              authplugin.Mode(cfg.Auth.Mode),
 		KratosPublicURL:   cfg.Kratos.PublicURL,
 		KratosAdminURL:    cfg.Kratos.AdminURL,
 		SessionCookieName: cfg.Auth.SessionCookieName,

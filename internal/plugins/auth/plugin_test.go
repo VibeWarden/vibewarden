@@ -43,6 +43,7 @@ func (noopWriter) Write(p []byte) (int, error) { return len(p), nil }
 func defaultConfig() auth.Config {
 	return auth.Config{
 		Enabled:           true,
+		Mode:              auth.ModeKratos,
 		KratosPublicURL:   "http://127.0.0.1:4433",
 		KratosAdminURL:    "http://127.0.0.1:4434",
 		SessionCookieName: "ory_kratos_session",
@@ -102,21 +103,37 @@ func TestPlugin_Init(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name:    "enabled without kratos public url",
-			cfg:     auth.Config{Enabled: true, KratosPublicURL: ""},
+			name:    "enabled kratos mode without kratos public url",
+			cfg:     auth.Config{Enabled: true, Mode: auth.ModeKratos, KratosPublicURL: ""},
 			wantErr: true,
 			errMsg:  "kratos_public_url is required",
 		},
 		{
-			name:    "enabled with invalid kratos public url",
-			cfg:     auth.Config{Enabled: true, KratosPublicURL: "not-a-url"},
+			name:    "enabled kratos mode with invalid kratos public url",
+			cfg:     auth.Config{Enabled: true, Mode: auth.ModeKratos, KratosPublicURL: "not-a-url"},
 			wantErr: true,
 			errMsg:  "not a valid URL",
 		},
 		{
-			name: "enabled with minimal valid config — defaults applied",
+			name:    "enabled none mode without kratos public url — no error",
+			cfg:     auth.Config{Enabled: true, Mode: auth.ModeNone},
+			wantErr: false,
+		},
+		{
+			name:    "enabled jwt mode without kratos public url — no error",
+			cfg:     auth.Config{Enabled: true, Mode: auth.ModeJWT},
+			wantErr: false,
+		},
+		{
+			name:    "enabled api-key mode without kratos public url — no error",
+			cfg:     auth.Config{Enabled: true, Mode: auth.ModeAPIKey},
+			wantErr: false,
+		},
+		{
+			name: "enabled kratos mode with minimal valid config — defaults applied",
 			cfg: auth.Config{
 				Enabled:         true,
+				Mode:            auth.ModeKratos,
 				KratosPublicURL: "http://127.0.0.1:4433",
 			},
 			wantErr: false,
@@ -242,6 +259,7 @@ func TestPlugin_HealthCheck_KratosReachable(t *testing.T) {
 
 	cfg := auth.Config{
 		Enabled:         true,
+		Mode:            auth.ModeKratos,
 		KratosPublicURL: srv.URL,
 	}
 	p := auth.New(cfg, discardLogger(), newFakeProvider())
@@ -258,6 +276,7 @@ func TestPlugin_HealthCheck_KratosReachable(t *testing.T) {
 func TestPlugin_HealthCheck_KratosUnreachable(t *testing.T) {
 	cfg := auth.Config{
 		Enabled:         true,
+		Mode:            auth.ModeKratos,
 		KratosPublicURL: "http://127.0.0.1:19999", // nothing listening here
 	}
 	p := auth.New(cfg, discardLogger(), newFakeProvider())
@@ -288,6 +307,7 @@ func TestPlugin_HealthCheck_KratosServerError(t *testing.T) {
 
 	cfg := auth.Config{
 		Enabled:         true,
+		Mode:            auth.ModeKratos,
 		KratosPublicURL: srv.URL,
 	}
 	p := auth.New(cfg, discardLogger(), newFakeProvider())
@@ -429,6 +449,7 @@ func TestPlugin_ContributeCaddyRoutes_DialAddrExtractedFromURL(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := auth.Config{
 				Enabled:         true,
+				Mode:            auth.ModeKratos,
 				KratosPublicURL: tt.kratosPublicURL,
 			}
 			p := auth.New(cfg, discardLogger(), newFakeProvider())
@@ -791,7 +812,7 @@ func TestPlugin_ContributeCaddyRoutes_BuiltInUI_MatchesFourPaths(t *testing.T) {
 }
 
 func TestPlugin_ContributeCaddyRoutes_CustomUI_NoUIRoute(t *testing.T) {
-	cfg := defaultConfig()
+	cfg := defaultConfig() // already sets Mode: auth.ModeKratos via defaultConfig()
 	cfg.UI = auth.UIConfig{Mode: "custom", LoginURL: "https://example.com/login"}
 	p := auth.New(cfg, discardLogger(), newFakeProvider())
 	if err := p.Init(context.Background()); err != nil {
@@ -836,6 +857,7 @@ func TestPlugin_UIConfig_DefaultsApplied(t *testing.T) {
 	// With no UI config, built-in mode should be activated.
 	cfg := auth.Config{
 		Enabled:         true,
+		Mode:            auth.ModeKratos,
 		KratosPublicURL: "http://127.0.0.1:4433",
 	}
 	p := auth.New(cfg, discardLogger(), newFakeProvider())
@@ -905,6 +927,7 @@ func TestPlugin_ContributeCaddyRoutes_BuiltInUI_MatchesFivePaths(t *testing.T) {
 func TestPlugin_Init_CustomUI_RequiresLoginURL(t *testing.T) {
 	cfg := auth.Config{
 		Enabled:         true,
+		Mode:            auth.ModeKratos,
 		KratosPublicURL: "http://127.0.0.1:4433",
 		UI:              auth.UIConfig{Mode: "custom"},
 	}
@@ -921,6 +944,7 @@ func TestPlugin_Init_CustomUI_RequiresLoginURL(t *testing.T) {
 func TestPlugin_Init_CustomUI_WithLoginURL_Succeeds(t *testing.T) {
 	cfg := auth.Config{
 		Enabled:         true,
+		Mode:            auth.ModeKratos,
 		KratosPublicURL: "http://127.0.0.1:4433",
 		UI:              auth.UIConfig{Mode: "custom", LoginURL: "https://example.com/login"},
 	}
@@ -938,6 +962,7 @@ func TestPlugin_ContributeCaddyHandlers_CustomUI_UsesConfiguredLoginURL(t *testi
 	customLoginURL := "https://example.com/my-login"
 	cfg := auth.Config{
 		Enabled:         true,
+		Mode:            auth.ModeKratos,
 		KratosPublicURL: "http://127.0.0.1:4433",
 		UI:              auth.UIConfig{Mode: "custom", LoginURL: customLoginURL},
 	}
@@ -963,6 +988,7 @@ func TestPlugin_ContributeCaddyHandlers_CustomUI_UsesConfiguredLoginURL(t *testi
 func TestPlugin_ContributeCaddyRoutes_CustomUI_OnlyKratosRoute(t *testing.T) {
 	cfg := auth.Config{
 		Enabled:         true,
+		Mode:            auth.ModeKratos,
 		KratosPublicURL: "http://127.0.0.1:4433",
 		UI: auth.UIConfig{
 			Mode:            "custom",
@@ -981,5 +1007,155 @@ func TestPlugin_ContributeCaddyRoutes_CustomUI_OnlyKratosRoute(t *testing.T) {
 	// Custom mode must not add an auth UI route — only the Kratos proxy.
 	if len(routes) != 1 {
 		t.Errorf("ContributeCaddyRoutes() = %d routes for custom UI, want 1", len(routes))
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Mode-awareness tests — issue #386
+// ---------------------------------------------------------------------------
+
+// TestPlugin_Init_NonKratosModes verifies that non-kratos modes do not require
+// KratosPublicURL and complete Init without error.
+func TestPlugin_Init_NonKratosModes(t *testing.T) {
+	tests := []struct {
+		name string
+		mode auth.Mode
+	}{
+		{"none mode", auth.ModeNone},
+		{"jwt mode", auth.ModeJWT},
+		{"api-key mode", auth.ModeAPIKey},
+		{"empty mode treated as none", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := auth.Config{
+				Enabled: true,
+				Mode:    tt.mode,
+				// KratosPublicURL intentionally absent.
+			}
+			p := auth.New(cfg, discardLogger(), nil)
+			if err := p.Init(context.Background()); err != nil {
+				t.Errorf("Init() error = %v, want nil for mode %q", err, tt.mode)
+			}
+		})
+	}
+}
+
+// TestPlugin_ContributeCaddyRoutes_NonKratosModes verifies that Kratos flow
+// routes are not contributed when the mode is not "kratos".
+func TestPlugin_ContributeCaddyRoutes_NonKratosModes(t *testing.T) {
+	tests := []struct {
+		name string
+		mode auth.Mode
+	}{
+		{"none mode", auth.ModeNone},
+		{"jwt mode", auth.ModeJWT},
+		{"api-key mode", auth.ModeAPIKey},
+		{"empty mode treated as none", ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := auth.Config{
+				Enabled: true,
+				Mode:    tt.mode,
+			}
+			p := auth.New(cfg, discardLogger(), nil)
+			if err := p.Init(context.Background()); err != nil {
+				t.Fatalf("Init() error: %v", err)
+			}
+			routes := p.ContributeCaddyRoutes()
+			if len(routes) != 0 {
+				t.Errorf("ContributeCaddyRoutes() returned %d routes for mode %q, want 0 (no Kratos routes)", len(routes), tt.mode)
+			}
+		})
+	}
+}
+
+// TestPlugin_HealthCheck_NonKratosModes verifies that HealthCheck does not
+// attempt a live Kratos probe for non-kratos modes and always returns healthy.
+func TestPlugin_HealthCheck_NonKratosModes(t *testing.T) {
+	tests := []struct {
+		name string
+		mode auth.Mode
+	}{
+		{"none mode", auth.ModeNone},
+		{"jwt mode", auth.ModeJWT},
+		{"api-key mode", auth.ModeAPIKey},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := auth.Config{
+				Enabled:         true,
+				Mode:            tt.mode,
+				KratosPublicURL: "http://127.0.0.1:19999", // unreachable — must not be probed
+			}
+			p := auth.New(cfg, discardLogger(), nil)
+			if err := p.Init(context.Background()); err != nil {
+				t.Fatalf("Init() error: %v", err)
+			}
+			h := p.HealthCheck(context.Background())
+			if !h.Healthy {
+				t.Errorf("HealthCheck() healthy = false for mode %q, want true (no Kratos probe expected)", tt.mode)
+			}
+		})
+	}
+}
+
+// TestPlugin_CheckDependency_NonKratosModes verifies that CheckDependency does
+// not attempt a live Kratos probe for non-kratos modes.
+func TestPlugin_CheckDependency_NonKratosModes(t *testing.T) {
+	tests := []struct {
+		name string
+		mode auth.Mode
+	}{
+		{"none mode", auth.ModeNone},
+		{"jwt mode", auth.ModeJWT},
+		{"api-key mode", auth.ModeAPIKey},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := auth.Config{
+				Enabled:         true,
+				Mode:            tt.mode,
+				KratosPublicURL: "http://127.0.0.1:19999", // unreachable — must not be probed
+			}
+			p := auth.New(cfg, discardLogger(), nil)
+			if err := p.Init(context.Background()); err != nil {
+				t.Fatalf("Init() error: %v", err)
+			}
+			status := p.CheckDependency(context.Background())
+			if status.Status != "healthy" {
+				t.Errorf("CheckDependency() status = %q for mode %q, want \"healthy\"", status.Status, tt.mode)
+			}
+		})
+	}
+}
+
+// TestPlugin_Health_NonKratosModes verifies that Health() reports healthy for
+// non-kratos modes after a successful Init.
+func TestPlugin_Health_NonKratosModes(t *testing.T) {
+	tests := []struct {
+		name string
+		mode auth.Mode
+	}{
+		{"none mode", auth.ModeNone},
+		{"jwt mode", auth.ModeJWT},
+		{"api-key mode", auth.ModeAPIKey},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := auth.Config{Enabled: true, Mode: tt.mode}
+			p := auth.New(cfg, discardLogger(), nil)
+			if err := p.Init(context.Background()); err != nil {
+				t.Fatalf("Init() error: %v", err)
+			}
+			h := p.Health()
+			if !h.Healthy {
+				t.Errorf("Health().Healthy = false for mode %q, want true", tt.mode)
+			}
+			if !strings.Contains(h.Message, string(tt.mode)) {
+				t.Errorf("Health().Message = %q, want to contain mode %q", h.Message, tt.mode)
+			}
+		})
 	}
 }

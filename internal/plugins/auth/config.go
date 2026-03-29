@@ -5,6 +5,26 @@
 // It implements ports.Plugin and ports.CaddyContributor.
 package auth
 
+// Mode selects the active authentication strategy for the auth plugin.
+// It mirrors config.AuthMode but is defined here to avoid importing the
+// config package from the plugins layer.
+type Mode string
+
+const (
+	// ModeNone disables authentication entirely. This is the default.
+	ModeNone Mode = "none"
+
+	// ModeKratos activates Ory Kratos session-cookie authentication.
+	// Requires KratosPublicURL to be set.
+	ModeKratos Mode = "kratos"
+
+	// ModeJWT activates JWT/OIDC Bearer token authentication.
+	ModeJWT Mode = "jwt"
+
+	// ModeAPIKey activates API key header authentication.
+	ModeAPIKey Mode = "api-key"
+)
+
 // Config holds all settings for the auth plugin.
 // It maps to the plugins.auth section of vibewarden.yaml.
 //
@@ -14,10 +34,16 @@ type Config struct {
 	// Enabled toggles the auth plugin. When false all methods are no-ops.
 	Enabled bool
 
+	// Mode selects the authentication strategy.
+	// Accepted values: ModeNone (default), ModeKratos, ModeJWT, ModeAPIKey.
+	// Kratos-specific initialisation (URL validation, health checks, Caddy routes)
+	// is only performed when Mode is ModeKratos.
+	Mode Mode
+
 	// KratosPublicURL is the base URL of the Kratos public API
 	// (e.g. "http://127.0.0.1:4433"). Used for session validation and
 	// to proxy self-service flow requests.
-	// Required when Enabled is true.
+	// Required when Enabled is true and Mode is ModeKratos.
 	KratosPublicURL string
 
 	// KratosAdminURL is the base URL of the Kratos admin API

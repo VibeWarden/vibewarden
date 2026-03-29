@@ -91,9 +91,19 @@ func (p *Plugin) Name() string { return "auth" }
 // security-headers (20), and rate-limiting (30).
 func (p *Plugin) Priority() int { return 40 }
 
-// Init validates the plugin configuration and, when no sessionChecker was
-// injected, creates a real Kratos adapter from cfg.KratosPublicURL.
-// Returns an error if the plugin is enabled but KratosPublicURL is empty.
+// Init validates the plugin configuration and prepares the chosen
+// authentication strategy.
+//
+// When Mode is ModeKratos (or empty, for backwards compatibility), the full
+// Kratos wiring is performed: URL validation, adapter creation, and optional
+// built-in auth UI startup.
+//
+// When Mode is ModeJWT, ModeAPIKey, or ModeNone, Kratos-specific
+// initialisation is skipped entirely — no URL validation is performed and no
+// Kratos adapter is created.
+//
+// Returns an error if Mode is ModeKratos but KratosPublicURL is absent or
+// invalid.
 func (p *Plugin) Init(_ context.Context) error {
 	if !p.cfg.Enabled {
 		p.healthy = true
@@ -101,64 +111,87 @@ func (p *Plugin) Init(_ context.Context) error {
 		return nil
 	}
 
-	if err := validateConfig(p.cfg); err != nil {
-		return fmt.Errorf("auth plugin init: %w", err)
+	// Normalise empty mode to ModeNone for new installations.
+	// Empty string is accepted for backwards compatibility with configs that
+	// pre-date the Mode field.
+	mode := p.cfg.Mode
+	if mode == "" {
+		mode = ModeNone
 	}
 
-	// Apply defaults for optional fields.
-	if p.cfg.SessionCookieName == "" {
-		p.cfg.SessionCookieName = defaultSessionCookieName
-	}
-
-	// Determine the effective login URL.
-	// In custom mode, UI.LoginURL takes precedence (already validated above).
-	// In built-in mode, the top-level LoginURL is used (or the built-in default).
-	uiMode := p.cfg.UI.Mode
-	if uiMode == "" {
-		uiMode = "built-in"
-	}
-	if uiMode == "custom" {
-		// Custom mode: redirect to operator-supplied login URL.
-		p.cfg.LoginURL = p.cfg.UI.LoginURL
-	} else {
-		// Built-in mode: use the configured LoginURL or the built-in default.
-		if p.cfg.LoginURL == "" {
-			p.cfg.LoginURL = defaultLoginURL
+	// Kratos-specific initialisation is only performed when mode is "kratos".
+	if mode == ModeKratos {
+		if err := validateKratosConfig(p.cfg); err != nil {
+			return fmt.Errorf("auth plugin init: %w", err)
 		}
+
+		// Apply defaults for optional fields.
+		if p.cfg.SessionCookieName == "" {
+			p.cfg.SessionCookieName = defaultSessionCookieName
+		}
+
+		// Determine the effective login URL.
+		// In custom mode, UI.LoginURL takes precedence (already validated above).
+		// In built-in mode, the top-level LoginURL is used (or the built-in default).
+		uiMode := p.cfg.UI.Mode
+		if uiMode == "" {
+			uiMode = "built-in"
+		}
+		if uiMode == "custom" {
+			// Custom mode: redirect to operator-supplied login URL.
+			p.cfg.LoginURL = p.cfg.UI.LoginURL
+		} else {
+			// Built-in mode: use the configured LoginURL or the built-in default.
+			if p.cfg.LoginURL == "" {
+				p.cfg.LoginURL = defaultLoginURL
+			}
+		}
+
+		// Create the real Kratos adapter when no fake was injected.
+		if p.identityProvider == nil {
+			p.identityProvider = kratosAdapterFunc(p.cfg.KratosPublicURL, p.logger)
+		}
+
+		// Start the built-in auth UI server when the mode is "built-in" (default).
+		if uiMode == "built-in" {
+			uiCfg := authui.AuthUIConfig{
+				Mode:            uiMode,
+				PrimaryColor:    p.cfg.UI.PrimaryColor,
+				BackgroundColor: p.cfg.UI.BackgroundColor,
+				TextColor:       p.cfg.UI.TextColor,
+				ErrorColor:      p.cfg.UI.ErrorColor,
+			}
+			h, err := authui.NewHandler(uiCfg, p.logger)
+			if err != nil {
+				return fmt.Errorf("auth plugin init: creating auth UI handler: %w", err)
+			}
+			if err := h.Start(); err != nil {
+				return fmt.Errorf("auth plugin init: starting auth UI server: %w", err)
+			}
+			p.uiHandler = h
+		}
+
+		p.healthy = true
+		p.healthMsg = fmt.Sprintf("auth configured, kratos: %s", p.cfg.KratosPublicURL)
+
+		p.logger.Info("auth plugin initialised",
+			slog.String("mode", string(mode)),
+			slog.String("kratos_public_url", p.cfg.KratosPublicURL),
+			slog.String("session_cookie", p.cfg.SessionCookieName),
+			slog.Int("public_paths", len(p.cfg.PublicPaths)),
+			slog.String("ui_mode", uiMode),
+		)
+
+		return nil
 	}
 
-	// Create the real Kratos adapter when no fake was injected.
-	if p.identityProvider == nil {
-		p.identityProvider = kratosAdapterFunc(p.cfg.KratosPublicURL, p.logger)
-	}
-
-	// Start the built-in auth UI server when the mode is "built-in" (default).
-	if uiMode == "built-in" {
-		uiCfg := authui.AuthUIConfig{
-			Mode:            uiMode,
-			PrimaryColor:    p.cfg.UI.PrimaryColor,
-			BackgroundColor: p.cfg.UI.BackgroundColor,
-			TextColor:       p.cfg.UI.TextColor,
-			ErrorColor:      p.cfg.UI.ErrorColor,
-		}
-		h, err := authui.NewHandler(uiCfg, p.logger)
-		if err != nil {
-			return fmt.Errorf("auth plugin init: creating auth UI handler: %w", err)
-		}
-		if err := h.Start(); err != nil {
-			return fmt.Errorf("auth plugin init: starting auth UI server: %w", err)
-		}
-		p.uiHandler = h
-	}
-
+	// Non-Kratos modes: no Kratos services are needed.
 	p.healthy = true
-	p.healthMsg = fmt.Sprintf("auth configured, kratos: %s", p.cfg.KratosPublicURL)
+	p.healthMsg = fmt.Sprintf("auth configured, mode: %s", mode)
 
 	p.logger.Info("auth plugin initialised",
-		slog.String("kratos_public_url", p.cfg.KratosPublicURL),
-		slog.String("session_cookie", p.cfg.SessionCookieName),
+		slog.String("mode", string(mode)),
 		slog.Int("public_paths", len(p.cfg.PublicPaths)),
-		slog.String("ui_mode", uiMode),
 	)
 
 	return nil
@@ -193,9 +226,25 @@ func (p *Plugin) Health() ports.HealthStatus {
 // HealthCheck performs a live connectivity probe against Kratos and updates
 // the internal health state. It is safe to call from a background goroutine.
 // Unlike Health(), this method makes a real HTTP request.
+//
+// When Mode is not ModeKratos, the probe is skipped and the plugin is
+// reported healthy immediately.
 func (p *Plugin) HealthCheck(ctx context.Context) ports.HealthStatus {
 	if !p.cfg.Enabled {
 		return ports.HealthStatus{Healthy: true, Message: "auth disabled"}
+	}
+
+	mode := p.cfg.Mode
+	if mode == "" {
+		mode = ModeNone
+	}
+
+	// Only Kratos mode requires a live connectivity probe.
+	if mode != ModeKratos {
+		msg := fmt.Sprintf("auth configured, mode: %s", mode)
+		p.healthy = true
+		p.healthMsg = msg
+		return ports.HealthStatus{Healthy: true, Message: msg}
 	}
 
 	probeURL := p.cfg.KratosPublicURL + whoamiPath
@@ -234,8 +283,20 @@ func (p *Plugin) DependencyName() string { return "kratos" }
 // CheckDependency performs a live connectivity probe against the Kratos
 // public health endpoint and returns a DependencyStatus with latency.
 // Implements ports.DependencyChecker.
+//
+// When Mode is not ModeKratos, the probe is skipped and the dependency is
+// reported healthy immediately (no external service is required).
 func (p *Plugin) CheckDependency(ctx context.Context) ports.DependencyStatus {
 	if !p.cfg.Enabled {
+		return ports.DependencyStatus{Status: "healthy", LatencyMS: 0}
+	}
+
+	mode := p.cfg.Mode
+	if mode == "" {
+		mode = ModeNone
+	}
+
+	if mode != ModeKratos {
 		return ports.DependencyStatus{Status: "healthy", LatencyMS: 0}
 	}
 
@@ -278,7 +339,7 @@ func (p *Plugin) CheckDependency(ctx context.Context) ports.DependencyStatus {
 
 // ContributeCaddyRoutes returns the Caddy routes contributed by the auth plugin.
 //
-// When enabled, two sets of routes are returned:
+// When enabled and Mode is ModeKratos, two sets of routes are returned:
 //  1. A route that transparently proxies all Kratos self-service flow paths and
 //     the Ory canonical prefix (/.ory/kratos/public/*) to the Kratos public API.
 //  2. When the auth UI mode is "built-in", a route that reverse-proxies the four
@@ -286,9 +347,19 @@ func (p *Plugin) CheckDependency(ctx context.Context) ports.DependencyStatus {
 //     /_vibewarden/recovery, /_vibewarden/verification) to the internal auth UI
 //     HTTP server started during Init.
 //
-// Returns nil when the plugin is disabled.
+// Returns nil when the plugin is disabled or when Mode is not ModeKratos.
 func (p *Plugin) ContributeCaddyRoutes() []ports.CaddyRoute {
 	if !p.cfg.Enabled {
+		return nil
+	}
+
+	mode := p.cfg.Mode
+	if mode == "" {
+		mode = ModeNone
+	}
+
+	// Kratos self-service routes are only needed when mode is "kratos".
+	if mode != ModeKratos {
 		return nil
 	}
 
@@ -413,8 +484,9 @@ func (p *Plugin) ContributeCaddyHandlers() []ports.CaddyHandler {
 // Internal builders — pure functions, no side effects.
 // ---------------------------------------------------------------------------
 
-// validateConfig checks that the auth configuration is self-consistent.
-func validateConfig(cfg Config) error {
+// validateKratosConfig checks that the Kratos-specific configuration is
+// self-consistent. It is only called when Mode is ModeKratos.
+func validateKratosConfig(cfg Config) error {
 	if cfg.KratosPublicURL == "" {
 		return fmt.Errorf("kratos_public_url is required when auth is enabled")
 	}
