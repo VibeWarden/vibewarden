@@ -256,15 +256,3 @@ type SecurityHeadersConfig struct {
 	// reduces information disclosure about the proxy infrastructure.
 	SuppressViaHeader bool
 }
-
-// ContentTypeValidationConfig holds configuration for the Content-Type
-// validation middleware.
-type ContentTypeValidationConfig struct {
-	// Enabled toggles Content-Type validation on body-bearing requests
-	// (POST, PUT, PATCH). Default: false.
-	Enabled bool
-
-	// Allowed is the list of permitted media types (e.g. "application/json").
-	// Parameters such as charset are stripped before comparison.
-	Allowed []string
-}
