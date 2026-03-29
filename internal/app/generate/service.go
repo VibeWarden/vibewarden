@@ -80,9 +80,8 @@ func (s *Service) Generate(ctx context.Context, cfg *config.Config, outputDir st
 	// kratosMode is true only when auth is enabled and mode is "kratos".
 	// An empty mode string is also treated as Kratos for defensive backwards
 	// compatibility with code that constructs config.Config structs directly
-	// rather than via config.Load (which sets the "none" default).
 	// When kratosMode is false, Kratos-specific files are not generated.
-	kratosMode := cfg.Auth.Enabled && (cfg.Auth.Mode == config.AuthModeKratos || cfg.Auth.Mode == "")
+	kratosMode := cfg.Auth.Enabled && cfg.Auth.Mode == config.AuthModeKratos
 
 	if kratosMode {
 		if err := os.MkdirAll(filepath.Join(outputDir, "kratos"), permDir); err != nil {
