@@ -19,7 +19,7 @@
 {{- if and .Secrets.Enabled (or (len .Secrets.Inject.Headers) (len .Secrets.Inject.Env)) }}
 #   seed-secrets — One-shot container that seeds demo secrets into OpenBao
 {{- end }}
-{{- if eq .RateLimit.Store "redis" }}
+{{- if and (eq .RateLimit.Store "redis") (not (.RateLimit.Redis.HasExternalURL)) }}
 #   redis       — Redis backing store for rate limiting
 {{- end }}
 {{- if .Observability.Enabled }}
@@ -79,7 +79,11 @@ services:
       - VIBEWARDEN_SECRETS_OPENBAO_AUTH_TOKEN=${OPENBAO_DEV_ROOT_TOKEN}
 {{- end }}
 {{- if eq .RateLimit.Store "redis" }}
+{{- if .RateLimit.Redis.HasExternalURL }}
+      - VIBEWARDEN_RATE_LIMIT_REDIS_URL={{ .RateLimit.Redis.URL }}
+{{- else }}
       - VIBEWARDEN_RATE_LIMIT_REDIS_ADDRESS=redis:6379
+{{- end }}
 {{- end }}
 {{- if .Observability.Enabled }}
       - VIBEWARDEN_TELEMETRY_OTLP_ENABLED=true
@@ -92,7 +96,7 @@ services:
 {{- end }}
     networks:
       - vibewarden
-{{- if or (and .Auth.Enabled (eq (printf "%s" .Auth.Mode) "kratos") (not .Kratos.External)) .App.Build .App.Image .Secrets.Enabled (eq .RateLimit.Store "redis") }}
+{{- if or (and .Auth.Enabled (eq (printf "%s" .Auth.Mode) "kratos") (not .Kratos.External)) .App.Build .App.Image .Secrets.Enabled (and (eq .RateLimit.Store "redis") (not (.RateLimit.Redis.HasExternalURL))) }}
     depends_on:
 {{- if or .App.Build .App.Image }}
       app:
@@ -109,7 +113,7 @@ services:
       openbao:
         condition: service_healthy
 {{- end }}
-{{- if eq .RateLimit.Store "redis" }}
+{{- if and (eq .RateLimit.Store "redis") (not (.RateLimit.Redis.HasExternalURL)) }}
       redis:
         condition: service_healthy
 {{- end }}
@@ -246,7 +250,7 @@ services:
       - vibewarden
     restart: "no"
 {{- end }}
-{{- if eq .RateLimit.Store "redis" }}
+{{- if and (eq .RateLimit.Store "redis") (not (.RateLimit.Redis.HasExternalURL)) }}
 
   redis:
     image: redis:7-alpine
@@ -396,7 +400,7 @@ services:
 networks:
   vibewarden:
     driver: bridge
-{{- if or (and .Auth.Enabled (eq (printf "%s" .Auth.Mode) "kratos") (not .Kratos.External) (eq .Database.ExternalURL "")) .TLS.Enabled (eq .RateLimit.Store "redis") .Observability.Enabled }}
+{{- if or (and .Auth.Enabled (eq (printf "%s" .Auth.Mode) "kratos") (not .Kratos.External) (eq .Database.ExternalURL "")) .TLS.Enabled (and (eq .RateLimit.Store "redis") (not (.RateLimit.Redis.HasExternalURL))) .Observability.Enabled }}
 
 volumes:
 {{- if and .Auth.Enabled (eq (printf "%s" .Auth.Mode) "kratos") (not .Kratos.External) (eq .Database.ExternalURL "") }}
@@ -405,7 +409,7 @@ volumes:
 {{- if .TLS.Enabled }}
   vibewarden-data:
 {{- end }}
-{{- if eq .RateLimit.Store "redis" }}
+{{- if and (eq .RateLimit.Store "redis") (not (.RateLimit.Redis.HasExternalURL)) }}
   redis-data:
 {{- end }}
 {{- if .Observability.Enabled }}

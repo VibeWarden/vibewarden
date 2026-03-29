@@ -38,15 +38,46 @@ func TestValidate_RateLimitStore(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name: "store redis without address is invalid",
+			name: "store redis without address or url is invalid",
 			cfg: config.Config{
 				RateLimit: config.RateLimitConfig{
 					Store: "redis",
-					Redis: config.RateLimitRedisConfig{Address: ""},
+					Redis: config.RateLimitRedisConfig{Address: "", URL: ""},
 				},
 			},
 			wantErr: true,
 			errMsg:  "rate_limit.redis.address is required",
+		},
+		{
+			name: "store redis with url only is valid",
+			cfg: config.Config{
+				RateLimit: config.RateLimitConfig{
+					Store: "redis",
+					Redis: config.RateLimitRedisConfig{URL: "redis://localhost:6379/0"},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "store redis with rediss url (TLS) is valid",
+			cfg: config.Config{
+				RateLimit: config.RateLimitConfig{
+					Store: "redis",
+					Redis: config.RateLimitRedisConfig{URL: "rediss://user:pass@redis.example.com:6380/1"},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "store redis with invalid url scheme is invalid",
+			cfg: config.Config{
+				RateLimit: config.RateLimitConfig{
+					Store: "redis",
+					Redis: config.RateLimitRedisConfig{URL: "http://localhost:6379"},
+				},
+			},
+			wantErr: true,
+			errMsg:  "rate_limit.redis.url",
 		},
 		{
 			name: "unknown store is invalid",
@@ -92,6 +123,12 @@ func TestLoad_RateLimitStoreDefaults(t *testing.T) {
 	if cfg.RateLimit.Store != "memory" {
 		t.Errorf("RateLimit.Store default = %q, want %q", cfg.RateLimit.Store, "memory")
 	}
+	if cfg.RateLimit.Redis.URL != "" {
+		t.Errorf("RateLimit.Redis.URL default = %q, want empty string", cfg.RateLimit.Redis.URL)
+	}
+	if cfg.RateLimit.Redis.PoolSize != 0 {
+		t.Errorf("RateLimit.Redis.PoolSize default = %d, want 0", cfg.RateLimit.Redis.PoolSize)
+	}
 	if cfg.RateLimit.Redis.KeyPrefix != "vibewarden" {
 		t.Errorf("RateLimit.Redis.KeyPrefix default = %q, want %q", cfg.RateLimit.Redis.KeyPrefix, "vibewarden")
 	}
@@ -130,5 +167,87 @@ func TestLoad_RateLimitRedisFromEnv(t *testing.T) {
 	}
 	if cfg.RateLimit.Redis.DB != 2 {
 		t.Errorf("DB = %d, want 2", cfg.RateLimit.Redis.DB)
+	}
+}
+
+// TestLoad_RateLimitRedisURLFromEnv verifies that VIBEWARDEN_RATE_LIMIT_REDIS_URL
+// overrides the config file and is the sole connection parameter when set.
+func TestLoad_RateLimitRedisURLFromEnv(t *testing.T) {
+	dir := t.TempDir()
+	cfgFile := filepath.Join(dir, "vibewarden.yaml")
+	content := "rate_limit:\n  store: redis\n  redis:\n    address: localhost:6379\n"
+	if err := os.WriteFile(cfgFile, []byte(content), 0600); err != nil {
+		t.Fatalf("failed to write config file: %v", err)
+	}
+
+	t.Setenv("VIBEWARDEN_RATE_LIMIT_REDIS_URL", "rediss://user:pass@redis.example.com:6380/2")
+
+	cfg, err := config.Load(cfgFile)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	if cfg.RateLimit.Redis.URL != "rediss://user:pass@redis.example.com:6380/2" {
+		t.Errorf("URL = %q, want rediss://user:pass@redis.example.com:6380/2", cfg.RateLimit.Redis.URL)
+	}
+}
+
+// TestLoad_RateLimitRedisPoolSizeFromEnv verifies that VIBEWARDEN_RATE_LIMIT_REDIS_POOL_SIZE
+// is loaded from environment variables.
+func TestLoad_RateLimitRedisPoolSizeFromEnv(t *testing.T) {
+	dir := t.TempDir()
+	cfgFile := filepath.Join(dir, "vibewarden.yaml")
+	content := "rate_limit:\n  store: redis\n  redis:\n    address: localhost:6379\n"
+	if err := os.WriteFile(cfgFile, []byte(content), 0600); err != nil {
+		t.Fatalf("failed to write config file: %v", err)
+	}
+
+	t.Setenv("VIBEWARDEN_RATE_LIMIT_REDIS_POOL_SIZE", "20")
+
+	cfg, err := config.Load(cfgFile)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	if cfg.RateLimit.Redis.PoolSize != 20 {
+		t.Errorf("PoolSize = %d, want 20", cfg.RateLimit.Redis.PoolSize)
+	}
+}
+
+// TestRateLimitRedisConfig_HasExternalURL verifies the HasExternalURL helper.
+func TestRateLimitRedisConfig_HasExternalURL(t *testing.T) {
+	tests := []struct {
+		name string
+		cfg  config.RateLimitRedisConfig
+		want bool
+	}{
+		{
+			name: "empty URL returns false",
+			cfg:  config.RateLimitRedisConfig{},
+			want: false,
+		},
+		{
+			name: "redis URL returns true",
+			cfg:  config.RateLimitRedisConfig{URL: "redis://localhost:6379/0"},
+			want: true,
+		},
+		{
+			name: "rediss TLS URL returns true",
+			cfg:  config.RateLimitRedisConfig{URL: "rediss://user:pass@redis.example.com:6380/1"},
+			want: true,
+		},
+		{
+			name: "address-only config returns false",
+			cfg:  config.RateLimitRedisConfig{Address: "localhost:6379"},
+			want: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tt.cfg.HasExternalURL()
+			if got != tt.want {
+				t.Errorf("HasExternalURL() = %v, want %v", got, tt.want)
+			}
+		})
 	}
 }

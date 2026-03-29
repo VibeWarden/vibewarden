@@ -42,15 +42,28 @@ type Config struct {
 
 // RedisConfig holds connection settings for the Redis rate limit store.
 type RedisConfig struct {
+	// URL is the Redis connection URL (e.g. "redis://:password@localhost:6379/0"
+	// or "rediss://user:pass@redis.example.com:6380/1" for TLS).
+	// When set, URL takes precedence over Address, Password, and DB.
+	// Supports both redis:// (plain) and rediss:// (TLS) schemes.
+	URL string
+
 	// Address is the Redis server address in host:port form.
-	// Required when Store is "redis".
+	// Used when URL is empty. At least one of URL or Address is required
+	// when Store is "redis".
 	Address string
 
 	// Password is the Redis AUTH password.
+	// Ignored when URL is set (embed credentials in the URL instead).
 	Password string
 
 	// DB is the Redis logical database index.
+	// Ignored when URL is set (embed the DB index in the URL path instead).
 	DB int
+
+	// PoolSize is the maximum number of socket connections held in the pool.
+	// Defaults to 0 (go-redis picks a sensible value based on CPU count).
+	PoolSize int
 
 	// KeyPrefix is the namespace prefix prepended to every Redis key.
 	KeyPrefix string

@@ -93,6 +93,82 @@ func TestGenerate_Integration_ExternalPostgres(t *testing.T) {
 	}
 }
 
+// TestGenerate_Integration_ExternalRedis verifies that the docker-compose
+// template omits the local redis container and redis-data volume when
+// rate_limit.redis.url is set to an external Redis URL. When no external URL
+// is set the local container is included as before.
+func TestGenerate_Integration_ExternalRedis(t *testing.T) {
+	renderer := template.NewRenderer(templates.FS)
+	svc := generate.NewService(renderer)
+
+	const externalRedisURL = "rediss://user:pass@redis.example.com:6380/1"
+
+	tests := []struct {
+		name           string
+		redisURL       string
+		wantSubstrings []string
+		wantAbsent     []string
+	}{
+		{
+			name:     "no external redis url — local redis container included",
+			redisURL: "",
+			wantSubstrings: []string{
+				"redis:",
+				"image: redis:7-alpine",
+				"redis-data:",
+				"VIBEWARDEN_RATE_LIMIT_REDIS_ADDRESS=redis:6379",
+				"condition: service_healthy",
+			},
+			wantAbsent: []string{
+				"VIBEWARDEN_RATE_LIMIT_REDIS_URL",
+			},
+		},
+		{
+			name:     "external redis url set — local redis container omitted",
+			redisURL: externalRedisURL,
+			wantSubstrings: []string{
+				"VIBEWARDEN_RATE_LIMIT_REDIS_URL=" + externalRedisURL,
+			},
+			wantAbsent: []string{
+				"image: redis:7-alpine",
+				"redis-data:",
+				"VIBEWARDEN_RATE_LIMIT_REDIS_ADDRESS=redis:6379",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			outputDir := t.TempDir()
+			cfg := minimalConfig()
+			cfg.RateLimit.Store = "redis"
+			cfg.RateLimit.Redis.Address = "localhost:6379" // required when URL is empty
+			cfg.RateLimit.Redis.URL = tt.redisURL
+
+			if err := svc.Generate(context.Background(), cfg, outputDir); err != nil {
+				t.Fatalf("Generate() unexpected error: %v", err)
+			}
+
+			composePath := filepath.Join(outputDir, "docker-compose.yml")
+			data, err := os.ReadFile(composePath)
+			if err != nil {
+				t.Fatalf("reading docker-compose.yml: %v", err)
+			}
+
+			for _, want := range tt.wantSubstrings {
+				if !bytes.Contains(data, []byte(want)) {
+					t.Errorf("docker-compose.yml missing expected substring %q\n--- content ---\n%s", want, data)
+				}
+			}
+			for _, absent := range tt.wantAbsent {
+				if bytes.Contains(data, []byte(absent)) {
+					t.Errorf("docker-compose.yml contains unexpected substring %q\n--- content ---\n%s", absent, data)
+				}
+			}
+		})
+	}
+}
+
 // TestGenerate_Integration_KratosOIDCRendering verifies that the real template
 // renderer produces a kratos.yml that includes the OIDC method block when
 // social providers are configured and omits it when they are not.

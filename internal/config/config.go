@@ -608,15 +608,29 @@ type RateLimitConfig struct {
 
 // RateLimitRedisConfig holds Redis connection settings for the rate limit store.
 type RateLimitRedisConfig struct {
+	// URL is the Redis connection URL (e.g. "redis://:password@localhost:6379/0"
+	// or "rediss://user:password@redis.example.com:6380/1" for TLS).
+	// When set, URL takes precedence over Address, Password, and DB.
+	// Use a redis:// URL for unencrypted connections and a rediss:// URL for TLS.
+	// Optional: if omitted, Address is used to build the connection.
+	URL string `mapstructure:"url"`
+
 	// Address is the Redis server address in host:port form (default: "localhost:6379").
-	// Required when rate_limit.store is "redis".
+	// Used when URL is empty. At least one of URL or Address is required when
+	// rate_limit.store is "redis".
 	Address string `mapstructure:"address"`
 
 	// Password is the Redis AUTH password (default: empty, no auth).
+	// Ignored when URL is set (embed credentials in the URL instead).
 	Password string `mapstructure:"password"`
 
 	// DB is the Redis logical database index (default: 0).
+	// Ignored when URL is set (embed the DB index in the URL path instead).
 	DB int `mapstructure:"db"`
+
+	// PoolSize is the maximum number of socket connections held in the pool
+	// (default: 0, which lets go-redis choose a sensible value based on CPU count).
+	PoolSize int `mapstructure:"pool_size"`
 
 	// KeyPrefix is the namespace prefix prepended to every Redis key
 	// (default: "vibewarden").
@@ -632,6 +646,13 @@ type RateLimitRedisConfig struct {
 	// for recovery after a failure, expressed as a duration string (e.g. "30s").
 	// Default: "30s".
 	HealthCheckInterval string `mapstructure:"health_check_interval"`
+}
+
+// HasExternalURL reports whether an explicit Redis URL has been configured.
+// When true, VibeWarden connects to that external Redis instance directly and
+// the generated Docker Compose file omits the local redis container.
+func (r RateLimitRedisConfig) HasExternalURL() bool {
+	return r.URL != ""
 }
 
 // RateLimitRuleConfig holds the sustained rate and burst size for a rate limit.
@@ -1310,8 +1331,13 @@ func (c *Config) Validate() error {
 	case "", "memory":
 		// valid — "memory" is the default
 	case "redis":
-		if c.RateLimit.Redis.Address == "" {
-			errs = append(errs, "rate_limit.redis.address is required when rate_limit.store is \"redis\"")
+		if c.RateLimit.Redis.URL == "" && c.RateLimit.Redis.Address == "" {
+			errs = append(errs, "rate_limit.redis.address is required when rate_limit.store is \"redis\" and rate_limit.redis.url is not set")
+		}
+		if c.RateLimit.Redis.URL != "" {
+			if err := validateRedisURL(c.RateLimit.Redis.URL); err != nil {
+				errs = append(errs, fmt.Sprintf("rate_limit.redis.url: %s", err.Error()))
+			}
 		}
 	default:
 		errs = append(errs, fmt.Sprintf(
@@ -1466,6 +1492,22 @@ func validatePostgresURL(s string) error {
 	return nil
 }
 
+// validateRedisURL returns an error if s is not a valid Redis connection URL.
+// It accepts "redis://" (plain) and "rediss://" (TLS) schemes.
+func validateRedisURL(s string) error {
+	u, err := url.Parse(s)
+	if err != nil {
+		return fmt.Errorf("must be a valid URL: %w", err)
+	}
+	if u.Scheme != "redis" && u.Scheme != "rediss" {
+		return fmt.Errorf("must use redis:// or rediss:// scheme, got %q", u.Scheme)
+	}
+	if u.Host == "" {
+		return fmt.Errorf("must include a host")
+	}
+	return nil
+}
+
 // Load reads configuration from file and environment variables.
 // Config file path can be specified; defaults to "./vibewarden.yaml".
 // Environment variables override file values using VIBEWARDEN_ prefix.
@@ -1508,9 +1550,11 @@ func Load(configPath string) (*Config, error) {
 	v.SetDefault("auth.ui.recovery_url", "")
 	v.SetDefault("rate_limit.enabled", true)
 	v.SetDefault("rate_limit.store", "memory")
+	v.SetDefault("rate_limit.redis.url", "")
 	v.SetDefault("rate_limit.redis.address", "")
 	v.SetDefault("rate_limit.redis.password", "")
 	v.SetDefault("rate_limit.redis.db", 0)
+	v.SetDefault("rate_limit.redis.pool_size", 0)
 	v.SetDefault("rate_limit.redis.key_prefix", "vibewarden")
 	v.SetDefault("rate_limit.redis.fallback", true)
 	v.SetDefault("rate_limit.redis.health_check_interval", "30s")
