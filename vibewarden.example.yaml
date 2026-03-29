@@ -585,6 +585,113 @@ security_headers:
 #   2. docker compose logs openbao-bootstrap  (copy role_id and secret_id)
 #   3. vibew secret store app/myapp api_key=<your-key>
 #   4. Enable this plugin and configure injection below.
+# Egress proxy configuration
+#
+# When enabled, the egress proxy listens on a dedicated localhost port and
+# forwards outbound HTTP requests from the wrapped application to external
+# services. Only routes listed in the allowlist are permitted; all others are
+# blocked by default (default_policy: deny).
+#
+# The wrapped application should send outbound API calls to the egress proxy
+# instead of directly to the internet:
+#
+#   export HTTP_PROXY=http://127.0.0.1:8081
+#   export HTTPS_PROXY=http://127.0.0.1:8081
+#
+# Or use named-route addressing for explicit control:
+#
+#   POST http://127.0.0.1:8081/_egress/stripe-api/v1/charges
+#
+# Features per route:
+#   - Secret injection: fetch an API key from OpenBao and inject it as a header
+#   - Rate limiting: per-route token-bucket rate limiter
+#   - Circuit breaking: automatically open the circuit on repeated failures
+#   - Retries with exponential backoff
+#   - SSRF protection: block requests to private/loopback IPs
+#
+egress:
+  # Enable the egress proxy plugin (default: false)
+  enabled: false
+
+  # TCP address the egress proxy binds to (default: "127.0.0.1:8081")
+  listen: "127.0.0.1:8081"
+
+  # Disposition for outbound requests that do not match any configured route.
+  # Accepted values: "allow", "deny" (default: "deny")
+  default_policy: deny
+
+  # Permit plain HTTP egress requests globally (default: false).
+  # Individual routes can override this with their own allow_insecure field.
+  allow_insecure: false
+
+  # Global request timeout applied when a route does not specify its own timeout.
+  # Go duration string (e.g. "30s", "1m"). Default: "30s".
+  default_timeout: "30s"
+
+  # Global maximum request body size. Human-readable string (e.g. "50MB").
+  # Empty means no global limit. Routes can override with body_size_limit.
+  # default_body_size_limit: "50MB"
+
+  # Global maximum response body size. Human-readable string (e.g. "50MB").
+  # Empty means no global limit. Routes can override with response_size_limit.
+  # default_response_size_limit: "50MB"
+
+  # DNS-level SSRF protection settings.
+  dns:
+    # Block requests to private, loopback, and reserved IP addresses.
+    # Mitigates SSRF attacks. Default: true.
+    block_private: true
+
+    # CIDR ranges exempt from block_private.
+    # Use this to allow egress to specific internal services in a private network.
+    # Example: ["10.0.0.0/8", "192.168.100.0/24"]
+    allowed_private: []
+
+  # Egress route allowlist.
+  # Routes are evaluated in declaration order; the first matching route wins.
+  # Each route must have a unique name and a URL glob pattern.
+  routes: []
+  # Example routes:
+  #
+  # routes:
+  #   # Stripe API — POST only, with secret injection and circuit breaking
+  #   - name: stripe-api
+  #     pattern: "https://api.stripe.com/**"
+  #     methods: ["POST"]
+  #     timeout: "10s"
+  #
+  #     # Inject an OpenBao secret as the Authorization header.
+  #     # Requires the secrets plugin to be enabled.
+  #     secret: app/stripe
+  #     secret_header: Authorization
+  #     secret_format: "Bearer {value}"
+  #
+  #     # Per-route rate limiting (100 requests per second).
+  #     rate_limit: "100/s"
+  #
+  #     # Circuit breaker: open after 5 consecutive failures, probe after 30 s.
+  #     circuit_breaker:
+  #       threshold: 5
+  #       reset_after: "30s"
+  #
+  #     # Retry up to 3 times with exponential backoff on transient errors.
+  #     retries:
+  #       max: 3
+  #       backoff: exponential
+  #
+  #   # GitHub API — GET and POST, no secret injection
+  #   - name: github-api
+  #     pattern: "https://api.github.com/**"
+  #     methods: ["GET", "POST"]
+  #     timeout: "15s"
+  #     rate_limit: "500/m"
+  #
+  #   # Internal service on a private network — requires block_private: false
+  #   # or adding the CIDR to allowed_private above.
+  #   - name: internal-payments
+  #     pattern: "http://payments.internal/**"
+  #     allow_insecure: true
+
 secrets:
   # Enable the secrets plugin (default: false)
   enabled: false

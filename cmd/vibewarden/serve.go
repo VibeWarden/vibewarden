@@ -21,6 +21,7 @@ import (
 	authplugin "github.com/vibewarden/vibewarden/internal/plugins/auth"
 	bodysizeplugin "github.com/vibewarden/vibewarden/internal/plugins/bodysize"
 	corsplugin "github.com/vibewarden/vibewarden/internal/plugins/cors"
+	egressplugin "github.com/vibewarden/vibewarden/internal/plugins/egress"
 	ipfilterplugin "github.com/vibewarden/vibewarden/internal/plugins/ipfilter"
 	metricsplugin "github.com/vibewarden/vibewarden/internal/plugins/metrics"
 	ratelimitplugin "github.com/vibewarden/vibewarden/internal/plugins/ratelimit"
@@ -304,6 +305,9 @@ func registerPlugins(
 
 	// Secrets (OpenBao) — priority 70
 	registry.Register(buildSecretsPlugin(cfg, eventLogger, logger))
+
+	// Egress proxy — priority 80 (independent listener; registered last)
+	registry.Register(buildEgressPlugin(cfg, eventLogger, logger))
 }
 
 // buildSecretsPlugin constructs the secrets plugin from config, parsing
@@ -613,6 +617,97 @@ func buildResiliencePortsConfig(cfg *config.Config) ports.ResilienceConfig {
 	}
 
 	return result
+}
+
+// buildEgressPlugin constructs the egress proxy plugin from config, parsing
+// duration strings into time.Duration values. Falls back to plugin defaults
+// on parse errors (config.Validate does not validate egress duration strings
+// since they are optional and have sensible defaults).
+func buildEgressPlugin(cfg *config.Config, eventLogger ports.EventLogger, logger *slog.Logger) *egressplugin.Plugin {
+	ec := cfg.Egress
+
+	defaultTimeout, err := time.ParseDuration(ec.DefaultTimeout)
+	if err != nil && ec.DefaultTimeout != "" {
+		logger.Warn("egress.default_timeout parse error — using default 30s",
+			slog.String("error", err.Error()),
+			slog.String("value", ec.DefaultTimeout),
+		)
+	}
+
+	defaultBodySizeBytes, err := config.ParseBodySize(ec.DefaultBodySizeLimit)
+	if err != nil && ec.DefaultBodySizeLimit != "" {
+		logger.Warn("egress.default_body_size_limit parse error — disabling global body size limit",
+			slog.String("error", err.Error()),
+		)
+		defaultBodySizeBytes = 0
+	}
+
+	defaultResponseSizeBytes, err := config.ParseBodySize(ec.DefaultResponseSizeLimit)
+	if err != nil && ec.DefaultResponseSizeLimit != "" {
+		logger.Warn("egress.default_response_size_limit parse error — disabling global response size limit",
+			slog.String("error", err.Error()),
+		)
+		defaultResponseSizeBytes = 0
+	}
+
+	pluginCfg := egressplugin.Config{
+		Enabled:                  ec.Enabled,
+		Listen:                   ec.Listen,
+		DefaultPolicy:            ec.DefaultPolicy,
+		AllowInsecure:            ec.AllowInsecure,
+		DefaultTimeout:           defaultTimeout,
+		DefaultBodySizeLimit:     defaultBodySizeBytes,
+		DefaultResponseSizeLimit: defaultResponseSizeBytes,
+		BlockPrivate:             ec.DNS.BlockPrivate,
+		AllowedPrivate:           ec.DNS.AllowedPrivate,
+	}
+
+	// Map route configs.
+	for _, rc := range ec.Routes {
+		routeTimeout, routeErr := time.ParseDuration(rc.Timeout)
+		if routeErr != nil && rc.Timeout != "" {
+			logger.Warn("egress route timeout parse error — using global default",
+				slog.String("route", rc.Name),
+				slog.String("error", routeErr.Error()),
+			)
+		}
+
+		cbResetAfter, cbErr := time.ParseDuration(rc.CircuitBreaker.ResetAfter)
+		if cbErr != nil && rc.CircuitBreaker.ResetAfter != "" {
+			logger.Warn("egress route circuit_breaker.reset_after parse error — disabling circuit breaker for route",
+				slog.String("route", rc.Name),
+				slog.String("error", cbErr.Error()),
+			)
+		}
+
+		bodySizeBytes, _ := config.ParseBodySize(rc.BodySizeLimit)
+		responseSizeBytes, _ := config.ParseBodySize(rc.ResponseSizeLimit)
+
+		pluginCfg.Routes = append(pluginCfg.Routes, egressplugin.RouteConfig{
+			Name:              rc.Name,
+			Pattern:           rc.Pattern,
+			Methods:           rc.Methods,
+			Timeout:           routeTimeout,
+			Secret:            rc.Secret,
+			SecretHeader:      rc.SecretHeader,
+			SecretFormat:      rc.SecretFormat,
+			RateLimit:         rc.RateLimit,
+			BodySizeLimit:     bodySizeBytes,
+			ResponseSizeLimit: responseSizeBytes,
+			AllowInsecure:     rc.AllowInsecure,
+			CircuitBreaker: egressplugin.CircuitBreakerConfig{
+				Threshold:  rc.CircuitBreaker.Threshold,
+				ResetAfter: cbResetAfter,
+			},
+			Retries: egressplugin.RetryConfig{
+				Max:     rc.Retries.Max,
+				Methods: rc.Retries.Methods,
+				Backoff: rc.Retries.Backoff,
+			},
+		})
+	}
+
+	return egressplugin.New(pluginCfg, eventLogger, logger)
 }
 
 // buildEventLogger constructs the event logger used by the caddy adapter and
