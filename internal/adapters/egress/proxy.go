@@ -102,6 +102,12 @@ type ProxyConfig struct {
 	// When nil, circuit breaking is disabled for all routes regardless of their
 	// CircuitBreakerConfig.
 	CircuitBreakers *CircuitBreakerRegistry
+
+	// RateLimiters, when non-nil, is the per-route token-bucket rate limiter
+	// registry. Requests that exceed the configured rate are rejected with a
+	// 429 Too Many Requests response before any upstream contact is made. When
+	// nil, per-route rate limiting is disabled regardless of route configuration.
+	RateLimiters *RateLimiterRegistry
 }
 
 // Proxy is an HTTP server that listens on a dedicated localhost port and
@@ -240,6 +246,17 @@ func (p *Proxy) HandleRequest(ctx context.Context, req domainegress.EgressReques
 		}
 	}
 
+	// Check per-route rate limit before attempting the upstream call.
+	if match.Matched && p.cfg.RateLimiters != nil {
+		allowed, rlErr := p.cfg.RateLimiters.Allow(ctx, match.Route)
+		if rlErr != nil {
+			return domainegress.EgressResponse{}, fmt.Errorf("rate limit check: %w", rlErr)
+		}
+		if !allowed {
+			return domainegress.EgressResponse{}, ErrRateLimitExceeded
+		}
+	}
+
 	return p.forward(ctx, req, match)
 }
 
@@ -276,6 +293,28 @@ func (p *Proxy) handleRequest(w http.ResponseWriter, r *http.Request) {
 				slog.String("method", r.Method),
 			)
 			http.Error(w, "503 Service Unavailable: egress circuit breaker is open", http.StatusServiceUnavailable)
+			return
+		}
+		if err == ErrRateLimitExceeded {
+			// Resolve the matched route to compute Retry-After.
+			retryAfter := "1"
+			if p.cfg.RateLimiters != nil {
+				egressReq2, reqErr := domainegress.NewEgressRequest(r.Method, targetURL, nil, nil)
+				if reqErr == nil {
+					if m2, resolveErr := p.resolver.Resolve(r.Context(), egressReq2); resolveErr == nil && m2.Matched {
+						if secs, raErr := p.cfg.RateLimiters.RetryAfterSeconds(m2.Route); raErr == nil {
+							retryAfter = retryAfterHeader(secs)
+						}
+					}
+				}
+			}
+			p.logger.WarnContext(r.Context(), "egress rate limit exceeded — request rejected",
+				slog.String("target", targetURL),
+				slog.String("method", r.Method),
+				slog.String("retry_after", retryAfter),
+			)
+			w.Header().Set("Retry-After", retryAfter)
+			http.Error(w, "429 Too Many Requests: egress rate limit exceeded", http.StatusTooManyRequests)
 			return
 		}
 		var ssrfErr *SSRFBlockedError

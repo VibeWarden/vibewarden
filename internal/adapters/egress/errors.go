@@ -10,3 +10,8 @@ var ErrDeniedByPolicy = errors.New("egress: request denied by policy")
 // breaker is in the open state and the request is short-circuited before any
 // upstream contact is made.
 var ErrCircuitOpen = errors.New("egress: circuit breaker is open")
+
+// ErrRateLimitExceeded is returned by Proxy.HandleRequest when the per-route
+// rate limiter has run out of tokens and the request is rejected before any
+// upstream contact is made.
+var ErrRateLimitExceeded = errors.New("egress: rate limit exceeded")
