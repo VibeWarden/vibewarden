@@ -76,3 +76,39 @@ func NewEgressCircuitBreakerClosed(params EgressCircuitBreakerClosedParams) Even
 		},
 	}
 }
+
+// EventTypeEgressRateLimitHit is emitted when an outbound request to a named
+// egress route is rejected because the per-route rate limit has been exceeded.
+const EventTypeEgressRateLimitHit = "egress.rate_limit_hit"
+
+// EgressRateLimitHitParams contains the parameters needed to construct an
+// egress.rate_limit_hit event.
+type EgressRateLimitHitParams struct {
+	// Route is the egress route name whose rate limit was exceeded.
+	Route string
+
+	// Limit is the configured rate limit in requests per second.
+	Limit float64
+
+	// RetryAfterSeconds is how many seconds the caller should wait before retrying.
+	RetryAfterSeconds float64
+}
+
+// NewEgressRateLimitHit creates an egress.rate_limit_hit event indicating that
+// an outbound request was rejected because the per-route rate limit was exceeded.
+func NewEgressRateLimitHit(params EgressRateLimitHitParams) Event {
+	return Event{
+		SchemaVersion: SchemaVersion,
+		EventType:     EventTypeEgressRateLimitHit,
+		Timestamp:     time.Now().UTC(),
+		AISummary: fmt.Sprintf(
+			"Egress rate limit exceeded for route %q (limit %.2f req/s); retry after %.0fs",
+			params.Route, params.Limit, params.RetryAfterSeconds,
+		),
+		Payload: map[string]any{
+			"route":               params.Route,
+			"limit":               params.Limit,
+			"retry_after_seconds": params.RetryAfterSeconds,
+		},
+	}
+}
