@@ -328,15 +328,45 @@ rate_limit:
   store: memory
 
   # Redis store configuration. Only used when store is "redis".
+  #
+  # For multi-instance deployments, set store to "redis" and configure this
+  # section so all instances share rate limit counters. See docs/rate-limiting.md
+  # for a full guide including external provider examples (Upstash, ElastiCache,
+  # Redis Cloud).
+  #
   # redis:
-  #   # Redis server address (required when store is "redis").
+  #   # Full Redis URL. Takes precedence over address/password/db when set.
+  #   # Use redis:// for plain connections, rediss:// for TLS.
+  #   # Recommended for external providers — embed all credentials in one string
+  #   # and supply it via environment variable to keep secrets out of YAML.
+  #   #
+  #   # Examples:
+  #   #   Local:          redis://localhost:6379/0
+  #   #   With password:  redis://:mypassword@localhost:6379/0
+  #   #   TLS (Upstash):  rediss://default:${UPSTASH_REDIS_PASSWORD}@<endpoint>.upstash.io:6380
+  #   #   ElastiCache:    rediss://:${ELASTICACHE_AUTH_TOKEN}@<endpoint>.cache.amazonaws.com:6379
+  #   #   Redis Cloud:    rediss://default:${REDIS_CLOUD_PASSWORD}@redis-<id>.c<num>.eu-west-1-1.ec2.redns.redis-cloud.com:12345
+  #   #
+  #   # Override via environment variable:
+  #   #   VIBEWARDEN_RATE_LIMIT_REDIS_URL=rediss://...
+  #   url: ""
+  #
+  #   # Redis server address in host:port form. Used when url is empty.
+  #   # Required when store is "redis" and url is not set.
   #   address: localhost:6379
   #
   #   # Redis AUTH password (leave empty if Redis has no auth configured).
+  #   # Ignored when url is set.
   #   password: ""
   #
   #   # Redis logical database index (default: 0).
+  #   # Ignored when url is set.
   #   db: 0
+  #
+  #   # Maximum number of socket connections in the pool.
+  #   # Default: 0 (go-redis chooses automatically based on CPU count).
+  #   # Set a low value (e.g. 5) for providers with connection limits (Upstash free tier).
+  #   pool_size: 0
   #
   #   # Namespace prefix for Redis keys. All keys are stored as:
   #   #   <key_prefix>:ratelimit:<limiter>:<identifier>
@@ -344,7 +374,10 @@ rate_limit:
   #
   #   # Graceful fallback to in-memory store when Redis is unavailable.
   #   # true  (default) — fail-open: keep rate limiting with in-memory store.
+  #   #                   Counters are no longer shared across instances during
+  #   #                   the outage but requests are not blocked.
   #   # false           — fail-closed: deny all requests when Redis is unreachable.
+  #   #                   Use this when rate limiting correctness is required.
   #   fallback: true
   #
   #   # How often VibeWarden checks whether Redis has recovered after a failure.
