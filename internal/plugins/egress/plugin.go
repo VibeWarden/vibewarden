@@ -259,6 +259,13 @@ func routeOptions(rc RouteConfig) ([]domainegress.RouteOption, error) {
 		opts = append(opts, domainegress.WithAllowInsecure(true))
 	}
 
+	if len(rc.ValidateResponse.StatusCodes) > 0 || len(rc.ValidateResponse.ContentTypes) > 0 {
+		opts = append(opts, domainegress.WithValidateResponse(domainegress.ResponseValidationConfig{
+			StatusCodes:  rc.ValidateResponse.StatusCodes,
+			ContentTypes: rc.ValidateResponse.ContentTypes,
+		}))
+	}
+
 	return opts, nil
 }
 

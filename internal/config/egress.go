@@ -110,6 +110,28 @@ type EgressRouteConfig struct {
 	// specific route, overriding the global egress.allow_insecure setting.
 	// When false (default), only HTTPS targets are accepted.
 	AllowInsecure bool `mapstructure:"allow_insecure"`
+
+	// ValidateResponse holds per-route upstream response validation settings.
+	// When non-zero, each upstream response is checked against the configured
+	// allowed status code ranges and content types. Responses that fail
+	// validation are dropped and the caller receives a 502 Bad Gateway.
+	ValidateResponse EgressResponseValidationConfig `mapstructure:"validate_response"`
+}
+
+// EgressResponseValidationConfig holds per-route upstream response validation
+// parameters, as parsed from vibewarden.yaml.
+type EgressResponseValidationConfig struct {
+	// StatusCodes is a list of allowed HTTP status code range expressions.
+	// Supported formats: exact code ("200"), class wildcard ("2xx", "3xx", "4xx",
+	// "5xx"). When empty, no status code validation is performed.
+	// Example: ["2xx", "301", "302"]
+	StatusCodes []string `mapstructure:"status_codes"`
+
+	// ContentTypes is a list of allowed MIME type prefixes for the upstream
+	// response Content-Type header (parameters such as charset are ignored).
+	// When empty, no Content-Type validation is performed.
+	// Example: ["application/json", "text/plain"]
+	ContentTypes []string `mapstructure:"content_types"`
 }
 
 // EgressCircuitBreakerConfig holds circuit breaker parameters for an egress route.

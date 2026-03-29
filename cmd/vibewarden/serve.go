@@ -704,6 +704,10 @@ func buildEgressPlugin(cfg *config.Config, eventLogger ports.EventLogger, logger
 				Methods: rc.Retries.Methods,
 				Backoff: rc.Retries.Backoff,
 			},
+			ValidateResponse: egressplugin.ResponseValidationConfig{
+				StatusCodes:  rc.ValidateResponse.StatusCodes,
+				ContentTypes: rc.ValidateResponse.ContentTypes,
+			},
 		})
 	}
 

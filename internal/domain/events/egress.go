@@ -274,6 +274,63 @@ func NewEgressCircuitBreakerClosed(params EgressCircuitBreakerClosedParams) Even
 	}
 }
 
+// EventTypeEgressResponseInvalid is emitted when the upstream response for an
+// egress request fails the per-route validate_response rules (disallowed status
+// code or content type). The egress proxy drops the upstream response and returns
+// 502 Bad Gateway to the caller.
+const EventTypeEgressResponseInvalid = "egress.response_invalid"
+
+// EgressResponseInvalidParams contains the parameters needed to construct an
+// egress.response_invalid event.
+type EgressResponseInvalidParams struct {
+	// Route is the matched egress route name.
+	Route string
+
+	// Method is the HTTP method of the outbound request.
+	Method string
+
+	// URL is the destination URL of the outbound request.
+	URL string
+
+	// StatusCode is the HTTP status code returned by the upstream.
+	StatusCode int
+
+	// ContentType is the Content-Type header value returned by the upstream.
+	ContentType string
+
+	// Reason is a short human-readable description of why the response was
+	// considered invalid (e.g. "status code not allowed", "content type not allowed").
+	Reason string
+
+	// TraceID is the W3C trace-id of the inbound request that triggered this
+	// egress call. Empty when no inbound trace context is available.
+	TraceID string
+}
+
+// NewEgressResponseInvalid creates an egress.response_invalid event indicating
+// that the upstream response failed per-route validation and was dropped.
+func NewEgressResponseInvalid(params EgressResponseInvalidParams) Event {
+	return Event{
+		SchemaVersion: SchemaVersion,
+		EventType:     EventTypeEgressResponseInvalid,
+		Timestamp:     time.Now().UTC(),
+		AISummary: fmt.Sprintf(
+			"Egress response invalid: %s %s via route %q — status %d content-type %q — %s",
+			params.Method, params.URL, params.Route,
+			params.StatusCode, params.ContentType, params.Reason,
+		),
+		Payload: map[string]any{
+			"route":        params.Route,
+			"method":       params.Method,
+			"url":          params.URL,
+			"status_code":  params.StatusCode,
+			"content_type": params.ContentType,
+			"reason":       params.Reason,
+			"trace_id":     params.TraceID,
+		},
+	}
+}
+
 // EventTypeEgressRateLimitHit is emitted when an outbound request to a named
 // egress route is rejected because the per-route rate limit has been exceeded.
 const EventTypeEgressRateLimitHit = "egress.rate_limit_hit"
