@@ -154,7 +154,7 @@ services:
       kratos-db:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "kratos", "ping", "--endpoint", "http://localhost:4433"]
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:4433/health/alive || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 10
