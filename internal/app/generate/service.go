@@ -90,6 +90,17 @@ func (s *Service) Generate(ctx context.Context, cfg *config.Config, outputDir st
 		if err := s.credStore.Write(ctx, creds, outputDir); err != nil {
 			return fmt.Errorf("writing credentials: %w", err)
 		}
+		// Docker Compose uses .env next to docker-compose.yml for variable
+		// interpolation. Write the same credentials as .env so ${POSTGRES_PASSWORD}
+		// etc. are resolved in the compose YAML.
+		envContent := fmt.Sprintf(
+			"POSTGRES_PASSWORD=%s\nKRATOS_SECRETS_COOKIE=%s\nKRATOS_SECRETS_CIPHER=%s\nGRAFANA_ADMIN_PASSWORD=%s\nOPENBAO_DEV_ROOT_TOKEN=%s\n",
+			creds.PostgresPassword, creds.KratosCookieSecret, creds.KratosCipherSecret,
+			creds.GrafanaAdminPassword, creds.OpenBaoDevRootToken,
+		)
+		if err := os.WriteFile(filepath.Join(outputDir, ".env"), []byte(envContent), permConfig); err != nil {
+			return fmt.Errorf("writing .env: %w", err)
+		}
 	}
 
 	// Render .env.template (non-secret config, safe to commit).
