@@ -32,14 +32,3 @@ func NeedsSeedSecrets(cfg *config.Config) bool {
 	}
 	return len(cfg.Secrets.Inject.Headers) > 0 || len(cfg.Secrets.Inject.Env) > 0
 }
-
-// NeedsLocalKratosDB returns true if the generated Docker Compose should
-// include a local kratos-db Postgres container. This is false when an external
-// database URL is configured (database.external_url), in which case the user
-// provides and manages their own Postgres instance.
-func NeedsLocalKratosDB(cfg *config.Config) bool {
-	if !cfg.Auth.Enabled || cfg.Auth.Mode != "kratos" || cfg.Kratos.External {
-		return false
-	}
-	return cfg.Database.ExternalURL == ""
-}
