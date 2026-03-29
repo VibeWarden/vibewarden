@@ -71,6 +71,12 @@ type ProxyConfig struct {
 	// resolves target hostnames, and blocks requests that resolve to private
 	// or reserved IP addresses. When nil, no SSRF protection is applied.
 	SSRFGuard *SSRFGuard
+
+	// SecretInjector, when non-nil, is called for routes that have a SecretConfig
+	// to fetch and inject the secret value as a request header before forwarding.
+	// When nil, no secret injection is performed even if a route is configured
+	// with a SecretConfig.
+	SecretInjector ports.SecretInjector
 }
 
 // Proxy is an HTTP server that listens on a dedicated localhost port and
@@ -92,6 +98,11 @@ type Proxy struct {
 
 	listener net.Listener
 	server   *http.Server
+}
+
+// secretInjector returns the configured SecretInjector or nil.
+func (p *Proxy) secretInjector() ports.SecretInjector {
+	return p.cfg.SecretInjector
 }
 
 // NewProxy creates a new Proxy from the given configuration, resolver, HTTP
@@ -333,6 +344,8 @@ func patternBase(pattern string) string {
 // Header manipulation is applied in two phases:
 //  1. Before forwarding: per-route injection and stripping rules are applied to
 //     the outbound request headers (including always stripping X-Inject-Secret).
+//     Secret injection from OpenBao is performed here when the matched route
+//     carries a SecretConfig or the request carries an X-Inject-Secret header.
 //  2. After receiving: per-route and default sensitive response headers are
 //     stripped before the response is returned to the caller.
 func (p *Proxy) forward(ctx context.Context, req domainegress.EgressRequest, match domainegress.RouteMatch) (domainegress.EgressResponse, error) {
@@ -351,7 +364,24 @@ func (p *Proxy) forward(ctx context.Context, req domainegress.EgressRequest, mat
 	} else {
 		// Always strip X-Inject-Secret even on unmatched (allow-policy) requests.
 		outHeaders = req.Header.Clone()
-		outHeaders.Del("X-Inject-Secret")
+		outHeaders.Del(headerInjectSecret)
+	}
+
+	// Secret injection phase — must happen after header manipulation so that
+	// X-Inject-Secret is extracted before being stripped.
+	//
+	// Two injection sources are supported (in priority order):
+	//  1. Per-route static SecretConfig from the route definition.
+	//  2. Dynamic X-Inject-Secret request header set by the application.
+	//
+	// If secret injection is required but no injector is configured, or if the
+	// injector returns an error, the request is blocked (fail-closed).
+	if err := p.applySecretInjection(reqCtx, req.Header, match, outHeaders); err != nil {
+		p.logger.ErrorContext(ctx, "egress secret injection failed — request blocked",
+			slog.String("url", req.URL),
+			slog.String("err", err.Error()),
+		)
+		return domainegress.EgressResponse{}, fmt.Errorf("secret injection: %w", err)
 	}
 
 	body, _ := req.BodyRef.(io.Reader)
@@ -388,6 +418,75 @@ func (p *Proxy) forward(ctx context.Context, req domainegress.EgressRequest, mat
 	}
 
 	return egressResp, nil
+}
+
+// applySecretInjection resolves and injects secret values into outHeaders.
+//
+// It handles two injection modes:
+//  1. Per-route static injection: when the matched route has a non-empty
+//     SecretConfig.Name the injector fetches that secret and sets the header.
+//  2. Dynamic injection: when the original request carries X-Inject-Secret,
+//     that value is treated as the secret name. The secret is injected as a
+//     plain value on the Authorization header unless the route provides a
+//     SecretConfig that overrides the header name and format.
+//
+// X-Inject-Secret is always removed from outHeaders before this function
+// returns, whether or not injection succeeds.
+//
+// Returns an error when injection is required but fails; callers must treat
+// this as a hard failure and block the request.
+func (p *Proxy) applySecretInjection(
+	ctx context.Context,
+	originalHeaders http.Header,
+	match domainegress.RouteMatch,
+	outHeaders http.Header,
+) error {
+	// Always strip X-Inject-Secret from the outbound headers — it must never
+	// reach the upstream regardless of the outcome.
+	dynamicSecretName := originalHeaders.Get(headerInjectSecret)
+	outHeaders.Del(headerInjectSecret)
+
+	// Determine which injection to perform.
+	var cfg domainegress.SecretConfig
+	if match.Matched && match.Route.Secret().Name != "" {
+		// Per-route static injection takes precedence.
+		cfg = match.Route.Secret()
+	} else if dynamicSecretName != "" {
+		// Dynamic injection: use the secret name from the request header.
+		// Default to injecting as a plain Authorization header value.
+		cfg = domainegress.SecretConfig{
+			Name:   dynamicSecretName,
+			Header: "Authorization",
+			Format: "",
+		}
+		// If the route provides header/format overrides but no secret name,
+		// apply them to the dynamic injection.
+		if match.Matched {
+			routeSec := match.Route.Secret()
+			if routeSec.Header != "" {
+				cfg.Header = routeSec.Header
+			}
+			if routeSec.Format != "" {
+				cfg.Format = routeSec.Format
+			}
+		}
+	} else {
+		// No injection required.
+		return nil
+	}
+
+	injector := p.secretInjector()
+	if injector == nil {
+		return fmt.Errorf("secret injection required for %q but no SecretInjector is configured", cfg.Name)
+	}
+
+	header, value, err := injector.Inject(ctx, cfg)
+	if err != nil {
+		return err
+	}
+
+	outHeaders.Set(header, value)
+	return nil
 }
 
 // cloneAndStripHopByHop returns a copy of h with all hop-by-hop headers removed.
