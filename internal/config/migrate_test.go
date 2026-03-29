@@ -198,3 +198,86 @@ func TestMigrateLegacyMetrics_TableDriven(t *testing.T) {
 		})
 	}
 }
+
+// TestWarnInsecureDatabase verifies that WarnInsecureDatabase emits the expected
+// advisory log messages and stays silent when the configuration is secure.
+func TestWarnInsecureDatabase(t *testing.T) {
+	tests := []struct {
+		name        string
+		cfg         config.DatabaseConfig
+		wantWarning bool
+		wantContain string
+	}{
+		{
+			name:        "no external URL, no tls_mode — silent",
+			cfg:         config.DatabaseConfig{},
+			wantWarning: false,
+		},
+		{
+			name: "tls_mode=require — silent",
+			cfg: config.DatabaseConfig{
+				TLSMode: "require",
+			},
+			wantWarning: false,
+		},
+		{
+			name: "tls_mode=disable — warns",
+			cfg: config.DatabaseConfig{
+				TLSMode: "disable",
+			},
+			wantWarning: true,
+			wantContain: "database.tls_mode",
+		},
+		{
+			name: "external_url with sslmode=require — silent",
+			cfg: config.DatabaseConfig{
+				ExternalURL: "postgres://user:pass@db.example.com:5432/kratos?sslmode=require",
+			},
+			wantWarning: false,
+		},
+		{
+			name: "external_url with sslmode=disable — warns",
+			cfg: config.DatabaseConfig{
+				ExternalURL: "postgres://user:pass@db.example.com:5432/kratos?sslmode=disable",
+			},
+			wantWarning: true,
+			wantContain: "sslmode=disable",
+		},
+		{
+			name: "external_url without sslmode param — silent",
+			cfg: config.DatabaseConfig{
+				ExternalURL: "postgres://user:pass@db.example.com:5432/kratos",
+			},
+			wantWarning: false,
+		},
+		{
+			name: "tls_mode=disable AND external_url sslmode=disable — warns once per condition",
+			cfg: config.DatabaseConfig{
+				TLSMode:     "disable",
+				ExternalURL: "postgres://user:pass@db.example.com:5432/kratos?sslmode=disable",
+			},
+			wantWarning: true,
+			wantContain: "disable",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var logBuf bytes.Buffer
+			logger := captureLogger(&logBuf)
+
+			cfg := &config.Config{Database: tt.cfg}
+			config.WarnInsecureDatabase(cfg, logger)
+
+			hasWarning := logBuf.Len() > 0
+			if hasWarning != tt.wantWarning {
+				t.Errorf("warning emitted = %v, want %v (log: %q)", hasWarning, tt.wantWarning, logBuf.String())
+			}
+			if tt.wantWarning && tt.wantContain != "" {
+				if !strings.Contains(logBuf.String(), tt.wantContain) {
+					t.Errorf("log output %q does not contain %q", logBuf.String(), tt.wantContain)
+				}
+			}
+		})
+	}
+}

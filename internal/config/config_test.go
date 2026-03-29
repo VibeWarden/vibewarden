@@ -2041,3 +2041,310 @@ func TestValidate_KratosExternal(t *testing.T) {
 		})
 	}
 }
+
+// TestValidate_DatabaseTLSMode verifies validation of database.tls_mode.
+func TestValidate_DatabaseTLSMode(t *testing.T) {
+	tests := []struct {
+		name        string
+		tlsMode     string
+		wantErr     bool
+		wantContain string
+	}{
+		{name: "empty (default require)", tlsMode: "", wantErr: false},
+		{name: "disable", tlsMode: "disable", wantErr: false},
+		{name: "require", tlsMode: "require", wantErr: false},
+		{name: "verify-ca", tlsMode: "verify-ca", wantErr: false},
+		{name: "verify-full", tlsMode: "verify-full", wantErr: false},
+		{
+			name:        "invalid value",
+			tlsMode:     "allow",
+			wantErr:     true,
+			wantContain: "database.tls_mode",
+		},
+		{
+			name:        "invalid value uppercase",
+			tlsMode:     "REQUIRE",
+			wantErr:     true,
+			wantContain: "database.tls_mode",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := config.Config{
+				Database: config.DatabaseConfig{TLSMode: tt.tlsMode},
+			}
+			err := cfg.Validate()
+			if (err != nil) != tt.wantErr {
+				t.Errorf("Validate() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if tt.wantErr && tt.wantContain != "" && err != nil {
+				if !strings.Contains(err.Error(), tt.wantContain) {
+					t.Errorf("Validate() error = %q, want it to contain %q", err.Error(), tt.wantContain)
+				}
+			}
+		})
+	}
+}
+
+// TestValidate_DatabasePool verifies validation of database.pool settings.
+func TestValidate_DatabasePool(t *testing.T) {
+	tests := []struct {
+		name        string
+		maxConns    int
+		minConns    int
+		wantErr     bool
+		wantContain string
+	}{
+		{name: "zero values (use defaults)", maxConns: 0, minConns: 0, wantErr: false},
+		{name: "typical production", maxConns: 10, minConns: 2, wantErr: false},
+		{name: "min equals max", maxConns: 5, minConns: 5, wantErr: false},
+		{
+			name:        "negative max_conns",
+			maxConns:    -1,
+			minConns:    0,
+			wantErr:     true,
+			wantContain: "database.pool.max_conns",
+		},
+		{
+			name:        "negative min_conns",
+			maxConns:    10,
+			minConns:    -1,
+			wantErr:     true,
+			wantContain: "database.pool.min_conns",
+		},
+		{
+			name:        "min greater than max",
+			maxConns:    5,
+			minConns:    10,
+			wantErr:     true,
+			wantContain: "database.pool.min_conns",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := config.Config{
+				Database: config.DatabaseConfig{
+					Pool: config.DatabasePoolConfig{
+						MaxConns: tt.maxConns,
+						MinConns: tt.minConns,
+					},
+				},
+			}
+			err := cfg.Validate()
+			if (err != nil) != tt.wantErr {
+				t.Errorf("Validate() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if tt.wantErr && tt.wantContain != "" && err != nil {
+				if !strings.Contains(err.Error(), tt.wantContain) {
+					t.Errorf("Validate() error = %q, want it to contain %q", err.Error(), tt.wantContain)
+				}
+			}
+		})
+	}
+}
+
+// TestValidate_DatabaseConnectTimeout verifies validation of database.connect_timeout.
+func TestValidate_DatabaseConnectTimeout(t *testing.T) {
+	tests := []struct {
+		name           string
+		connectTimeout string
+		wantErr        bool
+		wantContain    string
+	}{
+		{name: "empty (use default 10s)", connectTimeout: "", wantErr: false},
+		{name: "10s", connectTimeout: "10s", wantErr: false},
+		{name: "30s", connectTimeout: "30s", wantErr: false},
+		{name: "1m", connectTimeout: "1m", wantErr: false},
+		{
+			name:           "invalid duration",
+			connectTimeout: "notaduration",
+			wantErr:        true,
+			wantContain:    "database.connect_timeout",
+		},
+		{
+			name:           "integer without unit",
+			connectTimeout: "10",
+			wantErr:        true,
+			wantContain:    "database.connect_timeout",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := config.Config{
+				Database: config.DatabaseConfig{ConnectTimeout: tt.connectTimeout},
+			}
+			err := cfg.Validate()
+			if (err != nil) != tt.wantErr {
+				t.Errorf("Validate() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if tt.wantErr && tt.wantContain != "" && err != nil {
+				if !strings.Contains(err.Error(), tt.wantContain) {
+					t.Errorf("Validate() error = %q, want it to contain %q", err.Error(), tt.wantContain)
+				}
+			}
+		})
+	}
+}
+
+// TestDatabaseConfig_BuildDSN verifies that BuildDSN produces the expected DSN
+// with connection resilience parameters appended, respecting existing query params.
+func TestDatabaseConfig_BuildDSN(t *testing.T) {
+	tests := []struct {
+		name    string
+		cfg     config.DatabaseConfig
+		wantDSN string
+	}{
+		{
+			name:    "empty external URL returns empty string",
+			cfg:     config.DatabaseConfig{},
+			wantDSN: "",
+		},
+		{
+			name: "external URL without params gets all defaults",
+			cfg: config.DatabaseConfig{
+				ExternalURL: "postgres://user:pass@db.example.com:5432/kratos",
+			},
+			wantDSN: "postgres://user:pass@db.example.com:5432/kratos?connect_timeout=10&pool_max_conns=10&sslmode=require",
+		},
+		{
+			name: "existing sslmode is not overwritten",
+			cfg: config.DatabaseConfig{
+				ExternalURL: "postgres://user:pass@db.example.com:5432/kratos?sslmode=verify-full",
+			},
+			wantDSN: "postgres://user:pass@db.example.com:5432/kratos?connect_timeout=10&pool_max_conns=10&sslmode=verify-full",
+		},
+		{
+			name: "existing connect_timeout is not overwritten",
+			cfg: config.DatabaseConfig{
+				ExternalURL: "postgres://user:pass@db.example.com:5432/kratos?connect_timeout=30",
+			},
+			wantDSN: "postgres://user:pass@db.example.com:5432/kratos?connect_timeout=30&pool_max_conns=10&sslmode=require",
+		},
+		{
+			name: "explicit tls_mode is applied when not present in URL",
+			cfg: config.DatabaseConfig{
+				ExternalURL: "postgres://user:pass@db.example.com:5432/kratos",
+				TLSMode:     "verify-full",
+			},
+			wantDSN: "postgres://user:pass@db.example.com:5432/kratos?connect_timeout=10&pool_max_conns=10&sslmode=verify-full",
+		},
+		{
+			name: "custom pool max_conns is applied",
+			cfg: config.DatabaseConfig{
+				ExternalURL: "postgres://user:pass@db.example.com:5432/kratos",
+				Pool:        config.DatabasePoolConfig{MaxConns: 25, MinConns: 5},
+			},
+			wantDSN: "postgres://user:pass@db.example.com:5432/kratos?connect_timeout=10&pool_max_conns=25&sslmode=require",
+		},
+		{
+			name: "custom connect_timeout strips s suffix",
+			cfg: config.DatabaseConfig{
+				ExternalURL:    "postgres://user:pass@db.example.com:5432/kratos",
+				ConnectTimeout: "30s",
+			},
+			wantDSN: "postgres://user:pass@db.example.com:5432/kratos?connect_timeout=30&pool_max_conns=10&sslmode=require",
+		},
+		{
+			name: "connect_timeout without s suffix is used as-is",
+			cfg: config.DatabaseConfig{
+				ExternalURL:    "postgres://user:pass@db.example.com:5432/kratos",
+				ConnectTimeout: "15",
+			},
+			wantDSN: "postgres://user:pass@db.example.com:5432/kratos?connect_timeout=15&pool_max_conns=10&sslmode=require",
+		},
+		{
+			name: "sslmode=disable is propagated without error",
+			cfg: config.DatabaseConfig{
+				ExternalURL: "postgres://user:pass@db.example.com:5432/kratos",
+				TLSMode:     "disable",
+			},
+			wantDSN: "postgres://user:pass@db.example.com:5432/kratos?connect_timeout=10&pool_max_conns=10&sslmode=disable",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tt.cfg.BuildDSN()
+			if got != tt.wantDSN {
+				t.Errorf("BuildDSN() = %q, want %q", got, tt.wantDSN)
+			}
+		})
+	}
+}
+
+// TestLoad_DatabaseDefaults verifies that database resilience defaults are set
+// correctly when no database config is present in the YAML file.
+func TestLoad_DatabaseDefaults(t *testing.T) {
+	cfg, err := config.Load("")
+	if err != nil {
+		t.Fatalf("Load() unexpected error: %v", err)
+	}
+
+	tests := []struct {
+		name string
+		got  interface{}
+		want interface{}
+	}{
+		{"database.tls_mode", cfg.Database.TLSMode, "require"},
+		{"database.pool.max_conns", cfg.Database.Pool.MaxConns, 10},
+		{"database.pool.min_conns", cfg.Database.Pool.MinConns, 2},
+		{"database.connect_timeout", cfg.Database.ConnectTimeout, "10s"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.got != tt.want {
+				t.Errorf("default %s = %v, want %v", tt.name, tt.got, tt.want)
+			}
+		})
+	}
+}
+
+// TestLoad_DatabaseResilienceFromFile verifies that database resilience settings
+// are loaded correctly from a YAML config file.
+func TestLoad_DatabaseResilienceFromFile(t *testing.T) {
+	content := `
+database:
+  external_url: "postgres://user:pass@db.example.com:5432/kratos?sslmode=require"
+  tls_mode: "verify-full"
+  connect_timeout: "30s"
+  pool:
+    max_conns: 20
+    min_conns: 5
+`
+	dir := t.TempDir()
+	cfgFile := filepath.Join(dir, "vibewarden.yaml")
+	if err := os.WriteFile(cfgFile, []byte(content), 0600); err != nil {
+		t.Fatalf("writing temp config file: %v", err)
+	}
+
+	cfg, err := config.Load(cfgFile)
+	if err != nil {
+		t.Fatalf("Load() unexpected error: %v", err)
+	}
+
+	tests := []struct {
+		name string
+		got  interface{}
+		want interface{}
+	}{
+		{"database.tls_mode", cfg.Database.TLSMode, "verify-full"},
+		{"database.pool.max_conns", cfg.Database.Pool.MaxConns, 20},
+		{"database.pool.min_conns", cfg.Database.Pool.MinConns, 5},
+		{"database.connect_timeout", cfg.Database.ConnectTimeout, "30s"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.got != tt.want {
+				t.Errorf("%s = %v, want %v", tt.name, tt.got, tt.want)
+			}
+		})
+	}
+}
