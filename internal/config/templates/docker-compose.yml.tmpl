@@ -29,7 +29,6 @@
 #   grafana         — Visualization (profile: observability)
 {{- end }}
 
-version: "3.9"
 
 services:
 {{- if or .App.Build .App.Image }}
@@ -37,7 +36,7 @@ services:
     restart: unless-stopped
 {{- if .App.Build }}
     build:
-      context: {{ .App.Build }}
+      context: ../../{{ .App.Build }}
 {{- else if .App.Image }}
     image: ${VIBEWARDEN_APP_IMAGE:-{{ .App.Image }}}
 {{- end }}
@@ -58,13 +57,13 @@ services:
     ports:
       - "{{ .Server.Port }}:{{ .Server.Port }}"
     volumes:
-      - ./vibewarden.yaml:/etc/vibewarden/vibewarden.yaml:ro
+      - ../../vibewarden.yaml:/etc/vibewarden/vibewarden.yaml:ro
 {{- if .TLS.Enabled }}
       - vibewarden-data:/var/lib/vibewarden
 {{- end }}
 {{- if .Secrets.Enabled }}
     env_file:
-      - ./.vibewarden/generated/.credentials
+      - ./.credentials
 {{- end }}
     environment:
 {{- if or .App.Build .App.Image }}
@@ -119,7 +118,7 @@ services:
     image: postgres:17-alpine
     restart: unless-stopped
     env_file:
-      - ./.vibewarden/generated/.credentials
+      - ./.credentials
     environment:
       POSTGRES_DB: kratos
       POSTGRES_USER: kratos
@@ -137,9 +136,9 @@ services:
   kratos:
     image: oryd/kratos:v1.3.1
     restart: unless-stopped
-    command: serve --config /etc/kratos/kratos.yaml --dev
+    command: serve --config /etc/kratos/kratos.yml --dev
     env_file:
-      - ./.vibewarden/generated/.credentials
+      - ./.credentials
     environment:
       DSN: "postgres://kratos:${POSTGRES_PASSWORD}@kratos-db:5432/kratos?sslmode=disable"
       SECRETS_COOKIE: "${KRATOS_SECRETS_COOKIE}"
@@ -148,7 +147,7 @@ services:
       - "4433:4433"  # Public API
       - "4434:4434"  # Admin API
     volumes:
-      - ./.vibewarden/generated/kratos:/etc/kratos:ro
+      - ./kratos:/etc/kratos:ro
     networks:
       - vibewarden
     depends_on:
@@ -169,7 +168,7 @@ services:
     cap_add:
       - IPC_LOCK
     env_file:
-      - ./.vibewarden/generated/.credentials
+      - ./.credentials
     environment:
       BAO_DEV_ROOT_TOKEN_ID: ${OPENBAO_DEV_ROOT_TOKEN}
       BAO_DEV_LISTEN_ADDRESS: "0.0.0.0:8200"
@@ -189,13 +188,13 @@ services:
   seed-secrets:
     image: quay.io/openbao/openbao:2.2.0
     env_file:
-      - ./.vibewarden/generated/.credentials
+      - ./.credentials
     environment:
       BAO_ADDR: http://openbao:8200
       BAO_TOKEN: ${OPENBAO_DEV_ROOT_TOKEN}
     volumes:
-      - ./.vibewarden/generated/seed-secrets.sh:/seed-secrets.sh:ro
-      - ./.vibewarden/generated/.credentials:/.credentials:ro
+      - ./seed-secrets.sh:/seed-secrets.sh:ro
+      - ./.credentials:/.credentials:ro
     entrypoint: sh
     command: /seed-secrets.sh
     depends_on:
@@ -212,7 +211,7 @@ services:
     environment:
       KRATOS_ADMIN_URL: http://kratos:4434
     volumes:
-      - ./scripts/seed-users.sh:/seed-users.sh:ro
+      - ../../scripts/seed-users.sh:/seed-users.sh:ro
     command: sh /seed-users.sh
     depends_on:
       kratos:
@@ -252,7 +251,7 @@ services:
     ports:
       - "{{ .Observability.PrometheusPort }}:9090"
     volumes:
-      - ./.vibewarden/generated/observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus-data:/prometheus
     networks:
       - vibewarden
@@ -271,7 +270,7 @@ services:
     ports:
       - "{{ .Observability.LokiPort }}:3100"
     volumes:
-      - ./.vibewarden/generated/observability/loki/loki-config.yml:/etc/loki/loki-config.yml:ro
+      - ./observability/loki/loki-config.yml:/etc/loki/loki-config.yml:ro
       - loki-data:/loki
     networks:
       - vibewarden
@@ -288,7 +287,7 @@ services:
     restart: unless-stopped
     command: -config.file=/etc/promtail/promtail-config.yml
     volumes:
-      - ./.vibewarden/generated/observability/promtail/promtail-config.yml:/etc/promtail/promtail-config.yml:ro
+      - ./observability/promtail/promtail-config.yml:/etc/promtail/promtail-config.yml:ro
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
     networks:
@@ -304,7 +303,7 @@ services:
     restart: unless-stopped
     command: ["--config=/etc/otelcol-contrib/config.yaml"]
     volumes:
-      - ./.vibewarden/generated/observability/otel-collector/config.yaml:/etc/otelcol-contrib/config.yaml:ro
+      - ./observability/otel-collector/config.yaml:/etc/otelcol-contrib/config.yaml:ro
     networks:
       - vibewarden
     depends_on:
@@ -330,7 +329,7 @@ services:
     networks:
       - vibewarden
     healthcheck:
-      test: ["CMD-SHELL", "wget -q --spider http://localhost:16687/ || exit 1"]
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:16686/ || exit 1"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -341,7 +340,7 @@ services:
       - observability
     restart: unless-stopped
     env_file:
-      - ./.vibewarden/generated/.credentials
+      - ./.credentials
     environment:
       GF_AUTH_ANONYMOUS_ENABLED: "true"
       GF_AUTH_ANONYMOUS_ORG_ROLE: "Admin"
@@ -350,8 +349,8 @@ services:
     ports:
       - "{{ .Observability.GrafanaPort }}:3000"
     volumes:
-      - ./.vibewarden/generated/observability/grafana/provisioning:/etc/grafana/provisioning:ro
-      - ./.vibewarden/generated/observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
       - grafana-data:/var/lib/grafana
     networks:
       - vibewarden
