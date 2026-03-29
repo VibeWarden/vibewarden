@@ -163,7 +163,7 @@ services:
 {{- if eq .Database.ExternalURL "" }}
       DSN: "postgres://kratos:${POSTGRES_PASSWORD}@kratos-db:5432/kratos?sslmode=disable"
 {{- else }}
-      DSN: "{{ .Database.ExternalURL }}"
+      DSN: "{{ .Database.BuildDSN }}"
 {{- end }}
       SECRETS_COOKIE: "${KRATOS_SECRETS_COOKIE}"
       SECRETS_CIPHER: "${KRATOS_SECRETS_CIPHER}"

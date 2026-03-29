@@ -15,12 +15,16 @@ import (
 
 // TestGenerate_Integration_ExternalPostgres verifies that the docker-compose
 // template omits the local kratos-db container and kratos-migrate init container
-// when database.external_url is set, and uses the external URL as the Kratos DSN.
+// when database.external_url is set, and uses the enriched Kratos DSN (with
+// sslmode, connect_timeout, and pool_max_conns appended by BuildDSN).
 func TestGenerate_Integration_ExternalPostgres(t *testing.T) {
 	renderer := template.NewRenderer(templates.FS)
 	svc := generate.NewService(renderer)
 
 	const externalURL = "postgres://user:pass@db.example.com:5432/kratos?sslmode=require"
+	// BuildDSN preserves the existing sslmode and appends connect_timeout and
+	// pool_max_conns. url.Values.Encode() sorts keys alphabetically.
+	const enrichedDSN = "postgres://user:pass@db.example.com:5432/kratos?connect_timeout=10&pool_max_conns=10&sslmode=require"
 
 	tests := []struct {
 		name           string
@@ -40,14 +44,15 @@ func TestGenerate_Integration_ExternalPostgres(t *testing.T) {
 			},
 			wantAbsent: []string{
 				externalURL,
+				enrichedDSN,
 			},
 		},
 		{
-			name:        "external_url set — kratos-db and kratos-migrate omitted",
+			name:        "external_url set — kratos-db and kratos-migrate omitted, DSN enriched",
 			externalURL: externalURL,
 			wantSubstrings: []string{
 				"kratos:",
-				externalURL,
+				enrichedDSN,
 			},
 			wantAbsent: []string{
 				"kratos-db:",

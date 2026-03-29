@@ -99,6 +99,17 @@ type Config struct {
 	WAF WAFConfig `mapstructure:"waf"`
 }
 
+// DatabasePoolConfig holds connection pool settings for PostgreSQL.
+type DatabasePoolConfig struct {
+	// MaxConns is the maximum number of open connections in the pool.
+	// Default: 10.
+	MaxConns int `mapstructure:"max_conns"`
+
+	// MinConns is the minimum number of idle connections kept open.
+	// Default: 2.
+	MinConns int `mapstructure:"min_conns"`
+}
+
 // DatabaseConfig holds PostgreSQL connection settings used for audit logging
 // and other persistence features.
 type DatabaseConfig struct {
@@ -114,6 +125,68 @@ type DatabaseConfig struct {
 	// Example: "postgres://user:pass@db.example.com:5432/kratos?sslmode=require"
 	// Can be set via VIBEWARDEN_DATABASE_EXTERNAL_URL env var.
 	ExternalURL string `mapstructure:"external_url"`
+
+	// TLSMode controls the PostgreSQL SSL/TLS negotiation mode when building
+	// a DSN. Accepted values: "disable", "require", "verify-ca", "verify-full".
+	// Default: "require".
+	// This value is appended as sslmode=<value> when building the DSN unless
+	// the URL already contains an sslmode query parameter.
+	TLSMode string `mapstructure:"tls_mode"`
+
+	// Pool holds connection pool settings.
+	Pool DatabasePoolConfig `mapstructure:"pool"`
+
+	// ConnectTimeout is the maximum time to wait when establishing a new
+	// Postgres connection, expressed as a Go duration string (e.g. "10s", "30s").
+	// Default: "10s".
+	ConnectTimeout string `mapstructure:"connect_timeout"`
+}
+
+// BuildDSN returns the external URL with connection resilience parameters
+// (sslmode, connect_timeout, pool_max_conns) appended as query parameters.
+// Parameters already present in ExternalURL are not overwritten.
+// Returns an empty string when ExternalURL is empty.
+func (d DatabaseConfig) BuildDSN() string {
+	if d.ExternalURL == "" {
+		return ""
+	}
+
+	u, err := url.Parse(d.ExternalURL)
+	if err != nil {
+		// ExternalURL has already been validated; this path should not be reached.
+		return d.ExternalURL
+	}
+
+	q := u.Query()
+
+	if _, ok := q["sslmode"]; !ok {
+		mode := d.TLSMode
+		if mode == "" {
+			mode = "require"
+		}
+		q.Set("sslmode", mode)
+	}
+
+	if _, ok := q["connect_timeout"]; !ok {
+		timeout := d.ConnectTimeout
+		if timeout == "" {
+			timeout = "10s"
+		}
+		// Postgres connect_timeout is in seconds (integer). Strip the "s" suffix if present.
+		secs := strings.TrimSuffix(timeout, "s")
+		q.Set("connect_timeout", secs)
+	}
+
+	if _, ok := q["pool_max_conns"]; !ok {
+		maxConns := d.Pool.MaxConns
+		if maxConns <= 0 {
+			maxConns = 10
+		}
+		q.Set("pool_max_conns", fmt.Sprintf("%d", maxConns))
+	}
+
+	u.RawQuery = q.Encode()
+	return u.String()
 }
 
 // ServerConfig holds server-related settings.
@@ -1326,6 +1399,51 @@ func (c *Config) Validate() error {
 		}
 	}
 
+	// database.tls_mode validation.
+	validTLSModes := map[string]bool{
+		"":            true, // empty means use default ("require")
+		"disable":     true,
+		"require":     true,
+		"verify-ca":   true,
+		"verify-full": true,
+	}
+	if !validTLSModes[c.Database.TLSMode] {
+		errs = append(errs, fmt.Sprintf(
+			"database.tls_mode %q is invalid; accepted values: \"disable\", \"require\", \"verify-ca\", \"verify-full\"",
+			c.Database.TLSMode,
+		))
+	}
+
+	// database.pool validation.
+	if c.Database.Pool.MaxConns < 0 {
+		errs = append(errs, fmt.Sprintf(
+			"database.pool.max_conns %d is invalid; must be >= 0",
+			c.Database.Pool.MaxConns,
+		))
+	}
+	if c.Database.Pool.MinConns < 0 {
+		errs = append(errs, fmt.Sprintf(
+			"database.pool.min_conns %d is invalid; must be >= 0",
+			c.Database.Pool.MinConns,
+		))
+	}
+	if c.Database.Pool.MaxConns > 0 && c.Database.Pool.MinConns > c.Database.Pool.MaxConns {
+		errs = append(errs, fmt.Sprintf(
+			"database.pool.min_conns (%d) must be <= database.pool.max_conns (%d)",
+			c.Database.Pool.MinConns, c.Database.Pool.MaxConns,
+		))
+	}
+
+	// database.connect_timeout validation.
+	if c.Database.ConnectTimeout != "" {
+		if _, err := time.ParseDuration(c.Database.ConnectTimeout); err != nil {
+			errs = append(errs, fmt.Sprintf(
+				"database.connect_timeout %q is not a valid duration: %s",
+				c.Database.ConnectTimeout, err.Error(),
+			))
+		}
+	}
+
 	if len(errs) > 0 {
 		return fmt.Errorf("%s", strings.Join(errs, "; "))
 	}
@@ -1438,6 +1556,10 @@ func Load(configPath string) (*Config, error) {
 	v.SetDefault("ip_filter.trust_proxy_headers", false)
 	v.SetDefault("database.url", "")
 	v.SetDefault("database.external_url", "")
+	v.SetDefault("database.tls_mode", "require")
+	v.SetDefault("database.pool.max_conns", 10)
+	v.SetDefault("database.pool.min_conns", 2)
+	v.SetDefault("database.connect_timeout", "10s")
 	v.SetDefault("webhooks.endpoints", []WebhookEndpointConfig{})
 	v.SetDefault("secrets.enabled", false)
 	v.SetDefault("secrets.provider", "openbao")
