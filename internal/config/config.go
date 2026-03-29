@@ -1353,6 +1353,12 @@ func Load(configPath string) (*Config, error) {
 		"application/x-www-form-urlencoded",
 		"multipart/form-data",
 	})
+	v.SetDefault("waf.enabled", false)
+	v.SetDefault("waf.mode", "block")
+	v.SetDefault("waf.rules.sqli", true)
+	v.SetDefault("waf.rules.xss", true)
+	v.SetDefault("waf.rules.path_traversal", true)
+	v.SetDefault("waf.rules.command_injection", true)
 
 	// Config file
 	if configPath != "" {

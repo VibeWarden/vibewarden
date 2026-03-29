@@ -58,6 +58,7 @@ func (f *fakeMetrics) IncUpstreamTimeout()                                      
 func (f *fakeMetrics) IncUpstreamRetry(_ string)                                    {}
 func (f *fakeMetrics) SetActiveConnections(_ int)                                   {}
 func (f *fakeMetrics) SetCircuitBreakerState(_ context.Context, _ resilience.State) {}
+func (f *fakeMetrics) IncWAFDetection(_, _ string)                                  {}
 
 // Compile-time assertion.
 var _ ports.MetricsCollectorWithUpstreamHealth = (*fakeMetrics)(nil)

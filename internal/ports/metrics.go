@@ -56,6 +56,12 @@ type MetricsCollector interface {
 	// gauge. The mapping is: 0=closed, 1=open, 2=half_open, matching the
 	// resilience.State constants.
 	SetCircuitBreakerState(ctx context.Context, state resilience.State)
+
+	// IncWAFDetection increments the WAF detection counter.
+	// Parameters:
+	//   - rule: the rule name that fired (e.g. "sqli-union-select")
+	//   - mode: "block" or "detect"
+	IncWAFDetection(rule, mode string)
 }
 
 // MetricsConfig holds configuration for the metrics subsystem.

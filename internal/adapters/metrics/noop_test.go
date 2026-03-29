@@ -34,4 +34,6 @@ func TestNoOpMetricsCollector_AllMethodsAreNoOps(t *testing.T) {
 	mc.SetCircuitBreakerState(context.Background(), resilience.StateClosed)
 	mc.SetCircuitBreakerState(context.Background(), resilience.StateOpen)
 	mc.SetCircuitBreakerState(context.Background(), resilience.StateHalfOpen)
+	mc.IncWAFDetection("sqli-union-select", "block")
+	mc.IncWAFDetection("xss-script-tag", "detect")
 }
