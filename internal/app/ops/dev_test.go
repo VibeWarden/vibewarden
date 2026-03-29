@@ -9,6 +9,7 @@ import (
 
 	"github.com/vibewarden/vibewarden/internal/app/ops"
 	"github.com/vibewarden/vibewarden/internal/config"
+	"github.com/vibewarden/vibewarden/internal/ports"
 )
 
 // fakeCompose is a test double for ports.ComposeRunner.
@@ -17,6 +18,8 @@ type fakeCompose struct {
 	versionStr string
 	versionErr error
 	infoErr    error
+	psResult   []ports.ContainerInfo
+	psErr      error
 
 	capturedComposeFile string
 	capturedProfiles    []string
@@ -34,6 +37,10 @@ func (f *fakeCompose) Version(_ context.Context) (string, error) {
 
 func (f *fakeCompose) Info(_ context.Context) error {
 	return f.infoErr
+}
+
+func (f *fakeCompose) PS(_ context.Context, _ string) ([]ports.ContainerInfo, error) {
+	return f.psResult, f.psErr
 }
 
 // fakeGenerator is a test double for ports.ConfigGenerator.

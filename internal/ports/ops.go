@@ -3,6 +3,18 @@ package ports
 
 import "context"
 
+// ContainerInfo holds the status of a single container reported by docker compose ps.
+type ContainerInfo struct {
+	// Name is the container name.
+	Name string
+	// Service is the Compose service name.
+	Service string
+	// State is the raw container state string (e.g. "running", "exited").
+	State string
+	// Health is the Docker health-check status ("healthy", "unhealthy", "starting", or empty).
+	Health string
+}
+
 // ComposeRunner runs Docker Compose commands.
 // Implementations shell out to the docker compose CLI.
 type ComposeRunner interface {
@@ -20,6 +32,11 @@ type ComposeRunner interface {
 	// Info returns the docker info output.
 	// Returns an error when Docker is not running.
 	Info(ctx context.Context) error
+
+	// PS returns the list of containers for the compose project.
+	// composeFile is the path to the docker-compose.yml; when empty the default
+	// discovery logic applies.  Returns an empty slice when no containers exist.
+	PS(ctx context.Context, composeFile string) ([]ContainerInfo, error)
 }
 
 // HealthChecker performs HTTP health checks against VibeWarden endpoints.

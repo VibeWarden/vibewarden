@@ -2,9 +2,13 @@
 package ops
 
 import (
+	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"os/exec"
+
+	"github.com/vibewarden/vibewarden/internal/ports"
 )
 
 // ComposeAdapter implements ports.ComposeRunner by shelling out to the
@@ -60,4 +64,46 @@ func (c *ComposeAdapter) Info(ctx context.Context) error {
 		return fmt.Errorf("docker info: %w", err)
 	}
 	return nil
+}
+
+// composeContainer is the JSON shape produced by "docker compose ps --format json".
+type composeContainer struct {
+	Name    string `json:"Name"`
+	Service string `json:"Service"`
+	State   string `json:"State"`
+	Health  string `json:"Health"`
+}
+
+// PS runs "docker compose [-f <composeFile>] ps --format json" and returns one
+// ContainerInfo per container.  An empty slice is returned when no containers
+// are running (not an error).
+func (c *ComposeAdapter) PS(ctx context.Context, composeFile string) ([]ports.ContainerInfo, error) {
+	args := []string{"compose"}
+	if composeFile != "" {
+		args = append(args, "-f", composeFile)
+	}
+	args = append(args, "ps", "--format", "json")
+
+	out, err := exec.CommandContext(ctx, "docker", args...).Output()
+	if err != nil {
+		return nil, fmt.Errorf("docker compose ps: %w", err)
+	}
+
+	// "docker compose ps --format json" outputs one JSON object per line.
+	var results []ports.ContainerInfo
+	dec := json.NewDecoder(bytes.NewReader(out))
+	for dec.More() {
+		var ct composeContainer
+		if err := dec.Decode(&ct); err != nil {
+			// Ignore malformed lines; best-effort parsing.
+			continue
+		}
+		results = append(results, ports.ContainerInfo{
+			Name:    ct.Name,
+			Service: ct.Service,
+			State:   ct.State,
+			Health:  ct.Health,
+		})
+	}
+	return results, nil
 }

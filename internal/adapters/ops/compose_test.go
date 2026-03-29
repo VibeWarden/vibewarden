@@ -108,6 +108,21 @@ func TestComposeAdapter_InfoReturnsErrorWhenDockerMissing(t *testing.T) {
 	}
 }
 
+func TestComposeAdapter_PS_CancelledContext(t *testing.T) {
+	if !dockerAvailable() {
+		t.Skip("docker binary not available")
+	}
+
+	adapter := opsadapter.NewComposeAdapter()
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_, err := adapter.PS(ctx, "")
+	if err == nil {
+		t.Fatal("expected an error because context was cancelled")
+	}
+}
+
 // commandArgs is a helper used in table-driven tests to verify the args slice
 // that would be passed to docker compose up for a given composeFile and profiles.
 func commandArgs(composeFile string, profiles []string) []string {
