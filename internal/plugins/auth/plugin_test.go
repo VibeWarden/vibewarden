@@ -2,13 +2,13 @@ package auth_test
 
 import (
 	"context"
-	"errors"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
+	"github.com/vibewarden/vibewarden/internal/domain/identity"
 	"github.com/vibewarden/vibewarden/internal/plugins/auth"
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
@@ -17,14 +17,15 @@ import (
 // Fakes
 // ---------------------------------------------------------------------------
 
-// fakeSessionChecker is a test double for ports.SessionChecker.
-type fakeSessionChecker struct {
-	session *ports.Session
-	err     error
+// fakeIdentityProvider is a test double for ports.IdentityProvider.
+type fakeIdentityProvider struct {
+	result identity.AuthResult
 }
 
-func (f *fakeSessionChecker) CheckSession(_ context.Context, _ string) (*ports.Session, error) {
-	return f.session, f.err
+func (f *fakeIdentityProvider) Name() string { return "fake" }
+
+func (f *fakeIdentityProvider) Authenticate(_ context.Context, _ *http.Request) identity.AuthResult {
+	return f.result
 }
 
 // ---------------------------------------------------------------------------
@@ -51,11 +52,14 @@ func defaultConfig() auth.Config {
 	}
 }
 
+// newFakeProvider returns a fakeIdentityProvider that returns a successful result.
+func newFakeProvider() ports.IdentityProvider {
+	ident, _ := identity.NewIdentity("user-test", "test@example.com", "kratos", true, nil)
+	return &fakeIdentityProvider{result: identity.Success(ident)}
+}
+
 func newPlugin(cfg auth.Config) *auth.Plugin {
-	fake := &fakeSessionChecker{
-		session: &ports.Session{Active: true},
-	}
-	return auth.New(cfg, discardLogger(), fake)
+	return auth.New(cfg, discardLogger(), newFakeProvider())
 }
 
 // ---------------------------------------------------------------------------
@@ -240,7 +244,7 @@ func TestPlugin_HealthCheck_KratosReachable(t *testing.T) {
 		Enabled:         true,
 		KratosPublicURL: srv.URL,
 	}
-	p := auth.New(cfg, discardLogger(), &fakeSessionChecker{})
+	p := auth.New(cfg, discardLogger(), newFakeProvider())
 	if err := p.Init(context.Background()); err != nil {
 		t.Fatalf("Init() error: %v", err)
 	}
@@ -256,7 +260,7 @@ func TestPlugin_HealthCheck_KratosUnreachable(t *testing.T) {
 		Enabled:         true,
 		KratosPublicURL: "http://127.0.0.1:19999", // nothing listening here
 	}
-	p := auth.New(cfg, discardLogger(), &fakeSessionChecker{})
+	p := auth.New(cfg, discardLogger(), newFakeProvider())
 	if err := p.Init(context.Background()); err != nil {
 		t.Fatalf("Init() error: %v", err)
 	}
@@ -286,7 +290,7 @@ func TestPlugin_HealthCheck_KratosServerError(t *testing.T) {
 		Enabled:         true,
 		KratosPublicURL: srv.URL,
 	}
-	p := auth.New(cfg, discardLogger(), &fakeSessionChecker{})
+	p := auth.New(cfg, discardLogger(), newFakeProvider())
 	if err := p.Init(context.Background()); err != nil {
 		t.Fatalf("Init() error: %v", err)
 	}
@@ -427,7 +431,7 @@ func TestPlugin_ContributeCaddyRoutes_DialAddrExtractedFromURL(t *testing.T) {
 				Enabled:         true,
 				KratosPublicURL: tt.kratosPublicURL,
 			}
-			p := auth.New(cfg, discardLogger(), &fakeSessionChecker{})
+			p := auth.New(cfg, discardLogger(), newFakeProvider())
 			if err := p.Init(context.Background()); err != nil {
 				t.Fatalf("Init() error: %v", err)
 			}
@@ -609,7 +613,7 @@ func TestPlugin_ContributeCaddyHandlers_DefaultCookieName(t *testing.T) {
 		Enabled:         true,
 		KratosPublicURL: "http://127.0.0.1:4433",
 	}
-	p := auth.New(cfg, discardLogger(), &fakeSessionChecker{})
+	p := auth.New(cfg, discardLogger(), newFakeProvider())
 	if err := p.Init(context.Background()); err != nil {
 		t.Fatalf("Init() error: %v", err)
 	}
@@ -632,7 +636,7 @@ func TestPlugin_ContributeCaddyHandlers_DefaultLoginURL(t *testing.T) {
 		Enabled:         true,
 		KratosPublicURL: "http://127.0.0.1:4433",
 	}
-	p := auth.New(cfg, discardLogger(), &fakeSessionChecker{})
+	p := auth.New(cfg, discardLogger(), newFakeProvider())
 	if err := p.Init(context.Background()); err != nil {
 		t.Fatalf("Init() error: %v", err)
 	}
@@ -651,44 +655,44 @@ func TestPlugin_ContributeCaddyHandlers_DefaultLoginURL(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// SessionChecker injection
+// IdentityProvider injection
 // ---------------------------------------------------------------------------
 
-func TestPlugin_SessionChecker_FakeInjected(t *testing.T) {
-	session := &ports.Session{
-		ID:     "test-session-id",
-		Active: true,
-		Identity: ports.Identity{
-			ID:    "user-uuid",
-			Email: "user@example.com",
-		},
-	}
-	fake := &fakeSessionChecker{session: session}
+func TestPlugin_IdentityProvider_FakeInjected(t *testing.T) {
+	ident, _ := identity.NewIdentity("user-uuid", "user@example.com", "kratos", true, nil)
+	fake := &fakeIdentityProvider{result: identity.Success(ident)}
 	p := auth.New(defaultConfig(), discardLogger(), fake)
 	if err := p.Init(context.Background()); err != nil {
 		t.Fatalf("Init() error: %v", err)
 	}
 
-	// The injected checker must be reachable through the plugin.
-	got, err := fake.CheckSession(context.Background(), "cookie-value")
-	if err != nil {
-		t.Fatalf("CheckSession() error: %v", err)
+	// The injected provider must be usable directly.
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	result := fake.Authenticate(context.Background(), req)
+	if !result.Authenticated {
+		t.Error("Authenticate() = not authenticated, want authenticated")
 	}
-	if got.ID != session.ID {
-		t.Errorf("session ID = %q, want %q", got.ID, session.ID)
+	if result.Identity.ID() != ident.ID() {
+		t.Errorf("identity ID = %q, want %q", result.Identity.ID(), ident.ID())
 	}
 }
 
-func TestPlugin_SessionChecker_ErrorPropagated(t *testing.T) {
-	fake := &fakeSessionChecker{err: ports.ErrSessionInvalid}
+func TestPlugin_IdentityProvider_FailureResult(t *testing.T) {
+	fake := &fakeIdentityProvider{
+		result: identity.Failure("session_invalid", "session is invalid"),
+	}
 	p := auth.New(defaultConfig(), discardLogger(), fake)
 	if err := p.Init(context.Background()); err != nil {
 		t.Fatalf("Init() error: %v", err)
 	}
 
-	_, err := fake.CheckSession(context.Background(), "bad-cookie")
-	if !errors.Is(err, ports.ErrSessionInvalid) {
-		t.Errorf("CheckSession() error = %v, want ErrSessionInvalid", err)
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	result := fake.Authenticate(context.Background(), req)
+	if result.Authenticated {
+		t.Error("Authenticate() = authenticated, want not authenticated")
+	}
+	if result.Reason != "session_invalid" {
+		t.Errorf("Reason = %q, want %q", result.Reason, "session_invalid")
 	}
 }
 
@@ -789,7 +793,7 @@ func TestPlugin_ContributeCaddyRoutes_BuiltInUI_MatchesFourPaths(t *testing.T) {
 func TestPlugin_ContributeCaddyRoutes_CustomUI_NoUIRoute(t *testing.T) {
 	cfg := defaultConfig()
 	cfg.UI = auth.UIConfig{Mode: "custom", LoginURL: "https://example.com/login"}
-	p := auth.New(cfg, discardLogger(), &fakeSessionChecker{})
+	p := auth.New(cfg, discardLogger(), newFakeProvider())
 	if err := p.Init(context.Background()); err != nil {
 		t.Fatalf("Init() error: %v", err)
 	}
@@ -834,7 +838,7 @@ func TestPlugin_UIConfig_DefaultsApplied(t *testing.T) {
 		Enabled:         true,
 		KratosPublicURL: "http://127.0.0.1:4433",
 	}
-	p := auth.New(cfg, discardLogger(), &fakeSessionChecker{})
+	p := auth.New(cfg, discardLogger(), newFakeProvider())
 	if err := p.Init(context.Background()); err != nil {
 		t.Fatalf("Init() error: %v", err)
 	}
@@ -904,7 +908,7 @@ func TestPlugin_Init_CustomUI_RequiresLoginURL(t *testing.T) {
 		KratosPublicURL: "http://127.0.0.1:4433",
 		UI:              auth.UIConfig{Mode: "custom"},
 	}
-	p := auth.New(cfg, discardLogger(), &fakeSessionChecker{})
+	p := auth.New(cfg, discardLogger(), newFakeProvider())
 	err := p.Init(context.Background())
 	if err == nil {
 		t.Fatal("Init() expected error for custom mode without login_url, got nil")
@@ -920,7 +924,7 @@ func TestPlugin_Init_CustomUI_WithLoginURL_Succeeds(t *testing.T) {
 		KratosPublicURL: "http://127.0.0.1:4433",
 		UI:              auth.UIConfig{Mode: "custom", LoginURL: "https://example.com/login"},
 	}
-	p := auth.New(cfg, discardLogger(), &fakeSessionChecker{})
+	p := auth.New(cfg, discardLogger(), newFakeProvider())
 	if err := p.Init(context.Background()); err != nil {
 		t.Fatalf("Init() unexpected error: %v", err)
 	}
@@ -937,7 +941,7 @@ func TestPlugin_ContributeCaddyHandlers_CustomUI_UsesConfiguredLoginURL(t *testi
 		KratosPublicURL: "http://127.0.0.1:4433",
 		UI:              auth.UIConfig{Mode: "custom", LoginURL: customLoginURL},
 	}
-	p := auth.New(cfg, discardLogger(), &fakeSessionChecker{})
+	p := auth.New(cfg, discardLogger(), newFakeProvider())
 	if err := p.Init(context.Background()); err != nil {
 		t.Fatalf("Init() error: %v", err)
 	}
@@ -968,7 +972,7 @@ func TestPlugin_ContributeCaddyRoutes_CustomUI_OnlyKratosRoute(t *testing.T) {
 			RecoveryURL:     "https://example.com/recovery",
 		},
 	}
-	p := auth.New(cfg, discardLogger(), &fakeSessionChecker{})
+	p := auth.New(cfg, discardLogger(), newFakeProvider())
 	if err := p.Init(context.Background()); err != nil {
 		t.Fatalf("Init() error: %v", err)
 	}

@@ -38,6 +38,9 @@ type Session struct {
 }
 
 // SessionChecker validates sessions against an identity provider.
+//
+// Deprecated: Use IdentityProvider instead. SessionChecker will be removed in v2.
+// The Kratos adapter implements both interfaces during the migration period.
 type SessionChecker interface {
 	// CheckSession validates the given session cookie and returns the session if valid.
 	// Returns ErrSessionInvalid if the session is invalid or expired.

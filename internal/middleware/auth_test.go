@@ -3,49 +3,58 @@ package middleware
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
 	"github.com/vibewarden/vibewarden/internal/domain/events"
+	"github.com/vibewarden/vibewarden/internal/domain/identity"
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
 
-// fakeSessionChecker is a simple in-memory fake that implements
-// ports.SessionChecker without any mocking framework.
-type fakeSessionChecker struct {
-	// sessions maps session cookie value (full "name=value" string) to
-	// the session that should be returned.
-	sessions map[string]*ports.Session
-	// err, when non-nil, is returned for every CheckSession call
-	// regardless of the cookie value.
-	err error
+// fakeIdentityProvider is a simple in-memory fake that implements
+// ports.IdentityProvider without any mocking framework.
+type fakeIdentityProvider struct {
+	// result is returned on every Authenticate call when err is nil.
+	result identity.AuthResult
 }
 
-func (f *fakeSessionChecker) CheckSession(_ context.Context, sessionCookie string) (*ports.Session, error) {
-	if f.err != nil {
-		return nil, f.err
+func (f *fakeIdentityProvider) Name() string { return "fake" }
+
+func (f *fakeIdentityProvider) Authenticate(_ context.Context, _ *http.Request) identity.AuthResult {
+	return f.result
+}
+
+// fakeIdentityProviderWithCookie returns different results based on whether the
+// configured cookie is present in the request.
+type fakeIdentityProviderWithCookie struct {
+	cookieName   string
+	validCookies map[string]identity.Identity // cookie value → identity
+	fallbackErr  identity.AuthResult          // returned when cookie absent
+}
+
+func (f *fakeIdentityProviderWithCookie) Name() string { return "fake-cookie" }
+
+func (f *fakeIdentityProviderWithCookie) Authenticate(_ context.Context, r *http.Request) identity.AuthResult {
+	cookie, err := r.Cookie(f.cookieName)
+	if err != nil {
+		if f.fallbackErr.Reason != "" {
+			return f.fallbackErr
+		}
+		return identity.Failure("no_credentials", "no session cookie")
 	}
-	s, ok := f.sessions[sessionCookie]
+	ident, ok := f.validCookies[cookie.Value]
 	if !ok {
-		return nil, ports.ErrSessionNotFound
+		return identity.Failure("session_not_found", "session does not exist")
 	}
-	return s, nil
+	return identity.Success(ident)
 }
 
-// validSession returns a non-nil, active session for use in tests.
-func validSession() *ports.Session {
-	return &ports.Session{
-		ID:     "sess-abc",
-		Active: true,
-		Identity: ports.Identity{
-			ID:            "user-123",
-			Email:         "alice@example.com",
-			EmailVerified: true,
-		},
-	}
+// validIdentity returns a non-zero identity for use in tests.
+func validIdentity() identity.Identity {
+	ident, _ := identity.NewIdentity("user-123", "alice@example.com", "kratos", true, nil)
+	return ident
 }
 
 // newTestLogger returns a no-op slog.Logger suitable for tests.
@@ -59,14 +68,16 @@ type noopWriter struct{}
 func (noopWriter) Write(p []byte) (int, error) { return len(p), nil }
 
 func TestAuthMiddleware_UnauthenticatedRequest(t *testing.T) {
-	checker := &fakeSessionChecker{sessions: map[string]*ports.Session{}}
+	provider := &fakeIdentityProvider{
+		result: identity.Failure("no_credentials", "no session cookie"),
+	}
 	cfg := ports.AuthConfig{
 		Enabled:           true,
 		SessionCookieName: "ory_kratos_session",
 		LoginURL:          "/login",
 	}
 
-	mw := AuthMiddleware(checker, cfg, newTestLogger(), nil, nil)
+	mw := AuthMiddleware(provider, cfg, newTestLogger(), nil, nil)
 	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
@@ -85,10 +96,11 @@ func TestAuthMiddleware_UnauthenticatedRequest(t *testing.T) {
 }
 
 func TestAuthMiddleware_AuthenticatedRequest(t *testing.T) {
-	sess := validSession()
-	checker := &fakeSessionChecker{
-		sessions: map[string]*ports.Session{
-			"ory_kratos_session=valid-token": sess,
+	ident := validIdentity()
+	provider := &fakeIdentityProviderWithCookie{
+		cookieName: "ory_kratos_session",
+		validCookies: map[string]identity.Identity{
+			"valid-token": ident,
 		},
 	}
 	cfg := ports.AuthConfig{
@@ -100,7 +112,7 @@ func TestAuthMiddleware_AuthenticatedRequest(t *testing.T) {
 	nextCalled := false
 	var nextCtx context.Context
 
-	mw := AuthMiddleware(checker, cfg, newTestLogger(), nil, nil)
+	mw := AuthMiddleware(provider, cfg, newTestLogger(), nil, nil)
 	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		nextCalled = true
 		nextCtx = r.Context()
@@ -119,17 +131,20 @@ func TestAuthMiddleware_AuthenticatedRequest(t *testing.T) {
 		t.Fatal("next handler was not called for authenticated request")
 	}
 
-	gotSess, ok := SessionFromContext(nextCtx)
+	gotIdent, ok := IdentityFromContext(nextCtx)
 	if !ok {
-		t.Fatal("session not stored in context")
+		t.Fatal("identity not stored in context")
 	}
-	if gotSess.ID != sess.ID {
-		t.Errorf("context session ID = %q, want %q", gotSess.ID, sess.ID)
+	if gotIdent.ID() != ident.ID() {
+		t.Errorf("context identity ID = %q, want %q", gotIdent.ID(), ident.ID())
 	}
 }
 
 func TestAuthMiddleware_PublicPathBypass(t *testing.T) {
-	checker := &fakeSessionChecker{sessions: map[string]*ports.Session{}}
+	// Provider always returns failure — public paths must bypass auth entirely.
+	provider := &fakeIdentityProvider{
+		result: identity.Failure("no_credentials", "no session cookie"),
+	}
 	cfg := ports.AuthConfig{
 		Enabled:           true,
 		SessionCookieName: "ory_kratos_session",
@@ -148,13 +163,13 @@ func TestAuthMiddleware_PublicPathBypass(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			nextCalled := false
-			mw := AuthMiddleware(checker, cfg, newTestLogger(), nil, nil)
+			mw := AuthMiddleware(provider, cfg, newTestLogger(), nil, nil)
 			next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 				nextCalled = true
 				w.WriteHeader(http.StatusOK)
 			})
 
-			// No session cookie — but should not trigger redirect.
+			// No cookie — but should not trigger redirect.
 			req := httptest.NewRequest(http.MethodGet, tt.path, nil)
 			w := httptest.NewRecorder()
 			mw(next).ServeHTTP(w, req)
@@ -170,7 +185,9 @@ func TestAuthMiddleware_PublicPathBypass(t *testing.T) {
 }
 
 func TestAuthMiddleware_GlobPatternMatching(t *testing.T) {
-	checker := &fakeSessionChecker{sessions: map[string]*ports.Session{}}
+	provider := &fakeIdentityProvider{
+		result: identity.Failure("no_credentials", "no session cookie"),
+	}
 	cfg := ports.AuthConfig{
 		Enabled:           true,
 		SessionCookieName: "ory_kratos_session",
@@ -192,14 +209,12 @@ func TestAuthMiddleware_GlobPatternMatching(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			nextCalled := false
-			mw := AuthMiddleware(checker, cfg, newTestLogger(), nil, nil)
+			mw := AuthMiddleware(provider, cfg, newTestLogger(), nil, nil)
 			next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 				nextCalled = true
 				w.WriteHeader(http.StatusOK)
 			})
 
-			// No cookie; if path is public the next handler is called,
-			// otherwise we get a redirect.
 			req := httptest.NewRequest(http.MethodGet, tt.path, nil)
 			w := httptest.NewRecorder()
 			mw(next).ServeHTTP(w, req)
@@ -218,8 +233,8 @@ func TestAuthMiddleware_GlobPatternMatching(t *testing.T) {
 }
 
 func TestAuthMiddleware_ProviderUnavailable(t *testing.T) {
-	checker := &fakeSessionChecker{
-		err: fmt.Errorf("connection refused: %w", ports.ErrAuthProviderUnavailable),
+	provider := &fakeIdentityProvider{
+		result: identity.Failure("provider_unavailable", "connection refused: auth provider unavailable"),
 	}
 	cfg := ports.AuthConfig{
 		Enabled:           true,
@@ -227,7 +242,7 @@ func TestAuthMiddleware_ProviderUnavailable(t *testing.T) {
 		LoginURL:          "/login",
 	}
 
-	mw := AuthMiddleware(checker, cfg, newTestLogger(), nil, nil)
+	mw := AuthMiddleware(provider, cfg, newTestLogger(), nil, nil)
 	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
@@ -243,10 +258,11 @@ func TestAuthMiddleware_ProviderUnavailable(t *testing.T) {
 }
 
 func TestAuthMiddleware_XUserHeadersStripped(t *testing.T) {
-	sess := validSession()
-	checker := &fakeSessionChecker{
-		sessions: map[string]*ports.Session{
-			"ory_kratos_session=valid-token": sess,
+	ident := validIdentity()
+	provider := &fakeIdentityProviderWithCookie{
+		cookieName: "ory_kratos_session",
+		validCookies: map[string]identity.Identity{
+			"valid-token": ident,
 		},
 	}
 	cfg := ports.AuthConfig{
@@ -256,7 +272,7 @@ func TestAuthMiddleware_XUserHeadersStripped(t *testing.T) {
 	}
 
 	var receivedHeaders http.Header
-	mw := AuthMiddleware(checker, cfg, newTestLogger(), nil, nil)
+	mw := AuthMiddleware(provider, cfg, newTestLogger(), nil, nil)
 	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		receivedHeaders = r.Header.Clone()
 		w.WriteHeader(http.StatusOK)
@@ -289,7 +305,9 @@ func TestAuthMiddleware_XUserHeadersStripped(t *testing.T) {
 }
 
 func TestAuthMiddleware_XUserHeadersStrippedOnPublicPath(t *testing.T) {
-	checker := &fakeSessionChecker{sessions: map[string]*ports.Session{}}
+	provider := &fakeIdentityProvider{
+		result: identity.Failure("no_credentials", "no session cookie"),
+	}
 	cfg := ports.AuthConfig{
 		Enabled:           true,
 		SessionCookieName: "ory_kratos_session",
@@ -298,7 +316,7 @@ func TestAuthMiddleware_XUserHeadersStrippedOnPublicPath(t *testing.T) {
 	}
 
 	var receivedHeaders http.Header
-	mw := AuthMiddleware(checker, cfg, newTestLogger(), nil, nil)
+	mw := AuthMiddleware(provider, cfg, newTestLogger(), nil, nil)
 	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		receivedHeaders = r.Header.Clone()
 		w.WriteHeader(http.StatusOK)
@@ -316,7 +334,9 @@ func TestAuthMiddleware_XUserHeadersStrippedOnPublicPath(t *testing.T) {
 }
 
 func TestAuthMiddleware_VibewardenPrefixAlwaysPublic(t *testing.T) {
-	checker := &fakeSessionChecker{sessions: map[string]*ports.Session{}}
+	provider := &fakeIdentityProvider{
+		result: identity.Failure("no_credentials", "no session cookie"),
+	}
 	cfg := ports.AuthConfig{
 		Enabled:           true,
 		SessionCookieName: "ory_kratos_session",
@@ -336,13 +356,12 @@ func TestAuthMiddleware_VibewardenPrefixAlwaysPublic(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			nextCalled := false
-			mw := AuthMiddleware(checker, cfg, newTestLogger(), nil, nil)
+			mw := AuthMiddleware(provider, cfg, newTestLogger(), nil, nil)
 			next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 				nextCalled = true
 				w.WriteHeader(http.StatusOK)
 			})
 
-			// No session cookie.
 			req := httptest.NewRequest(http.MethodGet, tt.path, nil)
 			w := httptest.NewRecorder()
 			mw(next).ServeHTTP(w, req)
@@ -358,11 +377,11 @@ func TestAuthMiddleware_VibewardenPrefixAlwaysPublic(t *testing.T) {
 }
 
 func TestAuthMiddleware_DefaultCookieNameAndLoginURL(t *testing.T) {
-	sess := validSession()
-	checker := &fakeSessionChecker{
-		sessions: map[string]*ports.Session{
-			// default cookie name
-			"ory_kratos_session=token123": sess,
+	ident := validIdentity()
+	provider := &fakeIdentityProviderWithCookie{
+		cookieName: defaultSessionCookieName,
+		validCookies: map[string]identity.Identity{
+			"token123": ident,
 		},
 	}
 	// Empty SessionCookieName and LoginURL — should use defaults.
@@ -370,7 +389,7 @@ func TestAuthMiddleware_DefaultCookieNameAndLoginURL(t *testing.T) {
 		Enabled: true,
 	}
 
-	mw := AuthMiddleware(checker, cfg, newTestLogger(), nil, nil)
+	mw := AuthMiddleware(provider, cfg, newTestLogger(), nil, nil)
 	nextCalled := false
 	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		nextCalled = true
@@ -378,7 +397,7 @@ func TestAuthMiddleware_DefaultCookieNameAndLoginURL(t *testing.T) {
 	})
 
 	req := httptest.NewRequest(http.MethodGet, "/page", nil)
-	req.AddCookie(&http.Cookie{Name: "ory_kratos_session", Value: "token123"})
+	req.AddCookie(&http.Cookie{Name: defaultSessionCookieName, Value: "token123"})
 	w := httptest.NewRecorder()
 	mw(next).ServeHTTP(w, req)
 
@@ -401,23 +420,25 @@ func TestAuthMiddleware_DefaultCookieNameAndLoginURL(t *testing.T) {
 
 func TestAuthMiddleware_InvalidSessionRedirects(t *testing.T) {
 	tests := []struct {
-		name       string
-		checkerErr error
+		name   string
+		reason string
 	}{
-		{"session not found", ports.ErrSessionNotFound},
-		{"session invalid", ports.ErrSessionInvalid},
+		{"session not found", "session_not_found"},
+		{"session invalid", "session_invalid"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			checker := &fakeSessionChecker{err: tt.checkerErr}
+			provider := &fakeIdentityProvider{
+				result: identity.Failure(tt.reason, tt.reason),
+			}
 			cfg := ports.AuthConfig{
 				Enabled:           true,
 				SessionCookieName: "ory_kratos_session",
 				LoginURL:          "/login",
 			}
 
-			mw := AuthMiddleware(checker, cfg, newTestLogger(), nil, nil)
+			mw := AuthMiddleware(provider, cfg, newTestLogger(), nil, nil)
 			next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 				w.WriteHeader(http.StatusOK)
 			})
@@ -438,11 +459,9 @@ func TestAuthMiddleware_InvalidSessionRedirects(t *testing.T) {
 }
 
 func TestAuthMiddleware_EmitsAuthSuccessEvent(t *testing.T) {
-	sess := validSession()
-	checker := &fakeSessionChecker{
-		sessions: map[string]*ports.Session{
-			"ory_kratos_session=valid-token": sess,
-		},
+	ident := validIdentity()
+	provider := &fakeIdentityProvider{
+		result: identity.Success(ident),
 	}
 	cfg := ports.AuthConfig{
 		Enabled:           true,
@@ -451,7 +470,7 @@ func TestAuthMiddleware_EmitsAuthSuccessEvent(t *testing.T) {
 	}
 	spy := &fakeEventLogger{}
 
-	mw := AuthMiddleware(checker, cfg, newTestLogger(), spy, nil)
+	mw := AuthMiddleware(provider, cfg, newTestLogger(), spy, nil)
 	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
@@ -471,16 +490,18 @@ func TestAuthMiddleware_EmitsAuthSuccessEvent(t *testing.T) {
 	if ev.SchemaVersion != events.SchemaVersion {
 		t.Errorf("schema_version = %q, want %q", ev.SchemaVersion, events.SchemaVersion)
 	}
-	if ev.Payload["identity_id"] != sess.Identity.ID {
-		t.Errorf("payload.identity_id = %v, want %q", ev.Payload["identity_id"], sess.Identity.ID)
+	if ev.Payload["identity_id"] != ident.ID() {
+		t.Errorf("payload.identity_id = %v, want %q", ev.Payload["identity_id"], ident.ID())
 	}
-	if ev.Payload["email"] != sess.Identity.Email {
-		t.Errorf("payload.email = %v, want %q", ev.Payload["email"], sess.Identity.Email)
+	if ev.Payload["email"] != ident.Email() {
+		t.Errorf("payload.email = %v, want %q", ev.Payload["email"], ident.Email())
 	}
 }
 
 func TestAuthMiddleware_EmitsAuthFailedEvent(t *testing.T) {
-	checker := &fakeSessionChecker{sessions: map[string]*ports.Session{}}
+	provider := &fakeIdentityProvider{
+		result: identity.Failure("no_credentials", "missing session cookie"),
+	}
 	cfg := ports.AuthConfig{
 		Enabled:           true,
 		SessionCookieName: "ory_kratos_session",
@@ -488,12 +509,12 @@ func TestAuthMiddleware_EmitsAuthFailedEvent(t *testing.T) {
 	}
 	spy := &fakeEventLogger{}
 
-	mw := AuthMiddleware(checker, cfg, newTestLogger(), spy, nil)
+	mw := AuthMiddleware(provider, cfg, newTestLogger(), spy, nil)
 	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	// No cookie — should emit auth.failed with "missing session cookie" reason.
+	// No cookie — should emit auth.failed.
 	req := httptest.NewRequest(http.MethodGet, "/protected", nil)
 	w := httptest.NewRecorder()
 	mw(next).ServeHTTP(w, req)
@@ -511,15 +532,16 @@ func TestAuthMiddleware_EmitsAuthFailedEvent(t *testing.T) {
 }
 
 func TestAuthMiddleware_NilEventLoggerDoesNotPanic(t *testing.T) {
-	// Verify that passing nil for eventLogger does not cause a panic.
-	checker := &fakeSessionChecker{sessions: map[string]*ports.Session{}}
+	provider := &fakeIdentityProvider{
+		result: identity.Failure("no_credentials", "no session cookie"),
+	}
 	cfg := ports.AuthConfig{
 		Enabled:           true,
 		SessionCookieName: "ory_kratos_session",
 		LoginURL:          "/login",
 	}
 
-	mw := AuthMiddleware(checker, cfg, newTestLogger(), nil, nil)
+	mw := AuthMiddleware(provider, cfg, newTestLogger(), nil, nil)
 	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
@@ -532,16 +554,16 @@ func TestAuthMiddleware_NilEventLoggerDoesNotPanic(t *testing.T) {
 }
 
 func TestAuthMiddleware_503IsJSON(t *testing.T) {
-	// When Kratos is unavailable, the 503 response must be JSON with a
-	// correlation ID (trace_id or request_id).
-	checker := &fakeSessionChecker{err: ports.ErrAuthProviderUnavailable}
+	provider := &fakeIdentityProvider{
+		result: identity.Failure("provider_unavailable", "auth provider unavailable"),
+	}
 	cfg := ports.AuthConfig{
 		Enabled:           true,
 		SessionCookieName: "ory_kratos_session",
 		LoginURL:          "/login",
 	}
 
-	mw := AuthMiddleware(checker, cfg, newTestLogger(), nil, nil)
+	mw := AuthMiddleware(provider, cfg, newTestLogger(), nil, nil)
 	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})

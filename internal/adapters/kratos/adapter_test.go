@@ -16,6 +16,9 @@ import (
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
 
+// Compile-time check: *kratos.Adapter implements ports.IdentityProvider.
+var _ ports.IdentityProvider = (*kratos.Adapter)(nil)
+
 // newTestLogger returns a discard logger suitable for tests.
 func newTestLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
@@ -310,5 +313,115 @@ func TestCheckSession_MalformedJSONResponse(t *testing.T) {
 	}
 	if !errors.Is(err, ports.ErrAuthProviderUnavailable) {
 		t.Errorf("CheckSession() malformed JSON error = %v, want errors.Is(ErrAuthProviderUnavailable)", err)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// IdentityProvider (Authenticate) tests
+// ---------------------------------------------------------------------------
+
+func TestAdapterName(t *testing.T) {
+	adapter := kratos.NewAdapter("http://localhost:4433", 0, newTestLogger())
+	if got := adapter.Name(); got != "kratos" {
+		t.Errorf("Name() = %q, want %q", got, "kratos")
+	}
+}
+
+func TestAuthenticate_NoCookie(t *testing.T) {
+	adapter := kratos.NewAdapter("http://localhost:4433", 0, newTestLogger())
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+
+	result := adapter.Authenticate(context.Background(), req)
+
+	if result.Authenticated {
+		t.Error("Authenticate() = authenticated, want not authenticated")
+	}
+	if result.Reason != "no_credentials" {
+		t.Errorf("Reason = %q, want %q", result.Reason, "no_credentials")
+	}
+}
+
+func TestAuthenticate_ValidSession(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/sessions/whoami" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(validSessionBody())
+	}))
+	defer srv.Close()
+
+	adapter := kratos.NewAdapter(srv.URL, 0, newTestLogger())
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.AddCookie(&http.Cookie{Name: "ory_kratos_session", Value: "valid-token"})
+
+	result := adapter.Authenticate(context.Background(), req)
+
+	if !result.Authenticated {
+		t.Errorf("Authenticate() = not authenticated, want authenticated; reason: %s", result.Reason)
+	}
+	if result.Identity.IsZero() {
+		t.Error("Authenticate() returned zero identity on success")
+	}
+	if result.Identity.ID() != "id-abc-123" {
+		t.Errorf("Identity.ID() = %q, want %q", result.Identity.ID(), "id-abc-123")
+	}
+	if result.Identity.Email() != "user@example.com" {
+		t.Errorf("Identity.Email() = %q, want %q", result.Identity.Email(), "user@example.com")
+	}
+	if !result.Identity.EmailVerified() {
+		t.Error("Identity.EmailVerified() = false, want true")
+	}
+	if result.Identity.Provider() != "kratos" {
+		t.Errorf("Identity.Provider() = %q, want %q", result.Identity.Provider(), "kratos")
+	}
+}
+
+func TestAuthenticate_InvalidSession(t *testing.T) {
+	tests := []struct {
+		name       string
+		statusCode int
+		wantReason string
+	}{
+		{"401 unauthorized", http.StatusUnauthorized, "session_invalid"},
+		{"500 server error", http.StatusInternalServerError, "provider_unavailable"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.WriteHeader(tt.statusCode)
+			}))
+			defer srv.Close()
+
+			adapter := kratos.NewAdapter(srv.URL, 0, newTestLogger())
+			req := httptest.NewRequest(http.MethodGet, "/", nil)
+			req.AddCookie(&http.Cookie{Name: "ory_kratos_session", Value: "some-token"})
+
+			result := adapter.Authenticate(context.Background(), req)
+
+			if result.Authenticated {
+				t.Error("Authenticate() = authenticated, want not authenticated")
+			}
+			if result.Reason != tt.wantReason {
+				t.Errorf("Reason = %q, want %q", result.Reason, tt.wantReason)
+			}
+		})
+	}
+}
+
+func TestAuthenticate_ProviderUnreachable(t *testing.T) {
+	adapter := kratos.NewAdapter("http://127.0.0.1:1", 0, newTestLogger())
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.AddCookie(&http.Cookie{Name: "ory_kratos_session", Value: "some-token"})
+
+	result := adapter.Authenticate(context.Background(), req)
+
+	if result.Authenticated {
+		t.Error("Authenticate() = authenticated, want not authenticated")
+	}
+	if result.Reason != "provider_unavailable" {
+		t.Errorf("Reason = %q, want %q", result.Reason, "provider_unavailable")
 	}
 }

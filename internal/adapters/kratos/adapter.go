@@ -1,6 +1,6 @@
-// Package kratos implements the SessionChecker port using Ory Kratos.
-// It communicates with the Kratos public API over plain HTTP, avoiding
-// the heavy transitive dependencies of the Ory Kratos Go client library.
+// Package kratos implements the SessionChecker and IdentityProvider ports using
+// Ory Kratos. It communicates with the Kratos public API over plain HTTP,
+// avoiding the heavy transitive dependencies of the Ory Kratos Go client library.
 package kratos
 
 import (
@@ -12,6 +12,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/vibewarden/vibewarden/internal/domain/identity"
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
 
@@ -21,6 +22,9 @@ const (
 
 	// whoamiPath is the Kratos endpoint for session validation.
 	whoamiPath = "/sessions/whoami"
+
+	// defaultCookieName is the default Ory Kratos session cookie name.
+	defaultCookieName = "ory_kratos_session"
 )
 
 // kratosSessionResponse mirrors the relevant fields from the Kratos
@@ -51,11 +55,13 @@ type kratosVerifiableAddress struct {
 	Verified bool   `json:"verified"`
 }
 
-// Adapter implements ports.SessionChecker using the Ory Kratos public API.
+// Adapter implements ports.SessionChecker and ports.IdentityProvider using the
+// Ory Kratos public API.
 type Adapter struct {
-	publicURL string
-	client    *http.Client
-	logger    *slog.Logger
+	publicURL  string
+	client     *http.Client
+	logger     *slog.Logger
+	cookieName string
 }
 
 // NewAdapter creates a new Kratos adapter.
@@ -66,10 +72,65 @@ func NewAdapter(publicURL string, timeout time.Duration, logger *slog.Logger) *A
 		timeout = defaultTimeout
 	}
 	return &Adapter{
-		publicURL: publicURL,
-		client:    &http.Client{Timeout: timeout},
-		logger:    logger,
+		publicURL:  publicURL,
+		client:     &http.Client{Timeout: timeout},
+		logger:     logger,
+		cookieName: defaultCookieName,
 	}
+}
+
+// Name implements ports.IdentityProvider.
+// Returns "kratos" as the provider identifier.
+func (a *Adapter) Name() string { return "kratos" }
+
+// Authenticate implements ports.IdentityProvider.
+// It extracts the session cookie from the request, validates it with Kratos,
+// and returns an AuthResult with the user's identity.
+//
+// Returns Failure("no_credentials", ...) when no session cookie is present.
+// Returns Failure("session_invalid", ...) when the session is invalid or expired.
+// Returns Failure("provider_unavailable", ...) when Kratos cannot be reached.
+func (a *Adapter) Authenticate(ctx context.Context, r *http.Request) identity.AuthResult {
+	cookieName := a.cookieName
+	if cookieName == "" {
+		cookieName = defaultCookieName
+	}
+
+	cookie, err := r.Cookie(cookieName)
+	if err != nil {
+		// http.ErrNoCookie is the only error Cookie returns — no credentials for this provider.
+		return identity.Failure("no_credentials", "no session cookie")
+	}
+
+	sessionCookie := cookieName + "=" + cookie.Value
+
+	session, err := a.CheckSession(ctx, sessionCookie)
+	if err != nil {
+		switch {
+		case errors.Is(err, ports.ErrSessionInvalid):
+			return identity.Failure("session_invalid", "session is invalid or expired")
+		case errors.Is(err, ports.ErrSessionNotFound):
+			return identity.Failure("session_not_found", "session does not exist")
+		case errors.Is(err, ports.ErrAuthProviderUnavailable):
+			return identity.Failure("provider_unavailable", err.Error())
+		default:
+			return identity.Failure("auth_error", err.Error())
+		}
+	}
+
+	// Map Kratos session to domain Identity using traits as claims.
+	ident, err := identity.NewIdentity(
+		session.Identity.ID,
+		session.Identity.Email,
+		"kratos",
+		session.Identity.EmailVerified,
+		session.Identity.Traits,
+	)
+	if err != nil {
+		return identity.Failure("invalid_identity", err.Error())
+	}
+
+	return identity.Success(ident)
 }
 
 // CheckSession implements ports.SessionChecker.

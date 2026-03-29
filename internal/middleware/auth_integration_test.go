@@ -6,7 +6,7 @@
 // paths are accessible without a session.
 //
 // No external containers are required for these tests; they use fake
-// implementations of ports.SessionChecker.
+// implementations of ports.IdentityProvider.
 package middleware
 
 import (
@@ -16,31 +16,35 @@ import (
 	"net/http/httptest"
 	"testing"
 
+	"github.com/vibewarden/vibewarden/internal/domain/identity"
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
 
-// fixedSessionChecker is a test-only SessionChecker that returns a fixed session
-// or a fixed error on every call, regardless of the session cookie value.
-type fixedSessionChecker struct {
-	session *ports.Session
-	err     error
+// fixedIdentityProvider is a test-only IdentityProvider that returns a fixed
+// AuthResult on every call, regardless of the request contents.
+type fixedIdentityProvider struct {
+	result identity.AuthResult
 }
 
-func (f *fixedSessionChecker) CheckSession(_ context.Context, _ string) (*ports.Session, error) {
-	return f.session, f.err
+func (f *fixedIdentityProvider) Name() string { return "fixed" }
+
+func (f *fixedIdentityProvider) Authenticate(_ context.Context, _ *http.Request) identity.AuthResult {
+	return f.result
 }
 
 // TestAuthMiddleware_Integration_UnauthenticatedRedirect verifies that a request
 // without a session cookie is redirected to the configured login URL.
 func TestAuthMiddleware_Integration_UnauthenticatedRedirect(t *testing.T) {
-	checker := &fixedSessionChecker{err: ports.ErrSessionNotFound}
+	provider := &fixedIdentityProvider{
+		result: identity.Failure("no_credentials", "no session cookie"),
+	}
 	cfg := ports.AuthConfig{
 		Enabled:           true,
 		SessionCookieName: "ory_kratos_session",
 		LoginURL:          "/self-service/login/browser",
 	}
 
-	handler := AuthMiddleware(checker, cfg, slog.Default(), nil, nil)(
+	handler := AuthMiddleware(provider, cfg, slog.Default(), nil, nil)(
 		http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			w.WriteHeader(http.StatusOK)
 		}),
@@ -63,9 +67,10 @@ func TestAuthMiddleware_Integration_UnauthenticatedRedirect(t *testing.T) {
 // TestAuthMiddleware_Integration_PublicPathBypass verifies that a request to a
 // path matching a public path pattern is forwarded without any auth check.
 func TestAuthMiddleware_Integration_PublicPathBypass(t *testing.T) {
-	// Checker always returns an error; the middleware must NOT call it for
-	// public paths.
-	alwaysErr := &fixedSessionChecker{err: ports.ErrAuthProviderUnavailable}
+	// Provider always returns failure; the middleware must NOT call it for public paths.
+	alwaysErr := &fixedIdentityProvider{
+		result: identity.Failure("provider_unavailable", "unavailable"),
+	}
 
 	cfg := ports.AuthConfig{
 		Enabled:           true,
@@ -109,16 +114,18 @@ func TestAuthMiddleware_Integration_PublicPathBypass(t *testing.T) {
 }
 
 // TestAuthMiddleware_Integration_AuthProviderUnavailable verifies that when the
-// session checker returns ErrAuthProviderUnavailable the middleware responds with
+// provider returns a provider_unavailable failure, the middleware responds with
 // 503 Service Unavailable (fail closed — never fail open).
 func TestAuthMiddleware_Integration_AuthProviderUnavailable(t *testing.T) {
-	checker := &fixedSessionChecker{err: ports.ErrAuthProviderUnavailable}
+	provider := &fixedIdentityProvider{
+		result: identity.Failure("provider_unavailable", "auth provider unavailable"),
+	}
 	cfg := ports.AuthConfig{
 		Enabled:           true,
 		SessionCookieName: "ory_kratos_session",
 	}
 
-	handler := AuthMiddleware(checker, cfg, slog.Default(), nil, nil)(
+	handler := AuthMiddleware(provider, cfg, slog.Default(), nil, nil)(
 		http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			w.WriteHeader(http.StatusOK)
 		}),
@@ -135,24 +142,19 @@ func TestAuthMiddleware_Integration_AuthProviderUnavailable(t *testing.T) {
 }
 
 // TestAuthMiddleware_Integration_ValidSessionAllowsRequest verifies that a valid
-// session allows the request through to the next handler.
+// authentication result allows the request through to the next handler.
 func TestAuthMiddleware_Integration_ValidSessionAllowsRequest(t *testing.T) {
-	validSession := &ports.Session{
-		ID:     "sess-123",
-		Active: true,
-		Identity: ports.Identity{
-			ID:    "identity-456",
-			Email: "user@example.com",
-		},
+	ident, _ := identity.NewIdentity("identity-456", "user@example.com", "kratos", true, nil)
+	provider := &fixedIdentityProvider{
+		result: identity.Success(ident),
 	}
-	checker := &fixedSessionChecker{session: validSession}
 	cfg := ports.AuthConfig{
 		Enabled:           true,
 		SessionCookieName: "ory_kratos_session",
 	}
 
 	nextCalled := false
-	handler := AuthMiddleware(checker, cfg, slog.Default(), nil, nil)(
+	handler := AuthMiddleware(provider, cfg, slog.Default(), nil, nil)(
 		http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			nextCalled = true
 			w.WriteHeader(http.StatusOK)
@@ -168,18 +170,17 @@ func TestAuthMiddleware_Integration_ValidSessionAllowsRequest(t *testing.T) {
 		t.Errorf("status code = %d, want %d", rec.Code, http.StatusOK)
 	}
 	if !nextCalled {
-		t.Error("next handler was not called for a valid session")
+		t.Error("next handler was not called for a valid identity")
 	}
 }
 
 // TestAuthMiddleware_Integration_KratosFlowPathsArePublic verifies that requests
 // to Kratos self-service flow paths are treated as public and bypass auth.
-// In the full system these paths are handled by the Caddy-level Kratos route
-// before the auth middleware is involved; this test verifies the middleware
-// layer also allows them through when configured as public paths.
 func TestAuthMiddleware_Integration_KratosFlowPathsArePublic(t *testing.T) {
-	// Checker always fails; we want to confirm the middleware does NOT call it.
-	alwaysErr := &fixedSessionChecker{err: ports.ErrAuthProviderUnavailable}
+	// Provider always fails; we want to confirm the middleware does NOT call it.
+	alwaysErr := &fixedIdentityProvider{
+		result: identity.Failure("provider_unavailable", "unavailable"),
+	}
 
 	kratosFlowPaths := []string{
 		"/self-service/*",
