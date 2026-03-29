@@ -2,6 +2,7 @@ package egress_test
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -407,5 +408,153 @@ func TestHTTPHandler_ResponseHeadersPreserved(t *testing.T) {
 
 	if got := resp.Header.Get("X-Rate-Limit-Remaining"); got != "42" {
 		t.Errorf("X-Rate-Limit-Remaining = %q, want %q", got, "42")
+	}
+}
+
+// TestHandleRequest_SSRFGuard_BlocksPrivateIP verifies that HandleRequest returns
+// an error wrapping SSRFBlockedError when the egress target resolves to a private
+// IP address and block_private is true.
+func TestHandleRequest_SSRFGuard_BlocksPrivateIP(t *testing.T) {
+	guard, err := egressadapter.NewSSRFGuard(egressadapter.SSRFGuardConfig{
+		BlockPrivate: true,
+	})
+	if err != nil {
+		t.Fatalf("NewSSRFGuard: %v", err)
+	}
+
+	// Use a route that matches a target we can control.
+	// We point it at 127.0.0.1, which the guard must block.
+	resolver := egressadapter.NewRouteResolver(nil)
+	cfg := egressadapter.ProxyConfig{
+		Listen:         "127.0.0.1:0",
+		DefaultPolicy:  domainegress.PolicyAllow, // allow so the route check passes
+		DefaultTimeout: 5 * time.Second,
+		SSRFGuard:      guard,
+	}
+	proxy := egressadapter.NewProxy(cfg, resolver, nil, nil)
+
+	req, err := domainegress.NewEgressRequest("GET", "http://127.0.0.1:9999/test", nil, nil)
+	if err != nil {
+		t.Fatalf("NewEgressRequest: %v", err)
+	}
+
+	_, handleErr := proxy.HandleRequest(context.Background(), req)
+	if handleErr == nil {
+		t.Fatal("HandleRequest should have returned an error for a private IP target")
+	}
+
+	var ssrfErr *egressadapter.SSRFBlockedError
+	if !errors.As(handleErr, &ssrfErr) {
+		t.Errorf("HandleRequest error = %v; want wrapped SSRFBlockedError", handleErr)
+	}
+}
+
+// TestHTTPHandler_SSRFGuard_Returns403 verifies that the HTTP handler returns
+// 403 Forbidden when SSRF protection blocks the request.
+func TestHTTPHandler_SSRFGuard_Returns403(t *testing.T) {
+	guard, err := egressadapter.NewSSRFGuard(egressadapter.SSRFGuardConfig{
+		BlockPrivate: true,
+	})
+	if err != nil {
+		t.Fatalf("NewSSRFGuard: %v", err)
+	}
+
+	resolver := egressadapter.NewRouteResolver(nil)
+	cfg := egressadapter.ProxyConfig{
+		Listen:         "127.0.0.1:0",
+		DefaultPolicy:  domainegress.PolicyAllow,
+		DefaultTimeout: 5 * time.Second,
+		SSRFGuard:      guard,
+	}
+	proxy := egressadapter.NewProxy(cfg, resolver, nil, nil)
+
+	if err := proxy.Start(); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer proxy.Stop(context.Background()) //nolint:errcheck
+
+	proxyURL := "http://" + proxy.Addr() + "/"
+	proxyClient := &http.Client{Timeout: 5 * time.Second}
+
+	httpReq, err := http.NewRequest(http.MethodGet, proxyURL, nil)
+	if err != nil {
+		t.Fatalf("http.NewRequest: %v", err)
+	}
+	// Target a loopback address — the SSRF guard must block it.
+	httpReq.Header.Set("X-Egress-URL", "http://127.0.0.1:9999/internal/api")
+
+	resp, err := proxyClient.Do(httpReq)
+	if err != nil {
+		t.Fatalf("proxy request: %v", err)
+	}
+	defer resp.Body.Close() //nolint:errcheck
+
+	if resp.StatusCode != http.StatusForbidden {
+		t.Errorf("StatusCode = %d, want %d (SSRF should be blocked)", resp.StatusCode, http.StatusForbidden)
+	}
+
+	body, _ := io.ReadAll(resp.Body)
+	if !strings.Contains(string(body), "SSRF") {
+		t.Errorf("response body %q should mention SSRF", string(body))
+	}
+}
+
+// TestHTTPHandler_SSRFGuard_AllowedPrivateExemption verifies that a private IP
+// in the allowed_private list is not blocked.
+func TestHTTPHandler_SSRFGuard_AllowedPrivateExemption(t *testing.T) {
+	// Start a test server on loopback (which would normally be blocked).
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("internal"))
+	}))
+	defer upstream.Close()
+
+	// Extract the upstream host IP to add to allowed_private.
+	// httptest.NewServer binds to 127.0.0.1.
+	guard, err := egressadapter.NewSSRFGuard(egressadapter.SSRFGuardConfig{
+		BlockPrivate:   true,
+		AllowedPrivate: []string{"127.0.0.0/8"},
+	})
+	if err != nil {
+		t.Fatalf("NewSSRFGuard: %v", err)
+	}
+
+	route := newTestRoute(t, "internal", upstream.URL+"/api/*")
+	resolver := egressadapter.NewRouteResolver([]domainegress.Route{route})
+	cfg := egressadapter.ProxyConfig{
+		Listen:         "127.0.0.1:0",
+		DefaultPolicy:  domainegress.PolicyDeny,
+		DefaultTimeout: 5 * time.Second,
+		Routes:         []domainegress.Route{route},
+		SSRFGuard:      guard,
+	}
+	proxy := egressadapter.NewProxy(cfg, resolver, nil, nil)
+
+	if err := proxy.Start(); err != nil {
+		t.Fatalf("Start: %v", err)
+	}
+	defer proxy.Stop(context.Background()) //nolint:errcheck
+
+	proxyURL := "http://" + proxy.Addr() + "/"
+	proxyClient := &http.Client{Timeout: 5 * time.Second}
+
+	httpReq, err := http.NewRequest(http.MethodGet, proxyURL, nil)
+	if err != nil {
+		t.Fatalf("http.NewRequest: %v", err)
+	}
+	httpReq.Header.Set("X-Egress-URL", upstream.URL+"/api/resource")
+
+	resp, err := proxyClient.Do(httpReq)
+	if err != nil {
+		t.Fatalf("proxy request: %v", err)
+	}
+	defer resp.Body.Close() //nolint:errcheck
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("StatusCode = %d, want %d (exempted private IP should be allowed)", resp.StatusCode, http.StatusOK)
+	}
+	body, _ := io.ReadAll(resp.Body)
+	if string(body) != "internal" {
+		t.Errorf("body = %q, want %q", string(body), "internal")
 	}
 }

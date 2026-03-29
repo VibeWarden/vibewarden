@@ -33,6 +33,13 @@ type EgressDNSConfig struct {
 	// to private or loopback IP addresses (RFC 1918, RFC 4193, loopback).
 	// This mitigates SSRF attacks. Default: true.
 	BlockPrivate bool `mapstructure:"block_private"`
+
+	// AllowedPrivate is an optional list of CIDR ranges that are exempt from the
+	// private-IP block enforced by BlockPrivate. Use this to permit egress to
+	// specific internal services when running inside a private network.
+	// Each entry must be a valid CIDR in dotted-decimal or IPv6 notation.
+	// Example: ["10.0.0.0/8", "192.168.100.0/24"]
+	AllowedPrivate []string `mapstructure:"allowed_private"`
 }
 
 // EgressRouteConfig describes a single egress allowlist entry in the YAML config.

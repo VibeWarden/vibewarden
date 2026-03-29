@@ -6,6 +6,7 @@ package egress
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -64,6 +65,12 @@ type ProxyConfig struct {
 	// Routes is the ordered list of configured egress routes.
 	// Routes are evaluated in declaration order; the first matching route wins.
 	Routes []domainegress.Route
+
+	// SSRFGuard, when non-nil, enforces SSRF protection on all outbound
+	// connections. It intercepts DialContext calls on the HTTP transport,
+	// resolves target hostnames, and blocks requests that resolve to private
+	// or reserved IP addresses. When nil, no SSRF protection is applied.
+	SSRFGuard *SSRFGuard
 }
 
 // Proxy is an HTTP server that listens on a dedicated localhost port and
@@ -101,8 +108,13 @@ func NewProxy(cfg ProxyConfig, resolver ports.RouteResolver, client *http.Client
 		cfg.DefaultPolicy = domainegress.PolicyDeny
 	}
 	if client == nil {
+		transport := http.DefaultTransport.(*http.Transport).Clone()
+		if cfg.SSRFGuard != nil {
+			transport.DialContext = cfg.SSRFGuard.DialContext
+		}
 		client = &http.Client{
-			Timeout: cfg.DefaultTimeout,
+			Timeout:   cfg.DefaultTimeout,
+			Transport: transport,
 			// Do not follow redirects automatically — let the caller decide.
 			CheckRedirect: func(_ *http.Request, _ []*http.Request) error {
 				return http.ErrUseLastResponse
@@ -208,6 +220,16 @@ func (p *Proxy) handleRequest(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		if err == ErrDeniedByPolicy {
 			http.Error(w, "403 Forbidden: request denied by egress policy", http.StatusForbidden)
+			return
+		}
+		var ssrfErr *SSRFBlockedError
+		if errors.As(err, &ssrfErr) {
+			p.logger.WarnContext(r.Context(), "egress SSRF protection blocked request",
+				slog.String("target", targetURL),
+				slog.String("host", ssrfErr.Host),
+				slog.String("resolved_ip", ssrfErr.IP.String()),
+			)
+			http.Error(w, "403 Forbidden: "+ssrfErr.Error(), http.StatusForbidden)
 			return
 		}
 		p.logger.ErrorContext(r.Context(), "egress forwarding error",

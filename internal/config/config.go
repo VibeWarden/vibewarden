@@ -3,6 +3,7 @@ package config
 
 import (
 	"fmt"
+	"net"
 	"net/url"
 	"regexp"
 	"strings"
@@ -1491,6 +1492,16 @@ func (c *Config) Validate() error {
 func validateEgressConfig(cfg EgressConfig) []string {
 	var errs []string
 
+	// dns.allowed_private CIDR validation.
+	for i, cidr := range cfg.DNS.AllowedPrivate {
+		if _, _, err := net.ParseCIDR(cidr); err != nil {
+			errs = append(errs, fmt.Sprintf(
+				"egress.dns.allowed_private[%d] %q is not a valid CIDR: %s",
+				i, cidr, err.Error(),
+			))
+		}
+	}
+
 	// default_policy validation.
 	switch cfg.DefaultPolicy {
 	case "", "deny", "allow":
@@ -1780,6 +1791,7 @@ func Load(configPath string) (*Config, error) {
 	v.SetDefault("egress.default_policy", "deny")
 	v.SetDefault("egress.default_timeout", "30s")
 	v.SetDefault("egress.dns.block_private", true)
+	v.SetDefault("egress.dns.allowed_private", []string{})
 	v.SetDefault("egress.routes", []EgressRouteConfig{})
 
 	// Config file

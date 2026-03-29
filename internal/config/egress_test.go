@@ -319,6 +319,72 @@ func TestValidate_EgressRetries(t *testing.T) {
 	}
 }
 
+// TestValidate_EgressDNS verifies validation of egress.dns settings.
+func TestValidate_EgressDNS(t *testing.T) {
+	tests := []struct {
+		name           string
+		blockPrivate   bool
+		allowedPrivate []string
+		wantErr        bool
+		errMsg         string
+	}{
+		{
+			name:         "block_private true with no allowed_private is valid",
+			blockPrivate: true,
+			wantErr:      false,
+		},
+		{
+			name:         "block_private false is valid",
+			blockPrivate: false,
+			wantErr:      false,
+		},
+		{
+			name:           "valid allowed_private CIDRs",
+			blockPrivate:   true,
+			allowedPrivate: []string{"10.0.0.0/8", "192.168.1.0/24"},
+			wantErr:        false,
+		},
+		{
+			name:           "invalid CIDR in allowed_private",
+			blockPrivate:   true,
+			allowedPrivate: []string{"not-a-cidr"},
+			wantErr:        true,
+			errMsg:         "allowed_private",
+		},
+		{
+			name:           "second entry is invalid CIDR",
+			blockPrivate:   true,
+			allowedPrivate: []string{"10.0.0.0/8", "bad"},
+			wantErr:        true,
+			errMsg:         "allowed_private[1]",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := config.Config{
+				Egress: config.EgressConfig{
+					Enabled: true,
+					DNS: config.EgressDNSConfig{
+						BlockPrivate:   tt.blockPrivate,
+						AllowedPrivate: tt.allowedPrivate,
+					},
+				},
+			}
+			err := cfg.Validate()
+			if (err != nil) != tt.wantErr {
+				t.Errorf("Validate() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if tt.wantErr && tt.errMsg != "" {
+				if !strings.Contains(err.Error(), tt.errMsg) {
+					t.Errorf("error %q does not contain %q", err.Error(), tt.errMsg)
+				}
+			}
+		})
+	}
+}
+
 // TestValidate_EgressBodySizeLimit verifies body size limit parsing.
 func TestValidate_EgressBodySizeLimit(t *testing.T) {
 	tests := []struct {
