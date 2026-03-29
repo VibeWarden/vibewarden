@@ -76,6 +76,9 @@ func TestHandleRequest_RequestHeaderStripping(t *testing.T) {
 
 // TestHandleRequest_XInjectSecretAlwaysStripped verifies that X-Inject-Secret
 // is never forwarded upstream, even when no explicit StripRequestHeaders is set.
+// When X-Inject-Secret is present the proxy performs dynamic injection using the
+// configured SecretInjector; the header itself is always stripped from the outbound
+// request before forwarding.
 func TestHandleRequest_XInjectSecretAlwaysStripped(t *testing.T) {
 	var capturedSecret string
 
@@ -85,9 +88,23 @@ func TestHandleRequest_XInjectSecretAlwaysStripped(t *testing.T) {
 	}))
 	defer upstream.Close()
 
-	// No explicit header config — X-Inject-Secret should still be stripped.
+	// Provide an injector with the secret the dynamic header will request.
+	store := newFakeSecretStore(map[string]map[string]string{
+		"my-secret-name": {"value": "injected-value"},
+	})
+	injector := egressadapter.NewSecretInjector(store, egressadapter.SecretInjectorConfig{})
+
+	// No explicit header config — X-Inject-Secret triggers dynamic injection.
 	route := newTestRoute(t, "api", upstream.URL+"/v1/*")
-	proxy := newTestProxy(t, []domainegress.Route{route}, upstream.Client(), domainegress.PolicyDeny)
+	resolver := egressadapter.NewRouteResolver([]domainegress.Route{route})
+	cfg := egressadapter.ProxyConfig{
+		Listen:         "127.0.0.1:0",
+		DefaultPolicy:  domainegress.PolicyDeny,
+		DefaultTimeout: 5 * time.Second,
+		Routes:         []domainegress.Route{route},
+		SecretInjector: injector,
+	}
+	proxy := egressadapter.NewProxy(cfg, resolver, upstream.Client(), nil)
 
 	incoming := http.Header{"X-Inject-Secret": []string{"my-secret-name"}}
 	req, err := domainegress.NewEgressRequest("GET", upstream.URL+"/v1/resource", incoming, nil)
@@ -104,8 +121,10 @@ func TestHandleRequest_XInjectSecretAlwaysStripped(t *testing.T) {
 	}
 }
 
-// TestHandleRequest_XInjectSecretStrippedOnAllowPolicy verifies that
-// X-Inject-Secret is stripped even when default_policy is allow (unmatched route).
+// TestHandleRequest_XInjectSecretStrippedOnAllowPolicy verifies that when
+// X-Inject-Secret is present on an allow-policy (unmatched) request, the proxy
+// performs dynamic injection — resolving the secret and injecting it as the
+// Authorization header — and always strips X-Inject-Secret before forwarding.
 func TestHandleRequest_XInjectSecretStrippedOnAllowPolicy(t *testing.T) {
 	var capturedSecret string
 
@@ -115,8 +134,20 @@ func TestHandleRequest_XInjectSecretStrippedOnAllowPolicy(t *testing.T) {
 	}))
 	defer upstream.Close()
 
-	// No routes — request falls through to allow policy.
-	proxy := newTestProxy(t, nil, upstream.Client(), domainegress.PolicyAllow)
+	store := newFakeSecretStore(map[string]map[string]string{
+		"leaked-secret": {"value": "safe-injected-value"},
+	})
+	injector := egressadapter.NewSecretInjector(store, egressadapter.SecretInjectorConfig{})
+
+	// No routes — request falls through to allow policy, but injection still happens.
+	resolver := egressadapter.NewRouteResolver(nil)
+	cfg := egressadapter.ProxyConfig{
+		Listen:         "127.0.0.1:0",
+		DefaultPolicy:  domainegress.PolicyAllow,
+		DefaultTimeout: 5 * time.Second,
+		SecretInjector: injector,
+	}
+	proxy := egressadapter.NewProxy(cfg, resolver, upstream.Client(), nil)
 
 	incoming := http.Header{"X-Inject-Secret": []string{"leaked-secret"}}
 	req, err := domainegress.NewEgressRequest("GET", upstream.URL+"/anything", incoming, nil)
