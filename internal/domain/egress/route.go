@@ -70,6 +70,7 @@ type Route struct {
 	methods        []string
 	timeout        time.Duration
 	secret         SecretConfig
+	headers        HeadersConfig
 	rateLimit      string
 	circuitBreaker CircuitBreakerConfig
 	retry          RetryConfig
@@ -81,6 +82,7 @@ type routeOptions struct {
 	methods        []string
 	timeout        time.Duration
 	secret         SecretConfig
+	headers        HeadersConfig
 	rateLimit      string
 	circuitBreaker CircuitBreakerConfig
 	retry          RetryConfig
@@ -127,6 +129,11 @@ func WithBodySizeLimit(bytes int64) RouteOption {
 	return func(o *routeOptions) { o.bodySizeLimit = bytes }
 }
 
+// WithHeaders configures per-route header injection and stripping rules.
+func WithHeaders(cfg HeadersConfig) RouteOption {
+	return func(o *routeOptions) { o.headers = cfg }
+}
+
 // NewRoute constructs a Route value object.
 // Returns an error when name is empty, pattern is empty, or the pattern is
 // not a valid URL glob (as accepted by path.Match).
@@ -152,6 +159,7 @@ func NewRoute(name, pattern string, opts ...RouteOption) (Route, error) {
 		methods:        o.methods,
 		timeout:        o.timeout,
 		secret:         o.secret,
+		headers:        o.headers,
 		rateLimit:      o.rateLimit,
 		circuitBreaker: o.circuitBreaker,
 		retry:          o.retry,
@@ -189,6 +197,9 @@ func (r Route) Retry() RetryConfig { return r.retry }
 // BodySizeLimit returns the maximum allowed body size in bytes for this route.
 // A value of 0 means no limit.
 func (r Route) BodySizeLimit() int64 { return r.bodySizeLimit }
+
+// Headers returns the per-route header manipulation configuration.
+func (r Route) Headers() HeadersConfig { return r.headers }
 
 // MatchesMethod reports whether the given HTTP method is allowed by this route.
 // When Methods is empty, all methods are considered a match.

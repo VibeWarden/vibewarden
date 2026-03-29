@@ -329,6 +329,12 @@ func patternBase(pattern string) string {
 
 // forward builds and executes an outbound HTTP request for the given egress
 // request and route match, then wraps the upstream response in an EgressResponse.
+//
+// Header manipulation is applied in two phases:
+//  1. Before forwarding: per-route injection and stripping rules are applied to
+//     the outbound request headers (including always stripping X-Inject-Secret).
+//  2. After receiving: per-route and default sensitive response headers are
+//     stripped before the response is returned to the caller.
 func (p *Proxy) forward(ctx context.Context, req domainegress.EgressRequest, match domainegress.RouteMatch) (domainegress.EgressResponse, error) {
 	timeout := p.cfg.DefaultTimeout
 	if match.Matched && match.Route.Timeout() > 0 {
@@ -338,12 +344,22 @@ func (p *Proxy) forward(ctx context.Context, req domainegress.EgressRequest, mat
 	reqCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
+	// Apply per-route request header manipulation when a route was matched.
+	outHeaders := req.Header
+	if match.Matched {
+		outHeaders = match.Route.Headers().ApplyToRequest(req.Header)
+	} else {
+		// Always strip X-Inject-Secret even on unmatched (allow-policy) requests.
+		outHeaders = req.Header.Clone()
+		outHeaders.Del("X-Inject-Secret")
+	}
+
 	body, _ := req.BodyRef.(io.Reader)
 	httpReq, err := http.NewRequestWithContext(reqCtx, req.Method, req.URL, body)
 	if err != nil {
 		return domainegress.EgressResponse{}, fmt.Errorf("building upstream request: %w", err)
 	}
-	for key, vals := range req.Header {
+	for key, vals := range outHeaders {
 		for _, v := range vals {
 			httpReq.Header.Add(key, v)
 		}
@@ -356,7 +372,16 @@ func (p *Proxy) forward(ctx context.Context, req domainegress.EgressRequest, mat
 	}
 	duration := time.Since(start)
 
-	egressResp, err := domainegress.NewEgressResponse(resp.StatusCode, resp.Header, resp.Body, duration)
+	// Apply per-route response header stripping (also strips default sensitive headers).
+	var respHeaders http.Header
+	if match.Matched {
+		respHeaders = match.Route.Headers().ApplyToResponse(resp.Header)
+	} else {
+		// Apply default sensitive-header stripping on unmatched requests too.
+		respHeaders = domainegress.HeadersConfig{}.ApplyToResponse(resp.Header)
+	}
+
+	egressResp, err := domainegress.NewEgressResponse(resp.StatusCode, respHeaders, resp.Body, duration)
 	if err != nil {
 		resp.Body.Close() //nolint:errcheck
 		return domainegress.EgressResponse{}, fmt.Errorf("building egress response: %w", err)
