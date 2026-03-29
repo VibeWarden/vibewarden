@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/go-jose/go-jose/v4"
+	domjwks "github.com/vibewarden/vibewarden/internal/domain/jwks"
 )
 
 // maxJWKSBodySize is the maximum number of bytes read from a JWKS response body.
@@ -28,6 +29,7 @@ type HTTPJWKSFetcher struct {
 
 	mu        sync.RWMutex
 	cache     *jose.JSONWebKeySet
+	cacheDOM  *domjwks.KeySet
 	cachedAt  time.Time
 	refreshMu sync.Mutex // serialises concurrent refresh requests
 }
@@ -52,14 +54,12 @@ func NewHTTPJWKSFetcher(jwksURL string, timeout, cacheTTL time.Duration, logger 
 }
 
 // FetchKeys implements ports.JWKSFetcher.
-// It returns the cached key set if it is still within the TTL, otherwise it
-// fetches a fresh copy from the remote endpoint.
-func (f *HTTPJWKSFetcher) FetchKeys(ctx context.Context) (*jose.JSONWebKeySet, error) {
+func (f *HTTPJWKSFetcher) FetchKeys(ctx context.Context) (*domjwks.KeySet, error) {
 	f.mu.RLock()
-	if f.cache != nil && time.Since(f.cachedAt) < f.cacheTTL {
-		jwks := f.cache
+	if f.cacheDOM != nil && time.Since(f.cachedAt) < f.cacheTTL {
+		ks := f.cacheDOM
 		f.mu.RUnlock()
-		return jwks, nil
+		return ks, nil
 	}
 	f.mu.RUnlock()
 
@@ -67,70 +67,76 @@ func (f *HTTPJWKSFetcher) FetchKeys(ctx context.Context) (*jose.JSONWebKeySet, e
 }
 
 // GetKey implements ports.JWKSFetcher.
-// It returns the key with the given key ID from the cache, refreshing if the
-// key is not found (supports transparent key rotation).
-//
-// On a key-miss the implementation forces a cache-bypassing fetch even if the
-// cached JWKS is within its TTL. This is necessary to handle key rotation
-// without waiting for the TTL to expire.
-func (f *HTTPJWKSFetcher) GetKey(ctx context.Context, kid string) (*jose.JSONWebKey, error) {
-	jwks, err := f.FetchKeys(ctx)
+func (f *HTTPJWKSFetcher) GetKey(ctx context.Context, kid string) (*domjwks.Key, error) {
+	ks, err := f.FetchKeys(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	if key := findKey(jwks, kid); key != nil {
+	if key := ks.FindByKID(kid); key != nil {
 		return key, nil
 	}
 
-	// Key not found in cache — force a refresh to handle key rotation.
-	// We bypass the TTL-based double-check so that a recently cached (but now
-	// stale) JWKS does not prevent us from discovering newly added keys.
-	jwks, err = f.forceRefresh(ctx)
+	// Key not found — force refresh for key rotation.
+	ks, err = f.forceRefresh(ctx)
 	if err != nil {
 		return nil, err
 	}
 
-	if key := findKey(jwks, kid); key != nil {
+	if key := ks.FindByKID(kid); key != nil {
 		return key, nil
 	}
 
 	return nil, fmt.Errorf("jwks: key not found: %s", kid)
 }
 
-// refresh fetches a fresh JWKS from the remote endpoint. It uses a mutex to
-// serialise concurrent refreshes so that at most one HTTP request is in-flight
-// at any time. A double-check after acquiring the lock avoids redundant fetches
-// when multiple goroutines race to refresh.
-func (f *HTTPJWKSFetcher) refresh(ctx context.Context) (*jose.JSONWebKeySet, error) {
+// GetRawKey retrieves the raw go-jose key for signature verification.
+// This is an adapter-internal method not exposed via the port.
+func (f *HTTPJWKSFetcher) GetRawKey(ctx context.Context, kid string) (*jose.JSONWebKey, error) {
+	f.mu.RLock()
+	if f.cache != nil && time.Since(f.cachedAt) < f.cacheTTL {
+		if key := findKey(f.cache, kid); key != nil {
+			f.mu.RUnlock()
+			return key, nil
+		}
+	}
+	f.mu.RUnlock()
+
+	// Refresh and try again.
+	if _, err := f.forceRefresh(ctx); err != nil {
+		return nil, err
+	}
+
+	f.mu.RLock()
+	defer f.mu.RUnlock()
+	if key := findKey(f.cache, kid); key != nil {
+		return key, nil
+	}
+	return nil, fmt.Errorf("jwks: key not found: %s", kid)
+}
+
+func (f *HTTPJWKSFetcher) refresh(ctx context.Context) (*domjwks.KeySet, error) {
 	f.refreshMu.Lock()
 	defer f.refreshMu.Unlock()
 
-	// Double-check: another goroutine may have refreshed while we waited.
 	f.mu.RLock()
-	if f.cache != nil && time.Since(f.cachedAt) < f.cacheTTL {
-		jwks := f.cache
+	if f.cacheDOM != nil && time.Since(f.cachedAt) < f.cacheTTL {
+		ks := f.cacheDOM
 		f.mu.RUnlock()
-		return jwks, nil
+		return ks, nil
 	}
 	f.mu.RUnlock()
 
 	return f.doFetch(ctx)
 }
 
-// forceRefresh unconditionally fetches a fresh JWKS from the remote endpoint,
-// bypassing the TTL-based cache check. It is used for key-rotation scenarios
-// where a key ID is missing from a freshly cached JWKS.
-func (f *HTTPJWKSFetcher) forceRefresh(ctx context.Context) (*jose.JSONWebKeySet, error) {
+func (f *HTTPJWKSFetcher) forceRefresh(ctx context.Context) (*domjwks.KeySet, error) {
 	f.refreshMu.Lock()
 	defer f.refreshMu.Unlock()
 	return f.doFetch(ctx)
 }
 
-// doFetch performs the actual HTTP fetch and updates the cache. Must be called
-// with refreshMu held.
-func (f *HTTPJWKSFetcher) doFetch(ctx context.Context) (*jose.JSONWebKeySet, error) {
-
+func (f *HTTPJWKSFetcher) doFetch(ctx context.Context) (*domjwks.KeySet, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, f.jwksURL, nil)
 	if err != nil {
 		return nil, fmt.Errorf("jwks: creating request: %w", err)
@@ -152,26 +158,36 @@ func (f *HTTPJWKSFetcher) doFetch(ctx context.Context) (*jose.JSONWebKeySet, err
 		return nil, fmt.Errorf("jwks: reading response body: %w", err)
 	}
 
-	var jwks jose.JSONWebKeySet
-	if err := json.Unmarshal(body, &jwks); err != nil {
+	var rawJWKS jose.JSONWebKeySet
+	if err := json.Unmarshal(body, &rawJWKS); err != nil {
 		return nil, fmt.Errorf("jwks: parsing key set: %w", err)
 	}
 
+	// Convert to domain type.
+	domKeys := make([]domjwks.Key, 0, len(rawJWKS.Keys))
+	for _, k := range rawJWKS.Keys {
+		domKeys = append(domKeys, domjwks.Key{
+			KID:       k.KeyID,
+			Algorithm: k.Algorithm,
+			PublicKey: k.Key,
+		})
+	}
+	domKS := &domjwks.KeySet{Keys: domKeys}
+
 	f.mu.Lock()
-	f.cache = &jwks
+	f.cache = &rawJWKS
+	f.cacheDOM = domKS
 	f.cachedAt = time.Now()
 	f.mu.Unlock()
 
 	f.logger.Info("JWKS cache refreshed",
 		slog.String("url", f.jwksURL),
-		slog.Int("key_count", len(jwks.Keys)),
+		slog.Int("key_count", len(rawJWKS.Keys)),
 	)
 
-	return &jwks, nil
+	return domKS, nil
 }
 
-// findKey looks up a key by ID in the key set and returns the first match, or
-// nil when no key with the given ID is present.
 func findKey(jwks *jose.JSONWebKeySet, kid string) *jose.JSONWebKey {
 	keys := jwks.Key(kid)
 	if len(keys) == 0 {

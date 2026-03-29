@@ -185,7 +185,7 @@ func (a *Adapter) Authenticate(ctx context.Context, r *http.Request) identity.Au
 	// Verify the JWT signature and extract claims.
 	var stdClaims josejwt.Claims
 	var customClaims map[string]any
-	if err := tok.Claims(key.Key, &stdClaims, &customClaims); err != nil {
+	if err := tok.Claims(key.PublicKey, &stdClaims, &customClaims); err != nil {
 		a.logger.WarnContext(ctx, "jwt: signature verification failed",
 			slog.String("error", err.Error()),
 		)

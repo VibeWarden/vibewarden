@@ -131,8 +131,8 @@ func TestHTTPJWKSFetcher_GetKey_Found(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetKey: %v", err)
 	}
-	if key.KeyID != "key1" {
-		t.Errorf("GetKey: KeyID = %q, want %q", key.KeyID, "key1")
+	if key.KID != "key1" {
+		t.Errorf("GetKey: KeyID = %q, want %q", key.KID, "key1")
 	}
 }
 
@@ -170,8 +170,8 @@ func TestHTTPJWKSFetcher_GetKey_TriggersRefreshOnMissingKey(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetKey(key2): %v", err)
 	}
-	if key.KeyID != "key2" {
-		t.Errorf("GetKey: KeyID = %q, want %q", key.KeyID, "key2")
+	if key.KID != "key2" {
+		t.Errorf("GetKey: KeyID = %q, want %q", key.KID, "key2")
 	}
 	if fetchCount < 2 {
 		t.Errorf("expected at least 2 fetches after key rotation, got %d", fetchCount)

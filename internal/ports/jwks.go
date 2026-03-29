@@ -1,9 +1,10 @@
+// Package ports defines the interfaces (ports) for VibeWarden's hexagonal architecture.
 package ports
 
 import (
 	"context"
 
-	"github.com/go-jose/go-jose/v4"
+	"github.com/vibewarden/vibewarden/internal/domain/jwks"
 )
 
 // JWKSFetcher retrieves JSON Web Key Sets from a remote endpoint.
@@ -14,10 +15,10 @@ type JWKSFetcher interface {
 	// when a key is not found (key rotation scenario).
 	//
 	// Returns the JWKS or an error if the endpoint cannot be reached.
-	FetchKeys(ctx context.Context) (*jose.JSONWebKeySet, error)
+	FetchKeys(ctx context.Context) (*jwks.KeySet, error)
 
 	// GetKey retrieves a specific key by key ID (kid).
 	// If the key is not in the cache, the implementation should attempt a
 	// refresh before returning an error.
-	GetKey(ctx context.Context, kid string) (*jose.JSONWebKey, error)
+	GetKey(ctx context.Context, kid string) (*jwks.Key, error)
 }

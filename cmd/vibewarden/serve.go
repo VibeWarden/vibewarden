@@ -12,6 +12,7 @@ import (
 	"github.com/spf13/cobra"
 
 	caddyadapter "github.com/vibewarden/vibewarden/internal/adapters/caddy"
+	jwtadapter "github.com/vibewarden/vibewarden/internal/adapters/jwt"
 	logadapter "github.com/vibewarden/vibewarden/internal/adapters/log"
 	ratelimitadapter "github.com/vibewarden/vibewarden/internal/adapters/ratelimit"
 	"github.com/vibewarden/vibewarden/internal/app/proxy"
@@ -262,6 +263,26 @@ func registerPlugins(
 
 	// Auth — priority 40 (registered after rate-limiting for dependency clarity;
 	// actual order is controlled by priority, but registry order matches intent)
+	var authIdentityProvider ports.IdentityProvider
+	if cfg.Auth.Mode == config.AuthModeJWT {
+		jwtFetcher := jwtadapter.NewHTTPJWKSFetcher(
+			cfg.Auth.JWT.JWKSURL, 0, cfg.Auth.JWT.CacheTTL, logger,
+		)
+		jwtAdapter, err := jwtadapter.NewAdapter(jwtadapter.Config{
+			JWKSURL:           cfg.Auth.JWT.JWKSURL,
+			IssuerURL:         cfg.Auth.JWT.IssuerURL,
+			Issuer:            cfg.Auth.JWT.Issuer,
+			Audience:          cfg.Auth.JWT.Audience,
+			AllowedAlgorithms: cfg.Auth.JWT.AllowedAlgorithms,
+			ClaimsToHeaders:   cfg.Auth.JWT.ClaimsToHeaders,
+			CacheTTL:          cfg.Auth.JWT.CacheTTL,
+		}, jwtFetcher, logger)
+		if err != nil {
+			logger.Error("failed to create JWT adapter", slog.String("error", err.Error()))
+		} else {
+			authIdentityProvider = jwtAdapter
+		}
+	}
 	registry.Register(authplugin.New(authplugin.Config{
 		Enabled:           cfg.Auth.Enabled,
 		KratosPublicURL:   cfg.Kratos.PublicURL,
@@ -270,7 +291,7 @@ func registerPlugins(
 		LoginURL:          cfg.Auth.LoginURL,
 		PublicPaths:       cfg.Auth.PublicPaths,
 		IdentitySchema:    cfg.Auth.IdentitySchema,
-	}, logger, nil))
+	}, logger, authIdentityProvider))
 
 	// User management — priority 60
 	registry.Register(usermgmtplugin.New(usermgmtplugin.Config{

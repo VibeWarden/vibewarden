@@ -14,6 +14,7 @@ import (
 
 	"github.com/go-jose/go-jose/v4"
 	josejwt "github.com/go-jose/go-jose/v4/jwt"
+	domjwks "github.com/vibewarden/vibewarden/internal/domain/jwks"
 )
 
 // testLogger returns a discard logger suitable for tests.
@@ -52,23 +53,26 @@ type fakeFetcher struct {
 	err  error
 }
 
-func (f *fakeFetcher) FetchKeys(_ context.Context) (*jose.JSONWebKeySet, error) {
+func (f *fakeFetcher) FetchKeys(_ context.Context) (*domjwks.KeySet, error) {
 	if f.err != nil {
 		return nil, f.err
 	}
-	return &jose.JSONWebKeySet{Keys: f.keys}, nil
+	ks := &domjwks.KeySet{}
+	for _, k := range f.keys {
+		ks.Keys = append(ks.Keys, domjwks.Key{KID: k.KeyID, Algorithm: k.Algorithm, PublicKey: k.Key})
+	}
+	return ks, nil
 }
 
-func (f *fakeFetcher) GetKey(_ context.Context, kid string) (*jose.JSONWebKey, error) {
+func (f *fakeFetcher) GetKey(_ context.Context, kid string) (*domjwks.Key, error) {
 	if f.err != nil {
 		return nil, f.err
 	}
 	for _, k := range f.keys {
 		if k.KeyID == kid {
-			return &k, nil
+			return &domjwks.Key{KID: k.KeyID, Algorithm: k.Algorithm, PublicKey: k.Key}, nil
 		}
 	}
-	// Use the same error prefix as HTTPJWKSFetcher so that isKeyNotFoundError works.
 	return nil, fmt.Errorf("jwks: key not found: %s", kid)
 }
 
