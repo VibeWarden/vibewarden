@@ -133,6 +133,22 @@ services:
       timeout: 5s
       retries: 10
 
+  kratos-migrate:
+    image: oryd/kratos:v1.3.1
+    restart: "no"
+    command: migrate sql -e --yes
+    env_file:
+      - ./.credentials
+    environment:
+      DSN: "postgres://kratos:${POSTGRES_PASSWORD}@kratos-db:5432/kratos?sslmode=disable"
+    volumes:
+      - ./kratos:/etc/kratos:ro
+    depends_on:
+      kratos-db:
+        condition: service_healthy
+    networks:
+      - vibewarden
+
   kratos:
     image: oryd/kratos:v1.3.1
     restart: unless-stopped
@@ -151,8 +167,8 @@ services:
     networks:
       - vibewarden
     depends_on:
-      kratos-db:
-        condition: service_healthy
+      kratos-migrate:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD-SHELL", "wget -q --spider http://localhost:4433/health/alive || exit 1"]
       interval: 10s
