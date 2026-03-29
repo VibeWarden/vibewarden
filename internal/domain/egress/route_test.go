@@ -82,6 +82,7 @@ func TestNewRoute_Accessors(t *testing.T) {
 		egress.WithCircuitBreaker(cb),
 		egress.WithRetry(retry),
 		egress.WithBodySizeLimit(52428800),
+		egress.WithResponseSizeLimit(10485760),
 	)
 	if err != nil {
 		t.Fatalf("NewRoute() unexpected error: %v", err)
@@ -102,11 +103,29 @@ func TestNewRoute_Accessors(t *testing.T) {
 	if got := r.BodySizeLimit(); got != 52428800 {
 		t.Errorf("BodySizeLimit() = %d, want %d", got, 52428800)
 	}
+	if got := r.ResponseSizeLimit(); got != 10485760 {
+		t.Errorf("ResponseSizeLimit() = %d, want %d", got, 10485760)
+	}
 	if got := r.Secret(); got != secret {
 		t.Errorf("Secret() = %+v, want %+v", got, secret)
 	}
 	if got := r.CircuitBreaker(); got != cb {
 		t.Errorf("CircuitBreaker() = %+v, want %+v", got, cb)
+	}
+}
+
+// TestNewRoute_SizeLimitDefaults verifies that BodySizeLimit and
+// ResponseSizeLimit default to 0 (no limit) when not set.
+func TestNewRoute_SizeLimitDefaults(t *testing.T) {
+	r, err := egress.NewRoute("r", "https://example.com/**")
+	if err != nil {
+		t.Fatalf("NewRoute() unexpected error: %v", err)
+	}
+	if got := r.BodySizeLimit(); got != 0 {
+		t.Errorf("BodySizeLimit() = %d, want 0 (no limit by default)", got)
+	}
+	if got := r.ResponseSizeLimit(); got != 0 {
+		t.Errorf("ResponseSizeLimit() = %d, want 0 (no limit by default)", got)
 	}
 }
 

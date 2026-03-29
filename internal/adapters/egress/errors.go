@@ -15,3 +15,8 @@ var ErrCircuitOpen = errors.New("egress: circuit breaker is open")
 // rate limiter has run out of tokens and the request is rejected before any
 // upstream contact is made.
 var ErrRateLimitExceeded = errors.New("egress: rate limit exceeded")
+
+// ErrRequestBodyTooLarge is returned by Proxy.HandleRequest when the incoming
+// request body exceeds the configured body size limit. The HTTP handler converts
+// this into a 413 Request Entity Too Large response.
+var ErrRequestBodyTooLarge = errors.New("egress: request body exceeds size limit")

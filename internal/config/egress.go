@@ -19,6 +19,16 @@ type EgressConfig struct {
 	// specify its own timeout. Accepts Go duration strings (e.g. "30s"). Default: "30s".
 	DefaultTimeout string `mapstructure:"default_timeout"`
 
+	// DefaultBodySizeLimit is the global maximum allowed request body size applied
+	// when a route does not specify its own body_size_limit. Human-readable string
+	// (e.g. "50MB"). Empty string means no global limit.
+	DefaultBodySizeLimit string `mapstructure:"default_body_size_limit"`
+
+	// DefaultResponseSizeLimit is the global maximum allowed response body size
+	// applied when a route does not specify its own response_size_limit.
+	// Human-readable string (e.g. "50MB"). Empty string means no global limit.
+	DefaultResponseSizeLimit string `mapstructure:"default_response_size_limit"`
+
 	// DNS holds DNS-level protection settings.
 	DNS EgressDNSConfig `mapstructure:"dns"`
 
@@ -82,8 +92,14 @@ type EgressRouteConfig struct {
 	Retries EgressRetryConfig `mapstructure:"retries"`
 
 	// BodySizeLimit is the maximum allowed request body size as a human-readable
-	// string (e.g. "50MB"). When empty, no body size limit is applied.
+	// string (e.g. "50MB"). When empty, EgressConfig.DefaultBodySizeLimit is used.
 	BodySizeLimit string `mapstructure:"body_size_limit"`
+
+	// ResponseSizeLimit is the maximum allowed response body size as a
+	// human-readable string (e.g. "50MB"). When the upstream response body exceeds
+	// this limit it is truncated and a warning header is added to the response.
+	// When empty, EgressConfig.DefaultResponseSizeLimit is used.
+	ResponseSizeLimit string `mapstructure:"response_size_limit"`
 }
 
 // EgressCircuitBreakerConfig holds circuit breaker parameters for an egress route.

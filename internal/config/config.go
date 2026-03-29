@@ -1523,6 +1523,24 @@ func validateEgressConfig(cfg EgressConfig) []string {
 		}
 	}
 
+	// default_body_size_limit validation.
+	if cfg.DefaultBodySizeLimit != "" {
+		if _, err := ParseBodySize(cfg.DefaultBodySizeLimit); err != nil {
+			errs = append(errs, fmt.Sprintf(
+				"egress.default_body_size_limit: %s", err.Error(),
+			))
+		}
+	}
+
+	// default_response_size_limit validation.
+	if cfg.DefaultResponseSizeLimit != "" {
+		if _, err := ParseBodySize(cfg.DefaultResponseSizeLimit); err != nil {
+			errs = append(errs, fmt.Sprintf(
+				"egress.default_response_size_limit: %s", err.Error(),
+			))
+		}
+	}
+
 	// routes validation.
 	routeNames := make(map[string]bool, len(cfg.Routes))
 	for i, r := range cfg.Routes {
@@ -1589,6 +1607,13 @@ func validateEgressConfig(cfg EgressConfig) []string {
 		if r.BodySizeLimit != "" {
 			if _, err := ParseBodySize(r.BodySizeLimit); err != nil {
 				errs = append(errs, fmt.Sprintf("%s.body_size_limit: %s", prefix, err.Error()))
+			}
+		}
+
+		// response_size_limit validation.
+		if r.ResponseSizeLimit != "" {
+			if _, err := ParseBodySize(r.ResponseSizeLimit); err != nil {
+				errs = append(errs, fmt.Sprintf("%s.response_size_limit: %s", prefix, err.Error()))
 			}
 		}
 

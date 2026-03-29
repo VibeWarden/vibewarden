@@ -416,6 +416,94 @@ func TestValidate_EgressBodySizeLimit(t *testing.T) {
 	}
 }
 
+// TestValidate_EgressResponseSizeLimit verifies per-route response size limit parsing.
+func TestValidate_EgressResponseSizeLimit(t *testing.T) {
+	tests := []struct {
+		name              string
+		responseSizeLimit string
+		wantErr           bool
+	}{
+		{"empty is valid", "", false},
+		{"50MB is valid", "50MB", false},
+		{"1GB is valid", "1GB", false},
+		{"invalid unit", "50XB", true},
+		{"no numeric value", "MB", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := config.Config{
+				Egress: config.EgressConfig{
+					Enabled: true,
+					Routes: []config.EgressRouteConfig{
+						{Name: "r", Pattern: "https://api.example.com/**", ResponseSizeLimit: tt.responseSizeLimit},
+					},
+				},
+			}
+			err := cfg.Validate()
+			if (err != nil) != tt.wantErr {
+				t.Errorf("Validate() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+// TestValidate_EgressDefaultBodySizeLimit verifies global default body size limit parsing.
+func TestValidate_EgressDefaultBodySizeLimit(t *testing.T) {
+	tests := []struct {
+		name    string
+		limit   string
+		wantErr bool
+	}{
+		{"empty is valid (no limit)", "", false},
+		{"10MB is valid", "10MB", false},
+		{"invalid unit", "10XB", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := config.Config{
+				Egress: config.EgressConfig{
+					Enabled:              true,
+					DefaultBodySizeLimit: tt.limit,
+				},
+			}
+			err := cfg.Validate()
+			if (err != nil) != tt.wantErr {
+				t.Errorf("Validate() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+// TestValidate_EgressDefaultResponseSizeLimit verifies global default response size limit parsing.
+func TestValidate_EgressDefaultResponseSizeLimit(t *testing.T) {
+	tests := []struct {
+		name    string
+		limit   string
+		wantErr bool
+	}{
+		{"empty is valid (no limit)", "", false},
+		{"100MB is valid", "100MB", false},
+		{"invalid unit", "100ZB", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := config.Config{
+				Egress: config.EgressConfig{
+					Enabled:                  true,
+					DefaultResponseSizeLimit: tt.limit,
+				},
+			}
+			err := cfg.Validate()
+			if (err != nil) != tt.wantErr {
+				t.Errorf("Validate() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
 // TestValidate_EgressSecretInjection verifies that partial secret config is rejected.
 func TestValidate_EgressSecretInjection(t *testing.T) {
 	tests := []struct {
