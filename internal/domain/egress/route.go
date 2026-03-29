@@ -98,6 +98,28 @@ func (m MTLSConfig) IsZero() bool {
 	return m.CertPath == "" && m.KeyPath == "" && m.CAPath == ""
 }
 
+// CacheConfig holds per-route response caching parameters.
+// Caching applies only to GET and HEAD requests that receive a 2xx response.
+type CacheConfig struct {
+	// Enabled activates response caching for this route.
+	Enabled bool
+
+	// TTL is how long a cached entry remains valid before it is evicted.
+	// A zero value means the cache entry never expires (not recommended in
+	// production — always set an explicit TTL).
+	TTL time.Duration
+
+	// MaxSize is the maximum number of bytes allowed for a single cached
+	// response body. Responses larger than this value are not cached.
+	// A value of 0 means no per-entry size limit is enforced.
+	MaxSize int64
+}
+
+// IsZero reports whether this CacheConfig is the zero value (caching disabled).
+func (c CacheConfig) IsZero() bool {
+	return !c.Enabled
+}
+
 // SecretConfig holds secret injection parameters for a route.
 type SecretConfig struct {
 	// Name is the OpenBao secret name to fetch and inject.
@@ -133,6 +155,7 @@ type Route struct {
 	allowInsecure     bool
 	sanitize          SanitizeConfig
 	mtls              MTLSConfig
+	cache             CacheConfig
 }
 
 // routeOptions carries optional fields supplied via functional options.
@@ -149,6 +172,7 @@ type routeOptions struct {
 	allowInsecure     bool
 	sanitize          SanitizeConfig
 	mtls              MTLSConfig
+	cache             CacheConfig
 }
 
 // RouteOption is a functional option for NewRoute.
@@ -229,6 +253,14 @@ func WithMTLS(cfg MTLSConfig) RouteOption {
 	return func(o *routeOptions) { o.mtls = cfg }
 }
 
+// WithCache enables in-memory response caching for this route.
+// Only GET and HEAD responses with a 2xx status code are cached.
+// Entries are evicted after cfg.TTL elapses or when the body size exceeds
+// cfg.MaxSize.
+func WithCache(cfg CacheConfig) RouteOption {
+	return func(o *routeOptions) { o.cache = cfg }
+}
+
 // NewRoute constructs a Route value object.
 // Returns an error when name is empty, pattern is empty, or the pattern is
 // not a valid URL glob (as accepted by path.Match).
@@ -263,6 +295,7 @@ func NewRoute(name, pattern string, opts ...RouteOption) (Route, error) {
 		allowInsecure:     o.allowInsecure,
 		sanitize:          o.sanitize,
 		mtls:              o.mtls,
+		cache:             o.cache,
 	}, nil
 }
 
@@ -316,6 +349,10 @@ func (r Route) Sanitize() SanitizeConfig { return r.sanitize }
 // MTLS returns the mutual-TLS client certificate configuration for this route.
 // A zero MTLSConfig means no mTLS is configured.
 func (r Route) MTLS() MTLSConfig { return r.mtls }
+
+// Cache returns the per-route response caching configuration.
+// A zero CacheConfig (Enabled == false) means no caching is configured.
+func (r Route) Cache() CacheConfig { return r.cache }
 
 // MatchesMethod reports whether the given HTTP method is allowed by this route.
 // When Methods is empty, all methods are considered a match.

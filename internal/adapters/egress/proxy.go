@@ -126,6 +126,13 @@ type ProxyConfig struct {
 	// nil, per-route rate limiting is disabled regardless of route configuration.
 	RateLimiters *RateLimiterRegistry
 
+	// ResponseCaches, when non-nil, is the per-route in-memory response cache
+	// registry. GET and HEAD requests that match a route with cache.enabled=true
+	// will be served from the cache when a valid entry exists, and the upstream
+	// response will be stored in the cache on a 2xx status. When nil, response
+	// caching is disabled for all routes regardless of route configuration.
+	ResponseCaches *ResponseCacheRegistry
+
 	// AllowInsecure, when true, permits plain HTTP egress requests globally.
 	// By default only HTTPS targets are allowed. Individual routes can also
 	// override this with their AllowInsecure field.
@@ -330,6 +337,17 @@ func (p *Proxy) HandleRequest(ctx context.Context, req domainegress.EgressReques
 		}
 	}
 
+	// Check in-memory response cache for cacheable requests.
+	// Only GET and HEAD requests on routes with cache.enabled=true are eligible.
+	if match.Matched && p.cfg.ResponseCaches != nil {
+		cache := p.cfg.ResponseCaches.CacheFor(match.Route)
+		if cache != nil {
+			if entry, hit := cache.Get(req.Method, req.URL, time.Now()); hit {
+				return egressResponseFromCache(entry, 0), nil
+			}
+		}
+	}
+
 	// Enforce request body size limit. The effective limit is the per-route
 	// value when set, otherwise the proxy-level default.
 	bodySizeLimit := p.cfg.DefaultBodySizeLimit
@@ -360,6 +378,26 @@ func (p *Proxy) HandleRequest(ctx context.Context, req domainegress.EgressReques
 		}
 		return domainegress.EgressResponse{}, forwardErr
 	}
+
+	// Store a cacheable response in the route's in-memory cache.
+	// The body is fully read and buffered; the response returned to the caller
+	// gets a fresh reader over the same bytes.
+	if match.Matched && p.cfg.ResponseCaches != nil && isCacheable(req.Method, resp.StatusCode) {
+		cache := p.cfg.ResponseCaches.CacheFor(match.Route)
+		if cache != nil {
+			key := cacheKey{method: req.Method, url: req.URL}
+			entry, freshBody, readErr := cacheableResponse(resp, match.Route.Cache(), key, time.Now())
+			if readErr == nil {
+				resp.BodyRef = freshBody
+				// Set MISS header to indicate this response came from upstream.
+				resp.Header.Set(headerEgressCache, "MISS")
+				if entry != nil {
+					cache.Set(entry)
+				}
+			}
+		}
+	}
+
 	return resp, nil
 }
 
