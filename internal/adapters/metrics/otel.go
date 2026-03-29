@@ -25,6 +25,9 @@ type OTelAdapter struct {
 	circuitBreakerState    ports.Int64UpDownCounter
 	upstreamHealthy        ports.Int64UpDownCounter
 	wafDetections          ports.Int64Counter
+	egressRequestsTotal    ports.Int64Counter
+	egressDuration         ports.Float64Histogram
+	egressErrorsTotal      ports.Int64Counter
 	currentConns           atomic.Int64
 	currentCBState         atomic.Int64
 	currentUpstreamHealthy atomic.Int64
@@ -118,6 +121,29 @@ func NewOTelAdapter(provider ports.OTelProvider, pathPatterns []string) (*OTelAd
 		return nil, err
 	}
 
+	egressRequestsTotal, err := meter.Int64Counter("vibewarden_egress_requests_total",
+		ports.WithDescription("Total number of egress proxy requests."),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	egressDuration, err := meter.Float64Histogram("vibewarden_egress_request_duration_seconds",
+		ports.WithDescription("Egress proxy request duration in seconds."),
+		ports.WithUnit("s"),
+		ports.WithExplicitBuckets([]float64{0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10}),
+	)
+	if err != nil {
+		return nil, err
+	}
+
+	egressErrorsTotal, err := meter.Int64Counter("vibewarden_egress_errors_total",
+		ports.WithDescription("Total number of egress proxy transport-level errors."),
+	)
+	if err != nil {
+		return nil, err
+	}
+
 	return &OTelAdapter{
 		requestsTotal:       requestsTotal,
 		requestDuration:     requestDuration,
@@ -130,6 +156,9 @@ func NewOTelAdapter(provider ports.OTelProvider, pathPatterns []string) (*OTelAd
 		circuitBreakerState: circuitBreakerState,
 		upstreamHealthy:     upstreamHealthy,
 		wafDetections:       wafDetections,
+		egressRequestsTotal: egressRequestsTotal,
+		egressDuration:      egressDuration,
+		egressErrorsTotal:   egressErrorsTotal,
 		pathMatcher:         NewPathMatcher(pathPatterns),
 		handler:             provider.Handler(),
 	}, nil
@@ -238,5 +267,29 @@ func (a *OTelAdapter) IncWAFDetection(rule, mode string) {
 	a.wafDetections.Add(context.Background(), 1,
 		ports.Attribute{Key: "rule", Value: rule},
 		ports.Attribute{Key: "mode", Value: mode},
+	)
+}
+
+// IncEgressRequestTotal implements ports.MetricsCollector.
+func (a *OTelAdapter) IncEgressRequestTotal(route, method, statusCode string) {
+	a.egressRequestsTotal.Add(context.Background(), 1,
+		ports.Attribute{Key: "route", Value: route},
+		ports.Attribute{Key: "method", Value: method},
+		ports.Attribute{Key: "status_code", Value: statusCode},
+	)
+}
+
+// ObserveEgressDuration implements ports.MetricsCollector.
+func (a *OTelAdapter) ObserveEgressDuration(route, method string, duration time.Duration) {
+	a.egressDuration.Record(context.Background(), duration.Seconds(),
+		ports.Attribute{Key: "route", Value: route},
+		ports.Attribute{Key: "method", Value: method},
+	)
+}
+
+// IncEgressErrorTotal implements ports.MetricsCollector.
+func (a *OTelAdapter) IncEgressErrorTotal(route string) {
+	a.egressErrorsTotal.Add(context.Background(), 1,
+		ports.Attribute{Key: "route", Value: route},
 	)
 }

@@ -69,6 +69,15 @@ func (f *fakeMetricsCollector) SetCircuitBreakerState(_ context.Context, _ resil
 // IncWAFDetection implements ports.MetricsCollector and does nothing.
 func (f *fakeMetricsCollector) IncWAFDetection(_, _ string) {}
 
+// IncEgressRequestTotal implements ports.MetricsCollector and does nothing.
+func (f *fakeMetricsCollector) IncEgressRequestTotal(_, _, _ string) {}
+
+// ObserveEgressDuration implements ports.MetricsCollector and does nothing.
+func (f *fakeMetricsCollector) ObserveEgressDuration(_, _ string, _ time.Duration) {}
+
+// IncEgressErrorTotal implements ports.MetricsCollector and does nothing.
+func (f *fakeMetricsCollector) IncEgressErrorTotal(_ string) {}
+
 // Compile-time check: fakeMetricsCollector satisfies ports.MetricsCollector.
 var _ ports.MetricsCollector = (*fakeMetricsCollector)(nil)
 

@@ -62,6 +62,26 @@ type MetricsCollector interface {
 	//   - rule: the rule name that fired (e.g. "sqli-union-select")
 	//   - mode: "block" or "detect"
 	IncWAFDetection(rule, mode string)
+
+	// IncEgressRequestTotal increments the egress request counter.
+	// Parameters:
+	//   - route: the matched egress route name, or "unmatched" when no route matched
+	//   - method: HTTP method (e.g. "GET", "POST")
+	//   - statusCode: HTTP response status code as string ("200", "404", etc.),
+	//     or "error" when a transport-level error occurred before a response was received
+	IncEgressRequestTotal(route, method, statusCode string)
+
+	// ObserveEgressDuration records the duration of a completed egress request.
+	// Parameters:
+	//   - route: the matched egress route name, or "unmatched" when no route matched
+	//   - method: HTTP method (e.g. "GET", "POST")
+	//   - duration: round-trip duration from request start to response received
+	ObserveEgressDuration(route, method string, duration time.Duration)
+
+	// IncEgressErrorTotal increments the egress transport-error counter.
+	// Parameters:
+	//   - route: the matched egress route name, or "unmatched" when no route matched
+	IncEgressErrorTotal(route string)
 }
 
 // MetricsConfig holds configuration for the metrics subsystem.

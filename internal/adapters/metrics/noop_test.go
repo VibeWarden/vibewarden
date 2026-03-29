@@ -36,4 +36,9 @@ func TestNoOpMetricsCollector_AllMethodsAreNoOps(t *testing.T) {
 	mc.SetCircuitBreakerState(context.Background(), resilience.StateHalfOpen)
 	mc.IncWAFDetection("sqli-union-select", "block")
 	mc.IncWAFDetection("xss-script-tag", "detect")
+	mc.IncEgressRequestTotal("stripe", "POST", "200")
+	mc.IncEgressRequestTotal("unmatched", "GET", "error")
+	mc.ObserveEgressDuration("stripe", "POST", 150*time.Millisecond)
+	mc.IncEgressErrorTotal("stripe")
+	mc.IncEgressErrorTotal("unmatched")
 }
