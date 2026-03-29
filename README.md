@@ -214,6 +214,21 @@ examples — and shows VibeWarden blocking them.
 
 ---
 
+## Example apps
+
+Minimal reference apps showing VibeWarden in front of common stacks:
+
+| Stack | Directory | Port |
+|-------|-----------|------|
+| Node.js / Express | [examples/node-express](examples/node-express/) | 3000 |
+| Python / Flask | [examples/python-flask](examples/python-flask/) | 5000 |
+| Next.js | [examples/nextjs](examples/nextjs/) | 3000 |
+
+Each example exposes `/health`, `/public`, and `/protected` endpoints and
+includes a `vibewarden.yaml`, `Dockerfile`, and a 3-step quick start README.
+
+---
+
 ## Architecture
 
 VibeWarden follows hexagonal architecture (ports and adapters) with DDD:

@@ -1,0 +1,12 @@
+{
+  "name": "node-express-example",
+  "version": "1.0.0",
+  "description": "Minimal Express.js app demonstrating VibeWarden sidecar integration",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "express": "^4.21.2"
+  }
+}

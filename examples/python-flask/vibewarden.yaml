@@ -1,0 +1,54 @@
+# VibeWarden configuration for the Python / Flask example.
+#
+# Auth mode: none — the app is fully public.
+# Switch to jwt to protect /protected behind an OIDC provider.
+# See https://vibewarden.dev/docs/auth for details.
+
+profile: dev
+
+app:
+  build: .
+
+server:
+  host: "0.0.0.0"
+  port: 8080
+
+upstream:
+  host: app
+  port: 5000
+
+tls:
+  enabled: false
+
+auth:
+  mode: none
+  public_paths:
+    - /health
+    - /public
+
+rate_limit:
+  enabled: true
+  store: memory
+  per_ip:
+    requests_per_second: 10
+    burst: 20
+  per_user:
+    requests_per_second: 20
+    burst: 40
+  trust_proxy_headers: false
+  exempt_paths:
+    - /health
+
+security_headers:
+  enabled: true
+  hsts_max_age: 31536000
+  hsts_include_subdomains: true
+  hsts_preload: false
+  content_type_nosniff: true
+  frame_option: "DENY"
+  content_security_policy: "default-src 'self'"
+  referrer_policy: "strict-origin-when-cross-origin"
+
+log:
+  level: "info"
+  format: "json"
