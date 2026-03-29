@@ -85,6 +85,36 @@ func TestNeedsRedis(t *testing.T) {
 			want: true,
 		},
 		{
+			name: "store redis with external URL returns false",
+			cfg: &config.Config{
+				RateLimit: config.RateLimitConfig{
+					Store: "redis",
+					Redis: config.RateLimitRedisConfig{URL: "redis://external.example.com:6379/0"},
+				},
+			},
+			want: false,
+		},
+		{
+			name: "store redis with rediss TLS URL returns false",
+			cfg: &config.Config{
+				RateLimit: config.RateLimitConfig{
+					Store: "redis",
+					Redis: config.RateLimitRedisConfig{URL: "rediss://user:pass@redis.example.com:6380/1"},
+				},
+			},
+			want: false,
+		},
+		{
+			name: "store redis with address only (no URL) returns true",
+			cfg: &config.Config{
+				RateLimit: config.RateLimitConfig{
+					Store: "redis",
+					Redis: config.RateLimitRedisConfig{Address: "localhost:6379"},
+				},
+			},
+			want: true,
+		},
+		{
 			name: "store memory returns false",
 			cfg:  &config.Config{RateLimit: config.RateLimitConfig{Store: "memory"}},
 			want: false,

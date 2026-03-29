@@ -10,11 +10,13 @@ func NeedsOpenBao(cfg *config.Config) bool {
 	return cfg.Secrets.Enabled
 }
 
-// NeedsRedis returns true if the config requires a Redis service in the
+// NeedsRedis returns true if the config requires a local Redis service in the
 // generated docker-compose.yml. This is the case when rate limiting uses the
-// Redis backing store.
+// Redis backing store AND no external Redis URL has been configured.
+// When rate_limit.redis.url points to an external instance, the local Redis
+// container is omitted from the generated Compose file.
 func NeedsRedis(cfg *config.Config) bool {
-	return cfg.RateLimit.Store == "redis"
+	return cfg.RateLimit.Store == "redis" && !cfg.RateLimit.Redis.HasExternalURL()
 }
 
 // NeedsObservability returns true if the config requires the observability

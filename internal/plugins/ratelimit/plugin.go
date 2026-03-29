@@ -104,6 +104,39 @@ func (p *Plugin) Init(ctx context.Context) error {
 	return nil
 }
 
+// buildRedisClient creates a *redis.Client from the plugin's RedisConfig.
+// When cfg.URL is set it is parsed with redis.ParseURL so that both redis://
+// and rediss:// (TLS) schemes are supported. Password, DB, and PoolSize fields
+// serve as explicit overrides applied on top of whatever the URL specifies.
+// When cfg.URL is empty, cfg.Address/Password/DB are used directly.
+func buildRedisClient(cfg RedisConfig) (*redis.Client, error) {
+	var opts *redis.Options
+	if cfg.URL != "" {
+		var err error
+		opts, err = redis.ParseURL(cfg.URL)
+		if err != nil {
+			return nil, fmt.Errorf("rate-limiting: parsing redis URL: %w", err)
+		}
+		// Allow explicit field overrides on top of the URL.
+		if cfg.Password != "" {
+			opts.Password = cfg.Password
+		}
+		if cfg.DB != 0 {
+			opts.DB = cfg.DB
+		}
+	} else {
+		opts = &redis.Options{
+			Addr:     cfg.Address,
+			Password: cfg.Password,
+			DB:       cfg.DB,
+		}
+	}
+	if cfg.PoolSize > 0 {
+		opts.PoolSize = cfg.PoolSize
+	}
+	return redis.NewClient(opts), nil
+}
+
 // buildFactory constructs a RateLimiterFactory based on p.cfg.Store.
 // It returns the factory, an optional Redis client (non-nil only for Redis
 // stores), and any error encountered during construction.
@@ -114,11 +147,10 @@ func (p *Plugin) buildFactory(_ context.Context) (ports.RateLimiterFactory, *red
 
 	case "redis":
 		rCfg := p.cfg.Redis
-		client := redis.NewClient(&redis.Options{
-			Addr:     rCfg.Address,
-			Password: rCfg.Password,
-			DB:       rCfg.DB,
-		})
+		client, err := buildRedisClient(rCfg)
+		if err != nil {
+			return nil, nil, err
+		}
 
 		keyPrefix := rCfg.KeyPrefix
 		if keyPrefix == "" {
