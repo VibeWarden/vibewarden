@@ -743,6 +743,28 @@ func (p *Proxy) forward(ctx context.Context, req domainegress.EgressRequest, mat
 		outHeaders.Del(headerInjectSecret)
 	}
 
+	// PII sanitization phase — strip query params and redact JSON body fields
+	// before forwarding, and build a log-safe header copy.
+	// Sanitization runs after header manipulation so that injected/stripped
+	// headers are reflected correctly in the log output.
+	if match.Matched {
+		sanitizeCfg := match.Route.Sanitize()
+		if !sanitizeCfg.IsZero() {
+			sanitizedReq, _, sanitizeResult, sanitizeErr := sanitizeRequest(reqCtx, req, sanitizeCfg)
+			if sanitizeErr != nil {
+				p.logger.ErrorContext(ctx, "egress sanitization error — request blocked",
+					slog.String("url", req.URL),
+					slog.String("err", sanitizeErr.Error()),
+				)
+				return domainegress.EgressResponse{}, fmt.Errorf("sanitizing request: %w", sanitizeErr)
+			}
+			req = sanitizedReq
+			// Emit egress.sanitized event after updating req so the URL in the
+			// event already has query params stripped.
+			p.emitSanitized(reqCtx, routeName, req, sanitizeResult)
+		}
+	}
+
 	// Secret injection phase — must happen after header manipulation so that
 	// X-Inject-Secret is extracted before being stripped.
 	//
