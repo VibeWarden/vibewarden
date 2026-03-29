@@ -20,3 +20,9 @@ var ErrRateLimitExceeded = errors.New("egress: rate limit exceeded")
 // request body exceeds the configured body size limit. The HTTP handler converts
 // this into a 413 Request Entity Too Large response.
 var ErrRequestBodyTooLarge = errors.New("egress: request body exceeds size limit")
+
+// ErrInsecureURL is returned by Proxy.HandleRequest when the target URL uses
+// plain HTTP and neither the proxy-level AllowInsecure flag nor the matched
+// route's AllowInsecure flag is set. The HTTP handler converts this into a
+// 400 Bad Request response.
+var ErrInsecureURL = errors.New("egress: plain HTTP is not allowed; use HTTPS or set allow_insecure")

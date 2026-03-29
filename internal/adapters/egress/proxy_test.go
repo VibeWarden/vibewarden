@@ -27,6 +27,8 @@ func newTestRoute(t *testing.T, name, pattern string, opts ...domainegress.Route
 // newTestProxy creates a Proxy wired to the given routes and HTTP client.
 // The proxy does not start listening — tests call HandleRequest directly
 // or drive the HTTP handler via httptest.
+// AllowInsecure is set to true so tests using plain-HTTP test servers are not
+// blocked by TLS enforcement.
 func newTestProxy(t *testing.T, routes []domainegress.Route, client *http.Client, policy domainegress.Policy) *egressadapter.Proxy {
 	t.Helper()
 	resolver := egressadapter.NewRouteResolver(routes)
@@ -35,6 +37,7 @@ func newTestProxy(t *testing.T, routes []domainegress.Route, client *http.Client
 		DefaultPolicy:  policy,
 		DefaultTimeout: 5 * time.Second,
 		Routes:         routes,
+		AllowInsecure:  true, // test servers are HTTP
 	}
 	return egressadapter.NewProxy(cfg, resolver, client, nil)
 }
@@ -133,6 +136,7 @@ func TestHTTPHandler_TransparentRouting(t *testing.T) {
 		DefaultPolicy:  domainegress.PolicyDeny,
 		DefaultTimeout: 5 * time.Second,
 		Routes:         []domainegress.Route{route},
+		AllowInsecure:  true, // test server is HTTP
 	}
 	proxy := egressadapter.NewProxy(cfg, resolver, upstream.Client(), nil)
 
@@ -184,6 +188,7 @@ func TestHTTPHandler_NamedRouting(t *testing.T) {
 		DefaultPolicy:  domainegress.PolicyDeny,
 		DefaultTimeout: 5 * time.Second,
 		Routes:         []domainegress.Route{route},
+		AllowInsecure:  true, // test server is HTTP
 	}
 	proxy := egressadapter.NewProxy(cfg, resolver, upstream.Client(), nil)
 
@@ -275,6 +280,7 @@ func TestHTTPHandler_MethodAndBodyPreserved(t *testing.T) {
 		DefaultPolicy:  domainegress.PolicyDeny,
 		DefaultTimeout: 5 * time.Second,
 		Routes:         []domainegress.Route{route},
+		AllowInsecure:  true, // test server is HTTP
 	}
 	proxy := egressadapter.NewProxy(cfg, resolver, upstream.Client(), nil)
 
@@ -383,6 +389,7 @@ func TestHTTPHandler_ResponseHeadersPreserved(t *testing.T) {
 		DefaultPolicy:  domainegress.PolicyDeny,
 		DefaultTimeout: 5 * time.Second,
 		Routes:         []domainegress.Route{route},
+		AllowInsecure:  true, // test server is HTTP
 	}
 	proxy := egressadapter.NewProxy(cfg, resolver, upstream.Client(), nil)
 
@@ -430,6 +437,7 @@ func TestHandleRequest_SSRFGuard_BlocksPrivateIP(t *testing.T) {
 		DefaultPolicy:  domainegress.PolicyAllow, // allow so the route check passes
 		DefaultTimeout: 5 * time.Second,
 		SSRFGuard:      guard,
+		AllowInsecure:  true, // TLS enforcement is not what this test exercises
 	}
 	proxy := egressadapter.NewProxy(cfg, resolver, nil, nil)
 
@@ -465,6 +473,7 @@ func TestHTTPHandler_SSRFGuard_Returns403(t *testing.T) {
 		DefaultPolicy:  domainegress.PolicyAllow,
 		DefaultTimeout: 5 * time.Second,
 		SSRFGuard:      guard,
+		AllowInsecure:  true, // TLS enforcement is not what this test exercises
 	}
 	proxy := egressadapter.NewProxy(cfg, resolver, nil, nil)
 
@@ -527,6 +536,7 @@ func TestHTTPHandler_SSRFGuard_AllowedPrivateExemption(t *testing.T) {
 		DefaultTimeout: 5 * time.Second,
 		Routes:         []domainegress.Route{route},
 		SSRFGuard:      guard,
+		AllowInsecure:  true, // TLS enforcement is not what this test exercises
 	}
 	proxy := egressadapter.NewProxy(cfg, resolver, nil, nil)
 
