@@ -66,9 +66,14 @@ Examples:
 				dir = ".vibewarden/generated"
 			}
 			fmt.Fprintf(cmd.OutOrStdout(), "Generated runtime configuration files in %s\n", dir)
-			fmt.Fprintf(cmd.OutOrStdout(), "  %s/kratos/kratos.yml\n", dir)
-			fmt.Fprintf(cmd.OutOrStdout(), "  %s/kratos/identity.schema.json\n", dir)
 			fmt.Fprintf(cmd.OutOrStdout(), "  %s/docker-compose.yml\n", dir)
+			if cfg.Auth.Enabled && cfg.Auth.Mode == config.AuthModeKratos && !cfg.Kratos.External {
+				fmt.Fprintf(cmd.OutOrStdout(), "  %s/kratos/kratos.yml\n", dir)
+				fmt.Fprintf(cmd.OutOrStdout(), "  %s/kratos/identity.schema.json\n", dir)
+			}
+			if cfg.Observability.Enabled {
+				fmt.Fprintf(cmd.OutOrStdout(), "  %s/observability/ (prometheus, grafana, loki, promtail, otel-collector)\n", dir)
+			}
 			return nil
 		},
 	}
