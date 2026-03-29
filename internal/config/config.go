@@ -309,6 +309,10 @@ const (
 	// AuthModeKratos uses Ory Kratos session-cookie authentication (default).
 	AuthModeKratos AuthMode = "kratos"
 
+	// AuthModeJWT uses JWT/OIDC Bearer token authentication.
+	// Configure the jwt.* sub-section when using this mode.
+	AuthModeJWT AuthMode = "jwt"
+
 	// AuthModeAPIKey uses API key header authentication.
 	AuthModeAPIKey AuthMode = "api-key"
 
@@ -316,6 +320,49 @@ const (
 	// environments or when authentication is handled upstream.
 	AuthModeNone AuthMode = "none"
 )
+
+// JWTConfig holds JWT/OIDC authentication settings.
+// It is used when auth.mode is "jwt".
+type JWTConfig struct {
+	// JWKSURL is the URL to fetch the JSON Web Key Set.
+	// Mutually exclusive with IssuerURL: if both are set, JWKSURL takes precedence.
+	// Example: "https://example.auth0.com/.well-known/jwks.json"
+	JWKSURL string `mapstructure:"jwks_url"`
+
+	// IssuerURL is the OIDC issuer URL for auto-discovery.
+	// When set (and JWKSURL is empty), the JWKS URL is discovered from
+	// /.well-known/openid-configuration.
+	// Example: "https://example.auth0.com/"
+	IssuerURL string `mapstructure:"issuer_url"`
+
+	// Issuer is the expected "iss" claim value.
+	// Required when mode is "jwt".
+	// Example: "https://example.auth0.com/"
+	Issuer string `mapstructure:"issuer"`
+
+	// Audience is the expected "aud" claim value.
+	// Required when mode is "jwt".
+	// Example: "my-api"
+	Audience string `mapstructure:"audience"`
+
+	// ClaimsToHeaders maps JWT claim names to HTTP header names.
+	// The mapped claims are injected into requests forwarded to the upstream app.
+	// Default: {"sub": "X-User-Id", "email": "X-User-Email", "email_verified": "X-User-Verified"}
+	// Example:
+	//   claims_to_headers:
+	//     name: X-User-Name
+	//     roles: X-User-Roles
+	ClaimsToHeaders map[string]string `mapstructure:"claims_to_headers"`
+
+	// AllowedAlgorithms restricts which signing algorithms are accepted.
+	// Default: ["RS256", "ES256"].
+	// Never include "none" or symmetric algorithms (HS256) in production.
+	AllowedAlgorithms []string `mapstructure:"allowed_algorithms"`
+
+	// CacheTTL is how long to cache the JWKS before refreshing.
+	// Accepts Go duration strings (e.g. "1h", "30m"). Default: "1h".
+	CacheTTL time.Duration `mapstructure:"cache_ttl"`
+}
 
 // AuthAPIKeyConfig holds settings specific to the API key authentication mode.
 type AuthAPIKeyConfig struct {
@@ -392,9 +439,12 @@ type AuthConfig struct {
 	Enabled bool `mapstructure:"enabled"`
 
 	// Mode selects the authentication strategy.
-	// Accepted values: "kratos" (default), "api-key", "none".
+	// Accepted values: "kratos" (default), "jwt", "api-key", "none".
 	// When empty, "kratos" is assumed for backwards compatibility.
 	Mode AuthMode `mapstructure:"mode"`
+
+	// JWT holds settings used when Mode is "jwt".
+	JWT JWTConfig `mapstructure:"jwt"`
 
 	// APIKey holds settings used when Mode is "api-key".
 	APIKey AuthAPIKeyConfig `mapstructure:"api_key"`
@@ -1047,6 +1097,31 @@ func (c *Config) Validate() error {
 			if sp.IssuerURL == "" {
 				errs = append(errs, fmt.Sprintf("%s.issuer_url is required for provider \"oidc\"", prefix))
 			}
+		}
+	}
+
+	// auth.mode validation.
+	switch c.Auth.Mode {
+	case "", AuthModeKratos, AuthModeJWT, AuthModeAPIKey, AuthModeNone:
+		// valid
+	default:
+		errs = append(errs, fmt.Sprintf(
+			"auth.mode %q is invalid; accepted values: \"kratos\", \"jwt\", \"api-key\", \"none\"",
+			c.Auth.Mode,
+		))
+	}
+
+	// auth.jwt validation (only when mode is "jwt").
+	if c.Auth.Mode == AuthModeJWT {
+		jwt := c.Auth.JWT
+		if jwt.JWKSURL == "" && jwt.IssuerURL == "" {
+			errs = append(errs, "auth.jwt: either jwks_url or issuer_url is required when auth.mode is \"jwt\"")
+		}
+		if jwt.Issuer == "" {
+			errs = append(errs, "auth.jwt.issuer is required when auth.mode is \"jwt\"")
+		}
+		if jwt.Audience == "" {
+			errs = append(errs, "auth.jwt.audience is required when auth.mode is \"jwt\"")
 		}
 	}
 
