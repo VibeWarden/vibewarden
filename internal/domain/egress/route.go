@@ -108,6 +108,7 @@ type Route struct {
 	bodySizeLimit     int64
 	responseSizeLimit int64
 	allowInsecure     bool
+	sanitize          SanitizeConfig
 }
 
 // routeOptions carries optional fields supplied via functional options.
@@ -122,6 +123,7 @@ type routeOptions struct {
 	bodySizeLimit     int64
 	responseSizeLimit int64
 	allowInsecure     bool
+	sanitize          SanitizeConfig
 }
 
 // RouteOption is a functional option for NewRoute.
@@ -185,6 +187,14 @@ func WithAllowInsecure(allow bool) RouteOption {
 	return func(o *routeOptions) { o.allowInsecure = allow }
 }
 
+// WithSanitize configures the per-route PII redaction rules. These rules
+// govern which headers are redacted in log output, which query parameters are
+// stripped before forwarding, and which JSON body fields are replaced with
+// "[REDACTED]" before the request is sent to the upstream.
+func WithSanitize(cfg SanitizeConfig) RouteOption {
+	return func(o *routeOptions) { o.sanitize = cfg }
+}
+
 // NewRoute constructs a Route value object.
 // Returns an error when name is empty, pattern is empty, or the pattern is
 // not a valid URL glob (as accepted by path.Match).
@@ -217,6 +227,7 @@ func NewRoute(name, pattern string, opts ...RouteOption) (Route, error) {
 		bodySizeLimit:     o.bodySizeLimit,
 		responseSizeLimit: o.responseSizeLimit,
 		allowInsecure:     o.allowInsecure,
+		sanitize:          o.sanitize,
 	}, nil
 }
 
@@ -262,6 +273,10 @@ func (r Route) Headers() HeadersConfig { return r.headers }
 // this route. When true, HTTP targets are accepted regardless of the proxy-level
 // default. When false, the proxy-level setting governs.
 func (r Route) AllowInsecure() bool { return r.allowInsecure }
+
+// Sanitize returns the per-route PII redaction configuration.
+// A zero SanitizeConfig means no sanitization rules are applied.
+func (r Route) Sanitize() SanitizeConfig { return r.sanitize }
 
 // MatchesMethod reports whether the given HTTP method is allowed by this route.
 // When Methods is empty, all methods are considered a match.
