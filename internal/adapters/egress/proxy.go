@@ -96,6 +96,12 @@ type ProxyConfig struct {
 	// When nil, no secret injection is performed even if a route is configured
 	// with a SecretConfig.
 	SecretInjector ports.SecretInjector
+
+	// CircuitBreakers, when non-nil, is the per-route circuit breaker registry
+	// used to short-circuit requests to routes whose upstream has been failing.
+	// When nil, circuit breaking is disabled for all routes regardless of their
+	// CircuitBreakerConfig.
+	CircuitBreakers *CircuitBreakerRegistry
 }
 
 // Proxy is an HTTP server that listens on a dedicated localhost port and
@@ -209,7 +215,8 @@ func (p *Proxy) Stop(ctx context.Context) error {
 }
 
 // HandleRequest implements ports.EgressProxy. It resolves the route for the
-// request, enforces the default policy, and forwards the request upstream.
+// request, enforces the default policy, checks the per-route circuit breaker,
+// and forwards the request upstream.
 func (p *Proxy) HandleRequest(ctx context.Context, req domainegress.EgressRequest) (domainegress.EgressResponse, error) {
 	match, err := p.resolver.Resolve(ctx, req)
 	if err != nil {
@@ -219,6 +226,17 @@ func (p *Proxy) HandleRequest(ctx context.Context, req domainegress.EgressReques
 	if !match.Matched {
 		if p.cfg.DefaultPolicy == domainegress.PolicyDeny {
 			return domainegress.EgressResponse{}, ErrDeniedByPolicy
+		}
+	}
+
+	// Check per-route circuit breaker before attempting the upstream call.
+	if match.Matched && p.cfg.CircuitBreakers != nil {
+		open, cbErr := p.cfg.CircuitBreakers.IsOpen(ctx, match.Route)
+		if cbErr != nil {
+			return domainegress.EgressResponse{}, fmt.Errorf("circuit breaker check: %w", cbErr)
+		}
+		if open {
+			return domainegress.EgressResponse{}, ErrCircuitOpen
 		}
 	}
 
@@ -250,6 +268,14 @@ func (p *Proxy) handleRequest(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		if err == ErrDeniedByPolicy {
 			http.Error(w, "403 Forbidden: request denied by egress policy", http.StatusForbidden)
+			return
+		}
+		if err == ErrCircuitOpen {
+			p.logger.WarnContext(r.Context(), "egress circuit breaker open — request rejected",
+				slog.String("target", targetURL),
+				slog.String("method", r.Method),
+			)
+			http.Error(w, "503 Service Unavailable: egress circuit breaker is open", http.StatusServiceUnavailable)
 			return
 		}
 		var ssrfErr *SSRFBlockedError
@@ -482,6 +508,9 @@ func (p *Proxy) forward(ctx context.Context, req domainegress.EgressRequest, mat
 					slog.String("method", req.Method),
 					slog.Int("attempt", attempt),
 				)
+				if match.Matched && p.cfg.CircuitBreakers != nil {
+					p.cfg.CircuitBreakers.RecordFailure(ctx, match.Route)
+				}
 				return domainegress.EgressResponse{}, fmt.Errorf("forwarding request to %s: %w", req.URL, err)
 			}
 
@@ -498,11 +527,17 @@ func (p *Proxy) forward(ctx context.Context, req domainegress.EgressRequest, mat
 				)
 				if !sleep(reqCtx, backoff) {
 					// Context cancelled during backoff — surface timeout.
+					if match.Matched && p.cfg.CircuitBreakers != nil {
+						p.cfg.CircuitBreakers.RecordFailure(ctx, match.Route)
+					}
 					return domainegress.EgressResponse{}, fmt.Errorf("forwarding request to %s: %w", req.URL, reqCtx.Err())
 				}
 				continue
 			}
 
+			if match.Matched && p.cfg.CircuitBreakers != nil {
+				p.cfg.CircuitBreakers.RecordFailure(ctx, match.Route)
+			}
 			return domainegress.EgressResponse{}, fmt.Errorf("forwarding request to %s: %w", req.URL, err)
 		}
 
@@ -535,6 +570,15 @@ func (p *Proxy) forward(ctx context.Context, req domainegress.EgressRequest, mat
 
 	if lastErr != nil {
 		return domainegress.EgressResponse{}, fmt.Errorf("forwarding request to %s: %w", req.URL, lastErr)
+	}
+
+	// Record circuit breaker outcome based on the final response status.
+	if match.Matched && p.cfg.CircuitBreakers != nil {
+		if isFailureStatus(lastResp.StatusCode) {
+			p.cfg.CircuitBreakers.RecordFailure(ctx, match.Route)
+		} else {
+			p.cfg.CircuitBreakers.RecordSuccess(ctx, match.Route)
+		}
 	}
 
 	duration := time.Since(start)
@@ -688,6 +732,13 @@ func isTimeoutError(err error) bool {
 		return netErr.Timeout()
 	}
 	return false
+}
+
+// isFailureStatus reports whether the given HTTP status code should be treated
+// as an upstream failure for circuit breaker purposes. 5xx server errors are
+// considered failures; client errors (4xx) and successful responses are not.
+func isFailureStatus(code int) bool {
+	return code >= http.StatusInternalServerError
 }
 
 // Interface guard — Proxy must implement ports.EgressProxy.
