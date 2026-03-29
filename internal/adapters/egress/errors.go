@@ -26,3 +26,9 @@ var ErrRequestBodyTooLarge = errors.New("egress: request body exceeds size limit
 // route's AllowInsecure flag is set. The HTTP handler converts this into a
 // 400 Bad Request response.
 var ErrInsecureURL = errors.New("egress: plain HTTP is not allowed; use HTTPS or set allow_insecure")
+
+// ErrMTLSHandshakeFailed is returned (wrapped) when the upstream TLS handshake
+// fails for a route that has an mTLS client certificate configured. It is used
+// to emit a structured egress.mtls_error event and log the failure with
+// additional context.
+var ErrMTLSHandshakeFailed = errors.New("egress: mTLS handshake failed")

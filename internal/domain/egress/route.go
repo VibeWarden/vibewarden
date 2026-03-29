@@ -75,6 +75,29 @@ func (r RetryConfig) IsRetryableMethod(method string) bool {
 	return false
 }
 
+// MTLSConfig holds mutual-TLS client certificate parameters for a route.
+// When non-zero, the egress proxy presents the configured client certificate
+// during the TLS handshake with the upstream.
+type MTLSConfig struct {
+	// CertPath is the filesystem path to the PEM-encoded client certificate.
+	// Must be set together with KeyPath.
+	CertPath string
+
+	// KeyPath is the filesystem path to the PEM-encoded private key for the
+	// client certificate. Must be set together with CertPath.
+	KeyPath string
+
+	// CAPath is an optional filesystem path to a PEM-encoded CA certificate
+	// bundle used to verify the server's certificate. When empty the system
+	// root CA pool is used.
+	CAPath string
+}
+
+// IsZero reports whether this MTLSConfig is the zero value (no mTLS configured).
+func (m MTLSConfig) IsZero() bool {
+	return m.CertPath == "" && m.KeyPath == "" && m.CAPath == ""
+}
+
 // SecretConfig holds secret injection parameters for a route.
 type SecretConfig struct {
 	// Name is the OpenBao secret name to fetch and inject.
@@ -109,6 +132,7 @@ type Route struct {
 	responseSizeLimit int64
 	allowInsecure     bool
 	sanitize          SanitizeConfig
+	mtls              MTLSConfig
 }
 
 // routeOptions carries optional fields supplied via functional options.
@@ -124,6 +148,7 @@ type routeOptions struct {
 	responseSizeLimit int64
 	allowInsecure     bool
 	sanitize          SanitizeConfig
+	mtls              MTLSConfig
 }
 
 // RouteOption is a functional option for NewRoute.
@@ -195,6 +220,15 @@ func WithSanitize(cfg SanitizeConfig) RouteOption {
 	return func(o *routeOptions) { o.sanitize = cfg }
 }
 
+// WithMTLS configures mutual-TLS client certificate authentication for this
+// route. When set, the egress proxy presents the given client certificate
+// during the TLS handshake with the upstream. The cert/key files must contain
+// valid PEM-encoded data; the CA file is optional and, when provided, is used
+// to verify the server's certificate instead of the system root CA pool.
+func WithMTLS(cfg MTLSConfig) RouteOption {
+	return func(o *routeOptions) { o.mtls = cfg }
+}
+
 // NewRoute constructs a Route value object.
 // Returns an error when name is empty, pattern is empty, or the pattern is
 // not a valid URL glob (as accepted by path.Match).
@@ -228,6 +262,7 @@ func NewRoute(name, pattern string, opts ...RouteOption) (Route, error) {
 		responseSizeLimit: o.responseSizeLimit,
 		allowInsecure:     o.allowInsecure,
 		sanitize:          o.sanitize,
+		mtls:              o.mtls,
 	}, nil
 }
 
@@ -277,6 +312,10 @@ func (r Route) AllowInsecure() bool { return r.allowInsecure }
 // Sanitize returns the per-route PII redaction configuration.
 // A zero SanitizeConfig means no sanitization rules are applied.
 func (r Route) Sanitize() SanitizeConfig { return r.sanitize }
+
+// MTLS returns the mutual-TLS client certificate configuration for this route.
+// A zero MTLSConfig means no mTLS is configured.
+func (r Route) MTLS() MTLSConfig { return r.mtls }
 
 // MatchesMethod reports whether the given HTTP method is allowed by this route.
 // When Methods is empty, all methods are considered a match.
