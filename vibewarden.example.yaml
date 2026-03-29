@@ -102,8 +102,118 @@ kratos:
   #   - keycloak    # Generic OIDC — any provider with an OIDC discovery endpoint
   social_providers: []
 
-# Auth middleware settings (requires kratos.public_url to be set)
+# Auth middleware settings
+#
+# auth.mode selects the authentication strategy. Valid values:
+#
+#   none     — No authentication. All requests are forwarded to the upstream
+#              without any identity check. Use only for fully public apps.
+#
+#   jwt      — JWT/OIDC bearer token validation. VibeWarden validates
+#              "Authorization: Bearer <token>" on every protected request.
+#              Recommended for most applications. Works with Auth0, Keycloak,
+#              Firebase, Cognito, Okta, Supabase, or any OIDC provider.
+#              Configure the jwt sub-section below.
+#
+#   kratos   — Ory Kratos session-cookie validation. Kratos handles login,
+#              registration, MFA, recovery, and social login flows.
+#              Requires kratos.public_url to be set.
+#
+#   api-key  — API key header validation for machine-to-machine requests.
+#              Configure the api_key sub-section below.
+#
+# See docs/identity-providers.md for full configuration guide and
+# step-by-step examples for Auth0, Keycloak, Firebase, Cognito, Okta,
+# and Supabase.
 auth:
+  # Authentication mode (default: "none").
+  mode: "none"
+
+  # JWT/OIDC settings — used when mode is "jwt".
+  #
+  # jwt:
+  #   # URL to fetch the JSON Web Key Set.
+  #   # Mutually exclusive with issuer_url: if both are set, jwks_url wins.
+  #   # Example (Auth0):
+  #   #   jwks_url: "https://dev-abc123.us.auth0.com/.well-known/jwks.json"
+  #   # Example (Firebase):
+  #   #   jwks_url: "https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com"
+  #   jwks_url: ""
+  #
+  #   # OIDC issuer URL for auto-discovery (used if jwks_url is empty).
+  #   # VibeWarden appends /.well-known/openid-configuration to discover the JWKS URL.
+  #   # Example (Okta): "https://dev-abc123.okta.com/oauth2/default"
+  #   issuer_url: ""
+  #
+  #   # Expected "iss" claim value. Must match exactly what the provider puts in the token.
+  #   # Example (Auth0):   "https://dev-abc123.us.auth0.com/"   (trailing slash required)
+  #   # Example (Cognito): "https://cognito-idp.eu-west-1.amazonaws.com/eu-west-1_abc123"
+  #   issuer: ""
+  #
+  #   # Expected "aud" claim value. Usually your API identifier or app client ID.
+  #   # Example (Auth0):   "https://api.your-app.com"
+  #   # Example (Cognito): "<app-client-id>"
+  #   audience: ""
+  #
+  #   # JWT claims to inject as HTTP headers on every upstream request.
+  #   # The upstream app reads these headers like any other.
+  #   # Array-valued claims (e.g. roles) are joined with a comma.
+  #   # Default mapping is used when this section is omitted:
+  #   #   sub            → X-User-Id
+  #   #   email          → X-User-Email
+  #   #   email_verified → X-User-Verified
+  #   #
+  #   # Extended example:
+  #   # claims_to_headers:
+  #   #   sub: X-User-Id
+  #   #   email: X-User-Email
+  #   #   email_verified: X-User-Verified
+  #   #   name: X-User-Name
+  #   #   roles: X-User-Roles
+  #   #   org_id: X-Org-Id
+  #   claims_to_headers:
+  #     sub: X-User-Id
+  #     email: X-User-Email
+  #     email_verified: X-User-Verified
+  #
+  #   # Signing algorithms accepted. Default: [RS256, ES256].
+  #   # Never include "none" or HS256 in production.
+  #   allowed_algorithms: [RS256, ES256]
+  #
+  #   # How long to cache JWKS keys locally before re-fetching.
+  #   # Accepts Go duration strings: "30m", "1h". Default: "1h".
+  #   # Set shorter (e.g. "30m") for Firebase, which rotates keys hourly.
+  #   cache_ttl: "1h"
+
+  # API key settings — used when mode is "api-key".
+  #
+  # api_key:
+  #   # Header name the client sends the key in (default: X-API-Key).
+  #   header: X-API-Key
+  #
+  #   # Static pre-shared keys. Store only the SHA-256 hash, never the plaintext.
+  #   # Generate: openssl rand -hex 32
+  #   # Hash:     echo -n "<key>" | sha256sum
+  #   keys:
+  #     - name: ci-pipeline
+  #       hash: "e3b0c44298fc1c149afb4c8996fb92427ae41e4649b934ca495991b7852b855"
+  #       scopes: [deploy, read]
+  #     - name: monitoring
+  #       hash: "a665a45920422f9d417e4867efdc4fb8a04a1f3fff1fa07e998e86f7f7a27ae3"
+  #       scopes: [read]
+  #
+  #   # Load keys from OpenBao instead (recommended for production).
+  #   # openbao_path: "auth/api-keys"
+  #   # cache_ttl: "5m"
+  #
+  #   # Scope-based authorization rules (first match wins).
+  #   # scope_rules:
+  #   #   - path: "/admin/*"
+  #   #     required_scopes: [admin]
+  #   #   - path: "/api/v1/*"
+  #   #     methods: [GET, HEAD]
+  #   #     required_scopes: [read]
+
   # List of URL path glob patterns that bypass authentication entirely.
   # The /_vibewarden/* prefix is always public (health check etc.).
   # Add your app's public routes here; supports * for single-segment wildcards.
@@ -116,10 +226,12 @@ auth:
 
   # Cookie name used by Kratos for session tokens.
   # Only change this if you have customised your Kratos configuration.
+  # Only relevant when mode is "kratos".
   session_cookie_name: "ory_kratos_session"
 
   # URL to redirect unauthenticated users to.
   # Defaults to /self-service/login/browser (Kratos browser login flow).
+  # Only relevant when mode is "kratos".
   login_url: ""
 
 # Request body size limiting

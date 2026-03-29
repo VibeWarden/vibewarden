@@ -90,14 +90,35 @@ remotely — it always runs on the same machine as the app it protects.
 
 ### Authentication
 
-VibeWarden uses [Ory Kratos](https://www.ory.sh/kratos/) for identity
-management. Your app receives authenticated user info via headers:
+VibeWarden supports four authentication modes:
 
-| Header | Description |
-|--------|-------------|
-| `X-User-Id` | Kratos identity UUID |
-| `X-User-Email` | Primary email address |
-| `X-User-Verified` | Email verification status (`true`/`false`) |
+| Mode | When to use |
+|------|-------------|
+| `none` | Fully public apps |
+| `jwt` | Any OIDC provider — Auth0, Keycloak, Firebase, Cognito, Okta, Supabase, … |
+| `kratos` | Self-hosted identity with login/registration UI via Ory Kratos |
+| `api-key` | Machine-to-machine requests |
+
+The `jwt` mode works with any OIDC-compatible provider and is the recommended
+default for most applications:
+
+```yaml
+auth:
+  mode: jwt
+  jwt:
+    jwks_url: "https://your-provider/.well-known/jwks.json"
+    issuer: "https://your-provider/"
+    audience: "your-api-identifier"
+```
+
+Your app receives authenticated user info via headers (configurable via
+`claims_to_headers`):
+
+| Header | Source claim | Description |
+|--------|--------------|-------------|
+| `X-User-Id` | `sub` | Subject identifier |
+| `X-User-Email` | `email` | Primary email address |
+| `X-User-Verified` | `email_verified` | Email verification status (`true`/`false`) |
 
 Configure public paths that skip authentication:
 
@@ -108,6 +129,10 @@ auth:
     - /api/public/*
     - /health
 ```
+
+See [docs/identity-providers.md](docs/identity-providers.md) for full
+configuration reference and step-by-step guides for Auth0, Keycloak, Firebase,
+Cognito, Okta, Supabase, Ory Kratos, and API key auth.
 
 ### Rate Limiting
 
