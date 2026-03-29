@@ -1,68 +1,34 @@
 # VibeWarden
 
-Open-source security sidecar for vibe-coded apps. Zero-to-secure in minutes.
+[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)][license]
+[![Go Version](https://img.shields.io/badge/go-1.24-00ADD8.svg)][go]
+[![CI](https://github.com/vibewarden/vibewarden/actions/workflows/ci.yml/badge.svg)][ci]
+[![Release](https://img.shields.io/github/v/release/vibewarden/vibewarden)][releases]
 
-VibeWarden sits between the internet and your app as a reverse proxy, handling
-TLS, authentication, rate limiting, security headers, and structured logging —
-so you don't have to build any of it yourself.
+**Production-grade security for vibe-coded apps — zero config changes to your code.**
 
-## Why VibeWarden?
+You ship fast with AI coding tools. VibeWarden adds the security layer you skipped:
+TLS, authentication, rate limiting, WAF, secrets management, and AI-readable audit logs —
+all in a single binary that sits next to your app.
 
-If you're building with AI coding tools (Claude Code, Cursor, Copilot), you
-ship fast — but security often gets skipped. VibeWarden adds production-grade
-security to any app without changing a single line of your code.
-
-- **Automatic TLS** via Let's Encrypt (or self-signed for dev)
-- **Authentication** via Ory Kratos — login, registration, session management
-- **Rate limiting** — per-IP and per-user, token bucket algorithm
-- **Security headers** — HSTS, CSP, X-Frame-Options, and more
-- **AI-readable structured logs** — every security event follows a versioned JSON schema
-- **Prometheus metrics** with a pre-built Grafana dashboard
-- **Admin API** for user management with audit logging
+---
 
 ## Quick Start
 
 ```bash
-# Download the wrapper script
+# macOS / Linux
 curl -fsSL https://vibewarden.dev/vibew > vibew && chmod +x vibew
 
-# Scaffold VibeWarden into your project
+# Scaffold VibeWarden into your project (auth + rate limiting enabled)
 ./vibew init --upstream 3000 --auth --rate-limit
 
 # Start everything
 ./vibew dev
 ```
 
-That's it. Your app on port 3000 is now behind VibeWarden with TLS, auth,
-rate limiting, and security headers.
+Your app on port 3000 is now behind VibeWarden. Done.
 
-### What `init` creates
-
-```
-vibewarden.yaml          # VibeWarden configuration (commit this)
-vibew                    # Wrapper script (macOS/Linux)
-vibew.ps1                # Wrapper script (Windows)
-vibew.cmd                # Wrapper script (Windows)
-.vibewarden-version      # Pinned version
-.claude/CLAUDE.md        # AI agent context (Claude Code)
-.cursor/rules            # AI agent context (Cursor)
-AGENTS.md                # AI agent context (generic)
-```
-
-Running `vibew dev` or `vibew generate` creates runtime files under
-`.vibewarden/generated/` (gitignored by default):
-
-```
-.vibewarden/generated/
-  docker-compose.yml                # Full stack: VibeWarden + Kratos + Postgres
-  kratos/kratos.yml                 # Ory Kratos configuration
-  kratos/identity.schema.json       # Identity schema
-```
-
-Do not edit the generated files — re-run `vibew generate` after changing
-`vibewarden.yaml` instead.
-
-### Windows
+**Windows:**
 
 ```powershell
 Invoke-WebRequest -Uri https://vibewarden.dev/vibew.ps1 -OutFile vibew.ps1
@@ -70,49 +36,102 @@ Invoke-WebRequest -Uri https://vibewarden.dev/vibew.ps1 -OutFile vibew.ps1
 .\vibew.ps1 dev
 ```
 
+---
+
+## What `init` generates
+
+```
+vibewarden.yaml          # Main config — commit this
+vibew / vibew.ps1        # Wrapper scripts (macOS/Linux/Windows)
+.vibewarden-version      # Pinned version
+.claude/CLAUDE.md        # AI agent context (Claude Code)
+.cursor/rules            # AI agent context (Cursor)
+AGENTS.md                # AI agent context (generic)
+```
+
+Running `vibew dev` or `vibew generate` creates runtime files under
+`.vibewarden/generated/` (gitignored):
+
+```
+.vibewarden/generated/
+  docker-compose.yml           # Full stack: VibeWarden + Kratos + Postgres
+  kratos/kratos.yml            # Ory Kratos config
+  kratos/identity.schema.json  # Identity schema
+```
+
+Do not edit generated files — re-run `vibew generate` after changing `vibewarden.yaml`.
+
+---
+
 ## How It Works
 
 ```
-Internet → VibeWarden (port 8080) → Your App (port 3000)
-              │
-              ├── TLS termination
-              ├── Security headers
-              ├── Authentication (Ory Kratos)
-              ├── Rate limiting
-              ├── Structured logging
-              └── Metrics collection
+                 ┌────────────────────────────────┐
+  Internet ─────►│  VibeWarden  :8080             │
+                 │                                │
+                 │  TLS termination               │
+                 │  Authentication (JWT / Kratos) │
+                 │  Rate limiting (IP + user)     │
+                 │  WAF (SQLi, XSS, traversal)    │
+                 │  Security headers              │
+                 │  Secret injection              │
+                 │  AI-readable audit logs        │
+                 └───────────────┬────────────────┘
+                                 │ localhost
+                                 ▼
+                        Your App  :3000
 ```
 
-VibeWarden runs as a local sidecar next to your app. It is never hosted
-remotely — it always runs on the same machine as the app it protects.
+VibeWarden is a local sidecar — it always runs on the same machine as your app.
+It is never hosted remotely.
 
-## Features
+---
 
-### Authentication
+## Feature Matrix
 
-VibeWarden supports four authentication modes:
+| Feature | Details |
+|---------|---------|
+| Reverse proxy | Embedded [Caddy](https://caddyserver.com/) — programmatic config, no Caddyfile |
+| TLS | Let's Encrypt (prod), self-signed (dev), or external (Cloudflare, ACM, …) |
+| Authentication | `none`, `jwt` (any OIDC provider), `kratos` (self-hosted), `api-key` |
+| Rate limiting | Token-bucket, per-IP and per-user; in-memory or Redis-backed |
+| WAF | Pattern detection for SQLi, XSS, path traversal; `block` or `detect` mode |
+| Security headers | HSTS, CSP, X-Frame-Options, Referrer-Policy, Permissions-Policy, CORS |
+| Secrets management | OpenBao (Apache 2.0 Vault fork) — inject secrets as headers or env vars |
+| Egress proxy | Outbound HTTP with mTLS, circuit breaker, retry, SSRF protection, PII redaction |
+| Resilience | Circuit breaker, retry with jitter, timeout middleware, aggregate health endpoint |
+| Observability | Prometheus metrics, OpenTelemetry traces + logs, Grafana dashboards, Jaeger/Tempo |
+| AI-readable logs | Versioned JSON schema: `schema_version`, `event_type`, `ai_summary`, `payload` |
+| Audit log sinks | JSON file, OTel logs, webhook (HMAC-signed) with retry |
+| Admin API | User management at `/_vibewarden/admin/*` (bearer-token protected) |
+| Docker Compose | Profile-based: `--profile observability`, `--profile demo` |
+
+---
+
+## Authentication Modes
 
 | Mode | When to use |
 |------|-------------|
 | `none` | Fully public apps |
 | `jwt` | Any OIDC provider — Auth0, Keycloak, Firebase, Cognito, Okta, Supabase, … |
-| `kratos` | Self-hosted identity with login/registration UI via Ory Kratos |
+| `kratos` | Self-hosted identity with login / registration UI via Ory Kratos |
 | `api-key` | Machine-to-machine requests |
 
-The `jwt` mode works with any OIDC-compatible provider and is the recommended
-default for most applications:
+The `jwt` mode works with any OIDC-compatible provider:
 
 ```yaml
 auth:
   mode: jwt
   jwt:
     jwks_url: "https://your-provider/.well-known/jwks.json"
-    issuer: "https://your-provider/"
+    issuer:   "https://your-provider/"
     audience: "your-api-identifier"
+  public_paths:
+    - /static/*
+    - /health
 ```
 
-Your app receives authenticated user info via headers (configurable via
-`claims_to_headers`):
+Your app receives authenticated user info via headers:
 
 | Header | Source claim | Description |
 |--------|--------------|-------------|
@@ -120,122 +139,30 @@ Your app receives authenticated user info via headers (configurable via
 | `X-User-Email` | `email` | Primary email address |
 | `X-User-Verified` | `email_verified` | Email verification status (`true`/`false`) |
 
-Configure public paths that skip authentication:
+See [docs/identity-providers.md](docs/identity-providers.md) for Auth0, Keycloak,
+Firebase, Cognito, Okta, Supabase, and Kratos step-by-step guides.
 
-```yaml
-auth:
-  public_paths:
-    - /static/*
-    - /api/public/*
-    - /health
-```
+---
 
-See [docs/identity-providers.md](docs/identity-providers.md) for full
-configuration reference and step-by-step guides for Auth0, Keycloak, Firebase,
-Cognito, Okta, Supabase, Ory Kratos, and API key auth.
+## Comparison with Alternatives
 
-### Rate Limiting
+| | VibeWarden | nginx | Traefik | Cloudflare Tunnel |
+|--|--|--|--|--|
+| Target user | Vibe coders / indie devs | Ops / sysadmin | Container-native teams | Any |
+| Setup time | 3 commands | Hours of config | Moderate | Minutes |
+| Auth out of the box | Yes (OIDC, Kratos, API key) | No | Partial (forward auth only) | No |
+| WAF | Yes | Paid (NGINX Plus) | No | Paid (Cloudflare WAF) |
+| Secrets management | Yes (OpenBao) | No | No | No |
+| AI-readable audit logs | Yes (versioned schema) | No | No | No |
+| Egress proxy + SSRF guard | Yes | No | No | No |
+| Self-hosted | Yes | Yes | Yes | No |
+| Open source | Apache 2.0 | BSD-2 core | Apache 2.0 | Proprietary |
+| Cost | Free (OSS core) | Free | Free | Free tier + paid |
 
-Dual rate limiting with token bucket algorithm:
+VibeWarden is opinionated and purpose-built for the vibe-coding workflow.
+If you need a general-purpose load balancer or a CDN edge, use the right tool for the job.
 
-```yaml
-rate_limit:
-  per_ip:
-    requests_per_second: 10
-    burst: 20
-  per_user:
-    requests_per_second: 100
-    burst: 200
-```
-
-Blocked requests get a `429 Too Many Requests` response with a `Retry-After` header.
-
-### TLS
-
-Three provider modes:
-
-| Provider | Use case |
-|----------|----------|
-| `letsencrypt` | Production — automatic ACME certificates |
-| `self-signed` | Development — Caddy generates internal certs |
-| `external` | You provide cert/key files (Cloudflare, ACM, etc.) |
-
-### Security Headers
-
-All responses include security headers by default:
-
-- `Strict-Transport-Security` (HTTPS only)
-- `X-Content-Type-Options: nosniff`
-- `X-Frame-Options: DENY`
-- `Content-Security-Policy: default-src 'self'`
-- `Referrer-Policy: strict-origin-when-cross-origin`
-
-Every header is individually configurable or disableable in `vibewarden.yaml`.
-
-### AI-Readable Structured Logs
-
-Every security event follows a versioned JSON schema:
-
-```json
-{
-  "schema_version": "v1",
-  "event_type": "auth.failed",
-  "timestamp": "2026-03-26T10:30:00Z",
-  "ai_summary": "Authentication failed for IP 192.168.1.1: invalid session",
-  "payload": {
-    "ip": "192.168.1.1",
-    "reason": "invalid_session"
-  }
-}
-```
-
-Pretty-print logs in your terminal:
-
-```bash
-./vibew logs --follow
-```
-
-### Observability
-
-Prometheus metrics at `/_vibewarden/metrics` with a pre-built Grafana dashboard.
-
-```bash
-# Start with observability stack
-./vibew dev --observability
-
-# Open Grafana
-make grafana-open    # http://localhost:3000
-```
-
-See [docs/observability.md](docs/observability.md) for details.
-
-### Secret Management
-
-Store API keys, database passwords, and other secrets in OpenBao (open-source Vault fork) and inject them into your app automatically — no `.env` files, no hardcoded credentials:
-
-```bash
-# Store a secret
-vibew secret store app/stripe api_key=sk_live_abc123
-
-# VibeWarden fetches and injects it into every proxied request
-# as a header or into a .env file the upstream reads
-```
-
-See [docs/secret-management.md](docs/secret-management.md) for full setup, dynamic Postgres credentials, and production considerations.
-
-### Admin API
-
-User management at `/_vibewarden/admin/*` (protected by bearer token):
-
-```bash
-# List users
-curl -H "X-Admin-Key: $TOKEN" http://localhost:8080/_vibewarden/admin/users
-
-# Create user
-curl -X POST -H "X-Admin-Key: $TOKEN" \
-  -d '{"email":"user@example.com","password":"..."}' \
-  http://localhost:8080/_vibewarden/admin/users
-```
+---
 
 ## CLI Reference
 
@@ -246,25 +173,25 @@ curl -X POST -H "X-Admin-Key: $TOKEN" \
 | `vibew add rate-limit` | Enable rate limiting |
 | `vibew add tls --domain example.com` | Enable TLS |
 | `vibew add observability` | Add Prometheus + Grafana |
+| `vibew generate` | Regenerate `docker-compose.yml` from config |
 | `vibew dev` | Start local dev environment |
 | `vibew status` | Show health of all components |
 | `vibew doctor` | Diagnose common issues |
 | `vibew logs` | Pretty-print structured logs |
-| `vibew secret generate` | Generate secure tokens |
+| `vibew secret get <path>` | Read a secret from OpenBao |
+| `vibew secret list <path>` | List secrets at a path |
 | `vibew validate` | Validate configuration |
-| `vibew context refresh` | Regenerate AI agent context |
+| `vibew context refresh` | Regenerate AI agent context files |
+
+---
 
 ## AI Agent Context
 
-When you run `vibew init`, VibeWarden generates context files for your AI
-coding agent. This tells the AI how to work with VibeWarden — so when you say
-"add a login page," it knows to use Kratos flows instead of building auth
-from scratch.
+`vibew init` generates context files for your AI coding assistant. When you say
+"add a login page," the AI knows to use Kratos flows instead of building auth from scratch.
 
-Supported agents:
-- **Claude Code** — `.claude/CLAUDE.md`
-- **Cursor** — `.cursor/rules`
-- **Generic** — `AGENTS.md`
+Supported agents: **Claude Code** (`.claude/CLAUDE.md`), **Cursor** (`.cursor/rules`),
+**generic** (`AGENTS.md`).
 
 Regenerate after config changes:
 
@@ -272,20 +199,9 @@ Regenerate after config changes:
 ./vibew context refresh
 ```
 
-## Configuration
-
-Copy the example config and customize:
-
-```bash
-cp vibewarden.example.yaml vibewarden.yaml
-```
-
-See [`vibewarden.example.yaml`](vibewarden.example.yaml) for all options with
-detailed comments.
+---
 
 ## Demo
-
-A complete demo app is included at [`examples/demo-app/`](examples/demo-app/):
 
 ```bash
 cd examples/demo-app
@@ -293,30 +209,44 @@ docker compose up -d
 # Open http://localhost:8080
 ```
 
-The demo shows authentication, rate limiting, security headers, and identity
-header injection in action.
+The demo includes a Vulnerability Lab with live SQLi, XSS, and path traversal
+examples — and shows VibeWarden blocking them.
+
+---
 
 ## Architecture
 
-VibeWarden is built with hexagonal architecture (ports and adapters):
+VibeWarden follows hexagonal architecture (ports and adapters) with DDD:
 
 ```
-cmd/vibewarden/          # CLI entrypoint
+cmd/vibewarden/     — CLI entrypoint
 internal/
-  domain/                # Pure domain logic (zero external deps)
-  ports/                 # Interface definitions
-  adapters/              # Implementations (Caddy, Kratos, Postgres, ...)
-  app/                   # Application services
-  middleware/            # HTTP middleware
-  config/                # Configuration loading
-migrations/              # Database migrations
+  domain/           — Pure domain logic (zero external deps)
+  ports/            — Interface definitions (inbound + outbound)
+  adapters/         — Implementations (Caddy, Kratos, Postgres, OpenBao, …)
+  app/              — Application services (use cases)
+  config/           — Config loading and validation
+  plugins/          — Plugin registry and lifecycle
+migrations/         — Database migrations (golang-migrate)
 ```
 
-Architectural decisions are documented in [`docs/decisions.md`](docs/decisions.md).
+Architectural decisions are documented in [docs/decisions.md](docs/decisions.md).
 
-## License
+---
 
-Apache 2.0 — see [LICENSE](LICENSE).
+## Docs
+
+| Guide | Link |
+|-------|------|
+| Identity providers (Auth0, Keycloak, …) | [docs/identity-providers.md](docs/identity-providers.md) |
+| Secret management | [docs/secret-management.md](docs/secret-management.md) |
+| Observability | [docs/observability.md](docs/observability.md) |
+| Rate limiting at scale | [docs/rate-limiting.md](docs/rate-limiting.md) |
+| Production deployment | [docs/production.md](docs/production.md) |
+| Hardening checklist | [docs/hardening.md](docs/hardening.md) |
+| Architectural decisions | [docs/decisions.md](docs/decisions.md) |
+
+---
 
 ## Contributing
 
@@ -327,3 +257,14 @@ and how to submit changes.
 
 To report a vulnerability, see [SECURITY.md](SECURITY.md) for our responsible
 disclosure policy and contact details.
+
+## License
+
+Apache 2.0 — see [LICENSE](LICENSE).
+
+---
+
+[license]: LICENSE
+[go]: https://go.dev/dl/
+[ci]: https://github.com/vibewarden/vibewarden/actions/workflows/ci.yml
+[releases]: https://github.com/vibewarden/vibewarden/releases
