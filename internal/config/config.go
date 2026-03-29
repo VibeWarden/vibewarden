@@ -97,6 +97,9 @@ type Config struct {
 
 	// WAF configures the Web Application Firewall plugins.
 	WAF WAFConfig `mapstructure:"waf"`
+
+	// Egress configures the egress proxy plugin for outbound API call control.
+	Egress EgressConfig `mapstructure:"egress"`
 }
 
 // DatabasePoolConfig holds connection pool settings for PostgreSQL.
@@ -1470,10 +1473,126 @@ func (c *Config) Validate() error {
 		}
 	}
 
+	// egress validation.
+	if c.Egress.Enabled {
+		egressErrs := validateEgressConfig(c.Egress)
+		errs = append(errs, egressErrs...)
+	}
+
 	if len(errs) > 0 {
 		return fmt.Errorf("%s", strings.Join(errs, "; "))
 	}
 	return nil
+}
+
+// validateEgressConfig validates the egress proxy configuration and returns
+// a slice of error strings (one per violation). An empty slice means the
+// configuration is valid.
+func validateEgressConfig(cfg EgressConfig) []string {
+	var errs []string
+
+	// default_policy validation.
+	switch cfg.DefaultPolicy {
+	case "", "deny", "allow":
+		// valid — empty falls back to "deny" via Load defaults
+	default:
+		errs = append(errs, fmt.Sprintf(
+			"egress.default_policy %q is invalid; accepted values: \"allow\", \"deny\"",
+			cfg.DefaultPolicy,
+		))
+	}
+
+	// default_timeout validation.
+	if cfg.DefaultTimeout != "" {
+		if _, err := time.ParseDuration(cfg.DefaultTimeout); err != nil {
+			errs = append(errs, fmt.Sprintf(
+				"egress.default_timeout %q is not a valid duration: %s",
+				cfg.DefaultTimeout, err.Error(),
+			))
+		}
+	}
+
+	// routes validation.
+	routeNames := make(map[string]bool, len(cfg.Routes))
+	for i, r := range cfg.Routes {
+		prefix := fmt.Sprintf("egress.routes[%d]", i)
+
+		if r.Name == "" {
+			errs = append(errs, fmt.Sprintf("%s.name is required", prefix))
+		} else if routeNames[r.Name] {
+			errs = append(errs, fmt.Sprintf("%s.name %q is a duplicate; route names must be unique", prefix, r.Name))
+		} else {
+			routeNames[r.Name] = true
+		}
+
+		if r.Pattern == "" {
+			errs = append(errs, fmt.Sprintf("%s.pattern is required", prefix))
+		} else {
+			if !strings.HasPrefix(r.Pattern, "http://") && !strings.HasPrefix(r.Pattern, "https://") {
+				errs = append(errs, fmt.Sprintf("%s.pattern %q must start with http:// or https://", prefix, r.Pattern))
+			}
+		}
+
+		if r.Timeout != "" {
+			if _, err := time.ParseDuration(r.Timeout); err != nil {
+				errs = append(errs, fmt.Sprintf(
+					"%s.timeout %q is not a valid duration: %s",
+					prefix, r.Timeout, err.Error(),
+				))
+			}
+		}
+
+		// circuit_breaker validation: both threshold and reset_after must be set together.
+		cb := r.CircuitBreaker
+		hasCBThreshold := cb.Threshold != 0
+		hasCBReset := cb.ResetAfter != ""
+		if hasCBThreshold || hasCBReset {
+			if cb.Threshold <= 0 {
+				errs = append(errs, fmt.Sprintf("%s.circuit_breaker.threshold must be > 0", prefix))
+			}
+			if cb.ResetAfter == "" {
+				errs = append(errs, fmt.Sprintf("%s.circuit_breaker.reset_after is required when circuit_breaker.threshold is set", prefix))
+			} else if _, err := time.ParseDuration(cb.ResetAfter); err != nil {
+				errs = append(errs, fmt.Sprintf(
+					"%s.circuit_breaker.reset_after %q is not a valid duration: %s",
+					prefix, cb.ResetAfter, err.Error(),
+				))
+			}
+		}
+
+		// retries validation.
+		if r.Retries.Max < 0 {
+			errs = append(errs, fmt.Sprintf("%s.retries.max must be >= 0", prefix))
+		}
+		switch r.Retries.Backoff {
+		case "", "exponential", "fixed":
+			// valid
+		default:
+			errs = append(errs, fmt.Sprintf(
+				"%s.retries.backoff %q is invalid; accepted values: \"exponential\", \"fixed\"",
+				prefix, r.Retries.Backoff,
+			))
+		}
+
+		// body_size_limit validation.
+		if r.BodySizeLimit != "" {
+			if _, err := ParseBodySize(r.BodySizeLimit); err != nil {
+				errs = append(errs, fmt.Sprintf("%s.body_size_limit: %s", prefix, err.Error()))
+			}
+		}
+
+		// secret injection: if any secret field is set, name and header are required.
+		if r.SecretFormat != "" || r.SecretHeader != "" {
+			if r.Secret == "" {
+				errs = append(errs, fmt.Sprintf("%s.secret is required when secret_header or secret_format is set", prefix))
+			}
+			if r.SecretHeader == "" {
+				errs = append(errs, fmt.Sprintf("%s.secret_header is required when secret or secret_format is set", prefix))
+			}
+		}
+	}
+
+	return errs
 }
 
 // validatePostgresURL returns an error if s is not a valid postgres:// URL.
@@ -1656,6 +1775,12 @@ func Load(configPath string) (*Config, error) {
 	v.SetDefault("waf.rules.xss", true)
 	v.SetDefault("waf.rules.path_traversal", true)
 	v.SetDefault("waf.rules.command_injection", true)
+	v.SetDefault("egress.enabled", false)
+	v.SetDefault("egress.listen", "127.0.0.1:8081")
+	v.SetDefault("egress.default_policy", "deny")
+	v.SetDefault("egress.default_timeout", "30s")
+	v.SetDefault("egress.dns.block_private", true)
+	v.SetDefault("egress.routes", []EgressRouteConfig{})
 
 	// Config file
 	if configPath != "" {
