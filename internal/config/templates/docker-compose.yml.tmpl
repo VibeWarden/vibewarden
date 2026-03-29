@@ -311,11 +311,8 @@ services:
         condition: service_healthy
       jaeger:
         condition: service_healthy
-    healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:13133/"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+    # otel-collector-contrib uses a distroless image (no shell/wget/curl)
+    # so Docker healthcheck is not possible. Dependents use service_started.
 
   jaeger:
     image: jaegertracing/jaeger:2.6.0
@@ -360,7 +357,7 @@ services:
       loki:
         condition: service_healthy
       otel-collector:
-        condition: service_healthy
+        condition: service_started
       jaeger:
         condition: service_healthy
     healthcheck:

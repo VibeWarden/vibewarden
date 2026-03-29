@@ -1248,9 +1248,7 @@ func TestGenerate_OtelCollector_ComposeService(t *testing.T) {
 	if !bytes.Contains(compose, []byte("otel-collector/config.yaml:/etc/otelcol-contrib/config.yaml")) {
 		t.Errorf("expected otel-collector config volume mount\ncompose:\n%s", compose)
 	}
-	if !bytes.Contains(compose, []byte("localhost:13133")) {
-		t.Errorf("expected otel-collector healthcheck on port 13133\ncompose:\n%s", compose)
-	}
+	// No healthcheck test — otel-collector-contrib uses a distroless image.
 }
 
 func TestGenerate_OtelCollector_ComposeDependsOn(t *testing.T) {
@@ -1259,7 +1257,7 @@ func TestGenerate_OtelCollector_ComposeDependsOn(t *testing.T) {
 
 	// otel-collector depends on loki being healthy.
 	// grafana depends on otel-collector being healthy.
-	if !bytes.Contains(compose, []byte("otel-collector:\n        condition: service_healthy")) {
+	if !bytes.Contains(compose, []byte("otel-collector:\n        condition: service_started")) {
 		t.Errorf("expected grafana depends_on otel-collector with service_healthy\ncompose:\n%s", compose)
 	}
 }
