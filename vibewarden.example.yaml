@@ -3,6 +3,55 @@
 # Environment variables can override any setting using VIBEWARDEN_ prefix.
 # Example: VIBEWARDEN_SERVER_PORT=9090 overrides server.port
 
+# Database configuration
+#
+# By default, VibeWarden uses the local Postgres container started by the
+# generated docker-compose.yml. Set external_url to switch to a managed
+# Postgres service (AWS RDS, Supabase, Neon, Hetzner Managed Databases).
+#
+# When external_url is set, vibew init omits the local postgres container from
+# the generated docker-compose.yml and uses this URL as the Kratos DSN.
+#
+# See docs/postgres.md for deployment strategies and provider-specific examples.
+#
+# database:
+#   # Full postgres:// connection URL for an external managed Postgres instance.
+#   # Set via VIBEWARDEN_DATABASE_EXTERNAL_URL env var in production.
+#   # Example (AWS RDS):
+#   #   external_url: "postgres://vibewarden:${DB_PASSWORD}@mydb.abc123.eu-west-1.rds.amazonaws.com:5432/vibewarden"
+#   # Example (Supabase pooler):
+#   #   external_url: "postgres://postgres.abcdefgh:${DB_PASSWORD}@aws-0-eu-central-1.pooler.supabase.com:6543/postgres"
+#   # Example (Neon):
+#   #   external_url: "postgres://vibewarden:${DB_PASSWORD}@ep-cool-rain-12345.eu-central-1.aws.neon.tech/neondb"
+#   # Example (Hetzner):
+#   #   external_url: "postgres://vibewarden:${DB_PASSWORD}@<db-host>.hc-<region>.hetzner.cloud:5432/vibewarden"
+#   external_url: ""
+#
+#   # PostgreSQL SSL/TLS negotiation mode.
+#   # Accepted values: "disable", "require", "verify-ca", "verify-full"
+#   # Default: "require"
+#   # Applied as sslmode=<value> in the connection string unless the URL already
+#   # includes an sslmode query parameter.
+#   # Use "disable" only on localhost or trusted private networks.
+#   # Use "verify-full" for strongest security (requires PGSSLROOTCERT to be set).
+#   tls_mode: require
+#
+#   # Connection pool settings
+#   pool:
+#     # Maximum number of open connections in the pool. Default: 10.
+#     # For multi-instance setups, size this so that N_instances * max_conns
+#     # stays below the database's max_connections limit.
+#     max_conns: 10
+#     # Minimum number of idle connections kept open. Default: 2.
+#     # Set to 0 or 1 on serverless databases (Neon, Supabase) to avoid
+#     # holding idle connections that count against the tier limit.
+#     min_conns: 2
+#
+#   # Maximum time to wait when establishing a new Postgres connection.
+#   # Go duration string (e.g. "10s", "30s"). Default: "10s".
+#   # Increase to "15s" or "30s" for serverless databases with cold-start latency.
+#   connect_timeout: "10s"
+
 # Server settings
 server:
   # Host to bind to (use 0.0.0.0 to expose externally)
