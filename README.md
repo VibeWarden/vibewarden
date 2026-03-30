@@ -66,24 +66,35 @@ Do not edit generated files — re-run `vibew generate` after changing `vibeward
 ## How It Works
 
 ```
-                 ┌────────────────────────────────┐
-  Internet ─────►│  VibeWarden  :8443 (HTTPS)     │
-                 │                                │
-                 │  TLS termination               │
-                 │  Authentication (JWT / Kratos) │
-                 │  Rate limiting (IP + user)     │
-                 │  WAF (SQLi, XSS, traversal)    │
-                 │  Security headers              │
-                 │  Secret injection              │
-                 │  AI-readable audit logs        │
-                 └───────────────┬────────────────┘
-                                 │ localhost
-                                 ▼
-                        Your App  :3000
+                          INGRESS (inbound traffic)
+
+  Internet ──────►  VibeWarden  :8443 (HTTPS)  ──────►  Your App  :3000
+                    │                         │
+                    │  TLS termination        │
+                    │  Auth (JWT / Kratos)    │
+                    │  Rate limiting          │
+                    │  WAF                    │
+                    │  Security headers       │
+                    │  Audit trail            │
+                    └─────────────────────────┘
+
+                          EGRESS (outbound traffic)
+
+  Your App  :3000  ──────►  VibeWarden  :8081  ──────►  External APIs
+                            │                         │
+                            │  Route allowlist        │
+                            │  SSRF protection        │
+                            │  Secret injection       │
+                            │  TLS enforcement        │
+                            │  Circuit breaker        │
+                            │  Rate limiting          │
+                            │  PII redaction          │
+                            └─────────────────────────┘
 ```
 
 VibeWarden is a local sidecar — it always runs on the same machine as your app.
-It is never hosted remotely.
+Your app talks only to `localhost` for both inbound and outbound traffic.
+It never holds external secrets or connects directly to third-party APIs.
 
 ---
 
