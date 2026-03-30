@@ -66,6 +66,7 @@ nav:
       - Identity Providers: identity-providers.md
       - Rate Limiting: rate-limiting.md
       - Postgres: postgres.md
+      - Egress Proxy: egress.md
       - Observability: observability.md
       - Secret Management: secret-management.md
       - Performance: performance.md

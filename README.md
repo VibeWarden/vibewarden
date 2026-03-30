@@ -257,6 +257,7 @@ Architectural decisions are documented in [docs/decisions.md](docs/decisions.md)
 |-------|------|
 | Identity providers (Auth0, Keycloak, …) | [docs/identity-providers.md](docs/identity-providers.md) |
 | Secret management | [docs/secret-management.md](docs/secret-management.md) |
+| Egress proxy | [docs/egress.md](docs/egress.md) |
 | Observability | [docs/observability.md](docs/observability.md) |
 | Rate limiting at scale | [docs/rate-limiting.md](docs/rate-limiting.md) |
 | Production deployment | [docs/production.md](docs/production.md) |

@@ -423,6 +423,134 @@ Loki, Promtail).
 
 ---
 
+## `egress`
+
+Configuration for the egress proxy plugin. See the [Egress Proxy guide](egress.md)
+for a full feature walkthrough.
+
+### `egress` (top-level)
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `egress.enabled` | bool | `false` | Enable the egress proxy plugin |
+| `egress.listen` | string | `127.0.0.1:8081` | TCP address the egress proxy binds to |
+| `egress.default_policy` | string | `deny` | Disposition for requests that match no route: `deny` or `allow` |
+| `egress.allow_insecure` | bool | `false` | Permit plain HTTP egress requests globally. Per-route `allow_insecure` overrides this |
+| `egress.default_timeout` | duration | `30s` | Request timeout applied when a route does not specify its own |
+| `egress.default_body_size_limit` | string | `""` | Global maximum request body size (e.g. `10MB`). Empty means no limit |
+| `egress.default_response_size_limit` | string | `""` | Global maximum response body size (e.g. `50MB`). Empty means no limit |
+
+### `egress.dns`
+
+DNS-level SSRF protection settings.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `egress.dns.block_private` | bool | `true` | Block requests to RFC 1918 private, loopback, and reserved IP ranges |
+| `egress.dns.allowed_private` | list | `[]` | CIDR ranges exempt from `block_private`. Example: `["10.0.0.0/8"]` |
+
+### `egress.routes`
+
+Ordered list of egress route definitions. Routes are evaluated in declaration
+order; the first matching route wins.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `name` | string | — | Unique human-readable identifier for this route. Required |
+| `pattern` | string | — | URL glob matched against outbound request URLs (must start with `http://` or `https://`). Required |
+| `methods` | list | `[]` | HTTP methods this route applies to. Empty means all methods |
+| `timeout` | duration | `""` | Per-route request timeout. Empty uses `egress.default_timeout` |
+| `secret` | string | `""` | OpenBao KV path of the secret to fetch and inject |
+| `secret_header` | string | `""` | Request header to inject the secret value into (e.g. `Authorization`) |
+| `secret_format` | string | `""` | Value template — `{value}` is replaced with the resolved secret (e.g. `Bearer {value}`) |
+| `rate_limit` | string | `""` | Rate limit expression (e.g. `100/s`, `500/m`). Empty means no per-route limit |
+| `body_size_limit` | string | `""` | Maximum request body size. Empty uses `egress.default_body_size_limit` |
+| `response_size_limit` | string | `""` | Maximum response body size. Empty uses `egress.default_response_size_limit` |
+| `allow_insecure` | bool | `false` | Permit plain HTTP for this route, overriding the global setting |
+
+### `egress.routes[].circuit_breaker`
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `threshold` | int | Consecutive failures to trip the circuit. Must be > 0 |
+| `reset_after` | duration | How long the circuit stays open before allowing a probe request |
+
+### `egress.routes[].retries`
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `max` | int | — | Maximum retry attempts (not counting the initial request). Must be >= 1 |
+| `methods` | list | `[GET, HEAD, PUT, DELETE]` | HTTP methods eligible for retry. Empty uses the default idempotent set |
+| `backoff` | string | `exponential` | Backoff strategy: `exponential` or `fixed` |
+
+### `egress.routes[].mtls`
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `cert_path` | string | Filesystem path to the PEM-encoded client certificate |
+| `key_path` | string | Filesystem path to the PEM-encoded private key |
+| `ca_path` | string | Filesystem path to a PEM-encoded CA bundle used to verify the server's certificate (optional; uses system roots when empty) |
+
+### `egress.routes[].validate_response`
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `status_codes` | list | Allowed HTTP status code expressions (e.g. `["2xx", "301"]`). Empty means no validation |
+| `content_types` | list | Allowed MIME type prefixes (e.g. `["application/json"]`). Empty means no validation |
+
+### `egress.routes[].cache`
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `enabled` | bool | Activate in-memory response caching for this route |
+| `ttl` | duration | Cache entry lifetime. Zero means never expire (not recommended) |
+| `max_size` | int | Maximum cached response body size in bytes. Zero means no per-entry limit |
+
+### `egress.routes[].sanitize`
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `headers` | list | Header names whose values are replaced with `[REDACTED]` in log events (forwarded request is unchanged) |
+| `query_params` | list | Query parameter names stripped from the URL before forwarding |
+| `body_fields` | list | JSON field names replaced with `[REDACTED]` in the request body before forwarding. Only applied when `Content-Type` is `application/json` |
+
+### `egress.routes[].headers`
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `inject` | map | Static headers added to (or overwriting) the outbound request |
+| `strip_request` | list | Request header names removed before forwarding upstream |
+| `strip_response` | list | Response header names removed from the upstream response before returning to the app. `Server` and `X-Powered-By` are always stripped |
+
+```yaml
+egress:
+  enabled: true
+  listen: "127.0.0.1:8081"
+  default_policy: deny
+  default_timeout: "30s"
+
+  dns:
+    block_private: true
+
+  routes:
+    - name: stripe-api
+      pattern: "https://api.stripe.com/**"
+      methods: ["POST"]
+      timeout: "10s"
+      secret: app/stripe
+      secret_header: Authorization
+      secret_format: "Bearer {value}"
+      rate_limit: "100/s"
+      circuit_breaker:
+        threshold: 5
+        reset_after: "30s"
+      retries:
+        max: 3
+        backoff: exponential
+```
+
+---
+
 ## `secrets`
 
 | Field | Type | Default | Description |
