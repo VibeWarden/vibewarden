@@ -25,6 +25,31 @@ const (
 	ModeAPIKey Mode = "api-key"
 )
 
+// JWTPluginConfig holds JWT-specific settings for the auth plugin.
+// It mirrors a subset of config.JWTConfig but is defined here to keep the
+// plugins layer free of a direct config package dependency.
+type JWTPluginConfig struct {
+	// JWKSURL is the URL to fetch the JSON Web Key Set.
+	// When empty and Mode is ModeJWT, VibeWarden auto-generates a local dev
+	// key pair and serves a JWKS endpoint at /_vibewarden/jwks.json.
+	JWKSURL string
+
+	// IssuerURL is the OIDC issuer URL for auto-discovery.
+	IssuerURL string
+
+	// Issuer is the expected "iss" claim value.
+	// Defaults to DevIssuer ("vibewarden-dev") when empty in dev mode.
+	Issuer string
+
+	// Audience is the expected "aud" claim value.
+	// Defaults to DevAudience ("dev") when empty in dev mode.
+	Audience string
+
+	// DevKeyDir is the directory where the auto-generated dev key pair is
+	// stored. Defaults to ".vibewarden/dev-keys" when empty.
+	DevKeyDir string
+}
+
 // Config holds all settings for the auth plugin.
 // It maps to the plugins.auth section of vibewarden.yaml.
 //
@@ -39,6 +64,10 @@ type Config struct {
 	// Kratos-specific initialisation (URL validation, health checks, Caddy routes)
 	// is only performed when Mode is ModeKratos.
 	Mode Mode
+
+	// JWT holds settings used when Mode is ModeJWT.
+	// When JWT.JWKSURL is empty, local dev JWKS mode is activated automatically.
+	JWT JWTPluginConfig
 
 	// KratosPublicURL is the base URL of the Kratos public API
 	// (e.g. "http://127.0.0.1:4433"). Used for session validation and

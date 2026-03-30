@@ -120,8 +120,14 @@ func TestPlugin_Init(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name:    "enabled jwt mode without kratos public url — no error",
-			cfg:     auth.Config{Enabled: true, Mode: auth.ModeJWT},
+			// JWT dev mode: no kratos URL needed, no error expected.
+			// DevKeyDir is set to a temp dir to avoid writing into the source tree.
+			name: "enabled jwt mode without kratos public url — no error",
+			cfg: auth.Config{
+				Enabled: true,
+				Mode:    auth.ModeJWT,
+				JWT:     auth.JWTPluginConfig{DevKeyDir: t.TempDir()},
+			},
 			wantErr: false,
 		},
 		{
@@ -143,6 +149,7 @@ func TestPlugin_Init(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			p := newPlugin(tt.cfg)
 			err := p.Init(context.Background())
+			t.Cleanup(func() { _ = p.Stop(context.Background()) })
 			if (err != nil) != tt.wantErr {
 				t.Errorf("Init() error = %v, wantErr %v", err, tt.wantErr)
 				return
@@ -718,6 +725,169 @@ func TestPlugin_IdentityProvider_FailureResult(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// Local dev JWKS mode (auth.mode=jwt, no jwks_url)
+// ---------------------------------------------------------------------------
+
+func TestPlugin_DevJWKS_InitSucceeds(t *testing.T) {
+	cfg := auth.Config{
+		Enabled: true,
+		Mode:    auth.ModeJWT,
+		JWT: auth.JWTPluginConfig{
+			DevKeyDir: t.TempDir(),
+		},
+	}
+	p := auth.New(cfg, discardLogger(), nil)
+	if err := p.Init(context.Background()); err != nil {
+		t.Fatalf("Init() with dev JWKS mode: %v", err)
+	}
+	defer p.Stop(context.Background()) //nolint:errcheck
+
+	h := p.Health()
+	if !h.Healthy {
+		t.Errorf("Health().Healthy = false after dev JWKS init, want true")
+	}
+	if !strings.Contains(h.Message, "dev-jwks") {
+		t.Errorf("Health().Message = %q, want to contain %q", h.Message, "dev-jwks")
+	}
+}
+
+func TestPlugin_DevJWKS_ContributesJWKSRoute(t *testing.T) {
+	cfg := auth.Config{
+		Enabled: true,
+		Mode:    auth.ModeJWT,
+		JWT: auth.JWTPluginConfig{
+			DevKeyDir: t.TempDir(),
+		},
+	}
+	p := auth.New(cfg, discardLogger(), nil)
+	if err := p.Init(context.Background()); err != nil {
+		t.Fatalf("Init(): %v", err)
+	}
+	defer p.Stop(context.Background()) //nolint:errcheck
+
+	routes := p.ContributeCaddyRoutes()
+	if len(routes) == 0 {
+		t.Fatal("ContributeCaddyRoutes() returned no routes for dev JWKS mode")
+	}
+
+	// Must have a route for /_vibewarden/jwks.json.
+	found := false
+	for _, r := range routes {
+		if r.MatchPath == "/_vibewarden/jwks.json" {
+			found = true
+			// Verify it is a reverse_proxy route.
+			handles, ok := r.Handler["handle"].([]map[string]any)
+			if !ok || len(handles) == 0 {
+				t.Fatal("JWKS route handle is invalid")
+			}
+			if handles[0]["handler"] != "reverse_proxy" {
+				t.Errorf("JWKS route handler = %q, want reverse_proxy", handles[0]["handler"])
+			}
+			break
+		}
+	}
+	if !found {
+		t.Errorf("no route for /_vibewarden/jwks.json; routes: %v", routes)
+	}
+}
+
+func TestPlugin_DevJWKS_StopCleansUp(t *testing.T) {
+	cfg := auth.Config{
+		Enabled: true,
+		Mode:    auth.ModeJWT,
+		JWT: auth.JWTPluginConfig{
+			DevKeyDir: t.TempDir(),
+		},
+	}
+	p := auth.New(cfg, discardLogger(), nil)
+	if err := p.Init(context.Background()); err != nil {
+		t.Fatalf("Init(): %v", err)
+	}
+	if err := p.Stop(context.Background()); err != nil {
+		t.Fatalf("Stop() returned error: %v", err)
+	}
+}
+
+func TestPlugin_DevJWKS_PersistsAcrossRestarts(t *testing.T) {
+	dir := t.TempDir()
+
+	cfg := auth.Config{
+		Enabled: true,
+		Mode:    auth.ModeJWT,
+		JWT: auth.JWTPluginConfig{
+			DevKeyDir: dir,
+		},
+	}
+
+	// First startup — generates keys.
+	p1 := auth.New(cfg, discardLogger(), nil)
+	if err := p1.Init(context.Background()); err != nil {
+		t.Fatalf("first Init(): %v", err)
+	}
+	routes1 := p1.ContributeCaddyRoutes()
+	if err := p1.Stop(context.Background()); err != nil {
+		t.Fatalf("first Stop(): %v", err)
+	}
+
+	// Second startup — must load the same key (no new files created).
+	p2 := auth.New(cfg, discardLogger(), nil)
+	if err := p2.Init(context.Background()); err != nil {
+		t.Fatalf("second Init(): %v", err)
+	}
+	routes2 := p2.ContributeCaddyRoutes()
+	if err := p2.Stop(context.Background()); err != nil {
+		t.Fatalf("second Stop(): %v", err)
+	}
+
+	// Both runs must contribute a JWKS route.
+	if len(routes1) == 0 || len(routes2) == 0 {
+		t.Error("expected routes from both startups")
+	}
+}
+
+func TestPlugin_DevJWKS_DefaultsIssuerAndAudience(t *testing.T) {
+	cfg := auth.Config{
+		Enabled: true,
+		Mode:    auth.ModeJWT,
+		JWT: auth.JWTPluginConfig{
+			DevKeyDir: t.TempDir(),
+			// Issuer and Audience intentionally left empty — should use defaults.
+		},
+	}
+	p := auth.New(cfg, discardLogger(), nil)
+	if err := p.Init(context.Background()); err != nil {
+		t.Fatalf("Init(): %v", err)
+	}
+	defer p.Stop(context.Background()) //nolint:errcheck
+
+	// Plugin must be healthy — defaults were applied internally.
+	h := p.Health()
+	if !h.Healthy {
+		t.Errorf("Health() unhealthy: %s", h.Message)
+	}
+}
+
+func TestPlugin_DevJWKS_DisabledPlugin_NoRoutes(t *testing.T) {
+	cfg := auth.Config{
+		Enabled: false,
+		Mode:    auth.ModeJWT,
+		JWT: auth.JWTPluginConfig{
+			DevKeyDir: t.TempDir(),
+		},
+	}
+	p := auth.New(cfg, discardLogger(), nil)
+	if err := p.Init(context.Background()); err != nil {
+		t.Fatalf("Init(): %v", err)
+	}
+	defer p.Stop(context.Background()) //nolint:errcheck
+
+	routes := p.ContributeCaddyRoutes()
+	if len(routes) != 0 {
+		t.Errorf("ContributeCaddyRoutes() = %d routes for disabled plugin, want 0", len(routes))
+	}
+}
+
+// ---------------------------------------------------------------------------
 // Interface compliance
 // ---------------------------------------------------------------------------
 
@@ -1019,37 +1189,55 @@ func TestPlugin_ContributeCaddyRoutes_CustomUI_OnlyKratosRoute(t *testing.T) {
 func TestPlugin_Init_NonKratosModes(t *testing.T) {
 	tests := []struct {
 		name string
-		mode auth.Mode
+		cfg  auth.Config
 	}{
-		{"none mode", auth.ModeNone},
-		{"jwt mode", auth.ModeJWT},
-		{"api-key mode", auth.ModeAPIKey},
-		{"empty mode treated as none", ""},
+		{
+			name: "none mode",
+			cfg:  auth.Config{Enabled: true, Mode: auth.ModeNone},
+		},
+		{
+			// JWT mode without jwks_url activates local dev JWKS. DevKeyDir is
+			// set to a temp dir so the test does not write into the source tree.
+			name: "jwt mode",
+			cfg: auth.Config{
+				Enabled: true,
+				Mode:    auth.ModeJWT,
+				JWT:     auth.JWTPluginConfig{DevKeyDir: t.TempDir()},
+			},
+		},
+		{
+			name: "api-key mode",
+			cfg:  auth.Config{Enabled: true, Mode: auth.ModeAPIKey},
+		},
+		{
+			name: "empty mode treated as none",
+			cfg:  auth.Config{Enabled: true, Mode: ""},
+		},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cfg := auth.Config{
-				Enabled: true,
-				Mode:    tt.mode,
-				// KratosPublicURL intentionally absent.
-			}
-			p := auth.New(cfg, discardLogger(), nil)
+			p := auth.New(tt.cfg, discardLogger(), nil)
 			if err := p.Init(context.Background()); err != nil {
-				t.Errorf("Init() error = %v, want nil for mode %q", err, tt.mode)
+				t.Errorf("Init() error = %v, want nil for mode %q", err, tt.cfg.Mode)
 			}
+			// Always clean up — important for JWT mode which starts a server.
+			defer p.Stop(context.Background()) //nolint:errcheck
 		})
 	}
 }
 
 // TestPlugin_ContributeCaddyRoutes_NonKratosModes verifies that Kratos flow
 // routes are not contributed when the mode is not "kratos".
+//
+// JWT mode in dev JWKS configuration (no jwks_url) is excluded here because it
+// legitimately contributes a /_vibewarden/jwks.json route. That behaviour is
+// covered by TestPlugin_DevJWKS_ContributesJWKSRoute.
 func TestPlugin_ContributeCaddyRoutes_NonKratosModes(t *testing.T) {
 	tests := []struct {
 		name string
 		mode auth.Mode
 	}{
 		{"none mode", auth.ModeNone},
-		{"jwt mode", auth.ModeJWT},
 		{"api-key mode", auth.ModeAPIKey},
 		{"empty mode treated as none", ""},
 	}

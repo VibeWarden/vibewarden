@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/vibewarden/vibewarden/internal/adapters/authui"
+	jwtadapter "github.com/vibewarden/vibewarden/internal/adapters/jwt"
 	"github.com/vibewarden/vibewarden/internal/domain/identity"
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
@@ -50,6 +51,9 @@ const healthCheckTimeout = 3 * time.Second
 //   - When UI.Mode is "built-in", start an internal auth UI HTTP server and
 //     contribute a Caddy route that reverse-proxies the /_vibewarden/auth-ui
 //     paths to it (ContributeCaddyRoutes).
+//   - When Mode is ModeJWT and JWT.JWKSURL is empty, generate/load a dev RSA
+//     key pair, start a local JWKS HTTP server, and contribute a Caddy route
+//     that reverse-proxies /_vibewarden/jwks.json to it.
 //   - Contribute an auth middleware handler and an identity-headers handler
 //     to the catch-all route (ContributeCaddyHandlers).
 //   - Health-check Kratos connectivity (Health).
@@ -66,6 +70,10 @@ type Plugin struct {
 	// uiHandler is the built-in auth UI HTTP server.
 	// It is nil when UI.Mode != "built-in" or when the plugin is disabled.
 	uiHandler *authui.Handler
+	// devJWKSServer is the internal HTTP server that serves the local dev JWKS
+	// endpoint at /_vibewarden/jwks.json. It is non-nil only when Mode is
+	// ModeJWT and JWT.JWKSURL is empty (local dev JWKS mode).
+	devJWKSServer *jwtadapter.DevServer
 	// healthy tracks whether the last Health() call found Kratos reachable.
 	healthy bool
 	// healthMsg is the last health status message.
@@ -185,6 +193,14 @@ func (p *Plugin) Init(_ context.Context) error {
 		return nil
 	}
 
+	// JWT mode: when jwks_url is empty, activate local dev JWKS.
+	if mode == ModeJWT && p.cfg.JWT.JWKSURL == "" && p.cfg.JWT.IssuerURL == "" {
+		if err := p.initDevJWKS(); err != nil {
+			return fmt.Errorf("auth plugin init: %w", err)
+		}
+		return nil
+	}
+
 	// Non-Kratos modes: no Kratos services are needed.
 	p.healthy = true
 	p.healthMsg = fmt.Sprintf("auth configured, mode: %s", mode)
@@ -197,16 +213,78 @@ func (p *Plugin) Init(_ context.Context) error {
 	return nil
 }
 
+// initDevJWKS sets up the local dev JWKS server when auth.mode is "jwt" and
+// no jwks_url or issuer_url is configured. It generates or loads an RSA-2048
+// key pair, starts an internal HTTP server for the JWKS endpoint, and
+// configures the identityProvider if one was not already injected.
+func (p *Plugin) initDevJWKS() error {
+	keyDir := p.cfg.JWT.DevKeyDir
+	if keyDir == "" {
+		keyDir = jwtadapter.DevKeyDir
+	}
+
+	keyPair, err := jwtadapter.LoadOrGenerateDevKeys(keyDir)
+	if err != nil {
+		return fmt.Errorf("dev jwks: loading or generating key pair: %w", err)
+	}
+
+	srv := jwtadapter.NewDevServer(keyPair, p.logger)
+	if err := srv.Start(); err != nil {
+		return fmt.Errorf("dev jwks: starting server: %w", err)
+	}
+	p.devJWKSServer = srv
+
+	// Auto-configure the JWT identity provider when none was injected.
+	if p.identityProvider == nil {
+		issuer := p.cfg.JWT.Issuer
+		if issuer == "" {
+			issuer = jwtadapter.DevIssuer
+		}
+		audience := p.cfg.JWT.Audience
+		if audience == "" {
+			audience = jwtadapter.DevAudience
+		}
+		fetcher := jwtadapter.NewLocalJWKSFetcher(jwtadapter.PublicKey(keyPair))
+		adapter, adapterErr := jwtadapter.NewAdapter(jwtadapter.Config{
+			JWKSURL:  srv.LocalJWKSURL(),
+			Issuer:   issuer,
+			Audience: audience,
+		}, fetcher, p.logger)
+		if adapterErr != nil {
+			return fmt.Errorf("dev jwks: creating JWT adapter: %w", adapterErr)
+		}
+		p.identityProvider = adapter
+	}
+
+	p.healthy = true
+	p.healthMsg = fmt.Sprintf("auth configured, mode: jwt, dev-jwks: %s", srv.LocalJWKSURL())
+
+	p.logger.Info("auth plugin initialised (local dev JWKS mode)",
+		slog.String("mode", string(ModeJWT)),
+		slog.String("jwks_url", srv.LocalJWKSURL()),
+		slog.String("key_dir", keyPair.Dir),
+		slog.Int("public_paths", len(p.cfg.PublicPaths)),
+	)
+
+	return nil
+}
+
 // Start is a no-op for the auth plugin.
 // Session validation happens inline during request processing via Caddy middleware.
 func (p *Plugin) Start(_ context.Context) error { return nil }
 
 // Stop gracefully shuts down the auth plugin. When the built-in auth UI
-// server is running, it is stopped. The function honours the provided context.
+// server is running, it is stopped. When the local dev JWKS server is
+// running, it is stopped. The function honours the provided context.
 func (p *Plugin) Stop(ctx context.Context) error {
 	if p.uiHandler != nil {
 		if err := p.uiHandler.Stop(ctx); err != nil {
 			return fmt.Errorf("auth plugin stop: stopping auth UI server: %w", err)
+		}
+	}
+	if p.devJWKSServer != nil {
+		if err := p.devJWKSServer.Stop(ctx); err != nil {
+			return fmt.Errorf("auth plugin stop: stopping dev JWKS server: %w", err)
 		}
 	}
 	return nil
@@ -347,7 +425,11 @@ func (p *Plugin) CheckDependency(ctx context.Context) ports.DependencyStatus {
 //     /_vibewarden/recovery, /_vibewarden/verification) to the internal auth UI
 //     HTTP server started during Init.
 //
-// Returns nil when the plugin is disabled or when Mode is not ModeKratos.
+// When enabled and Mode is ModeJWT with local dev JWKS active (no jwks_url), a
+// route that reverse-proxies /_vibewarden/jwks.json to the internal JWKS server
+// is added so that external clients can fetch the public signing keys.
+//
+// Returns nil when the plugin is disabled.
 func (p *Plugin) ContributeCaddyRoutes() []ports.CaddyRoute {
 	if !p.cfg.Enabled {
 		return nil
@@ -358,15 +440,13 @@ func (p *Plugin) ContributeCaddyRoutes() []ports.CaddyRoute {
 		mode = ModeNone
 	}
 
+	var routes []ports.CaddyRoute
+
 	// Kratos self-service routes are only needed when mode is "kratos".
-	if mode != ModeKratos {
-		return nil
-	}
+	if mode == ModeKratos {
+		kratosAddr := urlToDialAddr(p.cfg.KratosPublicURL)
 
-	kratosAddr := urlToDialAddr(p.cfg.KratosPublicURL)
-
-	routes := []ports.CaddyRoute{
-		{
+		routes = append(routes, ports.CaddyRoute{
 			MatchPath: "/self-service/*",
 			Priority:  40,
 			Handler: map[string]any{
@@ -382,32 +462,55 @@ func (p *Plugin) ContributeCaddyRoutes() []ports.CaddyRoute {
 					},
 				},
 			},
-		},
-	}
+		})
 
-	// Add auth UI route when the built-in UI is running.
-	if p.uiHandler != nil {
-		uiAddr := p.uiHandler.Addr()
-		routes = append(routes, ports.CaddyRoute{
-			MatchPath: "/_vibewarden/login",
-			Priority:  39, // just before the Kratos proxy route
-			Handler: map[string]any{
-				"match": []map[string]any{
-					{
-						"path": []string{
-							"/_vibewarden/login",
-							"/_vibewarden/registration",
-							"/_vibewarden/recovery",
-							"/_vibewarden/verification",
-							"/_vibewarden/settings",
+		// Add auth UI route when the built-in UI is running.
+		if p.uiHandler != nil {
+			uiAddr := p.uiHandler.Addr()
+			routes = append(routes, ports.CaddyRoute{
+				MatchPath: "/_vibewarden/login",
+				Priority:  39, // just before the Kratos proxy route
+				Handler: map[string]any{
+					"match": []map[string]any{
+						{
+							"path": []string{
+								"/_vibewarden/login",
+								"/_vibewarden/registration",
+								"/_vibewarden/recovery",
+								"/_vibewarden/verification",
+								"/_vibewarden/settings",
+							},
 						},
 					},
+					"handle": []map[string]any{
+						{
+							"handler": "reverse_proxy",
+							"upstreams": []map[string]any{
+								{"dial": uiAddr},
+							},
+						},
+					},
+				},
+			})
+		}
+	}
+
+	// JWT dev JWKS route: expose /_vibewarden/jwks.json through Caddy so
+	// external clients can fetch the auto-generated public signing key.
+	if p.devJWKSServer != nil {
+		jwksAddr := p.devJWKSServer.Addr()
+		routes = append(routes, ports.CaddyRoute{
+			MatchPath: jwtadapter.DevJWKSPath,
+			Priority:  38, // before catch-all
+			Handler: map[string]any{
+				"match": []map[string]any{
+					{"path": []string{jwtadapter.DevJWKSPath}},
 				},
 				"handle": []map[string]any{
 					{
 						"handler": "reverse_proxy",
 						"upstreams": []map[string]any{
-							{"dial": uiAddr},
+							{"dial": jwksAddr},
 						},
 					},
 				},
