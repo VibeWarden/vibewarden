@@ -151,7 +151,7 @@ func TestTimeoutHandler_ServeHTTP_SlowUpstream(t *testing.T) {
 	_ = err // error handling is internal
 
 	resp := rec.Result()
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }() //nolint:errcheck
 
 	if resp.StatusCode != http.StatusGatewayTimeout {
 		t.Errorf("status = %d, want %d", resp.StatusCode, http.StatusGatewayTimeout)

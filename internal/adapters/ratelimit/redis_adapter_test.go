@@ -32,7 +32,7 @@ func newTestRedisStore(t *testing.T, rps float64, burst int, prefix string) (*Re
 		if len(keys) > 0 {
 			client.Del(ctx, keys...)
 		}
-		client.Close()
+		_ = client.Close() //nolint:errcheck
 	})
 
 	rule := ports.RateLimitRule{RequestsPerSecond: rps, Burst: burst}
@@ -49,7 +49,7 @@ func redisTestAddr(t *testing.T) string {
 	addr := "localhost:6379"
 
 	client := redis.NewClient(&redis.Options{Addr: addr})
-	defer client.Close()
+	defer func() { _ = client.Close() }() //nolint:errcheck
 
 	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
 	defer cancel()
@@ -204,7 +204,7 @@ func TestRedisStore_Allow_ResultFields(t *testing.T) {
 func TestRedisFactory_NewLimiter(t *testing.T) {
 	addr := redisTestAddr(t)
 	client := redis.NewClient(&redis.Options{Addr: addr})
-	t.Cleanup(func() { client.Close() })
+	t.Cleanup(func() { _ = client.Close() }) //nolint:errcheck
 
 	factory := NewRedisFactory(client, "vw:rl")
 	rule := ports.RateLimitRule{RequestsPerSecond: 5, Burst: 10}
@@ -218,7 +218,7 @@ func TestRedisFactory_NewLimiter(t *testing.T) {
 func TestRedisFactory_NewLimiter_UniqueKeyPrefixes(t *testing.T) {
 	addr := redisTestAddr(t)
 	client := redis.NewClient(&redis.Options{Addr: addr})
-	t.Cleanup(func() { client.Close() })
+	t.Cleanup(func() { _ = client.Close() }) //nolint:errcheck
 
 	factory := NewRedisFactory(client, "vw:rl")
 	rule := ports.RateLimitRule{RequestsPerSecond: 100, Burst: 100}

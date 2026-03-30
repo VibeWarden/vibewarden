@@ -90,7 +90,7 @@ func (a *AdminAdapter) ListUsers(ctx context.Context, pagination ports.Paginatio
 	if err != nil {
 		return nil, a.wrapNetworkError(ctx, "list identities", endpoint, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }() //nolint:errcheck // response body close error is not actionable
 
 	if err := a.checkAdminError(ctx, resp, "list identities"); err != nil {
 		return nil, err
@@ -127,7 +127,7 @@ func (a *AdminAdapter) GetUser(ctx context.Context, id string) (*user.User, erro
 	if err != nil {
 		return nil, a.wrapNetworkError(ctx, "get identity", endpoint, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }() //nolint:errcheck // response body close error is not actionable
 
 	if resp.StatusCode == http.StatusNotFound {
 		return nil, ports.ErrUserNotFound
@@ -172,7 +172,7 @@ func (a *AdminAdapter) InviteUser(ctx context.Context, email string) (*ports.Inv
 	if err != nil {
 		return nil, a.wrapNetworkError(ctx, "create identity", createEndpoint, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }() //nolint:errcheck // response body close error is not actionable
 
 	if resp.StatusCode == http.StatusConflict {
 		return nil, ports.ErrUserAlreadyExists
@@ -227,7 +227,7 @@ func (a *AdminAdapter) DeactivateUser(ctx context.Context, id string) error {
 	if err != nil {
 		return a.wrapNetworkError(ctx, "deactivate identity", endpoint, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }() //nolint:errcheck // response body close error is not actionable
 
 	if resp.StatusCode == http.StatusNotFound {
 		return ports.ErrUserNotFound
@@ -261,7 +261,7 @@ func (a *AdminAdapter) generateRecoveryLink(ctx context.Context, identityID stri
 	if err != nil {
 		return "", a.wrapNetworkError(ctx, "recovery link", endpoint, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }() //nolint:errcheck // response body close error is not actionable
 
 	if err := a.checkAdminError(ctx, resp, "recovery link"); err != nil {
 		return "", err

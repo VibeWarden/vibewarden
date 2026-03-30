@@ -158,7 +158,7 @@ func TestHandler_Pages(t *testing.T) {
 			if err != nil {
 				t.Fatalf("GET %s: %v", tt.path, err)
 			}
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }() //nolint:errcheck
 
 			if resp.StatusCode != tt.wantStatus {
 				t.Errorf("status = %d, want %d", resp.StatusCode, tt.wantStatus)
@@ -216,7 +216,7 @@ func TestHandler_ThemeColorsInjected(t *testing.T) {
 			if err != nil {
 				t.Fatalf("GET %s: %v", path, err)
 			}
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }() //nolint:errcheck
 
 			body, _ := io.ReadAll(resp.Body)
 			bodyStr := string(body)
@@ -246,7 +246,7 @@ func TestHandler_ReturnToQueryPropagated(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GET login with return_to: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }() //nolint:errcheck
 
 	body, _ := io.ReadAll(resp.Body)
 	if !strings.Contains(string(body), "return_to") {
@@ -269,7 +269,7 @@ func TestHandler_DefaultColorsApplied(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GET login: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }() //nolint:errcheck
 
 	body, _ := io.ReadAll(resp.Body)
 	bodyStr := string(body)
@@ -331,7 +331,7 @@ func TestHandler_ServeHTTP_ViaRecorder(t *testing.T) {
 			if err != nil {
 				t.Fatalf("GET %s: %v", tt.path, err)
 			}
-			defer resp.Body.Close()
+			defer func() { _ = resp.Body.Close() }() //nolint:errcheck
 
 			if tt.wantOK && resp.StatusCode != http.StatusOK {
 				t.Errorf("status = %d, want 200", resp.StatusCode)

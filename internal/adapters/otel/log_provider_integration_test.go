@@ -66,14 +66,14 @@ func TestLogProvider_Integration_FullRoundtrip(t *testing.T) {
 // readBody reads and optionally decompresses the request body.
 func readBody(r *http.Request) ([]byte, error) {
 	var reader io.Reader = r.Body
-	defer r.Body.Close()
+	defer func() { _ = r.Body.Close() }() //nolint:errcheck
 
 	if r.Header.Get("Content-Encoding") == "gzip" {
 		gr, err := gzip.NewReader(r.Body)
 		if err != nil {
 			return nil, err
 		}
-		defer gr.Close()
+		defer func() { _ = gr.Close() }() //nolint:errcheck
 		reader = gr
 	}
 

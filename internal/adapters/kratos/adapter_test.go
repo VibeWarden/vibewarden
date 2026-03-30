@@ -282,7 +282,7 @@ func TestCheckSession_NetworkError(t *testing.T) {
 		t.Fatalf("failed to listen: %v", err)
 	}
 	addr := ln.Addr().String()
-	ln.Close()
+	_ = ln.Close() //nolint:errcheck
 
 	adapter := kratos.NewAdapter("http://"+addr, 0, newTestLogger())
 	_, checkErr := adapter.CheckSession(context.Background(), "ory_kratos_session=abc")

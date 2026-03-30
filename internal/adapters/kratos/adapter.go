@@ -169,7 +169,7 @@ func (a *Adapter) CheckSession(ctx context.Context, sessionCookie string) (*port
 		}
 		return nil, fmt.Errorf("kratos unreachable: %w", ports.ErrAuthProviderUnavailable)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }() //nolint:errcheck // response body close error is not actionable
 
 	switch {
 	case resp.StatusCode == http.StatusOK:

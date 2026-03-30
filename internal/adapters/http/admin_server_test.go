@@ -43,7 +43,7 @@ func TestAdminServer_StartAndStop(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GET /_vibewarden/admin/users: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }() //nolint:errcheck
 
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("status = %d, want 200", resp.StatusCode)
@@ -98,7 +98,7 @@ func TestAdminServer_RespondsWithJSON(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GET /_vibewarden/admin/users: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }() //nolint:errcheck
 
 	ct := resp.Header.Get("Content-Type")
 	if ct != "application/json" {
