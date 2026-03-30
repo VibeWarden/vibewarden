@@ -1,6 +1,6 @@
 # VibeWarden Makefile
 
-.PHONY: build test lint run docker-up docker-down observability-up observability-down grafana-open prometheus-open loki-open clean check setup-hooks demo demo-tls demo-down demo-clean deploy-demo
+.PHONY: build test lint run docker-up docker-down observability-up observability-down grafana-open prometheus-open loki-open clean check setup-hooks demo demo-build demo-tls demo-down demo-clean deploy-demo
 
 # Build variables
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
@@ -71,10 +71,20 @@ check: ## Run all quality checks (lint, build, tests)
 	cd examples/demo-app && go vet ./... && go build ./... && go test -race ./...
 	@echo "==> All checks passed!"
 
-# Start the full local demo stack
-demo: build ## Start the full local demo stack (http://localhost:8080, Grafana http://localhost:3001)
+# Build the VibeWarden Docker image locally and tag it so demo targets work
+# without pulling from ghcr.io. No Go toolchain required — Docker handles the build.
+demo-build: ## Build the VibeWarden Docker image locally (required before running demo targets)
+	docker build --tag ghcr.io/vibewarden/vibewarden:latest .
+
+# Start the full local demo stack — no Go toolchain required.
+# `vibewarden generate` runs inside the locally-built Docker image.
+demo: demo-build ## Start the full local demo stack (http://localhost:8080, Grafana http://localhost:3001)
+	docker run --rm \
+	  -v "$(CURDIR)/examples/demo-app:/work" \
+	  -w /work \
+	  ghcr.io/vibewarden/vibewarden:latest \
+	  generate
 	cd examples/demo-app && \
-	  ../../bin/vibewarden generate && \
 	  COMPOSE_PROFILES=observability \
 	  docker compose -f .vibewarden/generated/docker-compose.yml up -d
 	@echo ""
@@ -87,13 +97,17 @@ demo: build ## Start the full local demo stack (http://localhost:8080, Grafana h
 	@echo "Demo credentials: demo@vibewarden.dev / demo1234"
 	@echo "Run 'vibew secret get postgres' to retrieve generated credentials."
 
-# Start demo with TLS
-demo-tls: build ## Start the full local demo stack with self-signed TLS (https://localhost:8443)
+# Start demo with TLS — no Go toolchain required.
+demo-tls: demo-build ## Start the full local demo stack with self-signed TLS (https://localhost:8443)
+	docker run --rm \
+	  -v "$(CURDIR)/examples/demo-app:/work" \
+	  -w /work \
+	  -e VIBEWARDEN_TLS_ENABLED=true \
+	  -e VIBEWARDEN_TLS_PROVIDER=self-signed \
+	  -e VIBEWARDEN_SERVER_PORT=8443 \
+	  ghcr.io/vibewarden/vibewarden:latest \
+	  generate
 	cd examples/demo-app && \
-	  VIBEWARDEN_TLS_ENABLED=true \
-	  VIBEWARDEN_TLS_PROVIDER=self-signed \
-	  VIBEWARDEN_SERVER_PORT=8443 \
-	  ../../bin/vibewarden generate && \
 	  COMPOSE_PROFILES=observability \
 	  docker compose -f .vibewarden/generated/docker-compose.yml up -d
 	@echo ""

@@ -14,29 +14,43 @@ This demo showcases the intended VibeWarden user workflow:
 
 Generated files are written to `.vibewarden/generated/` which is gitignored.
 
+**No Go toolchain required.** All steps use Docker.
+
 ### Quick start
 
 ```bash
-cd examples/demo-app
 make demo
-# Visit https://localhost:8443
+# Visit http://localhost:8080
 ```
+
+`make demo` builds the VibeWarden Docker image locally, runs `vibewarden generate`
+inside that image, then starts the full stack with Docker Compose.
 
 Wait ~30 seconds for the full stack to be healthy.
 
 | Service | URL | Credentials |
 |---|---|---|
-| Demo app (via VibeWarden) | https://localhost:8443 | see Demo credentials below |
+| Demo app (via VibeWarden) | http://localhost:8080 | see Demo credentials below |
 | Grafana | http://localhost:3001 | admin / admin |
 | Prometheus | http://localhost:9090 | — |
 | Kratos public API | http://localhost:4433 | — |
 | OpenBao (secrets) | http://localhost:8200 | token: see `.vibewarden/generated/.credentials` |
 
-Or step by step:
+Or step by step (from the repo root):
 
 ```bash
+# Build the VibeWarden image once
+make demo-build
+
+# Generate runtime config files
+docker run --rm \
+  -v "$(pwd)/examples/demo-app:/work" \
+  -w /work \
+  ghcr.io/vibewarden/vibewarden:latest \
+  generate
+
+# Start the stack
 cd examples/demo-app
-../../bin/vibewarden generate
 COMPOSE_PROFILES=observability \
   docker compose -f .vibewarden/generated/docker-compose.yml up -d
 ```
@@ -49,14 +63,21 @@ make demo-tls
 # Grafana: http://localhost:3001
 ```
 
-Or manually:
+Or step by step (from the repo root):
 
 ```bash
+make demo-build
+
+docker run --rm \
+  -v "$(pwd)/examples/demo-app:/work" \
+  -w /work \
+  -e VIBEWARDEN_TLS_ENABLED=true \
+  -e VIBEWARDEN_TLS_PROVIDER=self-signed \
+  -e VIBEWARDEN_SERVER_PORT=8443 \
+  ghcr.io/vibewarden/vibewarden:latest \
+  generate
+
 cd examples/demo-app
-VIBEWARDEN_TLS_ENABLED=true \
-VIBEWARDEN_TLS_PROVIDER=self-signed \
-VIBEWARDEN_SERVER_PORT=8443 \
-  ../../bin/vibewarden generate
 COMPOSE_PROFILES=observability \
   docker compose -f .vibewarden/generated/docker-compose.yml up -d
 ```
