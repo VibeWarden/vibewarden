@@ -10,13 +10,13 @@
       
       
       
-        <link rel="canonical" href="https://vibewarden.dev/docs/performance/">
+        <link rel="canonical" href="https://vibewarden.dev/docs/upgrading/">
       
       
-        <link rel="prev" href="../secret-management/">
+        <link rel="prev" href="../examples/rails/">
       
       
-        <link rel="next" href="../social-login/">
+        <link rel="next" href="../troubleshooting/">
       
       
       <link rel="icon" href="../assets/favicon.png">
@@ -24,7 +24,7 @@
     
     
       
-        <title>Performance - VibeWarden</title>
+        <title>Upgrading - VibeWarden</title>
       
     
     
@@ -78,7 +78,7 @@
     <div data-md-component="skip">
       
         
-        <a href="#vibewarden-performance-benchmarks-and-latency-budget" class="md-skip">
+        <a href="#upgrading-vibewarden" class="md-skip">
           Skip to content
         </a>
       
@@ -115,7 +115,7 @@
         <div class="md-header__topic" data-md-component="header-topic">
           <span class="md-ellipsis">
             
-              Performance
+              Upgrading
             
           </span>
         </div>
@@ -290,12 +290,10 @@
         
   
   
-    
-  
   
     
     
-      <li class="md-tabs__item md-tabs__item--active">
+      <li class="md-tabs__item">
         <a href="../identity-providers/" class="md-tabs__link">
           
   
@@ -328,9 +326,11 @@
         
   
   
+    
   
-    <li class="md-tabs__item">
-      <a href="../upgrading/" class="md-tabs__link">
+  
+    <li class="md-tabs__item md-tabs__item--active">
+      <a href="./" class="md-tabs__link">
         
   
     
@@ -505,30 +505,27 @@
       
   
   
-    
   
   
-  
     
     
     
-      
-        
-        
       
       
         
       
     
     
-    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+    <li class="md-nav__item md-nav__item--nested">
       
         
-        
-        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" checked>
         
           
-          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
             
   
   <span class="md-ellipsis">
@@ -539,7 +536,7 @@
             <span class="md-nav__icon md-icon"></span>
           </label>
         
-        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="true">
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
           <label class="md-nav__title" for="__nav_5">
             <span class="md-nav__icon md-icon"></span>
             Guides
@@ -676,30 +673,10 @@
                 
   
   
-    
   
   
-  
-    <li class="md-nav__item md-nav__item--active">
-      
-      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
-      
-      
-        
-      
-      
-        <label class="md-nav__link md-nav__link--active" for="__toc">
-          
-  
-  <span class="md-ellipsis">
-    Performance
-  </span>
-  
-
-          <span class="md-nav__icon md-icon"></span>
-        </label>
-      
-      <a href="./" class="md-nav__link md-nav__link--active">
+    <li class="md-nav__item">
+      <a href="../performance/" class="md-nav__link">
         
   
   <span class="md-ellipsis">
@@ -708,95 +685,6 @@
   
 
       </a>
-      
-        
-
-<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
-  
-  
-  
-    
-  
-  
-    <label class="md-nav__title" for="__toc">
-      <span class="md-nav__icon md-icon"></span>
-      Table of contents
-    </label>
-    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
-      
-        <li class="md-nav__item">
-  <a href="#latency-budget" class="md-nav__link">
-    <span class="md-ellipsis">
-      Latency budget
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#running-the-benchmarks" class="md-nav__link">
-    <span class="md-ellipsis">
-      Running the benchmarks
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#benchmark-results" class="md-nav__link">
-    <span class="md-ellipsis">
-      Benchmark results
-    </span>
-  </a>
-  
-    <nav class="md-nav" aria-label="Benchmark results">
-      <ul class="md-nav__list">
-        
-          <li class="md-nav__item">
-  <a href="#interpretation" class="md-nav__link">
-    <span class="md-ellipsis">
-      Interpretation
-    </span>
-  </a>
-  
-</li>
-        
-          <li class="md-nav__item">
-  <a href="#key-observations" class="md-nav__link">
-    <span class="md-ellipsis">
-      Key observations
-    </span>
-  </a>
-  
-</li>
-        
-      </ul>
-    </nav>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#benchmark-scope-and-limitations" class="md-nav__link">
-    <span class="md-ellipsis">
-      Benchmark scope and limitations
-    </span>
-  </a>
-  
-</li>
-      
-        <li class="md-nav__item">
-  <a href="#regression-tracking" class="md-nav__link">
-    <span class="md-ellipsis">
-      Regression tracking
-    </span>
-  </a>
-  
-</li>
-      
-    </ul>
-  
-</nav>
-      
     </li>
   
 
@@ -1009,10 +897,30 @@
       
   
   
+    
   
   
-    <li class="md-nav__item">
-      <a href="../upgrading/" class="md-nav__link">
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  <span class="md-ellipsis">
+    Upgrading
+  </span>
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
         
   
   <span class="md-ellipsis">
@@ -1021,6 +929,179 @@
   
 
       </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#how-versioning-works" class="md-nav__link">
+    <span class="md-ellipsis">
+      How versioning works
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#checking-your-current-version" class="md-nav__link">
+    <span class="md-ellipsis">
+      Checking your current version
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#how-to-upgrade" class="md-nav__link">
+    <span class="md-ellipsis">
+      How to upgrade
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="How to upgrade">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#automatic-upgrade-via-the-vibew-wrapper" class="md-nav__link">
+    <span class="md-ellipsis">
+      Automatic upgrade via the vibew wrapper
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#upgrading-to-the-latest-release" class="md-nav__link">
+    <span class="md-ellipsis">
+      Upgrading to the latest release
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#upgrading-the-docker-image" class="md-nav__link">
+    <span class="md-ellipsis">
+      Upgrading the Docker image
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#breaking-change-policy" class="md-nav__link">
+    <span class="md-ellipsis">
+      Breaking change policy
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Breaking change policy">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#what-counts-as-a-breaking-change" class="md-nav__link">
+    <span class="md-ellipsis">
+      What counts as a breaking change
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-is-not-a-breaking-change" class="md-nav__link">
+    <span class="md-ellipsis">
+      What is not a breaking change
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#deprecation-process" class="md-nav__link">
+    <span class="md-ellipsis">
+      Deprecation process
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#config-migration" class="md-nav__link">
+    <span class="md-ellipsis">
+      Config migration
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Config migration">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#metrics-telemetry-deprecated" class="md-nav__link">
+    <span class="md-ellipsis">
+      metrics: → telemetry: (deprecated)
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#step-by-step-upgrade-procedure" class="md-nav__link">
+    <span class="md-ellipsis">
+      Step-by-step upgrade procedure
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#rolling-back" class="md-nav__link">
+    <span class="md-ellipsis">
+      Rolling back
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#getting-help" class="md-nav__link">
+    <span class="md-ellipsis">
+      Getting help
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
     </li>
   
 
@@ -1142,46 +1223,55 @@
     <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
       
         <li class="md-nav__item">
-  <a href="#latency-budget" class="md-nav__link">
+  <a href="#how-versioning-works" class="md-nav__link">
     <span class="md-ellipsis">
-      Latency budget
+      How versioning works
     </span>
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#running-the-benchmarks" class="md-nav__link">
+  <a href="#checking-your-current-version" class="md-nav__link">
     <span class="md-ellipsis">
-      Running the benchmarks
+      Checking your current version
     </span>
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#benchmark-results" class="md-nav__link">
+  <a href="#how-to-upgrade" class="md-nav__link">
     <span class="md-ellipsis">
-      Benchmark results
+      How to upgrade
     </span>
   </a>
   
-    <nav class="md-nav" aria-label="Benchmark results">
+    <nav class="md-nav" aria-label="How to upgrade">
       <ul class="md-nav__list">
         
           <li class="md-nav__item">
-  <a href="#interpretation" class="md-nav__link">
+  <a href="#automatic-upgrade-via-the-vibew-wrapper" class="md-nav__link">
     <span class="md-ellipsis">
-      Interpretation
+      Automatic upgrade via the vibew wrapper
     </span>
   </a>
   
 </li>
         
           <li class="md-nav__item">
-  <a href="#key-observations" class="md-nav__link">
+  <a href="#upgrading-to-the-latest-release" class="md-nav__link">
     <span class="md-ellipsis">
-      Key observations
+      Upgrading to the latest release
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#upgrading-the-docker-image" class="md-nav__link">
+    <span class="md-ellipsis">
+      Upgrading the Docker image
     </span>
   </a>
   
@@ -1193,18 +1283,93 @@
 </li>
       
         <li class="md-nav__item">
-  <a href="#benchmark-scope-and-limitations" class="md-nav__link">
+  <a href="#breaking-change-policy" class="md-nav__link">
     <span class="md-ellipsis">
-      Benchmark scope and limitations
+      Breaking change policy
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Breaking change policy">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#what-counts-as-a-breaking-change" class="md-nav__link">
+    <span class="md-ellipsis">
+      What counts as a breaking change
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#what-is-not-a-breaking-change" class="md-nav__link">
+    <span class="md-ellipsis">
+      What is not a breaking change
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#deprecation-process" class="md-nav__link">
+    <span class="md-ellipsis">
+      Deprecation process
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#config-migration" class="md-nav__link">
+    <span class="md-ellipsis">
+      Config migration
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Config migration">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#metrics-telemetry-deprecated" class="md-nav__link">
+    <span class="md-ellipsis">
+      metrics: → telemetry: (deprecated)
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#step-by-step-upgrade-procedure" class="md-nav__link">
+    <span class="md-ellipsis">
+      Step-by-step upgrade procedure
     </span>
   </a>
   
 </li>
       
         <li class="md-nav__item">
-  <a href="#regression-tracking" class="md-nav__link">
+  <a href="#rolling-back" class="md-nav__link">
     <span class="md-ellipsis">
-      Regression tracking
+      Rolling back
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#getting-help" class="md-nav__link">
+    <span class="md-ellipsis">
+      Getting help
     </span>
   </a>
   
@@ -1228,190 +1393,212 @@
   
 
 
-<h1 id="vibewarden-performance-benchmarks-and-latency-budget">VibeWarden — Performance benchmarks and latency budget<a class="headerlink" href="#vibewarden-performance-benchmarks-and-latency-budget" title="Permanent link">&para;</a></h1>
-<p>This document explains how much latency VibeWarden adds to requests,
-what the latency budget is for each middleware layer, and how to reproduce
-the measurements yourself.</p>
+<h1 id="upgrading-vibewarden">Upgrading VibeWarden<a class="headerlink" href="#upgrading-vibewarden" title="Permanent link">&para;</a></h1>
+<p>This guide explains how VibeWarden is versioned, how to upgrade, what the breaking
+change policy is, and how to handle config migrations.</p>
 <hr />
-<h2 id="latency-budget">Latency budget<a class="headerlink" href="#latency-budget" title="Permanent link">&para;</a></h2>
+<h2 id="how-versioning-works">How versioning works<a class="headerlink" href="#how-versioning-works" title="Permanent link">&para;</a></h2>
+<p>VibeWarden follows <a href="https://semver.org/">Semantic Versioning</a> (<code>MAJOR.MINOR.PATCH</code>):</p>
 <table>
 <thead>
 <tr>
-<th>Layer</th>
-<th>Target P50 overhead</th>
-<th>Target P99 overhead</th>
+<th>Component</th>
+<th>Incremented when…</th>
 </tr>
 </thead>
 <tbody>
 <tr>
-<td>Direct passthrough (no middleware)</td>
-<td>baseline</td>
-<td>baseline</td>
+<td><code>MAJOR</code></td>
+<td>A breaking change is introduced (config key removed, API incompatibility, behavior change requiring action)</td>
 </tr>
 <tr>
-<td>Security headers only</td>
-<td>&lt; 1 ms</td>
-<td>&lt; 2 ms</td>
+<td><code>MINOR</code></td>
+<td>A new feature is added in a backward-compatible way</td>
 </tr>
 <tr>
-<td>Rate limiting only</td>
-<td>&lt; 1 ms</td>
-<td>&lt; 2 ms</td>
-</tr>
-<tr>
-<td>WAF only</td>
-<td>&lt; 2 ms</td>
-<td>&lt; 5 ms</td>
-</tr>
-<tr>
-<td>All middleware combined</td>
-<td>&lt; 3 ms</td>
-<td>&lt; 10 ms</td>
+<td><code>PATCH</code></td>
+<td>A bug fix or security patch is released, no behavior change</td>
 </tr>
 </tbody>
 </table>
-<p>The sidecar target is <strong>&lt; 1 ms P50</strong> and <strong>&lt; 5 ms P99</strong> overhead for a simple
-proxy (no WAF). With all middleware enabled the target is <strong>&lt; 5 ms P50</strong> and
-<strong>&lt; 10 ms P99</strong>. The benchmark numbers below are single-machine in-process
-measurements and represent the middleware cost in isolation, not end-to-end
-network round-trip time.</p>
+<p><strong>Pre-1.0 note:</strong> While VibeWarden is <code>0.x</code>, minor version bumps (<code>0.1 → 0.2</code>) may
+contain breaking changes. Each such release documents all breaking changes in the
+<a href="https://github.com/vibewarden/vibewarden/releases">GitHub release notes</a>. Once 1.0.0
+is tagged, the policy above is strictly enforced.</p>
 <hr />
-<h2 id="running-the-benchmarks">Running the benchmarks<a class="headerlink" href="#running-the-benchmarks" title="Permanent link">&para;</a></h2>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="c1"># Run all benchmarks with memory allocation stats (5-second run per bench)</span>
-</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a>go<span class="w"> </span><span class="nb">test</span><span class="w"> </span>-bench<span class="o">=</span>.<span class="w"> </span>-benchmem<span class="w"> </span>-benchtime<span class="o">=</span>5s<span class="w"> </span>./test/benchmarks/
-</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a>
-</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="c1"># Run a single benchmark</span>
-</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a>go<span class="w"> </span><span class="nb">test</span><span class="w"> </span>-bench<span class="o">=</span>BenchmarkProxy_WithWAF<span class="w"> </span>-benchmem<span class="w"> </span>./test/benchmarks/
-</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a>
-</span><span id="__span-0-7"><a id="__codelineno-0-7" name="__codelineno-0-7" href="#__codelineno-0-7"></a><span class="c1"># Increase iterations for more stable numbers</span>
-</span><span id="__span-0-8"><a id="__codelineno-0-8" name="__codelineno-0-8" href="#__codelineno-0-8"></a>go<span class="w"> </span><span class="nb">test</span><span class="w"> </span>-bench<span class="o">=</span>.<span class="w"> </span>-benchmem<span class="w"> </span>-count<span class="o">=</span><span class="m">3</span><span class="w"> </span>-benchtime<span class="o">=</span>5s<span class="w"> </span>./test/benchmarks/
+<h2 id="checking-your-current-version">Checking your current version<a class="headerlink" href="#checking-your-current-version" title="Permanent link">&para;</a></h2>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>./vibew<span class="w"> </span>version
 </span></code></pre></div>
-<p>Benchmarks live in <code>test/benchmarks/proxy_bench_test.go</code>. They use
-<code>net/http/httptest</code> so no network stack is involved. The numbers measure pure
-middleware CPU and allocation cost against a benign <code>GET /api/resource</code> request
-with no matching WAF rules.</p>
+<p>Example output:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>VibeWarden v0.12.3 (git: abc1234, built: 2026-03-28)
+</span></code></pre></div>
+<p>To show only the version string (useful in scripts):</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>./vibew<span class="w"> </span>version<span class="w"> </span>--short
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="c1"># v0.12.3</span>
+</span></code></pre></div>
 <hr />
-<h2 id="benchmark-results">Benchmark results<a class="headerlink" href="#benchmark-results" title="Permanent link">&para;</a></h2>
-<p>Machine: <code>darwin/amd64</code>, VirtualApple @ 2.50 GHz (Apple M-series, Rosetta),
-Go 1.26.</p>
-<div class="language-text highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a>goos: darwin
-</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a>goarch: amd64
-</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a>pkg: github.com/vibewarden/vibewarden/test/benchmarks
-</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a>cpu: VirtualApple @ 2.50GHz
-</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a>BenchmarkProxy_DirectPassthrough-10      2159046    1672 ns/op    5394 B/op    14 allocs/op
-</span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a>BenchmarkProxy_WithSecurityHeaders-10    1521925    2350 ns/op    6226 B/op    21 allocs/op
-</span><span id="__span-1-7"><a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a>BenchmarkProxy_WithRateLimiting-10       1916719    1851 ns/op    5402 B/op    15 allocs/op
-</span><span id="__span-1-8"><a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a>BenchmarkProxy_WithWAF-10               1000000    3572 ns/op   13638 B/op    16 allocs/op
-</span><span id="__span-1-9"><a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a>BenchmarkProxy_AllMiddleware-10          808497    4416 ns/op   14478 B/op    24 allocs/op
+<h2 id="how-to-upgrade">How to upgrade<a class="headerlink" href="#how-to-upgrade" title="Permanent link">&para;</a></h2>
+<h3 id="automatic-upgrade-via-the-vibew-wrapper">Automatic upgrade via the <code>vibew</code> wrapper<a class="headerlink" href="#automatic-upgrade-via-the-vibew-wrapper" title="Permanent link">&para;</a></h3>
+<p>The <code>vibew</code> script reads the pinned version from <code>.vibewarden-version</code> in your project
+directory and downloads the correct binary automatically on every invocation. To upgrade,
+update <code>.vibewarden-version</code> to the desired version:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;v0.13.0&quot;</span><span class="w"> </span>&gt;<span class="w"> </span>.vibewarden-version
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a>./vibew<span class="w"> </span>version<span class="w">   </span><span class="c1"># downloads v0.13.0 and prints it</span>
 </span></code></pre></div>
-<h3 id="interpretation">Interpretation<a class="headerlink" href="#interpretation" title="Permanent link">&para;</a></h3>
-<table>
-<thead>
-<tr>
-<th>Benchmark</th>
-<th>ns/op</th>
-<th>Overhead vs baseline</th>
-<th>B/op</th>
-<th>allocs/op</th>
-</tr>
-</thead>
-<tbody>
-<tr>
-<td>DirectPassthrough</td>
-<td>1 672</td>
-<td>— (baseline)</td>
-<td>5 394</td>
-<td>14</td>
-</tr>
-<tr>
-<td>WithSecurityHeaders</td>
-<td>2 350</td>
-<td>+678 ns (+0.7 µs)</td>
-<td>6 226</td>
-<td>21</td>
-</tr>
-<tr>
-<td>WithRateLimiting</td>
-<td>1 851</td>
-<td>+179 ns (+0.2 µs)</td>
-<td>5 402</td>
-<td>15</td>
-</tr>
-<tr>
-<td>WithWAF</td>
-<td>3 572</td>
-<td>+1 900 ns (+1.9 µs)</td>
-<td>13 638</td>
-<td>16</td>
-</tr>
-<tr>
-<td>AllMiddleware</td>
-<td>4 416</td>
-<td>+2 744 ns (+2.7 µs)</td>
-<td>14 478</td>
-<td>24</td>
-</tr>
-</tbody>
-</table>
-<p>All values are well below their respective latency budget targets.</p>
-<h3 id="key-observations">Key observations<a class="headerlink" href="#key-observations" title="Permanent link">&para;</a></h3>
+<p>Commit <code>.vibewarden-version</code> so everyone on your team, as well as your CI environment,
+uses the same version automatically.</p>
+<h3 id="upgrading-to-the-latest-release">Upgrading to the latest release<a class="headerlink" href="#upgrading-to-the-latest-release" title="Permanent link">&para;</a></h3>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a>./vibew<span class="w"> </span>self-update
+</span></code></pre></div>
+<p>This fetches the latest stable release from
+<a href="https://github.com/vibewarden/vibewarden/releases">github.com/vibewarden/vibewarden/releases</a>,
+writes the new version tag to <code>.vibewarden-version</code>, and re-downloads the binary on the
+next <code>vibew</code> invocation.</p>
+<div class="admonition warning">
+<p class="admonition-title">Review the release notes first</p>
+<p>Always read the release notes before upgrading across a MAJOR version boundary.
+Run <code>./vibew version</code> and compare it against the target version before proceeding.</p>
+</div>
+<h3 id="upgrading-the-docker-image">Upgrading the Docker image<a class="headerlink" href="#upgrading-the-docker-image" title="Permanent link">&para;</a></h3>
+<p>If you run VibeWarden via the Docker image directly, update the image tag in your
+<code>docker-compose.yml</code> (or generated file):</p>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="nt">services</span><span class="p">:</span>
+</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="w">  </span><span class="nt">vibewarden</span><span class="p">:</span>
+</span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="w">    </span><span class="nt">image</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ghcr.io/vibewarden/vibewarden:v0.13.0</span><span class="w">   </span><span class="c1"># change this line</span>
+</span></code></pre></div>
+<p>Then pull and restart:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>docker<span class="w"> </span>compose<span class="w"> </span>pull<span class="w"> </span>vibewarden
+</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>docker<span class="w"> </span>compose<span class="w"> </span>up<span class="w"> </span>-d<span class="w"> </span>vibewarden
+</span></code></pre></div>
+<hr />
+<h2 id="breaking-change-policy">Breaking change policy<a class="headerlink" href="#breaking-change-policy" title="Permanent link">&para;</a></h2>
+<h3 id="what-counts-as-a-breaking-change">What counts as a breaking change<a class="headerlink" href="#what-counts-as-a-breaking-change" title="Permanent link">&para;</a></h3>
+<p>VibeWarden considers the following to be breaking changes that require a MAJOR version
+bump (after 1.0.0):</p>
 <ul>
-<li>
-<p><strong>SecurityHeaders</strong> adds ~0.7 µs per request. The cost comes from constructing
-  and setting six HTTP response header strings. There is headroom to add more
-  headers without approaching the 1 ms P50 budget.</p>
-</li>
-<li>
-<p><strong>RateLimiting</strong> with a no-op in-memory limiter adds ~0.2 µs. A real
-  in-memory token-bucket limiter (<code>golang.org/x/time/rate</code>) will be slightly
-  more expensive due to mutex contention and time-package calls; a Redis-backed
-  limiter will incur a full network round-trip (typically 0.2–1 ms on localhost,
-  1–5 ms over LAN).</p>
-</li>
-<li>
-<p><strong>WAF</strong> is the most expensive single middleware at ~1.9 µs overhead per
-  request. This cost is dominated by the regular-expression scan over query
-  parameters, selected headers, and the first 8 KB of the request body.
-  Requests with long bodies or many query parameters will see higher values;
-  static assets and API calls with small payloads sit near the benchmark figure.</p>
-</li>
-<li>
-<p><strong>AllMiddleware</strong> stacks all three layers and adds ~2.7 µs total. The
-  aggregate is sub-additive because of CPU cache effects when the chain runs
-  sequentially on the same goroutine.</p>
-</li>
+<li>Removing or renaming a config key in <code>vibewarden.yaml</code> without a deprecation period</li>
+<li>Changing the default value of an existing config key in a way that alters observed behavior</li>
+<li>Removing a CLI flag or sub-command</li>
+<li>Removing or renaming a field in the structured log schema (<code>event_type</code>, <code>payload</code> shape)</li>
+<li>Removing a Prometheus metric name or label that was present in a prior stable release</li>
 </ul>
-<hr />
-<h2 id="benchmark-scope-and-limitations">Benchmark scope and limitations<a class="headerlink" href="#benchmark-scope-and-limitations" title="Permanent link">&para;</a></h2>
+<h3 id="what-is-not-a-breaking-change">What is not a breaking change<a class="headerlink" href="#what-is-not-a-breaking-change" title="Permanent link">&para;</a></h3>
 <ul>
-<li><strong>No network I/O</strong>: benchmarks use <code>httptest.NewRecorder()</code> and
-  <code>httptest.NewRequest()</code>. Real request latency includes TCP/TLS overhead.</li>
-<li><strong>No auth middleware</strong>: authentication (Ory Kratos session validation) is
-  excluded because it requires an HTTP round-trip to Kratos. Expect 1–10 ms
-  additional overhead depending on session-cache hit rate.</li>
-<li><strong>No-op rate limiter</strong>: the in-process limiter used here has no mutex
-  contention. A Redis-backed limiter adds a network round-trip per request.</li>
-<li><strong>No-op metrics collector</strong>: the Prometheus registry write path is omitted
-  so the WAF and rate-limit numbers isolate the middleware logic only.</li>
-<li><strong>Benign requests only</strong>: benchmarks send clean GET requests. WAF rule
-  matching on malicious inputs (many regex matches before a block) is more
-  expensive than the benign-request path shown here.</li>
+<li>Adding a new config key with a sensible default</li>
+<li>Adding a new CLI flag or sub-command</li>
+<li>Adding a new Prometheus metric</li>
+<li>Adding a new field to a structured log event's <code>payload</code></li>
+<li>Improving error messages or log output</li>
+<li>Internal refactoring with no observable behavior change</li>
 </ul>
+<h3 id="deprecation-process">Deprecation process<a class="headerlink" href="#deprecation-process" title="Permanent link">&para;</a></h3>
+<p>When a config key, CLI flag, or schema field is scheduled for removal, it goes through
+a <strong>two-release deprecation cycle</strong>:</p>
+<ol>
+<li><strong>Deprecation release</strong> — the old name still works; a deprecation warning is printed
+   at startup. The new name is documented in the release notes and in this guide.</li>
+<li><strong>Removal release</strong> — the old name is removed in the next MAJOR release. The
+   release notes contain migration instructions.</li>
+</ol>
 <hr />
-<h2 id="regression-tracking">Regression tracking<a class="headerlink" href="#regression-tracking" title="Permanent link">&para;</a></h2>
-<p>To detect performance regressions, run the benchmarks with <code>-count=5</code> and
-compare results using the <code>benchstat</code> tool:</p>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="c1"># Capture a baseline on the main branch</span>
-</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>go<span class="w"> </span><span class="nb">test</span><span class="w"> </span>-bench<span class="o">=</span>.<span class="w"> </span>-benchmem<span class="w"> </span>-count<span class="o">=</span><span class="m">5</span><span class="w"> </span>./test/benchmarks/<span class="w"> </span>&gt;<span class="w"> </span>old.txt
-</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>
-</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="c1"># After your change</span>
-</span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>go<span class="w"> </span><span class="nb">test</span><span class="w"> </span>-bench<span class="o">=</span>.<span class="w"> </span>-benchmem<span class="w"> </span>-count<span class="o">=</span><span class="m">5</span><span class="w"> </span>./test/benchmarks/<span class="w"> </span>&gt;<span class="w"> </span>new.txt
-</span><span id="__span-2-6"><a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a>
-</span><span id="__span-2-7"><a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="c1"># Compare</span>
-</span><span id="__span-2-8"><a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a>benchstat<span class="w"> </span>old.txt<span class="w"> </span>new.txt
+<h2 id="config-migration">Config migration<a class="headerlink" href="#config-migration" title="Permanent link">&para;</a></h2>
+<h3 id="metrics-telemetry-deprecated"><code>metrics:</code> → <code>telemetry:</code> (deprecated)<a class="headerlink" href="#metrics-telemetry-deprecated" title="Permanent link">&para;</a></h3>
+<p>The <code>metrics:</code> block was replaced by <code>telemetry:</code> to reflect VibeWarden's move to
+OpenTelemetry as the unified telemetry foundation.</p>
+<p><strong>Automatic migration:</strong> VibeWarden auto-migrates <code>metrics:</code> settings to <code>telemetry:</code>
+at startup and logs a deprecation warning:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a>[WARN] config: &quot;metrics&quot; block is deprecated and will be removed in the next major version. Migrate to &quot;telemetry:&quot;. See https://vibewarden.dev/docs/upgrading#metrics-telemetry
 </span></code></pre></div>
-<p>Any increase in ns/op greater than 10% for a given benchmark should be
-investigated before merging to main.</p>
+<p><strong>Manual migration:</strong> Update <code>vibewarden.yaml</code> before the next major release:</p>
+<div class="tabbed-set tabbed-alternate" data-tabs="1:2"><input checked="checked" id="__tabbed_1_1" name="__tabbed_1" type="radio" /><input id="__tabbed_1_2" name="__tabbed_1" type="radio" /><div class="tabbed-labels"><label for="__tabbed_1_1">Before (deprecated)</label><label for="__tabbed_1_2">After (current)</label></div>
+<div class="tabbed-content">
+<div class="tabbed-block">
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="nt">metrics</span><span class="p">:</span>
+</span><span id="__span-8-2"><a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="w">  </span><span class="nt">enabled</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+</span><span id="__span-8-3"><a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="w">  </span><span class="nt">path</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/_vibewarden/metrics</span>
+</span><span id="__span-8-4"><a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="w">  </span><span class="nt">labels</span><span class="p">:</span>
+</span><span id="__span-8-5"><a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="w">    </span><span class="nt">app</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">my-api</span>
+</span></code></pre></div>
+</div>
+<div class="tabbed-block">
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="nt">telemetry</span><span class="p">:</span>
+</span><span id="__span-9-2"><a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="w">  </span><span class="nt">enabled</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+</span><span id="__span-9-3"><a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="w">  </span><span class="nt">prometheus</span><span class="p">:</span>
+</span><span id="__span-9-4"><a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="w">    </span><span class="nt">enabled</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+</span><span id="__span-9-5"><a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a><span class="w">    </span><span class="nt">path</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/_vibewarden/metrics</span>
+</span><span id="__span-9-6"><a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a><span class="w">  </span><span class="nt">labels</span><span class="p">:</span>
+</span><span id="__span-9-7"><a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a><span class="w">    </span><span class="nt">app</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">my-api</span>
+</span></code></pre></div>
+</div>
+</div>
+</div>
+<p>Run <code>./vibew validate</code> after editing — it reports any remaining deprecated keys.</p>
+<hr />
+<h2 id="step-by-step-upgrade-procedure">Step-by-step upgrade procedure<a class="headerlink" href="#step-by-step-upgrade-procedure" title="Permanent link">&para;</a></h2>
+<p>The following procedure applies to any version bump.</p>
+<ol>
+<li>
+<p><strong>Read the release notes</strong> for every version between your current version and the
+   target. Look for entries marked <strong>Breaking</strong> or <strong>Deprecated</strong>.</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-10-1"><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>./vibew<span class="w"> </span>version<span class="w"> </span>--short<span class="w">   </span><span class="c1"># note your current version</span>
+</span></code></pre></div>
+<p>Release notes: <a href="https://github.com/vibewarden/vibewarden/releases">github.com/vibewarden/vibewarden/releases</a></p>
+</li>
+<li>
+<p><strong>Back up your config</strong> (if you keep <code>vibewarden.yaml</code> outside version control):</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-11-1"><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a>cp<span class="w"> </span>vibewarden.yaml<span class="w"> </span>vibewarden.yaml.bak
+</span></code></pre></div>
+</li>
+<li>
+<p><strong>Apply any manual config changes</strong> described in the release notes for breaking
+   releases.</p>
+</li>
+<li>
+<p><strong>Update the pinned version:</strong></p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-12-1"><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;vX.Y.Z&quot;</span><span class="w"> </span>&gt;<span class="w"> </span>.vibewarden-version
+</span></code></pre></div>
+</li>
+<li>
+<p><strong>Validate the updated config:</strong></p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-13-1"><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a>./vibew<span class="w"> </span>validate
+</span></code></pre></div>
+<p>Fix any reported errors before proceeding.</p>
+</li>
+<li>
+<p><strong>Restart the stack:</strong></p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-14-1"><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>./vibew<span class="w"> </span>dev<span class="w">       </span><span class="c1"># development</span>
+</span><span id="__span-14-2"><a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a><span class="c1"># or</span>
+</span><span id="__span-14-3"><a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a>docker<span class="w"> </span>compose<span class="w"> </span>up<span class="w"> </span>-d<span class="w"> </span>vibewarden<span class="w">   </span><span class="c1"># production</span>
+</span></code></pre></div>
+</li>
+<li>
+<p><strong>Verify:</strong></p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-15-1"><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a>./vibew<span class="w"> </span>version
+</span><span id="__span-15-2"><a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a>./vibew<span class="w"> </span>doctor
+</span></code></pre></div>
+<p><code>vibew doctor</code> runs a full health check and surfaces any post-upgrade issues.</p>
+</li>
+</ol>
+<hr />
+<h2 id="rolling-back">Rolling back<a class="headerlink" href="#rolling-back" title="Permanent link">&para;</a></h2>
+<p>If an upgrade causes an unexpected issue, roll back by reverting <code>.vibewarden-version</code>:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-16-1"><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a><span class="nb">echo</span><span class="w"> </span><span class="s2">&quot;vX.Y.Z-previous&quot;</span><span class="w"> </span>&gt;<span class="w"> </span>.vibewarden-version
+</span><span id="__span-16-2"><a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a>./vibew<span class="w"> </span>dev
+</span></code></pre></div>
+<p>Because the wrapper downloads a fresh binary matching <code>.vibewarden-version</code>, the rollback
+takes effect immediately on the next <code>vibew</code> invocation. No uninstall step is needed.</p>
+<div class="admonition tip">
+<p class="admonition-title">Keep your old config backup</p>
+<p>If you applied manual config changes for the upgrade, restore <code>vibewarden.yaml.bak</code>
+before rolling back the binary so the old version can parse the config correctly.</p>
+</div>
+<hr />
+<h2 id="getting-help">Getting help<a class="headerlink" href="#getting-help" title="Permanent link">&para;</a></h2>
+<ul>
+<li><a href="../troubleshooting/">Troubleshooting guide</a></li>
+<li><a href="https://github.com/vibewarden/vibewarden/discussions">GitHub Discussions</a></li>
+<li><a href="https://github.com/vibewarden/vibewarden/issues">GitHub Issues</a></li>
+</ul>
 
 
 
