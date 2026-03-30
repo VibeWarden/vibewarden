@@ -66,6 +66,23 @@ type ProxyConfig struct {
 	// Resilience configuration — controls upstream timeout and similar
 	// protective features.
 	Resilience ResilienceConfig
+
+	// Readiness configuration — controls the /_vibewarden/ready endpoint that
+	// reports whether all plugins are initialised and the upstream is reachable.
+	Readiness ReadinessProxyConfig
+}
+
+// ReadinessProxyConfig holds configuration for exposing the readiness probe
+// endpoint through the Caddy reverse proxy.
+type ReadinessProxyConfig struct {
+	// Enabled toggles the readiness endpoint at /_vibewarden/ready.
+	Enabled bool
+
+	// InternalAddr is the host:port of the internal HTTP server that serves
+	// the readiness handler (e.g. "127.0.0.1:9093"). Caddy reverse-proxies
+	// /_vibewarden/ready to this address.
+	// This field must be set when Enabled is true.
+	InternalAddr string
 }
 
 // ResilienceConfig holds configuration for upstream resilience features.

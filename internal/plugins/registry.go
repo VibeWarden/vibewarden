@@ -106,6 +106,58 @@ func (r *Registry) HealthAll() map[string]ports.HealthStatus {
 	return result
 }
 
+// ReadinessChecker returns a ports.ReadinessChecker that evaluates the health
+// of all registered plugins and, optionally, the upstream application.
+//
+// upstreamChecker may be nil; when nil the readiness check does not require an
+// upstream probe and UpstreamReachable is always reported as true.
+func (r *Registry) ReadinessChecker(upstreamChecker ports.UpstreamHealthChecker) ports.ReadinessChecker {
+	return &registryReadinessChecker{
+		registry:        r,
+		upstreamChecker: upstreamChecker,
+	}
+}
+
+// registryReadinessChecker implements ports.ReadinessChecker using the plugin
+// registry and an optional upstream health checker.
+type registryReadinessChecker struct {
+	registry        *Registry
+	upstreamChecker ports.UpstreamHealthChecker
+}
+
+// Ready returns true when all plugins are healthy and the upstream is reachable.
+// It is safe for concurrent use and does not block.
+func (rc *registryReadinessChecker) Ready() bool {
+	rs := rc.ReadinessStatus()
+	return rs.PluginsReady && rs.UpstreamReachable
+}
+
+// ReadinessStatus returns a snapshot of per-plugin health and upstream status.
+// It is safe for concurrent use and does not block.
+func (rc *registryReadinessChecker) ReadinessStatus() ports.ReadinessStatus {
+	pluginStatuses := rc.registry.HealthAll()
+
+	pluginsReady := true
+	for _, hs := range pluginStatuses {
+		if !hs.Healthy {
+			pluginsReady = false
+			break
+		}
+	}
+
+	upstreamReachable := true
+	if rc.upstreamChecker != nil {
+		status := rc.upstreamChecker.CurrentStatus()
+		upstreamReachable = status.String() == "healthy"
+	}
+
+	return ports.ReadinessStatus{
+		PluginsReady:      pluginsReady,
+		UpstreamReachable: upstreamReachable,
+		Plugins:           pluginStatuses,
+	}
+}
+
 // joinErrors combines multiple errors into a single error whose message is the
 // concatenation of each error's message. Using a simple join keeps the
 // implementation free of non-stdlib dependencies.

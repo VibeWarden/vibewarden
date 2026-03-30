@@ -167,10 +167,23 @@ func BuildCaddyConfig(cfg *ports.ProxyConfig) (map[string]any, error) {
 		},
 	}
 
-	// Build routes — health check first, then metrics (when enabled), then
-	// Kratos flow routes (when auth is configured), and finally the catch-all
-	// proxy route.
-	routes := []map[string]any{healthRoute}
+	// Build the readiness probe route (must come before the catch-all proxy route).
+	// When readiness.enabled is true and an internal address is configured, Caddy
+	// reverse-proxies /_vibewarden/ready to the internal Go HTTP server running
+	// ReadyHandler for live plugin and upstream checks.
+	// Otherwise a static 503 response is returned — the process is alive but not
+	// yet confirmed ready.
+	var readyRoute map[string]any
+	if cfg.Readiness.Enabled && cfg.Readiness.InternalAddr != "" {
+		readyRoute = buildDynamicReadyRoute(cfg.Readiness.InternalAddr)
+	} else {
+		readyRoute = buildStaticReadyRoute()
+	}
+
+	// Build routes — health (liveness) first, then readiness probe, then metrics
+	// (when enabled), then Kratos flow routes (when auth is configured), and
+	// finally the catch-all proxy route.
+	routes := []map[string]any{healthRoute, readyRoute}
 
 	if cfg.Metrics.Enabled && cfg.Metrics.InternalAddr != "" {
 		metricsRoute := buildMetricsRoute(cfg.Metrics.InternalAddr)
@@ -550,6 +563,53 @@ func buildMetricsRoute(internalAddr string) map[string]any {
 				"handler": "rewrite",
 				"uri":     "/metrics",
 			},
+			{
+				"handler": "reverse_proxy",
+				"upstreams": []map[string]any{
+					{"dial": internalAddr},
+				},
+			},
+		},
+	}
+}
+
+// buildStaticReadyRoute constructs a Caddy route for /_vibewarden/ready that
+// returns a static 503 response body indicating the process is not yet ready.
+// This route is used when no internal readiness server address is configured.
+// Kubernetes or other orchestration systems will treat the 503 as "not ready"
+// and withhold traffic until the dynamic route takes over after a Reload.
+func buildStaticReadyRoute() map[string]any {
+	return map[string]any{
+		"match": []map[string]any{
+			{"path": []string{"/_vibewarden/ready"}},
+		},
+		"handle": []map[string]any{
+			{
+				"handler": "static_response",
+				"headers": map[string][]string{
+					"Content-Type": {"application/json"},
+				},
+				"body":        `{"ready":false,"reason":"starting"}`,
+				"status_code": 503,
+			},
+		},
+	}
+}
+
+// buildDynamicReadyRoute constructs a Caddy route that reverse-proxies
+// /_vibewarden/ready to the internal readiness HTTP server at internalAddr.
+// The internal server runs ReadyHandler which performs live plugin health and
+// upstream reachability checks.
+//
+// The internalAddr must be a host:port string (e.g., "127.0.0.1:9093").
+// The full request path is forwarded unchanged; the internal readiness server
+// handles requests at /_vibewarden/ready.
+func buildDynamicReadyRoute(internalAddr string) map[string]any {
+	return map[string]any{
+		"match": []map[string]any{
+			{"path": []string{"/_vibewarden/ready"}},
+		},
+		"handle": []map[string]any{
 			{
 				"handler": "reverse_proxy",
 				"upstreams": []map[string]any{
