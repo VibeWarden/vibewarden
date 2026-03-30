@@ -78,6 +78,7 @@ nav:
       - Next.js: examples/nextjs.md
       - Django: examples/django.md
       - Rails: examples/rails.md
+  - Troubleshooting: troubleshooting.md
   - Reference:
       - Architectural Decisions: decisions.md
 
