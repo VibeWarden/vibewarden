@@ -14441,8 +14441,73 @@ dependency tree via Ory Kratos.</p>
   symmetric algorithms like HS256 (where the secret would need to be shared).</li>
 <li>Issuer and audience validation mandatory: Prevents token substitution attacks.</li>
 <li>Key ID (kid) required: JWTs without kid are rejected to prevent key confusion.</li>
-<li>JWKS URL must be HTTPS in production (not enforced in code for local dev).</li>
 </ul>
+<hr />
+<h2 id="adr-497-graceful-shutdown-connection-draining">ADR-497: Graceful Shutdown / Connection Draining<a class="headerlink" href="#adr-497-graceful-shutdown-connection-draining" title="Permanent link">&para;</a></h2>
+<p><strong>Issue:</strong> #497
+<strong>Status:</strong> CLOSED — already implemented
+<strong>Date:</strong> 2026-03-28</p>
+<h3 id="context_22">Context<a class="headerlink" href="#context_22" title="Permanent link">&para;</a></h3>
+<p>Issue #497 asked whether the VibeWarden sidecar handles SIGTERM/SIGINT gracefully
+(i.e., drains in-flight connections before exiting) and, if not, to add proper
+signal handling with a shutdown timeout.</p>
+<h3 id="decision_22">Decision<a class="headerlink" href="#decision_22" title="Permanent link">&para;</a></h3>
+<p>No code changes required. The full graceful-shutdown pipeline was already in place
+before this issue was raised:</p>
+<ol>
+<li>
+<p><strong>Signal capture</strong> (<code>cmd/vibewarden/serve.go</code>): A goroutine calls
+   <code>signal.Notify(sigCh, syscall.SIGINT, syscall.SIGTERM)</code> and, on receipt of
+   either signal, calls <code>cancel()</code> on the root <code>context.WithCancel</code> context.
+   Signal handling is set up <em>before</em> <code>registry.InitAll</code> so that even a slow
+   plugin initialisation can be interrupted.</p>
+</li>
+<li>
+<p><strong>Proxy service shutdown</strong> (<code>internal/app/proxy/service.go</code>): <code>Service.Run</code>
+   blocks on <code>ctx.Done()</code>. When the context is cancelled it calls
+   <code>server.Stop(shutdownCtx)</code> with a dedicated <code>context.WithTimeout</code> set to
+   <code>30 seconds</code> (<code>defaultShutdownTimeout</code>). This gives in-flight HTTP requests
+   up to 30 seconds to complete.</p>
+</li>
+<li>
+<p><strong>Caddy adapter</strong> (<code>internal/adapters/caddy/adapter.go</code>): <code>Stop</code> delegates
+   directly to <code>caddy.Stop()</code>. Caddy's own shutdown logic drains active
+   connections and releases listeners before returning.</p>
+</li>
+<li>
+<p><strong>Plugin registry cleanup</strong> (<code>cmd/vibewarden/serve.go</code>): A <code>defer</code> block
+   calls <code>registry.StopAll(stopCtx)</code> with a <code>10-second</code> timeout, ensuring that
+   background plugins (metrics exporter, egress proxy, etc.) are stopped cleanly
+   after the main proxy has drained.</p>
+</li>
+</ol>
+<p>The shutdown sequence is therefore:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-193-1"><a id="__codelineno-193-1" name="__codelineno-193-1" href="#__codelineno-193-1"></a>SIGTERM / SIGINT
+</span><span id="__span-193-2"><a id="__codelineno-193-2" name="__codelineno-193-2" href="#__codelineno-193-2"></a>  └─&gt; context cancel
+</span><span id="__span-193-3"><a id="__codelineno-193-3" name="__codelineno-193-3" href="#__codelineno-193-3"></a>        └─&gt; proxy.Service.Run exits select
+</span><span id="__span-193-4"><a id="__codelineno-193-4" name="__codelineno-193-4" href="#__codelineno-193-4"></a>              └─&gt; caddy.Stop() drains connections (30 s budget)
+</span><span id="__span-193-5"><a id="__codelineno-193-5" name="__codelineno-193-5" href="#__codelineno-193-5"></a>                    └─&gt; registry.StopAll() stops plugins (10 s budget)
+</span></code></pre></div>
+<h3 id="verification">Verification<a class="headerlink" href="#verification" title="Permanent link">&para;</a></h3>
+<p>Existing unit tests in <code>internal/app/proxy/service_test.go</code> cover:</p>
+<ul>
+<li><code>TestService_Run_ContextCancellation</code> — verifies <code>Stop</code> is called on context
+  cancellation and the service returns <code>context.Canceled</code>.</li>
+<li><code>TestService_Run_ServerError</code> — verifies early server errors propagate.</li>
+<li><code>TestService_Run_StopError</code> — verifies stop errors propagate correctly.</li>
+</ul>
+<h3 id="consequences_22">Consequences<a class="headerlink" href="#consequences_22" title="Permanent link">&para;</a></h3>
+<p><strong>Positive:</strong></p>
+<ul>
+<li>Zero downtime deploys and container restarts are safe: Kubernetes / systemd
+  both send SIGTERM and wait for the process to exit.</li>
+<li>Active connections complete normally within the 30-second drain window.</li>
+<li>Plugin teardown (flush metrics, close DB connections) runs within 10 seconds
+  even if the proxy drain is slow or completes early.</li>
+</ul>
+<p><strong>No new dependencies.</strong> The implementation uses only stdlib (<code>os/signal</code>,
+<code>syscall</code>, <code>context</code>) and existing Caddy APIs.
+- JWKS URL must be HTTPS in production (not enforced in code for local dev).</p>
 
 
 
