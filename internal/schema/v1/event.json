@@ -14,19 +14,8 @@
     },
     "event_type": {
       "type": "string",
-      "description": "Stable identifier for the kind of event. Consumers use this to dispatch to type-specific logic.",
-      "enum": [
-        "proxy.started",
-        "proxy.kratos_flow",
-        "auth.success",
-        "auth.failed",
-        "rate_limit.hit",
-        "rate_limit.unidentified_client",
-        "request.blocked",
-        "tls.certificate_issued",
-        "user.created",
-        "user.deleted"
-      ]
+      "description": "Stable identifier for the kind of event. Consumers use this to dispatch to type-specific logic. The value follows the dot-separated namespace convention (e.g. 'auth.success'). Unknown event types must be accepted and passed through — the schema is intentionally open to allow forward-compatible addition of new event types without breaking existing consumers.",
+      "pattern": "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)*$"
     },
     "timestamp": {
       "type": "string",

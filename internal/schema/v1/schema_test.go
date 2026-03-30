@@ -10,11 +10,24 @@ package v1_test
 
 import (
 	"encoding/json"
+	"regexp"
 	"testing"
 	"time"
 
 	"github.com/vibewarden/vibewarden/internal/domain/events"
 )
+
+// eventTypePattern is the compiled JSON Schema pattern for the event_type field.
+// It mirrors the pattern constraint in internal/schema/v1/event.json and
+// schema/v1/event.json exactly. If either schema file is updated the pattern
+// here must be updated in lockstep.
+var eventTypePattern = regexp.MustCompile(`^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*$`)
+
+// eventTypeMatchesSchemaPattern reports whether s satisfies the event_type
+// pattern constraint defined in the v1 JSON Schema.
+func eventTypeMatchesSchemaPattern(s string) bool {
+	return eventTypePattern.MatchString(s)
+}
 
 // jsonEvent is the wire representation of an Event as emitted by the slog
 // adapter. We reproduce the field mapping here so the test is independent of
@@ -520,12 +533,12 @@ func TestSchemaUserDeleted(t *testing.T) {
 	}
 }
 
-// TestAllEventTypesHaveSchemaDefinition checks that every event type constant
-// declared in the domain/events package is represented by exactly one test
-// case in this file. This acts as a compile-time guard: if a new event type is
-// added to the domain without a corresponding schema test, the developer will
-// see a failed test rather than a silent gap.
-func TestAllEventTypesHaveSchemaDefinition(t *testing.T) {
+// TestCoreEventTypeConstantsAreNonEmpty verifies that the set of well-known
+// event type constants defined in the domain/events package are non-empty
+// strings. It does NOT assert a fixed count because the schema is
+// forward-compatible: new event types may be added at any time without
+// breaking existing consumers or this test.
+func TestCoreEventTypeConstantsAreNonEmpty(t *testing.T) {
 	knownTypes := []string{
 		events.EventTypeProxyStarted,
 		events.EventTypeProxyKratosFlow,
@@ -539,15 +552,10 @@ func TestAllEventTypesHaveSchemaDefinition(t *testing.T) {
 		events.EventTypeUserDeleted,
 	}
 
-	// All 10 types must be non-empty strings.
 	for _, et := range knownTypes {
 		if et == "" {
 			t.Errorf("event type constant is empty — check domain/events package")
 		}
-	}
-
-	if len(knownTypes) != 10 {
-		t.Errorf("expected 10 event types, got %d — update this test and the JSON schema when adding new types", len(knownTypes))
 	}
 }
 
@@ -556,5 +564,47 @@ func TestAllEventTypesHaveSchemaDefinition(t *testing.T) {
 func TestSchemaVersionIsV1(t *testing.T) {
 	if events.SchemaVersion != "v1" {
 		t.Errorf("SchemaVersion = %q, want %q — update internal/schema/v1/event.json if bumping the version", events.SchemaVersion, "v1")
+	}
+}
+
+// TestEventTypePatternForwardCompatibility verifies that the event_type field
+// accepts unknown event types (forward-compatibility). Consumers running on an
+// older schema version must not reject events emitted by a newer producer that
+// introduces additional event types.
+func TestEventTypePatternForwardCompatibility(t *testing.T) {
+	tests := []struct {
+		name      string
+		eventType string
+		wantOK    bool
+	}{
+		// Known event types continue to work.
+		{name: "proxy.started", eventType: events.EventTypeProxyStarted, wantOK: true},
+		{name: "auth.success", eventType: events.EventTypeAuthSuccess, wantOK: true},
+		{name: "rate_limit.hit", eventType: events.EventTypeRateLimitHit, wantOK: true},
+		// Unknown future event types must also be accepted — this is the
+		// forward-compatibility requirement from issue #508.
+		{name: "future single segment", eventType: "newplugin", wantOK: true},
+		{name: "future two segments", eventType: "newplugin.action", wantOK: true},
+		{name: "future three segments", eventType: "newplugin.sub.action", wantOK: true},
+		{name: "future with digits", eventType: "plugin2.event3", wantOK: true},
+		{name: "future with underscores", eventType: "new_plugin.some_action", wantOK: true},
+		// Values that do not match the pattern must be rejected.
+		{name: "empty string", eventType: "", wantOK: false},
+		{name: "starts with digit", eventType: "1plugin.action", wantOK: false},
+		{name: "starts with dot", eventType: ".auth.success", wantOK: false},
+		{name: "ends with dot", eventType: "auth.success.", wantOK: false},
+		{name: "uppercase letter", eventType: "Auth.success", wantOK: false},
+		{name: "consecutive dots", eventType: "auth..success", wantOK: false},
+		{name: "contains space", eventType: "auth success", wantOK: false},
+		{name: "contains hyphen", eventType: "auth-success", wantOK: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := eventTypeMatchesSchemaPattern(tt.eventType)
+			if got != tt.wantOK {
+				t.Errorf("eventTypeMatchesSchemaPattern(%q) = %v, want %v", tt.eventType, got, tt.wantOK)
+			}
+		})
 	}
 }
