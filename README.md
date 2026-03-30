@@ -26,7 +26,7 @@ curl -fsSL https://vibewarden.dev/vibew > vibew && chmod +x vibew
 ./vibew dev
 ```
 
-Your app on port 3000 is now behind VibeWarden. Done.
+Your app on port 3000 is now behind VibeWarden at `https://localhost:8443`. Done.
 
 **Windows:**
 
@@ -67,7 +67,7 @@ Do not edit generated files — re-run `vibew generate` after changing `vibeward
 
 ```
                  ┌────────────────────────────────┐
-  Internet ─────►│  VibeWarden  :8080             │
+  Internet ─────►│  VibeWarden  :8443 (HTTPS)     │
                  │                                │
                  │  TLS termination               │
                  │  Authentication (JWT / Kratos) │
@@ -180,6 +180,8 @@ If you need a general-purpose load balancer or a CDN edge, use the right tool fo
 | `vibew logs` | Pretty-print structured logs |
 | `vibew secret get <path>` | Read a secret from OpenBao |
 | `vibew secret list <path>` | List secrets at a path |
+| `vibew token` | Generate a signed dev JWT for local testing |
+| `vibew cert export` | Export the local CA certificate (for curl, Postman, …) |
 | `vibew validate` | Validate configuration |
 | `vibew context refresh` | Regenerate AI agent context files |
 
@@ -206,7 +208,7 @@ Regenerate after config changes:
 ```bash
 cd examples/demo-app
 docker compose up -d
-# Open http://localhost:8080
+# Open https://localhost:8443
 ```
 
 The demo includes a Vulnerability Lab with live SQLi, XSS, and path traversal

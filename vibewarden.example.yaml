@@ -57,7 +57,7 @@ server:
   # Host to bind to (use 0.0.0.0 to expose externally)
   host: "127.0.0.1"
   # Port to listen on
-  port: 8080
+  port: 8443
 
 # Upstream application being protected
 upstream:
@@ -68,9 +68,9 @@ upstream:
 
 # TLS configuration
 tls:
-  # Enable TLS termination (set to true in production).
+  # Enable TLS termination. Enabled by default — VibeWarden is secure by default.
   # When enabled, HTTP requests on port 80 are automatically redirected to HTTPS.
-  enabled: false
+  enabled: true
 
   # Provider selects how TLS certificates are obtained. Valid values:
   #

@@ -11,14 +11,15 @@ app:
 
 server:
   host: "0.0.0.0"
-  port: 8080
+  port: 8443
 
 upstream:
   host: app
   port: 5000
 
 tls:
-  enabled: false
+  enabled: true
+  provider: self-signed
 
 auth:
   mode: none

@@ -27,7 +27,15 @@ Step 3 — start everything:
 vibew dev
 ```
 
-Visit http://localhost:8080. VibeWarden is now protecting your Next.js app.
+Visit https://localhost:8443. VibeWarden is now protecting your Next.js app over HTTPS.
+
+To trust the self-signed certificate:
+
+```bash
+vibew cert export > vibewarden-ca.pem
+# Then import vibewarden-ca.pem into your browser or OS trust store,
+# or pass --cacert vibewarden-ca.pem to curl.
+```
 
 ## Endpoints
 
@@ -42,10 +50,10 @@ Visit http://localhost:8080. VibeWarden is now protecting your Next.js app.
 ```
 curl / browser
       |
-      | :8080
+      | :8443 (HTTPS)
       v
 +------------------+
-|   VibeWarden     |  rate limiting, security headers, optional auth
+|   VibeWarden     |  TLS termination, rate limiting, security headers, optional auth
 +------------------+
       |
       | :3000 (internal)

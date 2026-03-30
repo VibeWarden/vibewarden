@@ -37,12 +37,12 @@ Settings for the VibeWarden HTTP listener.
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `server.host` | string | `127.0.0.1` | Host/IP to bind to |
-| `server.port` | int | `8080` | Port to listen on |
+| `server.port` | int | `8443` | Port to listen on |
 
 ```yaml
 server:
   host: 0.0.0.0
-  port: 8080
+  port: 8443
 ```
 
 ---
@@ -98,7 +98,7 @@ app:
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `tls.enabled` | bool | `false` | Enable TLS |
+| `tls.enabled` | bool | `true` | Enable TLS |
 | `tls.domain` | string | `""` | Domain for the TLS certificate. Required when `provider` is `letsencrypt` |
 | `tls.provider` | string | `""` | Certificate provider: `letsencrypt`, `self-signed`, or `external` |
 | `tls.cert_path` | string | `""` | Path to PEM certificate. Required when `provider` is `external` |
@@ -546,7 +546,11 @@ profile: dev
 
 server:
   host: 0.0.0.0
-  port: 8080
+  port: 8443
+
+tls:
+  enabled: true
+  provider: self-signed
 
 upstream:
   host: 127.0.0.1

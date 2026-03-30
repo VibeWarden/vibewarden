@@ -19,17 +19,15 @@ app:
 
 server:
   host: "0.0.0.0"
-  port: 8080
+  port: 8443
 
 upstream:
   host: app
   port: 3000
 
 tls:
-  enabled: false
-  # For TLS profile, set via env vars:
-  # VIBEWARDEN_TLS_ENABLED=true
-  # VIBEWARDEN_TLS_PROVIDER=self-signed
+  enabled: true
+  provider: self-signed
 
 kratos:
   public_url: "http://kratos:4433"

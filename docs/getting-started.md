@@ -91,7 +91,18 @@ This command:
    from your `vibewarden.yaml`.
 2. Starts the stack with `docker compose up`.
 
-Your app is now protected at `http://localhost:8080`.
+Your app is now protected at `https://localhost:8443`.
+
+!!! tip "Trust the self-signed certificate"
+    On first run, VibeWarden generates a self-signed CA certificate so your browser
+    can open `https://localhost:8443` without TLS errors. Export and trust it with:
+
+    ```bash
+    ./vibew cert export > vibewarden-ca.pem
+    ```
+
+    Then import `vibewarden-ca.pem` into your browser's or OS's trusted certificate
+    store (or pass `--cacert vibewarden-ca.pem` to `curl`).
 
 ---
 
@@ -201,6 +212,16 @@ examples with Auth0, Keycloak, Firebase, Cognito, Okta, Supabase, and Kratos.
 Open Grafana at `http://localhost:3001` to see request rate, latency percentiles,
 rate limit hits, and auth decisions in real time.
 
+!!! tip "Generate a dev JWT"
+    Use `vibew token` to mint a signed JWT for local testing without an external
+    OIDC provider:
+
+    ```bash
+    curl https://localhost:8443/api/me \
+      --cacert vibewarden-ca.pem \
+      -H "Authorization: Bearer $(./vibew token --json)"
+    ```
+
 See the [Observability guide](observability.md) for details.
 
 ### Enable TLS for production
@@ -230,11 +251,11 @@ Reports all validation errors in `vibewarden.yaml` before you start the stack.
 
 ### Port already in use
 
-VibeWarden defaults to port `8080`. Change it in `vibewarden.yaml`:
+VibeWarden defaults to port `8443`. Change it in `vibewarden.yaml`:
 
 ```yaml
 server:
-  port: 8090
+  port: 9443
 ```
 
 ### App not reachable
