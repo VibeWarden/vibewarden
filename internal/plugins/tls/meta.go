@@ -18,6 +18,11 @@ func (p *Plugin) ConfigSchema() map[string]string {
 	}
 }
 
+// Critical returns true because TLS termination is a fundamental security
+// boundary. If TLS fails to initialise when enabled the sidecar must not
+// serve plain-text traffic in its place.
+func (p *Plugin) Critical() bool { return true }
+
 // Example returns an example YAML configuration for the TLS plugin.
 func (p *Plugin) Example() string {
 	return `  tls:

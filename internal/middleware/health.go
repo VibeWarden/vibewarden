@@ -207,6 +207,12 @@ type ReadyResponse struct {
 	// Possible values: "reachable", "unreachable". Omitted when no upstream
 	// health checker is configured.
 	Upstream string `json:"upstream,omitempty"`
+
+	// Degraded maps the name of each non-critical plugin that failed Init or
+	// Start to the failure reason. A non-empty Degraded map means the sidecar
+	// is running in partial-start mode: critical plugins are healthy, but one
+	// or more observability/feature plugins could not start.
+	Degraded map[string]string `json:"degraded,omitempty"`
 }
 
 // ReadyHandler returns an http.HandlerFunc for the readiness probe endpoint
@@ -254,6 +260,11 @@ func ReadyHandler(readinessChecker ports.ReadinessChecker) http.HandlerFunc {
 				resp.Upstream = "reachable"
 			} else {
 				resp.Upstream = "unreachable"
+			}
+
+			// Populate degraded plugin map when partial-start mode is active.
+			if len(rs.DegradedPlugins) > 0 {
+				resp.Degraded = rs.DegradedPlugins
 			}
 		}
 

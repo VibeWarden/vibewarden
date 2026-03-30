@@ -19,6 +19,11 @@ func (p *Plugin) ConfigSchema() map[string]string {
 	}
 }
 
+// Critical returns true because rate limiting protects against abuse. A
+// broken rate-limiter means the sidecar would forward unlimited traffic to
+// the upstream, enabling denial-of-service attacks.
+func (p *Plugin) Critical() bool { return true }
+
 // Example returns an example YAML configuration for the rate-limiting plugin.
 func (p *Plugin) Example() string {
 	return `  rate-limiting:

@@ -19,6 +19,11 @@ func (p *Plugin) ConfigSchema() map[string]string {
 	}
 }
 
+// Critical returns true because the auth plugin enforces authentication on
+// every proxied request. A failure to initialise auth means the sidecar
+// would forward unauthenticated traffic, which is a security violation.
+func (p *Plugin) Critical() bool { return true }
+
 // Example returns an example YAML configuration for the auth plugin.
 func (p *Plugin) Example() string {
 	return `  auth:

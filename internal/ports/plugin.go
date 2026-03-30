@@ -174,6 +174,27 @@ type ReadinessStatus struct {
 
 	// Plugins maps each plugin name to its current HealthStatus.
 	Plugins map[string]HealthStatus
+
+	// DegradedPlugins maps the name of each plugin that failed Init or Start
+	// to the reason string recorded at failure time. Non-critical plugins that
+	// degrade during startup are listed here so callers can surface a
+	// "degraded" overall status instead of "unhealthy".
+	DegradedPlugins map[string]string
+}
+
+// CriticalPlugin is an optional interface implemented by plugins whose
+// failure must abort sidecar startup. When a plugin does not implement this
+// interface it is treated as non-critical: Init/Start failures are logged as
+// errors and the plugin is marked degraded, but startup continues.
+//
+// Critical plugins: auth, tls, rate-limiting.
+// Non-critical plugins: metrics, WAF, secrets, egress, webhooks, body-size,
+// CORS, security-headers, ip-filter, user-management.
+type CriticalPlugin interface {
+	// Critical returns true when the plugin must start successfully for the
+	// sidecar to serve requests safely. Returning false (or not implementing
+	// this interface at all) means the plugin may degrade gracefully.
+	Critical() bool
 }
 
 // PluginMeta is an optional interface implemented by plugins that expose
