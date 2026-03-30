@@ -73,6 +73,7 @@ nav:
       - Social Login: social-login.md
       - Production Deployment: production-deployment.md
       - Production Hardening: production-hardening.md
+      - WebSockets: websockets.md
   - Framework Examples:
       - Express (Node.js): examples/express.md
       - Next.js: examples/nextjs.md
