@@ -142,6 +142,40 @@ type InternalServerPlugin interface {
 	InternalAddr() string
 }
 
+// ReadinessChecker is the outbound port for checking whether all plugins are
+// initialised and the upstream application is reachable. It is used by the
+// /_vibewarden/ready endpoint to report readiness distinct from liveness.
+//
+// Implementations should aggregate the health of every registered plugin and,
+// when an upstream health checker is configured, the current upstream status.
+// A process is considered ready only when all plugins report healthy and the
+// upstream is reachable.
+type ReadinessChecker interface {
+	// Ready returns true when every plugin is healthy and the upstream is
+	// reachable. It must be safe for concurrent use and must not block.
+	Ready() bool
+
+	// ReadinessStatus returns a detailed per-plugin health map and the current
+	// upstream status. The map key is the plugin name; the value is its
+	// HealthStatus. upstreamReachable is true when the upstream health checker
+	// reports "healthy".
+	ReadinessStatus() ReadinessStatus
+}
+
+// ReadinessStatus is a point-in-time snapshot of plugin and upstream readiness.
+type ReadinessStatus struct {
+	// PluginsReady is true when every registered plugin reports healthy.
+	PluginsReady bool
+
+	// UpstreamReachable is true when the upstream health checker reports
+	// "healthy". It is also true when no upstream checker is configured
+	// (readiness does not require an upstream checker to be present).
+	UpstreamReachable bool
+
+	// Plugins maps each plugin name to its current HealthStatus.
+	Plugins map[string]HealthStatus
+}
+
 // PluginMeta is an optional interface implemented by plugins that expose
 // metadata for CLI display (vibewarden plugins, vibewarden plugins show).
 // All compiled-in plugins implement this interface.

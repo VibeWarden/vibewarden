@@ -579,11 +579,11 @@ func TestBuildCaddyConfig_SecurityHeaders(t *testing.T) {
 	if !ok {
 		t.Fatal("routes not found in server config")
 	}
-	if len(routes) < 2 {
-		t.Fatalf("expected at least 2 routes (health + proxy), got %d", len(routes))
+	if len(routes) < 3 {
+		t.Fatalf("expected at least 3 routes (health + ready + proxy), got %d", len(routes))
 	}
 
-	handlers, ok := routes[1]["handle"].([]map[string]any)
+	handlers, ok := routes[2]["handle"].([]map[string]any)
 	if !ok {
 		t.Fatal("handle not found in proxy route")
 	}
@@ -637,11 +637,11 @@ func TestBuildCaddyConfig_NoSecurityHeaders(t *testing.T) {
 	if !ok {
 		t.Fatal("routes not found in server config")
 	}
-	if len(routes) < 2 {
-		t.Fatalf("expected at least 2 routes (health + proxy), got %d", len(routes))
+	if len(routes) < 3 {
+		t.Fatalf("expected at least 3 routes (health + ready + proxy), got %d", len(routes))
 	}
 
-	handlers, ok := routes[1]["handle"].([]map[string]any)
+	handlers, ok := routes[2]["handle"].([]map[string]any)
 	if !ok {
 		t.Fatal("handle not found in proxy route")
 	}
@@ -824,10 +824,10 @@ func TestBuildCaddyConfig_ReverseProxyUpstream(t *testing.T) {
 	if !ok {
 		t.Fatal("routes not found in server config")
 	}
-	if len(routes) < 2 {
-		t.Fatalf("expected at least 2 routes (health + proxy), got %d", len(routes))
+	if len(routes) < 3 {
+		t.Fatalf("expected at least 3 routes (health + ready + proxy), got %d", len(routes))
 	}
-	handlers, ok := routes[1]["handle"].([]map[string]any)
+	handlers, ok := routes[2]["handle"].([]map[string]any)
 	if !ok {
 		t.Fatal("handle not found in proxy route")
 	}
@@ -891,8 +891,8 @@ func TestBuildCaddyConfig_HealthRoute(t *testing.T) {
 			if !ok {
 				t.Fatal("routes not found in server config")
 			}
-			if len(routes) < 2 {
-				t.Fatalf("expected at least 2 routes (health + proxy), got %d", len(routes))
+			if len(routes) < 3 {
+				t.Fatalf("expected at least 3 routes (health + ready + proxy), got %d", len(routes))
 			}
 
 			healthRoute := routes[0]
@@ -1185,12 +1185,12 @@ func TestBuildCaddyConfig_KratosFlowRoutes_Present(t *testing.T) {
 		t.Fatal("routes not found in server config")
 	}
 
-	// Expect: health (index 0), Kratos flow route (index 1), catch-all proxy (index 2).
-	if len(routes) != 3 {
-		t.Fatalf("expected 3 routes (health + kratos + proxy), got %d", len(routes))
+	// Expect: health (index 0), ready (index 1), Kratos flow route (index 2), catch-all proxy (index 3).
+	if len(routes) != 4 {
+		t.Fatalf("expected 4 routes (health + ready + kratos + proxy), got %d", len(routes))
 	}
 
-	kratosRoute := routes[1]
+	kratosRoute := routes[2]
 
 	// Verify the route has matchers for the self-service paths.
 	matchers, ok := kratosRoute["match"].([]map[string]any)
@@ -1289,9 +1289,9 @@ func TestBuildCaddyConfig_KratosFlowRoutes_AbsentWhenAuthDisabled(t *testing.T) 
 				t.Fatal("routes not found in server config")
 			}
 
-			// Without auth, only health + catch-all = 2 routes.
-			if len(routes) != 2 {
-				t.Errorf("expected 2 routes (health + proxy), got %d", len(routes))
+			// Without auth: health + ready + catch-all = 3 routes.
+			if len(routes) != 3 {
+				t.Errorf("expected 3 routes (health + ready + proxy), got %d", len(routes))
 			}
 		})
 	}
@@ -1314,8 +1314,8 @@ func TestBuildCaddyConfig_KratosRouteBeforeCatchAll(t *testing.T) {
 
 	server := extractServer(t, result)
 	routes, ok := server["routes"].([]map[string]any)
-	if !ok || len(routes) < 3 {
-		t.Fatalf("expected at least 3 routes, got %d", len(routes))
+	if !ok || len(routes) < 4 {
+		t.Fatalf("expected at least 4 routes, got %d", len(routes))
 	}
 
 	// Index 0 — health check: has a path matcher.
@@ -1324,16 +1324,22 @@ func TestBuildCaddyConfig_KratosRouteBeforeCatchAll(t *testing.T) {
 		t.Error("routes[0] (health) must have a path matcher")
 	}
 
-	// Index 1 — Kratos flow route: has a path matcher and proxies to Kratos.
-	kratosRoute := routes[1]
-	if _, hasMatcher := kratosRoute["match"]; !hasMatcher {
-		t.Error("routes[1] (Kratos flow) must have a path matcher")
+	// Index 1 — ready probe: has a path matcher.
+	readyRoute := routes[1]
+	if _, hasMatcher := readyRoute["match"]; !hasMatcher {
+		t.Error("routes[1] (ready) must have a path matcher")
 	}
 
-	// Index 2 — catch-all proxy: no path matcher (matches everything).
-	catchAll := routes[2]
+	// Index 2 — Kratos flow route: has a path matcher and proxies to Kratos.
+	kratosRoute := routes[2]
+	if _, hasMatcher := kratosRoute["match"]; !hasMatcher {
+		t.Error("routes[2] (Kratos flow) must have a path matcher")
+	}
+
+	// Index 3 — catch-all proxy: no path matcher (matches everything).
+	catchAll := routes[3]
 	if _, hasMatcher := catchAll["match"]; hasMatcher {
-		t.Error("routes[2] (catch-all) must not have a path matcher")
+		t.Error("routes[3] (catch-all) must not have a path matcher")
 	}
 }
 
@@ -1400,12 +1406,12 @@ func TestBuildCaddyConfig_MetricsRoute_PresentWhenEnabled(t *testing.T) {
 	if !ok {
 		t.Fatal("routes not found in server config")
 	}
-	// Expect: health (index 0), metrics (index 1), catch-all (index 2).
-	if len(routes) != 3 {
-		t.Fatalf("expected 3 routes (health + metrics + proxy), got %d", len(routes))
+	// Expect: health (index 0), ready (index 1), metrics (index 2), catch-all (index 3).
+	if len(routes) != 4 {
+		t.Fatalf("expected 4 routes (health + ready + metrics + proxy), got %d", len(routes))
 	}
 
-	metricsRoute := routes[1]
+	metricsRoute := routes[2]
 
 	matchers, ok := metricsRoute["match"].([]map[string]any)
 	if !ok || len(matchers) == 0 {
@@ -1491,9 +1497,9 @@ func TestBuildCaddyConfig_MetricsRoute_AbsentWhenDisabled(t *testing.T) {
 			if !ok {
 				t.Fatal("routes not found in server config")
 			}
-			// Without metrics: only health + catch-all = 2 routes.
-			if len(routes) != 2 {
-				t.Errorf("expected 2 routes (health + proxy), got %d", len(routes))
+			// Without metrics: health + ready + catch-all = 3 routes.
+			if len(routes) != 3 {
+				t.Errorf("expected 3 routes (health + ready + proxy), got %d", len(routes))
 			}
 		})
 	}
@@ -1516,19 +1522,19 @@ func TestBuildCaddyConfig_MetricsRouteBeforeCatchAll(t *testing.T) {
 
 	server := extractServer(t, result)
 	routes, ok := server["routes"].([]map[string]any)
-	if !ok || len(routes) < 3 {
-		t.Fatalf("expected at least 3 routes, got %d", len(routes))
+	if !ok || len(routes) < 4 {
+		t.Fatalf("expected at least 4 routes, got %d", len(routes))
 	}
 
-	// routes[0] = health, routes[1] = metrics, routes[2] = catch-all.
-	metricsRoute := routes[1]
+	// routes[0] = health, routes[1] = ready, routes[2] = metrics, routes[3] = catch-all.
+	metricsRoute := routes[2]
 	if _, hasMatcher := metricsRoute["match"]; !hasMatcher {
-		t.Error("routes[1] (metrics) must have a path matcher")
+		t.Error("routes[2] (metrics) must have a path matcher")
 	}
 
-	catchAll := routes[2]
+	catchAll := routes[3]
 	if _, hasMatcher := catchAll["match"]; hasMatcher {
-		t.Error("routes[2] (catch-all) must not have a path matcher")
+		t.Error("routes[3] (catch-all) must not have a path matcher")
 	}
 }
 
