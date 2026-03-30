@@ -101,6 +101,9 @@ type Config struct {
 
 	// Egress configures the egress proxy plugin for outbound API call control.
 	Egress EgressConfig `mapstructure:"egress"`
+
+	// ErrorPages configures custom error page responses for specific HTTP status codes.
+	ErrorPages ErrorPagesConfig `mapstructure:"error_pages"`
 }
 
 // DatabasePoolConfig holds connection pool settings for PostgreSQL.
@@ -1166,6 +1169,26 @@ type AuditConfig struct {
 	Output string `mapstructure:"output"`
 }
 
+// ErrorPagesConfig holds configuration for custom error page responses.
+// When enabled, VibeWarden serves files from Directory instead of the default
+// JSON error body for matching HTTP status codes.
+//
+// File naming convention: <status_code>.<ext> (e.g., 401.html, 403.json, 429.html).
+// Content-Type is inferred from the file extension:
+//   - .html  → text/html
+//   - .json  → application/json
+//
+// When no file matches a given status code, VibeWarden falls back to the
+// built-in JSON error response.
+type ErrorPagesConfig struct {
+	// Enabled toggles the custom error pages feature (default: false).
+	Enabled bool `mapstructure:"enabled"`
+
+	// Directory is the path to the directory containing custom error page files.
+	// The directory must be readable at startup. Required when Enabled is true.
+	Directory string `mapstructure:"directory"`
+}
+
 // Validate checks the loaded configuration for logical consistency.
 // It returns a combined error listing all violations found.
 // Call Validate after Load to catch misconfiguration early.
@@ -1489,6 +1512,11 @@ func (c *Config) Validate() error {
 	if c.Egress.Enabled {
 		egressErrs := validateEgressConfig(c.Egress)
 		errs = append(errs, egressErrs...)
+	}
+
+	// error_pages validation.
+	if c.ErrorPages.Enabled && c.ErrorPages.Directory == "" {
+		errs = append(errs, "error_pages.directory is required when error_pages.enabled is true")
 	}
 
 	if len(errs) > 0 {
@@ -1829,6 +1857,8 @@ func Load(configPath string) (*Config, error) {
 	v.SetDefault("egress.dns.block_private", true)
 	v.SetDefault("egress.dns.allowed_private", []string{})
 	v.SetDefault("egress.routes", []EgressRouteConfig{})
+	v.SetDefault("error_pages.enabled", false)
+	v.SetDefault("error_pages.directory", "")
 
 	// Config file
 	if configPath != "" {
