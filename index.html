@@ -1144,11 +1144,11 @@ all in a single binary that sits next to your app.</p>
 </div>
 </div>
 </div>
-<p>Your app on port 3000 is now behind VibeWarden. Done.</p>
+<p>Your app on port 3000 is now behind VibeWarden at <code>https://localhost:8443</code>. Done.</p>
 <hr />
 <h2 id="how-it-works">How It Works<a class="headerlink" href="#how-it-works" title="Permanent link">&para;</a></h2>
 <div class="language-text highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a>             ┌────────────────────────────────┐
-</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>Internet ────►│  VibeWarden  :8080             │
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a>Internet ────►│  VibeWarden  :8443 (HTTPS)     │
 </span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a>             │                                │
 </span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a>             │  TLS termination               │
 </span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a>             │  Authentication (JWT / Kratos) │
@@ -1440,6 +1440,14 @@ It is never hosted remotely.</p>
 <tr>
 <td><code>vibew secret list &lt;path&gt;</code></td>
 <td>List secrets at a path</td>
+</tr>
+<tr>
+<td><code>vibew token</code></td>
+<td>Generate a signed dev JWT for local testing</td>
+</tr>
+<tr>
+<td><code>vibew cert export</code></td>
+<td>Export the local CA certificate (for curl, Postman, …)</td>
 </tr>
 <tr>
 <td><code>vibew validate</code></td>
