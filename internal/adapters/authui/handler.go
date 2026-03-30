@@ -31,6 +31,8 @@ var templateFS embed.FS
 
 // AuthUIConfig holds the theming and behavioural configuration for the
 // built-in auth UI pages.
+//
+//nolint:revive // AuthUIConfig name is intentional to distinguish from other Config types in the codebase
 type AuthUIConfig struct {
 	// Mode selects the UI serving strategy.
 	// "built-in" (default) — VibeWarden serves its own pages.

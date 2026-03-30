@@ -59,13 +59,13 @@ func (f *fakeCaddyPlugin) ContributeCaddyHandlers() []ports.CaddyHandler { retur
 // ----------------------------------------------------------------------------
 
 func discardLogger() *slog.Logger {
-	return slog.New(slog.NewTextHandler(nil_writer{}, nil))
+	return slog.New(slog.NewTextHandler(nilWriter{}, nil))
 }
 
-// nil_writer discards all log output so tests stay quiet.
-type nil_writer struct{}
+// nilWriter discards all log output so tests stay quiet.
+type nilWriter struct{}
 
-func (nil_writer) Write(p []byte) (int, error) { return len(p), nil }
+func (nilWriter) Write(p []byte) (int, error) { return len(p), nil }
 
 func newOrder() *[]string { s := []string{}; return &s }
 

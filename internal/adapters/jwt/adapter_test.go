@@ -14,6 +14,7 @@ import (
 
 	"github.com/go-jose/go-jose/v4"
 	josejwt "github.com/go-jose/go-jose/v4/jwt"
+
 	domjwks "github.com/vibewarden/vibewarden/internal/domain/jwks"
 )
 

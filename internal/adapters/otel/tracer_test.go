@@ -5,10 +5,11 @@ import (
 	"errors"
 	"testing"
 
-	oteladapter "github.com/vibewarden/vibewarden/internal/adapters/otel"
-	"github.com/vibewarden/vibewarden/internal/ports"
 	"net/http"
 	"net/http/httptest"
+
+	oteladapter "github.com/vibewarden/vibewarden/internal/adapters/otel"
+	"github.com/vibewarden/vibewarden/internal/ports"
 )
 
 // newTracerProvider creates a Provider with a fake OTLP endpoint for tracing tests.
@@ -247,7 +248,7 @@ func TestProvider_Propagator_ImplementsPort(t *testing.T) {
 	p, cleanup := newTracerProvider(t)
 	defer cleanup()
 
-	var _ ports.TextMapPropagator = p.Propagator()
+	var _ = p.Propagator()
 }
 
 func TestProvider_Propagator_Extract_ReturnsContext(t *testing.T) {

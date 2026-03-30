@@ -879,7 +879,7 @@ func (p *Proxy) forward(ctx context.Context, req domainegress.EgressRequest, mat
 	defer cancel()
 
 	// Apply per-route request header manipulation when a route was matched.
-	outHeaders := req.Header
+	var outHeaders http.Header
 	if match.Matched {
 		outHeaders = match.Route.Headers().ApplyToRequest(req.Header)
 	} else {
@@ -1334,13 +1334,9 @@ func routeNameOf(match domainegress.RouteMatch) string {
 
 // traceIDFromContext extracts the W3C trace-id string from ctx as a hex string.
 // Returns an empty string when no span is active in ctx or tracing is disabled.
+// The trace-id is stored in the context via a key when a span is started, avoiding
+// a hard dependency on the OTel SDK in this package.
 func traceIDFromContext(ctx context.Context) string {
-	type traceIDer interface {
-		TraceID() [16]byte
-		IsValid() bool
-	}
-	// Use OTel SDK directly would create a hard dependency on the SDK here.
-	// Instead we store the trace-id in the context via a key when we start a span.
 	if id, ok := ctx.Value(ctxKeyTraceID{}).(string); ok {
 		return id
 	}

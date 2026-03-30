@@ -1,7 +1,6 @@
 package events_test
 
 import (
-	"fmt"
 	"testing"
 
 	"github.com/vibewarden/vibewarden/internal/domain/events"
@@ -24,13 +23,6 @@ func requirePayloadInt(t *testing.T, payload map[string]any, key string, want in
 	if got != want {
 		t.Errorf("Payload[%q] = %d, want %d", key, got, want)
 	}
-}
-
-// requireSummaryContainsInt is a helper that asserts the summary contains the
-// string representation of n.
-func requireSummaryContainsInt(t *testing.T, summary string, n int) {
-	t.Helper()
-	requireSummaryContains(t, summary, fmt.Sprintf("%d", n))
 }
 
 // TestNewEgressResponseInvalid verifies the egress.response_invalid event

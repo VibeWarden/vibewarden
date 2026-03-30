@@ -78,7 +78,7 @@ func LoadOrGenerateDevKeys(dir string) (*DevKeyPair, error) {
 // loadPrivateKey reads an RSA private key from a PEM-encoded PKCS#8 or
 // PKCS#1 file at path.
 func loadPrivateKey(path string) (*rsa.PrivateKey, error) {
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(path) //nolint:gosec // path is an internal dev-key directory constructed by LoadOrGenerateDevKeys
 	if err != nil {
 		return nil, fmt.Errorf("reading %q: %w", path, err)
 	}

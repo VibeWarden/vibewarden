@@ -129,10 +129,7 @@ func buildBodySizeHandlerJSON(cfg Config) (map[string]any, error) {
 		MaxBytes: cfg.MaxBytes,
 	}
 	for _, ov := range cfg.Overrides {
-		hcfg.Overrides = append(hcfg.Overrides, bodySizeOverrideJSONItem{
-			Path:     ov.Path,
-			MaxBytes: ov.MaxBytes,
-		})
+		hcfg.Overrides = append(hcfg.Overrides, bodySizeOverrideJSONItem(ov))
 	}
 
 	cfgBytes, err := json.Marshal(hcfg)

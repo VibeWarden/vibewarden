@@ -8,6 +8,8 @@ import (
 // EgressRequest is a value object that carries the details of an outbound
 // HTTP request intercepted by the egress proxy. The body is referenced by an
 // opaque handle rather than held in memory to avoid large allocations.
+//
+//nolint:revive // EgressRequest name is intentional to distinguish from inbound request types
 type EgressRequest struct {
 	// Method is the HTTP method of the outbound request (e.g. "GET", "POST").
 	Method string

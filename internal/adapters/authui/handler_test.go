@@ -1,6 +1,7 @@
 package authui_test
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"log/slog"
@@ -69,7 +70,7 @@ func TestHandler_StartAndAddr(t *testing.T) {
 	if err := h.Start(); err != nil {
 		t.Fatalf("Start() error: %v", err)
 	}
-	defer h.Stop(nil) //nolint: errcheck
+	defer h.Stop(context.TODO()) //nolint:errcheck
 
 	addr := h.Addr()
 	if addr == "" {
@@ -152,7 +153,7 @@ func TestHandler_Pages(t *testing.T) {
 			if err := h.Start(); err != nil {
 				t.Fatalf("Start() error: %v", err)
 			}
-			defer h.Stop(nil) //nolint: errcheck
+			defer h.Stop(context.TODO()) //nolint:errcheck
 
 			resp, err := http.Get("http://" + h.Addr() + tt.path)
 			if err != nil {
@@ -200,7 +201,7 @@ func TestHandler_ThemeColorsInjected(t *testing.T) {
 	if err := h.Start(); err != nil {
 		t.Fatalf("Start() error: %v", err)
 	}
-	defer h.Stop(nil) //nolint: errcheck
+	defer h.Stop(context.TODO()) //nolint:errcheck
 
 	pages := []string{
 		"/_vibewarden/login",
@@ -239,7 +240,7 @@ func TestHandler_ReturnToQueryPropagated(t *testing.T) {
 	if err := h.Start(); err != nil {
 		t.Fatalf("Start() error: %v", err)
 	}
-	defer h.Stop(nil) //nolint: errcheck
+	defer h.Stop(context.TODO()) //nolint:errcheck
 
 	// The login page should include the return_to value in registration link.
 	resp, err := http.Get(fmt.Sprintf("http://%s/_vibewarden/login?return_to=%%2Fdashboard", h.Addr()))
@@ -263,7 +264,7 @@ func TestHandler_DefaultColorsApplied(t *testing.T) {
 	if err := h.Start(); err != nil {
 		t.Fatalf("Start() error: %v", err)
 	}
-	defer h.Stop(nil) //nolint: errcheck
+	defer h.Stop(context.TODO()) //nolint:errcheck
 
 	resp, err := http.Get("http://" + h.Addr() + "/_vibewarden/login")
 	if err != nil {
@@ -323,7 +324,7 @@ func TestHandler_ServeHTTP_ViaRecorder(t *testing.T) {
 	if err := realH.Start(); err != nil {
 		t.Fatalf("Start(): %v", err)
 	}
-	defer realH.Stop(nil) //nolint: errcheck
+	defer realH.Stop(context.TODO()) //nolint:errcheck
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {

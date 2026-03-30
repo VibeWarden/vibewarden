@@ -197,34 +197,6 @@ func buildCORSHeaders(cfg Config) corsHeaders {
 	return h
 }
 
-// headerSet builds the map[string][]string of response headers to set.
-func headerSet(cfg Config, h corsHeaders) map[string][]string {
-	set := map[string][]string{}
-
-	set["Access-Control-Allow-Origin"] = []string{h.allowOrigin}
-
-	if h.allowMethods != "" {
-		set["Access-Control-Allow-Methods"] = []string{h.allowMethods}
-	}
-	if h.allowHeaders != "" {
-		set["Access-Control-Allow-Headers"] = []string{h.allowHeaders}
-	}
-	if h.exposeHeaders != "" {
-		set["Access-Control-Expose-Headers"] = []string{h.exposeHeaders}
-	}
-	if h.allowCredentials {
-		set["Access-Control-Allow-Credentials"] = []string{"true"}
-	}
-	if h.maxAge != "" {
-		set["Access-Control-Max-Age"] = []string{h.maxAge}
-	}
-	if h.varyOrigin {
-		set["Vary"] = []string{"Origin"}
-	}
-
-	return set
-}
-
 // buildPreflightHandler creates a Caddy handler that responds to OPTIONS
 // preflight requests with 204 No Content and the full set of CORS headers.
 //
@@ -271,8 +243,6 @@ func buildPreflightHandler(h corsHeaders) map[string]any {
 // response headers on all responses (non-OPTIONS requests that pass through
 // the preflight handler).
 func buildResponseHeadersHandler(h corsHeaders) map[string]any {
-	// We need a Config to call headerSet; reconstruct minimal needed fields.
-	// Since we have the corsHeaders struct we can build directly.
 	set := map[string][]string{
 		"Access-Control-Allow-Origin": {h.allowOrigin},
 	}

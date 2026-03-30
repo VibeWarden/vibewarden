@@ -3,6 +3,8 @@
 package secret
 
 // SecretSource indicates the origin of a retrieved secret.
+//
+//nolint:revive // SecretSource is the established public API type name used by secret retrieval adapters
 type SecretSource string
 
 const (

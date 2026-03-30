@@ -91,7 +91,7 @@ Examples:
 				return nil
 			}
 
-			pem, err := os.ReadFile(certPath)
+			pem, err := os.ReadFile(certPath) //nolint:gosec // certPath comes from the vibewarden.yaml config, not direct user input
 			if err != nil {
 				return fmt.Errorf("reading certificate at %s: %w", certPath, err)
 			}

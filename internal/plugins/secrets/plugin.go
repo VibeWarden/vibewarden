@@ -541,7 +541,8 @@ func (p *Plugin) rotateDynamicCredentialsIfNeeded(ctx context.Context) {
 		}
 
 		// Revoke the old lease after a short grace period.
-		go func(old *openbao.DynamicCredentials) {
+		// context.Background is intentional: revocation must outlive the request context.
+		go func(old *openbao.DynamicCredentials) { //nolint:gosec // G118: background context is correct — revocation runs after the request completes
 			time.Sleep(5 * time.Second)
 			revokeCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()

@@ -87,7 +87,7 @@ Examples:
 
 			if err := svc.Init(context.Background(), dir, opts); err != nil {
 				if errors.Is(err, os.ErrExist) {
-					return fmt.Errorf("%w\n\nRun with --force to overwrite existing files.", err)
+					return fmt.Errorf("%w\n\nRun with --force to overwrite existing files.", err) //nolint:revive,staticcheck // user-facing CLI hint: intentional newline and trailing period
 				}
 				return err
 			}
@@ -97,7 +97,7 @@ Examples:
 				agentFiles, err = agentSvc.GenerateAgentContext(context.Background(), dir, agentType, opts)
 				if err != nil {
 					if errors.Is(err, os.ErrExist) {
-						return fmt.Errorf("%w\n\nRun with --force to overwrite existing files.", err)
+						return fmt.Errorf("%w\n\nRun with --force to overwrite existing files.", err) //nolint:revive,staticcheck // user-facing CLI hint: intentional newline and trailing period
 					}
 					return fmt.Errorf("generating agent context: %w", err)
 				}

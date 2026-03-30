@@ -94,11 +94,11 @@ func loadClientCert(certPath, keyPath string) (tls.Certificate, error) {
 		return tls.Certificate{}, fmt.Errorf("key_path is required for mTLS")
 	}
 
-	certPEM, err := os.ReadFile(certPath)
+	certPEM, err := os.ReadFile(certPath) //nolint:gosec // path comes from operator-controlled mTLS config, not user input
 	if err != nil {
 		return tls.Certificate{}, fmt.Errorf("reading client cert %q: %w", certPath, err)
 	}
-	keyPEM, err := os.ReadFile(keyPath)
+	keyPEM, err := os.ReadFile(keyPath) //nolint:gosec // path comes from operator-controlled mTLS config, not user input
 	if err != nil {
 		return tls.Certificate{}, fmt.Errorf("reading client key %q: %w", keyPath, err)
 	}
@@ -114,7 +114,7 @@ func loadClientCert(certPath, keyPath string) (tls.Certificate, error) {
 // given file path and returns a populated *x509.CertPool. Returns an error
 // when the file cannot be read or contains no valid PEM certificates.
 func loadCACert(caPath string) (*x509.CertPool, error) {
-	caPEM, err := os.ReadFile(caPath)
+	caPEM, err := os.ReadFile(caPath) //nolint:gosec // path comes from operator-controlled mTLS config, not user input
 	if err != nil {
 		return nil, fmt.Errorf("reading CA cert %q: %w", caPath, err)
 	}

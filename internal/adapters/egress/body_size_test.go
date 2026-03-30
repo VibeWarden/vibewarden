@@ -476,7 +476,7 @@ func TestHTTPHandler_NoSizeLimits(t *testing.T) {
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		b, _ := io.ReadAll(r.Body)
 		w.WriteHeader(http.StatusOK)
-		_, _ = w.Write([]byte(fmt.Sprintf("received %d bytes; response: %s", len(b), body)))
+		_, _ = fmt.Fprintf(w, "received %d bytes; response: %s", len(b), body)
 	}))
 	defer upstream.Close()
 

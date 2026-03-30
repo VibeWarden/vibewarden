@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"log/slog"
 	"testing"
 
@@ -51,13 +52,13 @@ func TestBuildLogger_Level(t *testing.T) {
 			if logger == nil {
 				t.Fatal("buildLogger() returned nil logger")
 			}
-			if !logger.Enabled(nil, tt.wantLevel) {
+			if !logger.Enabled(context.TODO(), tt.wantLevel) {
 				t.Errorf("buildLogger(%q) logger does not enable level %v", tt.cfg.Level, tt.wantLevel)
 			}
 			// Verify that one level below is disabled (except for debug which has nothing below)
 			if tt.wantLevel > slog.LevelDebug {
 				lowerLevel := tt.wantLevel - 4
-				if logger.Enabled(nil, lowerLevel) {
+				if logger.Enabled(context.TODO(), lowerLevel) {
 					t.Errorf("buildLogger(%q) unexpectedly enables level %v (below minimum %v)", tt.cfg.Level, lowerLevel, tt.wantLevel)
 				}
 			}

@@ -60,7 +60,7 @@ OPENBAO_DEV_ROOT_TOKEN=%s
 func (s *Store) Read(_ context.Context, outputDir string) (*generate.GeneratedCredentials, error) {
 	path := filepath.Join(outputDir, credentialsFileName)
 
-	file, err := os.Open(path)
+	file, err := os.Open(path) //nolint:gosec // path is constructed from trusted config-provided outputDir via filepath.Join
 	if err != nil {
 		return nil, err
 	}

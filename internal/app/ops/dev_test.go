@@ -65,8 +65,8 @@ func defaultConfig() *config.Config {
 			Enabled: true,
 			PerIP:   config.RateLimitRuleConfig{RequestsPerSecond: 10, Burst: 20},
 		},
-		Metrics: config.MetricsConfig{Enabled: true},
-		Kratos:  config.KratosConfig{PublicURL: "http://127.0.0.1:4433", AdminURL: "http://127.0.0.1:4434"},
+		Telemetry: config.TelemetryConfig{Prometheus: config.PrometheusExporterConfig{Enabled: true}},
+		Kratos:    config.KratosConfig{PublicURL: "http://127.0.0.1:4433", AdminURL: "http://127.0.0.1:4434"},
 	}
 }
 

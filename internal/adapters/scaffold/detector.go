@@ -53,7 +53,7 @@ func (d *Detector) Detect(dir string) (*scaffold.ProjectConfig, error) {
 // detectNodePort tries to read the PORT from the package.json scripts section.
 // It looks for patterns like "PORT=3000" in start/dev/serve scripts.
 func detectNodePort(pkgPath string) (int, error) {
-	data, err := os.ReadFile(pkgPath)
+	data, err := os.ReadFile(pkgPath) //nolint:gosec // pkgPath is resolved from the project root via filepath.Abs, not user input
 	if err != nil {
 		return 0, fmt.Errorf("reading package.json: %w", err)
 	}

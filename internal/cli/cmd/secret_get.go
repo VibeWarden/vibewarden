@@ -128,14 +128,11 @@ func buildSecretService(configPath, outputDir string) (*appsecret.Service, error
 func formatSecretGetError(err error, aliasOrPath string) error {
 	switch {
 	case isErrNoSourceAvailable(err):
-		return fmt.Errorf(
-			"No secret source available. Run 'vibewarden generate' to create credentials, or start the stack with 'vibewarden dev'.",
-		)
+		//nolint:revive,staticcheck // user-facing CLI hint: intentionally capitalised with trailing period
+		return fmt.Errorf("No secret source available. Run 'vibewarden generate' to create credentials, or start the stack with 'vibewarden dev'.") //nolint:revive,staticcheck
 	case isErrSecretNotFound(err):
-		return fmt.Errorf(
-			"Secret %q not found. Use 'vibew secret list' to see available secrets.",
-			aliasOrPath,
-		)
+		//nolint:revive,staticcheck // user-facing CLI hint: intentionally capitalised with trailing period
+		return fmt.Errorf("Secret %q not found. Use 'vibew secret list' to see available secrets.", aliasOrPath) //nolint:revive,staticcheck
 	default:
 		return err
 	}

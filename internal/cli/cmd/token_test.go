@@ -5,8 +5,6 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/rsa"
-	"crypto/x509"
-	"encoding/pem"
 	"os"
 	"path/filepath"
 	"strings"
@@ -33,20 +31,6 @@ func generateTestKeyPair(t *testing.T) (dir string, kp *jwtadapter.DevKeyPair) {
 		t.Fatalf("generateTestKeyPair: %v", err)
 	}
 	return dir, kp
-}
-
-// writeRawPrivateKey writes the given RSA key as a PKCS#8 PEM file to path.
-func writeRawPrivateKey(t *testing.T, path string, key *rsa.PrivateKey) {
-	t.Helper()
-
-	der, err := x509.MarshalPKCS8PrivateKey(key)
-	if err != nil {
-		t.Fatalf("marshalling key: %v", err)
-	}
-	block := &pem.Block{Type: "PRIVATE KEY", Bytes: der}
-	if err := os.WriteFile(path, pem.EncodeToMemory(block), 0o600); err != nil {
-		t.Fatalf("writing key: %v", err)
-	}
 }
 
 // ─── signDevToken (unit tests) ────────────────────────────────────────────────

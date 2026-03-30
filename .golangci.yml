@@ -53,6 +53,27 @@ linters:
         - "fmt.Fprintln"
         - "fmt.Fprintf"
 
+  exclusions:
+    rules:
+      # Test helpers legitimately read/write temp files with path variables —
+      # these are not file inclusion vulnerabilities.
+      - path: "_test\\.go"
+        linters:
+          - gosec
+        text: "G304"
+      - path: "_test\\.go"
+        linters:
+          - gosec
+        text: "G306"
+      - path: "_test\\.go"
+        linters:
+          - gosec
+        text: "G301"
+      - path: "_test\\.go"
+        linters:
+          - gosec
+        text: "G115"
+
 issues:
   max-issues-per-linter: 0
   max-same-issues: 0

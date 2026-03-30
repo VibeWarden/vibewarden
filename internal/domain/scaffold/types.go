@@ -36,6 +36,8 @@ type ProjectConfig struct {
 
 // ScaffoldOptions holds the user-supplied options that drive file generation.
 // It is a value object — all fields set at construction.
+//
+//nolint:revive // ScaffoldOptions is the established public API name used across the scaffold package
 type ScaffoldOptions struct {
 	// UpstreamPort is the port that the user's application listens on.
 	UpstreamPort int

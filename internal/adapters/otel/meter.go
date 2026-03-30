@@ -4,9 +4,10 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/vibewarden/vibewarden/internal/ports"
 	"go.opentelemetry.io/otel/attribute"
 	otelmetric "go.opentelemetry.io/otel/metric"
+
+	"github.com/vibewarden/vibewarden/internal/ports"
 )
 
 // meterAdapter wraps an OTel metric.Meter to implement ports.Meter.

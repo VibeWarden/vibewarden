@@ -184,7 +184,7 @@ func (h *RetryHandler) ServeHTTP(w http.ResponseWriter, r *http.Request, next ca
 	// All attempts exhausted — add Retry-After hint and flush the last response.
 	if lastBuf != nil {
 		if lastBuf.status == http.StatusServiceUnavailable {
-			backoffMs := h.Config.InitialBackoffMs * float64(int(1)<<uint(h.Config.MaxAttempts-1))
+			backoffMs := h.Config.InitialBackoffMs * float64(int(1)<<uint(h.Config.MaxAttempts-1)) //nolint:gosec // MaxAttempts is validated to be small (≤10) during config parsing
 			if backoffMs > h.Config.MaxBackoffMs {
 				backoffMs = h.Config.MaxBackoffMs
 			}
