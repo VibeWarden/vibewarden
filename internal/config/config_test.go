@@ -2361,3 +2361,93 @@ database:
 		})
 	}
 }
+
+// TestValidate_ErrorPages verifies that error_pages.directory is required when
+// error_pages.enabled is true.
+func TestValidate_ErrorPages(t *testing.T) {
+	tests := []struct {
+		name    string
+		cfg     config.Config
+		wantErr bool
+		errMsg  string
+	}{
+		{
+			name:    "disabled with no directory",
+			cfg:     config.Config{ErrorPages: config.ErrorPagesConfig{Enabled: false, Directory: ""}},
+			wantErr: false,
+		},
+		{
+			name:    "enabled with directory",
+			cfg:     config.Config{ErrorPages: config.ErrorPagesConfig{Enabled: true, Directory: "/some/path"}},
+			wantErr: false,
+		},
+		{
+			name:    "enabled without directory",
+			cfg:     config.Config{ErrorPages: config.ErrorPagesConfig{Enabled: true, Directory: ""}},
+			wantErr: true,
+			errMsg:  "error_pages.directory is required",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.cfg.Validate()
+			if (err != nil) != tt.wantErr {
+				t.Errorf("Validate() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if tt.wantErr && tt.errMsg != "" && !strings.Contains(err.Error(), tt.errMsg) {
+				t.Errorf("Validate() error = %q, want it to contain %q", err.Error(), tt.errMsg)
+			}
+		})
+	}
+}
+
+// TestLoad_ErrorPagesFromFile verifies that error_pages settings are loaded
+// correctly from a YAML config file.
+func TestLoad_ErrorPagesFromFile(t *testing.T) {
+	dir := t.TempDir()
+	pagesDir := filepath.Join(dir, "pages")
+	if err := os.MkdirAll(pagesDir, 0o755); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+
+	content := "error_pages:\n  enabled: true\n  directory: " + pagesDir + "\n"
+	cfgFile := filepath.Join(dir, "vibewarden.yaml")
+	if err := os.WriteFile(cfgFile, []byte(content), 0600); err != nil {
+		t.Fatalf("writing temp config file: %v", err)
+	}
+
+	cfg, err := config.Load(cfgFile)
+	if err != nil {
+		t.Fatalf("Load() unexpected error: %v", err)
+	}
+
+	if !cfg.ErrorPages.Enabled {
+		t.Error("error_pages.enabled = false, want true")
+	}
+	if cfg.ErrorPages.Directory != pagesDir {
+		t.Errorf("error_pages.directory = %q, want %q", cfg.ErrorPages.Directory, pagesDir)
+	}
+}
+
+// TestLoad_ErrorPagesDefaults verifies that error_pages defaults to disabled
+// when not specified in the config file.
+func TestLoad_ErrorPagesDefaults(t *testing.T) {
+	dir := t.TempDir()
+	cfgFile := filepath.Join(dir, "vibewarden.yaml")
+	if err := os.WriteFile(cfgFile, []byte("profile: dev\n"), 0600); err != nil {
+		t.Fatalf("writing temp config file: %v", err)
+	}
+
+	cfg, err := config.Load(cfgFile)
+	if err != nil {
+		t.Fatalf("Load() unexpected error: %v", err)
+	}
+
+	if cfg.ErrorPages.Enabled {
+		t.Error("error_pages.enabled = true, want false (default)")
+	}
+	if cfg.ErrorPages.Directory != "" {
+		t.Errorf("error_pages.directory = %q, want empty (default)", cfg.ErrorPages.Directory)
+	}
+}
