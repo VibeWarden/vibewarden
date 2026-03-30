@@ -36,7 +36,7 @@ When vibewarden.yaml is present, VibeWarden generates runtime configuration
 files under .vibewarden/generated/ before starting the stack.
 
 The baseline stack includes:
-  - VibeWarden proxy (port 8080)
+  - VibeWarden proxy (port 8443, HTTPS with self-signed certificate)
   - Ory Kratos identity server (ports 4433, 4434)
   - PostgreSQL
   - Mailslurper (email sink)

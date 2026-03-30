@@ -239,10 +239,10 @@ func TestLoad_Defaults(t *testing.T) {
 		want interface{}
 	}{
 		{"server.host", cfg.Server.Host, "127.0.0.1"},
-		{"server.port", cfg.Server.Port, 8080},
+		{"server.port", cfg.Server.Port, 8443},
 		{"upstream.host", cfg.Upstream.Host, "127.0.0.1"},
 		{"upstream.port", cfg.Upstream.Port, 3000},
-		{"tls.enabled", cfg.TLS.Enabled, false},
+		{"tls.enabled", cfg.TLS.Enabled, true},
 		{"tls.provider", cfg.TLS.Provider, "self-signed"},
 		{"kratos.public_url", cfg.Kratos.PublicURL, "http://127.0.0.1:4433"},
 		{"kratos.admin_url", cfg.Kratos.AdminURL, "http://127.0.0.1:4434"},

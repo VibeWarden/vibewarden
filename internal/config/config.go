@@ -197,7 +197,7 @@ func (d DatabaseConfig) BuildDSN() string {
 type ServerConfig struct {
 	// Host to bind to (default: "127.0.0.1")
 	Host string `mapstructure:"host"`
-	// Port to listen on (default: 8080)
+	// Port to listen on (default: 8443)
 	Port int `mapstructure:"port"`
 }
 
@@ -1673,10 +1673,10 @@ func Load(configPath string) (*Config, error) {
 	// Set defaults
 	v.SetDefault("profile", "dev")
 	v.SetDefault("server.host", "127.0.0.1")
-	v.SetDefault("server.port", 8080)
+	v.SetDefault("server.port", 8443)
 	v.SetDefault("upstream.host", "127.0.0.1")
 	v.SetDefault("upstream.port", 3000)
-	v.SetDefault("tls.enabled", false)
+	v.SetDefault("tls.enabled", true)
 	v.SetDefault("tls.provider", "self-signed")
 	v.SetDefault("kratos.public_url", "http://127.0.0.1:4433")
 	v.SetDefault("kratos.admin_url", "http://127.0.0.1:4434")

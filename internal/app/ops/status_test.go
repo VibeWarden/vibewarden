@@ -32,7 +32,7 @@ func (f *fakeHealthChecker) CheckHealth(_ context.Context, url string) (bool, in
 
 func TestStatusService_Run(t *testing.T) {
 	cfg := defaultConfig()
-	proxyBase := "http://localhost:8080"
+	proxyBase := "https://localhost:8443"
 
 	healthURL := proxyBase + "/_vibewarden/health"
 	metricsURL := proxyBase + "/_vibewarden/metrics"
@@ -118,7 +118,7 @@ func TestStatusService_RateLimitDisabled(t *testing.T) {
 	cfg := defaultConfig()
 	cfg.RateLimit.Enabled = false
 
-	proxyBase := "http://localhost:8080"
+	proxyBase := "https://localhost:8443"
 	checker := &fakeHealthChecker{responses: map[string]healthResponse{
 		proxyBase + "/_vibewarden/health":          {ok: true, statusCode: 200},
 		proxyBase + "/_vibewarden/metrics":         {ok: true, statusCode: 200},
@@ -140,7 +140,7 @@ func TestStatusService_MetricsDisabled(t *testing.T) {
 	cfg := defaultConfig()
 	cfg.Metrics.Enabled = false
 
-	proxyBase := "http://localhost:8080"
+	proxyBase := "https://localhost:8443"
 	checker := &fakeHealthChecker{responses: map[string]healthResponse{
 		proxyBase + "/_vibewarden/health":          {ok: true, statusCode: 200},
 		"http://127.0.0.1:4434/admin/health/ready": {ok: true, statusCode: 200},
@@ -161,7 +161,7 @@ func TestStatusService_MetricsDisabled(t *testing.T) {
 func TestStatusService_PluginSectionShown(t *testing.T) {
 	cfg := defaultConfig()
 
-	proxyBase := "http://localhost:8080"
+	proxyBase := "https://localhost:8443"
 	checker := &fakeHealthChecker{responses: map[string]healthResponse{
 		proxyBase + "/_vibewarden/health":          {ok: true, statusCode: 200},
 		proxyBase + "/_vibewarden/metrics":         {ok: true, statusCode: 200},
@@ -196,8 +196,8 @@ func TestStatusService_TLSEnabled(t *testing.T) {
 	cfg.TLS.Domain = "example.com"
 
 	checker := &fakeHealthChecker{responses: map[string]healthResponse{
-		"https://localhost:8080/_vibewarden/health":  {ok: true, statusCode: 200},
-		"https://localhost:8080/_vibewarden/metrics": {ok: true, statusCode: 200},
+		"https://localhost:8443/_vibewarden/health":  {ok: true, statusCode: 200},
+		"https://localhost:8443/_vibewarden/metrics": {ok: true, statusCode: 200},
 		"http://127.0.0.1:4434/admin/health/ready":   {ok: true, statusCode: 200},
 	}}
 
