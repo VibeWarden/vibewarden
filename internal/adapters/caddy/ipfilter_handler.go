@@ -3,7 +3,6 @@ package caddy
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"net"
 	"net/http"
@@ -16,6 +15,7 @@ import (
 	logadapter "github.com/vibewarden/vibewarden/internal/adapters/log"
 	"github.com/vibewarden/vibewarden/internal/domain/audit"
 	"github.com/vibewarden/vibewarden/internal/domain/events"
+	"github.com/vibewarden/vibewarden/internal/domain/ipfilter"
 	"github.com/vibewarden/vibewarden/internal/middleware"
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
@@ -56,9 +56,8 @@ type IPFilterHandler struct {
 	// Config holds the handler configuration populated by Caddy's JSON unmarshaller.
 	Config IPFilterHandlerConfig `json:"config"`
 
-	// nets and ips hold the parsed address entries. Built during Provision.
-	nets []*net.IPNet
-	ips  []net.IP
+	// list holds the parsed address entries. Built during Provision.
+	list ipfilter.List
 
 	// logger is used to emit error messages when event logging fails.
 	logger *slog.Logger
@@ -79,40 +78,29 @@ func (IPFilterHandler) CaddyModule() gocaddy.ModuleInfo {
 }
 
 // Provision implements gocaddy.Provisioner. It parses all configured address
-// strings into net.IP and *net.IPNet values for efficient per-request matching.
+// strings into an ipfilter.List for efficient per-request matching.
 func (h *IPFilterHandler) Provision(_ gocaddy.Context) error {
 	h.logger = slog.New(slog.NewJSONHandler(os.Stderr, nil))
 	h.eventLogger = logadapter.NewSlogEventLogger(os.Stdout)
 	h.auditLogger = auditadapter.NewJSONWriter(os.Stdout)
 
-	h.nets = h.nets[:0]
-	h.ips = h.ips[:0]
-
-	for _, addr := range h.Config.Addresses {
-		if _, ipNet, err := net.ParseCIDR(addr); err == nil {
-			h.nets = append(h.nets, ipNet)
-			continue
-		}
-		if ip := net.ParseIP(addr); ip != nil {
-			h.ips = append(h.ips, ip)
-			continue
-		}
-		return fmt.Errorf("ip_filter: %q is not a valid IP address or CIDR", addr)
+	list, err := ipfilter.ParseList(h.Config.Addresses)
+	if err != nil {
+		return err
 	}
+	h.list = list
 
 	return nil
 }
 
 // ServeHTTP implements caddyhttp.MiddlewareHandler.
-// It extracts the client IP, evaluates the filter rule, and either blocks the
-// request with 403 or delegates to the next handler.
+// It extracts the client IP, delegates blocking logic to the domain package,
+// and either blocks the request with 403 or delegates to the next handler.
 func (h *IPFilterHandler) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddyhttp.Handler) error {
 	clientIP := middleware.ExtractClientIP(r, h.Config.TrustProxyHeaders)
 
 	ip := net.ParseIP(clientIP)
-	matched := h.matchesAny(ip)
-
-	blocked := h.isBlocked(matched)
+	blocked := ipfilter.IsBlocked(ip, h.list, ipfilter.Mode(h.Config.Mode))
 	if blocked {
 		h.emitBlockedEvent(r.Context(), clientIP, r.Method, r.URL.Path)
 		h.emitAuditBlockedEvent(r.Context(), clientIP, r.Method, r.URL.Path)
@@ -121,37 +109,6 @@ func (h *IPFilterHandler) ServeHTTP(w http.ResponseWriter, r *http.Request, next
 	}
 
 	return next.ServeHTTP(w, r)
-}
-
-// matchesAny returns true when ip matches any configured address or CIDR.
-// A nil ip never matches.
-func (h *IPFilterHandler) matchesAny(ip net.IP) bool {
-	if ip == nil {
-		return false
-	}
-	for _, known := range h.ips {
-		if known.Equal(ip) {
-			return true
-		}
-	}
-	for _, cidr := range h.nets {
-		if cidr.Contains(ip) {
-			return true
-		}
-	}
-	return false
-}
-
-// isBlocked evaluates whether a request should be blocked given the match result.
-// In allowlist mode a non-matching IP is blocked.
-// In blocklist mode a matching IP is blocked.
-func (h *IPFilterHandler) isBlocked(matched bool) bool {
-	switch h.Config.Mode {
-	case "allowlist":
-		return !matched
-	default: // "blocklist" and any unrecognised value
-		return matched
-	}
 }
 
 // emitBlockedEvent emits a structured ip_filter.blocked event. Errors are
