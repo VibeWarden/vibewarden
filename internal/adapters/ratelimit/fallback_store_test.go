@@ -32,11 +32,6 @@ func (f *fakeStore) Close() error {
 	return nil
 }
 
-// fakeErrorStore.Close returns an error for error-path tests.
-type fakeErrorStore struct{ fakeStore }
-
-func (f *fakeErrorStore) Close() error { return errors.New("close error") }
-
 // discardSlogLogger returns an slog.Logger that discards all output.
 func discardSlogLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(noopSlogWriter{}, nil))

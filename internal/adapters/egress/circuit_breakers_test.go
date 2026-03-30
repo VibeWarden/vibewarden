@@ -268,11 +268,9 @@ func TestCircuitBreakerRegistry_ClosesAfterReset(t *testing.T) {
 		return err
 	}
 
-	// Trip the circuit.
+	// Trip the circuit — transport/upstream errors are acceptable here.
 	for i := 0; i < 2; i++ {
-		if err := doRequest(); err != nil && err != egressadapter.ErrCircuitOpen {
-			// Transport or upstream failure — acceptable here.
-		}
+		_ = doRequest()
 	}
 
 	// Circuit should now be open.

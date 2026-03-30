@@ -10,6 +10,8 @@ import (
 // HTTP response received from an upstream service and forwarded back to the
 // wrapped application. The body is referenced by an opaque handle rather than
 // held in memory to avoid large allocations.
+//
+//nolint:revive // EgressResponse name is intentional to distinguish from inbound response types
 type EgressResponse struct {
 	// StatusCode is the HTTP status code returned by the upstream service.
 	StatusCode int

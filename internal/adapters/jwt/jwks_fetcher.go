@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/go-jose/go-jose/v4"
+
 	domjwks "github.com/vibewarden/vibewarden/internal/domain/jwks"
 )
 

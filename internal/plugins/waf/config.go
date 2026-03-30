@@ -39,6 +39,8 @@ type RulesConfig struct {
 }
 
 // WAFEngineConfig holds settings for the built-in WAF rule engine.
+//
+//nolint:revive // WAFEngineConfig distinguishes the engine config from the WAF plugin's top-level Config type
 type WAFEngineConfig struct {
 	// Enabled toggles the WAF rule engine. Default: false.
 	Enabled bool

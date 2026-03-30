@@ -54,7 +54,7 @@ func Resolve(name string) ([]byte, error) {
 		return nil, fmt.Errorf("identity schema name must not be empty")
 	default:
 		// Treat as a filesystem path to a custom schema.
-		data, err := os.ReadFile(name)
+		data, err := os.ReadFile(name) //nolint:gosec // name is a file path from operator config for a custom identity schema, not user input
 		if err != nil {
 			return nil, fmt.Errorf("reading custom identity schema %q: %w", name, err)
 		}

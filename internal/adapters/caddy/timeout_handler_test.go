@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/caddyserver/caddy/v2/modules/caddyhttp"
+
 	"github.com/vibewarden/vibewarden/internal/middleware"
 	"github.com/vibewarden/vibewarden/internal/ports"
 )

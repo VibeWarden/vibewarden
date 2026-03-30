@@ -131,5 +131,5 @@ func TestMeter_Int64UpDownCounter_Add_DoesNotPanic(t *testing.T) {
 
 func TestMeter_ImplementsPorts(t *testing.T) {
 	p := newInitializedProvider(t)
-	var _ ports.Meter = p.Meter()
+	var _ = p.Meter()
 }

@@ -84,13 +84,7 @@ func TestHeadersConfig_ApplyToRequest_InjectHeaders(t *testing.T) {
 
 			got := tt.cfg.ApplyToRequest(tt.incoming)
 
-			// Verify original is untouched.
-			for k, v := range original {
-				if got, ok := tt.incoming[k]; !ok || got[0] != v[0] {
-					// only check first value for simplicity
-				}
-			}
-			// Simpler: check that X-Inject-Secret was not deleted from original.
+			// Verify original is untouched — check that X-Inject-Secret was not deleted from original.
 			if tt.incoming.Get("X-Inject-Secret") != original.Get("X-Inject-Secret") {
 				t.Error("ApplyToRequest mutated the original header map")
 			}

@@ -150,6 +150,8 @@ type Target struct {
 //
 // AuditEvent equality is by value: two events are equal if all fields are equal.
 // Callers must not mutate the Details map after construction.
+//
+//nolint:revive // AuditEvent name is intentional to avoid confusion with the events package's Event type
 type AuditEvent struct {
 	// Timestamp is when the event occurred, always in UTC.
 	Timestamp time.Time

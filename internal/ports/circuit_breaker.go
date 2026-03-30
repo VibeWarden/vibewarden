@@ -46,12 +46,12 @@ type CircuitBreakerConfig struct {
 	Timeout time.Duration
 }
 
+// MetricsCollectorWithCircuitBreaker extends MetricsCollector with a circuit
+// breaker state gauge. Adapters that expose this gauge implement this interface;
+// others embed a no-op to satisfy MetricsCollector without the extra method.
+//
 // SetCircuitBreakerState sets the vibewarden_circuit_breaker_state gauge.
 // The state values match the schema: 0=closed, 1=open, 2=half_open.
-//
-// This method is defined on MetricsCollector via an extension interface so that
-// existing implementations that do not expose this gauge can embed a no-op.
-// Adapters that support it implement MetricsCollectorWithCircuitBreaker.
 type MetricsCollectorWithCircuitBreaker interface {
 	MetricsCollector
 

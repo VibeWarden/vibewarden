@@ -2,7 +2,6 @@
 package caddy
 
 import (
-	"encoding/json"
 	"fmt"
 	"log/slog"
 	"net/http"
@@ -158,20 +157,6 @@ func buildEnabledCategories(cfg WAFEngineHandlerRulesConfig) map[domainwaf.Categ
 		domainwaf.CategoryPathTraversal:    cfg.PathTraversal,
 		domainwaf.CategoryCommandInjection: cfg.CmdInjection,
 	}
-}
-
-// buildWAFEngineHandlerJSON serialises a WAFEngineHandlerConfig into the Caddy
-// handler JSON fragment used in BuildCaddyConfig.
-func buildWAFEngineHandlerJSON(cfg WAFEngineHandlerConfig) (map[string]any, error) {
-	cfgBytes, err := json.Marshal(cfg)
-	if err != nil {
-		return nil, fmt.Errorf("marshaling WAF engine handler config: %w", err)
-	}
-
-	return map[string]any{
-		"handler": "vibewarden_waf_engine",
-		"config":  json.RawMessage(cfgBytes),
-	}, nil
 }
 
 // Interface guards — ensure WAFEngineHandler satisfies required Caddy

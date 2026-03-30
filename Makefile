@@ -57,11 +57,11 @@ clean:
 	rm -rf bin/
 
 # Run all quality checks (build, format, vet, tests)
-check: ## Run all quality checks (build, format, vet, tests)
+check: ## Run all quality checks (lint, build, tests)
 	@echo "==> Checking formatting (main module)..."
 	@test -z "$$(gofmt -l .)" || (echo "gofmt: these files need formatting:" && gofmt -l . && exit 1)
-	@echo "==> Running go vet (main module)..."
-	go vet ./...
+	@echo "==> Running golangci-lint (main module)..."
+	golangci-lint run ./...
 	@echo "==> Building (main module)..."
 	go build ./...
 	@echo "==> Running tests (main module)..."

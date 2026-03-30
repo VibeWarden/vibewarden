@@ -113,7 +113,7 @@ func (t *Toggler) EnableFeature(_ context.Context, path string, feature scaffold
 // readNode reads the YAML file at path and returns its document root mapping
 // node. Returns scaffold.ErrConfigNotFound when the file does not exist.
 func readNode(path string) (*yaml.Node, error) {
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(path) //nolint:gosec // path is the vibewarden.yaml config file resolved from project root
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, fmt.Errorf("%w: %s", scaffold.ErrConfigNotFound, path)

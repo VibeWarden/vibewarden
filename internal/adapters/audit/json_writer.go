@@ -67,7 +67,7 @@ func NewJSONWriter(w io.Writer) *JSONWriter {
 // The returned closer must be called when the writer is no longer needed.
 // Returns an error if the file cannot be opened or created.
 func NewJSONWriterToFile(path string) (*JSONWriter, io.Closer, error) {
-	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+	f, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644) //nolint:gosec // path is caller-supplied audit log destination, not user input
 	if err != nil {
 		return nil, nil, fmt.Errorf("opening audit log file %q: %w", path, err)
 	}

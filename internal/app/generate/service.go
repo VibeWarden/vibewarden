@@ -192,7 +192,7 @@ func (s *Service) Generate(ctx context.Context, cfg *config.Config, outputDir st
 		if err := s.renderer.RenderToFile("seed-secrets.sh.tmpl", cfg, seedPath, true); err != nil {
 			return fmt.Errorf("rendering seed-secrets.sh: %w", err)
 		}
-		if err := os.Chmod(seedPath, 0o750); err != nil {
+		if err := os.Chmod(seedPath, 0o750); err != nil { //nolint:gosec // seed-secrets.sh must be executable; 0o750 is intentional for a shell script
 			return fmt.Errorf("setting seed-secrets.sh permissions: %w", err)
 		}
 	}

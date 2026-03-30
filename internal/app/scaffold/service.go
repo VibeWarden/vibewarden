@@ -192,7 +192,7 @@ func (s *Service) renderWrappers(dir string, data domainscaffold.TemplateData, f
 func (s *Service) ensureGitIgnore(dir string) error {
 	gitignorePath := filepath.Join(dir, gitIgnoreFile)
 
-	existing, err := os.ReadFile(gitignorePath)
+	existing, err := os.ReadFile(gitignorePath) //nolint:gosec // gitignorePath is constructed from the project root via filepath.Join, not user input
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return fmt.Errorf("reading .gitignore: %w", err)
 	}

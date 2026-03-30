@@ -295,8 +295,7 @@ func TestMemoryFactory_NewLimiter_ImplementsInterface(t *testing.T) {
 		t.Fatal("NewLimiter returned nil")
 	}
 
-	// Verify it satisfies the interface at compile time — the cast below panics if not.
-	_ = limiter.(ports.RateLimiter)
+	// limiter is typed as ports.RateLimiter by NewLimiter's return type; no runtime cast needed.
 
 	_ = limiter.Close()
 }

@@ -4,11 +4,12 @@ package otel
 import (
 	"context"
 
-	"github.com/vibewarden/vibewarden/internal/ports"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/propagation"
 	"go.opentelemetry.io/otel/trace"
+
+	"github.com/vibewarden/vibewarden/internal/ports"
 )
 
 // tracerAdapter wraps an OTel trace.Tracer to implement ports.Tracer.

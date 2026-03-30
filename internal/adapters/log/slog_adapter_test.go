@@ -475,7 +475,7 @@ func traceEvent() events.Event {
 
 // logAndDecodeWithCtx writes a single event using the given context and decodes
 // the JSON output. It fails the test if the output is not valid JSON.
-func logAndDecodeWithCtx(t *testing.T, ctx context.Context, event events.Event) map[string]any {
+func logAndDecodeWithCtx(t *testing.T, ctx context.Context, event events.Event) map[string]any { //nolint:revive // t must precede ctx in test helpers by Go testing convention
 	t.Helper()
 	var buf bytes.Buffer
 	logger := log.NewSlogEventLogger(&buf)

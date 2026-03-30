@@ -166,6 +166,8 @@ func (u StateUpdate) Validate() error {
 
 // SyncMessage wraps a StateUpdate with routing metadata so that subscribers
 // can quickly filter messages without deserialising the full payload.
+//
+//nolint:revive // SyncMessage is the established public API name in the sync package
 type SyncMessage struct {
 	// Type mirrors Update.Type for fast routing without unpacking Update.
 	Type StateType

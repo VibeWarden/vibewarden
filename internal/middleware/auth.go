@@ -269,7 +269,7 @@ func emitAuditAuthFailure(r *http.Request, auditLogger ports.AuditEventLogger, u
 //
 // Deprecated: Remove once all callers use IdentityProvider directly.
 type sessionCheckerAdapter struct {
-	checker    ports.SessionChecker
+	checker    ports.SessionChecker //nolint:staticcheck // intentional: this adapter bridges the deprecated SessionChecker to IdentityProvider during migration
 	cookieName string
 }
 
