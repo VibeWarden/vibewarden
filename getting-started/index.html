@@ -1431,11 +1431,11 @@ your app listens on. Add feature flags for the security plugins you want enabled
 <tbody>
 <tr>
 <td><code>--upstream &lt;port&gt;</code></td>
-<td>Port your app listens on (required)</td>
+<td>Port your app listens on (default: auto-detected or 3000)</td>
 </tr>
 <tr>
 <td><code>--auth</code></td>
-<td>Enable authentication (defaults to JWT/OIDC mode)</td>
+<td>Enable authentication (Ory Kratos)</td>
 </tr>
 <tr>
 <td><code>--rate-limit</code></td>
@@ -1443,15 +1443,19 @@ your app listens on. Add feature flags for the security plugins you want enabled
 </tr>
 <tr>
 <td><code>--tls --domain example.com</code></td>
-<td>Enable TLS with Let's Encrypt</td>
+<td>Enable TLS (requires <code>--domain</code>)</td>
 </tr>
 <tr>
-<td><code>--secrets</code></td>
-<td>Enable secrets management (OpenBao)</td>
+<td><code>--force</code></td>
+<td>Overwrite existing files</td>
 </tr>
 <tr>
-<td><code>--observability</code></td>
-<td>Add Prometheus + Grafana</td>
+<td><code>--skip-wrapper</code></td>
+<td>Skip vibew wrapper script generation</td>
+</tr>
+<tr>
+<td><code>--agent &lt;type&gt;</code></td>
+<td>Generate AI context files: <code>claude</code>, <code>cursor</code>, <code>generic</code>, <code>all</code>, or <code>none</code></td>
 </tr>
 </tbody>
 </table>
@@ -1588,7 +1592,7 @@ store (or pass <code>--cacert vibewarden-ca.pem</code> to <code>curl</code>).</p
 <p>See the <a href="../identity-providers/">Identity Providers guide</a> for step-by-step
 examples with Auth0, Keycloak, Firebase, Cognito, Okta, Supabase, and Kratos.</p>
 <h3 id="add-observability">Add observability<a class="headerlink" href="#add-observability" title="Permanent link">&para;</a></h3>
-<div class="language-bash highlight"><pre><span></span><code><span id="__span-10-1"><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>./vibew<span class="w"> </span>add<span class="w"> </span>observability
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-10-1"><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a>./vibew<span class="w"> </span>add<span class="w"> </span>metrics
 </span><span id="__span-10-2"><a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>./vibew<span class="w"> </span>dev
 </span></code></pre></div>
 <p>Open Grafana at <code>http://localhost:3001</code> to see request rate, latency percentiles,
