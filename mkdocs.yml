@@ -1,0 +1,88 @@
+site_name: VibeWarden
+site_description: Production-grade security for vibe-coded apps — zero config changes to your code.
+site_url: https://vibewarden.dev/docs
+repo_url: https://github.com/vibewarden/vibewarden
+repo_name: vibewarden/vibewarden
+edit_uri: edit/main/docs/
+
+theme:
+  name: material
+  logo: assets/logo.svg
+  favicon: assets/favicon.png
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: deep purple
+      accent: cyan
+      toggle:
+        icon: material/brightness-7
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: deep purple
+      accent: cyan
+      toggle:
+        icon: material/brightness-4
+        name: Switch to light mode
+  features:
+    - navigation.tabs
+    - navigation.sections
+    - navigation.expand
+    - navigation.top
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.code.annotate
+    - toc.follow
+
+extra_css:
+  - assets/extra.css
+
+plugins:
+  - search
+
+markdown_extensions:
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.highlight:
+      anchor_linenums: true
+      line_spans: __span
+      pygments_lang_class: true
+  - pymdownx.inlinehilite
+  - pymdownx.snippets
+  - pymdownx.tabbed:
+      alternate_style: true
+  - tables
+  - toc:
+      permalink: true
+
+nav:
+  - Home: index.md
+  - Getting Started: getting-started.md
+  - Configuration: configuration.md
+  - Architecture: architecture.md
+  - Guides:
+      - Identity Providers: identity-providers.md
+      - Rate Limiting: rate-limiting.md
+      - Postgres: postgres.md
+      - Observability: observability.md
+      - Secret Management: secret-management.md
+      - Performance: performance.md
+      - Social Login: social-login.md
+      - Production Deployment: production-deployment.md
+      - Production Hardening: production-hardening.md
+  - Framework Examples:
+      - Express (Node.js): examples/express.md
+      - Next.js: examples/nextjs.md
+      - Django: examples/django.md
+      - Rails: examples/rails.md
+  - Reference:
+      - Architectural Decisions: decisions.md
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/vibewarden/vibewarden
+  version:
+    provider: mike
