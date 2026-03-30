@@ -48,6 +48,22 @@ func (c *ComposeAdapter) Up(ctx context.Context, composeFile string, profiles []
 	return nil
 }
 
+// Restart runs "docker compose [-f <composeFile>] restart".
+// When composeFile is non-empty it is passed as the -f flag.
+func (c *ComposeAdapter) Restart(ctx context.Context, composeFile string) error {
+	args := []string{"compose"}
+	if composeFile != "" {
+		args = append(args, "-f", composeFile)
+	}
+	args = append(args, "restart")
+
+	cmd := exec.CommandContext(ctx, "docker", args...)
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("docker compose restart: %w", err)
+	}
+	return nil
+}
+
 // Version runs "docker compose version" and returns the raw output.
 func (c *ComposeAdapter) Version(ctx context.Context) (string, error) {
 	out, err := exec.CommandContext(ctx, "docker", "compose", "version").Output()

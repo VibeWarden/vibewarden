@@ -15,6 +15,7 @@ import (
 // fakeCompose is a test double for ports.ComposeRunner.
 type fakeCompose struct {
 	upErr      error
+	restartErr error
 	versionStr string
 	versionErr error
 	infoErr    error
@@ -23,12 +24,18 @@ type fakeCompose struct {
 
 	capturedComposeFile string
 	capturedProfiles    []string
+	restartCalled       int
 }
 
 func (f *fakeCompose) Up(_ context.Context, composeFile string, profiles []string) error {
 	f.capturedComposeFile = composeFile
 	f.capturedProfiles = profiles
 	return f.upErr
+}
+
+func (f *fakeCompose) Restart(_ context.Context, _ string) error {
+	f.restartCalled++
+	return f.restartErr
 }
 
 func (f *fakeCompose) Version(_ context.Context) (string, error) {
@@ -48,10 +55,12 @@ type fakeGenerator struct {
 	generateErr       error
 	capturedOutputDir string
 	generateCalled    bool
+	generateCallCount int
 }
 
 func (f *fakeGenerator) Generate(_ context.Context, _ *config.Config, outputDir string) error {
 	f.generateCalled = true
+	f.generateCallCount++
 	f.capturedOutputDir = outputDir
 	return f.generateErr
 }
@@ -225,5 +234,113 @@ func TestDevService_WithGenerator_PrintsGeneratedOutputMessage(t *testing.T) {
 	out := buf.String()
 	if !strings.Contains(out, ".vibewarden/generated") {
 		t.Errorf("expected output to mention generated dir, got:\n%s", out)
+	}
+}
+
+// fakeWatcher is a test double for ports.ConfigWatcher.
+type fakeWatcher struct {
+	// ch is the channel returned by Watch. Tests send on this channel to
+	// simulate a file-change event.
+	ch       chan struct{}
+	watchErr error
+}
+
+func newFakeWatcher() *fakeWatcher {
+	return &fakeWatcher{ch: make(chan struct{}, 1)}
+}
+
+func (f *fakeWatcher) Watch(_ context.Context, _ string) (<-chan struct{}, error) {
+	if f.watchErr != nil {
+		return nil, f.watchErr
+	}
+	return f.ch, nil
+}
+
+// Ensure fakeWatcher satisfies the interface at compile time.
+var _ ports.ConfigWatcher = (*fakeWatcher)(nil)
+
+func TestDevService_Watch_PrintsWatchingMessage(t *testing.T) {
+	fc := &fakeCompose{}
+	fg := &fakeGenerator{}
+	fw := newFakeWatcher()
+	svc := ops.NewDevServiceWithWatcher(fc, fg, fw)
+	cfg := defaultConfig()
+	var buf bytes.Buffer
+
+	ctx, cancel := context.WithCancel(context.Background())
+	// Cancel immediately so watchLoop exits right away.
+	cancel()
+
+	if err := svc.Run(ctx, cfg, ops.DevOptions{Watch: true, ConfigPath: "vibewarden.yaml"}, &buf); err != nil {
+		t.Fatalf("Run() unexpected error: %v", err)
+	}
+
+	out := buf.String()
+	if !strings.Contains(out, "Watching") {
+		t.Errorf("expected output to contain 'Watching', got:\n%s", out)
+	}
+}
+
+func TestDevService_Watch_RegeneratesAndRestartsOnChange(t *testing.T) {
+	fc := &fakeCompose{}
+	fg := &fakeGenerator{}
+	fw := newFakeWatcher()
+	svc := ops.NewDevServiceWithWatcher(fc, fg, fw)
+	cfg := defaultConfig()
+	var buf bytes.Buffer
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	done := make(chan error, 1)
+	go func() {
+		done <- svc.Run(ctx, cfg, ops.DevOptions{Watch: true, ConfigPath: "vibewarden.yaml"}, &buf)
+	}()
+
+	// Simulate one config-change event and then close the watcher channel so
+	// watchLoop exits naturally (simulates the watcher being shut down).
+	fw.ch <- struct{}{}
+	close(fw.ch)
+
+	if err := <-done; err != nil {
+		t.Fatalf("Run() unexpected error: %v", err)
+	}
+
+	if fc.restartCalled == 0 {
+		t.Error("expected Restart() to be called after a file-change event")
+	}
+	// Generate should have been called at least twice: once on startup, once on change.
+	if fg.generateCallCount < 2 {
+		t.Errorf("expected Generate() called at least 2 times, got %d", fg.generateCallCount)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "config changed, regenerating") {
+		t.Errorf("expected output to contain regenerating message, got:\n%s", out)
+	}
+}
+
+func TestDevService_Watch_WatcherSetupError_ReturnsError(t *testing.T) {
+	fc := &fakeCompose{}
+	fg := &fakeGenerator{}
+	fw := &fakeWatcher{watchErr: errors.New("inotify limit reached")}
+	svc := ops.NewDevServiceWithWatcher(fc, fg, fw)
+	cfg := defaultConfig()
+	var buf bytes.Buffer
+
+	err := svc.Run(context.Background(), cfg, ops.DevOptions{Watch: true, ConfigPath: "vibewarden.yaml"}, &buf)
+	if err == nil {
+		t.Fatal("Run() expected error when watcher setup fails, got nil")
+	}
+}
+
+func TestDevService_Watch_WatcherNil_DoesNotBlock(t *testing.T) {
+	// When watch=true but no watcher is wired, Run should return without blocking.
+	fc := &fakeCompose{}
+	svc := ops.NewDevService(fc)
+	cfg := defaultConfig()
+	var buf bytes.Buffer
+
+	if err := svc.Run(context.Background(), cfg, ops.DevOptions{Watch: true}, &buf); err != nil {
+		t.Fatalf("Run() unexpected error: %v", err)
 	}
 }

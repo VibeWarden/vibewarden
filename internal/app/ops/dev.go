@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log/slog"
 	"os"
 	"path/filepath"
 
@@ -17,14 +18,17 @@ const generatedOutputDir = ".vibewarden/generated"
 
 // DevService orchestrates the "vibewarden dev" use case.
 // It optionally generates runtime configuration files from vibewarden.yaml
-// before starting the Docker Compose stack.
+// before starting the Docker Compose stack and can watch the config file for
+// changes when --watch is enabled.
 type DevService struct {
 	compose   ports.ComposeRunner
 	generator ports.ConfigGenerator // optional; nil disables generation
+	watcher   ports.ConfigWatcher   // optional; nil disables file watching
 }
 
-// NewDevService creates a new DevService without config generation.
+// NewDevService creates a new DevService without config generation or file watching.
 // Use NewDevServiceWithGenerator to enable automatic config generation.
+// Use NewDevServiceWithWatcher to also enable config-file watching.
 func NewDevService(compose ports.ComposeRunner) *DevService {
 	return &DevService{compose: compose}
 }
@@ -35,16 +39,35 @@ func NewDevServiceWithGenerator(compose ports.ComposeRunner, generator ports.Con
 	return &DevService{compose: compose, generator: generator}
 }
 
+// NewDevServiceWithWatcher creates a DevService that generates config before
+// starting the stack and watches the config file for changes, re-generating and
+// restarting on each debounced change event.
+func NewDevServiceWithWatcher(compose ports.ComposeRunner, generator ports.ConfigGenerator, watcher ports.ConfigWatcher) *DevService {
+	return &DevService{compose: compose, generator: generator, watcher: watcher}
+}
+
 // DevOptions holds options for the dev command.
 type DevOptions struct {
 	// Observability enables the "observability" compose profile, which starts
 	// Prometheus and Grafana alongside the core stack.
 	Observability bool
+
+	// Watch enables file-system watching of vibewarden.yaml.  When true,
+	// any write to the config file triggers a regenerate + compose restart
+	// cycle after a 500 ms debounce window.  Requires a ConfigWatcher to be
+	// wired into the DevService.
+	Watch bool
+
+	// ConfigPath is the path to vibewarden.yaml that should be watched.
+	// When empty the default "./vibewarden.yaml" is used.
+	ConfigPath string
 }
 
 // Run generates runtime config files (when a generator is configured), then
 // starts the Docker Compose stack and prints the service URLs.
 // The cfg is used to derive service addresses for the post-start summary.
+// When opts.Watch is true and a ConfigWatcher is wired, Run also starts the
+// watch loop and blocks until ctx is cancelled.
 func (s *DevService) Run(ctx context.Context, cfg *config.Config, opts DevOptions, out io.Writer) error {
 	var profiles []string
 	if opts.Observability {
@@ -67,7 +90,55 @@ func (s *DevService) Run(ctx context.Context, cfg *config.Config, opts DevOption
 	}
 
 	printServiceURLs(cfg, opts, out)
+
+	if opts.Watch && s.watcher != nil {
+		return s.watchLoop(ctx, cfg, opts, composeFile, out)
+	}
 	return nil
+}
+
+// watchLoop watches vibewarden.yaml for changes and, on each debounced event,
+// re-generates configuration files and restarts the compose stack.
+// It blocks until ctx is cancelled.
+func (s *DevService) watchLoop(ctx context.Context, cfg *config.Config, opts DevOptions, composeFile string, out io.Writer) error {
+	configPath := opts.ConfigPath
+	if configPath == "" {
+		configPath = "vibewarden.yaml"
+	}
+
+	ch, err := s.watcher.Watch(ctx, configPath)
+	if err != nil {
+		return fmt.Errorf("starting config watcher: %w", err)
+	}
+
+	fmt.Fprintf(out, "Watching %s for changes (press Ctrl+C to stop)...\n", configPath)
+
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case _, ok := <-ch:
+			if !ok {
+				// Channel closed — watcher stopped.
+				return nil
+			}
+			slog.Info("config changed, regenerating...")
+			fmt.Fprintln(out, "config changed, regenerating...")
+
+			if s.generator != nil {
+				if err := s.generator.Generate(ctx, cfg, generatedOutputDir); err != nil {
+					slog.Error("regeneration failed", "error", err)
+					fmt.Fprintf(out, "regeneration failed: %v\n", err)
+					continue
+				}
+			}
+
+			if err := s.compose.Restart(ctx, composeFile); err != nil {
+				slog.Error("compose restart failed", "error", err)
+				fmt.Fprintf(out, "compose restart failed: %v\n", err)
+			}
+		}
+	}
 }
 
 // resolveComposeFile determines the docker-compose.yml path to pass to
