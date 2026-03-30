@@ -1,0 +1,1989 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Production-grade security for vibe-coded apps — zero config changes to your code.">
+      
+      
+      
+        <link rel="canonical" href="https://vibewarden.dev/docs/production-hardening/">
+      
+      
+        <link rel="prev" href="../production-deployment/">
+      
+      
+        <link rel="next" href="../examples/express/">
+      
+      
+      <link rel="icon" href="../assets/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.5.50">
+    
+    
+      
+        <title>Production Hardening - VibeWarden</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.a40c8224.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.06af60db.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/extra.css">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="deep-purple" data-md-color-accent="cyan">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#production-hardening-checklist" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+      <div data-md-color-scheme="default" data-md-component="outdated" hidden>
+        
+      </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="VibeWarden" class="md-header__button md-logo" aria-label="VibeWarden" data-md-component="logo">
+      
+  <img src="../assets/logo.svg" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            VibeWarden
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Production Hardening
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="deep-purple" data-md-color-accent="cyan"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="deep-purple" data-md-color-accent="cyan"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      <label class="md-header__button md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+      </label>
+      <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/vibewarden/vibewarden" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 6.7.2 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2024 Fonticons, Inc.--><path d="M439.55 236.05 244 40.45a28.87 28.87 0 0 0-40.81 0l-40.66 40.63 51.52 51.52c27.06-9.14 52.68 16.77 43.39 43.68l49.66 49.66c34.23-11.8 61.18 31 35.47 56.69-26.49 26.49-70.21-2.87-56-37.34L240.22 199v121.85c25.3 12.54 22.26 41.85 9.08 55a34.34 34.34 0 0 1-48.55 0c-17.57-17.6-11.07-46.91 11.25-56v-123c-20.8-8.51-24.6-30.74-18.64-45L142.57 101 8.45 235.14a28.86 28.86 0 0 0 0 40.81l195.61 195.6a28.86 28.86 0 0 0 40.8 0l194.69-194.69a28.86 28.86 0 0 0 0-40.81"/></svg>
+  </div>
+  <div class="md-source__repository">
+    vibewarden/vibewarden
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href=".." class="md-tabs__link">
+        
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../getting-started/" class="md-tabs__link">
+        
+  
+    
+  
+  Getting Started
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../configuration/" class="md-tabs__link">
+        
+  
+    
+  
+  Configuration
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../architecture/" class="md-tabs__link">
+        
+  
+    
+  
+  Architecture
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../identity-providers/" class="md-tabs__link">
+          
+  
+  Guides
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../examples/express/" class="md-tabs__link">
+          
+  
+  Framework Examples
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../decisions/" class="md-tabs__link">
+          
+  
+  Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="VibeWarden" class="md-nav__button md-logo" aria-label="VibeWarden" data-md-component="logo">
+      
+  <img src="../assets/logo.svg" alt="logo">
+
+    </a>
+    VibeWarden
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/vibewarden/vibewarden" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 6.7.2 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2024 Fonticons, Inc.--><path d="M439.55 236.05 244 40.45a28.87 28.87 0 0 0-40.81 0l-40.66 40.63 51.52 51.52c27.06-9.14 52.68 16.77 43.39 43.68l49.66 49.66c34.23-11.8 61.18 31 35.47 56.69-26.49 26.49-70.21-2.87-56-37.34L240.22 199v121.85c25.3 12.54 22.26 41.85 9.08 55a34.34 34.34 0 0 1-48.55 0c-17.57-17.6-11.07-46.91 11.25-56v-123c-20.8-8.51-24.6-30.74-18.64-45L142.57 101 8.45 235.14a28.86 28.86 0 0 0 0 40.81l195.61 195.6a28.86 28.86 0 0 0 40.8 0l194.69-194.69a28.86 28.86 0 0 0 0-40.81"/></svg>
+  </div>
+  <div class="md-source__repository">
+    vibewarden/vibewarden
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Home
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../getting-started/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Getting Started
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../configuration/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Configuration
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../architecture/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Architecture
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  <span class="md-ellipsis">
+    Guides
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            Guides
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../identity-providers/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Identity Providers
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../rate-limiting/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Rate Limiting
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../postgres/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Postgres
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../observability/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Observability
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../secret-management/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Secret Management
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../performance/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Performance
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../social-login/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Social Login
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../production-deployment/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Production Deployment
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  <span class="md-ellipsis">
+    Production Hardening
+  </span>
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  <span class="md-ellipsis">
+    Production Hardening
+  </span>
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#security-checklist" class="md-nav__link">
+    <span class="md-ellipsis">
+      Security checklist
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Security checklist">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#tls" class="md-nav__link">
+    <span class="md-ellipsis">
+      TLS
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#admin-token-rotation" class="md-nav__link">
+    <span class="md-ellipsis">
+      Admin token rotation
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#rate-limits" class="md-nav__link">
+    <span class="md-ellipsis">
+      Rate limits
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#security-headers" class="md-nav__link">
+    <span class="md-ellipsis">
+      Security headers
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#docker-hardening" class="md-nav__link">
+    <span class="md-ellipsis">
+      Docker hardening
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Docker hardening">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#non-root-user" class="md-nav__link">
+    <span class="md-ellipsis">
+      Non-root user
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#read-only-filesystem" class="md-nav__link">
+    <span class="md-ellipsis">
+      Read-only filesystem
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#resource-limits" class="md-nav__link">
+    <span class="md-ellipsis">
+      Resource limits
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#no-privileged-containers" class="md-nav__link">
+    <span class="md-ellipsis">
+      No privileged containers
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#image-provenance" class="md-nav__link">
+    <span class="md-ellipsis">
+      Image provenance
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#network-hardening" class="md-nav__link">
+    <span class="md-ellipsis">
+      Network hardening
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Network hardening">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#firewall-rules" class="md-nav__link">
+    <span class="md-ellipsis">
+      Firewall rules
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#expose-only-80-and-443" class="md-nav__link">
+    <span class="md-ellipsis">
+      Expose only 80 and 443
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#internal-only-services" class="md-nav__link">
+    <span class="md-ellipsis">
+      Internal-only services
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#kratos-hardening" class="md-nav__link">
+    <span class="md-ellipsis">
+      Kratos hardening
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Kratos hardening">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#smtp" class="md-nav__link">
+    <span class="md-ellipsis">
+      SMTP
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#session-configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      Session configuration
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#kratos-admin-api-exposure" class="md-nav__link">
+    <span class="md-ellipsis">
+      Kratos admin API exposure
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#monitoring-checklist" class="md-nav__link">
+    <span class="md-ellipsis">
+      Monitoring checklist
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Monitoring checklist">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#alerting" class="md-nav__link">
+    <span class="md-ellipsis">
+      Alerting
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#log-retention" class="md-nav__link">
+    <span class="md-ellipsis">
+      Log retention
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#regular-maintenance" class="md-nav__link">
+    <span class="md-ellipsis">
+      Regular maintenance
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Regular maintenance">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#updates" class="md-nav__link">
+    <span class="md-ellipsis">
+      Updates
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#certificate-renewal" class="md-nav__link">
+    <span class="md-ellipsis">
+      Certificate renewal
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#secret-rotation-schedule" class="md-nav__link">
+    <span class="md-ellipsis">
+      Secret rotation schedule
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#database-maintenance" class="md-nav__link">
+    <span class="md-ellipsis">
+      Database maintenance
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+            
+  
+  <span class="md-ellipsis">
+    Framework Examples
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            Framework Examples
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/express/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Express (Node.js)
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/nextjs/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Next.js
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/django/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Django
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/rails/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Rails
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="0">
+            
+  
+  <span class="md-ellipsis">
+    Reference
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            Reference
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../decisions/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Architectural Decisions
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#security-checklist" class="md-nav__link">
+    <span class="md-ellipsis">
+      Security checklist
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Security checklist">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#tls" class="md-nav__link">
+    <span class="md-ellipsis">
+      TLS
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#admin-token-rotation" class="md-nav__link">
+    <span class="md-ellipsis">
+      Admin token rotation
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#rate-limits" class="md-nav__link">
+    <span class="md-ellipsis">
+      Rate limits
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#security-headers" class="md-nav__link">
+    <span class="md-ellipsis">
+      Security headers
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#docker-hardening" class="md-nav__link">
+    <span class="md-ellipsis">
+      Docker hardening
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Docker hardening">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#non-root-user" class="md-nav__link">
+    <span class="md-ellipsis">
+      Non-root user
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#read-only-filesystem" class="md-nav__link">
+    <span class="md-ellipsis">
+      Read-only filesystem
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#resource-limits" class="md-nav__link">
+    <span class="md-ellipsis">
+      Resource limits
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#no-privileged-containers" class="md-nav__link">
+    <span class="md-ellipsis">
+      No privileged containers
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#image-provenance" class="md-nav__link">
+    <span class="md-ellipsis">
+      Image provenance
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#network-hardening" class="md-nav__link">
+    <span class="md-ellipsis">
+      Network hardening
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Network hardening">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#firewall-rules" class="md-nav__link">
+    <span class="md-ellipsis">
+      Firewall rules
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#expose-only-80-and-443" class="md-nav__link">
+    <span class="md-ellipsis">
+      Expose only 80 and 443
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#internal-only-services" class="md-nav__link">
+    <span class="md-ellipsis">
+      Internal-only services
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#kratos-hardening" class="md-nav__link">
+    <span class="md-ellipsis">
+      Kratos hardening
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Kratos hardening">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#smtp" class="md-nav__link">
+    <span class="md-ellipsis">
+      SMTP
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#session-configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      Session configuration
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#kratos-admin-api-exposure" class="md-nav__link">
+    <span class="md-ellipsis">
+      Kratos admin API exposure
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#monitoring-checklist" class="md-nav__link">
+    <span class="md-ellipsis">
+      Monitoring checklist
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Monitoring checklist">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#alerting" class="md-nav__link">
+    <span class="md-ellipsis">
+      Alerting
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#log-retention" class="md-nav__link">
+    <span class="md-ellipsis">
+      Log retention
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#regular-maintenance" class="md-nav__link">
+    <span class="md-ellipsis">
+      Regular maintenance
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Regular maintenance">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#updates" class="md-nav__link">
+    <span class="md-ellipsis">
+      Updates
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#certificate-renewal" class="md-nav__link">
+    <span class="md-ellipsis">
+      Certificate renewal
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#secret-rotation-schedule" class="md-nav__link">
+    <span class="md-ellipsis">
+      Secret rotation schedule
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#database-maintenance" class="md-nav__link">
+    <span class="md-ellipsis">
+      Database maintenance
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+  
+  
+
+
+<h1 id="production-hardening-checklist">Production Hardening Checklist<a class="headerlink" href="#production-hardening-checklist" title="Permanent link">&para;</a></h1>
+<p>Use this checklist before going live and after each significant infrastructure change.
+Each item is a concrete action, not a vague recommendation.</p>
+<hr />
+<h2 id="security-checklist">Security checklist<a class="headerlink" href="#security-checklist" title="Permanent link">&para;</a></h2>
+<h3 id="tls">TLS<a class="headerlink" href="#tls" title="Permanent link">&para;</a></h3>
+<ul>
+<li>[ ] <code>tls.enabled: true</code> in <code>vibewarden.yaml</code>.</li>
+<li>[ ] <code>tls.provider: letsencrypt</code> (or <code>external</code> if TLS is terminated upstream by
+  Cloudflare / nginx). Never use <code>self-signed</code> in production.</li>
+<li>[ ] <code>tls.domain</code> set to the exact public hostname (e.g. <code>myapp.example.com</code>).</li>
+<li>[ ] Caddy <code>caddy_data</code> volume is persisted across restarts so certificates survive
+  container recreation.</li>
+<li>[ ] Port 80 is open to the internet for Let's Encrypt ACME HTTP-01 challenges.</li>
+<li>[ ] Port 443 is open to the internet.</li>
+<li>[ ] <code>hsts_max_age</code> is at least <code>31536000</code> (1 year).</li>
+<li>[ ] <code>hsts_include_subdomains: true</code> if all subdomains are also served over HTTPS.</li>
+<li>[ ] <code>hsts_preload: false</code> unless you have submitted the domain to the HSTS preload
+  list and understand the implications (cannot revert without browser update cycles).</li>
+</ul>
+<h3 id="admin-token-rotation">Admin token rotation<a class="headerlink" href="#admin-token-rotation" title="Permanent link">&para;</a></h3>
+<ul>
+<li>[ ] <code>admin.enabled: true</code> only if you actively use the admin API. Disable it if
+  you do not need it.</li>
+<li>[ ] <code>admin.token</code> is set exclusively via the <code>VIBEWARDEN_ADMIN_TOKEN</code> environment
+  variable — never hard-coded in <code>vibewarden.yaml</code> or committed to version control.</li>
+<li>[ ] Admin token is at least 32 bytes of random data:
+  <div class="language-bash highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a>openssl<span class="w"> </span>rand<span class="w"> </span>-hex<span class="w"> </span><span class="m">32</span>
+</span></code></pre></div></li>
+<li>[ ] Admin token is stored in a secrets manager (e.g. HashiCorp Vault, AWS Secrets
+  Manager, Hetzner Robot secrets) or at minimum in an <code>.env</code> file with <code>chmod 600</code>.</li>
+<li>[ ] Rotate the admin token every 90 days or after any team member with access leaves.
+  Update the environment variable and restart the VibeWarden container.</li>
+<li>[ ] The admin API endpoint (<code>/_vibewarden/admin/*</code>) is not directly reachable from
+  the internet. If you use a firewall allow-list, restrict this path to your internal
+  management network.</li>
+</ul>
+<h3 id="rate-limits">Rate limits<a class="headerlink" href="#rate-limits" title="Permanent link">&para;</a></h3>
+<ul>
+<li>[ ] <code>rate_limit.enabled: true</code>.</li>
+<li>[ ] <code>per_ip.requests_per_second</code> is tuned to your expected legitimate traffic.
+  A good starting point: 20 req/s per IP, burst 40. Tighten if you observe abuse.</li>
+<li>[ ] <code>per_user.requests_per_second</code> is higher than <code>per_ip</code> (authenticated users
+  are known). Starting point: 200 req/s per user, burst 400.</li>
+<li>[ ] <code>trust_proxy_headers: true</code> only when VibeWarden sits behind a trusted proxy
+  (Cloudflare, nginx). When <code>false</code> (the default), the TCP source IP is used —
+  this prevents IP spoofing via forged <code>X-Forwarded-For</code> headers.</li>
+<li>[ ] <code>exempt_paths</code> contains only truly public, non-abusable paths.
+  Do not exempt API endpoints that mutate state.</li>
+</ul>
+<h3 id="security-headers">Security headers<a class="headerlink" href="#security-headers" title="Permanent link">&para;</a></h3>
+<ul>
+<li>[ ] <code>security_headers.enabled: true</code>.</li>
+<li>[ ] <code>content_security_policy</code> is set to the strictest policy your app supports.
+  At minimum use <code>"default-src 'self'"</code>. Tighten per-app after testing:
+  <div class="language-yaml highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="nt">content_security_policy</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">&gt;-</span>
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">  </span><span class="no">default-src &#39;self&#39;;</span>
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="w">  </span><span class="no">script-src &#39;self&#39; &#39;nonce-{nonce}&#39;;</span>
+</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="w">  </span><span class="no">style-src &#39;self&#39; &#39;unsafe-inline&#39;;</span>
+</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="w">  </span><span class="no">img-src &#39;self&#39; data: https:;</span>
+</span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="w">  </span><span class="no">connect-src &#39;self&#39; https://api.myapp.example.com</span>
+</span></code></pre></div></li>
+<li>[ ] <code>frame_option: "DENY"</code> unless your app intentionally embeds other origins in
+  frames. Use <code>"SAMEORIGIN"</code> if you embed pages from the same origin.</li>
+<li>[ ] <code>referrer_policy: "strict-origin-when-cross-origin"</code> or stricter
+  (<code>"no-referrer"</code>) if your app does not depend on referrer information.</li>
+<li>[ ] <code>permissions_policy</code> is set to restrict browser features your app does not use.
+  Example:
+  <div class="language-yaml highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="nt">permissions_policy</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;camera=(),</span><span class="nv"> </span><span class="s">microphone=(),</span><span class="nv"> </span><span class="s">geolocation=(),</span><span class="nv"> </span><span class="s">payment=()&quot;</span>
+</span></code></pre></div></li>
+<li>[ ] <code>cross_origin_opener_policy: "same-origin"</code>.</li>
+<li>[ ] <code>cross_origin_resource_policy: "same-origin"</code>.</li>
+<li>[ ] <code>suppress_via_header: true</code> (reduces information disclosure about the proxy).</li>
+</ul>
+<hr />
+<h2 id="docker-hardening">Docker hardening<a class="headerlink" href="#docker-hardening" title="Permanent link">&para;</a></h2>
+<h3 id="non-root-user">Non-root user<a class="headerlink" href="#non-root-user" title="Permanent link">&para;</a></h3>
+<p>The official VibeWarden image runs as a non-root user by default. Verify:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a>docker<span class="w"> </span>inspect<span class="w"> </span>ghcr.io/vibewarden/vibewarden:latest<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="w">  </span>--format<span class="w"> </span><span class="s1">&#39;{{.Config.User}}&#39;</span>
+</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="c1"># expected: vibewarden (or a non-zero UID)</span>
+</span></code></pre></div>
+<p>If building a custom image, add to your <code>Dockerfile</code>:</p>
+<div class="language-dockerfile highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="k">RUN</span><span class="w"> </span>addgroup<span class="w"> </span>-S<span class="w"> </span>vibewarden<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>adduser<span class="w"> </span>-S<span class="w"> </span>vibewarden<span class="w"> </span>-G<span class="w"> </span>vibewarden
+</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="k">USER</span><span class="w"> </span><span class="s">vibewarden</span>
+</span></code></pre></div>
+<h3 id="read-only-filesystem">Read-only filesystem<a class="headerlink" href="#read-only-filesystem" title="Permanent link">&para;</a></h3>
+<p>Add <code>read_only: true</code> to the VibeWarden service in <code>docker-compose.yml</code> and mount
+writable directories explicitly:</p>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="nt">vibewarden</span><span class="p">:</span>
+</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="w">  </span><span class="nt">image</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ghcr.io/vibewarden/vibewarden:latest</span>
+</span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="w">  </span><span class="nt">read_only</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+</span><span id="__span-5-4"><a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="w">  </span><span class="nt">tmpfs</span><span class="p">:</span>
+</span><span id="__span-5-5"><a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/tmp</span>
+</span><span id="__span-5-6"><a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="w">  </span><span class="nt">volumes</span><span class="p">:</span>
+</span><span id="__span-5-7"><a id="__codelineno-5-7" name="__codelineno-5-7" href="#__codelineno-5-7"></a><span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">./vibewarden.yaml:/vibewarden.yaml:ro</span>
+</span><span id="__span-5-8"><a id="__codelineno-5-8" name="__codelineno-5-8" href="#__codelineno-5-8"></a><span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">caddy_data:/root/.local/share/caddy</span><span class="w">   </span><span class="c1"># writable: Caddy stores certs here</span>
+</span></code></pre></div>
+<h3 id="resource-limits">Resource limits<a class="headerlink" href="#resource-limits" title="Permanent link">&para;</a></h3>
+<p>Prevent runaway containers from exhausting the host:</p>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="nt">vibewarden</span><span class="p">:</span>
+</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="w">  </span><span class="nt">deploy</span><span class="p">:</span>
+</span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="w">    </span><span class="nt">resources</span><span class="p">:</span>
+</span><span id="__span-6-4"><a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="w">      </span><span class="nt">limits</span><span class="p">:</span>
+</span><span id="__span-6-5"><a id="__codelineno-6-5" name="__codelineno-6-5" href="#__codelineno-6-5"></a><span class="w">        </span><span class="nt">cpus</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;1.0&quot;</span>
+</span><span id="__span-6-6"><a id="__codelineno-6-6" name="__codelineno-6-6" href="#__codelineno-6-6"></a><span class="w">        </span><span class="nt">memory</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;256M&quot;</span>
+</span><span id="__span-6-7"><a id="__codelineno-6-7" name="__codelineno-6-7" href="#__codelineno-6-7"></a><span class="w">      </span><span class="nt">reservations</span><span class="p">:</span>
+</span><span id="__span-6-8"><a id="__codelineno-6-8" name="__codelineno-6-8" href="#__codelineno-6-8"></a><span class="w">        </span><span class="nt">cpus</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;0.25&quot;</span>
+</span><span id="__span-6-9"><a id="__codelineno-6-9" name="__codelineno-6-9" href="#__codelineno-6-9"></a><span class="w">        </span><span class="nt">memory</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;64M&quot;</span>
+</span><span id="__span-6-10"><a id="__codelineno-6-10" name="__codelineno-6-10" href="#__codelineno-6-10"></a>
+</span><span id="__span-6-11"><a id="__codelineno-6-11" name="__codelineno-6-11" href="#__codelineno-6-11"></a><span class="nt">kratos</span><span class="p">:</span>
+</span><span id="__span-6-12"><a id="__codelineno-6-12" name="__codelineno-6-12" href="#__codelineno-6-12"></a><span class="w">  </span><span class="nt">deploy</span><span class="p">:</span>
+</span><span id="__span-6-13"><a id="__codelineno-6-13" name="__codelineno-6-13" href="#__codelineno-6-13"></a><span class="w">    </span><span class="nt">resources</span><span class="p">:</span>
+</span><span id="__span-6-14"><a id="__codelineno-6-14" name="__codelineno-6-14" href="#__codelineno-6-14"></a><span class="w">      </span><span class="nt">limits</span><span class="p">:</span>
+</span><span id="__span-6-15"><a id="__codelineno-6-15" name="__codelineno-6-15" href="#__codelineno-6-15"></a><span class="w">        </span><span class="nt">cpus</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;1.0&quot;</span>
+</span><span id="__span-6-16"><a id="__codelineno-6-16" name="__codelineno-6-16" href="#__codelineno-6-16"></a><span class="w">        </span><span class="nt">memory</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;256M&quot;</span>
+</span><span id="__span-6-17"><a id="__codelineno-6-17" name="__codelineno-6-17" href="#__codelineno-6-17"></a>
+</span><span id="__span-6-18"><a id="__codelineno-6-18" name="__codelineno-6-18" href="#__codelineno-6-18"></a><span class="nt">postgres</span><span class="p">:</span>
+</span><span id="__span-6-19"><a id="__codelineno-6-19" name="__codelineno-6-19" href="#__codelineno-6-19"></a><span class="w">  </span><span class="nt">deploy</span><span class="p">:</span>
+</span><span id="__span-6-20"><a id="__codelineno-6-20" name="__codelineno-6-20" href="#__codelineno-6-20"></a><span class="w">    </span><span class="nt">resources</span><span class="p">:</span>
+</span><span id="__span-6-21"><a id="__codelineno-6-21" name="__codelineno-6-21" href="#__codelineno-6-21"></a><span class="w">      </span><span class="nt">limits</span><span class="p">:</span>
+</span><span id="__span-6-22"><a id="__codelineno-6-22" name="__codelineno-6-22" href="#__codelineno-6-22"></a><span class="w">        </span><span class="nt">cpus</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;2.0&quot;</span>
+</span><span id="__span-6-23"><a id="__codelineno-6-23" name="__codelineno-6-23" href="#__codelineno-6-23"></a><span class="w">        </span><span class="nt">memory</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;512M&quot;</span>
+</span></code></pre></div>
+<blockquote>
+<p><code>deploy.resources</code> in Docker Compose requires the <code>docker compose</code> CLI (v2) and
+has no effect with the standalone <code>docker-compose</code> v1 binary.</p>
+</blockquote>
+<h3 id="no-privileged-containers">No privileged containers<a class="headerlink" href="#no-privileged-containers" title="Permanent link">&para;</a></h3>
+<ul>
+<li>[ ] No container uses <code>privileged: true</code>.</li>
+<li>[ ] No container uses <code>--cap-add</code> beyond what is strictly required. VibeWarden
+  requires no extra capabilities.</li>
+<li>[ ] Drop all capabilities explicitly:
+  <div class="language-yaml highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="nt">vibewarden</span><span class="p">:</span>
+</span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="w">  </span><span class="nt">cap_drop</span><span class="p">:</span>
+</span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ALL</span>
+</span><span id="__span-7-4"><a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="w">  </span><span class="nt">cap_add</span><span class="p">:</span>
+</span><span id="__span-7-5"><a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">NET_BIND_SERVICE</span><span class="w">   </span><span class="c1"># required to bind ports 80 and 443</span>
+</span></code></pre></div></li>
+</ul>
+<h3 id="image-provenance">Image provenance<a class="headerlink" href="#image-provenance" title="Permanent link">&para;</a></h3>
+<ul>
+<li>[ ] Pin the VibeWarden image to a specific digest or tag (not <code>latest</code>) in production:
+  <div class="language-yaml highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="nt">image</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ghcr.io/vibewarden/vibewarden:v0.3.0</span>
+</span></code></pre></div></li>
+<li>[ ] Verify the image signature before deploying (when Cosign signing is available).</li>
+<li>[ ] Scan the image for vulnerabilities before deploying:
+  <div class="language-bash highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a>docker<span class="w"> </span>scout<span class="w"> </span>cves<span class="w"> </span>ghcr.io/vibewarden/vibewarden:v0.3.0
+</span><span id="__span-9-2"><a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="c1"># or:</span>
+</span><span id="__span-9-3"><a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a>trivy<span class="w"> </span>image<span class="w"> </span>ghcr.io/vibewarden/vibewarden:v0.3.0
+</span></code></pre></div></li>
+</ul>
+<hr />
+<h2 id="network-hardening">Network hardening<a class="headerlink" href="#network-hardening" title="Permanent link">&para;</a></h2>
+<h3 id="firewall-rules">Firewall rules<a class="headerlink" href="#firewall-rules" title="Permanent link">&para;</a></h3>
+<p>Allow only the ports your server must expose publicly. Example using <code>ufw</code>:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-10-1"><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="c1"># Default: deny all incoming</span>
+</span><span id="__span-10-2"><a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a>ufw<span class="w"> </span>default<span class="w"> </span>deny<span class="w"> </span>incoming
+</span><span id="__span-10-3"><a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a>ufw<span class="w"> </span>default<span class="w"> </span>allow<span class="w"> </span>outgoing
+</span><span id="__span-10-4"><a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a>
+</span><span id="__span-10-5"><a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a><span class="c1"># Allow SSH (change port if you moved it)</span>
+</span><span id="__span-10-6"><a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a>ufw<span class="w"> </span>allow<span class="w"> </span><span class="m">22</span>/tcp
+</span><span id="__span-10-7"><a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a>
+</span><span id="__span-10-8"><a id="__codelineno-10-8" name="__codelineno-10-8" href="#__codelineno-10-8"></a><span class="c1"># Allow HTTP and HTTPS (required for ACME challenge and app traffic)</span>
+</span><span id="__span-10-9"><a id="__codelineno-10-9" name="__codelineno-10-9" href="#__codelineno-10-9"></a>ufw<span class="w"> </span>allow<span class="w"> </span><span class="m">80</span>/tcp
+</span><span id="__span-10-10"><a id="__codelineno-10-10" name="__codelineno-10-10" href="#__codelineno-10-10"></a>ufw<span class="w"> </span>allow<span class="w"> </span><span class="m">443</span>/tcp
+</span><span id="__span-10-11"><a id="__codelineno-10-11" name="__codelineno-10-11" href="#__codelineno-10-11"></a>
+</span><span id="__span-10-12"><a id="__codelineno-10-12" name="__codelineno-10-12" href="#__codelineno-10-12"></a><span class="c1"># Enable the firewall</span>
+</span><span id="__span-10-13"><a id="__codelineno-10-13" name="__codelineno-10-13" href="#__codelineno-10-13"></a>ufw<span class="w"> </span><span class="nb">enable</span>
+</span><span id="__span-10-14"><a id="__codelineno-10-14" name="__codelineno-10-14" href="#__codelineno-10-14"></a>
+</span><span id="__span-10-15"><a id="__codelineno-10-15" name="__codelineno-10-15" href="#__codelineno-10-15"></a><span class="c1"># Verify</span>
+</span><span id="__span-10-16"><a id="__codelineno-10-16" name="__codelineno-10-16" href="#__codelineno-10-16"></a>ufw<span class="w"> </span>status<span class="w"> </span>verbose
+</span></code></pre></div>
+<h3 id="expose-only-80-and-443">Expose only 80 and 443<a class="headerlink" href="#expose-only-80-and-443" title="Permanent link">&para;</a></h3>
+<ul>
+<li>[ ] Postgres is not exposed on any host port. Remove or omit the <code>ports:</code> directive
+  for the <code>postgres</code> service in <code>docker-compose.yml</code>. Kratos connects to Postgres
+  over the internal Docker network.</li>
+<li>[ ] Kratos admin API (port 4434) is not exposed on any host port. VibeWarden
+  connects to it over the internal Docker network via <code>VIBEWARDEN_KRATOS_ADMIN_URL</code>.</li>
+<li>[ ] Kratos public API (port 4433) is not exposed on any host port when VibeWarden
+  proxies all Kratos traffic. VibeWarden forwards <code>/self-service/*</code> to Kratos
+  internally.</li>
+<li>[ ] Your application container exposes no host ports. VibeWarden connects to it
+  over the internal Docker network.</li>
+<li>[ ] The Prometheus metrics endpoint (<code>/_vibewarden/metrics</code>) is accessible over
+  HTTPS. Restrict access to your Prometheus scraper's IP using Cloudflare Access,
+  nginx <code>allow</code>/<code>deny</code>, or a VPN if you do not want metrics publicly readable.</li>
+</ul>
+<h3 id="internal-only-services">Internal-only services<a class="headerlink" href="#internal-only-services" title="Permanent link">&para;</a></h3>
+<p>Add explicit <code>expose</code> declarations (not <code>ports</code>) for services that should only be
+reachable on the internal Docker network:</p>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-11-1"><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="nt">postgres</span><span class="p">:</span>
+</span><span id="__span-11-2"><a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a><span class="w">  </span><span class="nt">expose</span><span class="p">:</span>
+</span><span id="__span-11-3"><a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a><span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">&quot;5432&quot;</span><span class="w">  </span><span class="c1"># internal only</span>
+</span><span id="__span-11-4"><a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a>
+</span><span id="__span-11-5"><a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a><span class="nt">kratos</span><span class="p">:</span>
+</span><span id="__span-11-6"><a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a><span class="w">  </span><span class="nt">expose</span><span class="p">:</span>
+</span><span id="__span-11-7"><a id="__codelineno-11-7" name="__codelineno-11-7" href="#__codelineno-11-7"></a><span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">&quot;4433&quot;</span>
+</span><span id="__span-11-8"><a id="__codelineno-11-8" name="__codelineno-11-8" href="#__codelineno-11-8"></a><span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">&quot;4434&quot;</span><span class="w">  </span><span class="c1"># internal only</span>
+</span><span id="__span-11-9"><a id="__codelineno-11-9" name="__codelineno-11-9" href="#__codelineno-11-9"></a>
+</span><span id="__span-11-10"><a id="__codelineno-11-10" name="__codelineno-11-10" href="#__codelineno-11-10"></a><span class="nt">myapp</span><span class="p">:</span>
+</span><span id="__span-11-11"><a id="__codelineno-11-11" name="__codelineno-11-11" href="#__codelineno-11-11"></a><span class="w">  </span><span class="nt">expose</span><span class="p">:</span>
+</span><span id="__span-11-12"><a id="__codelineno-11-12" name="__codelineno-11-12" href="#__codelineno-11-12"></a><span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">&quot;3000&quot;</span><span class="w">  </span><span class="c1"># internal only</span>
+</span></code></pre></div>
+<hr />
+<h2 id="kratos-hardening">Kratos hardening<a class="headerlink" href="#kratos-hardening" title="Permanent link">&para;</a></h2>
+<h3 id="smtp">SMTP<a class="headerlink" href="#smtp" title="Permanent link">&para;</a></h3>
+<ul>
+<li>[ ] Configure a real SMTP relay for Kratos email delivery. Do not use <code>mailslurper</code>
+  (the dev mail sink) in production.</li>
+<li>[ ] Use TLS-secured SMTP (<code>smtps://</code> or STARTTLS). Connection URI format:
+  <div class="language-text highlight"><pre><span></span><code><span id="__span-12-1"><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>smtps://user:password@smtp.example.com:465/
+</span></code></pre></div></li>
+<li>[ ] Store SMTP credentials in environment variables, not in <code>kratos.yml</code> directly.
+  Kratos supports environment variable substitution in its config:
+  <div class="language-yaml highlight"><pre><span></span><code><span id="__span-13-1"><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="nt">courier</span><span class="p">:</span>
+</span><span id="__span-13-2"><a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a><span class="w">  </span><span class="nt">smtp</span><span class="p">:</span>
+</span><span id="__span-13-3"><a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a><span class="w">    </span><span class="nt">connection_uri</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">${SMTP_URI}</span>
+</span></code></pre></div></li>
+<li>[ ] Set a recognisable <code>from_address</code> and <code>from_name</code> so users trust verification
+  and recovery emails.</li>
+</ul>
+<h3 id="session-configuration">Session configuration<a class="headerlink" href="#session-configuration" title="Permanent link">&para;</a></h3>
+<ul>
+<li>[ ] <code>selfservice.flows.login.lifespan</code> is set to a short but usable value (e.g. <code>10m</code>
+  for the login flow itself, not the session).</li>
+<li>[ ] Configure session lifespan in <code>kratos.yml</code>:
+  <div class="language-yaml highlight"><pre><span></span><code><span id="__span-14-1"><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a><span class="nt">session</span><span class="p">:</span>
+</span><span id="__span-14-2"><a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a><span class="w">  </span><span class="nt">lifespan</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">720h</span><span class="w">   </span><span class="c1"># 30 days — adjust to your security requirements</span>
+</span><span id="__span-14-3"><a id="__codelineno-14-3" name="__codelineno-14-3" href="#__codelineno-14-3"></a><span class="w">  </span><span class="nt">cookie</span><span class="p">:</span>
+</span><span id="__span-14-4"><a id="__codelineno-14-4" name="__codelineno-14-4" href="#__codelineno-14-4"></a><span class="w">    </span><span class="nt">same_site</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Lax</span>
+</span></code></pre></div></li>
+<li>[ ] <code>selfservice.allowed_return_urls</code> contains only your own domain. Never allow
+  arbitrary return URLs (open redirect).</li>
+<li>[ ] <code>selfservice.default_browser_return_url</code> points to your app's authenticated
+  landing page.</li>
+<li>[ ] Account verification (<code>flows.verification.enabled: true</code>) is enabled so users
+  must confirm their email address.</li>
+<li>[ ] Account recovery (<code>flows.recovery.enabled: true</code>) is enabled so users can
+  regain access via email.</li>
+</ul>
+<h3 id="kratos-admin-api-exposure">Kratos admin API exposure<a class="headerlink" href="#kratos-admin-api-exposure" title="Permanent link">&para;</a></h3>
+<ul>
+<li>[ ] The Kratos admin API (<code>kratos:4434</code>) is reachable only from within the Docker
+  network. It is not exposed to the host or the internet.</li>
+<li>[ ] VibeWarden communicates with the Kratos admin API via <code>VIBEWARDEN_KRATOS_ADMIN_URL</code>
+  using the internal Docker network hostname (e.g. <code>http://kratos:4434</code>).</li>
+</ul>
+<hr />
+<h2 id="monitoring-checklist">Monitoring checklist<a class="headerlink" href="#monitoring-checklist" title="Permanent link">&para;</a></h2>
+<h3 id="alerting">Alerting<a class="headerlink" href="#alerting" title="Permanent link">&para;</a></h3>
+<p>Configure alerts in Prometheus (or your alerting platform) for:</p>
+<ul>
+<li>[ ] <strong>Upstream errors</strong>: <code>rate(vibewarden_upstream_errors_total[5m]) &gt; 0</code>
+  — your app is unreachable or crashing.</li>
+<li>[ ] <strong>High latency</strong>: <code>histogram_quantile(0.99, rate(vibewarden_request_duration_seconds_bucket[5m])) &gt; 2</code>
+  — p99 latency exceeds 2 seconds.</li>
+<li>[ ] <strong>Rate limit spike</strong>: <code>rate(vibewarden_rate_limit_hits_total[5m]) &gt; 10</code>
+  — possible brute-force or abuse.</li>
+<li>[ ] <strong>High auth block rate</strong>: <code>rate(vibewarden_auth_decisions_total{decision="blocked"}[5m]) &gt; 5</code>
+  — many unauthenticated requests to protected routes.</li>
+<li>[ ] <strong>Container restarts</strong>: Docker / host-level alert when any container in the
+  stack has restart count &gt; 2 in 10 minutes.</li>
+<li>[ ] <strong>Disk usage</strong>: alert when the volume hosting <code>postgres_data</code> exceeds 80%
+  capacity.</li>
+<li>[ ] <strong>Certificate expiry</strong>: Caddy logs a warning 30 days before expiry. Configure
+  a log-based alert on <code>"certificate will expire"</code> in your log aggregation platform.</li>
+</ul>
+<h3 id="log-retention">Log retention<a class="headerlink" href="#log-retention" title="Permanent link">&para;</a></h3>
+<ul>
+<li>[ ] Set a log retention policy in your aggregation platform.
+  Recommended minimum: 30 days. Compliance requirements may mandate 90 days or more.</li>
+<li>[ ] If using Loki locally, configure retention in <code>loki-config.yml</code>:
+  <div class="language-yaml highlight"><pre><span></span><code><span id="__span-15-1"><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a><span class="nt">limits_config</span><span class="p">:</span>
+</span><span id="__span-15-2"><a id="__codelineno-15-2" name="__codelineno-15-2" href="#__codelineno-15-2"></a><span class="w">  </span><span class="nt">retention_period</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">30d</span>
+</span><span id="__span-15-3"><a id="__codelineno-15-3" name="__codelineno-15-3" href="#__codelineno-15-3"></a><span class="nt">compactor</span><span class="p">:</span>
+</span><span id="__span-15-4"><a id="__codelineno-15-4" name="__codelineno-15-4" href="#__codelineno-15-4"></a><span class="w">  </span><span class="nt">retention_enabled</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+</span></code></pre></div></li>
+<li>[ ] VibeWarden logs are structured JSON — ensure your log aggregation pipeline
+  parses them as JSON rather than treating them as plain text strings.</li>
+<li>[ ] Set <code>log.level: "info"</code> in production. Use <code>"debug"</code> only temporarily when
+  diagnosing a specific issue, as debug logs are verbose and may contain sensitive data.</li>
+</ul>
+<hr />
+<h2 id="regular-maintenance">Regular maintenance<a class="headerlink" href="#regular-maintenance" title="Permanent link">&para;</a></h2>
+<h3 id="updates">Updates<a class="headerlink" href="#updates" title="Permanent link">&para;</a></h3>
+<ul>
+<li>[ ] Subscribe to VibeWarden releases: watch the GitHub repository
+  (<code>vibewarden/vibewarden</code>) for new tags.</li>
+<li>[ ] Update the VibeWarden image tag in <code>docker-compose.yml</code> after each release.
+  Pull and restart:
+  <div class="language-bash highlight"><pre><span></span><code><span id="__span-16-1"><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a>docker<span class="w"> </span>compose<span class="w"> </span>pull<span class="w"> </span>vibewarden
+</span><span id="__span-16-2"><a id="__codelineno-16-2" name="__codelineno-16-2" href="#__codelineno-16-2"></a>docker<span class="w"> </span>compose<span class="w"> </span>up<span class="w"> </span>-d<span class="w"> </span>vibewarden
+</span></code></pre></div></li>
+<li>[ ] Update the Kratos image tag in <code>docker-compose.yml</code> after each Kratos release.
+  Run <code>kratos-migrate</code> before starting the new Kratos container:
+  <div class="language-bash highlight"><pre><span></span><code><span id="__span-17-1"><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a>docker<span class="w"> </span>compose<span class="w"> </span>run<span class="w"> </span>--rm<span class="w"> </span>kratos-migrate
+</span><span id="__span-17-2"><a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a>docker<span class="w"> </span>compose<span class="w"> </span>up<span class="w"> </span>-d<span class="w"> </span>kratos
+</span></code></pre></div></li>
+<li>[ ] Update the Postgres image tag once a year (or when a new major version ships
+  with a supported upgrade path).</li>
+<li>[ ] Apply OS security patches monthly:
+  <div class="language-bash highlight"><pre><span></span><code><span id="__span-18-1"><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a>apt-get<span class="w"> </span>update<span class="w"> </span><span class="o">&amp;&amp;</span><span class="w"> </span>apt-get<span class="w"> </span>dist-upgrade<span class="w"> </span>-y
+</span></code></pre></div></li>
+<li>[ ] Reboot the server after kernel updates to apply them.</li>
+</ul>
+<h3 id="certificate-renewal">Certificate renewal<a class="headerlink" href="#certificate-renewal" title="Permanent link">&para;</a></h3>
+<p>Caddy handles certificate renewal automatically. Verify renewal is working:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-19-1"><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a>docker<span class="w"> </span>compose<span class="w"> </span>logs<span class="w"> </span>vibewarden<span class="w"> </span><span class="p">|</span><span class="w"> </span>grep<span class="w"> </span>-i<span class="w"> </span><span class="s2">&quot;renewed\|renew\|certificate&quot;</span>
+</span></code></pre></div>
+<p>If renewal fails (e.g. port 80 was temporarily blocked), Caddy retries automatically.
+Let's Encrypt certificates are valid for 90 days; Caddy renews 30 days before expiry,
+giving a 30-day window to resolve any issues before the site goes down.</p>
+<h3 id="secret-rotation-schedule">Secret rotation schedule<a class="headerlink" href="#secret-rotation-schedule" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Secret</th>
+<th>Rotation frequency</th>
+<th>Action</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>VIBEWARDEN_ADMIN_TOKEN</code></td>
+<td>90 days</td>
+<td>Update env var, restart VibeWarden container</td>
+</tr>
+<tr>
+<td><code>POSTGRES_PASSWORD</code></td>
+<td>180 days</td>
+<td>Update DSN in all services, rolling restart</td>
+</tr>
+<tr>
+<td>SMTP credentials</td>
+<td>On provider request or annually</td>
+<td>Update <code>SMTP_URI</code>, restart Kratos</td>
+</tr>
+<tr>
+<td>TLS certificates</td>
+<td>Automatic (Caddy)</td>
+<td>Monitor Caddy logs for renewal errors</td>
+</tr>
+</tbody>
+</table>
+<h3 id="database-maintenance">Database maintenance<a class="headerlink" href="#database-maintenance" title="Permanent link">&para;</a></h3>
+<ul>
+<li>[ ] Run <code>VACUUM ANALYZE</code> on Postgres monthly to keep query plans fresh:
+  <div class="language-bash highlight"><pre><span></span><code><span id="__span-20-1"><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a>docker<span class="w"> </span><span class="nb">exec</span><span class="w"> </span>myapp-postgres<span class="w"> </span>psql<span class="w"> </span>-U<span class="w"> </span><span class="s2">&quot;</span><span class="nv">$POSTGRES_USER</span><span class="s2">&quot;</span><span class="w"> </span><span class="s2">&quot;</span><span class="nv">$POSTGRES_DB</span><span class="s2">&quot;</span><span class="w"> </span><span class="se">\</span>
+</span><span id="__span-20-2"><a id="__codelineno-20-2" name="__codelineno-20-2" href="#__codelineno-20-2"></a><span class="w">  </span>-c<span class="w"> </span><span class="s2">&quot;VACUUM ANALYZE;&quot;</span>
+</span></code></pre></div></li>
+<li>[ ] Review Postgres slow query log quarterly. Enable it in <code>postgresql.conf</code>:
+  <div class="language-text highlight"><pre><span></span><code><span id="__span-21-1"><a id="__codelineno-21-1" name="__codelineno-21-1" href="#__codelineno-21-1"></a>log_min_duration_statement = 1000   # log queries slower than 1s
+</span></code></pre></div></li>
+<li>[ ] Verify that daily backup jobs are completing successfully and that backup files
+  are landing in the expected destination. Test restores quarterly.</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+        <div class="md-social">
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://github.com/vibewarden/vibewarden" target="_blank" rel="noopener" title="github.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 496 512"><!--! Font Awesome Free 6.7.2 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2024 Fonticons, Inc.--><path d="M165.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M244.8 8C106.1 8 0 113.3 0 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C428.2 457.8 496 362.9 496 252 496 113.3 383.5 8 244.8 8M97.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    <script id="__config" type="application/json">{"base": "..", "features": ["navigation.tabs", "navigation.sections", "navigation.expand", "navigation.top", "search.suggest", "search.highlight", "content.code.copy", "content.code.annotate", "toc.follow"], "search": "../assets/javascripts/workers/search.f8cc74c7.min.js", "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": {"provider": "mike"}}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.60a45f97.min.js"></script>
+      
+    
+  </body>
+</html>

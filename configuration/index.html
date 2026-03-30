@@ -1,0 +1,3522 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Production-grade security for vibe-coded apps — zero config changes to your code.">
+      
+      
+      
+        <link rel="canonical" href="https://vibewarden.dev/docs/configuration/">
+      
+      
+        <link rel="prev" href="../getting-started/">
+      
+      
+        <link rel="next" href="../architecture/">
+      
+      
+      <link rel="icon" href="../assets/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.5.50">
+    
+    
+      
+        <title>Configuration - VibeWarden</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.a40c8224.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.06af60db.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/extra.css">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="deep-purple" data-md-color-accent="cyan">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#configuration-reference" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+      <div data-md-color-scheme="default" data-md-component="outdated" hidden>
+        
+      </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="VibeWarden" class="md-header__button md-logo" aria-label="VibeWarden" data-md-component="logo">
+      
+  <img src="../assets/logo.svg" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            VibeWarden
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Configuration
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="deep-purple" data-md-color-accent="cyan"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="deep-purple" data-md-color-accent="cyan"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      <label class="md-header__button md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+      </label>
+      <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/vibewarden/vibewarden" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 6.7.2 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2024 Fonticons, Inc.--><path d="M439.55 236.05 244 40.45a28.87 28.87 0 0 0-40.81 0l-40.66 40.63 51.52 51.52c27.06-9.14 52.68 16.77 43.39 43.68l49.66 49.66c34.23-11.8 61.18 31 35.47 56.69-26.49 26.49-70.21-2.87-56-37.34L240.22 199v121.85c25.3 12.54 22.26 41.85 9.08 55a34.34 34.34 0 0 1-48.55 0c-17.57-17.6-11.07-46.91 11.25-56v-123c-20.8-8.51-24.6-30.74-18.64-45L142.57 101 8.45 235.14a28.86 28.86 0 0 0 0 40.81l195.61 195.6a28.86 28.86 0 0 0 40.8 0l194.69-194.69a28.86 28.86 0 0 0 0-40.81"/></svg>
+  </div>
+  <div class="md-source__repository">
+    vibewarden/vibewarden
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href=".." class="md-tabs__link">
+        
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../getting-started/" class="md-tabs__link">
+        
+  
+    
+  
+  Getting Started
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+    
+  
+  
+    <li class="md-tabs__item md-tabs__item--active">
+      <a href="./" class="md-tabs__link">
+        
+  
+    
+  
+  Configuration
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../architecture/" class="md-tabs__link">
+        
+  
+    
+  
+  Architecture
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../identity-providers/" class="md-tabs__link">
+          
+  
+  Guides
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../examples/express/" class="md-tabs__link">
+          
+  
+  Framework Examples
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../decisions/" class="md-tabs__link">
+          
+  
+  Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="VibeWarden" class="md-nav__button md-logo" aria-label="VibeWarden" data-md-component="logo">
+      
+  <img src="../assets/logo.svg" alt="logo">
+
+    </a>
+    VibeWarden
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/vibewarden/vibewarden" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 6.7.2 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2024 Fonticons, Inc.--><path d="M439.55 236.05 244 40.45a28.87 28.87 0 0 0-40.81 0l-40.66 40.63 51.52 51.52c27.06-9.14 52.68 16.77 43.39 43.68l49.66 49.66c34.23-11.8 61.18 31 35.47 56.69-26.49 26.49-70.21-2.87-56-37.34L240.22 199v121.85c25.3 12.54 22.26 41.85 9.08 55a34.34 34.34 0 0 1-48.55 0c-17.57-17.6-11.07-46.91 11.25-56v-123c-20.8-8.51-24.6-30.74-18.64-45L142.57 101 8.45 235.14a28.86 28.86 0 0 0 0 40.81l195.61 195.6a28.86 28.86 0 0 0 40.8 0l194.69-194.69a28.86 28.86 0 0 0 0-40.81"/></svg>
+  </div>
+  <div class="md-source__repository">
+    vibewarden/vibewarden
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Home
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../getting-started/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Getting Started
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  <span class="md-ellipsis">
+    Configuration
+  </span>
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  <span class="md-ellipsis">
+    Configuration
+  </span>
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#profile" class="md-nav__link">
+    <span class="md-ellipsis">
+      profile
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#server" class="md-nav__link">
+    <span class="md-ellipsis">
+      server
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#upstream" class="md-nav__link">
+    <span class="md-ellipsis">
+      upstream
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#app" class="md-nav__link">
+    <span class="md-ellipsis">
+      app
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tls" class="md-nav__link">
+    <span class="md-ellipsis">
+      tls
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#auth" class="md-nav__link">
+    <span class="md-ellipsis">
+      auth
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="auth">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#auth-top-level" class="md-nav__link">
+    <span class="md-ellipsis">
+      auth (top-level)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#authjwt" class="md-nav__link">
+    <span class="md-ellipsis">
+      auth.jwt
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#authapi_key" class="md-nav__link">
+    <span class="md-ellipsis">
+      auth.api_key
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#authsocial_providers" class="md-nav__link">
+    <span class="md-ellipsis">
+      auth.social_providers
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#authui" class="md-nav__link">
+    <span class="md-ellipsis">
+      auth.ui
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#kratos" class="md-nav__link">
+    <span class="md-ellipsis">
+      kratos
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#rate_limit" class="md-nav__link">
+    <span class="md-ellipsis">
+      rate_limit
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="rate_limit">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#rate_limitper_ip-and-rate_limitper_user" class="md-nav__link">
+    <span class="md-ellipsis">
+      rate_limit.per_ip and rate_limit.per_user
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#rate_limitredis" class="md-nav__link">
+    <span class="md-ellipsis">
+      rate_limit.redis
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#security_headers" class="md-nav__link">
+    <span class="md-ellipsis">
+      security_headers
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#cors" class="md-nav__link">
+    <span class="md-ellipsis">
+      cors
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#waf" class="md-nav__link">
+    <span class="md-ellipsis">
+      waf
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="waf">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#wafcontent_type_validation" class="md-nav__link">
+    <span class="md-ellipsis">
+      waf.content_type_validation
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#body_size" class="md-nav__link">
+    <span class="md-ellipsis">
+      body_size
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#ip_filter" class="md-nav__link">
+    <span class="md-ellipsis">
+      ip_filter
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#resilience" class="md-nav__link">
+    <span class="md-ellipsis">
+      resilience
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="resilience">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#resiliencecircuit_breaker" class="md-nav__link">
+    <span class="md-ellipsis">
+      resilience.circuit_breaker
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#resilienceretry" class="md-nav__link">
+    <span class="md-ellipsis">
+      resilience.retry
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#telemetry" class="md-nav__link">
+    <span class="md-ellipsis">
+      telemetry
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#observability" class="md-nav__link">
+    <span class="md-ellipsis">
+      observability
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#database" class="md-nav__link">
+    <span class="md-ellipsis">
+      database
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#secrets" class="md-nav__link">
+    <span class="md-ellipsis">
+      secrets
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="secrets">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#secretsopenbao" class="md-nav__link">
+    <span class="md-ellipsis">
+      secrets.openbao
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#secretsinject" class="md-nav__link">
+    <span class="md-ellipsis">
+      secrets.inject
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#secretsdynamic" class="md-nav__link">
+    <span class="md-ellipsis">
+      secrets.dynamic
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#secretshealth" class="md-nav__link">
+    <span class="md-ellipsis">
+      secrets.health
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#webhooks" class="md-nav__link">
+    <span class="md-ellipsis">
+      webhooks
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#audit" class="md-nav__link">
+    <span class="md-ellipsis">
+      audit
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#log" class="md-nav__link">
+    <span class="md-ellipsis">
+      log
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#admin" class="md-nav__link">
+    <span class="md-ellipsis">
+      admin
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#overrides" class="md-nav__link">
+    <span class="md-ellipsis">
+      overrides
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#full-example-vibewardenyaml" class="md-nav__link">
+    <span class="md-ellipsis">
+      Full example vibewarden.yaml
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../architecture/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Architecture
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  <span class="md-ellipsis">
+    Guides
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            Guides
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../identity-providers/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Identity Providers
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../rate-limiting/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Rate Limiting
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../postgres/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Postgres
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../observability/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Observability
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../secret-management/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Secret Management
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../performance/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Performance
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../social-login/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Social Login
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../production-deployment/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Production Deployment
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../production-hardening/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Production Hardening
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+            
+  
+  <span class="md-ellipsis">
+    Framework Examples
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            Framework Examples
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/express/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Express (Node.js)
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/nextjs/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Next.js
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/django/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Django
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/rails/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Rails
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_7" >
+        
+          
+          <label class="md-nav__link" for="__nav_7" id="__nav_7_label" tabindex="0">
+            
+  
+  <span class="md-ellipsis">
+    Reference
+  </span>
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_7_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_7">
+            <span class="md-nav__icon md-icon"></span>
+            Reference
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../decisions/" class="md-nav__link">
+        
+  
+  <span class="md-ellipsis">
+    Architectural Decisions
+  </span>
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#profile" class="md-nav__link">
+    <span class="md-ellipsis">
+      profile
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#server" class="md-nav__link">
+    <span class="md-ellipsis">
+      server
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#upstream" class="md-nav__link">
+    <span class="md-ellipsis">
+      upstream
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#app" class="md-nav__link">
+    <span class="md-ellipsis">
+      app
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#tls" class="md-nav__link">
+    <span class="md-ellipsis">
+      tls
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#auth" class="md-nav__link">
+    <span class="md-ellipsis">
+      auth
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="auth">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#auth-top-level" class="md-nav__link">
+    <span class="md-ellipsis">
+      auth (top-level)
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#authjwt" class="md-nav__link">
+    <span class="md-ellipsis">
+      auth.jwt
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#authapi_key" class="md-nav__link">
+    <span class="md-ellipsis">
+      auth.api_key
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#authsocial_providers" class="md-nav__link">
+    <span class="md-ellipsis">
+      auth.social_providers
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#authui" class="md-nav__link">
+    <span class="md-ellipsis">
+      auth.ui
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#kratos" class="md-nav__link">
+    <span class="md-ellipsis">
+      kratos
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#rate_limit" class="md-nav__link">
+    <span class="md-ellipsis">
+      rate_limit
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="rate_limit">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#rate_limitper_ip-and-rate_limitper_user" class="md-nav__link">
+    <span class="md-ellipsis">
+      rate_limit.per_ip and rate_limit.per_user
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#rate_limitredis" class="md-nav__link">
+    <span class="md-ellipsis">
+      rate_limit.redis
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#security_headers" class="md-nav__link">
+    <span class="md-ellipsis">
+      security_headers
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#cors" class="md-nav__link">
+    <span class="md-ellipsis">
+      cors
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#waf" class="md-nav__link">
+    <span class="md-ellipsis">
+      waf
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="waf">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#wafcontent_type_validation" class="md-nav__link">
+    <span class="md-ellipsis">
+      waf.content_type_validation
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#body_size" class="md-nav__link">
+    <span class="md-ellipsis">
+      body_size
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#ip_filter" class="md-nav__link">
+    <span class="md-ellipsis">
+      ip_filter
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#resilience" class="md-nav__link">
+    <span class="md-ellipsis">
+      resilience
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="resilience">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#resiliencecircuit_breaker" class="md-nav__link">
+    <span class="md-ellipsis">
+      resilience.circuit_breaker
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#resilienceretry" class="md-nav__link">
+    <span class="md-ellipsis">
+      resilience.retry
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#telemetry" class="md-nav__link">
+    <span class="md-ellipsis">
+      telemetry
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#observability" class="md-nav__link">
+    <span class="md-ellipsis">
+      observability
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#database" class="md-nav__link">
+    <span class="md-ellipsis">
+      database
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#secrets" class="md-nav__link">
+    <span class="md-ellipsis">
+      secrets
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="secrets">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#secretsopenbao" class="md-nav__link">
+    <span class="md-ellipsis">
+      secrets.openbao
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#secretsinject" class="md-nav__link">
+    <span class="md-ellipsis">
+      secrets.inject
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#secretsdynamic" class="md-nav__link">
+    <span class="md-ellipsis">
+      secrets.dynamic
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#secretshealth" class="md-nav__link">
+    <span class="md-ellipsis">
+      secrets.health
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#webhooks" class="md-nav__link">
+    <span class="md-ellipsis">
+      webhooks
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#audit" class="md-nav__link">
+    <span class="md-ellipsis">
+      audit
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#log" class="md-nav__link">
+    <span class="md-ellipsis">
+      log
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#admin" class="md-nav__link">
+    <span class="md-ellipsis">
+      admin
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#overrides" class="md-nav__link">
+    <span class="md-ellipsis">
+      overrides
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#full-example-vibewardenyaml" class="md-nav__link">
+    <span class="md-ellipsis">
+      Full example vibewarden.yaml
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+  
+  
+
+
+<h1 id="configuration-reference">Configuration Reference<a class="headerlink" href="#configuration-reference" title="Permanent link">&para;</a></h1>
+<p>All VibeWarden configuration lives in <code>vibewarden.yaml</code> at the root of your
+project. Every field can also be set via an environment variable — the variable
+name is the YAML key path uppercased and prefixed with <code>VIBEWARDEN_</code>, with dots
+replaced by underscores. Example: <code>server.port</code> → <code>VIBEWARDEN_SERVER_PORT</code>.</p>
+<p>Environment variable substitution in YAML values is supported using <code>${VAR}</code>
+syntax. This is recommended for secrets:</p>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nt">database</span><span class="p">:</span>
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">  </span><span class="nt">external_url</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;postgres://user:${DB_PASSWORD}@db.example.com:5432/vibewarden&quot;</span>
+</span></code></pre></div>
+<hr />
+<h2 id="profile"><code>profile</code><a class="headerlink" href="#profile" title="Permanent link">&para;</a></h2>
+<p><strong>Type:</strong> string
+<strong>Default:</strong> <code>dev</code>
+<strong>Accepted values:</strong> <code>dev</code>, <code>tls</code>, <code>prod</code></p>
+<p>Selects the deployment profile. Affects TLS settings, credential validation
+strictness, and which generated files are produced.</p>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="nt">profile</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">dev</span>
+</span></code></pre></div>
+<hr />
+<h2 id="server"><code>server</code><a class="headerlink" href="#server" title="Permanent link">&para;</a></h2>
+<p>Settings for the VibeWarden HTTP listener.</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>server.host</code></td>
+<td>string</td>
+<td><code>127.0.0.1</code></td>
+<td>Host/IP to bind to</td>
+</tr>
+<tr>
+<td><code>server.port</code></td>
+<td>int</td>
+<td><code>8080</code></td>
+<td>Port to listen on</td>
+</tr>
+</tbody>
+</table>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="nt">server</span><span class="p">:</span>
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="w">  </span><span class="nt">host</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0.0.0.0</span>
+</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="w">  </span><span class="nt">port</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">8080</span>
+</span></code></pre></div>
+<hr />
+<h2 id="upstream"><code>upstream</code><a class="headerlink" href="#upstream" title="Permanent link">&para;</a></h2>
+<p>Settings for the upstream application being protected.</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>upstream.host</code></td>
+<td>string</td>
+<td><code>127.0.0.1</code></td>
+<td>Upstream host</td>
+</tr>
+<tr>
+<td><code>upstream.port</code></td>
+<td>int</td>
+<td><code>3000</code></td>
+<td>Upstream port</td>
+</tr>
+<tr>
+<td><code>upstream.health.enabled</code></td>
+<td>bool</td>
+<td><code>false</code></td>
+<td>Enable active upstream health checking</td>
+</tr>
+<tr>
+<td><code>upstream.health.path</code></td>
+<td>string</td>
+<td><code>/health</code></td>
+<td>HTTP path to probe</td>
+</tr>
+<tr>
+<td><code>upstream.health.interval</code></td>
+<td>duration</td>
+<td><code>10s</code></td>
+<td>Time between probes</td>
+</tr>
+<tr>
+<td><code>upstream.health.timeout</code></td>
+<td>duration</td>
+<td><code>5s</code></td>
+<td>Per-probe timeout</td>
+</tr>
+<tr>
+<td><code>upstream.health.unhealthy_threshold</code></td>
+<td>int</td>
+<td><code>3</code></td>
+<td>Consecutive failures to mark unhealthy</td>
+</tr>
+<tr>
+<td><code>upstream.health.healthy_threshold</code></td>
+<td>int</td>
+<td><code>2</code></td>
+<td>Consecutive successes to mark healthy</td>
+</tr>
+</tbody>
+</table>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="nt">upstream</span><span class="p">:</span>
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="w">  </span><span class="nt">host</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">127.0.0.1</span>
+</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="w">  </span><span class="nt">port</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">3000</span>
+</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="w">  </span><span class="nt">health</span><span class="p">:</span>
+</span><span id="__span-3-5"><a id="__codelineno-3-5" name="__codelineno-3-5" href="#__codelineno-3-5"></a><span class="w">    </span><span class="nt">enabled</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+</span><span id="__span-3-6"><a id="__codelineno-3-6" name="__codelineno-3-6" href="#__codelineno-3-6"></a><span class="w">    </span><span class="nt">path</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/health</span>
+</span><span id="__span-3-7"><a id="__codelineno-3-7" name="__codelineno-3-7" href="#__codelineno-3-7"></a><span class="w">    </span><span class="nt">interval</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">10s</span>
+</span><span id="__span-3-8"><a id="__codelineno-3-8" name="__codelineno-3-8" href="#__codelineno-3-8"></a><span class="w">    </span><span class="nt">timeout</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">5s</span>
+</span></code></pre></div>
+<hr />
+<h2 id="app"><code>app</code><a class="headerlink" href="#app" title="Permanent link">&para;</a></h2>
+<p>Controls how your application is included in the generated Docker Compose file.
+When neither <code>build</code> nor <code>image</code> is set, no app service is rendered and
+VibeWarden falls back to <code>host.docker.internal</code>.</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>app.build</code></td>
+<td>string</td>
+<td><code>""</code></td>
+<td>Docker build context path (e.g., <code>.</code>) — used in dev/tls profiles</td>
+</tr>
+<tr>
+<td><code>app.image</code></td>
+<td>string</td>
+<td><code>""</code></td>
+<td>Docker image reference (e.g., <code>ghcr.io/org/myapp:latest</code>) — used in prod profile</td>
+</tr>
+</tbody>
+</table>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="nt">app</span><span class="p">:</span>
+</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="w">  </span><span class="nt">build</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">.</span><span class="w">        </span><span class="c1"># dev workflow: build from source</span>
+</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="w">  </span><span class="c1"># image: ghcr.io/org/myapp:latest   # prod workflow: use pre-built image</span>
+</span></code></pre></div>
+<hr />
+<h2 id="tls"><code>tls</code><a class="headerlink" href="#tls" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>tls.enabled</code></td>
+<td>bool</td>
+<td><code>false</code></td>
+<td>Enable TLS</td>
+</tr>
+<tr>
+<td><code>tls.domain</code></td>
+<td>string</td>
+<td><code>""</code></td>
+<td>Domain for the TLS certificate. Required when <code>provider</code> is <code>letsencrypt</code></td>
+</tr>
+<tr>
+<td><code>tls.provider</code></td>
+<td>string</td>
+<td><code>""</code></td>
+<td>Certificate provider: <code>letsencrypt</code>, <code>self-signed</code>, or <code>external</code></td>
+</tr>
+<tr>
+<td><code>tls.cert_path</code></td>
+<td>string</td>
+<td><code>""</code></td>
+<td>Path to PEM certificate. Required when <code>provider</code> is <code>external</code></td>
+</tr>
+<tr>
+<td><code>tls.key_path</code></td>
+<td>string</td>
+<td><code>""</code></td>
+<td>Path to PEM private key. Required when <code>provider</code> is <code>external</code></td>
+</tr>
+<tr>
+<td><code>tls.storage_path</code></td>
+<td>string</td>
+<td><code>""</code></td>
+<td>Directory for ACME certificate storage. Applies to <code>letsencrypt</code> only</td>
+</tr>
+</tbody>
+</table>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="nt">tls</span><span class="p">:</span>
+</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="w">  </span><span class="nt">enabled</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+</span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="w">  </span><span class="nt">provider</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">letsencrypt</span>
+</span><span id="__span-5-4"><a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="w">  </span><span class="nt">domain</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">myapp.example.com</span>
+</span></code></pre></div>
+<hr />
+<h2 id="auth"><code>auth</code><a class="headerlink" href="#auth" title="Permanent link">&para;</a></h2>
+<h3 id="auth-top-level"><code>auth</code> (top-level)<a class="headerlink" href="#auth-top-level" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>auth.enabled</code></td>
+<td>bool</td>
+<td><code>false</code></td>
+<td>Enable the authentication middleware</td>
+</tr>
+<tr>
+<td><code>auth.mode</code></td>
+<td>string</td>
+<td><code>none</code></td>
+<td>Auth strategy: <code>none</code>, <code>kratos</code>, <code>jwt</code>, or <code>api-key</code></td>
+</tr>
+<tr>
+<td><code>auth.public_paths</code></td>
+<td>list</td>
+<td><code>[]</code></td>
+<td>Glob patterns that bypass auth. <code>/_vibewarden/*</code> is always public</td>
+</tr>
+<tr>
+<td><code>auth.session_cookie_name</code></td>
+<td>string</td>
+<td><code>ory_kratos_session</code></td>
+<td>Kratos session cookie name</td>
+</tr>
+<tr>
+<td><code>auth.login_url</code></td>
+<td>string</td>
+<td><code>/self-service/login/browser</code></td>
+<td>Redirect for unauthenticated users</td>
+</tr>
+<tr>
+<td><code>auth.on_kratos_unavailable</code></td>
+<td>string</td>
+<td><code>503</code></td>
+<td>Behavior when Kratos is unreachable: <code>503</code> or <code>allow_public</code></td>
+</tr>
+<tr>
+<td><code>auth.identity_schema</code></td>
+<td>string</td>
+<td><code>email_password</code></td>
+<td>Identity schema: <code>email_password</code>, <code>email_only</code>, <code>username_password</code>, <code>social</code>, or a file path</td>
+</tr>
+</tbody>
+</table>
+<h3 id="authjwt"><code>auth.jwt</code><a class="headerlink" href="#authjwt" title="Permanent link">&para;</a></h3>
+<p>Used when <code>auth.mode</code> is <code>jwt</code>.</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>auth.jwt.jwks_url</code></td>
+<td>string</td>
+<td><code>""</code></td>
+<td>Direct JWKS endpoint URL. Takes precedence over <code>issuer_url</code></td>
+</tr>
+<tr>
+<td><code>auth.jwt.issuer_url</code></td>
+<td>string</td>
+<td><code>""</code></td>
+<td>OIDC issuer base URL for auto-discovery</td>
+</tr>
+<tr>
+<td><code>auth.jwt.issuer</code></td>
+<td>string</td>
+<td><code>""</code></td>
+<td>Expected <code>iss</code> claim value. Required</td>
+</tr>
+<tr>
+<td><code>auth.jwt.audience</code></td>
+<td>string</td>
+<td><code>""</code></td>
+<td>Expected <code>aud</code> claim value. Required</td>
+</tr>
+<tr>
+<td><code>auth.jwt.claims_to_headers</code></td>
+<td>map</td>
+<td>see below</td>
+<td>JWT claims injected as upstream request headers</td>
+</tr>
+<tr>
+<td><code>auth.jwt.allowed_algorithms</code></td>
+<td>list</td>
+<td><code>[RS256, ES256]</code></td>
+<td>Accepted signing algorithms. Never include <code>none</code> or <code>HS256</code> in production</td>
+</tr>
+<tr>
+<td><code>auth.jwt.cache_ttl</code></td>
+<td>duration</td>
+<td><code>1h</code></td>
+<td>How long the JWKS is cached locally</td>
+</tr>
+</tbody>
+</table>
+<p>Default <code>claims_to_headers</code>:
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a><span class="nt">claims_to_headers</span><span class="p">:</span>
+</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a><span class="w">  </span><span class="nt">sub</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">X-User-Id</span>
+</span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a><span class="w">  </span><span class="nt">email</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">X-User-Email</span>
+</span><span id="__span-6-4"><a id="__codelineno-6-4" name="__codelineno-6-4" href="#__codelineno-6-4"></a><span class="w">  </span><span class="nt">email_verified</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">X-User-Verified</span>
+</span></code></pre></div></p>
+<h3 id="authapi_key"><code>auth.api_key</code><a class="headerlink" href="#authapi_key" title="Permanent link">&para;</a></h3>
+<p>Used when <code>auth.mode</code> is <code>api-key</code>.</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>auth.api_key.header</code></td>
+<td>string</td>
+<td><code>X-API-Key</code></td>
+<td>Request header carrying the API key</td>
+</tr>
+<tr>
+<td><code>auth.api_key.keys</code></td>
+<td>list</td>
+<td><code>[]</code></td>
+<td>Static key entries (see below)</td>
+</tr>
+<tr>
+<td><code>auth.api_key.openbao_path</code></td>
+<td>string</td>
+<td><code>""</code></td>
+<td>KV path in OpenBao where key hashes are stored</td>
+</tr>
+<tr>
+<td><code>auth.api_key.cache_ttl</code></td>
+<td>duration</td>
+<td><code>5m</code></td>
+<td>TTL for keys fetched from OpenBao</td>
+</tr>
+<tr>
+<td><code>auth.api_key.scope_rules</code></td>
+<td>list</td>
+<td><code>[]</code></td>
+<td>Ordered path+method authorization rules</td>
+</tr>
+</tbody>
+</table>
+<p>Each entry in <code>keys</code>:</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>name</code></td>
+<td>string</td>
+<td>Human-readable label</td>
+</tr>
+<tr>
+<td><code>hash</code></td>
+<td>string</td>
+<td>Hex-encoded SHA-256 of the plaintext key</td>
+</tr>
+<tr>
+<td><code>scopes</code></td>
+<td>list</td>
+<td>Permission scopes granted to this key</td>
+</tr>
+</tbody>
+</table>
+<p>Each entry in <code>scope_rules</code>:</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>path</code></td>
+<td>string</td>
+<td>Glob pattern matched against the request path</td>
+</tr>
+<tr>
+<td><code>methods</code></td>
+<td>list</td>
+<td>HTTP methods this rule applies to (empty = all methods)</td>
+</tr>
+<tr>
+<td><code>required_scopes</code></td>
+<td>list</td>
+<td>Scopes the key must possess</td>
+</tr>
+</tbody>
+</table>
+<h3 id="authsocial_providers"><code>auth.social_providers</code><a class="headerlink" href="#authsocial_providers" title="Permanent link">&para;</a></h3>
+<p>List of OAuth2/OIDC social login providers (used with <code>auth.mode: kratos</code>).</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>provider</code></td>
+<td>string</td>
+<td>Provider name: <code>google</code>, <code>github</code>, <code>apple</code>, <code>facebook</code>, <code>microsoft</code>, <code>gitlab</code>, <code>discord</code>, <code>slack</code>, <code>spotify</code>, <code>oidc</code></td>
+</tr>
+<tr>
+<td><code>client_id</code></td>
+<td>string</td>
+<td>OAuth2 client ID</td>
+</tr>
+<tr>
+<td><code>client_secret</code></td>
+<td>string</td>
+<td>OAuth2 client secret</td>
+</tr>
+<tr>
+<td><code>scopes</code></td>
+<td>list</td>
+<td>OAuth2 scopes to request (optional; provider defaults apply)</td>
+</tr>
+<tr>
+<td><code>label</code></td>
+<td>string</td>
+<td>Custom login button label (optional)</td>
+</tr>
+<tr>
+<td><code>team_id</code></td>
+<td>string</td>
+<td>Apple Developer Team ID (Apple only)</td>
+</tr>
+<tr>
+<td><code>key_id</code></td>
+<td>string</td>
+<td>Apple private key ID (Apple only)</td>
+</tr>
+<tr>
+<td><code>id</code></td>
+<td>string</td>
+<td>Unique identifier for OIDC entries</td>
+</tr>
+<tr>
+<td><code>issuer_url</code></td>
+<td>string</td>
+<td>OIDC issuer URL (OIDC provider only)</td>
+</tr>
+</tbody>
+</table>
+<h3 id="authui"><code>auth.ui</code><a class="headerlink" href="#authui" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>auth.ui.mode</code></td>
+<td>string</td>
+<td><code>built-in</code></td>
+<td><code>built-in</code> or <code>custom</code></td>
+</tr>
+<tr>
+<td><code>auth.ui.app_name</code></td>
+<td>string</td>
+<td><code>""</code></td>
+<td>Application name on built-in login pages</td>
+</tr>
+<tr>
+<td><code>auth.ui.logo_url</code></td>
+<td>string</td>
+<td><code>""</code></td>
+<td>Logo URL for built-in pages</td>
+</tr>
+<tr>
+<td><code>auth.ui.primary_color</code></td>
+<td>string</td>
+<td><code>#7C3AED</code></td>
+<td>Accent color for built-in pages</td>
+</tr>
+<tr>
+<td><code>auth.ui.background_color</code></td>
+<td>string</td>
+<td><code>#1a1a2e</code></td>
+<td>Background color for built-in pages</td>
+</tr>
+<tr>
+<td><code>auth.ui.login_url</code></td>
+<td>string</td>
+<td><code>""</code></td>
+<td>Custom login page URL (when <code>mode: custom</code>)</td>
+</tr>
+<tr>
+<td><code>auth.ui.registration_url</code></td>
+<td>string</td>
+<td><code>""</code></td>
+<td>Custom registration page URL</td>
+</tr>
+<tr>
+<td><code>auth.ui.settings_url</code></td>
+<td>string</td>
+<td><code>""</code></td>
+<td>Custom account settings page URL</td>
+</tr>
+<tr>
+<td><code>auth.ui.recovery_url</code></td>
+<td>string</td>
+<td><code>""</code></td>
+<td>Custom account recovery page URL</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="kratos"><code>kratos</code><a class="headerlink" href="#kratos" title="Permanent link">&para;</a></h2>
+<p>Used when <code>auth.mode</code> is <code>kratos</code>.</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>kratos.public_url</code></td>
+<td>string</td>
+<td><code>http://127.0.0.1:4433</code></td>
+<td>Kratos public API URL</td>
+</tr>
+<tr>
+<td><code>kratos.admin_url</code></td>
+<td>string</td>
+<td><code>http://127.0.0.1:4434</code></td>
+<td>Kratos admin API URL</td>
+</tr>
+<tr>
+<td><code>kratos.dsn</code></td>
+<td>string</td>
+<td><code>""</code></td>
+<td>Kratos database DSN (postgres URL)</td>
+</tr>
+<tr>
+<td><code>kratos.external</code></td>
+<td>bool</td>
+<td><code>false</code></td>
+<td>Connect to a user-managed Kratos instance instead of starting one</td>
+</tr>
+<tr>
+<td><code>kratos.smtp.host</code></td>
+<td>string</td>
+<td><code>localhost</code></td>
+<td>SMTP server host</td>
+</tr>
+<tr>
+<td><code>kratos.smtp.port</code></td>
+<td>int</td>
+<td><code>1025</code></td>
+<td>SMTP server port</td>
+</tr>
+<tr>
+<td><code>kratos.smtp.from</code></td>
+<td>string</td>
+<td><code>no-reply@vibewarden.local</code></td>
+<td>Sender address for Kratos emails</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="rate_limit"><code>rate_limit</code><a class="headerlink" href="#rate_limit" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>rate_limit.enabled</code></td>
+<td>bool</td>
+<td><code>true</code></td>
+<td>Enable rate limiting</td>
+</tr>
+<tr>
+<td><code>rate_limit.store</code></td>
+<td>string</td>
+<td><code>memory</code></td>
+<td>Backing store: <code>memory</code> or <code>redis</code></td>
+</tr>
+<tr>
+<td><code>rate_limit.trust_proxy_headers</code></td>
+<td>bool</td>
+<td><code>false</code></td>
+<td>Read <code>X-Forwarded-For</code> for client IP. Enable only behind a trusted proxy</td>
+</tr>
+<tr>
+<td><code>rate_limit.exempt_paths</code></td>
+<td>list</td>
+<td><code>[]</code></td>
+<td>Glob patterns that bypass rate limiting. <code>/_vibewarden/*</code> is always exempt</td>
+</tr>
+</tbody>
+</table>
+<h3 id="rate_limitper_ip-and-rate_limitper_user"><code>rate_limit.per_ip</code> and <code>rate_limit.per_user</code><a class="headerlink" href="#rate_limitper_ip-and-rate_limitper_user" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Default (per_ip)</th>
+<th>Default (per_user)</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>requests_per_second</code></td>
+<td>float</td>
+<td><code>10</code></td>
+<td><code>100</code></td>
+<td>Sustained token refill rate</td>
+</tr>
+<tr>
+<td><code>burst</code></td>
+<td>int</td>
+<td><code>20</code></td>
+<td><code>200</code></td>
+<td>Maximum tokens that can accumulate</td>
+</tr>
+</tbody>
+</table>
+<h3 id="rate_limitredis"><code>rate_limit.redis</code><a class="headerlink" href="#rate_limitredis" title="Permanent link">&para;</a></h3>
+<p>Only read when <code>store</code> is <code>redis</code>.</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>url</code></td>
+<td>string</td>
+<td><code>""</code></td>
+<td>Redis URL (<code>redis://</code> or <code>rediss://</code>). Takes precedence over all other fields</td>
+</tr>
+<tr>
+<td><code>address</code></td>
+<td>string</td>
+<td><code>localhost:6379</code></td>
+<td>Redis address in <code>host:port</code> form</td>
+</tr>
+<tr>
+<td><code>password</code></td>
+<td>string</td>
+<td><code>""</code></td>
+<td>Redis AUTH password</td>
+</tr>
+<tr>
+<td><code>db</code></td>
+<td>int</td>
+<td><code>0</code></td>
+<td>Logical database index</td>
+</tr>
+<tr>
+<td><code>pool_size</code></td>
+<td>int</td>
+<td><code>0</code> (auto)</td>
+<td>Connection pool size (<code>0</code> = auto based on CPU count)</td>
+</tr>
+<tr>
+<td><code>key_prefix</code></td>
+<td>string</td>
+<td><code>vibewarden</code></td>
+<td>Key namespace prefix</td>
+</tr>
+<tr>
+<td><code>fallback</code></td>
+<td>bool</td>
+<td><code>true</code></td>
+<td>Fail-open on Redis failure (<code>true</code>) or fail-closed (<code>false</code>)</td>
+</tr>
+<tr>
+<td><code>health_check_interval</code></td>
+<td>duration</td>
+<td><code>30s</code></td>
+<td>How often to probe Redis for recovery</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="security_headers"><code>security_headers</code><a class="headerlink" href="#security_headers" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>security_headers.enabled</code></td>
+<td>bool</td>
+<td><code>true</code></td>
+<td>Enable security headers middleware</td>
+</tr>
+<tr>
+<td><code>security_headers.hsts_max_age</code></td>
+<td>int</td>
+<td><code>31536000</code></td>
+<td>HSTS max-age in seconds (1 year)</td>
+</tr>
+<tr>
+<td><code>security_headers.hsts_include_subdomains</code></td>
+<td>bool</td>
+<td><code>true</code></td>
+<td>Add <code>includeSubDomains</code> to HSTS</td>
+</tr>
+<tr>
+<td><code>security_headers.hsts_preload</code></td>
+<td>bool</td>
+<td><code>false</code></td>
+<td>Add <code>preload</code> to HSTS</td>
+</tr>
+<tr>
+<td><code>security_headers.content_type_nosniff</code></td>
+<td>bool</td>
+<td><code>true</code></td>
+<td>Set <code>X-Content-Type-Options: nosniff</code></td>
+</tr>
+<tr>
+<td><code>security_headers.frame_option</code></td>
+<td>string</td>
+<td><code>DENY</code></td>
+<td><code>X-Frame-Options</code>: <code>DENY</code>, <code>SAMEORIGIN</code>, or <code>""</code> to disable</td>
+</tr>
+<tr>
+<td><code>security_headers.content_security_policy</code></td>
+<td>string</td>
+<td><code>default-src 'self'</code></td>
+<td><code>Content-Security-Policy</code> value</td>
+</tr>
+<tr>
+<td><code>security_headers.referrer_policy</code></td>
+<td>string</td>
+<td><code>strict-origin-when-cross-origin</code></td>
+<td><code>Referrer-Policy</code> value</td>
+</tr>
+<tr>
+<td><code>security_headers.permissions_policy</code></td>
+<td>string</td>
+<td><code>""</code></td>
+<td><code>Permissions-Policy</code> value</td>
+</tr>
+<tr>
+<td><code>security_headers.cross_origin_opener_policy</code></td>
+<td>string</td>
+<td><code>same-origin</code></td>
+<td><code>Cross-Origin-Opener-Policy</code> value</td>
+</tr>
+<tr>
+<td><code>security_headers.cross_origin_resource_policy</code></td>
+<td>string</td>
+<td><code>same-origin</code></td>
+<td><code>Cross-Origin-Resource-Policy</code> value</td>
+</tr>
+<tr>
+<td><code>security_headers.permitted_cross_domain_policies</code></td>
+<td>string</td>
+<td><code>none</code></td>
+<td><code>X-Permitted-Cross-Domain-Policies</code> value</td>
+</tr>
+<tr>
+<td><code>security_headers.suppress_via_header</code></td>
+<td>bool</td>
+<td><code>true</code></td>
+<td>Remove <code>Via</code> header from proxied responses</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="cors"><code>cors</code><a class="headerlink" href="#cors" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>cors.enabled</code></td>
+<td>bool</td>
+<td><code>false</code></td>
+<td>Enable CORS plugin</td>
+</tr>
+<tr>
+<td><code>cors.allowed_origins</code></td>
+<td>list</td>
+<td><code>[]</code></td>
+<td>Permitted origins. Use <code>["*"]</code> for development only</td>
+</tr>
+<tr>
+<td><code>cors.allowed_methods</code></td>
+<td>list</td>
+<td><code>[GET, POST, PUT, DELETE, OPTIONS]</code></td>
+<td>Permitted HTTP methods</td>
+</tr>
+<tr>
+<td><code>cors.allowed_headers</code></td>
+<td>list</td>
+<td><code>[Content-Type, Authorization]</code></td>
+<td>Permitted request headers</td>
+</tr>
+<tr>
+<td><code>cors.exposed_headers</code></td>
+<td>list</td>
+<td><code>[]</code></td>
+<td>Response headers exposed via <code>Access-Control-Expose-Headers</code></td>
+</tr>
+<tr>
+<td><code>cors.allow_credentials</code></td>
+<td>bool</td>
+<td><code>false</code></td>
+<td>Set <code>Access-Control-Allow-Credentials: true</code>. Must not be combined with <code>allowed_origins: ["*"]</code></td>
+</tr>
+<tr>
+<td><code>cors.max_age</code></td>
+<td>int</td>
+<td><code>0</code></td>
+<td>Preflight cache duration in seconds. <code>0</code> omits the header</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="waf"><code>waf</code><a class="headerlink" href="#waf" title="Permanent link">&para;</a></h2>
+<h3 id="wafcontent_type_validation"><code>waf.content_type_validation</code><a class="headerlink" href="#wafcontent_type_validation" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>waf.content_type_validation.enabled</code></td>
+<td>bool</td>
+<td><code>false</code></td>
+<td>Enable Content-Type validation on body-bearing requests</td>
+</tr>
+<tr>
+<td><code>waf.content_type_validation.allowed</code></td>
+<td>list</td>
+<td><code>[application/json, application/x-www-form-urlencoded, multipart/form-data]</code></td>
+<td>Permitted media types. Requests with other types receive <code>415 Unsupported Media Type</code></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="body_size"><code>body_size</code><a class="headerlink" href="#body_size" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>body_size.max</code></td>
+<td>string</td>
+<td><code>""</code></td>
+<td>Global maximum body size (e.g., <code>1MB</code>, <code>512KB</code>). Empty means no limit</td>
+</tr>
+<tr>
+<td><code>body_size.overrides</code></td>
+<td>list</td>
+<td><code>[]</code></td>
+<td>Per-path overrides</td>
+</tr>
+</tbody>
+</table>
+<p>Each entry in <code>body_size.overrides</code>:</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>path</code></td>
+<td>string</td>
+<td>URL path prefix to match</td>
+</tr>
+<tr>
+<td><code>max</code></td>
+<td>string</td>
+<td>Maximum body size for this path</td>
+</tr>
+</tbody>
+</table>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="nt">body_size</span><span class="p">:</span>
+</span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="w">  </span><span class="nt">max</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1MB</span>
+</span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="w">  </span><span class="nt">overrides</span><span class="p">:</span>
+</span><span id="__span-7-4"><a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">path</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/api/upload</span>
+</span><span id="__span-7-5"><a id="__codelineno-7-5" name="__codelineno-7-5" href="#__codelineno-7-5"></a><span class="w">      </span><span class="nt">max</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">50MB</span>
+</span></code></pre></div>
+<hr />
+<h2 id="ip_filter"><code>ip_filter</code><a class="headerlink" href="#ip_filter" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>ip_filter.enabled</code></td>
+<td>bool</td>
+<td><code>false</code></td>
+<td>Enable IP filter plugin</td>
+</tr>
+<tr>
+<td><code>ip_filter.mode</code></td>
+<td>string</td>
+<td><code>blocklist</code></td>
+<td><code>allowlist</code> or <code>blocklist</code></td>
+</tr>
+<tr>
+<td><code>ip_filter.addresses</code></td>
+<td>list</td>
+<td><code>[]</code></td>
+<td>IP addresses or CIDR ranges</td>
+</tr>
+<tr>
+<td><code>ip_filter.trust_proxy_headers</code></td>
+<td>bool</td>
+<td><code>false</code></td>
+<td>Read <code>X-Forwarded-For</code> for client IP</td>
+</tr>
+</tbody>
+</table>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="nt">ip_filter</span><span class="p">:</span>
+</span><span id="__span-8-2"><a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="w">  </span><span class="nt">enabled</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+</span><span id="__span-8-3"><a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="w">  </span><span class="nt">mode</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">allowlist</span>
+</span><span id="__span-8-4"><a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="w">  </span><span class="nt">addresses</span><span class="p">:</span>
+</span><span id="__span-8-5"><a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">10.0.0.0/8</span>
+</span><span id="__span-8-6"><a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a><span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">192.168.1.100</span>
+</span></code></pre></div>
+<hr />
+<h2 id="resilience"><code>resilience</code><a class="headerlink" href="#resilience" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>resilience.timeout</code></td>
+<td>duration</td>
+<td><code>30s</code></td>
+<td>Upstream response timeout. <code>0</code> disables the timeout</td>
+</tr>
+</tbody>
+</table>
+<h3 id="resiliencecircuit_breaker"><code>resilience.circuit_breaker</code><a class="headerlink" href="#resiliencecircuit_breaker" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>resilience.circuit_breaker.enabled</code></td>
+<td>bool</td>
+<td><code>false</code></td>
+<td>Enable circuit breaker</td>
+</tr>
+<tr>
+<td><code>resilience.circuit_breaker.threshold</code></td>
+<td>int</td>
+<td><code>5</code></td>
+<td>Consecutive failures to trip the circuit</td>
+</tr>
+<tr>
+<td><code>resilience.circuit_breaker.timeout</code></td>
+<td>duration</td>
+<td><code>60s</code></td>
+<td>How long the circuit stays open before probing</td>
+</tr>
+</tbody>
+</table>
+<h3 id="resilienceretry"><code>resilience.retry</code><a class="headerlink" href="#resilienceretry" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>resilience.retry.enabled</code></td>
+<td>bool</td>
+<td><code>false</code></td>
+<td>Enable retry with exponential backoff</td>
+</tr>
+<tr>
+<td><code>resilience.retry.max_attempts</code></td>
+<td>int</td>
+<td><code>3</code></td>
+<td>Total attempts including the initial request</td>
+</tr>
+<tr>
+<td><code>resilience.retry.backoff</code></td>
+<td>duration</td>
+<td><code>100ms</code></td>
+<td>Wait before the first retry</td>
+</tr>
+<tr>
+<td><code>resilience.retry.max_backoff</code></td>
+<td>duration</td>
+<td><code>10s</code></td>
+<td>Upper bound on computed backoff</td>
+</tr>
+<tr>
+<td><code>resilience.retry.retry_on</code></td>
+<td>list</td>
+<td><code>[502, 503, 504]</code></td>
+<td>HTTP status codes that trigger a retry</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="telemetry"><code>telemetry</code><a class="headerlink" href="#telemetry" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>telemetry.enabled</code></td>
+<td>bool</td>
+<td><code>true</code></td>
+<td>Master switch for all telemetry</td>
+</tr>
+<tr>
+<td><code>telemetry.path_patterns</code></td>
+<td>list</td>
+<td><code>[]</code></td>
+<td>URL path normalization patterns using <code>:param</code> syntax</td>
+</tr>
+<tr>
+<td><code>telemetry.prometheus.enabled</code></td>
+<td>bool</td>
+<td><code>true</code></td>
+<td>Enable Prometheus pull-based exporter at <code>/_vibewarden/metrics</code></td>
+</tr>
+<tr>
+<td><code>telemetry.otlp.enabled</code></td>
+<td>bool</td>
+<td><code>false</code></td>
+<td>Enable OTLP push-based exporter</td>
+</tr>
+<tr>
+<td><code>telemetry.otlp.endpoint</code></td>
+<td>string</td>
+<td><code>""</code></td>
+<td>OTLP HTTP endpoint URL. Required when <code>otlp.enabled</code> is <code>true</code></td>
+</tr>
+<tr>
+<td><code>telemetry.otlp.headers</code></td>
+<td>map</td>
+<td><code>{}</code></td>
+<td>HTTP headers for OTLP authentication</td>
+</tr>
+<tr>
+<td><code>telemetry.otlp.interval</code></td>
+<td>duration</td>
+<td><code>30s</code></td>
+<td>Export interval</td>
+</tr>
+<tr>
+<td><code>telemetry.otlp.protocol</code></td>
+<td>string</td>
+<td><code>http</code></td>
+<td>Transport protocol. Only <code>http</code> is supported</td>
+</tr>
+<tr>
+<td><code>telemetry.logs.otlp</code></td>
+<td>bool</td>
+<td><code>false</code></td>
+<td>Export structured events via OTLP. Requires <code>otlp.endpoint</code></td>
+</tr>
+<tr>
+<td><code>telemetry.traces.enabled</code></td>
+<td>bool</td>
+<td><code>false</code></td>
+<td>Enable distributed tracing. Requires <code>otlp.enabled</code></td>
+</tr>
+</tbody>
+</table>
+<div class="admonition note">
+<p class="admonition-title">Legacy <code>metrics:</code> section</p>
+<p>The <code>metrics:</code> config block is deprecated. Settings are automatically migrated
+to <code>telemetry:</code> at startup with a deprecation warning. Migrate before the next
+major version.</p>
+</div>
+<hr />
+<h2 id="observability"><code>observability</code><a class="headerlink" href="#observability" title="Permanent link">&para;</a></h2>
+<p>Controls generation of the optional local observability stack (Grafana, Prometheus,
+Loki, Promtail).</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>observability.enabled</code></td>
+<td>bool</td>
+<td><code>false</code></td>
+<td>Generate the observability stack</td>
+</tr>
+<tr>
+<td><code>observability.grafana_port</code></td>
+<td>int</td>
+<td><code>3001</code></td>
+<td>Host port for Grafana</td>
+</tr>
+<tr>
+<td><code>observability.prometheus_port</code></td>
+<td>int</td>
+<td><code>9090</code></td>
+<td>Host port for Prometheus</td>
+</tr>
+<tr>
+<td><code>observability.loki_port</code></td>
+<td>int</td>
+<td><code>3100</code></td>
+<td>Host port for Loki</td>
+</tr>
+<tr>
+<td><code>observability.retention_days</code></td>
+<td>int</td>
+<td><code>7</code></td>
+<td>Log retention period in Loki</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="database"><code>database</code><a class="headerlink" href="#database" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>database.external_url</code></td>
+<td>string</td>
+<td><code>""</code></td>
+<td>Full <code>postgres://</code> connection URL. When set, the local Postgres container is omitted from the generated Compose file</td>
+</tr>
+<tr>
+<td><code>database.tls_mode</code></td>
+<td>string</td>
+<td><code>require</code></td>
+<td>PostgreSQL SSL mode: <code>disable</code>, <code>require</code>, <code>verify-ca</code>, <code>verify-full</code></td>
+</tr>
+<tr>
+<td><code>database.pool.max_conns</code></td>
+<td>int</td>
+<td><code>10</code></td>
+<td>Maximum open connections</td>
+</tr>
+<tr>
+<td><code>database.pool.min_conns</code></td>
+<td>int</td>
+<td><code>2</code></td>
+<td>Minimum idle connections</td>
+</tr>
+<tr>
+<td><code>database.connect_timeout</code></td>
+<td>duration</td>
+<td><code>10s</code></td>
+<td>Connection establishment timeout</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="secrets"><code>secrets</code><a class="headerlink" href="#secrets" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>secrets.enabled</code></td>
+<td>bool</td>
+<td><code>false</code></td>
+<td>Enable secrets management plugin</td>
+</tr>
+<tr>
+<td><code>secrets.provider</code></td>
+<td>string</td>
+<td><code>openbao</code></td>
+<td>Secret store backend</td>
+</tr>
+<tr>
+<td><code>secrets.cache_ttl</code></td>
+<td>duration</td>
+<td><code>5m</code></td>
+<td>How long fetched secrets are cached in memory</td>
+</tr>
+</tbody>
+</table>
+<h3 id="secretsopenbao"><code>secrets.openbao</code><a class="headerlink" href="#secretsopenbao" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>secrets.openbao.address</code></td>
+<td>string</td>
+<td><code>""</code></td>
+<td>OpenBao server URL (e.g., <code>http://openbao:8200</code>)</td>
+</tr>
+<tr>
+<td><code>secrets.openbao.mount_path</code></td>
+<td>string</td>
+<td><code>secret</code></td>
+<td>KV v2 mount path</td>
+</tr>
+<tr>
+<td><code>secrets.openbao.auth.method</code></td>
+<td>string</td>
+<td><code>""</code></td>
+<td>Auth method: <code>token</code> or <code>approle</code></td>
+</tr>
+<tr>
+<td><code>secrets.openbao.auth.token</code></td>
+<td>string</td>
+<td><code>""</code></td>
+<td>Static token (used when <code>method: token</code>)</td>
+</tr>
+<tr>
+<td><code>secrets.openbao.auth.role_id</code></td>
+<td>string</td>
+<td><code>""</code></td>
+<td>AppRole role_id (used when <code>method: approle</code>)</td>
+</tr>
+<tr>
+<td><code>secrets.openbao.auth.secret_id</code></td>
+<td>string</td>
+<td><code>""</code></td>
+<td>AppRole secret_id (used when <code>method: approle</code>)</td>
+</tr>
+</tbody>
+</table>
+<h3 id="secretsinject"><code>secrets.inject</code><a class="headerlink" href="#secretsinject" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>secrets.inject.headers</code></td>
+<td>list</td>
+<td>Secrets injected as HTTP request headers</td>
+</tr>
+<tr>
+<td><code>secrets.inject.env_file</code></td>
+<td>string</td>
+<td>Path to write a <code>.env</code> file with secret values</td>
+</tr>
+<tr>
+<td><code>secrets.inject.env</code></td>
+<td>list</td>
+<td>Secrets written to the env file</td>
+</tr>
+</tbody>
+</table>
+<p>Each entry in <code>secrets.inject.headers</code>:</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>secret_path</code></td>
+<td>string</td>
+<td>KV path of the secret</td>
+</tr>
+<tr>
+<td><code>secret_key</code></td>
+<td>string</td>
+<td>Key within the secret map</td>
+</tr>
+<tr>
+<td><code>header</code></td>
+<td>string</td>
+<td>HTTP header name</td>
+</tr>
+</tbody>
+</table>
+<h3 id="secretsdynamic"><code>secrets.dynamic</code><a class="headerlink" href="#secretsdynamic" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>secrets.dynamic.postgres.enabled</code></td>
+<td>bool</td>
+<td><code>false</code></td>
+<td>Enable dynamic Postgres credential generation</td>
+</tr>
+<tr>
+<td><code>secrets.dynamic.postgres.roles</code></td>
+<td>list</td>
+<td><code>[]</code></td>
+<td>OpenBao database roles to request credentials for</td>
+</tr>
+</tbody>
+</table>
+<p>Each entry in <code>roles</code>:</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>name</code></td>
+<td>string</td>
+<td>OpenBao database role name</td>
+</tr>
+<tr>
+<td><code>env_var_user</code></td>
+<td>string</td>
+<td>Env var to write the generated username into</td>
+</tr>
+<tr>
+<td><code>env_var_password</code></td>
+<td>string</td>
+<td>Env var to write the generated password into</td>
+</tr>
+</tbody>
+</table>
+<h3 id="secretshealth"><code>secrets.health</code><a class="headerlink" href="#secretshealth" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>secrets.health.check_interval</code></td>
+<td>duration</td>
+<td><code>6h</code></td>
+<td>How often to run secret health checks</td>
+</tr>
+<tr>
+<td><code>secrets.health.max_static_age</code></td>
+<td>duration</td>
+<td><code>2160h</code></td>
+<td>Maximum acceptable age of a static secret (90 days)</td>
+</tr>
+<tr>
+<td><code>secrets.health.weak_patterns</code></td>
+<td>list</td>
+<td><code>[]</code></td>
+<td>Substrings that indicate a weak or default secret</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="webhooks"><code>webhooks</code><a class="headerlink" href="#webhooks" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>webhooks.endpoints</code></td>
+<td>list</td>
+<td>Webhook endpoints to deliver audit events to</td>
+</tr>
+</tbody>
+</table>
+<p>Each entry in <code>webhooks.endpoints</code>:</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>url</code></td>
+<td>string</td>
+<td>—</td>
+<td>HTTP(S) endpoint to POST events to. Required</td>
+</tr>
+<tr>
+<td><code>events</code></td>
+<td>list</td>
+<td>—</td>
+<td>Event types to deliver. Use <code>["*"]</code> to subscribe to all</td>
+</tr>
+<tr>
+<td><code>format</code></td>
+<td>string</td>
+<td><code>raw</code></td>
+<td>Payload format: <code>raw</code>, <code>slack</code>, or <code>discord</code></td>
+</tr>
+<tr>
+<td><code>timeout_seconds</code></td>
+<td>int</td>
+<td><code>10</code></td>
+<td>Per-request HTTP timeout in seconds</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="audit"><code>audit</code><a class="headerlink" href="#audit" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>audit.enabled</code></td>
+<td>bool</td>
+<td><code>true</code></td>
+<td>Enable the audit log sink</td>
+</tr>
+<tr>
+<td><code>audit.output</code></td>
+<td>string</td>
+<td><code>stdout</code></td>
+<td>Write destination: <code>stdout</code> or a file path</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="log"><code>log</code><a class="headerlink" href="#log" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>log.level</code></td>
+<td>string</td>
+<td><code>info</code></td>
+<td>Log level: <code>debug</code>, <code>info</code>, <code>warn</code>, <code>error</code></td>
+</tr>
+<tr>
+<td><code>log.format</code></td>
+<td>string</td>
+<td><code>json</code></td>
+<td>Log format: <code>json</code> or <code>text</code></td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="admin"><code>admin</code><a class="headerlink" href="#admin" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Default</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>admin.enabled</code></td>
+<td>bool</td>
+<td><code>false</code></td>
+<td>Enable the admin API at <code>/_vibewarden/admin/*</code></td>
+</tr>
+<tr>
+<td><code>admin.token</code></td>
+<td>string</td>
+<td><code>""</code></td>
+<td>Bearer token for admin API authentication</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="overrides"><code>overrides</code><a class="headerlink" href="#overrides" title="Permanent link">&para;</a></h2>
+<p>Escape hatches for advanced users. All fields are optional.</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>overrides.kratos_config</code></td>
+<td>string</td>
+<td>Path to a custom <code>kratos.yml</code> file. When set, VibeWarden uses it instead of generating one</td>
+</tr>
+<tr>
+<td><code>overrides.compose_file</code></td>
+<td>string</td>
+<td>Path to a custom <code>docker-compose.yml</code> file</td>
+</tr>
+<tr>
+<td><code>overrides.identity_schema</code></td>
+<td>string</td>
+<td>Path to a custom Kratos identity schema JSON file</td>
+</tr>
+</tbody>
+</table>
+<hr />
+<h2 id="full-example-vibewardenyaml">Full example <code>vibewarden.yaml</code><a class="headerlink" href="#full-example-vibewardenyaml" title="Permanent link">&para;</a></h2>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="nt">profile</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">dev</span>
+</span><span id="__span-9-2"><a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a>
+</span><span id="__span-9-3"><a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="nt">server</span><span class="p">:</span>
+</span><span id="__span-9-4"><a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="w">  </span><span class="nt">host</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0.0.0.0</span>
+</span><span id="__span-9-5"><a id="__codelineno-9-5" name="__codelineno-9-5" href="#__codelineno-9-5"></a><span class="w">  </span><span class="nt">port</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">8080</span>
+</span><span id="__span-9-6"><a id="__codelineno-9-6" name="__codelineno-9-6" href="#__codelineno-9-6"></a>
+</span><span id="__span-9-7"><a id="__codelineno-9-7" name="__codelineno-9-7" href="#__codelineno-9-7"></a><span class="nt">upstream</span><span class="p">:</span>
+</span><span id="__span-9-8"><a id="__codelineno-9-8" name="__codelineno-9-8" href="#__codelineno-9-8"></a><span class="w">  </span><span class="nt">host</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">127.0.0.1</span>
+</span><span id="__span-9-9"><a id="__codelineno-9-9" name="__codelineno-9-9" href="#__codelineno-9-9"></a><span class="w">  </span><span class="nt">port</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">3000</span>
+</span><span id="__span-9-10"><a id="__codelineno-9-10" name="__codelineno-9-10" href="#__codelineno-9-10"></a>
+</span><span id="__span-9-11"><a id="__codelineno-9-11" name="__codelineno-9-11" href="#__codelineno-9-11"></a><span class="nt">auth</span><span class="p">:</span>
+</span><span id="__span-9-12"><a id="__codelineno-9-12" name="__codelineno-9-12" href="#__codelineno-9-12"></a><span class="w">  </span><span class="nt">enabled</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+</span><span id="__span-9-13"><a id="__codelineno-9-13" name="__codelineno-9-13" href="#__codelineno-9-13"></a><span class="w">  </span><span class="nt">mode</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">jwt</span>
+</span><span id="__span-9-14"><a id="__codelineno-9-14" name="__codelineno-9-14" href="#__codelineno-9-14"></a><span class="w">  </span><span class="nt">jwt</span><span class="p">:</span>
+</span><span id="__span-9-15"><a id="__codelineno-9-15" name="__codelineno-9-15" href="#__codelineno-9-15"></a><span class="w">    </span><span class="nt">jwks_url</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;https://dev-abc123.us.auth0.com/.well-known/jwks.json&quot;</span>
+</span><span id="__span-9-16"><a id="__codelineno-9-16" name="__codelineno-9-16" href="#__codelineno-9-16"></a><span class="w">    </span><span class="nt">issuer</span><span class="p">:</span><span class="w">   </span><span class="s">&quot;https://dev-abc123.us.auth0.com/&quot;</span>
+</span><span id="__span-9-17"><a id="__codelineno-9-17" name="__codelineno-9-17" href="#__codelineno-9-17"></a><span class="w">    </span><span class="nt">audience</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;https://api.your-app.com&quot;</span>
+</span><span id="__span-9-18"><a id="__codelineno-9-18" name="__codelineno-9-18" href="#__codelineno-9-18"></a><span class="w">    </span><span class="nt">claims_to_headers</span><span class="p">:</span>
+</span><span id="__span-9-19"><a id="__codelineno-9-19" name="__codelineno-9-19" href="#__codelineno-9-19"></a><span class="w">      </span><span class="nt">sub</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">X-User-Id</span>
+</span><span id="__span-9-20"><a id="__codelineno-9-20" name="__codelineno-9-20" href="#__codelineno-9-20"></a><span class="w">      </span><span class="nt">email</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">X-User-Email</span>
+</span><span id="__span-9-21"><a id="__codelineno-9-21" name="__codelineno-9-21" href="#__codelineno-9-21"></a><span class="w">      </span><span class="nt">email_verified</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">X-User-Verified</span>
+</span><span id="__span-9-22"><a id="__codelineno-9-22" name="__codelineno-9-22" href="#__codelineno-9-22"></a><span class="w">  </span><span class="nt">public_paths</span><span class="p">:</span>
+</span><span id="__span-9-23"><a id="__codelineno-9-23" name="__codelineno-9-23" href="#__codelineno-9-23"></a><span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/health</span>
+</span><span id="__span-9-24"><a id="__codelineno-9-24" name="__codelineno-9-24" href="#__codelineno-9-24"></a><span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">/static/*</span>
+</span><span id="__span-9-25"><a id="__codelineno-9-25" name="__codelineno-9-25" href="#__codelineno-9-25"></a>
+</span><span id="__span-9-26"><a id="__codelineno-9-26" name="__codelineno-9-26" href="#__codelineno-9-26"></a><span class="nt">rate_limit</span><span class="p">:</span>
+</span><span id="__span-9-27"><a id="__codelineno-9-27" name="__codelineno-9-27" href="#__codelineno-9-27"></a><span class="w">  </span><span class="nt">enabled</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+</span><span id="__span-9-28"><a id="__codelineno-9-28" name="__codelineno-9-28" href="#__codelineno-9-28"></a><span class="w">  </span><span class="nt">store</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">memory</span>
+</span><span id="__span-9-29"><a id="__codelineno-9-29" name="__codelineno-9-29" href="#__codelineno-9-29"></a><span class="w">  </span><span class="nt">per_ip</span><span class="p">:</span>
+</span><span id="__span-9-30"><a id="__codelineno-9-30" name="__codelineno-9-30" href="#__codelineno-9-30"></a><span class="w">    </span><span class="nt">requests_per_second</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">10</span>
+</span><span id="__span-9-31"><a id="__codelineno-9-31" name="__codelineno-9-31" href="#__codelineno-9-31"></a><span class="w">    </span><span class="nt">burst</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">20</span>
+</span><span id="__span-9-32"><a id="__codelineno-9-32" name="__codelineno-9-32" href="#__codelineno-9-32"></a><span class="w">  </span><span class="nt">per_user</span><span class="p">:</span>
+</span><span id="__span-9-33"><a id="__codelineno-9-33" name="__codelineno-9-33" href="#__codelineno-9-33"></a><span class="w">    </span><span class="nt">requests_per_second</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">100</span>
+</span><span id="__span-9-34"><a id="__codelineno-9-34" name="__codelineno-9-34" href="#__codelineno-9-34"></a><span class="w">    </span><span class="nt">burst</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">200</span>
+</span><span id="__span-9-35"><a id="__codelineno-9-35" name="__codelineno-9-35" href="#__codelineno-9-35"></a>
+</span><span id="__span-9-36"><a id="__codelineno-9-36" name="__codelineno-9-36" href="#__codelineno-9-36"></a><span class="nt">security_headers</span><span class="p">:</span>
+</span><span id="__span-9-37"><a id="__codelineno-9-37" name="__codelineno-9-37" href="#__codelineno-9-37"></a><span class="w">  </span><span class="nt">enabled</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+</span><span id="__span-9-38"><a id="__codelineno-9-38" name="__codelineno-9-38" href="#__codelineno-9-38"></a><span class="w">  </span><span class="nt">hsts_max_age</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">31536000</span>
+</span><span id="__span-9-39"><a id="__codelineno-9-39" name="__codelineno-9-39" href="#__codelineno-9-39"></a><span class="w">  </span><span class="nt">content_security_policy</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;default-src</span><span class="nv"> </span><span class="s">&#39;self&#39;&quot;</span>
+</span><span id="__span-9-40"><a id="__codelineno-9-40" name="__codelineno-9-40" href="#__codelineno-9-40"></a>
+</span><span id="__span-9-41"><a id="__codelineno-9-41" name="__codelineno-9-41" href="#__codelineno-9-41"></a><span class="nt">telemetry</span><span class="p">:</span>
+</span><span id="__span-9-42"><a id="__codelineno-9-42" name="__codelineno-9-42" href="#__codelineno-9-42"></a><span class="w">  </span><span class="nt">enabled</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+</span><span id="__span-9-43"><a id="__codelineno-9-43" name="__codelineno-9-43" href="#__codelineno-9-43"></a><span class="w">  </span><span class="nt">prometheus</span><span class="p">:</span>
+</span><span id="__span-9-44"><a id="__codelineno-9-44" name="__codelineno-9-44" href="#__codelineno-9-44"></a><span class="w">    </span><span class="nt">enabled</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+</span><span id="__span-9-45"><a id="__codelineno-9-45" name="__codelineno-9-45" href="#__codelineno-9-45"></a><span class="w">  </span><span class="nt">path_patterns</span><span class="p">:</span>
+</span><span id="__span-9-46"><a id="__codelineno-9-46" name="__codelineno-9-46" href="#__codelineno-9-46"></a><span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">&quot;/api/v1/users/:id&quot;</span>
+</span><span id="__span-9-47"><a id="__codelineno-9-47" name="__codelineno-9-47" href="#__codelineno-9-47"></a><span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">&quot;/api/v1/orders/:order_id&quot;</span>
+</span><span id="__span-9-48"><a id="__codelineno-9-48" name="__codelineno-9-48" href="#__codelineno-9-48"></a>
+</span><span id="__span-9-49"><a id="__codelineno-9-49" name="__codelineno-9-49" href="#__codelineno-9-49"></a><span class="nt">log</span><span class="p">:</span>
+</span><span id="__span-9-50"><a id="__codelineno-9-50" name="__codelineno-9-50" href="#__codelineno-9-50"></a><span class="w">  </span><span class="nt">level</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">info</span>
+</span><span id="__span-9-51"><a id="__codelineno-9-51" name="__codelineno-9-51" href="#__codelineno-9-51"></a><span class="w">  </span><span class="nt">format</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">json</span>
+</span></code></pre></div>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+        <div class="md-social">
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://github.com/vibewarden/vibewarden" target="_blank" rel="noopener" title="github.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 496 512"><!--! Font Awesome Free 6.7.2 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2024 Fonticons, Inc.--><path d="M165.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M244.8 8C106.1 8 0 113.3 0 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C428.2 457.8 496 362.9 496 252 496 113.3 383.5 8 244.8 8M97.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    <script id="__config" type="application/json">{"base": "..", "features": ["navigation.tabs", "navigation.sections", "navigation.expand", "navigation.top", "search.suggest", "search.highlight", "content.code.copy", "content.code.annotate", "toc.follow"], "search": "../assets/javascripts/workers/search.f8cc74c7.min.js", "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": {"provider": "mike"}}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.60a45f97.min.js"></script>
+      
+    
+  </body>
+</html>
