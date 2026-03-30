@@ -538,6 +538,55 @@ cors:
   # Seconds to cache preflight response (0 omits Access-Control-Max-Age)
   max_age: 0
 
+# Web Application Firewall (WAF)
+# VibeWarden's built-in WAF inspects every inbound request for common attack
+# patterns before forwarding it to the upstream application.  No external
+# dependency is required — all detection runs in-process.
+#
+# Attack categories detected:
+#   sqli             — SQL injection payloads in query strings and request bodies
+#   xss              — Cross-site scripting payloads
+#   path_traversal   — Directory traversal sequences (e.g. "../..")
+#   command_injection — Shell metacharacters and command-chaining patterns
+#
+# When a request matches an active rule, VibeWarden responds immediately with:
+#   HTTP 400 Bad Request   (mode: block, default)
+#   HTTP 200 forwarded     (mode: detect  — request passes through, attack is logged)
+#
+waf:
+  # Enable the WAF middleware (default: false).
+  enabled: false
+
+  # Detection mode controls what happens when a rule fires.
+  # "block"  — reject the request with 400 Bad Request (recommended for production).
+  # "detect" — pass the request through but emit a structured log event.
+  #            Use detect mode to audit traffic before switching to block mode.
+  mode: block
+
+  # Content-Type validation — rejects requests whose Content-Type is not in the
+  # allowed list with 415 Unsupported Media Type.
+  content_type_validation:
+    # Enable Content-Type validation on body-bearing requests (default: false).
+    enabled: false
+    # Media types accepted for request bodies. Requests with any other
+    # Content-Type receive 415 Unsupported Media Type.
+    allowed:
+      - application/json
+      - application/x-www-form-urlencoded
+      - multipart/form-data
+
+  # Per-rule toggles. Each rule is enabled by default when waf.enabled is true.
+  # Set a rule to false to skip that check while keeping all others active.
+  rules:
+    # Detect SQL injection patterns in query strings and request bodies.
+    sqli: true
+    # Detect cross-site scripting payloads.
+    xss: true
+    # Detect directory traversal sequences (e.g. ../../etc/passwd).
+    path_traversal: true
+    # Detect shell command-injection metacharacters.
+    command_injection: true
+
 # Security headers added to all proxied responses
 security_headers:
   # Enable security headers middleware (recommended: true)

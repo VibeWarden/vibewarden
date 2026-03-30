@@ -295,12 +295,51 @@ Only read when `store` is `redis`.
 
 ## `waf`
 
+VibeWarden's built-in Web Application Firewall inspects every inbound request
+for common attack patterns in-process, with no external dependencies.
+
+### `waf` (top-level)
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `waf.enabled` | bool | `false` | Enable the WAF middleware |
+| `waf.mode` | string | `block` | Detection mode: `block` (reject with 400) or `detect` (pass through and log) |
+
+### `waf.rules`
+
+Per-rule toggles. All rules are enabled by default when `waf.enabled` is `true`.
+Set a rule to `false` to disable that check while keeping all others active.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `waf.rules.sqli` | bool | `true` | Detect SQL injection patterns in query strings and request bodies |
+| `waf.rules.xss` | bool | `true` | Detect cross-site scripting payloads |
+| `waf.rules.path_traversal` | bool | `true` | Detect directory traversal sequences (e.g. `../../etc/passwd`) |
+| `waf.rules.command_injection` | bool | `true` | Detect shell command-injection metacharacters |
+
 ### `waf.content_type_validation`
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `waf.content_type_validation.enabled` | bool | `false` | Enable Content-Type validation on body-bearing requests |
 | `waf.content_type_validation.allowed` | list | `[application/json, application/x-www-form-urlencoded, multipart/form-data]` | Permitted media types. Requests with other types receive `415 Unsupported Media Type` |
+
+```yaml
+waf:
+  enabled: true
+  mode: block
+  rules:
+    sqli: true
+    xss: true
+    path_traversal: true
+    command_injection: true
+  content_type_validation:
+    enabled: true
+    allowed:
+      - application/json
+      - application/x-www-form-urlencoded
+      - multipart/form-data
+```
 
 ---
 
