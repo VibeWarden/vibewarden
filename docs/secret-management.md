@@ -53,14 +53,14 @@ Copy the printed `role_id` and `secret_id`.
 
 ### 2. Store a secret
 
-Use the VibeWarden CLI (or `curl` against OpenBao directly in dev):
+Use the OpenBao CLI (`bao`) or `curl` to write secrets directly to OpenBao:
 
 ```bash
 # Store your Stripe API key
-vibew secret store app/stripe api_key=sk_live_abc123
+bao kv put secret/app/stripe api_key=sk_live_abc123
 
 # Store your internal API token
-vibew secret store app/internal token=bearer-xyz
+bao kv put secret/app/internal token=bearer-xyz
 ```
 
 ### 3. Configure injection
@@ -106,13 +106,15 @@ Static secrets are key/value pairs stored in OpenBao KV v2 and refreshed on a co
 
 ### Storing secrets
 
+Use the OpenBao CLI (`bao`) to write secrets to OpenBao directly. VibeWarden reads
+them at runtime — it does not provide a write command.
+
 ```bash
-# CLI (reads from stdin if value is omitted)
-vibew secret store <path> <key>=<value>
-vibew secret store app/database password=s3cr3t!
+# Single key
+bao kv put secret/app/database password=s3cr3t!
 
 # Multiple keys at once
-vibew secret store app/stripe \
+bao kv put secret/app/stripe \
   api_key=sk_live_abc \
   webhook_secret=whsec_xyz
 ```
@@ -120,15 +122,15 @@ vibew secret store app/stripe \
 ### Listing secrets
 
 ```bash
-vibew secret list           # list all paths
-vibew secret list app/      # list paths under app/
+vibew secret list           # list all managed paths
 ```
 
 ### Viewing secrets
 
 ```bash
-vibew secret get app/stripe              # shows masked values: api_key=***
-vibew secret get app/stripe --reveal     # shows actual values
+vibew secret get app/stripe              # human-readable output
+vibew secret get app/stripe --json       # JSON output
+vibew secret get app/stripe --env        # export KEY=value lines
 ```
 
 ### Injection modes
@@ -347,15 +349,23 @@ Health events are also delivered to configured webhooks (Slack, Discord, etc.) w
 ## CLI Commands
 
 ```bash
-# Store a secret (key=value pairs)
-vibew secret store <path> <key>=<value> [<key>=<value>...]
+# Read a secret (human-readable, JSON, or shell-sourceable env output)
+vibew secret get <alias-or-path>
+vibew secret get <alias-or-path> --json
+vibew secret get <alias-or-path> --env
 
-# Read a secret (values masked by default)
-vibew secret get <path>
-vibew secret get <path> --reveal
+# List all managed secret paths
+vibew secret list
 
-# List secrets at a path prefix
-vibew secret list [<prefix>]
+# Generate a cryptographically secure random secret
+vibew secret generate
+vibew secret generate --length 64
+```
+
+To write secrets to OpenBao, use the `bao` CLI directly:
+
+```bash
+bao kv put secret/<path> <key>=<value> [<key>=<value>...]
 ```
 
 ---
@@ -463,10 +473,10 @@ EOF
 
 **Symptom:** `openbao: secret not found at "app/stripe"`
 
-**Fix:** The secret does not exist in OpenBao yet. Write it:
+**Fix:** The secret does not exist in OpenBao yet. Write it using the `bao` CLI:
 
 ```bash
-vibew secret store app/stripe api_key=your-api-key
+bao kv put secret/app/stripe api_key=your-api-key
 ```
 
 ---

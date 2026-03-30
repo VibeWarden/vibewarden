@@ -422,7 +422,7 @@ The KV secret at `auth/api-keys` must contain string fields where each key is
 the key name and each value is the SHA-256 hash:
 
 ```
-vibew secret store auth/api-keys ci-pipeline=e3b0c4...
+bao kv put secret/auth/api-keys ci-pipeline=e3b0c4...
 ```
 
 ### Scope-based authorization

@@ -51,12 +51,13 @@ Common flags:
 
 | Flag | Description |
 |------|-------------|
-| `--upstream <port>` | Port your app listens on (required) |
-| `--auth` | Enable authentication (defaults to JWT/OIDC mode) |
+| `--upstream <port>` | Port your app listens on (default: auto-detected or 3000) |
+| `--auth` | Enable authentication (Ory Kratos) |
 | `--rate-limit` | Enable rate limiting |
-| `--tls --domain example.com` | Enable TLS with Let's Encrypt |
-| `--secrets` | Enable secrets management (OpenBao) |
-| `--observability` | Add Prometheus + Grafana |
+| `--tls --domain example.com` | Enable TLS (requires `--domain`) |
+| `--force` | Overwrite existing files |
+| `--skip-wrapper` | Skip vibew wrapper script generation |
+| `--agent <type>` | Generate AI context files: `claude`, `cursor`, `generic`, `all`, or `none` |
 
 ### What `init` generates
 
@@ -205,7 +206,7 @@ examples with Auth0, Keycloak, Firebase, Cognito, Okta, Supabase, and Kratos.
 ### Add observability
 
 ```bash
-./vibew add observability
+./vibew add metrics
 ./vibew dev
 ```
 
