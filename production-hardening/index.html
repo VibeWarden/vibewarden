@@ -1628,7 +1628,9 @@ Each item is a concrete action, not a vague recommendation.</p>
 <ul>
 <li>[ ] <code>security_headers.enabled: true</code>.</li>
 <li>[ ] <code>content_security_policy</code> is set to the strictest policy your app supports.
-  At minimum use <code>"default-src 'self'"</code>. Tighten per-app after testing:
+  The default is empty (no CSP header) so that VibeWarden works with any app out
+  of the box. For production, start with <code>"default-src 'self'"</code> and tighten from
+  there after testing with your actual app:
   <div class="language-yaml highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="nt">content_security_policy</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">&gt;-</span>
 </span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">  </span><span class="no">default-src &#39;self&#39;;</span>
 </span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="w">  </span><span class="no">script-src &#39;self&#39; &#39;nonce-{nonce}&#39;;</span>

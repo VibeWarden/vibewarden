@@ -2755,8 +2755,8 @@ VibeWarden falls back to <code>host.docker.internal</code>.</p>
 <tr>
 <td><code>security_headers.content_security_policy</code></td>
 <td>string</td>
-<td><code>default-src 'self'</code></td>
-<td><code>Content-Security-Policy</code> value</td>
+<td><code>""</code> (disabled)</td>
+<td><code>Content-Security-Policy</code> value — empty by default; set explicitly to opt in</td>
 </tr>
 <tr>
 <td><code>security_headers.referrer_policy</code></td>
@@ -4040,7 +4040,7 @@ order; the first matching route wins.</p>
 </span><span id="__span-10-40"><a id="__codelineno-10-40" name="__codelineno-10-40" href="#__codelineno-10-40"></a><span class="nt">security_headers</span><span class="p">:</span>
 </span><span id="__span-10-41"><a id="__codelineno-10-41" name="__codelineno-10-41" href="#__codelineno-10-41"></a><span class="w">  </span><span class="nt">enabled</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
 </span><span id="__span-10-42"><a id="__codelineno-10-42" name="__codelineno-10-42" href="#__codelineno-10-42"></a><span class="w">  </span><span class="nt">hsts_max_age</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">31536000</span>
-</span><span id="__span-10-43"><a id="__codelineno-10-43" name="__codelineno-10-43" href="#__codelineno-10-43"></a><span class="w">  </span><span class="nt">content_security_policy</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;default-src</span><span class="nv"> </span><span class="s">&#39;self&#39;&quot;</span>
+</span><span id="__span-10-43"><a id="__codelineno-10-43" name="__codelineno-10-43" href="#__codelineno-10-43"></a><span class="w">  </span><span class="nt">content_security_policy</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;&quot;</span>
 </span><span id="__span-10-44"><a id="__codelineno-10-44" name="__codelineno-10-44" href="#__codelineno-10-44"></a>
 </span><span id="__span-10-45"><a id="__codelineno-10-45" name="__codelineno-10-45" href="#__codelineno-10-45"></a><span class="nt">telemetry</span><span class="p">:</span>
 </span><span id="__span-10-46"><a id="__codelineno-10-46" name="__codelineno-10-46" href="#__codelineno-10-46"></a><span class="w">  </span><span class="nt">enabled</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
