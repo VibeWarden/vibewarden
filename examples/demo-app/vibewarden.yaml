@@ -37,6 +37,7 @@ kratos:
 
 auth:
   enabled: true
+  mode: "kratos"
   public_paths:
     - "/"
     - "/public"
