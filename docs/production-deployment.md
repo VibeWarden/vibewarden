@@ -254,7 +254,7 @@ security_headers:
   hsts_preload: false
   content_type_nosniff: true
   frame_option: "DENY"
-  content_security_policy: "default-src 'self'"
+  content_security_policy: "default-src 'self'; style-src 'self' 'unsafe-inline'"
   referrer_policy: "strict-origin-when-cross-origin"
   permissions_policy: ""
   cross_origin_opener_policy: "same-origin"

@@ -553,8 +553,12 @@ security_headers:
   content_type_nosniff: true
   # Set X-Frame-Options: "DENY", "SAMEORIGIN", or "" to disable
   frame_option: "DENY"
-  # Content-Security-Policy value (empty string disables the header)
-  content_security_policy: "default-src 'self'"
+  # Content-Security-Policy value (empty string disables the header — the default).
+  # CSP is disabled by default because "default-src 'self'" breaks most real apps
+  # (inline styles, external fonts, CDN scripts, etc.).  Set an explicit policy
+  # once you know your app's requirements, e.g.:
+  #   content_security_policy: "default-src 'self'; style-src 'self' 'unsafe-inline'"
+  content_security_policy: ""
   # Referrer-Policy value (empty string disables the header)
   referrer_policy: "strict-origin-when-cross-origin"
   # Permissions-Policy value (empty string disables the header)

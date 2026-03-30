@@ -704,7 +704,9 @@ type SecurityHeadersConfig struct {
 	// FrameOption sets X-Frame-Options value: "DENY", "SAMEORIGIN", or "" to disable (default: "DENY")
 	FrameOption string `mapstructure:"frame_option"`
 
-	// ContentSecurityPolicy sets Content-Security-Policy value (default: "default-src 'self'")
+	// ContentSecurityPolicy sets Content-Security-Policy value.
+	// An empty string (the default) disables the header entirely; users opt in
+	// by setting an explicit policy in vibewarden.yaml.
 	ContentSecurityPolicy string `mapstructure:"content_security_policy"`
 
 	// ReferrerPolicy sets Referrer-Policy value (default: "strict-origin-when-cross-origin")
@@ -1738,7 +1740,7 @@ func Load(configPath string) (*Config, error) {
 	v.SetDefault("security_headers.hsts_preload", false)
 	v.SetDefault("security_headers.content_type_nosniff", true)
 	v.SetDefault("security_headers.frame_option", "DENY")
-	v.SetDefault("security_headers.content_security_policy", "default-src 'self'")
+	v.SetDefault("security_headers.content_security_policy", "")
 	v.SetDefault("security_headers.referrer_policy", "strict-origin-when-cross-origin")
 	v.SetDefault("security_headers.permissions_policy", "")
 	v.SetDefault("security_headers.cross_origin_opener_policy", "same-origin")

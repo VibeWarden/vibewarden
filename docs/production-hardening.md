@@ -57,7 +57,9 @@ Each item is a concrete action, not a vague recommendation.
 
 - [ ] `security_headers.enabled: true`.
 - [ ] `content_security_policy` is set to the strictest policy your app supports.
-  At minimum use `"default-src 'self'"`. Tighten per-app after testing:
+  The default is empty (no CSP header) so that VibeWarden works with any app out
+  of the box. For production, start with `"default-src 'self'"` and tighten from
+  there after testing with your actual app:
   ```yaml
   content_security_policy: >-
     default-src 'self';
