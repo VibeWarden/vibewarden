@@ -159,7 +159,7 @@ func (c *HTTPChecker) probe(ctx context.Context) {
 		c.recordFailure(err.Error())
 		return
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close() //nolint:errcheck // body close error on health probe is not actionable
 
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
 		c.recordSuccess()

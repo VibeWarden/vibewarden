@@ -64,7 +64,7 @@ func (s *Store) Read(_ context.Context, outputDir string) (*generate.GeneratedCr
 	if err != nil {
 		return nil, err
 	}
-	defer file.Close()
+	defer func() { _ = file.Close() }() //nolint:errcheck // read-only file close error is not actionable
 
 	values := make(map[string]string)
 	scanner := bufio.NewScanner(file)

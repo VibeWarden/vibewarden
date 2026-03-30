@@ -45,6 +45,14 @@ linters:
       severity: medium
       confidence: medium
 
+    errcheck:
+      # fmt.Fprint* writes to user-facing output (os.Stdout/Stderr or io.Writer);
+      # write errors on these streams are not recoverable and can be ignored.
+      exclude-functions:
+        - "fmt.Fprint"
+        - "fmt.Fprintln"
+        - "fmt.Fprintf"
+
 issues:
   max-issues-per-linter: 0
   max-same-issues: 0

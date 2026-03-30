@@ -340,7 +340,7 @@ func (p *Plugin) HealthCheck(ctx context.Context) ports.HealthStatus {
 		p.healthMsg = fmt.Sprintf("auth: kratos unreachable: %s", err)
 		return ports.HealthStatus{Healthy: false, Message: p.healthMsg}
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }() //nolint:errcheck // response body close error is not actionable
 
 	if resp.StatusCode >= 500 {
 		p.healthy = false
@@ -399,7 +399,7 @@ func (p *Plugin) CheckDependency(ctx context.Context) ports.DependencyStatus {
 			Error:     fmt.Sprintf("kratos unreachable: %s", err),
 		}
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }() //nolint:errcheck // response body close error is not actionable
 
 	if resp.StatusCode >= 500 {
 		return ports.DependencyStatus{
@@ -708,7 +708,7 @@ func (c *kratosHTTPChecker) Authenticate(ctx context.Context, r *http.Request) i
 	if err != nil {
 		return identity.Failure("provider_unavailable", fmt.Sprintf("kratos unreachable: %s", err))
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }() //nolint:errcheck // response body close error is not actionable
 
 	switch {
 	case resp.StatusCode == http.StatusOK:

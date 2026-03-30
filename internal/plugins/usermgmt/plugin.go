@@ -274,7 +274,7 @@ func (p *Plugin) HealthCheck(ctx context.Context) ports.HealthStatus {
 		p.healthMsg = fmt.Sprintf("user-management: kratos admin unreachable: %s", err)
 		return ports.HealthStatus{Healthy: false, Message: p.healthMsg}
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }() //nolint:errcheck // response body close error is not actionable
 
 	if resp.StatusCode >= 500 {
 		p.healthy = false

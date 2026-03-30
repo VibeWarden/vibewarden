@@ -51,7 +51,7 @@ func DiscoverJWKSURL(ctx context.Context, issuerURL string, timeout time.Duratio
 	if err != nil {
 		return "", fmt.Errorf("oidc discovery: fetching %s: %w", discoveryURL, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }() //nolint:errcheck // response body close error is not actionable
 
 	if resp.StatusCode != http.StatusOK {
 		return "", fmt.Errorf("oidc discovery: endpoint returned %d", resp.StatusCode)

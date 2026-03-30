@@ -75,7 +75,7 @@ func TestStore_Write_DotenvFormat(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Open(%q): %v", path, err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }() //nolint:errcheck
 
 	wantKeys := map[string]string{
 		"POSTGRES_PASSWORD":      creds.PostgresPassword,

@@ -43,7 +43,7 @@ func startRedisContainer(t *testing.T) *redis.Options {
 func TestRedisStore_Integration_AllowWithinBurst(t *testing.T) {
 	opts := startRedisContainer(t)
 	client := redis.NewClient(opts)
-	t.Cleanup(func() { client.Close() })
+	t.Cleanup(func() { _ = client.Close() }) //nolint:errcheck
 
 	ctx := context.Background()
 	prefix := fmt.Sprintf("vw:rl:int:%d", time.Now().UnixNano())
@@ -65,7 +65,7 @@ func TestRedisStore_Integration_AllowWithinBurst(t *testing.T) {
 func TestRedisStore_Integration_BurstExhaustion(t *testing.T) {
 	opts := startRedisContainer(t)
 	client := redis.NewClient(opts)
-	t.Cleanup(func() { client.Close() })
+	t.Cleanup(func() { _ = client.Close() }) //nolint:errcheck
 
 	ctx := context.Background()
 	prefix := fmt.Sprintf("vw:rl:int:%d", time.Now().UnixNano())
@@ -96,7 +96,7 @@ func TestRedisStore_Integration_BurstExhaustion(t *testing.T) {
 func TestRedisStore_Integration_IndependentKeys(t *testing.T) {
 	opts := startRedisContainer(t)
 	client := redis.NewClient(opts)
-	t.Cleanup(func() { client.Close() })
+	t.Cleanup(func() { _ = client.Close() }) //nolint:errcheck
 
 	ctx := context.Background()
 	prefix := fmt.Sprintf("vw:rl:int:%d", time.Now().UnixNano())
@@ -120,7 +120,7 @@ func TestRedisStore_Integration_IndependentKeys(t *testing.T) {
 func TestRedisStore_Integration_KeyTTL(t *testing.T) {
 	opts := startRedisContainer(t)
 	client := redis.NewClient(opts)
-	t.Cleanup(func() { client.Close() })
+	t.Cleanup(func() { _ = client.Close() }) //nolint:errcheck
 
 	ctx := context.Background()
 	prefix := fmt.Sprintf("vw:rl:int:%d", time.Now().UnixNano())
@@ -172,7 +172,7 @@ func TestFallbackStore_Integration_FallbackOnRedisFailure(t *testing.T) {
 	}
 
 	// Close the client to simulate Redis going away.
-	client.Close()
+	_ = client.Close() //nolint:errcheck
 
 	// Wait for at least two health check cycles.
 	time.Sleep(5 * interval)

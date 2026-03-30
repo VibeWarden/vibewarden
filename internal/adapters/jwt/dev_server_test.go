@@ -52,7 +52,7 @@ func TestDevServer_ServesValidJWKS(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GET %s: %v", srv.LocalJWKSURL(), err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }() //nolint:errcheck
 
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("status = %d, want 200", resp.StatusCode)

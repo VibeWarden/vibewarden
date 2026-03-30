@@ -107,7 +107,7 @@ func TestAdminAdapter_ListUsers_NetworkError(t *testing.T) {
 		t.Fatalf("listen: %v", err)
 	}
 	addr := ln.Addr().String()
-	ln.Close()
+	_ = ln.Close() //nolint:errcheck
 
 	adapter := kratos.NewAdminAdapter("http://"+addr, 0, newTestLogger())
 	_, err = adapter.ListUsers(context.Background(), ports.Pagination{Page: 1, PerPage: 10})
@@ -390,7 +390,7 @@ func TestAdminAdapter_DeactivateUser_NetworkError(t *testing.T) {
 		t.Fatalf("listen: %v", err)
 	}
 	addr := ln.Addr().String()
-	ln.Close()
+	_ = ln.Close() //nolint:errcheck
 
 	adapter := kratos.NewAdminAdapter("http://"+addr, 0, newTestLogger())
 	err = adapter.DeactivateUser(context.Background(), identityID)

@@ -1,7 +1,7 @@
 # VibeWarden
 
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)][license]
-[![Go Version](https://img.shields.io/badge/go-1.24-00ADD8.svg)][go]
+[![Go Version](https://img.shields.io/badge/go-1.26-00ADD8.svg)][go]
 [![CI](https://github.com/vibewarden/vibewarden/actions/workflows/ci.yml/badge.svg)][ci]
 [![Release](https://img.shields.io/github/v/release/vibewarden/vibewarden)][releases]
 

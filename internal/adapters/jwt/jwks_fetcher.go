@@ -147,7 +147,7 @@ func (f *HTTPJWKSFetcher) doFetch(ctx context.Context) (*domjwks.KeySet, error) 
 	if err != nil {
 		return nil, fmt.Errorf("jwks: fetching %s: %w", f.jwksURL, err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }() //nolint:errcheck // response body close error is not actionable
 
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("jwks: endpoint returned %d", resp.StatusCode)

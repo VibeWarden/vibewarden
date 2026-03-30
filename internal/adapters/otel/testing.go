@@ -50,7 +50,7 @@ func NewTestLogProvider(ctx context.Context) (*LogProvider, func() [][]byte, fun
 	var received [][]byte
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := func() ([]byte, error) {
-			defer r.Body.Close()
+			defer func() { _ = r.Body.Close() }() //nolint:errcheck // test helper body close error is not actionable
 			var buf []byte
 			b := make([]byte, 4096)
 			for {
