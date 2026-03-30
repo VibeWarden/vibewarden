@@ -1878,8 +1878,21 @@ func TestValidate_JWTConfig(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name: "jwt mode missing both jwks_url and issuer_url",
+			// In non-prod profile, missing jwks_url/issuer_url is allowed
+			// (local dev JWKS mode with auto-generated key pair).
+			name: "jwt mode missing both jwks_url and issuer_url in dev profile — allowed",
 			mutate: func(cfg *config.Config) {
+				cfg.Profile = "dev"
+				cfg.Auth.Mode = config.AuthModeJWT
+				// No JWKSURL, IssuerURL, Issuer, or Audience — dev JWKS defaults apply.
+			},
+			wantErr: false,
+		},
+		{
+			// In prod profile, missing jwks_url/issuer_url is an error.
+			name: "jwt mode missing both jwks_url and issuer_url in prod profile — error",
+			mutate: func(cfg *config.Config) {
+				cfg.Profile = "prod"
 				cfg.Auth.Mode = config.AuthModeJWT
 				cfg.Auth.JWT.Issuer = "https://auth.example.com/"
 				cfg.Auth.JWT.Audience = "my-api"
@@ -1888,7 +1901,7 @@ func TestValidate_JWTConfig(t *testing.T) {
 			wantContain: "either jwks_url or issuer_url is required",
 		},
 		{
-			name: "jwt mode missing issuer",
+			name: "jwt mode missing issuer when jwks_url is set",
 			mutate: func(cfg *config.Config) {
 				cfg.Auth.Mode = config.AuthModeJWT
 				cfg.Auth.JWT.JWKSURL = "https://auth.example.com/.well-known/jwks.json"
@@ -1898,7 +1911,7 @@ func TestValidate_JWTConfig(t *testing.T) {
 			wantContain: "auth.jwt.issuer is required",
 		},
 		{
-			name: "jwt mode missing audience",
+			name: "jwt mode missing audience when jwks_url is set",
 			mutate: func(cfg *config.Config) {
 				cfg.Auth.Mode = config.AuthModeJWT
 				cfg.Auth.JWT.JWKSURL = "https://auth.example.com/.well-known/jwks.json"

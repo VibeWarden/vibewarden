@@ -1232,14 +1232,23 @@ func (c *Config) Validate() error {
 	// auth.jwt validation (only when mode is "jwt").
 	if c.Auth.Mode == AuthModeJWT {
 		jwt := c.Auth.JWT
-		if jwt.JWKSURL == "" && jwt.IssuerURL == "" {
-			errs = append(errs, "auth.jwt: either jwks_url or issuer_url is required when auth.mode is \"jwt\"")
+		devJWKSMode := jwt.JWKSURL == "" && jwt.IssuerURL == ""
+
+		// In prod profile, local dev JWKS mode is not allowed — a real JWKS URL
+		// or OIDC issuer URL is required for production deployments.
+		if devJWKSMode && c.Profile == "prod" {
+			errs = append(errs, "auth.jwt: either jwks_url or issuer_url is required when auth.mode is \"jwt\" and profile is \"prod\"")
 		}
-		if jwt.Issuer == "" {
-			errs = append(errs, "auth.jwt.issuer is required when auth.mode is \"jwt\"")
-		}
-		if jwt.Audience == "" {
-			errs = append(errs, "auth.jwt.audience is required when auth.mode is \"jwt\"")
+
+		// Issuer and audience are required when a real JWKS source is configured.
+		// In dev JWKS mode they default to "vibewarden-dev" and "dev" respectively.
+		if !devJWKSMode {
+			if jwt.Issuer == "" {
+				errs = append(errs, "auth.jwt.issuer is required when auth.mode is \"jwt\"")
+			}
+			if jwt.Audience == "" {
+				errs = append(errs, "auth.jwt.audience is required when auth.mode is \"jwt\"")
+			}
 		}
 	}
 

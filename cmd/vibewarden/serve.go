@@ -264,24 +264,32 @@ func registerPlugins(
 
 	// Auth — priority 40 (registered after rate-limiting for dependency clarity;
 	// actual order is controlled by priority, but registry order matches intent)
+	//
+	// When auth.mode is "jwt" and jwks_url is non-empty, wire the HTTP JWKS
+	// fetcher and JWT adapter here. When jwks_url is empty (local dev JWKS mode),
+	// the auth plugin's Init handles key generation and adapter creation itself.
 	var authIdentityProvider ports.IdentityProvider
 	if cfg.Auth.Mode == config.AuthModeJWT {
-		jwtFetcher := jwtadapter.NewHTTPJWKSFetcher(
-			cfg.Auth.JWT.JWKSURL, 0, cfg.Auth.JWT.CacheTTL, logger,
-		)
-		jwtAdapter, err := jwtadapter.NewAdapter(jwtadapter.Config{
-			JWKSURL:           cfg.Auth.JWT.JWKSURL,
-			IssuerURL:         cfg.Auth.JWT.IssuerURL,
-			Issuer:            cfg.Auth.JWT.Issuer,
-			Audience:          cfg.Auth.JWT.Audience,
-			AllowedAlgorithms: cfg.Auth.JWT.AllowedAlgorithms,
-			ClaimsToHeaders:   cfg.Auth.JWT.ClaimsToHeaders,
-			CacheTTL:          cfg.Auth.JWT.CacheTTL,
-		}, jwtFetcher, logger)
-		if err != nil {
-			logger.Error("failed to create JWT adapter", slog.String("error", err.Error()))
-		} else {
-			authIdentityProvider = jwtAdapter
+		jwtCfg := cfg.Auth.JWT
+		devJWKSMode := jwtCfg.JWKSURL == "" && jwtCfg.IssuerURL == ""
+		if !devJWKSMode {
+			jwtFetcher := jwtadapter.NewHTTPJWKSFetcher(
+				jwtCfg.JWKSURL, 0, jwtCfg.CacheTTL, logger,
+			)
+			jwtAdapter, jwtErr := jwtadapter.NewAdapter(jwtadapter.Config{
+				JWKSURL:           jwtCfg.JWKSURL,
+				IssuerURL:         jwtCfg.IssuerURL,
+				Issuer:            jwtCfg.Issuer,
+				Audience:          jwtCfg.Audience,
+				AllowedAlgorithms: jwtCfg.AllowedAlgorithms,
+				ClaimsToHeaders:   jwtCfg.ClaimsToHeaders,
+				CacheTTL:          jwtCfg.CacheTTL,
+			}, jwtFetcher, logger)
+			if jwtErr != nil {
+				logger.Error("failed to create JWT adapter", slog.String("error", jwtErr.Error()))
+			} else {
+				authIdentityProvider = jwtAdapter
+			}
 		}
 	}
 	registry.Register(authplugin.New(authplugin.Config{
@@ -293,6 +301,12 @@ func registerPlugins(
 		LoginURL:          cfg.Auth.LoginURL,
 		PublicPaths:       cfg.Auth.PublicPaths,
 		IdentitySchema:    cfg.Auth.IdentitySchema,
+		JWT: authplugin.JWTPluginConfig{
+			JWKSURL:   cfg.Auth.JWT.JWKSURL,
+			IssuerURL: cfg.Auth.JWT.IssuerURL,
+			Issuer:    cfg.Auth.JWT.Issuer,
+			Audience:  cfg.Auth.JWT.Audience,
+		},
 	}, logger, authIdentityProvider))
 
 	// User management — priority 60
