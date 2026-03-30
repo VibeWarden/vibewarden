@@ -1,4 +1,3 @@
-// Package middleware provides HTTP middleware for VibeWarden.
 package middleware
 
 import (
