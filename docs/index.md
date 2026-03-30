@@ -37,21 +37,22 @@ Your app on port 3000 is now behind VibeWarden at `https://localhost:8443`. Done
 
 ## How It Works
 
-```
-             ┌────────────────────────────────┐
-Internet ────►│  VibeWarden  :8443 (HTTPS)     │
-             │                                │
-             │  TLS termination               │
-             │  Authentication (JWT / Kratos) │
-             │  Rate limiting (IP + user)     │
-             │  WAF (SQLi, XSS, traversal)    │
-             │  Security headers              │
-             │  Secret injection              │
-             │  AI-readable audit logs        │
-             └───────────────┬────────────────┘
-                             │ localhost
-                             ▼
-                    Your App  :3000
+```mermaid
+flowchart LR
+    Internet["Internet"] --> VW
+
+    subgraph VW["VibeWarden :8443 (HTTPS)"]
+        direction TB
+        tls["TLS termination"]
+        auth["Authentication (JWT / Kratos)"]
+        rl["Rate limiting (IP + user)"]
+        waf["WAF (SQLi, XSS, traversal)"]
+        sh["Security headers"]
+        si["Secret injection"]
+        al["AI-readable audit logs"]
+    end
+
+    VW -->|localhost| App["Your App :3000"]
 ```
 
 VibeWarden is a **local sidecar** — it always runs on the same machine as your app.
