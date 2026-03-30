@@ -84,7 +84,7 @@ func optsWithGeneratedFile(t *testing.T) ops.DoctorOptions {
 
 func TestDoctorService_Run_AllPassing(t *testing.T) {
 	fc := healthyContainersCompose()
-	pc := &fakePortChecker{available: map[int]bool{8080: true}}
+	pc := &fakePortChecker{available: map[int]bool{8443: true}}
 	hc := reachableHealthChecker()
 
 	svc := ops.NewDoctorService(fc, pc, hc)
@@ -168,7 +168,7 @@ func TestDoctorService_Run_DockerComposeNotAvailable(t *testing.T) {
 
 func TestDoctorService_Run_PortInUse(t *testing.T) {
 	fc := noContainersCompose()
-	pc := &fakePortChecker{available: map[int]bool{8080: false}}
+	pc := &fakePortChecker{available: map[int]bool{8443: false}}
 	hc := reachableHealthChecker()
 	svc := ops.NewDoctorService(fc, pc, hc)
 	cfg := defaultConfig()
@@ -216,7 +216,7 @@ func TestDoctorService_ChecksAreIndependent(t *testing.T) {
 		versionErr: errors.New("compose not found"),
 		psErr:      errors.New("ps failed"),
 	}
-	pc := &fakePortChecker{available: map[int]bool{8080: false}}
+	pc := &fakePortChecker{available: map[int]bool{8443: false}}
 	hc := reachableHealthChecker()
 	svc := ops.NewDoctorService(fc, pc, hc)
 	cfg := defaultConfig()
@@ -244,7 +244,7 @@ func TestDoctorService_ChecksAreIndependent(t *testing.T) {
 
 func TestDoctorService_Run_GeneratedFileMissing_IsWarn(t *testing.T) {
 	fc := noContainersCompose()
-	pc := &fakePortChecker{available: map[int]bool{8080: true}}
+	pc := &fakePortChecker{available: map[int]bool{8443: true}}
 	hc := reachableHealthChecker()
 	svc := ops.NewDoctorService(fc, pc, hc)
 	cfg := defaultConfig()
@@ -276,7 +276,7 @@ func TestDoctorService_Run_UnhealthyContainer_IsFail(t *testing.T) {
 			{Name: "vibewarden-proxy-1", Service: "proxy", State: "running", Health: "unhealthy"},
 		},
 	}
-	pc := &fakePortChecker{available: map[int]bool{8080: true}}
+	pc := &fakePortChecker{available: map[int]bool{8443: true}}
 	hc := reachableHealthChecker()
 	svc := ops.NewDoctorService(fc, pc, hc)
 	cfg := defaultConfig()
@@ -298,7 +298,7 @@ func TestDoctorService_Run_UnhealthyContainer_IsFail(t *testing.T) {
 
 func TestDoctorService_Run_JSONOutput(t *testing.T) {
 	fc := noContainersCompose()
-	pc := &fakePortChecker{available: map[int]bool{8080: true}}
+	pc := &fakePortChecker{available: map[int]bool{8443: true}}
 	hc := reachableHealthChecker()
 	svc := ops.NewDoctorService(fc, pc, hc)
 	cfg := defaultConfig()
@@ -334,7 +334,7 @@ func TestDoctorService_Run_OKFAILBadgesInOutput(t *testing.T) {
 		infoErr:    errors.New("docker not running"),
 		versionStr: "Docker Compose version v2.35.1",
 	}
-	pc := &fakePortChecker{available: map[int]bool{8080: true}}
+	pc := &fakePortChecker{available: map[int]bool{8443: true}}
 	hc := reachableHealthChecker()
 	svc := ops.NewDoctorService(fc, pc, hc)
 	cfg := defaultConfig()
@@ -356,7 +356,7 @@ func TestDoctorService_Run_OKFAILBadgesInOutput(t *testing.T) {
 
 func TestDoctorService_Run_ContainersHealthy_AllOK(t *testing.T) {
 	fc := healthyContainersCompose()
-	pc := &fakePortChecker{available: map[int]bool{8080: true}}
+	pc := &fakePortChecker{available: map[int]bool{8443: true}}
 	hc := reachableHealthChecker()
 	svc := ops.NewDoctorService(fc, pc, hc)
 	cfg := defaultConfig()

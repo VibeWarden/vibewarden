@@ -107,7 +107,7 @@ func printServiceURLs(cfg *config.Config, opts DevOptions, out io.Writer) {
 	}
 	proxyPort := cfg.Server.Port
 	if proxyPort == 0 {
-		proxyPort = 8080
+		proxyPort = 8443
 	}
 
 	fmt.Fprintln(out, "")

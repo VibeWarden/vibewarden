@@ -4,7 +4,7 @@
 
 server:
   host: "127.0.0.1"
-  port: 8080
+  port: 8443
 
 upstream:
   host: "127.0.0.1"
@@ -41,7 +41,8 @@ tls:
 {{- else }}
 
 tls:
-  enabled: false
+  enabled: true
+  provider: "self-signed"
 {{- end }}
 {{- if .AuthEnabled }}
 

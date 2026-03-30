@@ -234,7 +234,12 @@ func TestNewInitCmd_RenderedYAMLValid(t *testing.T) {
 		{
 			name:       "default config contains server and upstream sections",
 			args:       []string{},
-			wantInYAML: []string{"server:", "upstream:", "port: 3000", "port: 8080"},
+			wantInYAML: []string{"server:", "upstream:", "port: 3000", "port: 8443"},
+		},
+		{
+			name:       "default config enables TLS with self-signed provider",
+			args:       []string{},
+			wantInYAML: []string{"tls:", "enabled: true", "self-signed"},
 		},
 		{
 			name:       "auth flag adds kratos and auth sections with new consolidated fields",

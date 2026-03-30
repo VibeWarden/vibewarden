@@ -41,7 +41,7 @@ func (s *StatusService) Run(ctx context.Context, cfg *config.Config, out io.Writ
 	}
 	proxyPort := cfg.Server.Port
 	if proxyPort == 0 {
-		proxyPort = 8080
+		proxyPort = 8443
 	}
 	proxyBase := fmt.Sprintf("%s://localhost:%d", scheme, proxyPort)
 

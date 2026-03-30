@@ -58,9 +58,9 @@ func (f *fakeGenerator) Generate(_ context.Context, _ *config.Config, outputDir 
 
 func defaultConfig() *config.Config {
 	return &config.Config{
-		Server:   config.ServerConfig{Host: "127.0.0.1", Port: 8080},
+		Server:   config.ServerConfig{Host: "127.0.0.1", Port: 8443},
 		Upstream: config.UpstreamConfig{Host: "127.0.0.1", Port: 3000},
-		TLS:      config.TLSConfig{Enabled: false, Provider: "self-signed"},
+		TLS:      config.TLSConfig{Enabled: true, Provider: "self-signed"},
 		RateLimit: config.RateLimitConfig{
 			Enabled: true,
 			PerIP:   config.RateLimitRuleConfig{RequestsPerSecond: 10, Burst: 20},
@@ -86,7 +86,7 @@ func TestDevService_Run(t *testing.T) {
 			wantProfiles: nil,
 			wantOutputContains: []string{
 				"Proxy (VibeWarden):",
-				"http://localhost:8080",
+				"https://localhost:8443",
 				"vibewarden status",
 			},
 		},

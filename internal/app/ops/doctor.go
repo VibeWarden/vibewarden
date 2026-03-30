@@ -113,7 +113,7 @@ func (s *DoctorService) runChecks(ctx context.Context, cfg *config.Config, confi
 	// 4. Required ports available
 	proxyPort := cfg.Server.Port
 	if proxyPort == 0 {
-		proxyPort = 8080
+		proxyPort = 8443
 	}
 	proxyHost := cfg.Server.Host
 	if proxyHost == "" {
