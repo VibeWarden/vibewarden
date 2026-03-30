@@ -22,25 +22,25 @@ and full structured-event observability — all without any code changes to your
 
 ## Architecture
 
-```
-Your App :3000
-     |
-     |  HTTP_PROXY=http://127.0.0.1:8081
-     |
-     v
-Egress Proxy :8081  (VibeWarden)
-     |
-     |--- DNS resolve + SSRF check
-     |--- Route match + policy enforce
-     |--- Secret injection (OpenBao)
-     |--- Rate limit check
-     |--- Circuit breaker check
-     |--- PII redaction
-     |--- mTLS handshake (optional)
-     |
-     +---> api.stripe.com (HTTPS)
-     +---> api.github.com (HTTPS)
-     +---> payments.internal (private net, if allowed)
+```mermaid
+sequenceDiagram
+    participant App as Your App :3000
+    participant Proxy as Egress Proxy :8081 (VibeWarden)
+    participant Ext1 as api.stripe.com
+    participant Ext2 as api.github.com
+    participant Ext3 as payments.internal
+
+    App->>Proxy: HTTP_PROXY=http://127.0.0.1:8081
+    Note over Proxy: DNS resolve + SSRF check
+    Note over Proxy: Route match + policy enforce
+    Note over Proxy: Secret injection (OpenBao)
+    Note over Proxy: Rate limit check
+    Note over Proxy: Circuit breaker check
+    Note over Proxy: PII redaction
+    Note over Proxy: mTLS handshake (optional)
+    Proxy->>Ext1: HTTPS (if route matches)
+    Proxy->>Ext2: HTTPS (if route matches)
+    Proxy->>Ext3: private net (if allowed)
 ```
 
 In transparent mode the app sets the `HTTP_PROXY` environment variable and all
@@ -216,12 +216,12 @@ routes:
 
 State transitions:
 
-```
-Closed ──(threshold failures)──> Open ──(reset_after)──> Half-Open
-  ^                                                           |
-  └──────────────── probe succeeds ──────────────────────────┘
-                           |
-            probe fails → back to Open
+```mermaid
+flowchart LR
+    Closed -->|"threshold failures"| Open
+    Open -->|"reset_after elapsed"| HalfOpen["Half-Open"]
+    HalfOpen -->|"probe succeeds"| Closed
+    HalfOpen -->|"probe fails"| Open
 ```
 
 Structured events emitted:

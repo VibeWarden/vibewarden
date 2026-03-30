@@ -12,16 +12,11 @@ the codebase, and how Caddy is embedded.
 VibeWarden always runs **on the same machine as your app**. It is never hosted
 on a remote server.
 
-```
-[Internet]
-     │
-     │ :8080 (HTTP) or :443 (HTTPS)
-     ▼
-[VibeWarden]   ←── vibewarden.yaml
-     │
-     │ localhost (e.g., :3000)
-     ▼
-[Your App]
+```mermaid
+flowchart TD
+    Internet["Internet"] -->|":8080 HTTP / :443 HTTPS"| VW["VibeWarden"]
+    Config["vibewarden.yaml"] -.->|config| VW
+    VW -->|"localhost :3000"| App["Your App"]
 ```
 
 The sidecar intercepts all inbound traffic, applies the configured middleware
@@ -35,47 +30,21 @@ redaction.
 
 Every inbound request passes through the following ordered chain:
 
-```
-Request
-   │
-   ▼  1. IP filter
-   │     Allowlist or blocklist by IP/CIDR.
-   │
-   ▼  2. Body size limit
-   │     Global and per-path maximum request body sizes.
-   │
-   ▼  3. Rate limiter — per-IP
-   │     Token-bucket, in-memory or Redis-backed.
-   │
-   ▼  4. WAF
-   │     Pattern matching for SQLi, XSS, path traversal.
-   │     Modes: detect (log only) or block (return 403).
-   │
-   ▼  5. Content-Type validation
-   │     Rejects unexpected media types (optional).
-   │
-   ▼  6. Authentication
-   │     JWT/OIDC bearer token, Kratos session cookie,
-   │     or API key. Injects user identity headers.
-   │
-   ▼  7. Rate limiter — per-user
-   │     Applied only to authenticated requests.
-   │
-   ▼  8. Secret injection
-   │     Fetches secrets from OpenBao and injects them
-   │     as request headers before forwarding.
-   │
-   ▼  9. Reverse proxy (Caddy)
-   │     Forwards the request to the upstream app.
-   │
-   ▼ 10. Security headers
-   │     Added to the upstream response:
-   │     HSTS, CSP, X-Frame-Options, Referrer-Policy, etc.
-   │
-   ▼ 11. Audit log
-         Structured event emitted for every security-relevant action.
-
-Response
+```mermaid
+flowchart TD
+    Req(["Request"]) --> s1
+    s1["1. IP filter\nAllowlist or blocklist by IP/CIDR"] --> s2
+    s2["2. Body size limit\nGlobal and per-path maximum sizes"] --> s3
+    s3["3. Rate limiter — per-IP\nToken-bucket, in-memory or Redis-backed"] --> s4
+    s4["4. WAF\nSQLi, XSS, path traversal\ndetect (log) or block (403)"] --> s5
+    s5["5. Content-Type validation\nRejects unexpected media types (optional)"] --> s6
+    s6["6. Authentication\nJWT/OIDC, Kratos session, or API key\nInjects user identity headers"] --> s7
+    s7["7. Rate limiter — per-user\nApplied only to authenticated requests"] --> s8
+    s8["8. Secret injection\nFetches from OpenBao, injects as request headers"] --> s9
+    s9["9. Reverse proxy (Caddy)\nForwards request to upstream app"] --> s10
+    s10["10. Security headers\nHSTS, CSP, X-Frame-Options, Referrer-Policy, …"] --> s11
+    s11["11. Audit log\nStructured event emitted for every security-relevant action"] --> Resp
+    Resp(["Response"])
 ```
 
 Plugins that are disabled in `vibewarden.yaml` are skipped entirely — no
@@ -128,27 +97,16 @@ plugin API.
 VibeWarden's codebase is organized around the hexagonal architecture (ports and
 adapters) pattern combined with domain-driven design (DDD).
 
-```
-┌─────────────────────────────────────────────┐
-│                  Domain layer               │
-│  Pure Go — zero external dependencies       │
-│  Entities, value objects, domain events     │
-└────────────────────┬────────────────────────┘
-                     │
-      ┌──────────────▼──────────────┐
-      │         Ports layer         │
-      │  Interfaces (inbound +      │
-      │  outbound) — no impl here   │
-      └──────┬───────────────┬──────┘
-             │               │
-   ┌─────────▼──────┐  ┌─────▼─────────────┐
-   │ Application    │  │   Adapters         │
-   │ services       │  │   (implementations)│
-   │ (use cases)    │  │                    │
-   └────────────────┘  │ caddy/  postgres/  │
-                       │ kratos/ openbao/   │
-                       │ redis/  webhook/   │
-                       └───────────────────┘
+```mermaid
+flowchart TD
+    Domain["Domain layer\nPure Go — zero external dependencies\nEntities, value objects, domain events"]
+    Ports["Ports layer\nInterfaces (inbound + outbound)\nNo implementations here"]
+    App["Application services\nUse cases — orchestrate domain + ports"]
+    Adapters["Adapters (implementations)\ncaddy / postgres / kratos\nopenbao / redis / webhook"]
+
+    Domain --> Ports
+    Ports --> App
+    Ports --> Adapters
 ```
 
 ### Directory layout
