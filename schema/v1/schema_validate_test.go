@@ -489,10 +489,6 @@ func TestSchemaRejectsInvalidEvents(t *testing.T) {
 			jsonStr: `{"schema_version":"v2","event_type":"auth.success","timestamp":"2026-03-28T12:00:00Z","ai_summary":"ok","payload":{}}`,
 		},
 		{
-			name:    "unknown event_type",
-			jsonStr: `{"schema_version":"v1","event_type":"unknown.type","timestamp":"2026-03-28T12:00:00Z","ai_summary":"ok","payload":{}}`,
-		},
-		{
 			name:    "missing required field payload",
 			jsonStr: `{"schema_version":"v1","event_type":"auth.success","timestamp":"2026-03-28T12:00:00Z","ai_summary":"ok"}`,
 		},
@@ -507,6 +503,95 @@ func TestSchemaRejectsInvalidEvents(t *testing.T) {
 		{
 			name:    "additional top-level property",
 			jsonStr: `{"schema_version":"v1","event_type":"auth.success","timestamp":"2026-03-28T12:00:00Z","ai_summary":"ok","payload":{},"extra_field":"bad"}`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			inst, err := jsschema.UnmarshalJSON(strings.NewReader(tt.jsonStr))
+			if err != nil {
+				t.Fatalf("unmarshal test JSON: %v", err)
+			}
+			if err := sch.Validate(inst); err == nil {
+				t.Errorf("expected schema validation to fail for %q, but it passed", tt.name)
+			}
+		})
+	}
+}
+
+// TestSchemaForwardCompatibility verifies that the schema accepts events with
+// unknown event types (issue #508). Consumers built against an older version of
+// the schema must not reject events emitted by a newer producer that introduces
+// additional event types. Unknown event types must pass validation as long as
+// the base structural constraints are satisfied.
+func TestSchemaForwardCompatibility(t *testing.T) {
+	sch := compileSchema(t)
+
+	tests := []struct {
+		name    string
+		jsonStr string
+	}{
+		{
+			name:    "unknown future event type with empty payload",
+			jsonStr: `{"schema_version":"v1","event_type":"newplugin.action","timestamp":"2026-03-28T12:00:00Z","ai_summary":"A future event type","payload":{}}`,
+		},
+		{
+			name:    "unknown future event type with arbitrary payload",
+			jsonStr: `{"schema_version":"v1","event_type":"fleet.connected","timestamp":"2026-03-28T12:00:00Z","ai_summary":"Fleet connection established","payload":{"node_id":"n-123","region":"eu-central-1"}}`,
+		},
+		{
+			name:    "unknown three-segment event type",
+			jsonStr: `{"schema_version":"v1","event_type":"egress.circuit_breaker.future_state","timestamp":"2026-03-28T12:00:00Z","ai_summary":"Circuit breaker entered a future state","payload":{"route":"payments"}}`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			inst, err := jsschema.UnmarshalJSON(strings.NewReader(tt.jsonStr))
+			if err != nil {
+				t.Fatalf("unmarshal test JSON: %v", err)
+			}
+			assertValid(t, sch, inst)
+		})
+	}
+}
+
+// TestSchemaRejectsInvalidEventTypePatterns verifies that event_type values
+// that do not match the dot-separated lowercase pattern are still rejected.
+func TestSchemaRejectsInvalidEventTypePatterns(t *testing.T) {
+	sch := compileSchema(t)
+
+	tests := []struct {
+		name    string
+		jsonStr string
+	}{
+		{
+			name:    "event_type starts with digit",
+			jsonStr: `{"schema_version":"v1","event_type":"1plugin.action","timestamp":"2026-03-28T12:00:00Z","ai_summary":"bad","payload":{}}`,
+		},
+		{
+			name:    "event_type starts with dot",
+			jsonStr: `{"schema_version":"v1","event_type":".auth.success","timestamp":"2026-03-28T12:00:00Z","ai_summary":"bad","payload":{}}`,
+		},
+		{
+			name:    "event_type ends with dot",
+			jsonStr: `{"schema_version":"v1","event_type":"auth.success.","timestamp":"2026-03-28T12:00:00Z","ai_summary":"bad","payload":{}}`,
+		},
+		{
+			name:    "event_type contains uppercase",
+			jsonStr: `{"schema_version":"v1","event_type":"Auth.success","timestamp":"2026-03-28T12:00:00Z","ai_summary":"bad","payload":{}}`,
+		},
+		{
+			name:    "event_type is empty string",
+			jsonStr: `{"schema_version":"v1","event_type":"","timestamp":"2026-03-28T12:00:00Z","ai_summary":"bad","payload":{}}`,
+		},
+		{
+			name:    "event_type contains consecutive dots",
+			jsonStr: `{"schema_version":"v1","event_type":"auth..success","timestamp":"2026-03-28T12:00:00Z","ai_summary":"bad","payload":{}}`,
+		},
+		{
+			name:    "event_type contains hyphen",
+			jsonStr: `{"schema_version":"v1","event_type":"auth-success","timestamp":"2026-03-28T12:00:00Z","ai_summary":"bad","payload":{}}`,
 		},
 	}
 
