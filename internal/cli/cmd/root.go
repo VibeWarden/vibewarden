@@ -40,6 +40,7 @@ Zero-to-secure in minutes.`,
 	root.AddCommand(NewGenerateCmd())
 	root.AddCommand(NewPluginsCmd())
 	root.AddCommand(NewCertCmd())
+	root.AddCommand(NewTokenCmd())
 
 	return root
 }
