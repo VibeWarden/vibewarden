@@ -445,6 +445,7 @@ func TestLoad_NewFieldsFromFile(t *testing.T) {
 	content := `
 auth:
   enabled: true
+  mode: kratos
   identity_schema: email_only
   session_cookie_name: my_session
   login_url: /login
@@ -2449,5 +2450,252 @@ func TestLoad_ErrorPagesDefaults(t *testing.T) {
 	}
 	if cfg.ErrorPages.Directory != "" {
 		t.Errorf("error_pages.directory = %q, want empty (default)", cfg.ErrorPages.Directory)
+	}
+}
+
+// TestValidate_TLSProvider verifies that tls.provider must be one of the accepted values.
+func TestValidate_TLSProvider(t *testing.T) {
+	tests := []struct {
+		name        string
+		cfg         config.Config
+		wantErr     bool
+		wantContain string
+	}{
+		{
+			name:    "self-signed is valid",
+			cfg:     config.Config{TLS: config.TLSConfig{Provider: "self-signed"}},
+			wantErr: false,
+		},
+		{
+			name:    "letsencrypt is valid",
+			cfg:     config.Config{TLS: config.TLSConfig{Provider: "letsencrypt"}},
+			wantErr: false,
+		},
+		{
+			name: "external with paths is valid",
+			cfg: config.Config{TLS: config.TLSConfig{
+				Enabled:  true,
+				Provider: "external",
+				CertPath: "/etc/tls/cert.pem",
+				KeyPath:  "/etc/tls/key.pem",
+			}},
+			wantErr: false,
+		},
+		{
+			name:    "empty provider is valid (defaults to self-signed via Load)",
+			cfg:     config.Config{TLS: config.TLSConfig{Provider: ""}},
+			wantErr: false,
+		},
+		{
+			name:        "unknown provider acme is rejected",
+			cfg:         config.Config{TLS: config.TLSConfig{Provider: "acme"}},
+			wantErr:     true,
+			wantContain: "tls.provider \"acme\" is invalid",
+		},
+		{
+			name:        "unknown provider cloudflare is rejected with actionable message",
+			cfg:         config.Config{TLS: config.TLSConfig{Provider: "cloudflare"}},
+			wantErr:     true,
+			wantContain: "accepted values: \"self-signed\", \"letsencrypt\", \"external\"",
+		},
+		{
+			name:        "error message suggests fix",
+			cfg:         config.Config{TLS: config.TLSConfig{Provider: "cloudflare"}},
+			wantErr:     true,
+			wantContain: "set tls.provider to one of those values",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.cfg.Validate()
+			if (err != nil) != tt.wantErr {
+				t.Errorf("Validate() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if tt.wantErr && tt.wantContain != "" && err != nil {
+				if !strings.Contains(err.Error(), tt.wantContain) {
+					t.Errorf("Validate() error = %q, want it to contain %q", err.Error(), tt.wantContain)
+				}
+			}
+		})
+	}
+}
+
+// TestValidate_AuthEnabledModeNone verifies that enabling auth with mode "none" produces
+// an actionable error.
+func TestValidate_AuthEnabledModeNone(t *testing.T) {
+	tests := []struct {
+		name        string
+		cfg         config.Config
+		wantErr     bool
+		wantContain string
+	}{
+		{
+			name: "auth.enabled false with mode none is valid",
+			cfg: config.Config{
+				Auth: config.AuthConfig{Enabled: false, Mode: "none"},
+			},
+			wantErr: false,
+		},
+		{
+			name: "auth.enabled true with mode kratos is valid",
+			cfg: config.Config{
+				Auth: config.AuthConfig{Enabled: true, Mode: "kratos"},
+			},
+			wantErr: false,
+		},
+		{
+			name: "auth.enabled true with mode jwt is valid",
+			cfg: config.Config{
+				Auth: config.AuthConfig{Enabled: true, Mode: "jwt"},
+			},
+			wantErr: false,
+		},
+		{
+			name: "auth.enabled true with mode api-key is valid",
+			cfg: config.Config{
+				Auth: config.AuthConfig{Enabled: true, Mode: "api-key"},
+			},
+			wantErr: false,
+		},
+		{
+			name: "auth.enabled true with mode none is a misconfiguration",
+			cfg: config.Config{
+				Auth: config.AuthConfig{Enabled: true, Mode: "none"},
+			},
+			wantErr:     true,
+			wantContain: "auth.enabled is true but auth.mode is \"none\"",
+		},
+		{
+			name: "auth.enabled true with empty mode is a misconfiguration",
+			cfg: config.Config{
+				Auth: config.AuthConfig{Enabled: true, Mode: ""},
+			},
+			wantErr:     true,
+			wantContain: "auth.enabled is true but auth.mode is \"none\"",
+		},
+		{
+			name: "error message suggests fix by listing accepted modes",
+			cfg: config.Config{
+				Auth: config.AuthConfig{Enabled: true, Mode: "none"},
+			},
+			wantErr:     true,
+			wantContain: "set auth.mode to \"kratos\", \"jwt\", or \"api-key\"",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.cfg.Validate()
+			if (err != nil) != tt.wantErr {
+				t.Errorf("Validate() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if tt.wantErr && tt.wantContain != "" && err != nil {
+				if !strings.Contains(err.Error(), tt.wantContain) {
+					t.Errorf("Validate() error = %q, want it to contain %q", err.Error(), tt.wantContain)
+				}
+			}
+		})
+	}
+}
+
+// TestValidate_AuthModeActionable verifies that an invalid auth.mode produces a message
+// that names the accepted values and suggests the fix.
+func TestValidate_AuthModeActionable(t *testing.T) {
+	tests := []struct {
+		name        string
+		mode        string
+		wantErr     bool
+		wantContain string
+	}{
+		{name: "none is valid", mode: "none", wantErr: false},
+		{name: "kratos is valid", mode: "kratos", wantErr: false},
+		{name: "jwt is valid", mode: "jwt", wantErr: false},
+		{name: "api-key is valid", mode: "api-key", wantErr: false},
+		{name: "empty is valid", mode: "", wantErr: false},
+		{
+			name:        "oauth is rejected with accepted values",
+			mode:        "oauth",
+			wantErr:     true,
+			wantContain: "accepted values: \"none\", \"kratos\", \"jwt\", \"api-key\"",
+		},
+		{
+			name:        "error message suggests fix",
+			mode:        "oauth",
+			wantErr:     true,
+			wantContain: "set auth.mode to one of those values",
+		},
+		{
+			name:        "basic is rejected",
+			mode:        "basic",
+			wantErr:     true,
+			wantContain: "auth.mode \"basic\" is invalid",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := config.Config{Auth: config.AuthConfig{Mode: config.AuthMode(tt.mode)}}
+			err := cfg.Validate()
+			if (err != nil) != tt.wantErr {
+				t.Errorf("Validate() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if tt.wantErr && tt.wantContain != "" && err != nil {
+				if !strings.Contains(err.Error(), tt.wantContain) {
+					t.Errorf("Validate() error = %q, want it to contain %q", err.Error(), tt.wantContain)
+				}
+			}
+		})
+	}
+}
+
+// TestValidate_RateLimitStoreActionable verifies that an invalid rate_limit.store
+// produces a message that names the accepted values and suggests the fix.
+func TestValidate_RateLimitStoreActionable(t *testing.T) {
+	tests := []struct {
+		name        string
+		store       string
+		wantErr     bool
+		wantContain string
+	}{
+		{name: "memory is valid", store: "memory", wantErr: false},
+		{name: "redis is valid (address set)", store: "redis", wantErr: false},
+		{name: "empty is valid", store: "", wantErr: false},
+		{
+			name:        "memcached is rejected with accepted values",
+			store:       "memcached",
+			wantErr:     true,
+			wantContain: "accepted values: \"memory\", \"redis\"",
+		},
+		{
+			name:        "error message suggests fix",
+			store:       "memcached",
+			wantErr:     true,
+			wantContain: "set rate_limit.store to",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := config.Config{
+				RateLimit: config.RateLimitConfig{
+					Store: tt.store,
+					Redis: config.RateLimitRedisConfig{Address: "127.0.0.1:6379"},
+				},
+			}
+			err := cfg.Validate()
+			if (err != nil) != tt.wantErr {
+				t.Errorf("Validate() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if tt.wantErr && tt.wantContain != "" && err != nil {
+				if !strings.Contains(err.Error(), tt.wantContain) {
+					t.Errorf("Validate() error = %q, want it to contain %q", err.Error(), tt.wantContain)
+				}
+			}
+		})
 	}
 }

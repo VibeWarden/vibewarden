@@ -327,14 +327,17 @@ security_headers:
 }
 
 func TestValidateCmd_MultipleErrors(t *testing.T) {
+	// tls.provider is intentionally omitted here: an invalid provider value is
+	// caught by config.Validate() (inside config.Load()) and that error is
+	// reported alone before validateConfig ever runs. The purpose of this test
+	// is to verify that multiple semantic errors from validateConfig are all
+	// reported together, so we use only fields whose validation lives in that
+	// function.
 	path := writeConfig(t, `
 server:
   port: 0
 upstream:
   port: 99999
-tls:
-  enabled: false
-  provider: bad-provider
 log:
   level: verbose
   format: xml
@@ -352,7 +355,7 @@ log:
 	}
 
 	errOut := errBuf.String()
-	for _, want := range []string{"server.port", "upstream.port", "tls.provider", "log.level", "log.format"} {
+	for _, want := range []string{"server.port", "upstream.port", "log.level", "log.format"} {
 		if !strings.Contains(errOut, want) {
 			t.Errorf("expected %q in stderr, got: %q", want, errOut)
 		}
