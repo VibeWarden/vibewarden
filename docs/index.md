@@ -138,14 +138,14 @@ Your app receives authenticated user info via headers:
 | `vibew add auth` | Enable authentication |
 | `vibew add rate-limit` | Enable rate limiting |
 | `vibew add tls --domain example.com` | Enable TLS |
-| `vibew add observability` | Add Prometheus + Grafana |
+| `vibew add metrics` | Enable Prometheus metrics |
 | `vibew generate` | Regenerate `docker-compose.yml` from config |
 | `vibew dev` | Start local dev environment |
 | `vibew status` | Show health of all components |
 | `vibew doctor` | Diagnose common issues |
 | `vibew logs` | Pretty-print structured logs |
-| `vibew secret get <path>` | Read a secret from OpenBao |
-| `vibew secret list <path>` | List secrets at a path |
+| `vibew secret get <alias-or-path>` | Read a secret from OpenBao |
+| `vibew secret list` | List all managed secret paths |
 | `vibew token` | Generate a signed dev JWT for local testing |
 | `vibew cert export` | Export the local CA certificate (for curl, Postman, …) |
 | `vibew validate` | Validate configuration |
