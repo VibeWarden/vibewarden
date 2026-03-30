@@ -7,6 +7,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"sync"
 
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
@@ -15,14 +16,23 @@ import (
 // Plugins are registered at startup and then driven through Init → Start → Stop.
 // Stop is always called in the reverse of registration order so that
 // dependent plugins shut down before their dependencies.
+//
+// Critical plugins (those implementing ports.CriticalPlugin with Critical()
+// returning true) abort startup on Init or Start failure. Non-critical plugins
+// that fail are marked degraded and skipped; startup continues.
 type Registry struct {
-	plugins []ports.Plugin
-	logger  *slog.Logger
+	plugins  []ports.Plugin
+	logger   *slog.Logger
+	mu       sync.RWMutex
+	degraded map[string]string // plugin name → failure reason
 }
 
 // NewRegistry creates a Registry that uses logger for lifecycle events.
 func NewRegistry(logger *slog.Logger) *Registry {
-	return &Registry{logger: logger}
+	return &Registry{
+		logger:   logger,
+		degraded: make(map[string]string),
+	}
 }
 
 // Register adds p to the registry. It must be called before InitAll.
@@ -39,10 +49,17 @@ func (r *Registry) Plugins() []ports.Plugin {
 }
 
 // CaddyContributors returns every registered plugin that implements
-// ports.CaddyContributor.
+// ports.CaddyContributor and has not been marked degraded.
 func (r *Registry) CaddyContributors() []ports.CaddyContributor {
+	r.mu.RLock()
+	deg := r.degraded
+	r.mu.RUnlock()
+
 	var contributors []ports.CaddyContributor
 	for _, p := range r.plugins {
+		if _, isDegraded := deg[p.Name()]; isDegraded {
+			continue
+		}
 		if c, ok := p.(ports.CaddyContributor); ok {
 			contributors = append(contributors, c)
 		}
@@ -50,27 +67,90 @@ func (r *Registry) CaddyContributors() []ports.CaddyContributor {
 	return contributors
 }
 
+// isCritical returns true when p implements ports.CriticalPlugin and reports
+// Critical() == true. Plugins that do not implement the interface are treated
+// as non-critical.
+func isCritical(p ports.Plugin) bool {
+	if cp, ok := p.(ports.CriticalPlugin); ok {
+		return cp.Critical()
+	}
+	return false
+}
+
+// markDegraded records name as degraded with the given reason, thread-safely.
+func (r *Registry) markDegraded(name, reason string) {
+	r.mu.Lock()
+	r.degraded[name] = reason
+	r.mu.Unlock()
+}
+
+// DegradedPlugins returns a snapshot of the currently degraded plugins as a
+// map from plugin name to the failure reason string. The returned map is a
+// copy and is safe to use after the call returns.
+func (r *Registry) DegradedPlugins() map[string]string {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	cp := make(map[string]string, len(r.degraded))
+	for k, v := range r.degraded {
+		cp[k] = v
+	}
+	return cp
+}
+
 // InitAll calls Init on every registered plugin in registration order.
-// If any plugin's Init returns an error the function returns immediately
+//
+// If a critical plugin's Init returns an error the function returns immediately
 // with that error; subsequent plugins are not initialised.
+//
+// If a non-critical plugin's Init returns an error the error is logged, the
+// plugin is marked degraded, and initialisation continues with the next plugin.
 func (r *Registry) InitAll(ctx context.Context) error {
 	for _, p := range r.plugins {
 		r.logger.InfoContext(ctx, "initialising plugin", slog.String("plugin", p.Name()))
 		if err := p.Init(ctx); err != nil {
-			return fmt.Errorf("init plugin %q: %w", p.Name(), err)
+			if isCritical(p) {
+				return fmt.Errorf("init plugin %q: %w", p.Name(), err)
+			}
+			r.logger.ErrorContext(ctx, "non-critical plugin init failed — plugin degraded",
+				slog.String("plugin", p.Name()),
+				slog.String("error", err.Error()),
+			)
+			r.markDegraded(p.Name(), fmt.Sprintf("init failed: %s", err.Error()))
 		}
 	}
 	return nil
 }
 
-// StartAll calls Start on every registered plugin in registration order.
-// If any plugin's Start returns an error the function returns immediately
+// StartAll calls Start on every registered plugin in registration order,
+// skipping any plugin that was already marked degraded during InitAll.
+//
+// If a critical plugin's Start returns an error the function returns immediately
 // with that error; subsequent plugins are not started.
+//
+// If a non-critical plugin's Start returns an error the error is logged, the
+// plugin is marked degraded, and startup continues with the next plugin.
 func (r *Registry) StartAll(ctx context.Context) error {
 	for _, p := range r.plugins {
+		r.mu.RLock()
+		_, isDegraded := r.degraded[p.Name()]
+		r.mu.RUnlock()
+		if isDegraded {
+			r.logger.WarnContext(ctx, "skipping degraded plugin on start",
+				slog.String("plugin", p.Name()),
+			)
+			continue
+		}
+
 		r.logger.InfoContext(ctx, "starting plugin", slog.String("plugin", p.Name()))
 		if err := p.Start(ctx); err != nil {
-			return fmt.Errorf("start plugin %q: %w", p.Name(), err)
+			if isCritical(p) {
+				return fmt.Errorf("start plugin %q: %w", p.Name(), err)
+			}
+			r.logger.ErrorContext(ctx, "non-critical plugin start failed — plugin degraded",
+				slog.String("plugin", p.Name()),
+				slog.String("error", err.Error()),
+			)
+			r.markDegraded(p.Name(), fmt.Sprintf("start failed: %s", err.Error()))
 		}
 	}
 	return nil
@@ -98,9 +178,25 @@ func (r *Registry) StopAll(ctx context.Context) error {
 }
 
 // HealthAll returns a map from plugin name to its current HealthStatus.
+// Degraded plugins receive a synthesised unhealthy status that includes the
+// failure reason recorded at Init/Start time.
 func (r *Registry) HealthAll() map[string]ports.HealthStatus {
+	r.mu.RLock()
+	deg := make(map[string]string, len(r.degraded))
+	for k, v := range r.degraded {
+		deg[k] = v
+	}
+	r.mu.RUnlock()
+
 	result := make(map[string]ports.HealthStatus, len(r.plugins))
 	for _, p := range r.plugins {
+		if reason, isDegraded := deg[p.Name()]; isDegraded {
+			result[p.Name()] = ports.HealthStatus{
+				Healthy: false,
+				Message: "degraded: " + reason,
+			}
+			continue
+		}
 		result[p.Name()] = p.Health()
 	}
 	return result
@@ -155,6 +251,7 @@ func (rc *registryReadinessChecker) ReadinessStatus() ports.ReadinessStatus {
 		PluginsReady:      pluginsReady,
 		UpstreamReachable: upstreamReachable,
 		Plugins:           pluginStatuses,
+		DegradedPlugins:   rc.registry.DegradedPlugins(),
 	}
 }
 

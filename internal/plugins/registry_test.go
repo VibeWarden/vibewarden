@@ -23,7 +23,11 @@ type fakePlugin struct {
 	stopErr   error
 	health    ports.HealthStatus
 	callOrder *[]string // shared slice so callers can observe cross-plugin order
+	critical  bool      // when true, plugin implements ports.CriticalPlugin
 }
+
+// Critical implements ports.CriticalPlugin. Only called when f.critical == true.
+func (f *fakePlugin) Critical() bool { return f.critical }
 
 func (f *fakePlugin) Name() string { return f.name }
 
@@ -157,8 +161,9 @@ func TestRegistry_InitAll_StopsOnFirstError(t *testing.T) {
 	boom := errors.New("init boom")
 	r := plugins.NewRegistry(discardLogger())
 
+	// beta is a critical plugin — its failure must abort startup.
 	r.Register(&fakePlugin{name: "alpha", callOrder: order})
-	r.Register(&fakePlugin{name: "beta", initErr: boom, callOrder: order})
+	r.Register(&fakePlugin{name: "beta", initErr: boom, callOrder: order, critical: true})
 	r.Register(&fakePlugin{name: "gamma", callOrder: order})
 
 	err := r.InitAll(context.Background())
@@ -181,8 +186,9 @@ func TestRegistry_StartAll_StopsOnFirstError(t *testing.T) {
 	boom := errors.New("start boom")
 	r := plugins.NewRegistry(discardLogger())
 
+	// beta is a critical plugin — its failure must abort startup.
 	r.Register(&fakePlugin{name: "alpha", callOrder: order})
-	r.Register(&fakePlugin{name: "beta", startErr: boom, callOrder: order})
+	r.Register(&fakePlugin{name: "beta", startErr: boom, callOrder: order, critical: true})
 	r.Register(&fakePlugin{name: "gamma", callOrder: order})
 
 	err := r.StartAll(context.Background())
@@ -314,6 +320,191 @@ func TestRegistry_EmptyRegistry(t *testing.T) {
 	}
 	if h := r.HealthAll(); len(h) != 0 {
 		t.Errorf("HealthAll on empty registry should return empty map, got %v", h)
+	}
+}
+
+// ----------------------------------------------------------------------------
+// Partial-start (non-critical plugin degradation) tests
+// ----------------------------------------------------------------------------
+
+func TestRegistry_InitAll_NonCriticalFailure_ContinuesStartup(t *testing.T) {
+	order := newOrder()
+	boom := errors.New("init boom")
+	r := plugins.NewRegistry(discardLogger())
+
+	// beta is non-critical — its failure must not abort startup.
+	r.Register(&fakePlugin{name: "alpha", callOrder: order})
+	r.Register(&fakePlugin{name: "beta", initErr: boom, callOrder: order, critical: false})
+	r.Register(&fakePlugin{name: "gamma", callOrder: order})
+
+	err := r.InitAll(context.Background())
+	if err != nil {
+		t.Fatalf("InitAll: unexpected error for non-critical failure: %v", err)
+	}
+
+	// gamma must still have been initialised.
+	found := false
+	for _, call := range *order {
+		if call == "gamma:init" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("gamma should have been initialised even though beta failed")
+	}
+}
+
+func TestRegistry_InitAll_NonCriticalFailure_MarksDegraded(t *testing.T) {
+	order := newOrder()
+	boom := errors.New("init boom")
+	r := plugins.NewRegistry(discardLogger())
+
+	r.Register(&fakePlugin{name: "alpha", callOrder: order})
+	r.Register(&fakePlugin{name: "beta", initErr: boom, callOrder: order, critical: false})
+
+	if err := r.InitAll(context.Background()); err != nil {
+		t.Fatalf("InitAll: unexpected error: %v", err)
+	}
+
+	degraded := r.DegradedPlugins()
+	if _, ok := degraded["beta"]; !ok {
+		t.Error("beta should be in DegradedPlugins after init failure")
+	}
+	if _, ok := degraded["alpha"]; ok {
+		t.Error("alpha should not be in DegradedPlugins")
+	}
+}
+
+func TestRegistry_StartAll_SkipsDegradedPlugins(t *testing.T) {
+	order := newOrder()
+	boom := errors.New("init boom")
+	r := plugins.NewRegistry(discardLogger())
+
+	r.Register(&fakePlugin{name: "alpha", callOrder: order})
+	r.Register(&fakePlugin{name: "beta", initErr: boom, callOrder: order, critical: false})
+	r.Register(&fakePlugin{name: "gamma", callOrder: order})
+
+	// Init — beta degrades.
+	if err := r.InitAll(context.Background()); err != nil {
+		t.Fatalf("InitAll: %v", err)
+	}
+
+	// Reset call log so we only observe Start calls.
+	*order = []string{}
+
+	if err := r.StartAll(context.Background()); err != nil {
+		t.Fatalf("StartAll: unexpected error: %v", err)
+	}
+
+	for _, call := range *order {
+		if call == "beta:start" {
+			t.Error("beta:start should not have been called — plugin was degraded at init")
+		}
+	}
+}
+
+func TestRegistry_StartAll_NonCriticalFailure_ContinuesStartup(t *testing.T) {
+	order := newOrder()
+	boom := errors.New("start boom")
+	r := plugins.NewRegistry(discardLogger())
+
+	r.Register(&fakePlugin{name: "alpha", callOrder: order})
+	r.Register(&fakePlugin{name: "beta", startErr: boom, callOrder: order, critical: false})
+	r.Register(&fakePlugin{name: "gamma", callOrder: order})
+
+	if err := r.InitAll(context.Background()); err != nil {
+		t.Fatalf("InitAll: %v", err)
+	}
+	err := r.StartAll(context.Background())
+	if err != nil {
+		t.Fatalf("StartAll: unexpected error for non-critical start failure: %v", err)
+	}
+
+	// gamma must still have been started.
+	found := false
+	for _, call := range *order {
+		if call == "gamma:start" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("gamma should have been started even though beta failed")
+	}
+
+	degraded := r.DegradedPlugins()
+	if _, ok := degraded["beta"]; !ok {
+		t.Error("beta should be in DegradedPlugins after start failure")
+	}
+}
+
+func TestRegistry_HealthAll_DegradedPlugin_ReportsUnhealthy(t *testing.T) {
+	order := newOrder()
+	boom := errors.New("init boom")
+	r := plugins.NewRegistry(discardLogger())
+
+	r.Register(&fakePlugin{name: "alpha", callOrder: order, health: ports.HealthStatus{Healthy: true}})
+	r.Register(&fakePlugin{name: "beta", initErr: boom, callOrder: order, critical: false})
+
+	if err := r.InitAll(context.Background()); err != nil {
+		t.Fatalf("InitAll: %v", err)
+	}
+
+	health := r.HealthAll()
+	if health["alpha"].Healthy != true {
+		t.Error("alpha should be healthy")
+	}
+	if health["beta"].Healthy != false {
+		t.Error("beta should be unhealthy (degraded)")
+	}
+	if health["beta"].Message == "" {
+		t.Error("beta health message should describe the degraded reason")
+	}
+}
+
+func TestRegistry_DegradedPlugins_ReflectsInReadinessStatus(t *testing.T) {
+	order := newOrder()
+	boom := errors.New("init boom")
+	r := plugins.NewRegistry(discardLogger())
+
+	r.Register(&fakePlugin{name: "alpha", callOrder: order, health: ports.HealthStatus{Healthy: true}})
+	r.Register(&fakePlugin{name: "beta", initErr: boom, callOrder: order, critical: false})
+
+	if err := r.InitAll(context.Background()); err != nil {
+		t.Fatalf("InitAll: %v", err)
+	}
+
+	rc := r.ReadinessChecker(nil)
+	rs := rc.ReadinessStatus()
+
+	if _, ok := rs.DegradedPlugins["beta"]; !ok {
+		t.Error("DegradedPlugins in ReadinessStatus should contain beta")
+	}
+}
+
+func TestRegistry_CaddyContributors_ExcludesDegradedPlugins(t *testing.T) {
+	order := newOrder()
+	boom := errors.New("init boom")
+	r := plugins.NewRegistry(discardLogger())
+
+	r.Register(&fakeCaddyPlugin{
+		fakePlugin: fakePlugin{name: "alpha", callOrder: order},
+		routes:     []ports.CaddyRoute{{MatchPath: "/a", Priority: 10}},
+	})
+	r.Register(&fakeCaddyPlugin{
+		fakePlugin: fakePlugin{name: "beta", initErr: boom, callOrder: order, critical: false},
+		routes:     []ports.CaddyRoute{{MatchPath: "/b", Priority: 20}},
+	})
+
+	if err := r.InitAll(context.Background()); err != nil {
+		t.Fatalf("InitAll: %v", err)
+	}
+
+	contributors := r.CaddyContributors()
+	if len(contributors) != 1 {
+		t.Fatalf("expected 1 contributor (non-degraded), got %d", len(contributors))
+	}
+	if contributors[0].(*fakeCaddyPlugin).name != "alpha" {
+		t.Error("expected alpha as the only contributor")
 	}
 }
 
