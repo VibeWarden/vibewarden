@@ -69,7 +69,7 @@ func DefaultSecurityHeadersConfig() ports.SecurityHeadersConfig {
 		HSTSPreload:           false, // Preload requires manual submission to browser lists
 		ContentTypeNosniff:    true,
 		FrameOption:           "DENY",
-		ContentSecurityPolicy: "default-src 'self'",
+		ContentSecurityPolicy: "", // disabled by default — users opt in via config
 		ReferrerPolicy:        "strict-origin-when-cross-origin",
 		PermissionsPolicy:     "",
 	}

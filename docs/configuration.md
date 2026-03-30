@@ -269,7 +269,7 @@ Only read when `store` is `redis`.
 | `security_headers.hsts_preload` | bool | `false` | Add `preload` to HSTS |
 | `security_headers.content_type_nosniff` | bool | `true` | Set `X-Content-Type-Options: nosniff` |
 | `security_headers.frame_option` | string | `DENY` | `X-Frame-Options`: `DENY`, `SAMEORIGIN`, or `""` to disable |
-| `security_headers.content_security_policy` | string | `default-src 'self'` | `Content-Security-Policy` value |
+| `security_headers.content_security_policy` | string | `""` (disabled) | `Content-Security-Policy` value — empty by default; set explicitly to opt in |
 | `security_headers.referrer_policy` | string | `strict-origin-when-cross-origin` | `Referrer-Policy` value |
 | `security_headers.permissions_policy` | string | `""` | `Permissions-Policy` value |
 | `security_headers.cross_origin_opener_policy` | string | `same-origin` | `Cross-Origin-Opener-Policy` value |
@@ -712,7 +712,7 @@ rate_limit:
 security_headers:
   enabled: true
   hsts_max_age: 31536000
-  content_security_policy: "default-src 'self'"
+  content_security_policy: ""
 
 telemetry:
   enabled: true

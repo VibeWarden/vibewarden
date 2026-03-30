@@ -309,8 +309,8 @@ func TestDefaultSecurityHeadersConfig(t *testing.T) {
 	if cfg.FrameOption != "DENY" {
 		t.Errorf("FrameOption = %q, want %q", cfg.FrameOption, "DENY")
 	}
-	if cfg.ContentSecurityPolicy == "" {
-		t.Error("expected ContentSecurityPolicy to be non-empty")
+	if cfg.ContentSecurityPolicy != "" {
+		t.Errorf("expected ContentSecurityPolicy to be empty (opt-in), got %q", cfg.ContentSecurityPolicy)
 	}
 	if cfg.ReferrerPolicy == "" {
 		t.Error("expected ReferrerPolicy to be non-empty")

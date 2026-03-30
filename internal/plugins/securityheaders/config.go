@@ -39,8 +39,8 @@ type Config struct {
 	FrameOption string
 
 	// ContentSecurityPolicy sets the Content-Security-Policy response header
-	// value. An empty string disables the header.
-	// Default: "default-src 'self'".
+	// value. An empty string (the default) disables the header; users opt in
+	// by setting an explicit policy in vibewarden.yaml.
 	ContentSecurityPolicy string
 
 	// ReferrerPolicy sets the Referrer-Policy response header value.

@@ -102,14 +102,15 @@ var Catalog = []PluginDescriptor{
 			"hsts_preload":            "Append preload to HSTS header (default: false)",
 			"content_type_nosniff":    "Set X-Content-Type-Options: nosniff (default: true)",
 			"frame_option":            "X-Frame-Options value: DENY, SAMEORIGIN, or empty (default: DENY)",
-			"content_security_policy": "Content-Security-Policy header value (default: default-src 'self')",
+			"content_security_policy": "Content-Security-Policy header value (default: empty — header not sent; set explicitly to opt in)",
 			"referrer_policy":         "Referrer-Policy header value (default: strict-origin-when-cross-origin)",
 			"permissions_policy":      "Permissions-Policy header value (default: empty/disabled)",
 		},
 		Example: `  security-headers:
     enabled: true
     frame_option: DENY
-    content_security_policy: "default-src 'self'"`,
+    # content_security_policy is empty by default (header not sent).
+    # Set explicitly to opt in, e.g.: content_security_policy: "default-src 'self'"`,
 	},
 	{
 		Name:        "body-size",

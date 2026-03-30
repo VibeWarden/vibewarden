@@ -304,9 +304,10 @@ func handleVulnLab(w http.ResponseWriter, r *http.Request) {
 // response without any escaping.  This lets an attacker craft a URL that
 // executes arbitrary JavaScript in the victim's browser.
 //
-// VibeWarden mitigation: the CSP header "default-src 'self'" set by the
-// sidecar prevents inline scripts from executing, so the injected payload
-// is blocked even though the app itself does nothing to stop it.
+// VibeWarden mitigation: a CSP header set by the sidecar (e.g.
+// "default-src 'self'", configured in vibewarden.yaml) prevents inline
+// scripts from executing, so the injected payload is blocked even though
+// the app itself does nothing to stop it.
 //
 // INTENTIONALLY VULNERABLE — do not sanitise this endpoint.
 func handleXSSReflected(w http.ResponseWriter, r *http.Request) {
