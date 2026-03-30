@@ -67,7 +67,7 @@ The safest way to probe VibeWarden is against your own local instance:
 ```bash
 cd examples/demo-app
 docker compose up -d
-# VibeWarden is now listening on http://localhost:8080
+# VibeWarden is now listening on https://localhost:8443
 ```
 
 See [`README.md`](README.md) for the full list of endpoints and what each one

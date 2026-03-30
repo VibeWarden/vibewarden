@@ -19,14 +19,14 @@ Generated files are written to `.vibewarden/generated/` which is gitignored.
 ```bash
 cd examples/demo-app
 make demo
-# Visit http://localhost:8080
+# Visit https://localhost:8443
 ```
 
 Wait ~30 seconds for the full stack to be healthy.
 
 | Service | URL | Credentials |
 |---|---|---|
-| Demo app (via VibeWarden) | http://localhost:8080 | see Demo credentials below |
+| Demo app (via VibeWarden) | https://localhost:8443 | see Demo credentials below |
 | Grafana | http://localhost:3001 | admin / admin |
 | Prometheus | http://localhost:9090 | — |
 | Kratos public API | http://localhost:4433 | — |
@@ -107,7 +107,7 @@ for a clean, classless style with zero build tooling.
 ```
 Browser / curl
     |
-    | :8080 (dev) or :8443 (tls)
+    | :8443 (HTTPS)
     v
 +-------------------+
 |    VibeWarden      |  <-- auth check (Kratos), rate limiting, security headers, secrets injection
@@ -142,7 +142,7 @@ Returns a personalised greeting when logged in, or a generic welcome when not.
 from the validated Kratos session.
 
 ```bash
-curl http://localhost:8080/
+curl https://localhost:8443/
 # {"authenticated":false,"message":"Welcome! Please log in."}
 ```
 
@@ -151,7 +151,7 @@ curl http://localhost:8080/
 Returns the active demo profile and which feature sets are available.
 
 ```bash
-curl http://localhost:8080/profile
+curl https://localhost:8443/profile
 # {"observability_enabled":false,"profile":"dev","tls_enabled":false}
 ```
 
@@ -162,7 +162,7 @@ Always returns a timestamp. VibeWarden skips auth for this path.
 **Demonstrates:** `public_paths` configuration — no Kratos check, no redirect.
 
 ```bash
-curl http://localhost:8080/public
+curl https://localhost:8443/public
 # {"message":"This is a public endpoint","timestamp":"2025-01-15T12:00:00Z"}
 ```
 
@@ -172,7 +172,7 @@ Returns the authenticated user's ID, email, and email-verification status.
 Returns 401 if the request did not pass through VibeWarden (no session cookie).
 
 ```bash
-curl -b cookies.txt http://localhost:8080/me
+curl -b cookies.txt https://localhost:8443/me
 # {"email":"alice@example.com","user_id":"...","verified":"true"}
 ```
 
@@ -185,7 +185,7 @@ Returns all incoming request headers as a JSON object.
 security response headers visible in the response.
 
 ```bash
-curl http://localhost:8080/headers
+curl https://localhost:8443/headers
 ```
 
 ### `POST /spam` — Rate-limit trigger
@@ -195,7 +195,7 @@ VibeWarden's rate limiter.
 
 ```bash
 for i in $(seq 1 20); do
-  curl -s -o /dev/null -w "%{http_code}\n" -X POST http://localhost:8080/spam
+  curl -s -o /dev/null -w "%{http_code}\n" -X POST https://localhost:8443/spam
 done
 # 200 x 10, then 429 x 10
 ```
@@ -205,7 +205,7 @@ done
 Returns `{"status":"ok"}`.
 
 ```bash
-curl http://localhost:8080/health
+curl https://localhost:8443/health
 # {"status":"ok"}
 ```
 
@@ -225,14 +225,14 @@ access protected endpoints without completing a verification flow.
 ## Registration and login
 
 VibeWarden proxies Kratos self-service flows, so you can register and log in
-through the same `:8080` port:
+through the same `:8443` port:
 
 ```bash
 # Start a browser login flow
-open http://localhost:8080/self-service/login/browser
+open https://localhost:8443/self-service/login/browser
 
 # Start a browser registration flow
-open http://localhost:8080/self-service/registration/browser
+open https://localhost:8443/self-service/registration/browser
 ```
 
 Verification emails are captured by Mailslurper at http://localhost:4437 —
@@ -251,5 +251,5 @@ Every response from VibeWarden includes:
 Inspect them with:
 
 ```bash
-curl -I http://localhost:8080/public
+curl -I https://localhost:8443/public
 ```
