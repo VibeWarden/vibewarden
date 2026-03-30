@@ -1201,13 +1201,27 @@ func (c *Config) Validate() error {
 		errs = append(errs, fmt.Sprintf("profile must be 'dev', 'tls', or 'prod', got %q", c.Profile))
 	}
 
+	// tls.provider validation: must be one of the accepted values.
+	switch c.TLS.Provider {
+	case "", "self-signed", "letsencrypt", "external":
+		// valid — empty string is accepted (defaults to "self-signed" via Load)
+	default:
+		errs = append(errs, fmt.Sprintf(
+			"tls.provider %q is invalid; accepted values: \"self-signed\", \"letsencrypt\", \"external\" — "+
+				"set tls.provider to one of those values",
+			c.TLS.Provider,
+		))
+	}
+
 	// TLS external provider requires cert_path and key_path.
 	if c.TLS.Enabled && c.TLS.Provider == "external" {
 		if c.TLS.CertPath == "" {
-			errs = append(errs, "tls.cert_path is required when tls.provider is \"external\"")
+			errs = append(errs, "tls.cert_path is required when tls.provider is \"external\" — "+
+				"set tls.cert_path to the path of your PEM-encoded certificate file")
 		}
 		if c.TLS.KeyPath == "" {
-			errs = append(errs, "tls.key_path is required when tls.provider is \"external\"")
+			errs = append(errs, "tls.key_path is required when tls.provider is \"external\" — "+
+				"set tls.key_path to the path of your PEM-encoded private key file")
 		}
 	}
 
@@ -1249,9 +1263,18 @@ func (c *Config) Validate() error {
 		// valid
 	default:
 		errs = append(errs, fmt.Sprintf(
-			"auth.mode %q is invalid; accepted values: \"kratos\", \"jwt\", \"api-key\", \"none\"",
+			"auth.mode %q is invalid; accepted values: \"none\", \"kratos\", \"jwt\", \"api-key\" — "+
+				"set auth.mode to one of those values (use \"none\" to disable authentication)",
 			c.Auth.Mode,
 		))
+	}
+
+	// auth.enabled with mode "none" is almost certainly a misconfiguration: the
+	// user enabled auth but left the mode at its default ("none"), which means no
+	// authentication will actually be enforced.
+	if c.Auth.Enabled && (c.Auth.Mode == AuthModeNone || c.Auth.Mode == "") {
+		errs = append(errs, "auth.enabled is true but auth.mode is \"none\", which means no authentication will be enforced — "+
+			"set auth.mode to \"kratos\", \"jwt\", or \"api-key\" to enable authentication, or set auth.enabled to false")
 	}
 
 	// auth.jwt validation (only when mode is "jwt").
@@ -1370,7 +1393,8 @@ func (c *Config) Validate() error {
 		// valid — "memory" is the default
 	case "redis":
 		if c.RateLimit.Redis.URL == "" && c.RateLimit.Redis.Address == "" {
-			errs = append(errs, "rate_limit.redis.address is required when rate_limit.store is \"redis\" and rate_limit.redis.url is not set")
+			errs = append(errs, "rate_limit.redis.address is required when rate_limit.store is \"redis\" and rate_limit.redis.url is not set — "+
+				"set rate_limit.redis.address to your Redis host:port (e.g. \"127.0.0.1:6379\") or set rate_limit.redis.url to a redis:// URL")
 		}
 		if c.RateLimit.Redis.URL != "" {
 			if err := validateRedisURL(c.RateLimit.Redis.URL); err != nil {
@@ -1379,7 +1403,8 @@ func (c *Config) Validate() error {
 		}
 	default:
 		errs = append(errs, fmt.Sprintf(
-			"rate_limit.store %q is invalid; accepted values: \"memory\", \"redis\"",
+			"rate_limit.store %q is invalid; accepted values: \"memory\", \"redis\" — "+
+				"set rate_limit.store to \"memory\" for a single-process limiter or \"redis\" for a distributed limiter",
 			c.RateLimit.Store,
 		))
 	}
