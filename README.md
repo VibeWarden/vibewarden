@@ -19,10 +19,10 @@ all in a single binary that sits next to your app.
 # macOS / Linux
 curl -fsSL https://vibewarden.dev/vibew > vibew && chmod +x vibew
 
-# Scaffold VibeWarden into your project (auth + rate limiting enabled)
-./vibew init --upstream 3000 --auth --rate-limit
+# Scaffold VibeWarden into your project
+./vibew init --upstream 3000
 
-# Start everything
+# Start everything (generates runtime config, then starts the stack)
 ./vibew dev
 ```
 
@@ -32,7 +32,7 @@ Your app on port 3000 is now behind VibeWarden at `https://localhost:8443`. Done
 
 ```powershell
 Invoke-WebRequest -Uri https://vibewarden.dev/vibew.ps1 -OutFile vibew.ps1
-.\vibew.ps1 init --upstream 3000 --auth --rate-limit
+.\vibew.ps1 init --upstream 3000
 .\vibew.ps1 dev
 ```
 
@@ -218,9 +218,12 @@ Regenerate after config changes:
 
 ```bash
 cd examples/demo-app
-docker compose up -d
+./vibew dev
 # Open https://localhost:8443
 ```
+
+`vibew dev` generates the runtime configuration under `.vibewarden/generated/`
+and starts the full Docker Compose stack automatically.
 
 The demo includes a Vulnerability Lab with live SQLi, XSS, and path traversal
 examples — and shows VibeWarden blocking them.
