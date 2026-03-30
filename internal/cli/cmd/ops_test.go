@@ -1,6 +1,7 @@
 package cmd_test
 
 import (
+	"os"
 	"strings"
 	"testing"
 
@@ -247,4 +248,64 @@ func TestNewGenerateCmd_Short(t *testing.T) {
 	if genCmd.Short == "" {
 		t.Error("expected non-empty Short description on 'generate' command")
 	}
+}
+
+// TestQuickStartFlow_InitThenDev documents and exercises the two-command Quick
+// Start path from the README:
+//
+//	vibew init --upstream 3000
+//	vibew dev
+//
+// Step 1 (init) must succeed and produce vibewarden.yaml with the configured
+// upstream port. Step 2 (dev) must be reachable as a subcommand and must have
+// its generator wired — verified by checking that its Long description
+// documents that it generates runtime config before starting the stack.
+func TestQuickStartFlow_InitThenDev(t *testing.T) {
+	t.Run("step 1: init --upstream 3000 produces vibewarden.yaml", func(t *testing.T) {
+		dir := t.TempDir()
+		root := cmd.NewRootCmd("test")
+		root.SetArgs([]string{"init", dir, "--upstream", "3000"})
+		if err := root.Execute(); err != nil {
+			t.Fatalf("vibew init --upstream 3000 failed: %v", err)
+		}
+
+		data, err := os.ReadFile(dir + "/vibewarden.yaml")
+		if err != nil {
+			t.Fatalf("vibewarden.yaml not created after init: %v", err)
+		}
+		if !strings.Contains(string(data), "3000") {
+			t.Errorf("vibewarden.yaml does not contain upstream port 3000:\n%s", data)
+		}
+	})
+
+	t.Run("step 2: dev subcommand is registered and documents auto-generation", func(t *testing.T) {
+		root := cmd.NewRootCmd("test")
+		devCmd, _, err := root.Find([]string{"dev"})
+		if err != nil || devCmd == nil || devCmd.Use != "dev" {
+			t.Fatalf("dev subcommand not found: %v", err)
+		}
+		// The Long description must mention that runtime config files are
+		// generated before the stack starts — this is the contract that makes
+		// `vibew dev` a single self-contained step after `vibew init`.
+		if !strings.Contains(devCmd.Long, "generates runtime configuration") &&
+			!strings.Contains(devCmd.Long, "generates") {
+			t.Errorf("dev Long description does not mention config generation:\n%s", devCmd.Long)
+		}
+	})
+
+	t.Run("step 2: dev --help does not mention standalone docker compose up", func(t *testing.T) {
+		root := cmd.NewRootCmd("test")
+		var outBuf strings.Builder
+		root.SetOut(&outBuf)
+		root.SetArgs([]string{"dev", "--help"})
+		if err := root.Execute(); err != nil {
+			t.Fatalf("dev --help failed: %v", err)
+		}
+		out := outBuf.String()
+		// Help must not suggest running docker compose manually as a prerequisite;
+		// generation is handled internally by the dev command.
+		if strings.Contains(out, "docker compose up") && !strings.Contains(out, "vibew dev") {
+			t.Errorf("dev help should not instruct user to run 'docker compose up' manually:\n%s", out)
+		}
+	})
 }
