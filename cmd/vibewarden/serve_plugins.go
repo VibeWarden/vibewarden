@@ -11,6 +11,7 @@ import (
 	authplugin "github.com/vibewarden/vibewarden/internal/plugins/auth"
 	bodysizeplugin "github.com/vibewarden/vibewarden/internal/plugins/bodysize"
 	corsplugin "github.com/vibewarden/vibewarden/internal/plugins/cors"
+	inputvalidationplugin "github.com/vibewarden/vibewarden/internal/plugins/inputvalidation"
 	ipfilterplugin "github.com/vibewarden/vibewarden/internal/plugins/ipfilter"
 	maintenanceplugin "github.com/vibewarden/vibewarden/internal/plugins/maintenance"
 	metricsplugin "github.com/vibewarden/vibewarden/internal/plugins/metrics"
@@ -59,6 +60,10 @@ func registerPlugins(
 		AllowCredentials: cfg.CORS.AllowCredentials,
 		MaxAge:           cfg.CORS.MaxAge,
 	}, logger))
+
+	// Input validation — priority 18 (before WAF at 25; catches oversized inputs
+	// before regex scanning begins).
+	registry.Register(buildInputValidationPlugin(cfg, logger))
 
 	// WAF — priority 25 (after security headers at 20, before admin auth at 30)
 	registry.Register(wafplugin.New(wafplugin.Config{
@@ -337,4 +342,29 @@ func buildTLSPlugin(cfg *config.Config, eventLogger ports.EventLogger, logger *s
 		StoragePath:    cfg.TLS.StoragePath,
 		CertMonitoring: monCfg,
 	}, eventLogger, logger)
+}
+
+// buildInputValidationPlugin constructs the input validation plugin from cfg.
+func buildInputValidationPlugin(cfg *config.Config, logger *slog.Logger) *inputvalidationplugin.Plugin {
+	iv := cfg.InputValidation
+
+	pluginCfg := inputvalidationplugin.Config{
+		Enabled:              iv.Enabled,
+		MaxURLLength:         iv.MaxURLLength,
+		MaxQueryStringLength: iv.MaxQueryStringLength,
+		MaxHeaderCount:       iv.MaxHeaderCount,
+		MaxHeaderSize:        iv.MaxHeaderSize,
+	}
+
+	for _, ov := range iv.PathOverrides {
+		pluginCfg.PathOverrides = append(pluginCfg.PathOverrides, inputvalidationplugin.PathOverrideConfig{
+			Path:                 ov.Path,
+			MaxURLLength:         ov.MaxURLLength,
+			MaxQueryStringLength: ov.MaxQueryStringLength,
+			MaxHeaderCount:       ov.MaxHeaderCount,
+			MaxHeaderSize:        ov.MaxHeaderSize,
+		})
+	}
+
+	return inputvalidationplugin.New(pluginCfg, logger)
 }

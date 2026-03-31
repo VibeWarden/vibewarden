@@ -99,6 +99,9 @@ type Config struct {
 	// WAF configures the Web Application Firewall plugins.
 	WAF WAFConfig `mapstructure:"waf"`
 
+	// InputValidation configures request input size limit enforcement.
+	InputValidation InputValidationConfig `mapstructure:"input_validation"`
+
 	// Egress configures the egress proxy plugin for outbound API call control.
 	Egress EgressConfig `mapstructure:"egress"`
 
@@ -852,6 +855,58 @@ type ContentTypeValidationConfig struct {
 	// Requests with a Content-Type not in this list receive 415 Unsupported Media Type.
 	// Default: ["application/json", "application/x-www-form-urlencoded", "multipart/form-data"]
 	Allowed []string `mapstructure:"allowed"`
+}
+
+// InputValidationConfig holds request input size limit settings.
+type InputValidationConfig struct {
+	// Enabled toggles the input validation middleware (default: false).
+	Enabled bool `mapstructure:"enabled"`
+
+	// MaxURLLength is the maximum allowed length of the raw request URI in bytes
+	// (path + query string). Default: 2048. Zero disables this check.
+	MaxURLLength int `mapstructure:"max_url_length"`
+
+	// MaxQueryStringLength is the maximum allowed query string length in bytes,
+	// not including the leading "?". Default: 2048. Zero disables this check.
+	MaxQueryStringLength int `mapstructure:"max_query_string_length"`
+
+	// MaxHeaderCount is the maximum number of request headers allowed.
+	// Default: 100. Zero disables this check.
+	MaxHeaderCount int `mapstructure:"max_header_count"`
+
+	// MaxHeaderSize is the maximum allowed byte length of any single header
+	// value. Default: 8192. Zero disables this check.
+	MaxHeaderSize int `mapstructure:"max_header_size"`
+
+	// PathOverrides defines per-path limit overrides.
+	// The first entry whose Path glob pattern (path.Match syntax) matches the
+	// request URL path wins. Non-zero fields in the matching entry override the
+	// global limits.
+	PathOverrides []InputValidationPathOverrideConfig `mapstructure:"path_overrides"`
+}
+
+// InputValidationPathOverrideConfig defines per-path limit overrides for the
+// input validation middleware.
+type InputValidationPathOverrideConfig struct {
+	// Path is a glob pattern (path.Match syntax) matched against the request
+	// URL path (e.g. "/api/upload", "/static/*").
+	Path string `mapstructure:"path"`
+
+	// MaxURLLength overrides the global limit for matching paths.
+	// Zero means inherit the global value.
+	MaxURLLength int `mapstructure:"max_url_length"`
+
+	// MaxQueryStringLength overrides the global limit for matching paths.
+	// Zero means inherit the global value.
+	MaxQueryStringLength int `mapstructure:"max_query_string_length"`
+
+	// MaxHeaderCount overrides the global limit for matching paths.
+	// Zero means inherit the global value.
+	MaxHeaderCount int `mapstructure:"max_header_count"`
+
+	// MaxHeaderSize overrides the global limit for matching paths.
+	// Zero means inherit the global value.
+	MaxHeaderSize int `mapstructure:"max_header_size"`
 }
 
 // CORSConfig holds Cross-Origin Resource Sharing settings.
@@ -2018,6 +2073,12 @@ func Load(configPath string) (*Config, error) {
 	v.SetDefault("observability.prometheus_port", 9090)
 	v.SetDefault("observability.loki_port", 3100)
 	v.SetDefault("observability.retention_days", 7)
+	v.SetDefault("input_validation.enabled", false)
+	v.SetDefault("input_validation.max_url_length", 2048)
+	v.SetDefault("input_validation.max_query_string_length", 2048)
+	v.SetDefault("input_validation.max_header_count", 100)
+	v.SetDefault("input_validation.max_header_size", 8192)
+	v.SetDefault("input_validation.path_overrides", []InputValidationPathOverrideConfig{})
 	v.SetDefault("waf.content_type_validation.enabled", false)
 	v.SetDefault("waf.content_type_validation.allowed", []string{
 		"application/json",
