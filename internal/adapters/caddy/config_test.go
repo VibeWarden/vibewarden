@@ -2,6 +2,7 @@ package caddy
 
 import (
 	"testing"
+	"time"
 
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
@@ -1893,6 +1894,97 @@ func TestBuildCaddyConfig_DocsRoute(t *testing.T) {
 			if upstreams[0]["dial"] != tt.wantDocsDialAddr {
 				t.Errorf("docs upstream dial = %v, want %q", upstreams[0]["dial"], tt.wantDocsDialAddr)
 			}
+		})
+	}
+}
+
+func TestBuildCaddyConfig_ServerTimeouts(t *testing.T) {
+	tests := []struct {
+		name             string
+		serverTimeouts   ports.ServerTimeoutsConfig
+		wantReadTimeout  int64 // 0 means key must be absent
+		wantWriteTimeout int64
+		wantIdleTimeout  int64
+	}{
+		{
+			name:             "all timeouts absent when zero",
+			serverTimeouts:   ports.ServerTimeoutsConfig{},
+			wantReadTimeout:  0,
+			wantWriteTimeout: 0,
+			wantIdleTimeout:  0,
+		},
+		{
+			name: "default timeouts wired correctly",
+			serverTimeouts: ports.ServerTimeoutsConfig{
+				ReadTimeout:  30 * time.Second,
+				WriteTimeout: 60 * time.Second,
+				IdleTimeout:  120 * time.Second,
+			},
+			wantReadTimeout:  int64(30 * time.Second),
+			wantWriteTimeout: int64(60 * time.Second),
+			wantIdleTimeout:  int64(120 * time.Second),
+		},
+		{
+			name: "custom timeouts wired correctly",
+			serverTimeouts: ports.ServerTimeoutsConfig{
+				ReadTimeout:  5 * time.Second,
+				WriteTimeout: 10 * time.Second,
+				IdleTimeout:  15 * time.Second,
+			},
+			wantReadTimeout:  int64(5 * time.Second),
+			wantWriteTimeout: int64(10 * time.Second),
+			wantIdleTimeout:  int64(15 * time.Second),
+		},
+		{
+			name: "only read timeout set",
+			serverTimeouts: ports.ServerTimeoutsConfig{
+				ReadTimeout: 45 * time.Second,
+			},
+			wantReadTimeout:  int64(45 * time.Second),
+			wantWriteTimeout: 0,
+			wantIdleTimeout:  0,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &ports.ProxyConfig{
+				ListenAddr:     "127.0.0.1:8080",
+				UpstreamAddr:   "127.0.0.1:3000",
+				ServerTimeouts: tt.serverTimeouts,
+			}
+			result, err := BuildCaddyConfig(cfg)
+			if err != nil {
+				t.Fatalf("BuildCaddyConfig() unexpected error: %v", err)
+			}
+			server := extractServer(t, result)
+
+			checkTimeout := func(key string, want int64) {
+				t.Helper()
+				val, present := server[key]
+				if want == 0 {
+					if present {
+						t.Errorf("server[%q] = %v, expected key to be absent when timeout is zero", key, val)
+					}
+					return
+				}
+				if !present {
+					t.Errorf("server[%q] not found, want %d", key, want)
+					return
+				}
+				got, ok := val.(int64)
+				if !ok {
+					t.Errorf("server[%q] has type %T, want int64", key, val)
+					return
+				}
+				if got != want {
+					t.Errorf("server[%q] = %d, want %d", key, got, want)
+				}
+			}
+
+			checkTimeout("read_timeout", tt.wantReadTimeout)
+			checkTimeout("write_timeout", tt.wantWriteTimeout)
+			checkTimeout("idle_timeout", tt.wantIdleTimeout)
 		})
 	}
 }

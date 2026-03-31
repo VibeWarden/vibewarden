@@ -225,6 +225,18 @@ func BuildCaddyConfig(cfg *ports.ProxyConfig) (map[string]any, error) {
 		"routes": routes,
 	}
 
+	// Apply server-level timeouts when non-zero. Caddy's Duration JSON type
+	// accepts nanosecond integers, matching the representation of time.Duration.
+	if cfg.ServerTimeouts.ReadTimeout > 0 {
+		server["read_timeout"] = int64(cfg.ServerTimeouts.ReadTimeout)
+	}
+	if cfg.ServerTimeouts.WriteTimeout > 0 {
+		server["write_timeout"] = int64(cfg.ServerTimeouts.WriteTimeout)
+	}
+	if cfg.ServerTimeouts.IdleTimeout > 0 {
+		server["idle_timeout"] = int64(cfg.ServerTimeouts.IdleTimeout)
+	}
+
 	if cfg.TLS.Enabled {
 		// When TLS is enabled, only disable Caddy's automatic HTTP→HTTPS
 		// redirects (we add our own redirect server). Certificate management
