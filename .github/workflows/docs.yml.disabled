@@ -1,4 +1,4 @@
-name: Deploy docs
+name: Deploy docs to vibewarden.dev
 
 on:
   push:
@@ -11,7 +11,7 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   deploy:
@@ -34,10 +34,16 @@ jobs:
             mkdocs-minify-plugin \
             pymdown-extensions
 
-      - name: Configure git for gh-pages push
-        run: |
-          git config user.name  "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
+      - name: Build docs
+        run: mkdocs build --strict --site-dir _site/docs
 
-      - name: Deploy to GitHub Pages
-        run: mkdocs gh-deploy --force
+      - name: Deploy to vibewarden.dev repo
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          deploy_key: ${{ secrets.DOCS_DEPLOY_KEY }}
+          external_repository: vibewarden/vibewarden.dev
+          publish_branch: main
+          publish_dir: ./_site/docs
+          destination_dir: docs
+          keep_files: true
+          commit_message: "docs: sync from vibewarden/vibewarden@${{ github.sha }}"
