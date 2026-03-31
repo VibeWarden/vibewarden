@@ -10,7 +10,7 @@
 </p>
 
 <p align="center">
-  <strong>Production-grade security for vibe-coded apps — zero config changes to your code.</strong>
+  <strong>Production-grade security for vibe-coded apps — no changes to your app code.</strong>
 </p>
 
 You ship fast with AI coding tools. VibeWarden adds the security layer you skipped:
