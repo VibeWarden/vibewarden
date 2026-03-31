@@ -1,4 +1,6 @@
-# VibeWarden
+<p align="center">
+  <img src="assets/logo-text.png" alt="VibeWarden" width="400">
+</p>
 
 **Production-grade security for vibe-coded apps — zero config changes to your code.**
 

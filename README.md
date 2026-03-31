@@ -1,11 +1,17 @@
-# VibeWarden
+<p align="center">
+  <img src="docs/assets/logo-text.png" alt="VibeWarden" width="400">
+</p>
 
-[![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)][license]
-[![Go Version](https://img.shields.io/badge/go-1.26-00ADD8.svg)][go]
-[![CI](https://github.com/vibewarden/vibewarden/actions/workflows/ci.yml/badge.svg)][ci]
-[![Release](https://img.shields.io/github/v/release/vibewarden/vibewarden)][releases]
+<p align="center">
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-blue.svg" alt="License"></a>
+  <a href="https://go.dev/"><img src="https://img.shields.io/badge/go-1.26-00ADD8.svg" alt="Go Version"></a>
+  <a href="https://github.com/vibewarden/vibewarden/actions/workflows/ci.yml"><img src="https://github.com/vibewarden/vibewarden/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/vibewarden/vibewarden/releases"><img src="https://img.shields.io/github/v/release/vibewarden/vibewarden" alt="Release"></a>
+</p>
 
-**Production-grade security for vibe-coded apps — zero config changes to your code.**
+<p align="center">
+  <strong>Production-grade security for vibe-coded apps — zero config changes to your code.</strong>
+</p>
 
 You ship fast with AI coding tools. VibeWarden adds the security layer you skipped:
 TLS, authentication, rate limiting, WAF, secrets management, and AI-readable audit logs —
