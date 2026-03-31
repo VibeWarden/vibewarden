@@ -76,6 +76,9 @@ func registerPlugins(
 	}, logger))
 
 	// Security headers — priority 20
+	//
+	// resolveCSP picks the raw content_security_policy string when set
+	// (backward compat) and falls back to the structured csp builder otherwise.
 	registry.Register(sechdrs.New(sechdrs.Config{
 		Enabled:                      cfg.SecurityHeaders.Enabled,
 		HSTSMaxAge:                   cfg.SecurityHeaders.HSTSMaxAge,
@@ -83,7 +86,7 @@ func registerPlugins(
 		HSTSPreload:                  cfg.SecurityHeaders.HSTSPreload,
 		ContentTypeNosniff:           cfg.SecurityHeaders.ContentTypeNosniff,
 		FrameOption:                  cfg.SecurityHeaders.FrameOption,
-		ContentSecurityPolicy:        cfg.SecurityHeaders.ContentSecurityPolicy,
+		ContentSecurityPolicy:        resolveCSP(cfg),
 		ReferrerPolicy:               cfg.SecurityHeaders.ReferrerPolicy,
 		PermissionsPolicy:            cfg.SecurityHeaders.PermissionsPolicy,
 		CrossOriginOpenerPolicy:      cfg.SecurityHeaders.CrossOriginOpenerPolicy,
