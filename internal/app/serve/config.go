@@ -1,16 +1,13 @@
-package main
+package serve
 
 import (
 	"fmt"
 	"log/slog"
-	"os"
 	"time"
 
-	logadapter "github.com/vibewarden/vibewarden/internal/adapters/log"
 	"github.com/vibewarden/vibewarden/internal/config"
 	"github.com/vibewarden/vibewarden/internal/domain/csp"
 	"github.com/vibewarden/vibewarden/internal/plugins"
-	egressplugin "github.com/vibewarden/vibewarden/internal/plugins/egress"
 	metricsplugin "github.com/vibewarden/vibewarden/internal/plugins/metrics"
 	tlsplugin "github.com/vibewarden/vibewarden/internal/plugins/tls"
 	"github.com/vibewarden/vibewarden/internal/ports"
@@ -18,9 +15,10 @@ import (
 
 // buildProxyConfig constructs the ports.ProxyConfig that the Caddy adapter
 // uses to build its JSON configuration. Plugin-specific fields are read from
-// the running plugins where possible (e.g. metrics internal address after
-// Start).
-func buildProxyConfig(cfg *config.Config, registry *plugins.Registry) *ports.ProxyConfig {
+// the running plugins where possible (e.g. metrics internal address after Start).
+//
+// version is the binary version string injected at build time.
+func buildProxyConfig(cfg *config.Config, registry *plugins.Registry, version string) *ports.ProxyConfig {
 	// Collect internal addresses from started InternalServerPlugin instances.
 	var metricsCfg ports.MetricsProxyConfig
 	var adminCfg ports.AdminProxyConfig
@@ -300,99 +298,26 @@ func buildResiliencePortsConfig(cfg *config.Config) ports.ResilienceConfig {
 	return result
 }
 
-// buildEgressPlugin constructs the egress proxy plugin from config, parsing
-// duration strings into time.Duration values. Falls back to plugin defaults
-// on parse errors (config.Validate does not validate egress duration strings
-// since they are optional and have sensible defaults).
-func buildEgressPlugin(cfg *config.Config, eventLogger ports.EventLogger, logger *slog.Logger) *egressplugin.Plugin {
-	ec := cfg.Egress
+// wireTLSMetricsCollector injects the MetricsCollector from the metrics plugin
+// into the TLS plugin's certificate expiry monitor. It must be called after
+// InitAll (so the metrics provider is ready) and before StartAll (so the
+// monitor goroutine receives the collector before it first runs).
+func wireTLSMetricsCollector(registry *plugins.Registry) {
+	var collector ports.MetricsCollector
+	var tlsPlugin *tlsplugin.Plugin
 
-	defaultTimeout, err := time.ParseDuration(ec.DefaultTimeout)
-	if err != nil && ec.DefaultTimeout != "" {
-		logger.Warn("egress.default_timeout parse error — using default 30s",
-			slog.String("error", err.Error()),
-			slog.String("value", ec.DefaultTimeout),
-		)
-	}
-
-	defaultBodySizeBytes, err := config.ParseBodySize(ec.DefaultBodySizeLimit)
-	if err != nil && ec.DefaultBodySizeLimit != "" {
-		logger.Warn("egress.default_body_size_limit parse error — disabling global body size limit",
-			slog.String("error", err.Error()),
-		)
-		defaultBodySizeBytes = 0
-	}
-
-	defaultResponseSizeBytes, err := config.ParseBodySize(ec.DefaultResponseSizeLimit)
-	if err != nil && ec.DefaultResponseSizeLimit != "" {
-		logger.Warn("egress.default_response_size_limit parse error — disabling global response size limit",
-			slog.String("error", err.Error()),
-		)
-		defaultResponseSizeBytes = 0
-	}
-
-	pluginCfg := egressplugin.Config{
-		Enabled:                  ec.Enabled,
-		Listen:                   ec.Listen,
-		DefaultPolicy:            ec.DefaultPolicy,
-		AllowInsecure:            ec.AllowInsecure,
-		DefaultTimeout:           defaultTimeout,
-		DefaultBodySizeLimit:     defaultBodySizeBytes,
-		DefaultResponseSizeLimit: defaultResponseSizeBytes,
-		BlockPrivate:             ec.DNS.BlockPrivate,
-		AllowedPrivate:           ec.DNS.AllowedPrivate,
-	}
-
-	// Map route configs.
-	for _, rc := range ec.Routes {
-		routeTimeout, routeErr := time.ParseDuration(rc.Timeout)
-		if routeErr != nil && rc.Timeout != "" {
-			logger.Warn("egress route timeout parse error — using global default",
-				slog.String("route", rc.Name),
-				slog.String("error", routeErr.Error()),
-			)
+	for _, p := range registry.Plugins() {
+		switch v := p.(type) {
+		case *metricsplugin.Plugin:
+			collector = v.Collector()
+		case *tlsplugin.Plugin:
+			tlsPlugin = v
 		}
-
-		cbResetAfter, cbErr := time.ParseDuration(rc.CircuitBreaker.ResetAfter)
-		if cbErr != nil && rc.CircuitBreaker.ResetAfter != "" {
-			logger.Warn("egress route circuit_breaker.reset_after parse error — disabling circuit breaker for route",
-				slog.String("route", rc.Name),
-				slog.String("error", cbErr.Error()),
-			)
-		}
-
-		bodySizeBytes, _ := config.ParseBodySize(rc.BodySizeLimit)
-		responseSizeBytes, _ := config.ParseBodySize(rc.ResponseSizeLimit)
-
-		pluginCfg.Routes = append(pluginCfg.Routes, egressplugin.RouteConfig{
-			Name:              rc.Name,
-			Pattern:           rc.Pattern,
-			Methods:           rc.Methods,
-			Timeout:           routeTimeout,
-			Secret:            rc.Secret,
-			SecretHeader:      rc.SecretHeader,
-			SecretFormat:      rc.SecretFormat,
-			RateLimit:         rc.RateLimit,
-			BodySizeLimit:     bodySizeBytes,
-			ResponseSizeLimit: responseSizeBytes,
-			AllowInsecure:     rc.AllowInsecure,
-			CircuitBreaker: egressplugin.CircuitBreakerConfig{
-				Threshold:  rc.CircuitBreaker.Threshold,
-				ResetAfter: cbResetAfter,
-			},
-			Retries: egressplugin.RetryConfig{
-				Max:     rc.Retries.Max,
-				Methods: rc.Retries.Methods,
-				Backoff: rc.Retries.Backoff,
-			},
-			ValidateResponse: egressplugin.ResponseValidationConfig{
-				StatusCodes:  rc.ValidateResponse.StatusCodes,
-				ContentTypes: rc.ValidateResponse.ContentTypes,
-			},
-		})
 	}
 
-	return egressplugin.New(pluginCfg, eventLogger, logger)
+	if tlsPlugin != nil && collector != nil {
+		tlsPlugin.SetMetricsCollector(collector)
+	}
 }
 
 // resolveCSP returns the Content-Security-Policy header value to use.
@@ -420,43 +345,4 @@ func resolveCSP(cfg *config.Config) string {
 		FrameAncestors: cfg.SecurityHeaders.CSP.FrameAncestors,
 		BaseURI:        cfg.SecurityHeaders.CSP.BaseURI,
 	})
-}
-
-// buildEventLogger constructs the event logger used by the caddy adapter and
-// other consumers. When the metrics plugin has an OTel log handler available,
-// the logger fans out to both stdout JSON and OTel via a MultiHandler.
-// Falls back to stdout-only when log export is disabled or unavailable.
-func buildEventLogger(registry *plugins.Registry, logger *slog.Logger) ports.EventLogger {
-	for _, p := range registry.Plugins() {
-		if mp, ok := p.(*metricsplugin.Plugin); ok {
-			if h := mp.LogHandler(); h != nil {
-				logger.Info("event logger: OTel log export enabled")
-				return logadapter.NewSlogEventLogger(os.Stdout, h)
-			}
-			break
-		}
-	}
-	return logadapter.NewSlogEventLogger(os.Stdout)
-}
-
-// wireTLSMetricsCollector injects the MetricsCollector from the metrics plugin
-// into the TLS plugin's certificate expiry monitor. It must be called after
-// InitAll (so the metrics provider is ready) and before StartAll (so the
-// monitor goroutine receives the collector before it first runs).
-func wireTLSMetricsCollector(registry *plugins.Registry) {
-	var collector ports.MetricsCollector
-	var tlsPlugin *tlsplugin.Plugin
-
-	for _, p := range registry.Plugins() {
-		switch v := p.(type) {
-		case *metricsplugin.Plugin:
-			collector = v.Collector()
-		case *tlsplugin.Plugin:
-			tlsPlugin = v
-		}
-	}
-
-	if tlsPlugin != nil && collector != nil {
-		tlsPlugin.SetMetricsCollector(collector)
-	}
 }
