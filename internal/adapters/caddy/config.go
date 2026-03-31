@@ -47,7 +47,7 @@ func BuildCaddyConfig(cfg *ports.ProxyConfig) (map[string]any, error) {
 	}
 
 	// Build route handlers (middleware chain + reverse proxy).
-	// Middleware order: StripUserHeaders → SecurityHeaders → AdminAuth → BodySize → RateLimit → CircuitBreaker → Retry → Timeout → ReverseProxy
+	// Middleware order: StripUserHeaders → SecurityHeaders → AdminAuth → BodySize → RateLimit → CircuitBreaker → Retry → Timeout → Compression → ReverseProxy
 	//
 	// The header strip handler MUST be first so that spoofed X-User-* headers sent
 	// by clients are removed before any other handler (including auth) runs.
@@ -125,6 +125,14 @@ func BuildCaddyConfig(cfg *ports.ProxyConfig) (map[string]any, error) {
 		if timeoutHandler != nil {
 			handlers = append(handlers, timeoutHandler)
 		}
+	}
+
+	// Add compression handler before the reverse proxy so that Caddy can
+	// compress the upstream response before writing it to the client.
+	// The encode handler wraps the downstream response writer; it must appear
+	// in the chain before any handler that writes response bytes.
+	if cfg.Compression.Enabled {
+		handlers = append(handlers, buildCompressionHandlerJSON(cfg.Compression))
 	}
 
 	// Add reverse proxy as final handler.

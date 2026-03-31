@@ -6,6 +6,10 @@ import (
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
 
+// defaultCompressionAlgorithms is the fallback list used when
+// CompressionConfig.Algorithms is empty.
+var defaultCompressionAlgorithms = []string{"zstd", "gzip"}
+
 // buildUserHeaderStripHandler creates a Caddy headers handler that deletes the
 // X-User-Id, X-User-Email, and X-User-Verified request headers.
 //
@@ -93,5 +97,38 @@ func buildSecurityHeadersHandler(cfg ports.SecurityHeadersConfig, tlsEnabled boo
 	return map[string]any{
 		"handler":  "headers",
 		"response": response,
+	}
+}
+
+// buildCompressionHandlerJSON creates a Caddy encode handler that compresses
+// response bodies using the algorithms listed in cfg.Algorithms.
+//
+// Caddy's encode handler (module: http.handlers.encode) negotiates the best
+// encoding with the client via the Accept-Encoding request header. Algorithms
+// are applied in the order they appear in the encodings map; zstd is preferred
+// over gzip when both are offered by the client.
+//
+// The handler is placed in the middleware chain after all request-phase
+// middleware (auth, rate limit, etc.) and before the reverse proxy so that
+// Caddy can compress the upstream response before sending it to the client.
+func buildCompressionHandlerJSON(cfg ports.CompressionConfig) map[string]any {
+	algos := cfg.Algorithms
+	if len(algos) == 0 {
+		algos = defaultCompressionAlgorithms
+	}
+
+	encodings := map[string]any{}
+	for _, algo := range algos {
+		switch algo {
+		case "gzip":
+			encodings["gzip"] = map[string]any{}
+		case "zstd":
+			encodings["zstd"] = map[string]any{}
+		}
+	}
+
+	return map[string]any{
+		"handler":   "encode",
+		"encodings": encodings,
 	}
 }

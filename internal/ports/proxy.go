@@ -70,6 +70,23 @@ type ProxyConfig struct {
 	// Readiness configuration — controls the /_vibewarden/ready endpoint that
 	// reports whether all plugins are initialised and the upstream is reachable.
 	Readiness ReadinessProxyConfig
+
+	// Compression configuration — controls response body compression.
+	Compression CompressionConfig
+}
+
+// CompressionConfig holds configuration for response body compression.
+// Caddy's native encode handler is used to perform the compression, so no
+// additional dependencies are required.
+type CompressionConfig struct {
+	// Enabled toggles response compression. Defaults to true.
+	Enabled bool
+
+	// Algorithms is the ordered list of compression algorithms to offer.
+	// Caddy negotiates the best algorithm with the client via Accept-Encoding.
+	// Valid values: "gzip", "zstd".
+	// Defaults to ["zstd", "gzip"] when empty.
+	Algorithms []string
 }
 
 // ReadinessProxyConfig holds configuration for exposing the readiness probe
