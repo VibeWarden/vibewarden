@@ -1,6 +1,6 @@
 package config
 
-import "strings"
+import "net"
 
 // EgressConfig holds configuration for the egress proxy plugin.
 // When enabled, the egress proxy listens on a separate port and forwards
@@ -191,8 +191,8 @@ func (e EgressConfig) ListenPort() string {
 	if e.Listen == "" {
 		return "8081"
 	}
-	_, port, found := strings.Cut(e.Listen, ":")
-	if !found || port == "" {
+	_, port, err := net.SplitHostPort(e.Listen)
+	if err != nil || port == "" {
 		return "8081"
 	}
 	return port

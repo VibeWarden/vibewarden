@@ -98,7 +98,7 @@ services:
       - VIBEWARDEN_TELEMETRY_OTLP_ENDPOINT=http://otel-collector:4318
       - VIBEWARDEN_TELEMETRY_LOGS_OTLP=true
 {{- end }}
-{{- if .Egress.IsNetworkIsolationEnabled }}
+{{- if .Egress.Enabled }}
       - VIBEWARDEN_EGRESS_LISTEN=0.0.0.0:{{ .Egress.ListenPort }}
 {{- end }}
 {{- if not (or .App.Build .App.Image) }}

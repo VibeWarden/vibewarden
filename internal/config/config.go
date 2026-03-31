@@ -135,7 +135,7 @@ func (c *Config) InternalNetworkName() string {
 // localhost and the vibewarden service name. Additional services are appended
 // based on configuration flags (e.g., kratos, openbao, redis).
 func (c *Config) EgressNoProxy() string {
-	parts := []string{"localhost", "vibewarden"}
+	parts := []string{"localhost", "127.0.0.1", "vibewarden"}
 
 	kratosMode := c.Auth.Enabled && c.Auth.Mode == AuthModeKratos && !c.Kratos.External
 	if kratosMode {

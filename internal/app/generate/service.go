@@ -83,6 +83,12 @@ func (s *Service) Generate(ctx context.Context, cfg *config.Config, outputDir st
 		slog.Warn(w)
 	}
 
+	// Warn when network isolation is enabled but the app is not containerized.
+	// A host-mode app bypasses Docker network isolation entirely.
+	if cfg.Egress.IsNetworkIsolationEnabled() && cfg.App.Build == "" && cfg.App.Image == "" {
+		slog.Warn("Network isolation is enabled but app.build and app.image are both empty: host-mode app bypasses Docker network isolation")
+	}
+
 	// kratosMode is true only when auth is enabled and mode is "kratos" and
 	// the Kratos instance is not managed externally.
 	// An empty mode string is also treated as Kratos for defensive backwards

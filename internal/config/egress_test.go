@@ -614,6 +614,8 @@ func TestListenPort(t *testing.T) {
 		{"empty defaults to 8081", "", "8081"},
 		{"no colon defaults to 8081", "localhost", "8081"},
 		{"colon but no port defaults to 8081", "localhost:", "8081"},
+		{"IPv6 loopback with port", "[::1]:9090", "9090"},
+		{"IPv6 all interfaces with port", "[::]:8081", "8081"},
 	}
 
 	for _, tt := range tests {
@@ -735,16 +737,16 @@ func TestEgressNoProxy(t *testing.T) {
 		want string
 	}{
 		{
-			name: "minimal — only localhost and vibewarden",
+			name: "minimal — localhost, 127.0.0.1, and vibewarden",
 			cfg:  config.Config{},
-			want: "localhost,vibewarden",
+			want: "localhost,127.0.0.1,vibewarden",
 		},
 		{
 			name: "with kratos (local db)",
 			cfg: config.Config{
 				Auth: config.AuthConfig{Enabled: true, Mode: config.AuthModeKratos},
 			},
-			want: "localhost,vibewarden,kratos,kratos-db",
+			want: "localhost,127.0.0.1,vibewarden,kratos,kratos-db",
 		},
 		{
 			name: "with kratos (external db)",
@@ -752,28 +754,28 @@ func TestEgressNoProxy(t *testing.T) {
 				Auth:     config.AuthConfig{Enabled: true, Mode: config.AuthModeKratos},
 				Database: config.DatabaseConfig{ExternalURL: "postgres://ext:5432/kratos"},
 			},
-			want: "localhost,vibewarden,kratos",
+			want: "localhost,127.0.0.1,vibewarden,kratos",
 		},
 		{
 			name: "with secrets",
 			cfg: config.Config{
 				Secrets: config.SecretsConfig{Enabled: true},
 			},
-			want: "localhost,vibewarden,openbao",
+			want: "localhost,127.0.0.1,vibewarden,openbao",
 		},
 		{
 			name: "with redis rate limiting",
 			cfg: config.Config{
 				RateLimit: config.RateLimitConfig{Store: "redis"},
 			},
-			want: "localhost,vibewarden,redis",
+			want: "localhost,127.0.0.1,vibewarden,redis",
 		},
 		{
 			name: "with observability",
 			cfg: config.Config{
 				Observability: config.ObservabilityConfig{Enabled: true},
 			},
-			want: "localhost,vibewarden,prometheus,loki,promtail,otel-collector,jaeger,grafana",
+			want: "localhost,127.0.0.1,vibewarden,prometheus,loki,promtail,otel-collector,jaeger,grafana",
 		},
 		{
 			name: "all services enabled",
@@ -783,7 +785,7 @@ func TestEgressNoProxy(t *testing.T) {
 				RateLimit:     config.RateLimitConfig{Store: "redis"},
 				Observability: config.ObservabilityConfig{Enabled: true},
 			},
-			want: "localhost,vibewarden,kratos,kratos-db,openbao,redis,prometheus,loki,promtail,otel-collector,jaeger,grafana",
+			want: "localhost,127.0.0.1,vibewarden,kratos,kratos-db,openbao,redis,prometheus,loki,promtail,otel-collector,jaeger,grafana",
 		},
 	}
 
