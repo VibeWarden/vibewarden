@@ -1,33 +1,32 @@
-package main
+package plugins
 
 import (
 	"log/slog"
-	"time"
 
 	jwtadapter "github.com/vibewarden/vibewarden/internal/adapters/jwt"
 	ratelimitadapter "github.com/vibewarden/vibewarden/internal/adapters/ratelimit"
 	"github.com/vibewarden/vibewarden/internal/config"
-	"github.com/vibewarden/vibewarden/internal/plugins"
 	authplugin "github.com/vibewarden/vibewarden/internal/plugins/auth"
 	bodysizeplugin "github.com/vibewarden/vibewarden/internal/plugins/bodysize"
 	corsplugin "github.com/vibewarden/vibewarden/internal/plugins/cors"
-	inputvalidationplugin "github.com/vibewarden/vibewarden/internal/plugins/inputvalidation"
 	ipfilterplugin "github.com/vibewarden/vibewarden/internal/plugins/ipfilter"
 	maintenanceplugin "github.com/vibewarden/vibewarden/internal/plugins/maintenance"
 	metricsplugin "github.com/vibewarden/vibewarden/internal/plugins/metrics"
 	ratelimitplugin "github.com/vibewarden/vibewarden/internal/plugins/ratelimit"
-	secretsplugin "github.com/vibewarden/vibewarden/internal/plugins/secrets"
 	sechdrs "github.com/vibewarden/vibewarden/internal/plugins/securityheaders"
-	tlsplugin "github.com/vibewarden/vibewarden/internal/plugins/tls"
 	usermgmtplugin "github.com/vibewarden/vibewarden/internal/plugins/usermgmt"
 	wafplugin "github.com/vibewarden/vibewarden/internal/plugins/waf"
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
 
-// registerPlugins creates each compiled-in plugin from cfg and registers it
-// with the registry. Registration order matches plugin priority (low → high).
-func registerPlugins(
-	registry *plugins.Registry,
+// RegisterBuiltinPlugins registers all OSS compiled-in plugins with the registry
+// based on the provided configuration. Plugin registration order matches plugin
+// priority (low number → runs first in the request chain).
+//
+// This function is called automatically by internal/app/serve.RunServe and should
+// not be called directly unless composing a custom startup sequence.
+func RegisterBuiltinPlugins(
+	registry *Registry,
 	cfg *config.Config,
 	eventLogger ports.EventLogger,
 	logger *slog.Logger,
@@ -214,157 +213,4 @@ func registerPlugins(
 
 	// Egress proxy — priority 80 (independent listener; registered last)
 	registry.Register(buildEgressPlugin(cfg, eventLogger, logger))
-}
-
-// buildSecretsPlugin constructs the secrets plugin from config, parsing
-// duration strings into time.Duration values. Falls back to plugin defaults
-// on parse errors (config.Validate does not validate duration strings here
-// since they are optional and have sensible defaults).
-func buildSecretsPlugin(cfg *config.Config, eventLogger ports.EventLogger, logger *slog.Logger) *secretsplugin.Plugin {
-	secretsCfg := secretsplugin.Config{
-		Enabled:  cfg.Secrets.Enabled,
-		Provider: cfg.Secrets.Provider,
-		OpenBao: secretsplugin.OpenBaoConfig{
-			Address:   cfg.Secrets.OpenBao.Address,
-			MountPath: cfg.Secrets.OpenBao.MountPath,
-			Auth: secretsplugin.OpenBaoAuthConfig{
-				Method:   cfg.Secrets.OpenBao.Auth.Method,
-				Token:    cfg.Secrets.OpenBao.Auth.Token,
-				RoleID:   cfg.Secrets.OpenBao.Auth.RoleID,
-				SecretID: cfg.Secrets.OpenBao.Auth.SecretID,
-			},
-		},
-		Dynamic: secretsplugin.DynamicConfig{
-			Postgres: secretsplugin.DynamicPostgresConfig{
-				Enabled: cfg.Secrets.Dynamic.Postgres.Enabled,
-			},
-		},
-		Inject: secretsplugin.InjectConfig{
-			EnvFile: cfg.Secrets.Inject.EnvFile,
-		},
-		Health: secretsplugin.HealthConfig{
-			WeakPatterns: cfg.Secrets.Health.WeakPatterns,
-		},
-	}
-
-	// Parse optional duration strings.
-	if cfg.Secrets.CacheTTL != "" {
-		if d, err := time.ParseDuration(cfg.Secrets.CacheTTL); err != nil {
-			logger.Warn("secrets.cache_ttl parse error — using default", slog.String("error", err.Error()))
-		} else {
-			secretsCfg.CacheTTL = d
-		}
-	}
-	if cfg.Secrets.Health.CheckInterval != "" {
-		if d, err := time.ParseDuration(cfg.Secrets.Health.CheckInterval); err != nil {
-			logger.Warn("secrets.health.check_interval parse error — using default", slog.String("error", err.Error()))
-		} else {
-			secretsCfg.Health.CheckInterval = d
-		}
-	}
-	if cfg.Secrets.Health.MaxStaticAge != "" {
-		if d, err := time.ParseDuration(cfg.Secrets.Health.MaxStaticAge); err != nil {
-			logger.Warn("secrets.health.max_static_age parse error — using default", slog.String("error", err.Error()))
-		} else {
-			secretsCfg.Health.MaxStaticAge = d
-		}
-	}
-
-	// Map header injections.
-	for _, inj := range cfg.Secrets.Inject.Headers {
-		secretsCfg.Inject.Headers = append(secretsCfg.Inject.Headers, secretsplugin.HeaderInjection{
-			SecretPath: inj.SecretPath,
-			SecretKey:  inj.SecretKey,
-			Header:     inj.Header,
-		})
-	}
-
-	// Map env injections.
-	for _, inj := range cfg.Secrets.Inject.Env {
-		secretsCfg.Inject.Env = append(secretsCfg.Inject.Env, secretsplugin.EnvInjection{
-			SecretPath: inj.SecretPath,
-			SecretKey:  inj.SecretKey,
-			EnvVar:     inj.EnvVar,
-		})
-	}
-
-	// Map dynamic postgres roles.
-	for _, role := range cfg.Secrets.Dynamic.Postgres.Roles {
-		secretsCfg.Dynamic.Postgres.Roles = append(secretsCfg.Dynamic.Postgres.Roles, secretsplugin.DynamicRole{
-			Name:           role.Name,
-			EnvVarUser:     role.EnvVarUser,
-			EnvVarPassword: role.EnvVarPassword,
-		})
-	}
-
-	return secretsplugin.New(secretsCfg, eventLogger, logger)
-}
-
-// buildTLSPlugin constructs the TLS plugin from cfg, parsing the optional
-// cert_monitoring duration strings into time.Duration values. Falls back to
-// plugin defaults on parse errors.
-func buildTLSPlugin(cfg *config.Config, eventLogger ports.EventLogger, logger *slog.Logger) *tlsplugin.Plugin {
-	monCfg := ports.TLSCertMonitoringConfig{
-		Enabled: cfg.TLS.CertMonitoring.Enabled,
-	}
-
-	if cfg.TLS.CertMonitoring.CheckInterval != "" {
-		if d, err := time.ParseDuration(cfg.TLS.CertMonitoring.CheckInterval); err != nil {
-			logger.Warn("tls.cert_monitoring.check_interval parse error — using default",
-				slog.String("error", err.Error()))
-		} else {
-			monCfg.CheckInterval = d
-		}
-	}
-	if cfg.TLS.CertMonitoring.WarningThreshold != "" {
-		if d, err := time.ParseDuration(cfg.TLS.CertMonitoring.WarningThreshold); err != nil {
-			logger.Warn("tls.cert_monitoring.warning_threshold parse error — using default",
-				slog.String("error", err.Error()))
-		} else {
-			monCfg.WarningThreshold = d
-		}
-	}
-	if cfg.TLS.CertMonitoring.CriticalThreshold != "" {
-		if d, err := time.ParseDuration(cfg.TLS.CertMonitoring.CriticalThreshold); err != nil {
-			logger.Warn("tls.cert_monitoring.critical_threshold parse error — using default",
-				slog.String("error", err.Error()))
-		} else {
-			monCfg.CriticalThreshold = d
-		}
-	}
-
-	return tlsplugin.New(ports.TLSConfig{
-		Enabled:        cfg.TLS.Enabled,
-		Provider:       ports.TLSProvider(cfg.TLS.Provider),
-		Domain:         cfg.TLS.Domain,
-		CertPath:       cfg.TLS.CertPath,
-		KeyPath:        cfg.TLS.KeyPath,
-		StoragePath:    cfg.TLS.StoragePath,
-		CertMonitoring: monCfg,
-	}, eventLogger, logger)
-}
-
-// buildInputValidationPlugin constructs the input validation plugin from cfg.
-func buildInputValidationPlugin(cfg *config.Config, logger *slog.Logger) *inputvalidationplugin.Plugin {
-	iv := cfg.InputValidation
-
-	pluginCfg := inputvalidationplugin.Config{
-		Enabled:              iv.Enabled,
-		MaxURLLength:         iv.MaxURLLength,
-		MaxQueryStringLength: iv.MaxQueryStringLength,
-		MaxHeaderCount:       iv.MaxHeaderCount,
-		MaxHeaderSize:        iv.MaxHeaderSize,
-	}
-
-	for _, ov := range iv.PathOverrides {
-		pluginCfg.PathOverrides = append(pluginCfg.PathOverrides, inputvalidationplugin.PathOverrideConfig{
-			Path:                 ov.Path,
-			MaxURLLength:         ov.MaxURLLength,
-			MaxQueryStringLength: ov.MaxQueryStringLength,
-			MaxHeaderCount:       ov.MaxHeaderCount,
-			MaxHeaderSize:        ov.MaxHeaderSize,
-		})
-	}
-
-	return inputvalidationplugin.New(pluginCfg, logger)
 }
