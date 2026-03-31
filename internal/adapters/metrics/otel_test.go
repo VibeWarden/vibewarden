@@ -354,3 +354,26 @@ func TestOTelAdapter_EgressMetrics_AllPresentAfterCalls(t *testing.T) {
 		}
 	}
 }
+
+func TestOTelAdapter_SetTLSCertExpirySeconds(t *testing.T) {
+	a := newOTelTestAdapter(t, nil)
+
+	a.SetTLSCertExpirySeconds("example.com", 2592000)
+
+	body := scrapeOTelMetrics(t, a)
+	if !strings.Contains(body, "vibewarden_tls_cert_expiry_seconds") {
+		t.Errorf("expected vibewarden_tls_cert_expiry_seconds in Prometheus output\n\nFull output:\n%s", body)
+	}
+}
+
+func TestOTelAdapter_SetTLSCertExpirySeconds_MultipleDomains(t *testing.T) {
+	a := newOTelTestAdapter(t, nil)
+
+	a.SetTLSCertExpirySeconds("app.example.com", 2592000)
+	a.SetTLSCertExpirySeconds("api.example.com", 604800)
+
+	body := scrapeOTelMetrics(t, a)
+	if !strings.Contains(body, "vibewarden_tls_cert_expiry_seconds") {
+		t.Errorf("expected vibewarden_tls_cert_expiry_seconds in Prometheus output\n\nFull output:\n%s", body)
+	}
+}

@@ -91,6 +91,12 @@ func runServe(configPath string) error {
 	// (if log export is enabled) and build the final event logger.
 	eventLogger := buildEventLogger(registry, logger)
 
+	// Wire the metrics collector into the TLS cert expiry monitor so that
+	// the vibewarden_tls_cert_expiry_seconds gauge is populated. This must
+	// happen after InitAll (metrics provider is ready) and before StartAll
+	// (monitor background goroutine launches on Start).
+	wireTLSMetricsCollector(registry)
+
 	// Start all plugins (background servers, etc.).
 	if err := registry.StartAll(ctx); err != nil {
 		return fmt.Errorf("starting plugins: %w", err)

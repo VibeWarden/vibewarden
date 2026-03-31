@@ -2,7 +2,9 @@ package metrics
 
 import (
 	"context"
+	"math"
 	"net/http"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -14,25 +16,27 @@ import (
 // It creates counters and histograms via ports.Meter and records observations.
 // All methods are safe for concurrent use.
 type OTelAdapter struct {
-	requestsTotal          ports.Int64Counter
-	requestDuration        ports.Float64Histogram
-	rateLimitHits          ports.Int64Counter
-	authDecisions          ports.Int64Counter
-	upstreamErrors         ports.Int64Counter
-	upstreamTimeouts       ports.Int64Counter
-	upstreamRetries        ports.Int64Counter
-	activeConnections      ports.Int64UpDownCounter
-	circuitBreakerState    ports.Int64UpDownCounter
-	upstreamHealthy        ports.Int64UpDownCounter
-	wafDetections          ports.Int64Counter
-	egressRequestsTotal    ports.Int64Counter
-	egressDuration         ports.Float64Histogram
-	egressErrorsTotal      ports.Int64Counter
-	currentConns           atomic.Int64
-	currentCBState         atomic.Int64
-	currentUpstreamHealthy atomic.Int64
-	pathMatcher            *PathMatcher
-	handler                http.Handler
+	requestsTotal             ports.Int64Counter
+	requestDuration           ports.Float64Histogram
+	rateLimitHits             ports.Int64Counter
+	authDecisions             ports.Int64Counter
+	upstreamErrors            ports.Int64Counter
+	upstreamTimeouts          ports.Int64Counter
+	upstreamRetries           ports.Int64Counter
+	activeConnections         ports.Int64UpDownCounter
+	circuitBreakerState       ports.Int64UpDownCounter
+	upstreamHealthy           ports.Int64UpDownCounter
+	wafDetections             ports.Int64Counter
+	egressRequestsTotal       ports.Int64Counter
+	egressDuration            ports.Float64Histogram
+	egressErrorsTotal         ports.Int64Counter
+	tlsCertExpirySeconds      ports.Int64UpDownCounter
+	currentConns              atomic.Int64
+	currentCBState            atomic.Int64
+	currentUpstreamHealthy    atomic.Int64
+	currentCertExpiryByDomain sync.Map // map[string]*atomic.Int64
+	pathMatcher               *PathMatcher
+	handler                   http.Handler
 }
 
 // NewOTelAdapter creates a new OTel-backed MetricsCollector.
@@ -144,23 +148,32 @@ func NewOTelAdapter(provider ports.OTelProvider, pathPatterns []string) (*OTelAd
 		return nil, err
 	}
 
+	tlsCertExpirySeconds, err := meter.Int64UpDownCounter("vibewarden_tls_cert_expiry_seconds",
+		ports.WithDescription("Seconds until the monitored TLS certificate expires. Negative when already expired."),
+		ports.WithUnit("s"),
+	)
+	if err != nil {
+		return nil, err
+	}
+
 	return &OTelAdapter{
-		requestsTotal:       requestsTotal,
-		requestDuration:     requestDuration,
-		rateLimitHits:       rateLimitHits,
-		authDecisions:       authDecisions,
-		upstreamErrors:      upstreamErrors,
-		upstreamTimeouts:    upstreamTimeouts,
-		upstreamRetries:     upstreamRetries,
-		activeConnections:   activeConnections,
-		circuitBreakerState: circuitBreakerState,
-		upstreamHealthy:     upstreamHealthy,
-		wafDetections:       wafDetections,
-		egressRequestsTotal: egressRequestsTotal,
-		egressDuration:      egressDuration,
-		egressErrorsTotal:   egressErrorsTotal,
-		pathMatcher:         NewPathMatcher(pathPatterns),
-		handler:             provider.Handler(),
+		requestsTotal:        requestsTotal,
+		requestDuration:      requestDuration,
+		rateLimitHits:        rateLimitHits,
+		authDecisions:        authDecisions,
+		upstreamErrors:       upstreamErrors,
+		upstreamTimeouts:     upstreamTimeouts,
+		upstreamRetries:      upstreamRetries,
+		activeConnections:    activeConnections,
+		circuitBreakerState:  circuitBreakerState,
+		upstreamHealthy:      upstreamHealthy,
+		wafDetections:        wafDetections,
+		egressRequestsTotal:  egressRequestsTotal,
+		egressDuration:       egressDuration,
+		egressErrorsTotal:    egressErrorsTotal,
+		tlsCertExpirySeconds: tlsCertExpirySeconds,
+		pathMatcher:          NewPathMatcher(pathPatterns),
+		handler:              provider.Handler(),
 	}, nil
 }
 
@@ -292,4 +305,21 @@ func (a *OTelAdapter) IncEgressErrorTotal(route string) {
 	a.egressErrorsTotal.Add(context.Background(), 1,
 		ports.Attribute{Key: "route", Value: route},
 	)
+}
+
+// SetTLSCertExpirySeconds implements ports.MetricsCollector.
+// Sets the vibewarden_tls_cert_expiry_seconds gauge for the given domain to the
+// provided number of seconds until expiry. The value is stored per-domain using
+// an atomic counter; the delta between the new and previous value is emitted.
+// The seconds value is rounded to the nearest integer before recording.
+func (a *OTelAdapter) SetTLSCertExpirySeconds(domain string, seconds float64) {
+	next := int64(math.Round(seconds))
+	prevPtr, _ := a.currentCertExpiryByDomain.LoadOrStore(domain, &atomic.Int64{})
+	prev := prevPtr.(*atomic.Int64).Swap(next)
+	delta := next - prev
+	if delta != 0 {
+		a.tlsCertExpirySeconds.Add(context.Background(), delta,
+			ports.Attribute{Key: "domain", Value: domain},
+		)
+	}
 }

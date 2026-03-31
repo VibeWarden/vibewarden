@@ -108,6 +108,9 @@ func (f *fakeMetricsCollector) IncEgressErrorTotal(route string) {
 	f.errorTotals = append(f.errorTotals, route)
 }
 
+// SetTLSCertExpirySeconds implements ports.MetricsCollector and does nothing.
+func (f *fakeMetricsCollector) SetTLSCertExpirySeconds(_ string, _ float64) {}
+
 // Snapshot methods for assertions.
 func (f *fakeMetricsCollector) RequestTotals() []egressRequestTotalCall {
 	f.mu.Lock()

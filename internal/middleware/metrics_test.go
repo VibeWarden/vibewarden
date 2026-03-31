@@ -78,6 +78,9 @@ func (f *fakeMetricsCollector) ObserveEgressDuration(_, _ string, _ time.Duratio
 // IncEgressErrorTotal implements ports.MetricsCollector and does nothing.
 func (f *fakeMetricsCollector) IncEgressErrorTotal(_ string) {}
 
+// SetTLSCertExpirySeconds implements ports.MetricsCollector and does nothing.
+func (f *fakeMetricsCollector) SetTLSCertExpirySeconds(_ string, _ float64) {}
+
 // Compile-time check: fakeMetricsCollector satisfies ports.MetricsCollector.
 var _ ports.MetricsCollector = (*fakeMetricsCollector)(nil)
 

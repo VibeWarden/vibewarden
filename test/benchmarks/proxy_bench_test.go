@@ -57,6 +57,7 @@ func (noopMetrics) IncWAFDetection(_, _ string)                                 
 func (noopMetrics) IncEgressRequestTotal(_, _, _ string)                         {}
 func (noopMetrics) ObserveEgressDuration(_, _ string, _ time.Duration)           {}
 func (noopMetrics) IncEgressErrorTotal(_ string)                                 {}
+func (noopMetrics) SetTLSCertExpirySeconds(_ string, _ float64)                  {}
 
 // ---------------------------------------------------------------------------
 // Shared helpers

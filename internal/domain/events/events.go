@@ -128,6 +128,16 @@ const (
 	// because maintenance mode is enabled. The path and method of the blocked
 	// request are included in the payload.
 	EventTypeMaintenanceRequestBlocked = "maintenance.request_blocked"
+
+	// EventTypeTLSCertExpiryWarning is emitted by the certificate expiry monitor
+	// when a TLS certificate expires within 30 days. The payload includes the
+	// certificate subject, issuer, expiry time, and days remaining.
+	EventTypeTLSCertExpiryWarning = "tls.cert_expiry_warning"
+
+	// EventTypeTLSCertExpiryCritical is emitted by the certificate expiry monitor
+	// when a TLS certificate expires within 7 days. The payload includes the
+	// certificate subject, issuer, expiry time, and days remaining.
+	EventTypeTLSCertExpiryCritical = "tls.cert_expiry_critical"
 )
 
 // Event is the base structured log event.

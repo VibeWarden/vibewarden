@@ -286,6 +286,18 @@ type AppConfig struct {
 	Image string `mapstructure:"image"`
 }
 
+// TLSCertMonitoringConfig holds configuration for the certificate expiry monitor.
+type TLSCertMonitoringConfig struct {
+	// Enabled toggles the certificate expiry monitor (default: true when TLS is enabled).
+	Enabled bool `mapstructure:"enabled"`
+	// CheckInterval is how often the monitor checks certificate expiry (default: 6h).
+	CheckInterval string `mapstructure:"check_interval"`
+	// WarningThreshold is the time-before-expiry that triggers a warning event (default: 720h = 30 days).
+	WarningThreshold string `mapstructure:"warning_threshold"`
+	// CriticalThreshold is the time-before-expiry that triggers a critical event and degraded health (default: 168h = 7 days).
+	CriticalThreshold string `mapstructure:"critical_threshold"`
+}
+
 // TLSConfig holds TLS-related settings.
 type TLSConfig struct {
 	// Enabled toggles TLS (default: false for local dev)
@@ -303,6 +315,8 @@ type TLSConfig struct {
 	// StoragePath is the directory where Caddy stores ACME certificates.
 	// Only applies when Provider is "letsencrypt".
 	StoragePath string `mapstructure:"storage_path"`
+	// CertMonitoring holds configuration for the background certificate expiry monitor.
+	CertMonitoring TLSCertMonitoringConfig `mapstructure:"cert_monitoring"`
 }
 
 // KratosSMTPConfig holds SMTP settings used by Ory Kratos to send emails.
@@ -1878,6 +1892,10 @@ func Load(configPath string) (*Config, error) {
 	v.SetDefault("upstream.port", 3000)
 	v.SetDefault("tls.enabled", true)
 	v.SetDefault("tls.provider", "self-signed")
+	v.SetDefault("tls.cert_monitoring.enabled", true)
+	v.SetDefault("tls.cert_monitoring.check_interval", "6h")
+	v.SetDefault("tls.cert_monitoring.warning_threshold", "720h")
+	v.SetDefault("tls.cert_monitoring.critical_threshold", "168h")
 	v.SetDefault("kratos.public_url", "http://127.0.0.1:4433")
 	v.SetDefault("kratos.admin_url", "http://127.0.0.1:4434")
 	v.SetDefault("kratos.dsn", "")

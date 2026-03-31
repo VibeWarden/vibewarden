@@ -41,4 +41,6 @@ func TestNoOpMetricsCollector_AllMethodsAreNoOps(t *testing.T) {
 	mc.ObserveEgressDuration("stripe", "POST", 150*time.Millisecond)
 	mc.IncEgressErrorTotal("stripe")
 	mc.IncEgressErrorTotal("unmatched")
+	mc.SetTLSCertExpirySeconds("example.com", 2592000)
+	mc.SetTLSCertExpirySeconds("example.com", -1)
 }

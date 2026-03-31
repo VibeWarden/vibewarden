@@ -62,6 +62,7 @@ func (f *fakeMetrics) IncWAFDetection(_, _ string)                              
 func (f *fakeMetrics) IncEgressRequestTotal(_, _, _ string)                         {}
 func (f *fakeMetrics) ObserveEgressDuration(_, _ string, _ time.Duration)           {}
 func (f *fakeMetrics) IncEgressErrorTotal(_ string)                                 {}
+func (f *fakeMetrics) SetTLSCertExpirySeconds(_ string, _ float64)                  {}
 
 // Compile-time assertion.
 var _ ports.MetricsCollectorWithUpstreamHealth = (*fakeMetrics)(nil)

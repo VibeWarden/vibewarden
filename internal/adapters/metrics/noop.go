@@ -53,3 +53,6 @@ func (NoOpMetricsCollector) ObserveEgressDuration(_, _ string, _ time.Duration) 
 
 // IncEgressErrorTotal implements ports.MetricsCollector and does nothing.
 func (NoOpMetricsCollector) IncEgressErrorTotal(_ string) {}
+
+// SetTLSCertExpirySeconds implements ports.MetricsCollector and does nothing.
+func (NoOpMetricsCollector) SetTLSCertExpirySeconds(_ string, _ float64) {}

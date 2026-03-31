@@ -82,6 +82,12 @@ type MetricsCollector interface {
 	// Parameters:
 	//   - route: the matched egress route name, or "unmatched" when no route matched
 	IncEgressErrorTotal(route string)
+
+	// SetTLSCertExpirySeconds sets the vibewarden_tls_cert_expiry_seconds gauge
+	// to the number of seconds until the monitored TLS certificate expires.
+	// A negative value indicates the certificate has already expired.
+	// The domain label identifies which certificate is being reported.
+	SetTLSCertExpirySeconds(domain string, seconds float64)
 }
 
 // MetricsConfig holds configuration for the metrics subsystem.
