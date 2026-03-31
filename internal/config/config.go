@@ -110,6 +110,10 @@ type Config struct {
 
 	// Compression configures response body compression.
 	Compression CompressionConfig `mapstructure:"compression"`
+
+	// ResponseHeaders configures arbitrary response header modifications applied
+	// after all other middleware including security headers.
+	ResponseHeaders ResponseHeadersConfig `mapstructure:"response_headers"`
 }
 
 // DatabasePoolConfig holds connection pool settings for PostgreSQL.
@@ -1223,6 +1227,24 @@ type CompressionConfig struct {
 	// Valid values: "gzip", "zstd".
 	// Default: ["zstd", "gzip"].
 	Algorithms []string `mapstructure:"algorithms"`
+}
+
+// ResponseHeadersConfig holds settings for arbitrary response header modification.
+// Maps to the response_headers section of vibewarden.yaml.
+// Operations are applied in the order: remove, then set, then add.
+type ResponseHeadersConfig struct {
+	// Set maps header names to values that overwrite any existing value (or create
+	// the header when absent). Values may reference environment variables using
+	// ${VAR} syntax; Caddy resolves these at request time.
+	Set map[string]string `mapstructure:"set"`
+
+	// Add maps header names to values that are appended to any existing value (or
+	// create the header when absent). Values may reference environment variables
+	// using ${VAR} syntax.
+	Add map[string]string `mapstructure:"add"`
+
+	// Remove is the list of header names to delete from every response.
+	Remove []string `mapstructure:"remove"`
 }
 
 // Validate checks the loaded configuration for logical consistency.

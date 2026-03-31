@@ -261,6 +261,23 @@ var Catalog = []PluginDescriptor{
           reset_after: "30s"`,
 	},
 	{
+		Name:        "response-headers",
+		Description: "Response header modification: set, add, or remove arbitrary response headers",
+		ConfigSchema: map[string]string{
+			"set":    "Map of header names to values that overwrite any existing value (or create the header). Values support ${ENV_VAR} substitution.",
+			"add":    "Map of header names to values that are appended to any existing value (or create the header). Values support ${ENV_VAR} substitution.",
+			"remove": "List of header names to delete from every response.",
+		},
+		Example: `  response_headers:
+    remove:
+      - Server
+    set:
+      X-Service-Version: "${APP_VERSION}"
+      X-Frame-Options: SAMEORIGIN
+    add:
+      Cache-Control: no-store`,
+	},
+	{
 		Name:        "secrets",
 		Description: "Secret management: fetch static and dynamic secrets from OpenBao and inject them into proxied requests",
 		ConfigSchema: map[string]string{
