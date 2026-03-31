@@ -107,6 +107,9 @@ type Config struct {
 
 	// Maintenance configures the maintenance mode plugin.
 	Maintenance MaintenanceConfig `mapstructure:"maintenance"`
+
+	// Compression configures response body compression.
+	Compression CompressionConfig `mapstructure:"compression"`
 }
 
 // DatabasePoolConfig holds connection pool settings for PostgreSQL.
@@ -1209,6 +1212,19 @@ type MaintenanceConfig struct {
 	Message string `mapstructure:"message"`
 }
 
+// CompressionConfig holds settings for response body compression.
+// Maps to the compression section of vibewarden.yaml.
+type CompressionConfig struct {
+	// Enabled toggles response compression. Default: true.
+	Enabled bool `mapstructure:"enabled"`
+
+	// Algorithms is the ordered list of compression algorithms to offer.
+	// Caddy negotiates the best match with the client via Accept-Encoding.
+	// Valid values: "gzip", "zstd".
+	// Default: ["zstd", "gzip"].
+	Algorithms []string `mapstructure:"algorithms"`
+}
+
 // Validate checks the loaded configuration for logical consistency.
 // It returns a combined error listing all violations found.
 // Call Validate after Load to catch misconfiguration early.
@@ -1905,6 +1921,8 @@ func Load(configPath string) (*Config, error) {
 	v.SetDefault("egress.routes", []EgressRouteConfig{})
 	v.SetDefault("error_pages.enabled", false)
 	v.SetDefault("error_pages.directory", "")
+	v.SetDefault("compression.enabled", true)
+	v.SetDefault("compression.algorithms", []string{"zstd", "gzip"})
 
 	// Config file
 	if configPath != "" {

@@ -103,6 +103,10 @@ func buildProxyConfig(cfg *config.Config, registry *plugins.Registry) *ports.Pro
 			TrustProxyHeaders: cfg.IPFilter.TrustProxyHeaders,
 		},
 		Resilience: buildResiliencePortsConfig(cfg),
+		Compression: ports.CompressionConfig{
+			Enabled:    cfg.Compression.Enabled,
+			Algorithms: cfg.Compression.Algorithms,
+		},
 	}
 }
 
