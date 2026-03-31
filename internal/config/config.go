@@ -724,7 +724,15 @@ type SecurityHeadersConfig struct {
 	// ContentSecurityPolicy sets Content-Security-Policy value.
 	// An empty string (the default) disables the header entirely; users opt in
 	// by setting an explicit policy in vibewarden.yaml.
+	// When both ContentSecurityPolicy and CSP are set, ContentSecurityPolicy
+	// takes precedence for backward compatibility.
 	ContentSecurityPolicy string `mapstructure:"content_security_policy"`
+
+	// CSP holds a structured, declarative Content-Security-Policy configuration.
+	// It is used to generate a Content-Security-Policy header value when
+	// ContentSecurityPolicy is not set. If ContentSecurityPolicy is non-empty it
+	// always takes precedence.
+	CSP CSPConfig `mapstructure:"csp"`
 
 	// ReferrerPolicy sets Referrer-Policy value (default: "strict-origin-when-cross-origin")
 	ReferrerPolicy string `mapstructure:"referrer_policy"`
@@ -743,6 +751,58 @@ type SecurityHeadersConfig struct {
 
 	// SuppressViaHeader removes the Via header from proxied responses (default: true)
 	SuppressViaHeader bool `mapstructure:"suppress_via_header"`
+}
+
+// CSPConfig holds a declarative Content-Security-Policy configuration.
+// Each field maps to a CSP fetch directive and contains the list of allowed
+// sources. Sources are written verbatim, so keyword tokens must include their
+// surrounding single-quotes (e.g. "'self'", "'none'", "'unsafe-inline'").
+// An empty slice means the directive is omitted from the generated header.
+type CSPConfig struct {
+	// DefaultSrc sets the default-src directive.
+	DefaultSrc []string `mapstructure:"default_src"`
+
+	// ScriptSrc sets the script-src directive.
+	ScriptSrc []string `mapstructure:"script_src"`
+
+	// StyleSrc sets the style-src directive.
+	StyleSrc []string `mapstructure:"style_src"`
+
+	// ImgSrc sets the img-src directive.
+	ImgSrc []string `mapstructure:"img_src"`
+
+	// ConnectSrc sets the connect-src directive.
+	ConnectSrc []string `mapstructure:"connect_src"`
+
+	// FontSrc sets the font-src directive.
+	FontSrc []string `mapstructure:"font_src"`
+
+	// FrameSrc sets the frame-src directive.
+	FrameSrc []string `mapstructure:"frame_src"`
+
+	// MediaSrc sets the media-src directive.
+	MediaSrc []string `mapstructure:"media_src"`
+
+	// ObjectSrc sets the object-src directive.
+	ObjectSrc []string `mapstructure:"object_src"`
+
+	// ManifestSrc sets the manifest-src directive.
+	ManifestSrc []string `mapstructure:"manifest_src"`
+
+	// WorkerSrc sets the worker-src directive.
+	WorkerSrc []string `mapstructure:"worker_src"`
+
+	// ChildSrc sets the child-src directive.
+	ChildSrc []string `mapstructure:"child_src"`
+
+	// FormAction sets the form-action directive.
+	FormAction []string `mapstructure:"form_action"`
+
+	// FrameAncestors sets the frame-ancestors directive.
+	FrameAncestors []string `mapstructure:"frame_ancestors"`
+
+	// BaseURI sets the base-uri directive.
+	BaseURI []string `mapstructure:"base_uri"`
 }
 
 // WAFConfig holds Web Application Firewall settings.
