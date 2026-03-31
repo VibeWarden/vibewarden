@@ -287,6 +287,12 @@ type AppConfig struct {
 	// Used in prod profile. Can be overridden at runtime via the
 	// VIBEWARDEN_APP_IMAGE environment variable.
 	Image string `mapstructure:"image"`
+
+	// Healthcheck is the Docker healthcheck command for the app container.
+	// Default: "wget -q --spider http://localhost:<port>/health || exit 1"
+	// Override for images without wget: "curl -sf http://localhost:<port>/health || exit 1"
+	// Set to "none" to disable the healthcheck entirely.
+	Healthcheck string `mapstructure:"healthcheck"`
 }
 
 // TLSCertMonitoringConfig holds configuration for the certificate expiry monitor.
@@ -842,8 +848,35 @@ type CSPConfig struct {
 
 // WAFConfig holds Web Application Firewall settings.
 type WAFConfig struct {
+	// Enabled toggles the WAF rule engine (default: false).
+	Enabled bool `mapstructure:"enabled"`
+
+	// Mode controls WAF response to detections: "block" or "detect" (default: "block").
+	Mode string `mapstructure:"mode"`
+
+	// Rules toggles individual rule categories.
+	Rules WAFRulesConfig `mapstructure:"rules"`
+
+	// ExemptPaths is a list of URL path glob patterns that bypass WAF scanning.
+	ExemptPaths []string `mapstructure:"exempt_paths"`
+
 	// ContentTypeValidation configures the Content-Type validation middleware.
 	ContentTypeValidation ContentTypeValidationConfig `mapstructure:"content_type_validation"`
+}
+
+// WAFRulesConfig toggles individual WAF rule categories.
+type WAFRulesConfig struct {
+	// SQLInjection toggles SQLi detection rules (default: true).
+	SQLInjection bool `mapstructure:"sqli"`
+
+	// XSS toggles cross-site scripting detection rules (default: true).
+	XSS bool `mapstructure:"xss"`
+
+	// PathTraversal toggles path traversal detection rules (default: true).
+	PathTraversal bool `mapstructure:"path_traversal"`
+
+	// CommandInjection toggles command injection detection rules (default: true).
+	CommandInjection bool `mapstructure:"command_injection"`
 }
 
 // ContentTypeValidationConfig holds settings for the Content-Type validation middleware.

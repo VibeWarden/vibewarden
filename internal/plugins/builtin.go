@@ -70,6 +70,17 @@ func RegisterBuiltinPlugins(
 			Enabled: cfg.WAF.ContentTypeValidation.Enabled,
 			Allowed: cfg.WAF.ContentTypeValidation.Allowed,
 		},
+		Engine: wafplugin.WAFEngineConfig{
+			Enabled: cfg.WAF.Enabled,
+			Mode:    wafplugin.Mode(cfg.WAF.Mode),
+			Rules: wafplugin.RulesConfig{
+				SQLInjection:     cfg.WAF.Rules.SQLInjection,
+				XSS:              cfg.WAF.Rules.XSS,
+				PathTraversal:    cfg.WAF.Rules.PathTraversal,
+				CommandInjection: cfg.WAF.Rules.CommandInjection,
+			},
+			ExemptPaths: cfg.WAF.ExemptPaths,
+		},
 	}, logger))
 
 	// Security headers — priority 20
