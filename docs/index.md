@@ -2,7 +2,9 @@
   <img src="assets/logo-text.png" alt="VibeWarden" width="400">
 </p>
 
-**Production-grade security for vibe-coded apps — no changes to your app code.**
+**Security sidecar for vibe-coded apps.**
+
+*You vibe, we warden. Security is no longer your burden.*
 
 You ship fast with AI coding tools. VibeWarden adds the security layer you skipped:
 TLS, authentication, rate limiting, WAF, secrets management, and AI-readable audit logs —

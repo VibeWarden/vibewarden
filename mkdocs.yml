@@ -1,5 +1,5 @@
 site_name: VibeWarden
-site_description: Production-grade security for vibe-coded apps — no changes to your app code.
+site_description: Security sidecar for vibe-coded apps. You vibe, we warden.
 site_url: https://vibewarden.dev/docs
 repo_url: https://github.com/vibewarden/vibewarden
 repo_name: vibewarden/vibewarden
