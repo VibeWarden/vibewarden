@@ -23,7 +23,7 @@ type noopWriter struct{}
 func (noopWriter) Write(p []byte) (int, error) { return len(p), nil }
 
 func newPlugin(cfg ports.TLSConfig) *tlsplugin.Plugin {
-	return tlsplugin.New(cfg, discardLogger())
+	return tlsplugin.New(cfg, nil, discardLogger())
 }
 
 // ---------------------------------------------------------------------------

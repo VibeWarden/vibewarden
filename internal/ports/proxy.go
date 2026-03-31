@@ -270,6 +270,26 @@ const (
 	TLSProviderExternal TLSProvider = "external"
 )
 
+// TLSCertMonitoringConfig holds configuration for the certificate expiry monitor.
+type TLSCertMonitoringConfig struct {
+	// Enabled toggles the certificate expiry monitor.
+	// Defaults to true when TLS is enabled.
+	Enabled bool
+
+	// CheckInterval is how often the monitor reads the certificate and checks
+	// expiry. Defaults to 6 hours.
+	CheckInterval time.Duration
+
+	// WarningThreshold is the time-before-expiry at which a
+	// tls.cert_expiry_warning event is emitted. Defaults to 30 days.
+	WarningThreshold time.Duration
+
+	// CriticalThreshold is the time-before-expiry at which a
+	// tls.cert_expiry_critical event is emitted and the health check reports
+	// degraded. Defaults to 7 days.
+	CriticalThreshold time.Duration
+}
+
 // TLSConfig holds TLS-specific settings.
 type TLSConfig struct {
 	// Enabled toggles TLS termination.
@@ -295,6 +315,10 @@ type TLSConfig struct {
 	// StoragePath is where Caddy stores ACME certificates on disk.
 	// Uses the Caddy default when empty (applicable to TLSProviderLetsEncrypt only).
 	StoragePath string
+
+	// CertMonitoring holds configuration for the background certificate
+	// expiry monitor. The monitor is only active when TLS is enabled.
+	CertMonitoring TLSCertMonitoringConfig
 }
 
 // SecurityHeadersConfig holds security header settings.

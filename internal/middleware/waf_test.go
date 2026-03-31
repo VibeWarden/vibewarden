@@ -48,6 +48,7 @@ func (f *fakeWAFCollector) IncWAFDetection(rule, mode string) {
 func (f *fakeWAFCollector) IncEgressRequestTotal(_, _, _ string)               {}
 func (f *fakeWAFCollector) ObserveEgressDuration(_, _ string, _ time.Duration) {}
 func (f *fakeWAFCollector) IncEgressErrorTotal(_ string)                       {}
+func (f *fakeWAFCollector) SetTLSCertExpirySeconds(_ string, _ float64)        {}
 
 // fakeWAFAuditLogger records audit events.
 type fakeWAFAuditLogger struct {

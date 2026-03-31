@@ -26,13 +26,29 @@ import (
 // It implements ports.Plugin and ports.CaddyContributor.
 // The TLS plugin has priority 10 so it is configured before other plugins.
 type Plugin struct {
-	cfg    ports.TLSConfig
-	logger *slog.Logger
+	cfg     ports.TLSConfig
+	logger  *slog.Logger
+	monitor *CertMonitor
 }
 
 // New creates a new TLS Plugin with the given configuration and logger.
-func New(cfg ports.TLSConfig, logger *slog.Logger) *Plugin {
-	return &Plugin{cfg: cfg, logger: logger}
+// eventLog may be nil; when non-nil, certificate expiry events are emitted through it.
+// The metrics collector may be set later with SetMetricsCollector before Start is called.
+func New(cfg ports.TLSConfig, eventLog ports.EventLogger, logger *slog.Logger) *Plugin {
+	p := &Plugin{cfg: cfg, logger: logger}
+	if cfg.Enabled && cfg.CertMonitoring.Enabled {
+		p.monitor = NewCertMonitor(cfg, eventLog, nil, logger)
+	}
+	return p
+}
+
+// SetMetricsCollector injects a metrics collector into the certificate expiry
+// monitor. It must be called before Start. When called with nil, the monitor
+// emits no metrics.
+func (p *Plugin) SetMetricsCollector(mc ports.MetricsCollector) {
+	if p.monitor != nil {
+		p.monitor.metrics = mc
+	}
 }
 
 // Name returns the canonical plugin identifier "tls".
@@ -61,15 +77,29 @@ func (p *Plugin) Init(_ context.Context) error {
 	return nil
 }
 
-// Start is a no-op for the TLS plugin. TLS lifecycle is managed by Caddy.
-func (p *Plugin) Start(_ context.Context) error { return nil }
+// Start launches the certificate expiry monitor when monitoring is enabled.
+// TLS termination itself is managed by the Caddy runtime.
+func (p *Plugin) Start(ctx context.Context) error {
+	if p.monitor != nil {
+		p.monitor.Start(ctx)
+	}
+	return nil
+}
 
-// Stop is a no-op for the TLS plugin. TLS lifecycle is managed by Caddy.
-func (p *Plugin) Stop(_ context.Context) error { return nil }
+// Stop shuts down the certificate expiry monitor when monitoring is enabled.
+// TLS termination itself is managed by the Caddy runtime.
+func (p *Plugin) Stop(_ context.Context) error {
+	if p.monitor != nil {
+		p.monitor.Stop()
+	}
+	return nil
+}
 
 // Health returns the current health status of the TLS plugin.
 // When TLS is disabled, Health reports healthy with a "tls disabled" message.
-// When TLS is enabled, Health reports healthy with the active provider.
+// When TLS is enabled, Health reports healthy with the active provider, unless
+// the certificate expiry monitor has detected that the certificate is within
+// the critical threshold, in which case Health reports degraded.
 func (p *Plugin) Health() ports.HealthStatus {
 	if !p.cfg.Enabled {
 		return ports.HealthStatus{
@@ -77,6 +107,16 @@ func (p *Plugin) Health() ports.HealthStatus {
 			Message: "tls disabled",
 		}
 	}
+
+	if p.monitor != nil {
+		if degraded, msg := p.monitor.Degraded(); degraded {
+			return ports.HealthStatus{
+				Healthy: false,
+				Message: fmt.Sprintf("tls degraded: %s", msg),
+			}
+		}
+	}
+
 	return ports.HealthStatus{
 		Healthy: true,
 		Message: fmt.Sprintf("tls enabled, provider: %s", p.cfg.Provider),

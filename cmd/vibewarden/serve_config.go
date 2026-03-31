@@ -12,6 +12,7 @@ import (
 	"github.com/vibewarden/vibewarden/internal/plugins"
 	egressplugin "github.com/vibewarden/vibewarden/internal/plugins/egress"
 	metricsplugin "github.com/vibewarden/vibewarden/internal/plugins/metrics"
+	tlsplugin "github.com/vibewarden/vibewarden/internal/plugins/tls"
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
 
@@ -436,4 +437,26 @@ func buildEventLogger(registry *plugins.Registry, logger *slog.Logger) ports.Eve
 		}
 	}
 	return logadapter.NewSlogEventLogger(os.Stdout)
+}
+
+// wireTLSMetricsCollector injects the MetricsCollector from the metrics plugin
+// into the TLS plugin's certificate expiry monitor. It must be called after
+// InitAll (so the metrics provider is ready) and before StartAll (so the
+// monitor goroutine receives the collector before it first runs).
+func wireTLSMetricsCollector(registry *plugins.Registry) {
+	var collector ports.MetricsCollector
+	var tlsPlugin *tlsplugin.Plugin
+
+	for _, p := range registry.Plugins() {
+		switch v := p.(type) {
+		case *metricsplugin.Plugin:
+			collector = v.Collector()
+		case *tlsplugin.Plugin:
+			tlsPlugin = v
+		}
+	}
+
+	if tlsPlugin != nil && collector != nil {
+		tlsPlugin.SetMetricsCollector(collector)
+	}
 }

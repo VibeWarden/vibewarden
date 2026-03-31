@@ -47,14 +47,7 @@ func registerPlugins(
 	}, logger))
 
 	// TLS — priority 10
-	registry.Register(tlsplugin.New(ports.TLSConfig{
-		Enabled:     cfg.TLS.Enabled,
-		Provider:    ports.TLSProvider(cfg.TLS.Provider),
-		Domain:      cfg.TLS.Domain,
-		CertPath:    cfg.TLS.CertPath,
-		KeyPath:     cfg.TLS.KeyPath,
-		StoragePath: cfg.TLS.StoragePath,
-	}, logger))
+	registry.Register(buildTLSPlugin(cfg, eventLogger, logger))
 
 	// CORS — priority 10 (before all middleware; OPTIONS preflight must be handled first)
 	registry.Register(corsplugin.New(corsplugin.Config{
@@ -300,4 +293,48 @@ func buildSecretsPlugin(cfg *config.Config, eventLogger ports.EventLogger, logge
 	}
 
 	return secretsplugin.New(secretsCfg, eventLogger, logger)
+}
+
+// buildTLSPlugin constructs the TLS plugin from cfg, parsing the optional
+// cert_monitoring duration strings into time.Duration values. Falls back to
+// plugin defaults on parse errors.
+func buildTLSPlugin(cfg *config.Config, eventLogger ports.EventLogger, logger *slog.Logger) *tlsplugin.Plugin {
+	monCfg := ports.TLSCertMonitoringConfig{
+		Enabled: cfg.TLS.CertMonitoring.Enabled,
+	}
+
+	if cfg.TLS.CertMonitoring.CheckInterval != "" {
+		if d, err := time.ParseDuration(cfg.TLS.CertMonitoring.CheckInterval); err != nil {
+			logger.Warn("tls.cert_monitoring.check_interval parse error — using default",
+				slog.String("error", err.Error()))
+		} else {
+			monCfg.CheckInterval = d
+		}
+	}
+	if cfg.TLS.CertMonitoring.WarningThreshold != "" {
+		if d, err := time.ParseDuration(cfg.TLS.CertMonitoring.WarningThreshold); err != nil {
+			logger.Warn("tls.cert_monitoring.warning_threshold parse error — using default",
+				slog.String("error", err.Error()))
+		} else {
+			monCfg.WarningThreshold = d
+		}
+	}
+	if cfg.TLS.CertMonitoring.CriticalThreshold != "" {
+		if d, err := time.ParseDuration(cfg.TLS.CertMonitoring.CriticalThreshold); err != nil {
+			logger.Warn("tls.cert_monitoring.critical_threshold parse error — using default",
+				slog.String("error", err.Error()))
+		} else {
+			monCfg.CriticalThreshold = d
+		}
+	}
+
+	return tlsplugin.New(ports.TLSConfig{
+		Enabled:        cfg.TLS.Enabled,
+		Provider:       ports.TLSProvider(cfg.TLS.Provider),
+		Domain:         cfg.TLS.Domain,
+		CertPath:       cfg.TLS.CertPath,
+		KeyPath:        cfg.TLS.KeyPath,
+		StoragePath:    cfg.TLS.StoragePath,
+		CertMonitoring: monCfg,
+	}, eventLogger, logger)
 }
