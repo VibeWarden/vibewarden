@@ -1,0 +1,3043 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Security sidecar for vibe-coded apps. You vibe, we warden.">
+      
+      
+      
+        <link rel="canonical" href="https://vibewarden.dev/docs/observability/">
+      
+      
+        <link rel="prev" href="../egress/">
+      
+      
+        <link rel="next" href="../secret-management/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../assets/logo.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.6">
+    
+    
+      
+        <title>Observability - VibeWarden</title>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/stylesheets/main.484c7ddc.min.css">
+      
+        
+        <link rel="stylesheet" href="../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+      <link rel="stylesheet" href="../assets/extra.css">
+    
+    <script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+      
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="deep-purple" data-md-color-accent="cyan">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#observability-stack" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+      <div data-md-color-scheme="default" data-md-component="outdated" hidden>
+        
+      </div>
+    
+    
+      
+
+<header class="md-header" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href=".." title="VibeWarden" class="md-header__button md-logo" aria-label="VibeWarden" data-md-component="logo">
+      
+  <img src="../assets/logo.png" alt="logo">
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            VibeWarden
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Observability
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+        <form class="md-header__option" data-md-component="palette">
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: light)" data-md-color-scheme="default" data-md-color-primary="deep-purple" data-md-color-accent="cyan"  aria-label="Switch to dark mode"  type="radio" name="__palette" id="__palette_0">
+    
+      <label class="md-header__button md-icon" title="Switch to dark mode" for="__palette_1" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+    
+    
+    
+    <input class="md-option" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-scheme="slate" data-md-color-primary="deep-purple" data-md-color-accent="cyan"  aria-label="Switch to light mode"  type="radio" name="__palette" id="__palette_1">
+    
+      <label class="md-header__button md-icon" title="Switch to light mode" for="__palette_0" hidden>
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"/></svg>
+      </label>
+    
+  
+</form>
+      
+    
+    
+      <script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+        <div class="md-search__suggest" data-md-component="search-suggest"></div>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+      <div class="md-header__source">
+        <a href="https://github.com/vibewarden/vibewarden" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    vibewarden/vibewarden
+  </div>
+</a>
+      </div>
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+            
+<nav class="md-tabs" aria-label="Tabs" data-md-component="tabs">
+  <div class="md-grid">
+    <ul class="md-tabs__list">
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href=".." class="md-tabs__link">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../getting-started/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Getting Started
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../configuration/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Configuration
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../architecture/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Architecture
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+    
+  
+  
+    
+    
+      <li class="md-tabs__item md-tabs__item--active">
+        <a href="../identity-providers/" class="md-tabs__link">
+          
+  
+  
+  Guides
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../examples/express/" class="md-tabs__link">
+          
+  
+  
+  Framework Examples
+
+        </a>
+      </li>
+    
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../upgrading/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Upgrading
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    <li class="md-tabs__item">
+      <a href="../troubleshooting/" class="md-tabs__link">
+        
+  
+  
+    
+  
+  Troubleshooting
+
+      </a>
+    </li>
+  
+
+      
+        
+  
+  
+  
+  
+    
+    
+      <li class="md-tabs__item">
+        <a href="../decisions/" class="md-tabs__link">
+          
+  
+  
+  Reference
+
+        </a>
+      </li>
+    
+  
+
+      
+    </ul>
+  </div>
+</nav>
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+  
+
+
+<nav class="md-nav md-nav--primary md-nav--lifted" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href=".." title="VibeWarden" class="md-nav__button md-logo" aria-label="VibeWarden" data-md-component="logo">
+      
+  <img src="../assets/logo.png" alt="logo">
+
+    </a>
+    VibeWarden
+  </label>
+  
+    <div class="md-nav__source">
+      <a href="https://github.com/vibewarden/vibewarden" title="Go to repository" class="md-source" data-md-component="source">
+  <div class="md-source__icon md-icon">
+    
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 448 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"/></svg>
+  </div>
+  <div class="md-source__repository">
+    vibewarden/vibewarden
+  </div>
+</a>
+    </div>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href=".." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../getting-started/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../configuration/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../architecture/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+      
+        
+        
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Guides
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Guides
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../identity-providers/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Identity Providers
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../rate-limiting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Rate Limiting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../postgres/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Postgres
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../egress/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Egress Proxy
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Observability
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Observability
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#telemetry-configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Telemetry Configuration
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Telemetry Configuration">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#export-modes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Export Modes
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#prometheus-only-mode-default" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Prometheus-Only Mode (Default)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#otlp-only-mode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        OTLP-Only Mode
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#dual-export-mode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Dual-Export Mode
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#configuration-reference" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Configuration Reference
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Configuration Reference">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#telemetryenabled" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        telemetry.enabled
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#telemetrypath_patterns" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        telemetry.path_patterns
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#telemetryprometheusenabled" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        telemetry.prometheus.enabled
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#telemetryotlpenabled" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        telemetry.otlp.enabled
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#telemetryotlpendpoint" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        telemetry.otlp.endpoint
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#telemetryotlpheaders" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        telemetry.otlp.headers
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#telemetryotlpinterval" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        telemetry.otlp.interval
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#telemetryotlpprotocol" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        telemetry.otlp.protocol
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#telemetrylogsotlp" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        telemetry.logs.otlp
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#structured-event-log-export" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Structured Event Log Export
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#otel-collector-architecture" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        OTel Collector Architecture
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#migrating-from-metrics-to-telemetry" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Migrating from metrics: to telemetry:
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-configurations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Configurations
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Example Configurations">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#local-development-default" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Local Development (default)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#grafana-cloud" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Grafana Cloud
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#self-hosted-otel-collector" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Self-Hosted OTel Collector
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#docker-compose-observability-stack" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Docker Compose Observability Stack
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#quick-start" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Quick Start
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#accessing-the-uis" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Accessing the UIs
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dashboard-overview" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Dashboard Overview
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#metrics-reference" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Metrics Reference
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Metrics Reference">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#application-metrics" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Application Metrics
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#runtime-metrics" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Runtime Metrics
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#architecture" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Architecture
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#loki-log-aggregation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Loki Log Aggregation
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Loki Log Aggregation">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#querying-vibewarden-logs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Querying VibeWarden Logs
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#promtail-pipeline" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Promtail Pipeline
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#adding-custom-dashboards" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Adding Custom Dashboards
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#troubleshooting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Troubleshooting
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Troubleshooting">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#grafana-shows-no-data-on-panels" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Grafana shows "No data" on panels
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#port-conflicts" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Port conflicts
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#grafana-starts-but-the-dashboard-is-not-visible" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Grafana starts but the dashboard is not visible
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#loki-shows-no-logs-in-grafana" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Loki shows no logs in Grafana
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#prometheus-cannot-reach-vibewarden" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Prometheus cannot reach VibeWarden
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#production-note" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Production Note
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../secret-management/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Secret Management
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../performance/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Performance
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../social-login/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Social Login
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../production-deployment/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Production Deployment
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../production-hardening/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Production Hardening
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../websockets/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    WebSockets
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_6" >
+        
+          
+          <label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Framework Examples
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_6_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_6">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Framework Examples
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/express/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Express (Node.js)
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/nextjs/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Next.js
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/django/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Django
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../examples/rails/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Rails
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../upgrading/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Upgrading
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../troubleshooting/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Troubleshooting
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+      
+      
+        
+      
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+          
+        
+        <input class="md-nav__toggle md-toggle md-toggle--indeterminate" type="checkbox" id="__nav_9" >
+        
+          
+          <label class="md-nav__link" for="__nav_9" id="__nav_9_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_9_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_9">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../decisions/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Architectural Decisions
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#telemetry-configuration" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Telemetry Configuration
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Telemetry Configuration">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#export-modes" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Export Modes
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#prometheus-only-mode-default" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Prometheus-Only Mode (Default)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#otlp-only-mode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        OTLP-Only Mode
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#dual-export-mode" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Dual-Export Mode
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#configuration-reference" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Configuration Reference
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Configuration Reference">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#telemetryenabled" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        telemetry.enabled
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#telemetrypath_patterns" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        telemetry.path_patterns
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#telemetryprometheusenabled" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        telemetry.prometheus.enabled
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#telemetryotlpenabled" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        telemetry.otlp.enabled
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#telemetryotlpendpoint" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        telemetry.otlp.endpoint
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#telemetryotlpheaders" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        telemetry.otlp.headers
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#telemetryotlpinterval" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        telemetry.otlp.interval
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#telemetryotlpprotocol" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        telemetry.otlp.protocol
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#telemetrylogsotlp" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        telemetry.logs.otlp
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#structured-event-log-export" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Structured Event Log Export
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#otel-collector-architecture" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        OTel Collector Architecture
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#migrating-from-metrics-to-telemetry" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Migrating from metrics: to telemetry:
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#example-configurations" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Example Configurations
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Example Configurations">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#local-development-default" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Local Development (default)
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#grafana-cloud" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Grafana Cloud
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#self-hosted-otel-collector" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Self-Hosted OTel Collector
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#docker-compose-observability-stack" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Docker Compose Observability Stack
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#quick-start" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Quick Start
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#accessing-the-uis" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Accessing the UIs
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#dashboard-overview" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Dashboard Overview
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#metrics-reference" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Metrics Reference
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Metrics Reference">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#application-metrics" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Application Metrics
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#runtime-metrics" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Runtime Metrics
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#architecture" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Architecture
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#loki-log-aggregation" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Loki Log Aggregation
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Loki Log Aggregation">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#querying-vibewarden-logs" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Querying VibeWarden Logs
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#promtail-pipeline" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Promtail Pipeline
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#adding-custom-dashboards" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Adding Custom Dashboards
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#troubleshooting" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Troubleshooting
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Troubleshooting">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#grafana-shows-no-data-on-panels" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Grafana shows "No data" on panels
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#port-conflicts" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Port conflicts
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#grafana-starts-but-the-dashboard-is-not-visible" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Grafana starts but the dashboard is not visible
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#loki-shows-no-logs-in-grafana" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Loki shows no logs in Grafana
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#prometheus-cannot-reach-vibewarden" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Prometheus cannot reach VibeWarden
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#production-note" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Production Note
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+  
+  
+
+
+<h1 id="observability-stack">Observability Stack<a class="headerlink" href="#observability-stack" title="Permanent link">&para;</a></h1>
+<p>VibeWarden includes an optional local observability stack for development and testing.
+It consists of <strong>Prometheus</strong> (metrics collection), <strong>Loki</strong> (log aggregation),
+<strong>Promtail</strong> (log shipper), and <strong>Grafana</strong> (dashboards and log explorer), all started
+via Docker Compose profiles so they do not run unless explicitly requested.</p>
+<h2 id="telemetry-configuration">Telemetry Configuration<a class="headerlink" href="#telemetry-configuration" title="Permanent link">&para;</a></h2>
+<p>VibeWarden uses OpenTelemetry as its telemetry foundation, supporting both pull-based
+Prometheus scraping and push-based OTLP export. The <code>telemetry:</code> section in
+<code>vibewarden.yaml</code> controls all telemetry behavior.</p>
+<h3 id="export-modes">Export Modes<a class="headerlink" href="#export-modes" title="Permanent link">&para;</a></h3>
+<p>VibeWarden supports three telemetry export modes:</p>
+<table>
+<thead>
+<tr>
+<th>Mode</th>
+<th>Prometheus</th>
+<th>OTLP</th>
+<th>Use Case</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Prometheus-only</strong> (default)</td>
+<td>Enabled</td>
+<td>Disabled</td>
+<td>Local development, single-instance deployments</td>
+</tr>
+<tr>
+<td><strong>OTLP-only</strong></td>
+<td>Disabled</td>
+<td>Enabled</td>
+<td>Cloud backends (Grafana Cloud, Datadog), fleet deployments</td>
+</tr>
+<tr>
+<td><strong>Dual-export</strong></td>
+<td>Enabled</td>
+<td>Enabled</td>
+<td>Migration, local + central collection</td>
+</tr>
+</tbody>
+</table>
+<h3 id="prometheus-only-mode-default">Prometheus-Only Mode (Default)<a class="headerlink" href="#prometheus-only-mode-default" title="Permanent link">&para;</a></h3>
+<p>This is the zero-config default. VibeWarden exposes metrics at <code>/_vibewarden/metrics</code>
+in Prometheus text format. No outbound connections are made.</p>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-0-1"><a id="__codelineno-0-1" name="__codelineno-0-1" href="#__codelineno-0-1"></a><span class="nt">telemetry</span><span class="p">:</span>
+</span><span id="__span-0-2"><a id="__codelineno-0-2" name="__codelineno-0-2" href="#__codelineno-0-2"></a><span class="w">  </span><span class="nt">enabled</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+</span><span id="__span-0-3"><a id="__codelineno-0-3" name="__codelineno-0-3" href="#__codelineno-0-3"></a><span class="w">  </span><span class="nt">prometheus</span><span class="p">:</span>
+</span><span id="__span-0-4"><a id="__codelineno-0-4" name="__codelineno-0-4" href="#__codelineno-0-4"></a><span class="w">    </span><span class="nt">enabled</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+</span><span id="__span-0-5"><a id="__codelineno-0-5" name="__codelineno-0-5" href="#__codelineno-0-5"></a><span class="w">  </span><span class="nt">otlp</span><span class="p">:</span>
+</span><span id="__span-0-6"><a id="__codelineno-0-6" name="__codelineno-0-6" href="#__codelineno-0-6"></a><span class="w">    </span><span class="nt">enabled</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">false</span>
+</span></code></pre></div>
+<p>Or simply omit the <code>telemetry:</code> block entirely — the defaults match this configuration.</p>
+<p><strong>When to use:</strong> Local development, single-instance production where you run your own
+Prometheus and scrape VibeWarden directly.</p>
+<h3 id="otlp-only-mode">OTLP-Only Mode<a class="headerlink" href="#otlp-only-mode" title="Permanent link">&para;</a></h3>
+<p>Metrics are pushed to an OTLP-compatible collector or backend. The <code>/_vibewarden/metrics</code>
+endpoint is disabled. All telemetry flows outbound.</p>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-1-1"><a id="__codelineno-1-1" name="__codelineno-1-1" href="#__codelineno-1-1"></a><span class="nt">telemetry</span><span class="p">:</span>
+</span><span id="__span-1-2"><a id="__codelineno-1-2" name="__codelineno-1-2" href="#__codelineno-1-2"></a><span class="w">  </span><span class="nt">enabled</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+</span><span id="__span-1-3"><a id="__codelineno-1-3" name="__codelineno-1-3" href="#__codelineno-1-3"></a><span class="w">  </span><span class="nt">prometheus</span><span class="p">:</span>
+</span><span id="__span-1-4"><a id="__codelineno-1-4" name="__codelineno-1-4" href="#__codelineno-1-4"></a><span class="w">    </span><span class="nt">enabled</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">false</span>
+</span><span id="__span-1-5"><a id="__codelineno-1-5" name="__codelineno-1-5" href="#__codelineno-1-5"></a><span class="w">  </span><span class="nt">otlp</span><span class="p">:</span>
+</span><span id="__span-1-6"><a id="__codelineno-1-6" name="__codelineno-1-6" href="#__codelineno-1-6"></a><span class="w">    </span><span class="nt">enabled</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+</span><span id="__span-1-7"><a id="__codelineno-1-7" name="__codelineno-1-7" href="#__codelineno-1-7"></a><span class="w">    </span><span class="nt">endpoint</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">https://otlp-gateway.example.com/otlp</span>
+</span><span id="__span-1-8"><a id="__codelineno-1-8" name="__codelineno-1-8" href="#__codelineno-1-8"></a><span class="w">    </span><span class="nt">headers</span><span class="p">:</span>
+</span><span id="__span-1-9"><a id="__codelineno-1-9" name="__codelineno-1-9" href="#__codelineno-1-9"></a><span class="w">      </span><span class="nt">Authorization</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;Bearer</span><span class="nv"> </span><span class="s">${OTLP_API_KEY}&quot;</span>
+</span><span id="__span-1-10"><a id="__codelineno-1-10" name="__codelineno-1-10" href="#__codelineno-1-10"></a><span class="w">    </span><span class="nt">interval</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">30s</span>
+</span></code></pre></div>
+<p><strong>When to use:</strong> Cloud observability backends (Grafana Cloud, Datadog, Honeycomb, etc.),
+fleet deployments where a central collector aggregates telemetry from multiple instances.</p>
+<h3 id="dual-export-mode">Dual-Export Mode<a class="headerlink" href="#dual-export-mode" title="Permanent link">&para;</a></h3>
+<p>Both Prometheus and OTLP exporters run simultaneously. Use this for gradual migration
+or when you need both local scraping and central collection.</p>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-2-1"><a id="__codelineno-2-1" name="__codelineno-2-1" href="#__codelineno-2-1"></a><span class="nt">telemetry</span><span class="p">:</span>
+</span><span id="__span-2-2"><a id="__codelineno-2-2" name="__codelineno-2-2" href="#__codelineno-2-2"></a><span class="w">  </span><span class="nt">enabled</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+</span><span id="__span-2-3"><a id="__codelineno-2-3" name="__codelineno-2-3" href="#__codelineno-2-3"></a><span class="w">  </span><span class="nt">prometheus</span><span class="p">:</span>
+</span><span id="__span-2-4"><a id="__codelineno-2-4" name="__codelineno-2-4" href="#__codelineno-2-4"></a><span class="w">    </span><span class="nt">enabled</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+</span><span id="__span-2-5"><a id="__codelineno-2-5" name="__codelineno-2-5" href="#__codelineno-2-5"></a><span class="w">  </span><span class="nt">otlp</span><span class="p">:</span>
+</span><span id="__span-2-6"><a id="__codelineno-2-6" name="__codelineno-2-6" href="#__codelineno-2-6"></a><span class="w">    </span><span class="nt">enabled</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+</span><span id="__span-2-7"><a id="__codelineno-2-7" name="__codelineno-2-7" href="#__codelineno-2-7"></a><span class="w">    </span><span class="nt">endpoint</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">http://otel-collector:4318</span>
+</span><span id="__span-2-8"><a id="__codelineno-2-8" name="__codelineno-2-8" href="#__codelineno-2-8"></a><span class="w">    </span><span class="nt">interval</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">15s</span>
+</span></code></pre></div>
+<p><strong>When to use:</strong> Migration from Prometheus-only to OTLP, or hybrid setups where local
+dashboards coexist with central fleet observability.</p>
+<h3 id="configuration-reference">Configuration Reference<a class="headerlink" href="#configuration-reference" title="Permanent link">&para;</a></h3>
+<h4 id="telemetryenabled">telemetry.enabled<a class="headerlink" href="#telemetryenabled" title="Permanent link">&para;</a></h4>
+<p><strong>Type:</strong> boolean
+<strong>Default:</strong> <code>true</code></p>
+<p>Master switch for all telemetry collection. When <code>false</code>, no metrics are collected or
+exported, and the <code>/_vibewarden/metrics</code> endpoint returns 404.</p>
+<h4 id="telemetrypath_patterns">telemetry.path_patterns<a class="headerlink" href="#telemetrypath_patterns" title="Permanent link">&para;</a></h4>
+<p><strong>Type:</strong> list of strings
+<strong>Default:</strong> <code>[]</code></p>
+<p>URL path normalization patterns using colon-param syntax. Without patterns, all paths
+are recorded as <code>"other"</code>. Configure the routes your app exposes to prevent
+high-cardinality metric labels.</p>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-3-1"><a id="__codelineno-3-1" name="__codelineno-3-1" href="#__codelineno-3-1"></a><span class="nt">telemetry</span><span class="p">:</span>
+</span><span id="__span-3-2"><a id="__codelineno-3-2" name="__codelineno-3-2" href="#__codelineno-3-2"></a><span class="w">  </span><span class="nt">path_patterns</span><span class="p">:</span>
+</span><span id="__span-3-3"><a id="__codelineno-3-3" name="__codelineno-3-3" href="#__codelineno-3-3"></a><span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">&quot;/users/:id&quot;</span>
+</span><span id="__span-3-4"><a id="__codelineno-3-4" name="__codelineno-3-4" href="#__codelineno-3-4"></a><span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">&quot;/api/v1/items/:item_id/comments/:comment_id&quot;</span>
+</span></code></pre></div>
+<h4 id="telemetryprometheusenabled">telemetry.prometheus.enabled<a class="headerlink" href="#telemetryprometheusenabled" title="Permanent link">&para;</a></h4>
+<p><strong>Type:</strong> boolean
+<strong>Default:</strong> <code>true</code></p>
+<p>Enables the Prometheus pull-based exporter. When enabled, metrics are served at
+<code>/_vibewarden/metrics</code> in Prometheus text format with OpenMetrics compatibility.</p>
+<h4 id="telemetryotlpenabled">telemetry.otlp.enabled<a class="headerlink" href="#telemetryotlpenabled" title="Permanent link">&para;</a></h4>
+<p><strong>Type:</strong> boolean
+<strong>Default:</strong> <code>false</code></p>
+<p>Enables the OTLP push-based exporter. Requires <code>telemetry.otlp.endpoint</code> to be set.</p>
+<h4 id="telemetryotlpendpoint">telemetry.otlp.endpoint<a class="headerlink" href="#telemetryotlpendpoint" title="Permanent link">&para;</a></h4>
+<p><strong>Type:</strong> string
+<strong>Default:</strong> <code>""</code></p>
+<p>OTLP HTTP endpoint URL. Required when <code>telemetry.otlp.enabled</code> is <code>true</code>.</p>
+<p>Examples:</p>
+<ul>
+<li>Local OTel Collector: <code>http://localhost:4318</code></li>
+<li>Docker Compose: <code>http://otel-collector:4318</code></li>
+<li>Grafana Cloud: <code>https://otlp-gateway-prod-us-central-0.grafana.net/otlp</code></li>
+</ul>
+<h4 id="telemetryotlpheaders">telemetry.otlp.headers<a class="headerlink" href="#telemetryotlpheaders" title="Permanent link">&para;</a></h4>
+<p><strong>Type:</strong> map of string to string
+<strong>Default:</strong> <code>{}</code></p>
+<p>HTTP headers to include with OTLP requests. Use for authentication.</p>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-4-1"><a id="__codelineno-4-1" name="__codelineno-4-1" href="#__codelineno-4-1"></a><span class="nt">telemetry</span><span class="p">:</span>
+</span><span id="__span-4-2"><a id="__codelineno-4-2" name="__codelineno-4-2" href="#__codelineno-4-2"></a><span class="w">  </span><span class="nt">otlp</span><span class="p">:</span>
+</span><span id="__span-4-3"><a id="__codelineno-4-3" name="__codelineno-4-3" href="#__codelineno-4-3"></a><span class="w">    </span><span class="nt">headers</span><span class="p">:</span>
+</span><span id="__span-4-4"><a id="__codelineno-4-4" name="__codelineno-4-4" href="#__codelineno-4-4"></a><span class="w">      </span><span class="nt">Authorization</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;Basic</span><span class="nv"> </span><span class="s">${GRAFANA_OTLP_TOKEN}&quot;</span>
+</span><span id="__span-4-5"><a id="__codelineno-4-5" name="__codelineno-4-5" href="#__codelineno-4-5"></a><span class="w">      </span><span class="nt">X-Custom-Header</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;value&quot;</span>
+</span></code></pre></div>
+<h4 id="telemetryotlpinterval">telemetry.otlp.interval<a class="headerlink" href="#telemetryotlpinterval" title="Permanent link">&para;</a></h4>
+<p><strong>Type:</strong> duration string
+<strong>Default:</strong> <code>"30s"</code></p>
+<p>How often metrics are batched and pushed to the OTLP endpoint. Shorter intervals
+reduce telemetry lag but increase network overhead.</p>
+<p>Valid formats: <code>"15s"</code>, <code>"1m"</code>, <code>"30s"</code>.</p>
+<h4 id="telemetryotlpprotocol">telemetry.otlp.protocol<a class="headerlink" href="#telemetryotlpprotocol" title="Permanent link">&para;</a></h4>
+<p><strong>Type:</strong> string
+<strong>Default:</strong> <code>"http"</code></p>
+<p>OTLP transport protocol. Only <code>"http"</code> is supported in this version. <code>"grpc"</code> is
+reserved for future use.</p>
+<h4 id="telemetrylogsotlp">telemetry.logs.otlp<a class="headerlink" href="#telemetrylogsotlp" title="Permanent link">&para;</a></h4>
+<p><strong>Type:</strong> boolean
+<strong>Default:</strong> <code>false</code></p>
+<p>Enables OTLP log export. When enabled, structured events (the AI-readable logs) are
+exported to the same OTLP endpoint as metrics. Requires <code>telemetry.otlp.endpoint</code>
+to be configured.</p>
+<p>Logs are exported in addition to stdout JSON output — existing log collection via
+stdout remains unchanged.</p>
+<h3 id="structured-event-log-export">Structured Event Log Export<a class="headerlink" href="#structured-event-log-export" title="Permanent link">&para;</a></h3>
+<p>VibeWarden's structured event logs (with <code>schema_version</code>, <code>event_type</code>, <code>ai_summary</code>,
+and <code>payload</code> fields) can be exported via OTLP alongside metrics. Enable with:</p>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-5-1"><a id="__codelineno-5-1" name="__codelineno-5-1" href="#__codelineno-5-1"></a><span class="nt">telemetry</span><span class="p">:</span>
+</span><span id="__span-5-2"><a id="__codelineno-5-2" name="__codelineno-5-2" href="#__codelineno-5-2"></a><span class="w">  </span><span class="nt">otlp</span><span class="p">:</span>
+</span><span id="__span-5-3"><a id="__codelineno-5-3" name="__codelineno-5-3" href="#__codelineno-5-3"></a><span class="w">    </span><span class="nt">enabled</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+</span><span id="__span-5-4"><a id="__codelineno-5-4" name="__codelineno-5-4" href="#__codelineno-5-4"></a><span class="w">    </span><span class="nt">endpoint</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">http://otel-collector:4318</span>
+</span><span id="__span-5-5"><a id="__codelineno-5-5" name="__codelineno-5-5" href="#__codelineno-5-5"></a><span class="w">  </span><span class="nt">logs</span><span class="p">:</span>
+</span><span id="__span-5-6"><a id="__codelineno-5-6" name="__codelineno-5-6" href="#__codelineno-5-6"></a><span class="w">    </span><span class="nt">otlp</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+</span></code></pre></div>
+<p><strong>How it works:</strong></p>
+<ol>
+<li>Events are logged to stdout as JSON (existing behavior, always active)</li>
+<li>Events are simultaneously sent to the OTel LoggerProvider</li>
+<li>The LoggerProvider batches and pushes logs to the OTLP endpoint</li>
+<li>OTel Collector receives logs and routes them to Loki (or any configured backend)</li>
+</ol>
+<p><strong>OTel log record mapping:</strong></p>
+<table>
+<thead>
+<tr>
+<th>slog attribute</th>
+<th>OTel log record field</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>time</code></td>
+<td><code>Timestamp</code></td>
+</tr>
+<tr>
+<td><code>event_type</code></td>
+<td>Attribute: <code>event_type</code></td>
+</tr>
+<tr>
+<td><code>schema_version</code></td>
+<td>Attribute: <code>schema_version</code></td>
+</tr>
+<tr>
+<td><code>ai_summary</code></td>
+<td>Attribute: <code>ai_summary</code></td>
+</tr>
+<tr>
+<td><code>payload</code></td>
+<td>Attribute: <code>payload</code> (JSON)</td>
+</tr>
+</tbody>
+</table>
+<p>Note: the otelslog bridge maps slog attributes directly to OTel attributes
+with the same keys. The slog message is empty, so the OTel <code>Body</code> field is
+empty — all structured data lives in attributes.</p>
+<p><strong>Severity mapping:</strong> Event types are mapped to OTel severity levels:</p>
+<table>
+<thead>
+<tr>
+<th>Event type pattern</th>
+<th>OTel Severity</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>*.failed</code>, <code>*.blocked</code>, <code>*.hit</code></td>
+<td>WARN</td>
+</tr>
+<tr>
+<td><code>*.unavailable</code>, <code>*_failed</code></td>
+<td>ERROR</td>
+</tr>
+<tr>
+<td>All others</td>
+<td>INFO</td>
+</tr>
+</tbody>
+</table>
+<h3 id="otel-collector-architecture">OTel Collector Architecture<a class="headerlink" href="#otel-collector-architecture" title="Permanent link">&para;</a></h3>
+<p>When the observability profile is enabled (<code>docker compose --profile observability up</code>),
+VibeWarden generates an OTel Collector configuration that acts as a telemetry hub:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-6-1"><a id="__codelineno-6-1" name="__codelineno-6-1" href="#__codelineno-6-1"></a>VibeWarden --OTLP--&gt; OTel Collector --metrics--&gt; Prometheus (scrapes :8889)
+</span><span id="__span-6-2"><a id="__codelineno-6-2" name="__codelineno-6-2" href="#__codelineno-6-2"></a>                              |
+</span><span id="__span-6-3"><a id="__codelineno-6-3" name="__codelineno-6-3" href="#__codelineno-6-3"></a>                              +--logs--&gt; Loki
+</span></code></pre></div>
+<p>The collector:</p>
+<ul>
+<li>Receives OTLP on port 4318 (HTTP)</li>
+<li>Exports metrics via Prometheus exporter on port 8889 (Prometheus scrapes this)</li>
+<li>Exports logs to Loki via the Loki exporter</li>
+</ul>
+<p><strong>Collector config location:</strong> <code>.vibewarden/generated/observability/otel-collector/config.yaml</code></p>
+<p><strong>Why a collector?</strong></p>
+<ul>
+<li>Decouples VibeWarden from backend details</li>
+<li>Enables batching, retry, and buffering</li>
+<li>Standard OTel pipeline that works with any OTLP-compatible backend</li>
+<li>Future-proof for distributed tracing</li>
+</ul>
+<h3 id="migrating-from-metrics-to-telemetry">Migrating from <code>metrics:</code> to <code>telemetry:</code><a class="headerlink" href="#migrating-from-metrics-to-telemetry" title="Permanent link">&para;</a></h3>
+<p>The legacy <code>metrics:</code> config section is deprecated. VibeWarden automatically migrates
+settings at startup and logs a warning.</p>
+<p><strong>Before (deprecated):</strong></p>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-7-1"><a id="__codelineno-7-1" name="__codelineno-7-1" href="#__codelineno-7-1"></a><span class="nt">metrics</span><span class="p">:</span>
+</span><span id="__span-7-2"><a id="__codelineno-7-2" name="__codelineno-7-2" href="#__codelineno-7-2"></a><span class="w">  </span><span class="nt">enabled</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+</span><span id="__span-7-3"><a id="__codelineno-7-3" name="__codelineno-7-3" href="#__codelineno-7-3"></a><span class="w">  </span><span class="nt">path_patterns</span><span class="p">:</span>
+</span><span id="__span-7-4"><a id="__codelineno-7-4" name="__codelineno-7-4" href="#__codelineno-7-4"></a><span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">&quot;/users/:id&quot;</span>
+</span></code></pre></div>
+<p><strong>After (recommended):</strong></p>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-8-1"><a id="__codelineno-8-1" name="__codelineno-8-1" href="#__codelineno-8-1"></a><span class="nt">telemetry</span><span class="p">:</span>
+</span><span id="__span-8-2"><a id="__codelineno-8-2" name="__codelineno-8-2" href="#__codelineno-8-2"></a><span class="w">  </span><span class="nt">enabled</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+</span><span id="__span-8-3"><a id="__codelineno-8-3" name="__codelineno-8-3" href="#__codelineno-8-3"></a><span class="w">  </span><span class="nt">path_patterns</span><span class="p">:</span>
+</span><span id="__span-8-4"><a id="__codelineno-8-4" name="__codelineno-8-4" href="#__codelineno-8-4"></a><span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">&quot;/users/:id&quot;</span>
+</span><span id="__span-8-5"><a id="__codelineno-8-5" name="__codelineno-8-5" href="#__codelineno-8-5"></a><span class="w">  </span><span class="nt">prometheus</span><span class="p">:</span>
+</span><span id="__span-8-6"><a id="__codelineno-8-6" name="__codelineno-8-6" href="#__codelineno-8-6"></a><span class="w">    </span><span class="nt">enabled</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+</span></code></pre></div>
+<p><strong>Migration behavior:</strong></p>
+<ol>
+<li>If <code>metrics:</code> is present but <code>telemetry:</code> is not, settings are copied automatically</li>
+<li>A deprecation warning is logged at startup</li>
+<li>The <code>/_vibewarden/metrics</code> endpoint works unchanged</li>
+<li>Existing Prometheus scrapers and Grafana dashboards continue working</li>
+</ol>
+<p><strong>When to migrate:</strong> Update your config before the next major version. The <code>metrics:</code>
+section will be removed in a future release.</p>
+<h3 id="example-configurations">Example Configurations<a class="headerlink" href="#example-configurations" title="Permanent link">&para;</a></h3>
+<h4 id="local-development-default">Local Development (default)<a class="headerlink" href="#local-development-default" title="Permanent link">&para;</a></h4>
+<p>No config needed. The defaults enable Prometheus-only mode:</p>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-9-1"><a id="__codelineno-9-1" name="__codelineno-9-1" href="#__codelineno-9-1"></a><span class="c1"># Nothing required — defaults are:</span>
+</span><span id="__span-9-2"><a id="__codelineno-9-2" name="__codelineno-9-2" href="#__codelineno-9-2"></a><span class="c1"># telemetry.enabled: true</span>
+</span><span id="__span-9-3"><a id="__codelineno-9-3" name="__codelineno-9-3" href="#__codelineno-9-3"></a><span class="c1"># telemetry.prometheus.enabled: true</span>
+</span><span id="__span-9-4"><a id="__codelineno-9-4" name="__codelineno-9-4" href="#__codelineno-9-4"></a><span class="c1"># telemetry.otlp.enabled: false</span>
+</span></code></pre></div>
+<h4 id="grafana-cloud">Grafana Cloud<a class="headerlink" href="#grafana-cloud" title="Permanent link">&para;</a></h4>
+<p>Push metrics and logs to Grafana Cloud OTLP gateway:</p>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-10-1"><a id="__codelineno-10-1" name="__codelineno-10-1" href="#__codelineno-10-1"></a><span class="nt">telemetry</span><span class="p">:</span>
+</span><span id="__span-10-2"><a id="__codelineno-10-2" name="__codelineno-10-2" href="#__codelineno-10-2"></a><span class="w">  </span><span class="nt">enabled</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+</span><span id="__span-10-3"><a id="__codelineno-10-3" name="__codelineno-10-3" href="#__codelineno-10-3"></a><span class="w">  </span><span class="nt">path_patterns</span><span class="p">:</span>
+</span><span id="__span-10-4"><a id="__codelineno-10-4" name="__codelineno-10-4" href="#__codelineno-10-4"></a><span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">&quot;/api/v1/users/:id&quot;</span>
+</span><span id="__span-10-5"><a id="__codelineno-10-5" name="__codelineno-10-5" href="#__codelineno-10-5"></a><span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">&quot;/api/v1/orders/:order_id&quot;</span>
+</span><span id="__span-10-6"><a id="__codelineno-10-6" name="__codelineno-10-6" href="#__codelineno-10-6"></a><span class="w">  </span><span class="nt">prometheus</span><span class="p">:</span>
+</span><span id="__span-10-7"><a id="__codelineno-10-7" name="__codelineno-10-7" href="#__codelineno-10-7"></a><span class="w">    </span><span class="nt">enabled</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">false</span><span class="w">  </span><span class="c1"># Use OTLP instead</span>
+</span><span id="__span-10-8"><a id="__codelineno-10-8" name="__codelineno-10-8" href="#__codelineno-10-8"></a><span class="w">  </span><span class="nt">otlp</span><span class="p">:</span>
+</span><span id="__span-10-9"><a id="__codelineno-10-9" name="__codelineno-10-9" href="#__codelineno-10-9"></a><span class="w">    </span><span class="nt">enabled</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+</span><span id="__span-10-10"><a id="__codelineno-10-10" name="__codelineno-10-10" href="#__codelineno-10-10"></a><span class="w">    </span><span class="nt">endpoint</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">https://otlp-gateway-prod-us-central-0.grafana.net/otlp</span>
+</span><span id="__span-10-11"><a id="__codelineno-10-11" name="__codelineno-10-11" href="#__codelineno-10-11"></a><span class="w">    </span><span class="nt">headers</span><span class="p">:</span>
+</span><span id="__span-10-12"><a id="__codelineno-10-12" name="__codelineno-10-12" href="#__codelineno-10-12"></a><span class="w">      </span><span class="nt">Authorization</span><span class="p">:</span><span class="w"> </span><span class="s">&quot;Basic</span><span class="nv"> </span><span class="s">${GRAFANA_OTLP_TOKEN}&quot;</span>
+</span><span id="__span-10-13"><a id="__codelineno-10-13" name="__codelineno-10-13" href="#__codelineno-10-13"></a><span class="w">    </span><span class="nt">interval</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">30s</span>
+</span><span id="__span-10-14"><a id="__codelineno-10-14" name="__codelineno-10-14" href="#__codelineno-10-14"></a><span class="w">  </span><span class="nt">logs</span><span class="p">:</span>
+</span><span id="__span-10-15"><a id="__codelineno-10-15" name="__codelineno-10-15" href="#__codelineno-10-15"></a><span class="w">    </span><span class="nt">otlp</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+</span></code></pre></div>
+<p>Set <code>GRAFANA_OTLP_TOKEN</code> in your environment (base64-encoded <code>instanceId:apiKey</code>).</p>
+<h4 id="self-hosted-otel-collector">Self-Hosted OTel Collector<a class="headerlink" href="#self-hosted-otel-collector" title="Permanent link">&para;</a></h4>
+<p>Push to your own OTel Collector while keeping local Prometheus scraping:</p>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-11-1"><a id="__codelineno-11-1" name="__codelineno-11-1" href="#__codelineno-11-1"></a><span class="nt">telemetry</span><span class="p">:</span>
+</span><span id="__span-11-2"><a id="__codelineno-11-2" name="__codelineno-11-2" href="#__codelineno-11-2"></a><span class="w">  </span><span class="nt">enabled</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+</span><span id="__span-11-3"><a id="__codelineno-11-3" name="__codelineno-11-3" href="#__codelineno-11-3"></a><span class="w">  </span><span class="nt">path_patterns</span><span class="p">:</span>
+</span><span id="__span-11-4"><a id="__codelineno-11-4" name="__codelineno-11-4" href="#__codelineno-11-4"></a><span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">&quot;/users/:id&quot;</span>
+</span><span id="__span-11-5"><a id="__codelineno-11-5" name="__codelineno-11-5" href="#__codelineno-11-5"></a><span class="w">  </span><span class="nt">prometheus</span><span class="p">:</span>
+</span><span id="__span-11-6"><a id="__codelineno-11-6" name="__codelineno-11-6" href="#__codelineno-11-6"></a><span class="w">    </span><span class="nt">enabled</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span><span class="w">  </span><span class="c1"># Keep local /_vibewarden/metrics</span>
+</span><span id="__span-11-7"><a id="__codelineno-11-7" name="__codelineno-11-7" href="#__codelineno-11-7"></a><span class="w">  </span><span class="nt">otlp</span><span class="p">:</span>
+</span><span id="__span-11-8"><a id="__codelineno-11-8" name="__codelineno-11-8" href="#__codelineno-11-8"></a><span class="w">    </span><span class="nt">enabled</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+</span><span id="__span-11-9"><a id="__codelineno-11-9" name="__codelineno-11-9" href="#__codelineno-11-9"></a><span class="w">    </span><span class="nt">endpoint</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">http://otel-collector.monitoring.svc:4318</span>
+</span><span id="__span-11-10"><a id="__codelineno-11-10" name="__codelineno-11-10" href="#__codelineno-11-10"></a><span class="w">    </span><span class="nt">interval</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">15s</span>
+</span><span id="__span-11-11"><a id="__codelineno-11-11" name="__codelineno-11-11" href="#__codelineno-11-11"></a><span class="w">  </span><span class="nt">logs</span><span class="p">:</span>
+</span><span id="__span-11-12"><a id="__codelineno-11-12" name="__codelineno-11-12" href="#__codelineno-11-12"></a><span class="w">    </span><span class="nt">otlp</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+</span></code></pre></div>
+<h4 id="docker-compose-observability-stack">Docker Compose Observability Stack<a class="headerlink" href="#docker-compose-observability-stack" title="Permanent link">&para;</a></h4>
+<p>When using <code>docker compose --profile observability up</code>, the generated compose file
+automatically sets these environment variables:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-12-1"><a id="__codelineno-12-1" name="__codelineno-12-1" href="#__codelineno-12-1"></a>VIBEWARDEN_TELEMETRY_OTLP_ENABLED=true
+</span><span id="__span-12-2"><a id="__codelineno-12-2" name="__codelineno-12-2" href="#__codelineno-12-2"></a>VIBEWARDEN_TELEMETRY_OTLP_ENDPOINT=http://otel-collector:4318
+</span><span id="__span-12-3"><a id="__codelineno-12-3" name="__codelineno-12-3" href="#__codelineno-12-3"></a>VIBEWARDEN_TELEMETRY_LOGS_OTLP=true
+</span></code></pre></div>
+<p>No manual config changes needed — just enable the observability profile.</p>
+<hr />
+<h2 id="quick-start">Quick Start<a class="headerlink" href="#quick-start" title="Permanent link">&para;</a></h2>
+<p>Enable observability in <code>vibewarden.yaml</code>:</p>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-13-1"><a id="__codelineno-13-1" name="__codelineno-13-1" href="#__codelineno-13-1"></a><span class="nt">observability</span><span class="p">:</span>
+</span><span id="__span-13-2"><a id="__codelineno-13-2" name="__codelineno-13-2" href="#__codelineno-13-2"></a><span class="w">  </span><span class="nt">enabled</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+</span><span id="__span-13-3"><a id="__codelineno-13-3" name="__codelineno-13-3" href="#__codelineno-13-3"></a><span class="w">  </span><span class="nt">grafana_port</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">3001</span>
+</span></code></pre></div>
+<p>Generate and start:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-14-1"><a id="__codelineno-14-1" name="__codelineno-14-1" href="#__codelineno-14-1"></a>vibewarden<span class="w"> </span>generate
+</span><span id="__span-14-2"><a id="__codelineno-14-2" name="__codelineno-14-2" href="#__codelineno-14-2"></a><span class="nv">COMPOSE_PROFILES</span><span class="o">=</span>observability<span class="w"> </span>docker<span class="w"> </span>compose<span class="w"> </span>-f<span class="w"> </span>.vibewarden/generated/docker-compose.yml<span class="w"> </span>up<span class="w"> </span>-d
+</span></code></pre></div>
+<p>Stop the stack:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-15-1"><a id="__codelineno-15-1" name="__codelineno-15-1" href="#__codelineno-15-1"></a><span class="nv">COMPOSE_PROFILES</span><span class="o">=</span>observability<span class="w"> </span>docker<span class="w"> </span>compose<span class="w"> </span>-f<span class="w"> </span>.vibewarden/generated/docker-compose.yml<span class="w"> </span>down
+</span></code></pre></div>
+<h2 id="accessing-the-uis">Accessing the UIs<a class="headerlink" href="#accessing-the-uis" title="Permanent link">&para;</a></h2>
+<table>
+<thead>
+<tr>
+<th>Service</th>
+<th>URL</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Grafana</td>
+<td>http://localhost:3000</td>
+<td>Anonymous access, Admin role, no login</td>
+</tr>
+<tr>
+<td>Prometheus</td>
+<td>http://localhost:9090</td>
+<td>No authentication required</td>
+</tr>
+<tr>
+<td>Loki</td>
+<td>http://localhost:3100/ready</td>
+<td>API only; query logs via Grafana</td>
+</tr>
+</tbody>
+</table>
+<p>Grafana is configured with anonymous authentication so there is no login screen in
+the local dev environment. This is intentional — do not use this configuration in
+production.</p>
+<h2 id="dashboard-overview">Dashboard Overview<a class="headerlink" href="#dashboard-overview" title="Permanent link">&para;</a></h2>
+<p>The <strong>VibeWarden</strong> dashboard is automatically provisioned when Grafana starts. It
+contains the following panels:</p>
+<table>
+<thead>
+<tr>
+<th>Panel</th>
+<th>Type</th>
+<th>Description</th>
+<th>Underlying Metric</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Request Rate</td>
+<td>Time series</td>
+<td>Requests per second by HTTP status code</td>
+<td><code>vibewarden_requests_total</code></td>
+</tr>
+<tr>
+<td>Error Rate (5xx)</td>
+<td>Stat</td>
+<td>Fraction of requests returning 5xx responses</td>
+<td><code>vibewarden_requests_total{status_code=~"5.."}</code></td>
+</tr>
+<tr>
+<td>Latency Percentiles</td>
+<td>Time series</td>
+<td>P50, P95, P99 response times</td>
+<td><code>vibewarden_request_duration_seconds</code></td>
+</tr>
+<tr>
+<td>Active Connections</td>
+<td>Gauge</td>
+<td>Current open connections</td>
+<td><code>vibewarden_active_connections</code></td>
+</tr>
+<tr>
+<td>Rate Limit Hits/sec</td>
+<td>Time series</td>
+<td>Rate limit trigger rate</td>
+<td><code>vibewarden_rate_limit_hits_total</code></td>
+</tr>
+<tr>
+<td>Auth Decisions (Total)</td>
+<td>Pie chart</td>
+<td>Authentication allow vs. block counts</td>
+<td><code>vibewarden_auth_decisions_total</code></td>
+</tr>
+<tr>
+<td>Upstream Errors/sec</td>
+<td>Time series</td>
+<td>Rate of upstream connection failures</td>
+<td><code>vibewarden_upstream_errors_total</code></td>
+</tr>
+</tbody>
+</table>
+<p>The dashboard JSON is embedded in the VibeWarden binary and generated to
+<code>.vibewarden/generated/observability/grafana/dashboards/vibewarden.json</code> when
+observability is enabled. It is loaded automatically by Grafana's provisioning config.</p>
+<h2 id="metrics-reference">Metrics Reference<a class="headerlink" href="#metrics-reference" title="Permanent link">&para;</a></h2>
+<p>VibeWarden exposes all metrics at:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-16-1"><a id="__codelineno-16-1" name="__codelineno-16-1" href="#__codelineno-16-1"></a>http://localhost:8080/_vibewarden/metrics
+</span></code></pre></div>
+<p>The endpoint uses the standard Prometheus text exposition format.</p>
+<h3 id="application-metrics">Application Metrics<a class="headerlink" href="#application-metrics" title="Permanent link">&para;</a></h3>
+<table>
+<thead>
+<tr>
+<th>Metric</th>
+<th>Type</th>
+<th>Labels</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>vibewarden_requests_total</code></td>
+<td>Counter</td>
+<td><code>method</code>, <code>status_code</code>, <code>path_pattern</code></td>
+<td>Total HTTP requests handled</td>
+</tr>
+<tr>
+<td><code>vibewarden_request_duration_seconds</code></td>
+<td>Histogram</td>
+<td><code>method</code>, <code>path_pattern</code></td>
+<td>Request latency distribution</td>
+</tr>
+<tr>
+<td><code>vibewarden_rate_limit_hits_total</code></td>
+<td>Counter</td>
+<td><code>limit_type</code></td>
+<td>Number of rate limit triggers</td>
+</tr>
+<tr>
+<td><code>vibewarden_auth_decisions_total</code></td>
+<td>Counter</td>
+<td><code>decision</code></td>
+<td>Auth allow / block decisions</td>
+</tr>
+<tr>
+<td><code>vibewarden_upstream_errors_total</code></td>
+<td>Counter</td>
+<td>—</td>
+<td>Upstream connection failures</td>
+</tr>
+<tr>
+<td><code>vibewarden_active_connections</code></td>
+<td>Gauge</td>
+<td>—</td>
+<td>Currently active connections</td>
+</tr>
+</tbody>
+</table>
+<h3 id="runtime-metrics">Runtime Metrics<a class="headerlink" href="#runtime-metrics" title="Permanent link">&para;</a></h3>
+<p>Go runtime and process metrics are exposed automatically via the standard
+Prometheus collectors:</p>
+<table>
+<thead>
+<tr>
+<th>Prefix</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>go_*</code></td>
+<td>Go runtime metrics (goroutines, memory, GC pauses)</td>
+</tr>
+<tr>
+<td><code>process_*</code></td>
+<td>OS process metrics (CPU time, open file descriptors)</td>
+</tr>
+</tbody>
+</table>
+<h2 id="architecture">Architecture<a class="headerlink" href="#architecture" title="Permanent link">&para;</a></h2>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-17-1"><a id="__codelineno-17-1" name="__codelineno-17-1" href="#__codelineno-17-1"></a>[Your App]  &lt;----&gt;  [VibeWarden :8080]  &lt;--(scrape)--  [Prometheus :9090]
+</span><span id="__span-17-2"><a id="__codelineno-17-2" name="__codelineno-17-2" href="#__codelineno-17-2"></a>                          |                                     |
+</span><span id="__span-17-3"><a id="__codelineno-17-3" name="__codelineno-17-3" href="#__codelineno-17-3"></a>                          +---&gt; /_vibewarden/metrics            v
+</span><span id="__span-17-4"><a id="__codelineno-17-4" name="__codelineno-17-4" href="#__codelineno-17-4"></a>                                                         [Grafana :3000]
+</span><span id="__span-17-5"><a id="__codelineno-17-5" name="__codelineno-17-5" href="#__codelineno-17-5"></a>                                                               ^
+</span><span id="__span-17-6"><a id="__codelineno-17-6" name="__codelineno-17-6" href="#__codelineno-17-6"></a>[Docker container logs]  --&gt;  [Promtail]  --&gt;  [Loki :3100] --+
+</span></code></pre></div>
+<p>Prometheus scrapes VibeWarden every 15 seconds. Promtail discovers all running Docker
+containers via the Docker socket, tails their log files, and ships log entries to Loki.
+Grafana queries both Prometheus and Loki as data sources. All configs are generated
+under <code>.vibewarden/generated/observability/</code> by <code>vibewarden generate</code>.</p>
+<h2 id="loki-log-aggregation">Loki Log Aggregation<a class="headerlink" href="#loki-log-aggregation" title="Permanent link">&para;</a></h2>
+<p>Loki aggregates logs from all Docker containers in the stack. Logs are available in
+Grafana's <strong>Explore</strong> view (select the <strong>Loki</strong> data source).</p>
+<h3 id="querying-vibewarden-logs">Querying VibeWarden Logs<a class="headerlink" href="#querying-vibewarden-logs" title="Permanent link">&para;</a></h3>
+<p>VibeWarden emits structured JSON logs with the following top-level fields:</p>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+<th>Indexed as label</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>schema_version</code></td>
+<td>Log schema version (e.g., <code>v1</code>)</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td><code>event_type</code></td>
+<td>Event kind (e.g., <code>request.completed</code>)</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td><code>level</code></td>
+<td>Log level (<code>DEBUG</code>, <code>INFO</code>, <code>WARN</code>, <code>ERROR</code>)</td>
+<td>Yes</td>
+</tr>
+<tr>
+<td><code>ai_summary</code></td>
+<td>Human/AI-readable one-line description</td>
+<td>Structured metadata</td>
+</tr>
+<tr>
+<td><code>time</code></td>
+<td>RFC 3339 timestamp of the event</td>
+<td>Used as log timestamp</td>
+</tr>
+<tr>
+<td><code>payload</code></td>
+<td>Event-specific data (arbitrary JSON object)</td>
+<td>Full-text search</td>
+</tr>
+</tbody>
+</table>
+<p>Example LogQL queries in Grafana Explore:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-18-1"><a id="__codelineno-18-1" name="__codelineno-18-1" href="#__codelineno-18-1"></a># All VibeWarden logs
+</span><span id="__span-18-2"><a id="__codelineno-18-2" name="__codelineno-18-2" href="#__codelineno-18-2"></a>{container=&quot;vibewarden-sidecar&quot;}
+</span><span id="__span-18-3"><a id="__codelineno-18-3" name="__codelineno-18-3" href="#__codelineno-18-3"></a>
+</span><span id="__span-18-4"><a id="__codelineno-18-4" name="__codelineno-18-4" href="#__codelineno-18-4"></a># Only error-level events
+</span><span id="__span-18-5"><a id="__codelineno-18-5" name="__codelineno-18-5" href="#__codelineno-18-5"></a>{container=&quot;vibewarden-sidecar&quot;, level=&quot;ERROR&quot;}
+</span><span id="__span-18-6"><a id="__codelineno-18-6" name="__codelineno-18-6" href="#__codelineno-18-6"></a>
+</span><span id="__span-18-7"><a id="__codelineno-18-7" name="__codelineno-18-7" href="#__codelineno-18-7"></a># Request completed events
+</span><span id="__span-18-8"><a id="__codelineno-18-8" name="__codelineno-18-8" href="#__codelineno-18-8"></a>{container=&quot;vibewarden-sidecar&quot;, event_type=&quot;request.completed&quot;}
+</span><span id="__span-18-9"><a id="__codelineno-18-9" name="__codelineno-18-9" href="#__codelineno-18-9"></a>
+</span><span id="__span-18-10"><a id="__codelineno-18-10" name="__codelineno-18-10" href="#__codelineno-18-10"></a># Full-text search within payloads
+</span><span id="__span-18-11"><a id="__codelineno-18-11" name="__codelineno-18-11" href="#__codelineno-18-11"></a>{container=&quot;vibewarden-sidecar&quot;} |= &quot;rate_limit&quot;
+</span><span id="__span-18-12"><a id="__codelineno-18-12" name="__codelineno-18-12" href="#__codelineno-18-12"></a>
+</span><span id="__span-18-13"><a id="__codelineno-18-13" name="__codelineno-18-13" href="#__codelineno-18-13"></a># Parse and filter on a payload field (e.g. status_code)
+</span><span id="__span-18-14"><a id="__codelineno-18-14" name="__codelineno-18-14" href="#__codelineno-18-14"></a>{container=&quot;vibewarden-sidecar&quot;, event_type=&quot;request.completed&quot;}
+</span><span id="__span-18-15"><a id="__codelineno-18-15" name="__codelineno-18-15" href="#__codelineno-18-15"></a>  | json
+</span><span id="__span-18-16"><a id="__codelineno-18-16" name="__codelineno-18-16" href="#__codelineno-18-16"></a>  | payload_status_code &gt;= 500
+</span></code></pre></div>
+<h3 id="promtail-pipeline">Promtail Pipeline<a class="headerlink" href="#promtail-pipeline" title="Permanent link">&para;</a></h3>
+<p>Promtail parses each VibeWarden log line as JSON and:</p>
+<ol>
+<li>Extracts <code>schema_version</code>, <code>event_type</code>, and <code>level</code> as Loki labels (low-cardinality,
+   indexed for fast filtering).</li>
+<li>Maps the <code>time</code> field to the Loki log timestamp so events are stored at the time
+   VibeWarden recorded them, not the scrape time.</li>
+<li>Promotes <code>ai_summary</code> as Loki structured metadata so it appears in the Grafana log
+   details panel without bloating the label index.</li>
+</ol>
+<p>Configuration is generated to <code>.vibewarden/generated/observability/promtail/promtail-config.yml</code>.</p>
+<h2 id="adding-custom-dashboards">Adding Custom Dashboards<a class="headerlink" href="#adding-custom-dashboards" title="Permanent link">&para;</a></h2>
+<ol>
+<li>Build your dashboard in the Grafana UI.</li>
+<li>Export it: <strong>Dashboard menu → Share → Export → Save to file</strong>.</li>
+<li>Place the exported JSON file in <code>.vibewarden/generated/observability/grafana/dashboards/</code>.</li>
+<li>Restart Grafana to pick up the new file:
+   <div class="language-bash highlight"><pre><span></span><code><span id="__span-19-1"><a id="__codelineno-19-1" name="__codelineno-19-1" href="#__codelineno-19-1"></a>docker<span class="w"> </span>compose<span class="w"> </span>-f<span class="w"> </span>.vibewarden/generated/docker-compose.yml<span class="w"> </span>restart<span class="w"> </span>grafana
+</span></code></pre></div></li>
+</ol>
+<p>Note: custom dashboards placed in the generated directory will be overwritten on the
+next <code>vibewarden generate</code> run. For persistent custom dashboards, use Grafana's
+built-in provisioning or import them via the Grafana API.</p>
+<h2 id="troubleshooting">Troubleshooting<a class="headerlink" href="#troubleshooting" title="Permanent link">&para;</a></h2>
+<h3 id="grafana-shows-no-data-on-panels">Grafana shows "No data" on panels<a class="headerlink" href="#grafana-shows-no-data-on-panels" title="Permanent link">&para;</a></h3>
+<p>Prometheus may not have scraped VibeWarden yet, or VibeWarden is not running.</p>
+<ol>
+<li>Check that all containers are up:
+   <div class="language-bash highlight"><pre><span></span><code><span id="__span-20-1"><a id="__codelineno-20-1" name="__codelineno-20-1" href="#__codelineno-20-1"></a>docker<span class="w"> </span>compose<span class="w"> </span>--profile<span class="w"> </span>observability<span class="w"> </span>ps
+</span></code></pre></div></li>
+<li>Verify VibeWarden's metrics endpoint is reachable:
+   <div class="language-bash highlight"><pre><span></span><code><span id="__span-21-1"><a id="__codelineno-21-1" name="__codelineno-21-1" href="#__codelineno-21-1"></a>curl<span class="w"> </span>http://localhost:8080/_vibewarden/metrics
+</span></code></pre></div></li>
+<li>Check Prometheus targets at http://localhost:9090/targets — the
+   <code>vibewarden</code> target should show state <code>UP</code>.</li>
+</ol>
+<h3 id="port-conflicts">Port conflicts<a class="headerlink" href="#port-conflicts" title="Permanent link">&para;</a></h3>
+<p>If port 3000 or 9090 is already in use, Docker Compose will fail to start the
+corresponding container. Stop the conflicting process or change the host port in
+<code>docker-compose.yml</code>:</p>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-22-1"><a id="__codelineno-22-1" name="__codelineno-22-1" href="#__codelineno-22-1"></a><span class="nt">ports</span><span class="p">:</span>
+</span><span id="__span-22-2"><a id="__codelineno-22-2" name="__codelineno-22-2" href="#__codelineno-22-2"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">&quot;3001:3000&quot;</span><span class="w">   </span><span class="c1"># expose Grafana on host port 3001 instead</span>
+</span></code></pre></div>
+<h3 id="grafana-starts-but-the-dashboard-is-not-visible">Grafana starts but the dashboard is not visible<a class="headerlink" href="#grafana-starts-but-the-dashboard-is-not-visible" title="Permanent link">&para;</a></h3>
+<p>The dashboard is generated to
+<code>.vibewarden/generated/observability/grafana/dashboards/vibewarden.json</code>. If the file
+is missing, run <code>vibewarden generate</code> again. Check the Grafana container logs:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-23-1"><a id="__codelineno-23-1" name="__codelineno-23-1" href="#__codelineno-23-1"></a>docker<span class="w"> </span>compose<span class="w"> </span>-f<span class="w"> </span>.vibewarden/generated/docker-compose.yml<span class="w"> </span>logs<span class="w"> </span>grafana
+</span></code></pre></div>
+<h3 id="loki-shows-no-logs-in-grafana">Loki shows no logs in Grafana<a class="headerlink" href="#loki-shows-no-logs-in-grafana" title="Permanent link">&para;</a></h3>
+<ol>
+<li>Verify Loki is ready:
+   <div class="language-bash highlight"><pre><span></span><code><span id="__span-24-1"><a id="__codelineno-24-1" name="__codelineno-24-1" href="#__codelineno-24-1"></a>curl<span class="w"> </span>http://localhost:3100/ready
+</span><span id="__span-24-2"><a id="__codelineno-24-2" name="__codelineno-24-2" href="#__codelineno-24-2"></a><span class="c1"># expected: ready</span>
+</span></code></pre></div></li>
+<li>Check Promtail is running and has no errors:
+   <div class="language-bash highlight"><pre><span></span><code><span id="__span-25-1"><a id="__codelineno-25-1" name="__codelineno-25-1" href="#__codelineno-25-1"></a>docker<span class="w"> </span>compose<span class="w"> </span>--profile<span class="w"> </span>observability<span class="w"> </span>logs<span class="w"> </span>promtail
+</span></code></pre></div></li>
+<li>Confirm Promtail has write access to the Docker socket:
+   <div class="language-bash highlight"><pre><span></span><code><span id="__span-26-1"><a id="__codelineno-26-1" name="__codelineno-26-1" href="#__codelineno-26-1"></a>docker<span class="w"> </span>compose<span class="w"> </span>--profile<span class="w"> </span>observability<span class="w"> </span>ps<span class="w"> </span>promtail
+</span></code></pre></div></li>
+<li>In Grafana Explore, select the <strong>Loki</strong> datasource and run:
+   <div class="language-text highlight"><pre><span></span><code><span id="__span-27-1"><a id="__codelineno-27-1" name="__codelineno-27-1" href="#__codelineno-27-1"></a>{service=&quot;vibewarden&quot;}
+</span></code></pre></div></li>
+</ol>
+<h3 id="prometheus-cannot-reach-vibewarden">Prometheus cannot reach VibeWarden<a class="headerlink" href="#prometheus-cannot-reach-vibewarden" title="Permanent link">&para;</a></h3>
+<p>Prometheus scrapes <code>vibewarden:8080</code> on the internal Docker network. If the
+VibeWarden container is not healthy, Prometheus will mark the target as <code>DOWN</code>.
+Check VibeWarden logs:</p>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-28-1"><a id="__codelineno-28-1" name="__codelineno-28-1" href="#__codelineno-28-1"></a>docker<span class="w"> </span>compose<span class="w"> </span>logs<span class="w"> </span>vibewarden
+</span></code></pre></div>
+<h2 id="production-note">Production Note<a class="headerlink" href="#production-note" title="Permanent link">&para;</a></h2>
+<p>This observability stack is intended for <strong>local development only</strong>. For production:</p>
+<ul>
+<li>Deploy Prometheus and Grafana separately, with proper authentication and TLS.</li>
+<li>Configure alerting rules in Prometheus for critical metrics.</li>
+<li>Consider using the VibeWarden Fleet dashboard (Pro tier) at
+  <code>app.vibewarden.dev</code>, which aggregates metrics and logs from multiple
+  VibeWarden instances without requiring you to run your own Prometheus/Grafana.</li>
+</ul>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+          <button type="button" class="md-top md-icon" data-md-component="top" hidden>
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"/></svg>
+  Back to top
+</button>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+        
+<div class="md-social">
+  
+    
+    
+    
+    
+      
+      
+    
+    <a href="https://github.com/vibewarden/vibewarden" target="_blank" rel="noopener" title="github.com" class="md-social__link">
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"/></svg>
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.tabs", "navigation.sections", "navigation.expand", "navigation.top", "search.suggest", "search.highlight", "content.code.copy", "content.code.annotate", "toc.follow"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": {"provider": "mike"}}</script>
+    
+    
+      <script src="../assets/javascripts/bundle.79ae519e.min.js"></script>
+      
+    
+  </body>
+</html>

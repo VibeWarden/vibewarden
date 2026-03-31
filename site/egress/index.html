@@ -1,0 +1,1774 @@
+
+<!DOCTYPE html>
+
+<html class="no-js" lang="en">
+<head>
+<meta charset="utf-8"/>
+<meta content="width=device-width,initial-scale=1" name="viewport"/>
+<meta content="Security sidecar for vibe-coded apps. You vibe, we warden." name="description"/>
+<link href="https://vibewarden.dev/docs/egress/" rel="canonical"/>
+<link href="../postgres/" rel="prev"/>
+<link href="../observability/" rel="next"/>
+<link href="../assets/logo.png" rel="icon"/>
+<meta content="mkdocs-1.6.1, mkdocs-material-9.7.6" name="generator"/>
+<title>Egress Proxy - VibeWarden</title>
+<link href="../assets/stylesheets/main.484c7ddc.min.css" rel="stylesheet"/>
+<link href="../assets/stylesheets/palette.ab4e12ef.min.css" rel="stylesheet"/>
+<link crossorigin="" href="https://fonts.gstatic.com" rel="preconnect"/>
+<link href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&amp;display=fallback" rel="stylesheet"/>
+<style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+<link href="../assets/extra.css" rel="stylesheet"/>
+<script>__md_scope=new URL("..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+</head>
+<body data-md-color-accent="cyan" data-md-color-primary="deep-purple" data-md-color-scheme="default" dir="ltr">
+<input autocomplete="off" class="md-toggle" data-md-toggle="drawer" id="__drawer" type="checkbox"/>
+<input autocomplete="off" class="md-toggle" data-md-toggle="search" id="__search" type="checkbox"/>
+<label class="md-overlay" for="__drawer"></label>
+<div data-md-component="skip">
+<a class="md-skip" href="#egress-proxy">
+          Skip to content
+        </a>
+</div>
+<div data-md-component="announce">
+</div>
+<div data-md-color-scheme="default" data-md-component="outdated" hidden="">
+</div>
+<header class="md-header" data-md-component="header">
+<nav aria-label="Header" class="md-header__inner md-grid">
+<a aria-label="VibeWarden" class="md-header__button md-logo" data-md-component="logo" href=".." title="VibeWarden">
+<img alt="logo" src="../assets/logo.png"/>
+</a>
+<label class="md-header__button md-icon" for="__drawer">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"></path></svg>
+</label>
+<div class="md-header__title" data-md-component="header-title">
+<div class="md-header__ellipsis">
+<div class="md-header__topic">
+<span class="md-ellipsis">
+            VibeWarden
+          </span>
+</div>
+<div class="md-header__topic" data-md-component="header-topic">
+<span class="md-ellipsis">
+            
+              Egress Proxy
+            
+          </span>
+</div>
+</div>
+</div>
+<form class="md-header__option" data-md-component="palette">
+<input aria-label="Switch to dark mode" class="md-option" data-md-color-accent="cyan" data-md-color-media="(prefers-color-scheme: light)" data-md-color-primary="deep-purple" data-md-color-scheme="default" id="__palette_0" name="__palette" type="radio"/>
+<label class="md-header__button md-icon" for="__palette_1" hidden="" title="Switch to dark mode">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 8a4 4 0 0 0-4 4 4 4 0 0 0 4 4 4 4 0 0 0 4-4 4 4 0 0 0-4-4m0 10a6 6 0 0 1-6-6 6 6 0 0 1 6-6 6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"></path></svg>
+</label>
+<input aria-label="Switch to light mode" class="md-option" data-md-color-accent="cyan" data-md-color-media="(prefers-color-scheme: dark)" data-md-color-primary="deep-purple" data-md-color-scheme="slate" id="__palette_1" name="__palette" type="radio"/>
+<label class="md-header__button md-icon" for="__palette_0" hidden="" title="Switch to light mode">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M12 18c-.89 0-1.74-.2-2.5-.55C11.56 16.5 13 14.42 13 12s-1.44-4.5-3.5-5.45C10.26 6.2 11.11 6 12 6a6 6 0 0 1 6 6 6 6 0 0 1-6 6m8-9.31V4h-4.69L12 .69 8.69 4H4v4.69L.69 12 4 15.31V20h4.69L12 23.31 15.31 20H20v-4.69L23.31 12z"></path></svg>
+</label>
+</form>
+<script>var palette=__md_get("__palette");if(palette&&palette.color){if("(prefers-color-scheme)"===palette.color.media){var media=matchMedia("(prefers-color-scheme: light)"),input=document.querySelector(media.matches?"[data-md-color-media='(prefers-color-scheme: light)']":"[data-md-color-media='(prefers-color-scheme: dark)']");palette.color.media=input.getAttribute("data-md-color-media"),palette.color.scheme=input.getAttribute("data-md-color-scheme"),palette.color.primary=input.getAttribute("data-md-color-primary"),palette.color.accent=input.getAttribute("data-md-color-accent")}for(var[key,value]of Object.entries(palette.color))document.body.setAttribute("data-md-color-"+key,value)}</script>
+<label class="md-header__button md-icon" for="__search">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"></path></svg>
+</label>
+<div class="md-search" data-md-component="search" role="dialog">
+<label class="md-search__overlay" for="__search"></label>
+<div class="md-search__inner" role="search">
+<form class="md-search__form" name="search">
+<input aria-label="Search" autocapitalize="off" autocomplete="off" autocorrect="off" class="md-search__input" data-md-component="search-query" name="query" placeholder="Search" required="" spellcheck="false" type="text"/>
+<label class="md-search__icon md-icon" for="__search">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"></path></svg>
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"></path></svg>
+</label>
+<nav aria-label="Search" class="md-search__options">
+<button aria-label="Clear" class="md-search__icon md-icon" tabindex="-1" title="Clear" type="reset">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"></path></svg>
+</button>
+</nav>
+<div class="md-search__suggest" data-md-component="search-suggest"></div>
+</form>
+<div class="md-search__output">
+<div class="md-search__scrollwrap" data-md-scrollfix="" tabindex="0">
+<div class="md-search-result" data-md-component="search-result">
+<div class="md-search-result__meta">
+            Initializing search
+          </div>
+<ol class="md-search-result__list" role="presentation"></ol>
+</div>
+</div>
+</div>
+</div>
+</div>
+<div class="md-header__source">
+<a class="md-source" data-md-component="source" href="https://github.com/vibewarden/vibewarden" title="Go to repository">
+<div class="md-source__icon md-icon">
+<svg viewbox="0 0 448 512" xmlns="http://www.w3.org/2000/svg"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"></path></svg>
+</div>
+<div class="md-source__repository">
+    vibewarden/vibewarden
+  </div>
+</a>
+</div>
+</nav>
+</header>
+<div class="md-container" data-md-component="container">
+<nav aria-label="Tabs" class="md-tabs" data-md-component="tabs">
+<div class="md-grid">
+<ul class="md-tabs__list">
+<li class="md-tabs__item">
+<a class="md-tabs__link" href="..">
+        
+  
+  
+    
+  
+  Home
+
+      </a>
+</li>
+<li class="md-tabs__item">
+<a class="md-tabs__link" href="../getting-started/">
+        
+  
+  
+    
+  
+  Getting Started
+
+      </a>
+</li>
+<li class="md-tabs__item">
+<a class="md-tabs__link" href="../configuration/">
+        
+  
+  
+    
+  
+  Configuration
+
+      </a>
+</li>
+<li class="md-tabs__item">
+<a class="md-tabs__link" href="../architecture/">
+        
+  
+  
+    
+  
+  Architecture
+
+      </a>
+</li>
+<li class="md-tabs__item md-tabs__item--active">
+<a class="md-tabs__link" href="../identity-providers/">
+          
+  
+  
+  Guides
+
+        </a>
+</li>
+<li class="md-tabs__item">
+<a class="md-tabs__link" href="../examples/express/">
+          
+  
+  
+  Framework Examples
+
+        </a>
+</li>
+<li class="md-tabs__item">
+<a class="md-tabs__link" href="../upgrading/">
+        
+  
+  
+    
+  
+  Upgrading
+
+      </a>
+</li>
+<li class="md-tabs__item">
+<a class="md-tabs__link" href="../troubleshooting/">
+        
+  
+  
+    
+  
+  Troubleshooting
+
+      </a>
+</li>
+<li class="md-tabs__item">
+<a class="md-tabs__link" href="../decisions/">
+          
+  
+  
+  Reference
+
+        </a>
+</li>
+</ul>
+</div>
+</nav>
+<main class="md-main" data-md-component="main">
+<div class="md-main__inner md-grid">
+<div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation">
+<div class="md-sidebar__scrollwrap">
+<div class="md-sidebar__inner">
+<nav aria-label="Navigation" class="md-nav md-nav--primary md-nav--lifted" data-md-level="0">
+<label class="md-nav__title" for="__drawer">
+<a aria-label="VibeWarden" class="md-nav__button md-logo" data-md-component="logo" href=".." title="VibeWarden">
+<img alt="logo" src="../assets/logo.png"/>
+</a>
+    VibeWarden
+  </label>
+<div class="md-nav__source">
+<a class="md-source" data-md-component="source" href="https://github.com/vibewarden/vibewarden" title="Go to repository">
+<div class="md-source__icon md-icon">
+<svg viewbox="0 0 448 512" xmlns="http://www.w3.org/2000/svg"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M439.6 236.1 244 40.5c-5.4-5.5-12.8-8.5-20.4-8.5s-15 3-20.4 8.4L162.5 81l51.5 51.5c27.1-9.1 52.7 16.8 43.4 43.7l49.7 49.7c34.2-11.8 61.2 31 35.5 56.7-26.5 26.5-70.2-2.9-56-37.3L240.3 199v121.9c25.3 12.5 22.3 41.8 9.1 55-6.4 6.4-15.2 10.1-24.3 10.1s-17.8-3.6-24.3-10.1c-17.6-17.6-11.1-46.9 11.2-56v-123c-20.8-8.5-24.6-30.7-18.6-45L142.6 101 8.5 235.1C3 240.6 0 247.9 0 255.5s3 15 8.5 20.4l195.6 195.7c5.4 5.4 12.7 8.4 20.4 8.4s15-3 20.4-8.4l194.7-194.7c5.4-5.4 8.4-12.8 8.4-20.4s-3-15-8.4-20.4"></path></svg>
+</div>
+<div class="md-source__repository">
+    vibewarden/vibewarden
+  </div>
+</a>
+</div>
+<ul class="md-nav__list" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="..">
+<span class="md-ellipsis">
+    
+  
+    Home
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../getting-started/">
+<span class="md-ellipsis">
+    
+  
+    Getting Started
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../configuration/">
+<span class="md-ellipsis">
+    
+  
+    Configuration
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../architecture/">
+<span class="md-ellipsis">
+    
+  
+    Architecture
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item md-nav__item--active md-nav__item--section md-nav__item--nested">
+<input checked="" class="md-nav__toggle md-toggle" id="__nav_5" type="checkbox"/>
+<label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="">
+<span class="md-ellipsis">
+    
+  
+    Guides
+  
+
+    
+  </span>
+<span class="md-nav__icon md-icon"></span>
+</label>
+<nav aria-expanded="true" aria-labelledby="__nav_5_label" class="md-nav" data-md-level="1">
+<label class="md-nav__title" for="__nav_5">
+<span class="md-nav__icon md-icon"></span>
+            
+  
+    Guides
+  
+
+          </label>
+<ul class="md-nav__list" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="../identity-providers/">
+<span class="md-ellipsis">
+    
+  
+    Identity Providers
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../rate-limiting/">
+<span class="md-ellipsis">
+    
+  
+    Rate Limiting
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../postgres/">
+<span class="md-ellipsis">
+    
+  
+    Postgres
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item md-nav__item--active">
+<input class="md-nav__toggle md-toggle" id="__toc" type="checkbox"/>
+<label class="md-nav__link md-nav__link--active" for="__toc">
+<span class="md-ellipsis">
+    
+  
+    Egress Proxy
+  
+
+    
+  </span>
+<span class="md-nav__icon md-icon"></span>
+</label>
+<a class="md-nav__link md-nav__link--active" href="./">
+<span class="md-ellipsis">
+    
+  
+    Egress Proxy
+  
+
+    
+  </span>
+</a>
+<nav aria-label="Table of contents" class="md-nav md-nav--secondary">
+<label class="md-nav__title" for="__toc">
+<span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+<ul class="md-nav__list" data-md-component="toc" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#architecture">
+<span class="md-ellipsis">
+      
+        Architecture
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#quick-start">
+<span class="md-ellipsis">
+      
+        Quick Start
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#routing-modes">
+<span class="md-ellipsis">
+      
+        Routing Modes
+      
+    </span>
+</a>
+<nav aria-label="Routing Modes" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#transparent-mode-x-egress-url-header">
+<span class="md-ellipsis">
+      
+        Transparent mode (X-Egress-URL header)
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#named-route-mode-_egressroute">
+<span class="md-ellipsis">
+      
+        Named-route mode (/_egress/{route})
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#default-deny-policy">
+<span class="md-ellipsis">
+      
+        Default Deny Policy
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#features">
+<span class="md-ellipsis">
+      
+        Features
+      
+    </span>
+</a>
+<nav aria-label="Features" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#ssrf-protection">
+<span class="md-ellipsis">
+      
+        SSRF Protection
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#secret-injection">
+<span class="md-ellipsis">
+      
+        Secret Injection
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#rate-limiting">
+<span class="md-ellipsis">
+      
+        Rate Limiting
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#circuit-breaker">
+<span class="md-ellipsis">
+      
+        Circuit Breaker
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#retries">
+<span class="md-ellipsis">
+      
+        Retries
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#tls-enforcement">
+<span class="md-ellipsis">
+      
+        TLS Enforcement
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#mtls-mutual-tls">
+<span class="md-ellipsis">
+      
+        mTLS (Mutual TLS)
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#request-and-response-headers">
+<span class="md-ellipsis">
+      
+        Request and Response Headers
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#pii-redaction-sanitize">
+<span class="md-ellipsis">
+      
+        PII Redaction (sanitize)
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#body-and-response-size-limits">
+<span class="md-ellipsis">
+      
+        Body and Response Size Limits
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#response-caching">
+<span class="md-ellipsis">
+      
+        Response Caching
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#response-validation">
+<span class="md-ellipsis">
+      
+        Response Validation
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#structured-events-reference">
+<span class="md-ellipsis">
+      
+        Structured Events Reference
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#complete-example">
+<span class="md-ellipsis">
+      
+        Complete Example
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#troubleshooting">
+<span class="md-ellipsis">
+      
+        Troubleshooting
+      
+    </span>
+</a>
+<nav aria-label="Troubleshooting" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#request-blocked-no-route-matched">
+<span class="md-ellipsis">
+      
+        "request blocked: no route matched"
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#plain-http-not-allowed">
+<span class="md-ellipsis">
+      
+        "plain HTTP not allowed"
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#circuit-breaker-is-open">
+<span class="md-ellipsis">
+      
+        "circuit breaker is open"
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#rate-limit-exceeded">
+<span class="md-ellipsis">
+      
+        "rate limit exceeded"
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#secret-injection-not-working">
+<span class="md-ellipsis">
+      
+        Secret injection not working
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#responses-are-being-truncated">
+<span class="md-ellipsis">
+      
+        Responses are being truncated
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#mtls-handshake-failed">
+<span class="md-ellipsis">
+      
+        mTLS handshake failed
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../observability/">
+<span class="md-ellipsis">
+    
+  
+    Observability
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../secret-management/">
+<span class="md-ellipsis">
+    
+  
+    Secret Management
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../performance/">
+<span class="md-ellipsis">
+    
+  
+    Performance
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../social-login/">
+<span class="md-ellipsis">
+    
+  
+    Social Login
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../production-deployment/">
+<span class="md-ellipsis">
+    
+  
+    Production Deployment
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../production-hardening/">
+<span class="md-ellipsis">
+    
+  
+    Production Hardening
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../websockets/">
+<span class="md-ellipsis">
+    
+  
+    WebSockets
+  
+
+    
+  </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item md-nav__item--nested">
+<input class="md-nav__toggle md-toggle md-toggle--indeterminate" id="__nav_6" type="checkbox"/>
+<label class="md-nav__link" for="__nav_6" id="__nav_6_label" tabindex="0">
+<span class="md-ellipsis">
+    
+  
+    Framework Examples
+  
+
+    
+  </span>
+<span class="md-nav__icon md-icon"></span>
+</label>
+<nav aria-expanded="false" aria-labelledby="__nav_6_label" class="md-nav" data-md-level="1">
+<label class="md-nav__title" for="__nav_6">
+<span class="md-nav__icon md-icon"></span>
+            
+  
+    Framework Examples
+  
+
+          </label>
+<ul class="md-nav__list" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="../examples/express/">
+<span class="md-ellipsis">
+    
+  
+    Express (Node.js)
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../examples/nextjs/">
+<span class="md-ellipsis">
+    
+  
+    Next.js
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../examples/django/">
+<span class="md-ellipsis">
+    
+  
+    Django
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../examples/rails/">
+<span class="md-ellipsis">
+    
+  
+    Rails
+  
+
+    
+  </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../upgrading/">
+<span class="md-ellipsis">
+    
+  
+    Upgrading
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="../troubleshooting/">
+<span class="md-ellipsis">
+    
+  
+    Troubleshooting
+  
+
+    
+  </span>
+</a>
+</li>
+<li class="md-nav__item md-nav__item--nested">
+<input class="md-nav__toggle md-toggle md-toggle--indeterminate" id="__nav_9" type="checkbox"/>
+<label class="md-nav__link" for="__nav_9" id="__nav_9_label" tabindex="0">
+<span class="md-ellipsis">
+    
+  
+    Reference
+  
+
+    
+  </span>
+<span class="md-nav__icon md-icon"></span>
+</label>
+<nav aria-expanded="false" aria-labelledby="__nav_9_label" class="md-nav" data-md-level="1">
+<label class="md-nav__title" for="__nav_9">
+<span class="md-nav__icon md-icon"></span>
+            
+  
+    Reference
+  
+
+          </label>
+<ul class="md-nav__list" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="../decisions/">
+<span class="md-ellipsis">
+    
+  
+    Architectural Decisions
+  
+
+    
+  </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+</ul>
+</nav>
+</div>
+</div>
+</div>
+<div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc">
+<div class="md-sidebar__scrollwrap">
+<div class="md-sidebar__inner">
+<nav aria-label="Table of contents" class="md-nav md-nav--secondary">
+<label class="md-nav__title" for="__toc">
+<span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+<ul class="md-nav__list" data-md-component="toc" data-md-scrollfix="">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#architecture">
+<span class="md-ellipsis">
+      
+        Architecture
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#quick-start">
+<span class="md-ellipsis">
+      
+        Quick Start
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#routing-modes">
+<span class="md-ellipsis">
+      
+        Routing Modes
+      
+    </span>
+</a>
+<nav aria-label="Routing Modes" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#transparent-mode-x-egress-url-header">
+<span class="md-ellipsis">
+      
+        Transparent mode (X-Egress-URL header)
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#named-route-mode-_egressroute">
+<span class="md-ellipsis">
+      
+        Named-route mode (/_egress/{route})
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#default-deny-policy">
+<span class="md-ellipsis">
+      
+        Default Deny Policy
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#features">
+<span class="md-ellipsis">
+      
+        Features
+      
+    </span>
+</a>
+<nav aria-label="Features" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#ssrf-protection">
+<span class="md-ellipsis">
+      
+        SSRF Protection
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#secret-injection">
+<span class="md-ellipsis">
+      
+        Secret Injection
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#rate-limiting">
+<span class="md-ellipsis">
+      
+        Rate Limiting
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#circuit-breaker">
+<span class="md-ellipsis">
+      
+        Circuit Breaker
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#retries">
+<span class="md-ellipsis">
+      
+        Retries
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#tls-enforcement">
+<span class="md-ellipsis">
+      
+        TLS Enforcement
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#mtls-mutual-tls">
+<span class="md-ellipsis">
+      
+        mTLS (Mutual TLS)
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#request-and-response-headers">
+<span class="md-ellipsis">
+      
+        Request and Response Headers
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#pii-redaction-sanitize">
+<span class="md-ellipsis">
+      
+        PII Redaction (sanitize)
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#body-and-response-size-limits">
+<span class="md-ellipsis">
+      
+        Body and Response Size Limits
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#response-caching">
+<span class="md-ellipsis">
+      
+        Response Caching
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#response-validation">
+<span class="md-ellipsis">
+      
+        Response Validation
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#structured-events-reference">
+<span class="md-ellipsis">
+      
+        Structured Events Reference
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#complete-example">
+<span class="md-ellipsis">
+      
+        Complete Example
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#troubleshooting">
+<span class="md-ellipsis">
+      
+        Troubleshooting
+      
+    </span>
+</a>
+<nav aria-label="Troubleshooting" class="md-nav">
+<ul class="md-nav__list">
+<li class="md-nav__item">
+<a class="md-nav__link" href="#request-blocked-no-route-matched">
+<span class="md-ellipsis">
+      
+        "request blocked: no route matched"
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#plain-http-not-allowed">
+<span class="md-ellipsis">
+      
+        "plain HTTP not allowed"
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#circuit-breaker-is-open">
+<span class="md-ellipsis">
+      
+        "circuit breaker is open"
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#rate-limit-exceeded">
+<span class="md-ellipsis">
+      
+        "rate limit exceeded"
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#secret-injection-not-working">
+<span class="md-ellipsis">
+      
+        Secret injection not working
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#responses-are-being-truncated">
+<span class="md-ellipsis">
+      
+        Responses are being truncated
+      
+    </span>
+</a>
+</li>
+<li class="md-nav__item">
+<a class="md-nav__link" href="#mtls-handshake-failed">
+<span class="md-ellipsis">
+      
+        mTLS handshake failed
+      
+    </span>
+</a>
+</li>
+</ul>
+</nav>
+</li>
+</ul>
+</nav>
+</div>
+</div>
+</div>
+<div class="md-content" data-md-component="content">
+<article class="md-content__inner md-typeset">
+<h1 id="egress-proxy">Egress Proxy<a class="headerlink" href="#egress-proxy" title="Permanent link">¶</a></h1>
+<p>VibeWarden includes an egress proxy that sits between your app and the external
+APIs it calls. Your app sends outbound HTTP requests to the proxy instead of
+directly to the internet. The proxy applies allowlisting, secret injection, rate
+limiting, circuit breaking, retries, PII redaction, response validation, caching,
+and full structured-event observability — all without any code changes to your app.</p>
+<p><strong>Why use it?</strong></p>
+<ul>
+<li><strong>Your app never holds external secrets.</strong> API keys are fetched from OpenBao at
+  request time and injected by the proxy. They never touch your app's memory or
+  environment.</li>
+<li><strong>SSRF protection.</strong> The proxy resolves DNS and blocks requests to RFC 1918
+  private addresses and loopback ranges by default, preventing server-side
+  request forgery attacks.</li>
+<li><strong>Observability.</strong> Every outbound request, response, block, and error is emitted
+  as a structured AI-readable event with <code>schema_version</code>, <code>event_type</code>,
+  <code>ai_summary</code>, and <code>payload</code>.</li>
+</ul>
+<hr/>
+<h2 id="architecture">Architecture<a class="headerlink" href="#architecture" title="Permanent link">¶</a></h2>
+<pre class="mermaid"><code>sequenceDiagram
+    participant App as Your App :3000
+    participant Proxy as Egress Proxy :8081 (VibeWarden)
+    participant Ext1 as api.stripe.com
+    participant Ext2 as api.github.com
+    participant Ext3 as payments.internal
+
+    App-&gt;&gt;Proxy: HTTP_PROXY=http://127.0.0.1:8081
+    Note over Proxy: DNS resolve + SSRF check
+    Note over Proxy: Route match + policy enforce
+    Note over Proxy: Secret injection (OpenBao)
+    Note over Proxy: Rate limit check
+    Note over Proxy: Circuit breaker check
+    Note over Proxy: PII redaction
+    Note over Proxy: mTLS handshake (optional)
+    Proxy-&gt;&gt;Ext1: HTTPS (if route matches)
+    Proxy-&gt;&gt;Ext2: HTTPS (if route matches)
+    Proxy-&gt;&gt;Ext3: private net (if allowed)</code></pre>
+<p>In transparent mode the app sets the <code>HTTP_PROXY</code> environment variable and all
+outbound HTTP calls go through the proxy automatically. In named-route mode the
+app addresses routes directly via <code>/_egress/{route-name}/path</code>.</p>
+<hr/>
+<h2 id="quick-start">Quick Start<a class="headerlink" href="#quick-start" title="Permanent link">¶</a></h2>
+<ol>
+<li>Enable the egress proxy in <code>vibewarden.yaml</code>:</li>
+</ol>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-0-1"><a href="#__codelineno-0-1" id="__codelineno-0-1" name="__codelineno-0-1"></a><span class="nt">egress</span><span class="p">:</span>
+</span><span id="__span-0-2"><a href="#__codelineno-0-2" id="__codelineno-0-2" name="__codelineno-0-2"></a><span class="w">  </span><span class="nt">enabled</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+</span><span id="__span-0-3"><a href="#__codelineno-0-3" id="__codelineno-0-3" name="__codelineno-0-3"></a><span class="w">  </span><span class="nt">listen</span><span class="p">:</span><span class="w"> </span><span class="s">"127.0.0.1:8081"</span>
+</span><span id="__span-0-4"><a href="#__codelineno-0-4" id="__codelineno-0-4" name="__codelineno-0-4"></a><span class="w">  </span><span class="nt">default_policy</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">deny</span>
+</span><span id="__span-0-5"><a href="#__codelineno-0-5" id="__codelineno-0-5" name="__codelineno-0-5"></a>
+</span><span id="__span-0-6"><a href="#__codelineno-0-6" id="__codelineno-0-6" name="__codelineno-0-6"></a><span class="w">  </span><span class="nt">dns</span><span class="p">:</span>
+</span><span id="__span-0-7"><a href="#__codelineno-0-7" id="__codelineno-0-7" name="__codelineno-0-7"></a><span class="w">    </span><span class="nt">block_private</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+</span><span id="__span-0-8"><a href="#__codelineno-0-8" id="__codelineno-0-8" name="__codelineno-0-8"></a>
+</span><span id="__span-0-9"><a href="#__codelineno-0-9" id="__codelineno-0-9" name="__codelineno-0-9"></a><span class="w">  </span><span class="nt">routes</span><span class="p">:</span>
+</span><span id="__span-0-10"><a href="#__codelineno-0-10" id="__codelineno-0-10" name="__codelineno-0-10"></a><span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">stripe-api</span>
+</span><span id="__span-0-11"><a href="#__codelineno-0-11" id="__codelineno-0-11" name="__codelineno-0-11"></a><span class="w">      </span><span class="nt">pattern</span><span class="p">:</span><span class="w"> </span><span class="s">"https://api.stripe.com/**"</span>
+</span><span id="__span-0-12"><a href="#__codelineno-0-12" id="__codelineno-0-12" name="__codelineno-0-12"></a><span class="w">      </span><span class="nt">methods</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">"POST"</span><span class="p p-Indicator">]</span>
+</span><span id="__span-0-13"><a href="#__codelineno-0-13" id="__codelineno-0-13" name="__codelineno-0-13"></a><span class="w">      </span><span class="nt">timeout</span><span class="p">:</span><span class="w"> </span><span class="s">"10s"</span>
+</span><span id="__span-0-14"><a href="#__codelineno-0-14" id="__codelineno-0-14" name="__codelineno-0-14"></a><span class="w">      </span><span class="nt">secret</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">app/stripe</span>
+</span><span id="__span-0-15"><a href="#__codelineno-0-15" id="__codelineno-0-15" name="__codelineno-0-15"></a><span class="w">      </span><span class="nt">secret_header</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Authorization</span>
+</span><span id="__span-0-16"><a href="#__codelineno-0-16" id="__codelineno-0-16" name="__codelineno-0-16"></a><span class="w">      </span><span class="nt">secret_format</span><span class="p">:</span><span class="w"> </span><span class="s">"Bearer</span><span class="nv"> </span><span class="s">{value}"</span>
+</span></code></pre></div>
+<ol>
+<li>Point your app at the proxy:</li>
+</ol>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-1-1"><a href="#__codelineno-1-1" id="__codelineno-1-1" name="__codelineno-1-1"></a><span class="nb">export</span><span class="w"> </span><span class="nv">HTTP_PROXY</span><span class="o">=</span>http://127.0.0.1:8081
+</span></code></pre></div>
+<ol>
+<li>Make your API calls as normal:</li>
+</ol>
+<div class="language-bash highlight"><pre><span></span><code><span id="__span-2-1"><a href="#__codelineno-2-1" id="__codelineno-2-1" name="__codelineno-2-1"></a><span class="c1"># Your app calls Stripe — the proxy injects the Bearer token automatically</span>
+</span><span id="__span-2-2"><a href="#__codelineno-2-2" id="__codelineno-2-2" name="__codelineno-2-2"></a>curl<span class="w"> </span>-X<span class="w"> </span>POST<span class="w"> </span>http://127.0.0.1:8081/v1/charges<span class="w"> </span><span class="se">\</span>
+</span><span id="__span-2-3"><a href="#__codelineno-2-3" id="__codelineno-2-3" name="__codelineno-2-3"></a><span class="w">  </span>-H<span class="w"> </span><span class="s2">"X-Egress-URL: https://api.stripe.com/v1/charges"</span><span class="w"> </span><span class="se">\</span>
+</span><span id="__span-2-4"><a href="#__codelineno-2-4" id="__codelineno-2-4" name="__codelineno-2-4"></a><span class="w">  </span>-d<span class="w"> </span><span class="s1">'{"amount":1000,"currency":"usd","source":"tok_visa"}'</span>
+</span></code></pre></div>
+<hr/>
+<h2 id="routing-modes">Routing Modes<a class="headerlink" href="#routing-modes" title="Permanent link">¶</a></h2>
+<h3 id="transparent-mode-x-egress-url-header">Transparent mode (X-Egress-URL header)<a class="headerlink" href="#transparent-mode-x-egress-url-header" title="Permanent link">¶</a></h3>
+<p>The app sends all outbound requests to the proxy address and sets the
+<code>X-Egress-URL</code> header to the real target URL. This is the easiest integration:
+set <code>HTTP_PROXY</code> once and all HTTP libraries route through the proxy automatically.</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-3-1"><a href="#__codelineno-3-1" id="__codelineno-3-1" name="__codelineno-3-1"></a>POST http://127.0.0.1:8081/
+</span><span id="__span-3-2"><a href="#__codelineno-3-2" id="__codelineno-3-2" name="__codelineno-3-2"></a>X-Egress-URL: https://api.stripe.com/v1/charges
+</span><span id="__span-3-3"><a href="#__codelineno-3-3" id="__codelineno-3-3" name="__codelineno-3-3"></a>Content-Type: application/json
+</span></code></pre></div>
+<p>The proxy strips <code>X-Egress-URL</code> before forwarding the request upstream.</p>
+<h3 id="named-route-mode-_egressroute">Named-route mode (/_egress/{route})<a class="headerlink" href="#named-route-mode-_egressroute" title="Permanent link">¶</a></h3>
+<p>The app addresses the route directly by name:</p>
+<div class="language-text highlight"><pre><span></span><code><span id="__span-4-1"><a href="#__codelineno-4-1" id="__codelineno-4-1" name="__codelineno-4-1"></a>POST http://127.0.0.1:8081/_egress/stripe-api/v1/charges
+</span><span id="__span-4-2"><a href="#__codelineno-4-2" id="__codelineno-4-2" name="__codelineno-4-2"></a>Content-Type: application/json
+</span></code></pre></div>
+<p>The proxy maps <code>stripe-api</code> to the configured route, strips the <code>/_egress/stripe-api</code>
+prefix, and forwards <code>/v1/charges</code> to <code>https://api.stripe.com/v1/charges</code>.</p>
+<hr/>
+<h2 id="default-deny-policy">Default Deny Policy<a class="headerlink" href="#default-deny-policy" title="Permanent link">¶</a></h2>
+<p>When <code>default_policy: deny</code> is set (the default), any outbound request that does
+not match a configured route is blocked with <code>403 Forbidden</code> and an
+<code>egress.blocked</code> structured event is emitted.</p>
+<p>To allow all unmatched requests to pass through without restriction, set
+<code>default_policy: allow</code>. This is not recommended for production — it disables
+the allowlisting protection.</p>
+<hr/>
+<h2 id="features">Features<a class="headerlink" href="#features" title="Permanent link">¶</a></h2>
+<h3 id="ssrf-protection">SSRF Protection<a class="headerlink" href="#ssrf-protection" title="Permanent link">¶</a></h3>
+<p>The proxy resolves all destination hostnames and rejects requests that resolve to
+private, loopback, or reserved IP ranges. This prevents SSRF attacks where
+user-supplied URLs could target internal infrastructure.</p>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-5-1"><a href="#__codelineno-5-1" id="__codelineno-5-1" name="__codelineno-5-1"></a><span class="nt">egress</span><span class="p">:</span>
+</span><span id="__span-5-2"><a href="#__codelineno-5-2" id="__codelineno-5-2" name="__codelineno-5-2"></a><span class="w">  </span><span class="nt">dns</span><span class="p">:</span>
+</span><span id="__span-5-3"><a href="#__codelineno-5-3" id="__codelineno-5-3" name="__codelineno-5-3"></a><span class="w">    </span><span class="nt">block_private</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span><span class="w">          </span><span class="c1"># default: true</span>
+</span><span id="__span-5-4"><a href="#__codelineno-5-4" id="__codelineno-5-4" name="__codelineno-5-4"></a><span class="w">    </span><span class="nt">allowed_private</span><span class="p">:</span><span class="w">             </span><span class="c1"># exempt specific CIDRs when running inside a private net</span>
+</span><span id="__span-5-5"><a href="#__codelineno-5-5" id="__codelineno-5-5" name="__codelineno-5-5"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">"10.0.0.0/8"</span>
+</span><span id="__span-5-6"><a href="#__codelineno-5-6" id="__codelineno-5-6" name="__codelineno-5-6"></a><span class="w">      </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">"192.168.100.0/24"</span>
+</span></code></pre></div>
+<p>Blocked requests emit an <code>egress.blocked</code> event with <code>reason: "private IP blocked"</code>.</p>
+<hr/>
+<h3 id="secret-injection">Secret Injection<a class="headerlink" href="#secret-injection" title="Permanent link">¶</a></h3>
+<p>The proxy fetches a secret from OpenBao at request time and injects it as an HTTP
+request header. The secret is never stored in your app or its environment. The
+secrets plugin must be enabled and configured separately — see
+<a href="../secret-management/">Secret Management</a>.</p>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-6-1"><a href="#__codelineno-6-1" id="__codelineno-6-1" name="__codelineno-6-1"></a><span class="nt">routes</span><span class="p">:</span>
+</span><span id="__span-6-2"><a href="#__codelineno-6-2" id="__codelineno-6-2" name="__codelineno-6-2"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">stripe-api</span>
+</span><span id="__span-6-3"><a href="#__codelineno-6-3" id="__codelineno-6-3" name="__codelineno-6-3"></a><span class="w">    </span><span class="nt">pattern</span><span class="p">:</span><span class="w"> </span><span class="s">"https://api.stripe.com/**"</span>
+</span><span id="__span-6-4"><a href="#__codelineno-6-4" id="__codelineno-6-4" name="__codelineno-6-4"></a><span class="w">    </span><span class="nt">secret</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">app/stripe</span><span class="w">            </span><span class="c1"># OpenBao KV path</span>
+</span><span id="__span-6-5"><a href="#__codelineno-6-5" id="__codelineno-6-5" name="__codelineno-6-5"></a><span class="w">    </span><span class="nt">secret_header</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Authorization</span><span class="w">  </span><span class="c1"># header to inject into</span>
+</span><span id="__span-6-6"><a href="#__codelineno-6-6" id="__codelineno-6-6" name="__codelineno-6-6"></a><span class="w">    </span><span class="nt">secret_format</span><span class="p">:</span><span class="w"> </span><span class="s">"Bearer</span><span class="nv"> </span><span class="s">{value}"</span><span class="w">  </span><span class="c1"># {value} is replaced with the secret</span>
+</span></code></pre></div>
+<p>The <code>secret_format</code> template replaces <code>{value}</code> with the secret fetched from
+OpenBao. Common formats:</p>
+<table>
+<thead>
+<tr>
+<th>Provider</th>
+<th>secret_header</th>
+<th>secret_format</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Stripe</td>
+<td><code>Authorization</code></td>
+<td><code>Bearer {value}</code></td>
+</tr>
+<tr>
+<td>GitHub</td>
+<td><code>Authorization</code></td>
+<td><code>token {value}</code></td>
+</tr>
+<tr>
+<td>Twilio</td>
+<td><code>Authorization</code></td>
+<td><code>Basic {value}</code></td>
+</tr>
+<tr>
+<td>Custom</td>
+<td>Any header name</td>
+<td><code>{value}</code></td>
+</tr>
+</tbody>
+</table>
+<hr/>
+<h3 id="rate-limiting">Rate Limiting<a class="headerlink" href="#rate-limiting" title="Permanent link">¶</a></h3>
+<p>Per-route token-bucket rate limiting. The expression format is
+<code>&lt;count&gt;/&lt;unit&gt;</code> where unit is <code>s</code> (seconds), <code>m</code> (minutes), or <code>h</code> (hours).</p>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-7-1"><a href="#__codelineno-7-1" id="__codelineno-7-1" name="__codelineno-7-1"></a><span class="nt">routes</span><span class="p">:</span>
+</span><span id="__span-7-2"><a href="#__codelineno-7-2" id="__codelineno-7-2" name="__codelineno-7-2"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">github-api</span>
+</span><span id="__span-7-3"><a href="#__codelineno-7-3" id="__codelineno-7-3" name="__codelineno-7-3"></a><span class="w">    </span><span class="nt">pattern</span><span class="p">:</span><span class="w"> </span><span class="s">"https://api.github.com/**"</span>
+</span><span id="__span-7-4"><a href="#__codelineno-7-4" id="__codelineno-7-4" name="__codelineno-7-4"></a><span class="w">    </span><span class="nt">rate_limit</span><span class="p">:</span><span class="w"> </span><span class="s">"500/m"</span><span class="w">   </span><span class="c1"># 500 requests per minute</span>
+</span></code></pre></div>
+<p>When the limit is exceeded the proxy returns <code>429 Too Many Requests</code> and emits
+an <code>egress.rate_limit_hit</code> event.</p>
+<hr/>
+<h3 id="circuit-breaker">Circuit Breaker<a class="headerlink" href="#circuit-breaker" title="Permanent link">¶</a></h3>
+<p>The circuit breaker protects your app from cascading failures when an upstream
+service becomes unavailable. After <code>threshold</code> consecutive failures the circuit
+opens and all requests to that route are short-circuited with <code>503 Service
+Unavailable</code> until <code>reset_after</code> elapses, at which point a single probe request
+is allowed through.</p>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-8-1"><a href="#__codelineno-8-1" id="__codelineno-8-1" name="__codelineno-8-1"></a><span class="nt">routes</span><span class="p">:</span>
+</span><span id="__span-8-2"><a href="#__codelineno-8-2" id="__codelineno-8-2" name="__codelineno-8-2"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">stripe-api</span>
+</span><span id="__span-8-3"><a href="#__codelineno-8-3" id="__codelineno-8-3" name="__codelineno-8-3"></a><span class="w">    </span><span class="nt">pattern</span><span class="p">:</span><span class="w"> </span><span class="s">"https://api.stripe.com/**"</span>
+</span><span id="__span-8-4"><a href="#__codelineno-8-4" id="__codelineno-8-4" name="__codelineno-8-4"></a><span class="w">    </span><span class="nt">circuit_breaker</span><span class="p">:</span>
+</span><span id="__span-8-5"><a href="#__codelineno-8-5" id="__codelineno-8-5" name="__codelineno-8-5"></a><span class="w">      </span><span class="nt">threshold</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">5</span><span class="w">       </span><span class="c1"># open after 5 consecutive failures</span>
+</span><span id="__span-8-6"><a href="#__codelineno-8-6" id="__codelineno-8-6" name="__codelineno-8-6"></a><span class="w">      </span><span class="nt">reset_after</span><span class="p">:</span><span class="w"> </span><span class="s">"30s"</span><span class="w"> </span><span class="c1"># probe after 30 seconds</span>
+</span></code></pre></div>
+<p>State transitions:</p>
+<pre class="mermaid"><code>flowchart LR
+    Closed --&gt;|"threshold failures"| Open
+    Open --&gt;|"reset_after elapsed"| HalfOpen["Half-Open"]
+    HalfOpen --&gt;|"probe succeeds"| Closed
+    HalfOpen --&gt;|"probe fails"| Open</code></pre>
+<p>Structured events emitted:</p>
+<ul>
+<li><code>egress.circuit_breaker.opened</code> — circuit tripped, upstream blocked</li>
+<li><code>egress.circuit_breaker.closed</code> — upstream recovered, traffic flowing</li>
+</ul>
+<hr/>
+<h3 id="retries">Retries<a class="headerlink" href="#retries" title="Permanent link">¶</a></h3>
+<p>The proxy retries failed requests with backoff. Only idempotent methods (<code>GET</code>,
+<code>HEAD</code>, <code>PUT</code>, <code>DELETE</code>) are retried by default. Non-idempotent methods (<code>POST</code>,
+<code>PATCH</code>) must be explicitly listed in <code>methods</code> to be retried.</p>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-9-1"><a href="#__codelineno-9-1" id="__codelineno-9-1" name="__codelineno-9-1"></a><span class="nt">routes</span><span class="p">:</span>
+</span><span id="__span-9-2"><a href="#__codelineno-9-2" id="__codelineno-9-2" name="__codelineno-9-2"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">stripe-api</span>
+</span><span id="__span-9-3"><a href="#__codelineno-9-3" id="__codelineno-9-3" name="__codelineno-9-3"></a><span class="w">    </span><span class="nt">pattern</span><span class="p">:</span><span class="w"> </span><span class="s">"https://api.stripe.com/**"</span>
+</span><span id="__span-9-4"><a href="#__codelineno-9-4" id="__codelineno-9-4" name="__codelineno-9-4"></a><span class="w">    </span><span class="nt">retries</span><span class="p">:</span>
+</span><span id="__span-9-5"><a href="#__codelineno-9-5" id="__codelineno-9-5" name="__codelineno-9-5"></a><span class="w">      </span><span class="nt">max</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">3</span><span class="w">                  </span><span class="c1"># up to 3 retry attempts (4 total)</span>
+</span><span id="__span-9-6"><a href="#__codelineno-9-6" id="__codelineno-9-6" name="__codelineno-9-6"></a><span class="w">      </span><span class="nt">backoff</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">exponential</span><span class="w">    </span><span class="c1"># "exponential" (default) or "fixed"</span>
+</span><span id="__span-9-7"><a href="#__codelineno-9-7" id="__codelineno-9-7" name="__codelineno-9-7"></a><span class="w">      </span><span class="nt">methods</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">"GET"</span><span class="p p-Indicator">]</span><span class="w">        </span><span class="c1"># restrict to safe methods only</span>
+</span></code></pre></div>
+<p>Retryable status codes: <code>408</code>, <code>429</code>, <code>500</code>, <code>502</code>, <code>503</code>, <code>504</code>.</p>
+<p>The response header <code>X-Egress-Attempts</code> reports the total number of upstream
+attempts made (initial + retries).</p>
+<hr/>
+<h3 id="tls-enforcement">TLS Enforcement<a class="headerlink" href="#tls-enforcement" title="Permanent link">¶</a></h3>
+<p>By default the proxy only forwards requests to <code>https://</code> destinations. Plain
+HTTP targets are rejected with <code>400 Bad Request</code> and an <code>egress.blocked</code> event.</p>
+<p>To allow HTTP globally:</p>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-10-1"><a href="#__codelineno-10-1" id="__codelineno-10-1" name="__codelineno-10-1"></a><span class="nt">egress</span><span class="p">:</span>
+</span><span id="__span-10-2"><a href="#__codelineno-10-2" id="__codelineno-10-2" name="__codelineno-10-2"></a><span class="w">  </span><span class="nt">allow_insecure</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+</span></code></pre></div>
+<p>To allow HTTP for a specific route only:</p>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-11-1"><a href="#__codelineno-11-1" id="__codelineno-11-1" name="__codelineno-11-1"></a><span class="nt">routes</span><span class="p">:</span>
+</span><span id="__span-11-2"><a href="#__codelineno-11-2" id="__codelineno-11-2" name="__codelineno-11-2"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">internal-service</span>
+</span><span id="__span-11-3"><a href="#__codelineno-11-3" id="__codelineno-11-3" name="__codelineno-11-3"></a><span class="w">    </span><span class="nt">pattern</span><span class="p">:</span><span class="w"> </span><span class="s">"http://internal.svc/**"</span>
+</span><span id="__span-11-4"><a href="#__codelineno-11-4" id="__codelineno-11-4" name="__codelineno-11-4"></a><span class="w">    </span><span class="nt">allow_insecure</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+</span></code></pre></div>
+<hr/>
+<h3 id="mtls-mutual-tls">mTLS (Mutual TLS)<a class="headerlink" href="#mtls-mutual-tls" title="Permanent link">¶</a></h3>
+<p>For upstreams that require client certificate authentication, configure the
+client certificate and key per route. An optional CA certificate can be provided
+to verify the server's certificate instead of using the system root CA pool.</p>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-12-1"><a href="#__codelineno-12-1" id="__codelineno-12-1" name="__codelineno-12-1"></a><span class="nt">routes</span><span class="p">:</span>
+</span><span id="__span-12-2"><a href="#__codelineno-12-2" id="__codelineno-12-2" name="__codelineno-12-2"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">payment-processor</span>
+</span><span id="__span-12-3"><a href="#__codelineno-12-3" id="__codelineno-12-3" name="__codelineno-12-3"></a><span class="w">    </span><span class="nt">pattern</span><span class="p">:</span><span class="w"> </span><span class="s">"https://payments.example.com/**"</span>
+</span><span id="__span-12-4"><a href="#__codelineno-12-4" id="__codelineno-12-4" name="__codelineno-12-4"></a><span class="w">    </span><span class="nt">mtls</span><span class="p">:</span>
+</span><span id="__span-12-5"><a href="#__codelineno-12-5" id="__codelineno-12-5" name="__codelineno-12-5"></a><span class="w">      </span><span class="nt">cert_path</span><span class="p">:</span><span class="w"> </span><span class="s">"/etc/vibewarden/certs/client.crt"</span>
+</span><span id="__span-12-6"><a href="#__codelineno-12-6" id="__codelineno-12-6" name="__codelineno-12-6"></a><span class="w">      </span><span class="nt">key_path</span><span class="p">:</span><span class="w">  </span><span class="s">"/etc/vibewarden/certs/client.key"</span>
+</span><span id="__span-12-7"><a href="#__codelineno-12-7" id="__codelineno-12-7" name="__codelineno-12-7"></a><span class="w">      </span><span class="nt">ca_path</span><span class="p">:</span><span class="w">   </span><span class="s">"/etc/vibewarden/certs/payments-ca.crt"</span><span class="w">  </span><span class="c1"># optional</span>
+</span></code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>cert_path</code></td>
+<td>Path to PEM-encoded client certificate</td>
+</tr>
+<tr>
+<td><code>key_path</code></td>
+<td>Path to PEM-encoded private key</td>
+</tr>
+<tr>
+<td><code>ca_path</code></td>
+<td>Path to PEM-encoded CA bundle (optional; uses system roots when empty)</td>
+</tr>
+</tbody>
+</table>
+<hr/>
+<h3 id="request-and-response-headers">Request and Response Headers<a class="headerlink" href="#request-and-response-headers" title="Permanent link">¶</a></h3>
+<p>Inject static headers into every outbound request, strip internal request headers
+before forwarding, and strip fingerprinting headers from upstream responses.
+<code>Server</code> and <code>X-Powered-By</code> are always stripped from responses regardless of
+per-route configuration.</p>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-13-1"><a href="#__codelineno-13-1" id="__codelineno-13-1" name="__codelineno-13-1"></a><span class="nt">routes</span><span class="p">:</span>
+</span><span id="__span-13-2"><a href="#__codelineno-13-2" id="__codelineno-13-2" name="__codelineno-13-2"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">analytics-api</span>
+</span><span id="__span-13-3"><a href="#__codelineno-13-3" id="__codelineno-13-3" name="__codelineno-13-3"></a><span class="w">    </span><span class="nt">pattern</span><span class="p">:</span><span class="w"> </span><span class="s">"https://analytics.example.com/**"</span>
+</span><span id="__span-13-4"><a href="#__codelineno-13-4" id="__codelineno-13-4" name="__codelineno-13-4"></a><span class="w">    </span><span class="nt">headers</span><span class="p">:</span>
+</span><span id="__span-13-5"><a href="#__codelineno-13-5" id="__codelineno-13-5" name="__codelineno-13-5"></a><span class="w">      </span><span class="nt">inject</span><span class="p">:</span><span class="w">                        </span><span class="c1"># add/overwrite request headers before forwarding</span>
+</span><span id="__span-13-6"><a href="#__codelineno-13-6" id="__codelineno-13-6" name="__codelineno-13-6"></a><span class="w">        </span><span class="nt">X-App-Name</span><span class="p">:</span><span class="w"> </span><span class="s">"my-app"</span>
+</span><span id="__span-13-7"><a href="#__codelineno-13-7" id="__codelineno-13-7" name="__codelineno-13-7"></a><span class="w">        </span><span class="nt">X-Forwarded-By</span><span class="p">:</span><span class="w"> </span><span class="s">"vibewarden"</span>
+</span><span id="__span-13-8"><a href="#__codelineno-13-8" id="__codelineno-13-8" name="__codelineno-13-8"></a><span class="w">      </span><span class="nt">strip_request</span><span class="p">:</span><span class="w">                 </span><span class="c1"># remove before forwarding upstream</span>
+</span><span id="__span-13-9"><a href="#__codelineno-13-9" id="__codelineno-13-9" name="__codelineno-13-9"></a><span class="w">        </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Cookie</span>
+</span><span id="__span-13-10"><a href="#__codelineno-13-10" id="__codelineno-13-10" name="__codelineno-13-10"></a><span class="w">        </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">X-Internal-Token</span>
+</span><span id="__span-13-11"><a href="#__codelineno-13-11" id="__codelineno-13-11" name="__codelineno-13-11"></a><span class="w">      </span><span class="nt">strip_response</span><span class="p">:</span><span class="w">                </span><span class="c1"># remove from upstream response</span>
+</span><span id="__span-13-12"><a href="#__codelineno-13-12" id="__codelineno-13-12" name="__codelineno-13-12"></a><span class="w">        </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">X-Debug-Info</span>
+</span><span id="__span-13-13"><a href="#__codelineno-13-13" id="__codelineno-13-13" name="__codelineno-13-13"></a><span class="w">        </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">X-Request-Id</span>
+</span></code></pre></div>
+<hr/>
+<h3 id="pii-redaction-sanitize">PII Redaction (sanitize)<a class="headerlink" href="#pii-redaction-sanitize" title="Permanent link">¶</a></h3>
+<p>The <code>sanitize</code> rules protect sensitive data in three ways:</p>
+<ol>
+<li><strong>Headers</strong> — header values are replaced with <code>[REDACTED]</code> in structured log
+   events. The actual forwarded request is unchanged.</li>
+<li><strong>Query params</strong> — named query parameters are stripped from the URL before the
+   request is forwarded upstream. They never reach the external service.</li>
+<li><strong>Body fields</strong> — named JSON fields are replaced with <code>[REDACTED]</code> in the
+   request body before forwarding. Only applies when <code>Content-Type</code> is
+   <code>application/json</code>.</li>
+</ol>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-14-1"><a href="#__codelineno-14-1" id="__codelineno-14-1" name="__codelineno-14-1"></a><span class="nt">routes</span><span class="p">:</span>
+</span><span id="__span-14-2"><a href="#__codelineno-14-2" id="__codelineno-14-2" name="__codelineno-14-2"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">crm-api</span>
+</span><span id="__span-14-3"><a href="#__codelineno-14-3" id="__codelineno-14-3" name="__codelineno-14-3"></a><span class="w">    </span><span class="nt">pattern</span><span class="p">:</span><span class="w"> </span><span class="s">"https://crm.example.com/**"</span>
+</span><span id="__span-14-4"><a href="#__codelineno-14-4" id="__codelineno-14-4" name="__codelineno-14-4"></a><span class="w">    </span><span class="nt">sanitize</span><span class="p">:</span>
+</span><span id="__span-14-5"><a href="#__codelineno-14-5" id="__codelineno-14-5" name="__codelineno-14-5"></a><span class="w">      </span><span class="nt">headers</span><span class="p">:</span>
+</span><span id="__span-14-6"><a href="#__codelineno-14-6" id="__codelineno-14-6" name="__codelineno-14-6"></a><span class="w">        </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Authorization</span><span class="w">      </span><span class="c1"># log: [REDACTED], forwarded: intact</span>
+</span><span id="__span-14-7"><a href="#__codelineno-14-7" id="__codelineno-14-7" name="__codelineno-14-7"></a><span class="w">        </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Cookie</span>
+</span><span id="__span-14-8"><a href="#__codelineno-14-8" id="__codelineno-14-8" name="__codelineno-14-8"></a><span class="w">      </span><span class="nt">query_params</span><span class="p">:</span>
+</span><span id="__span-14-9"><a href="#__codelineno-14-9" id="__codelineno-14-9" name="__codelineno-14-9"></a><span class="w">        </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">api_key</span><span class="w">            </span><span class="c1"># stripped from URL before forwarding</span>
+</span><span id="__span-14-10"><a href="#__codelineno-14-10" id="__codelineno-14-10" name="__codelineno-14-10"></a><span class="w">        </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">token</span>
+</span><span id="__span-14-11"><a href="#__codelineno-14-11" id="__codelineno-14-11" name="__codelineno-14-11"></a><span class="w">      </span><span class="nt">body_fields</span><span class="p">:</span>
+</span><span id="__span-14-12"><a href="#__codelineno-14-12" id="__codelineno-14-12" name="__codelineno-14-12"></a><span class="w">        </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">password</span><span class="w">           </span><span class="c1"># replaced with [REDACTED] in JSON body</span>
+</span><span id="__span-14-13"><a href="#__codelineno-14-13" id="__codelineno-14-13" name="__codelineno-14-13"></a><span class="w">        </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ssn</span>
+</span><span id="__span-14-14"><a href="#__codelineno-14-14" id="__codelineno-14-14" name="__codelineno-14-14"></a><span class="w">        </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">card_number</span>
+</span></code></pre></div>
+<p>An <code>egress.sanitized</code> event is emitted reporting counts of redacted headers,
+stripped query params, and redacted body fields.</p>
+<hr/>
+<h3 id="body-and-response-size-limits">Body and Response Size Limits<a class="headerlink" href="#body-and-response-size-limits" title="Permanent link">¶</a></h3>
+<p>Protect against oversized payloads in both directions. Requests exceeding
+<code>body_size_limit</code> are rejected with <code>413 Request Entity Too Large</code>. Responses
+exceeding <code>response_size_limit</code> are truncated and the <code>X-Egress-Response-Truncated</code>
+header is added to the response.</p>
+<p>Set global defaults and override per route:</p>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-15-1"><a href="#__codelineno-15-1" id="__codelineno-15-1" name="__codelineno-15-1"></a><span class="nt">egress</span><span class="p">:</span>
+</span><span id="__span-15-2"><a href="#__codelineno-15-2" id="__codelineno-15-2" name="__codelineno-15-2"></a><span class="w">  </span><span class="nt">default_body_size_limit</span><span class="p">:</span><span class="w"> </span><span class="s">"10MB"</span><span class="w">      </span><span class="c1"># global default for all routes</span>
+</span><span id="__span-15-3"><a href="#__codelineno-15-3" id="__codelineno-15-3" name="__codelineno-15-3"></a><span class="w">  </span><span class="nt">default_response_size_limit</span><span class="p">:</span><span class="w"> </span><span class="s">"50MB"</span><span class="w">  </span><span class="c1"># global default for all routes</span>
+</span><span id="__span-15-4"><a href="#__codelineno-15-4" id="__codelineno-15-4" name="__codelineno-15-4"></a>
+</span><span id="__span-15-5"><a href="#__codelineno-15-5" id="__codelineno-15-5" name="__codelineno-15-5"></a><span class="w">  </span><span class="nt">routes</span><span class="p">:</span>
+</span><span id="__span-15-6"><a href="#__codelineno-15-6" id="__codelineno-15-6" name="__codelineno-15-6"></a><span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">file-upload-api</span>
+</span><span id="__span-15-7"><a href="#__codelineno-15-7" id="__codelineno-15-7" name="__codelineno-15-7"></a><span class="w">      </span><span class="nt">pattern</span><span class="p">:</span><span class="w"> </span><span class="s">"https://storage.example.com/**"</span>
+</span><span id="__span-15-8"><a href="#__codelineno-15-8" id="__codelineno-15-8" name="__codelineno-15-8"></a><span class="w">      </span><span class="nt">body_size_limit</span><span class="p">:</span><span class="w"> </span><span class="s">"100MB"</span><span class="w">          </span><span class="c1"># override for this route</span>
+</span><span id="__span-15-9"><a href="#__codelineno-15-9" id="__codelineno-15-9" name="__codelineno-15-9"></a><span class="w">      </span><span class="nt">response_size_limit</span><span class="p">:</span><span class="w"> </span><span class="s">"200MB"</span>
+</span></code></pre></div>
+<hr/>
+<h3 id="response-caching">Response Caching<a class="headerlink" href="#response-caching" title="Permanent link">¶</a></h3>
+<p>In-memory caching for <code>GET</code> and <code>HEAD</code> requests that receive a <code>2xx</code> response.
+Subsequent identical requests are served from cache without contacting the
+upstream. The <code>X-Egress-Cache</code> response header reports <code>HIT</code> or <code>MISS</code>.</p>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-16-1"><a href="#__codelineno-16-1" id="__codelineno-16-1" name="__codelineno-16-1"></a><span class="nt">routes</span><span class="p">:</span>
+</span><span id="__span-16-2"><a href="#__codelineno-16-2" id="__codelineno-16-2" name="__codelineno-16-2"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">reference-data-api</span>
+</span><span id="__span-16-3"><a href="#__codelineno-16-3" id="__codelineno-16-3" name="__codelineno-16-3"></a><span class="w">    </span><span class="nt">pattern</span><span class="p">:</span><span class="w"> </span><span class="s">"https://reference.example.com/**"</span>
+</span><span id="__span-16-4"><a href="#__codelineno-16-4" id="__codelineno-16-4" name="__codelineno-16-4"></a><span class="w">    </span><span class="nt">cache</span><span class="p">:</span>
+</span><span id="__span-16-5"><a href="#__codelineno-16-5" id="__codelineno-16-5" name="__codelineno-16-5"></a><span class="w">      </span><span class="nt">enabled</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+</span><span id="__span-16-6"><a href="#__codelineno-16-6" id="__codelineno-16-6" name="__codelineno-16-6"></a><span class="w">      </span><span class="nt">ttl</span><span class="p">:</span><span class="w"> </span><span class="s">"5m"</span><span class="w">          </span><span class="c1"># evict after 5 minutes</span>
+</span><span id="__span-16-7"><a href="#__codelineno-16-7" id="__codelineno-16-7" name="__codelineno-16-7"></a><span class="w">      </span><span class="nt">max_size</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">1048576</span><span class="w">  </span><span class="c1"># skip caching responses larger than 1 MB (bytes)</span>
+</span></code></pre></div>
+<table>
+<thead>
+<tr>
+<th>Field</th>
+<th>Type</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>enabled</code></td>
+<td>bool</td>
+<td>Activate response caching for this route</td>
+</tr>
+<tr>
+<td><code>ttl</code></td>
+<td>duration</td>
+<td>How long a cached entry remains valid. Zero means never expire (not recommended)</td>
+</tr>
+<tr>
+<td><code>max_size</code></td>
+<td>int</td>
+<td>Maximum cached response body size in bytes. Zero means no per-entry size limit</td>
+</tr>
+</tbody>
+</table>
+<hr/>
+<h3 id="response-validation">Response Validation<a class="headerlink" href="#response-validation" title="Permanent link">¶</a></h3>
+<p>Validate upstream responses before returning them to your app. When a response
+fails validation the proxy drops it and returns <code>502 Bad Gateway</code>. This prevents
+your app from processing unexpected response formats silently.</p>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-17-1"><a href="#__codelineno-17-1" id="__codelineno-17-1" name="__codelineno-17-1"></a><span class="nt">routes</span><span class="p">:</span>
+</span><span id="__span-17-2"><a href="#__codelineno-17-2" id="__codelineno-17-2" name="__codelineno-17-2"></a><span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">payments-api</span>
+</span><span id="__span-17-3"><a href="#__codelineno-17-3" id="__codelineno-17-3" name="__codelineno-17-3"></a><span class="w">    </span><span class="nt">pattern</span><span class="p">:</span><span class="w"> </span><span class="s">"https://pay.example.com/**"</span>
+</span><span id="__span-17-4"><a href="#__codelineno-17-4" id="__codelineno-17-4" name="__codelineno-17-4"></a><span class="w">    </span><span class="nt">validate_response</span><span class="p">:</span>
+</span><span id="__span-17-5"><a href="#__codelineno-17-5" id="__codelineno-17-5" name="__codelineno-17-5"></a><span class="w">      </span><span class="nt">status_codes</span><span class="p">:</span>
+</span><span id="__span-17-6"><a href="#__codelineno-17-6" id="__codelineno-17-6" name="__codelineno-17-6"></a><span class="w">        </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">"2xx"</span><span class="w">     </span><span class="c1"># any 2xx</span>
+</span><span id="__span-17-7"><a href="#__codelineno-17-7" id="__codelineno-17-7" name="__codelineno-17-7"></a><span class="w">        </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">"301"</span><span class="w">     </span><span class="c1"># redirect</span>
+</span><span id="__span-17-8"><a href="#__codelineno-17-8" id="__codelineno-17-8" name="__codelineno-17-8"></a><span class="w">        </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">"302"</span>
+</span><span id="__span-17-9"><a href="#__codelineno-17-9" id="__codelineno-17-9" name="__codelineno-17-9"></a><span class="w">      </span><span class="nt">content_types</span><span class="p">:</span>
+</span><span id="__span-17-10"><a href="#__codelineno-17-10" id="__codelineno-17-10" name="__codelineno-17-10"></a><span class="w">        </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="s">"application/json"</span>
+</span></code></pre></div>
+<p>Status code expressions: exact code (<code>"200"</code>, <code>"404"</code>) or class wildcard
+(<code>"2xx"</code>, <code>"3xx"</code>, <code>"4xx"</code>, <code>"5xx"</code>).</p>
+<p>When validation fails, an <code>egress.response_invalid</code> event is emitted with the
+actual status code, content type, and rejection reason.</p>
+<hr/>
+<h2 id="structured-events-reference">Structured Events Reference<a class="headerlink" href="#structured-events-reference" title="Permanent link">¶</a></h2>
+<p>All egress events follow the VibeWarden AI-readable schema
+(<code>schema_version</code>, <code>event_type</code>, <code>timestamp</code>, <code>ai_summary</code>, <code>payload</code>).</p>
+<table>
+<thead>
+<tr>
+<th>Event type</th>
+<th>When emitted</th>
+<th>Key payload fields</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>egress.request</code></td>
+<td>Proxy begins forwarding an outbound request</td>
+<td><code>route</code>, <code>method</code>, <code>url</code>, <code>trace_id</code></td>
+</tr>
+<tr>
+<td><code>egress.response</code></td>
+<td>Proxy receives a complete upstream response</td>
+<td><code>route</code>, <code>method</code>, <code>url</code>, <code>status_code</code>, <code>duration_seconds</code>, <code>attempts</code>, <code>trace_id</code></td>
+</tr>
+<tr>
+<td><code>egress.blocked</code></td>
+<td>Request blocked by policy or security rule</td>
+<td><code>route</code>, <code>method</code>, <code>url</code>, <code>reason</code>, <code>trace_id</code></td>
+</tr>
+<tr>
+<td><code>egress.error</code></td>
+<td>Transport-level failure (timeout, DNS, refused)</td>
+<td><code>route</code>, <code>method</code>, <code>url</code>, <code>error</code>, <code>attempts</code>, <code>trace_id</code></td>
+</tr>
+<tr>
+<td><code>egress.circuit_breaker.opened</code></td>
+<td>Circuit tripped after consecutive failures</td>
+<td><code>route</code>, <code>threshold</code>, <code>timeout_seconds</code></td>
+</tr>
+<tr>
+<td><code>egress.circuit_breaker.closed</code></td>
+<td>Circuit closed after successful probe</td>
+<td><code>route</code></td>
+</tr>
+<tr>
+<td><code>egress.rate_limit_hit</code></td>
+<td>Per-route rate limit exceeded</td>
+<td><code>route</code>, <code>limit</code>, <code>retry_after_seconds</code></td>
+</tr>
+<tr>
+<td><code>egress.response_invalid</code></td>
+<td>Upstream response failed <code>validate_response</code> rules</td>
+<td><code>route</code>, <code>method</code>, <code>url</code>, <code>status_code</code>, <code>content_type</code>, <code>reason</code>, <code>trace_id</code></td>
+</tr>
+<tr>
+<td><code>egress.sanitized</code></td>
+<td>PII redaction rules applied to outbound request</td>
+<td><code>route</code>, <code>method</code>, <code>url</code>, <code>redacted_headers</code>, <code>stripped_query_params</code>, <code>redacted_body_fields</code>, <code>total_redacted</code>, <code>trace_id</code></td>
+</tr>
+</tbody>
+</table>
+<hr/>
+<h2 id="complete-example">Complete Example<a class="headerlink" href="#complete-example" title="Permanent link">¶</a></h2>
+<p>A full <code>vibewarden.yaml</code> egress section with three routes:</p>
+<div class="language-yaml highlight"><pre><span></span><code><span id="__span-18-1"><a href="#__codelineno-18-1" id="__codelineno-18-1" name="__codelineno-18-1"></a><span class="nt">egress</span><span class="p">:</span>
+</span><span id="__span-18-2"><a href="#__codelineno-18-2" id="__codelineno-18-2" name="__codelineno-18-2"></a><span class="w">  </span><span class="nt">enabled</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+</span><span id="__span-18-3"><a href="#__codelineno-18-3" id="__codelineno-18-3" name="__codelineno-18-3"></a><span class="w">  </span><span class="nt">listen</span><span class="p">:</span><span class="w"> </span><span class="s">"127.0.0.1:8081"</span>
+</span><span id="__span-18-4"><a href="#__codelineno-18-4" id="__codelineno-18-4" name="__codelineno-18-4"></a><span class="w">  </span><span class="nt">default_policy</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">deny</span>
+</span><span id="__span-18-5"><a href="#__codelineno-18-5" id="__codelineno-18-5" name="__codelineno-18-5"></a><span class="w">  </span><span class="nt">allow_insecure</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">false</span>
+</span><span id="__span-18-6"><a href="#__codelineno-18-6" id="__codelineno-18-6" name="__codelineno-18-6"></a><span class="w">  </span><span class="nt">default_timeout</span><span class="p">:</span><span class="w"> </span><span class="s">"30s"</span>
+</span><span id="__span-18-7"><a href="#__codelineno-18-7" id="__codelineno-18-7" name="__codelineno-18-7"></a><span class="w">  </span><span class="nt">default_body_size_limit</span><span class="p">:</span><span class="w"> </span><span class="s">"10MB"</span>
+</span><span id="__span-18-8"><a href="#__codelineno-18-8" id="__codelineno-18-8" name="__codelineno-18-8"></a><span class="w">  </span><span class="nt">default_response_size_limit</span><span class="p">:</span><span class="w"> </span><span class="s">"50MB"</span>
+</span><span id="__span-18-9"><a href="#__codelineno-18-9" id="__codelineno-18-9" name="__codelineno-18-9"></a>
+</span><span id="__span-18-10"><a href="#__codelineno-18-10" id="__codelineno-18-10" name="__codelineno-18-10"></a><span class="w">  </span><span class="nt">dns</span><span class="p">:</span>
+</span><span id="__span-18-11"><a href="#__codelineno-18-11" id="__codelineno-18-11" name="__codelineno-18-11"></a><span class="w">    </span><span class="nt">block_private</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+</span><span id="__span-18-12"><a href="#__codelineno-18-12" id="__codelineno-18-12" name="__codelineno-18-12"></a><span class="w">    </span><span class="nt">allowed_private</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[]</span>
+</span><span id="__span-18-13"><a href="#__codelineno-18-13" id="__codelineno-18-13" name="__codelineno-18-13"></a>
+</span><span id="__span-18-14"><a href="#__codelineno-18-14" id="__codelineno-18-14" name="__codelineno-18-14"></a><span class="w">  </span><span class="nt">routes</span><span class="p">:</span>
+</span><span id="__span-18-15"><a href="#__codelineno-18-15" id="__codelineno-18-15" name="__codelineno-18-15"></a><span class="w">    </span><span class="c1"># Stripe — POST only, secret injection, circuit breaker, retries</span>
+</span><span id="__span-18-16"><a href="#__codelineno-18-16" id="__codelineno-18-16" name="__codelineno-18-16"></a><span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">stripe-api</span>
+</span><span id="__span-18-17"><a href="#__codelineno-18-17" id="__codelineno-18-17" name="__codelineno-18-17"></a><span class="w">      </span><span class="nt">pattern</span><span class="p">:</span><span class="w"> </span><span class="s">"https://api.stripe.com/**"</span>
+</span><span id="__span-18-18"><a href="#__codelineno-18-18" id="__codelineno-18-18" name="__codelineno-18-18"></a><span class="w">      </span><span class="nt">methods</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">"POST"</span><span class="p p-Indicator">]</span>
+</span><span id="__span-18-19"><a href="#__codelineno-18-19" id="__codelineno-18-19" name="__codelineno-18-19"></a><span class="w">      </span><span class="nt">timeout</span><span class="p">:</span><span class="w"> </span><span class="s">"10s"</span>
+</span><span id="__span-18-20"><a href="#__codelineno-18-20" id="__codelineno-18-20" name="__codelineno-18-20"></a><span class="w">      </span><span class="nt">secret</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">app/stripe</span>
+</span><span id="__span-18-21"><a href="#__codelineno-18-21" id="__codelineno-18-21" name="__codelineno-18-21"></a><span class="w">      </span><span class="nt">secret_header</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Authorization</span>
+</span><span id="__span-18-22"><a href="#__codelineno-18-22" id="__codelineno-18-22" name="__codelineno-18-22"></a><span class="w">      </span><span class="nt">secret_format</span><span class="p">:</span><span class="w"> </span><span class="s">"Bearer</span><span class="nv"> </span><span class="s">{value}"</span>
+</span><span id="__span-18-23"><a href="#__codelineno-18-23" id="__codelineno-18-23" name="__codelineno-18-23"></a><span class="w">      </span><span class="nt">rate_limit</span><span class="p">:</span><span class="w"> </span><span class="s">"100/s"</span>
+</span><span id="__span-18-24"><a href="#__codelineno-18-24" id="__codelineno-18-24" name="__codelineno-18-24"></a><span class="w">      </span><span class="nt">circuit_breaker</span><span class="p">:</span>
+</span><span id="__span-18-25"><a href="#__codelineno-18-25" id="__codelineno-18-25" name="__codelineno-18-25"></a><span class="w">        </span><span class="nt">threshold</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">5</span>
+</span><span id="__span-18-26"><a href="#__codelineno-18-26" id="__codelineno-18-26" name="__codelineno-18-26"></a><span class="w">        </span><span class="nt">reset_after</span><span class="p">:</span><span class="w"> </span><span class="s">"30s"</span>
+</span><span id="__span-18-27"><a href="#__codelineno-18-27" id="__codelineno-18-27" name="__codelineno-18-27"></a><span class="w">      </span><span class="nt">retries</span><span class="p">:</span>
+</span><span id="__span-18-28"><a href="#__codelineno-18-28" id="__codelineno-18-28" name="__codelineno-18-28"></a><span class="w">        </span><span class="nt">max</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">3</span>
+</span><span id="__span-18-29"><a href="#__codelineno-18-29" id="__codelineno-18-29" name="__codelineno-18-29"></a><span class="w">        </span><span class="nt">backoff</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">exponential</span>
+</span><span id="__span-18-30"><a href="#__codelineno-18-30" id="__codelineno-18-30" name="__codelineno-18-30"></a><span class="w">      </span><span class="nt">validate_response</span><span class="p">:</span>
+</span><span id="__span-18-31"><a href="#__codelineno-18-31" id="__codelineno-18-31" name="__codelineno-18-31"></a><span class="w">        </span><span class="nt">status_codes</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">"2xx"</span><span class="p p-Indicator">]</span>
+</span><span id="__span-18-32"><a href="#__codelineno-18-32" id="__codelineno-18-32" name="__codelineno-18-32"></a><span class="w">        </span><span class="nt">content_types</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">"application/json"</span><span class="p p-Indicator">]</span>
+</span><span id="__span-18-33"><a href="#__codelineno-18-33" id="__codelineno-18-33" name="__codelineno-18-33"></a><span class="w">      </span><span class="nt">sanitize</span><span class="p">:</span>
+</span><span id="__span-18-34"><a href="#__codelineno-18-34" id="__codelineno-18-34" name="__codelineno-18-34"></a><span class="w">        </span><span class="nt">headers</span><span class="p">:</span>
+</span><span id="__span-18-35"><a href="#__codelineno-18-35" id="__codelineno-18-35" name="__codelineno-18-35"></a><span class="w">          </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Authorization</span>
+</span><span id="__span-18-36"><a href="#__codelineno-18-36" id="__codelineno-18-36" name="__codelineno-18-36"></a><span class="w">        </span><span class="nt">body_fields</span><span class="p">:</span>
+</span><span id="__span-18-37"><a href="#__codelineno-18-37" id="__codelineno-18-37" name="__codelineno-18-37"></a><span class="w">          </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">card_number</span>
+</span><span id="__span-18-38"><a href="#__codelineno-18-38" id="__codelineno-18-38" name="__codelineno-18-38"></a><span class="w">          </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">cvc</span>
+</span><span id="__span-18-39"><a href="#__codelineno-18-39" id="__codelineno-18-39" name="__codelineno-18-39"></a>
+</span><span id="__span-18-40"><a href="#__codelineno-18-40" id="__codelineno-18-40" name="__codelineno-18-40"></a><span class="w">    </span><span class="c1"># GitHub — GET and POST, rate limited, response caching for GETs</span>
+</span><span id="__span-18-41"><a href="#__codelineno-18-41" id="__codelineno-18-41" name="__codelineno-18-41"></a><span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">github-api</span>
+</span><span id="__span-18-42"><a href="#__codelineno-18-42" id="__codelineno-18-42" name="__codelineno-18-42"></a><span class="w">      </span><span class="nt">pattern</span><span class="p">:</span><span class="w"> </span><span class="s">"https://api.github.com/**"</span>
+</span><span id="__span-18-43"><a href="#__codelineno-18-43" id="__codelineno-18-43" name="__codelineno-18-43"></a><span class="w">      </span><span class="nt">methods</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="s">"GET"</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="s">"POST"</span><span class="p p-Indicator">]</span>
+</span><span id="__span-18-44"><a href="#__codelineno-18-44" id="__codelineno-18-44" name="__codelineno-18-44"></a><span class="w">      </span><span class="nt">timeout</span><span class="p">:</span><span class="w"> </span><span class="s">"15s"</span>
+</span><span id="__span-18-45"><a href="#__codelineno-18-45" id="__codelineno-18-45" name="__codelineno-18-45"></a><span class="w">      </span><span class="nt">rate_limit</span><span class="p">:</span><span class="w"> </span><span class="s">"500/m"</span>
+</span><span id="__span-18-46"><a href="#__codelineno-18-46" id="__codelineno-18-46" name="__codelineno-18-46"></a><span class="w">      </span><span class="nt">headers</span><span class="p">:</span>
+</span><span id="__span-18-47"><a href="#__codelineno-18-47" id="__codelineno-18-47" name="__codelineno-18-47"></a><span class="w">        </span><span class="nt">inject</span><span class="p">:</span>
+</span><span id="__span-18-48"><a href="#__codelineno-18-48" id="__codelineno-18-48" name="__codelineno-18-48"></a><span class="w">          </span><span class="nt">Accept</span><span class="p">:</span><span class="w"> </span><span class="s">"application/vnd.github+json"</span>
+</span><span id="__span-18-49"><a href="#__codelineno-18-49" id="__codelineno-18-49" name="__codelineno-18-49"></a><span class="w">          </span><span class="nt">X-GitHub-Api-Version</span><span class="p">:</span><span class="w"> </span><span class="s">"2022-11-28"</span>
+</span><span id="__span-18-50"><a href="#__codelineno-18-50" id="__codelineno-18-50" name="__codelineno-18-50"></a><span class="w">      </span><span class="nt">cache</span><span class="p">:</span>
+</span><span id="__span-18-51"><a href="#__codelineno-18-51" id="__codelineno-18-51" name="__codelineno-18-51"></a><span class="w">        </span><span class="nt">enabled</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+</span><span id="__span-18-52"><a href="#__codelineno-18-52" id="__codelineno-18-52" name="__codelineno-18-52"></a><span class="w">        </span><span class="nt">ttl</span><span class="p">:</span><span class="w"> </span><span class="s">"5m"</span>
+</span><span id="__span-18-53"><a href="#__codelineno-18-53" id="__codelineno-18-53" name="__codelineno-18-53"></a><span class="w">        </span><span class="nt">max_size</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">524288</span><span class="w">   </span><span class="c1"># 512 KB</span>
+</span><span id="__span-18-54"><a href="#__codelineno-18-54" id="__codelineno-18-54" name="__codelineno-18-54"></a>
+</span><span id="__span-18-55"><a href="#__codelineno-18-55" id="__codelineno-18-55" name="__codelineno-18-55"></a><span class="w">    </span><span class="c1"># Internal payment service — private network, mTLS</span>
+</span><span id="__span-18-56"><a href="#__codelineno-18-56" id="__codelineno-18-56" name="__codelineno-18-56"></a><span class="w">    </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">internal-payments</span>
+</span><span id="__span-18-57"><a href="#__codelineno-18-57" id="__codelineno-18-57" name="__codelineno-18-57"></a><span class="w">      </span><span class="nt">pattern</span><span class="p">:</span><span class="w"> </span><span class="s">"https://payments.internal/**"</span>
+</span><span id="__span-18-58"><a href="#__codelineno-18-58" id="__codelineno-18-58" name="__codelineno-18-58"></a><span class="w">      </span><span class="nt">allow_insecure</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">false</span>
+</span><span id="__span-18-59"><a href="#__codelineno-18-59" id="__codelineno-18-59" name="__codelineno-18-59"></a><span class="w">      </span><span class="nt">mtls</span><span class="p">:</span>
+</span><span id="__span-18-60"><a href="#__codelineno-18-60" id="__codelineno-18-60" name="__codelineno-18-60"></a><span class="w">        </span><span class="nt">cert_path</span><span class="p">:</span><span class="w"> </span><span class="s">"/etc/vibewarden/certs/client.crt"</span>
+</span><span id="__span-18-61"><a href="#__codelineno-18-61" id="__codelineno-18-61" name="__codelineno-18-61"></a><span class="w">        </span><span class="nt">key_path</span><span class="p">:</span><span class="w">  </span><span class="s">"/etc/vibewarden/certs/client.key"</span>
+</span><span id="__span-18-62"><a href="#__codelineno-18-62" id="__codelineno-18-62" name="__codelineno-18-62"></a><span class="w">        </span><span class="nt">ca_path</span><span class="p">:</span><span class="w">   </span><span class="s">"/etc/vibewarden/certs/internal-ca.crt"</span>
+</span><span id="__span-18-63"><a href="#__codelineno-18-63" id="__codelineno-18-63" name="__codelineno-18-63"></a><span class="w">      </span><span class="nt">dns</span><span class="p">:</span>
+</span><span id="__span-18-64"><a href="#__codelineno-18-64" id="__codelineno-18-64" name="__codelineno-18-64"></a><span class="w">        </span><span class="c1"># Override: allow this route to reach a private network address.</span>
+</span><span id="__span-18-65"><a href="#__codelineno-18-65" id="__codelineno-18-65" name="__codelineno-18-65"></a><span class="w">        </span><span class="c1"># Must also add the CIDR to egress.dns.allowed_private above.</span>
+</span></code></pre></div>
+<div class="admonition note">
+<p class="admonition-title">DNS exemption for internal routes</p>
+<p>To reach a private-network host, add its CIDR to <code>egress.dns.allowed_private</code>
+at the top level and set <code>allow_insecure: false</code> (or use HTTPS with <code>mtls</code>).
+Setting <code>egress.dns.block_private: false</code> disables SSRF protection entirely
+and is not recommended.</p>
+</div>
+<hr/>
+<h2 id="troubleshooting">Troubleshooting<a class="headerlink" href="#troubleshooting" title="Permanent link">¶</a></h2>
+<h3 id="request-blocked-no-route-matched">"request blocked: no route matched"<a class="headerlink" href="#request-blocked-no-route-matched" title="Permanent link">¶</a></h3>
+<p>The outbound URL does not match any configured route and <code>default_policy</code> is
+<code>deny</code>. Options:</p>
+<ul>
+<li>Add a route whose <code>pattern</code> matches the URL.</li>
+<li>Set <code>default_policy: allow</code> to pass unmatched requests through (removes
+  allowlist protection — use only in development).</li>
+</ul>
+<h3 id="plain-http-not-allowed">"plain HTTP not allowed"<a class="headerlink" href="#plain-http-not-allowed" title="Permanent link">¶</a></h3>
+<p>The target URL uses <code>http://</code> and neither <code>egress.allow_insecure</code> nor the matched
+route's <code>allow_insecure</code> is <code>true</code>. Options:</p>
+<ul>
+<li>Change the target URL to <code>https://</code>.</li>
+<li>Set <code>allow_insecure: true</code> on the specific route.</li>
+<li>Set <code>egress.allow_insecure: true</code> globally (not recommended for production).</li>
+</ul>
+<h3 id="circuit-breaker-is-open">"circuit breaker is open"<a class="headerlink" href="#circuit-breaker-is-open" title="Permanent link">¶</a></h3>
+<p>The upstream service returned too many consecutive errors and the circuit tripped.
+The proxy is short-circuiting requests with <code>503</code> until <code>reset_after</code> elapses.</p>
+<ul>
+<li>Check the upstream service health.</li>
+<li>Wait for the <code>reset_after</code> duration. The proxy will send one probe request to
+  test recovery.</li>
+<li>An <code>egress.circuit_breaker.opened</code> event in the audit log shows when the
+  circuit tripped and the <code>timeout_seconds</code> remaining.</li>
+</ul>
+<h3 id="rate-limit-exceeded">"rate limit exceeded"<a class="headerlink" href="#rate-limit-exceeded" title="Permanent link">¶</a></h3>
+<p>The route's <code>rate_limit</code> budget has been exhausted. The response includes a
+<code>Retry-After</code> header. Either reduce request frequency or raise the limit.</p>
+<h3 id="secret-injection-not-working">Secret injection not working<a class="headerlink" href="#secret-injection-not-working" title="Permanent link">¶</a></h3>
+<ul>
+<li>Ensure the <code>secrets</code> plugin is enabled and the OpenBao address is reachable.</li>
+<li>Verify the <code>secret</code> field matches an existing KV path in OpenBao.</li>
+<li>Check the audit log for <code>secrets.*</code> events indicating fetch failures.</li>
+<li>Secrets are cached; a stale cache entry may be served for up to <code>secrets.cache_ttl</code>.</li>
+</ul>
+<h3 id="responses-are-being-truncated">Responses are being truncated<a class="headerlink" href="#responses-are-being-truncated" title="Permanent link">¶</a></h3>
+<p>The upstream response body exceeded <code>response_size_limit</code>. The response contains
+<code>X-Egress-Response-Truncated: true</code>. Raise <code>response_size_limit</code> on the route or
+at the global <code>egress.default_response_size_limit</code> level.</p>
+<h3 id="mtls-handshake-failed">mTLS handshake failed<a class="headerlink" href="#mtls-handshake-failed" title="Permanent link">¶</a></h3>
+<ul>
+<li>Verify <code>cert_path</code> and <code>key_path</code> point to valid, matching PEM files.</li>
+<li>Confirm the certificate has not expired.</li>
+<li>If the upstream uses a private CA, set <code>ca_path</code> to the CA bundle.</li>
+<li>Check that the upstream server is configured to accept client certificates.</li>
+</ul>
+</article>
+</div>
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+</div>
+<button class="md-top md-icon" data-md-component="top" hidden="" type="button">
+<svg viewbox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path d="M13 20h-2V8l-5.5 5.5-1.42-1.42L12 4.16l7.92 7.92-1.42 1.42L13 8z"></path></svg>
+  Back to top
+</button>
+</main>
+<footer class="md-footer">
+<div class="md-footer-meta md-typeset">
+<div class="md-footer-meta__inner md-grid">
+<div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" rel="noopener" target="_blank">
+      Material for MkDocs
+    </a>
+</div>
+<div class="md-social">
+<a class="md-social__link" href="https://github.com/vibewarden/vibewarden" rel="noopener" target="_blank" title="github.com">
+<svg viewbox="0 0 512 512" xmlns="http://www.w3.org/2000/svg"><!--! Font Awesome Free 7.1.0 by @fontawesome - https://fontawesome.com License - https://fontawesome.com/license/free (Icons: CC BY 4.0, Fonts: SIL OFL 1.1, Code: MIT License) Copyright 2025 Fonticons, Inc.--><path d="M173.9 397.4c0 2-2.3 3.6-5.2 3.6-3.3.3-5.6-1.3-5.6-3.6 0-2 2.3-3.6 5.2-3.6 3-.3 5.6 1.3 5.6 3.6m-31.1-4.5c-.7 2 1.3 4.3 4.3 4.9 2.6 1 5.6 0 6.2-2s-1.3-4.3-4.3-5.2c-2.6-.7-5.5.3-6.2 2.3m44.2-1.7c-2.9.7-4.9 2.6-4.6 4.9.3 2 2.9 3.3 5.9 2.6 2.9-.7 4.9-2.6 4.6-4.6-.3-1.9-3-3.2-5.9-2.9M252.8 8C114.1 8 8 113.3 8 252c0 110.9 69.8 205.8 169.5 239.2 12.8 2.3 17.3-5.6 17.3-12.1 0-6.2-.3-40.4-.3-61.4 0 0-70 15-84.7-29.8 0 0-11.4-29.1-27.8-36.6 0 0-22.9-15.7 1.6-15.4 0 0 24.9 2 38.6 25.8 21.9 38.6 58.6 27.5 72.9 20.9 2.3-16 8.8-27.1 16-33.7-55.9-6.2-112.3-14.3-112.3-110.5 0-27.5 7.6-41.3 23.6-58.9-2.6-6.5-11.1-33.3 2.6-67.9 20.9-6.5 69 27 69 27 20-5.6 41.5-8.5 62.8-8.5s42.8 2.9 62.8 8.5c0 0 48.1-33.6 69-27 13.7 34.7 5.2 61.4 2.6 67.9 16 17.7 25.8 31.5 25.8 58.9 0 96.5-58.9 104.2-114.8 110.5 9.2 7.9 17 22.9 17 46.4 0 33.7-.3 75.4-.3 83.6 0 6.5 4.6 14.4 17.3 12.1C436.2 457.8 504 362.9 504 252 504 113.3 391.5 8 252.8 8M105.2 352.9c-1.3 1-1 3.3.7 5.2 1.6 1.6 3.9 2.3 5.2 1 1.3-1 1-3.3-.7-5.2-1.6-1.6-3.9-2.3-5.2-1m-10.8-8.1c-.7 1.3.3 2.9 2.3 3.9 1.6 1 3.6.7 4.3-.7.7-1.3-.3-2.9-2.3-3.9-2-.6-3.6-.3-4.3.7m32.4 35.6c-1.6 1.3-1 4.3 1.3 6.2 2.3 2.3 5.2 2.6 6.5 1 1.3-1.3.7-4.3-1.3-6.2-2.2-2.3-5.2-2.6-6.5-1m-11.4-14.7c-1.6 1-1.6 3.6 0 5.9s4.3 3.3 5.6 2.3c1.6-1.3 1.6-3.9 0-6.2-1.4-2.3-4-3.3-5.6-2"></path></svg>
+</a>
+</div>
+</div>
+</div>
+</footer>
+</div>
+<div class="md-dialog" data-md-component="dialog">
+<div class="md-dialog__inner md-typeset"></div>
+</div>
+<script id="__config" type="application/json">{"annotate": null, "base": "..", "features": ["navigation.tabs", "navigation.sections", "navigation.expand", "navigation.top", "search.suggest", "search.highlight", "content.code.copy", "content.code.annotate", "toc.follow"], "search": "../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": {"provider": "mike"}}</script>
+<script src="../assets/javascripts/bundle.79ae519e.min.js"></script>
+</body>
+</html>
