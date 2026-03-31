@@ -135,6 +135,9 @@ Single Go binary embedding Caddy. Zero-to-secure in minutes for vibe-coded apps.
 
 - GitHub Actions CI pipeline: build, vet, test on every push and pull request
 - goreleaser configuration with cross-compiled binaries and Docker image publishing
+- Multi-arch Docker images published to `ghcr.io/vibewarden/vibewarden` for
+  `linux/amd64` and `linux/arm64` via OCI manifest lists; works transparently on
+  Apple Silicon, AWS Graviton, and other ARM64 hosts
 
 ---
 
