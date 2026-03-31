@@ -5,6 +5,7 @@ package generate
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -75,6 +76,11 @@ func (s *Service) Generate(ctx context.Context, cfg *config.Config, outputDir st
 	// Validate prod profile requirements before generating any files.
 	if cfg.Profile == "prod" && !cfg.Secrets.Enabled {
 		return fmt.Errorf("prod profile requires secrets.enabled: true (OpenBao is mandatory for production)")
+	}
+
+	// Emit egress-related warnings to stderr via slog.
+	for _, w := range cfg.Egress.EgressWarnings() {
+		slog.Warn(w)
 	}
 
 	// kratosMode is true only when auth is enabled and mode is "kratos" and

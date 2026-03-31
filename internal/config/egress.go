@@ -1,5 +1,7 @@
 package config
 
+import "strings"
+
 // EgressConfig holds configuration for the egress proxy plugin.
 // When enabled, the egress proxy listens on a separate port and forwards
 // outbound HTTP requests from the wrapped application to external services,
@@ -10,6 +12,14 @@ type EgressConfig struct {
 
 	// Listen is the address the egress proxy binds to (default: "127.0.0.1:8081").
 	Listen string `mapstructure:"listen"`
+
+	// NetworkIsolation controls whether the generated Docker Compose file uses
+	// a dual-network topology to enforce egress isolation at the network level.
+	// When nil, defaults to true if Enabled is true.
+	// When true, the app service is placed on an internal-only Docker network
+	// with no internet access, and VibeWarden bridges internal and external networks.
+	// When false, all services share a single bridge network (legacy behavior).
+	NetworkIsolation *bool `mapstructure:"network_isolation"`
 
 	// DefaultPolicy determines the disposition for outbound requests that do not
 	// match any configured route. Accepted values: "allow", "deny" (default: "deny").
@@ -158,4 +168,49 @@ type EgressRetryConfig struct {
 	// Backoff selects the backoff strategy: "exponential" or "fixed".
 	// Defaults to "exponential" when empty.
 	Backoff string `mapstructure:"backoff"`
+}
+
+// IsNetworkIsolationEnabled returns true when network-level egress isolation
+// should be applied in the generated Docker Compose file. The logic is:
+//   - If egress is disabled, isolation is always off (no proxy to route through).
+//   - If NetworkIsolation is explicitly set, that value is used.
+//   - If NetworkIsolation is nil (not set), it defaults to true when egress is enabled.
+func (e EgressConfig) IsNetworkIsolationEnabled() bool {
+	if !e.Enabled {
+		return false
+	}
+	if e.NetworkIsolation != nil {
+		return *e.NetworkIsolation
+	}
+	return true
+}
+
+// ListenPort extracts the port number from the Listen address field.
+// If the address cannot be parsed, it returns the default egress port "8081".
+func (e EgressConfig) ListenPort() string {
+	if e.Listen == "" {
+		return "8081"
+	}
+	_, port, found := strings.Cut(e.Listen, ":")
+	if !found || port == "" {
+		return "8081"
+	}
+	return port
+}
+
+// EgressWarnings returns a list of warning messages relevant to the current
+// egress configuration. These warnings are informational and do not prevent
+// generation, but they alert the user to potentially surprising behavior.
+func (e EgressConfig) EgressWarnings() []string {
+	var warnings []string
+
+	if e.Enabled && !e.IsNetworkIsolationEnabled() {
+		warnings = append(warnings, "Network isolation disabled: app can bypass egress proxy via direct connections")
+	}
+
+	if !e.Enabled && e.NetworkIsolation != nil && *e.NetworkIsolation {
+		warnings = append(warnings, "Network isolation has no effect without egress proxy enabled")
+	}
+
+	return warnings
 }

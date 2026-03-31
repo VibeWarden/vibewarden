@@ -7,6 +7,9 @@ import (
 	"github.com/vibewarden/vibewarden/internal/config"
 )
 
+// boolPtr is a test helper that returns a pointer to the given bool value.
+func boolPtr(b bool) *bool { return &b }
+
 // TestValidate_EgressDisabled verifies that no egress validation runs when egress
 // is disabled, even if routes have invalid fields.
 func TestValidate_EgressDisabled(t *testing.T) {
@@ -561,6 +564,234 @@ func TestValidate_EgressSecretInjection(t *testing.T) {
 			err := cfg.Validate()
 			if (err != nil) != tt.wantErr {
 				t.Errorf("Validate() error = %v, wantErr %v", err, tt.wantErr)
+			}
+		})
+	}
+}
+
+// TestIsNetworkIsolationEnabled verifies the three-state logic of the
+// NetworkIsolation pointer field: nil defaults to true when egress is enabled,
+// explicit true/false is honoured, and egress disabled always returns false.
+func TestIsNetworkIsolationEnabled(t *testing.T) {
+	tests := []struct {
+		name             string
+		enabled          bool
+		networkIsolation *bool
+		want             bool
+	}{
+		{"egress disabled, nil isolation", false, nil, false},
+		{"egress disabled, explicit true", false, boolPtr(true), false},
+		{"egress disabled, explicit false", false, boolPtr(false), false},
+		{"egress enabled, nil isolation defaults to true", true, nil, true},
+		{"egress enabled, explicit true", true, boolPtr(true), true},
+		{"egress enabled, explicit false", true, boolPtr(false), false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := config.EgressConfig{
+				Enabled:          tt.enabled,
+				NetworkIsolation: tt.networkIsolation,
+			}
+			got := cfg.IsNetworkIsolationEnabled()
+			if got != tt.want {
+				t.Errorf("IsNetworkIsolationEnabled() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+// TestListenPort verifies that ListenPort correctly extracts the port from
+// various Listen address formats and falls back to "8081".
+func TestListenPort(t *testing.T) {
+	tests := []struct {
+		name   string
+		listen string
+		want   string
+	}{
+		{"default address", "127.0.0.1:8081", "8081"},
+		{"custom port", "0.0.0.0:9090", "9090"},
+		{"empty defaults to 8081", "", "8081"},
+		{"no colon defaults to 8081", "localhost", "8081"},
+		{"colon but no port defaults to 8081", "localhost:", "8081"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := config.EgressConfig{Listen: tt.listen}
+			got := cfg.ListenPort()
+			if got != tt.want {
+				t.Errorf("ListenPort() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+// TestEgressWarnings verifies that the correct warnings are emitted for
+// various combinations of Enabled and NetworkIsolation.
+func TestEgressWarnings(t *testing.T) {
+	tests := []struct {
+		name             string
+		enabled          bool
+		networkIsolation *bool
+		wantWarnings     []string
+	}{
+		{
+			name:         "egress enabled, isolation on (default) — no warnings",
+			enabled:      true,
+			wantWarnings: nil,
+		},
+		{
+			name:             "egress enabled, isolation explicitly off — bypass warning",
+			enabled:          true,
+			networkIsolation: boolPtr(false),
+			wantWarnings:     []string{"Network isolation disabled: app can bypass egress proxy via direct connections"},
+		},
+		{
+			name:             "egress disabled, isolation explicitly on — no effect warning",
+			enabled:          false,
+			networkIsolation: boolPtr(true),
+			wantWarnings:     []string{"Network isolation has no effect without egress proxy enabled"},
+		},
+		{
+			name:         "egress disabled, isolation nil — no warnings",
+			enabled:      false,
+			wantWarnings: nil,
+		},
+		{
+			name:             "egress disabled, isolation false — no warnings",
+			enabled:          false,
+			networkIsolation: boolPtr(false),
+			wantWarnings:     nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := config.EgressConfig{
+				Enabled:          tt.enabled,
+				NetworkIsolation: tt.networkIsolation,
+			}
+			got := cfg.EgressWarnings()
+			if len(got) != len(tt.wantWarnings) {
+				t.Fatalf("EgressWarnings() returned %d warnings, want %d: %v", len(got), len(tt.wantWarnings), got)
+			}
+			for i, w := range got {
+				if w != tt.wantWarnings[i] {
+					t.Errorf("EgressWarnings()[%d] = %q, want %q", i, w, tt.wantWarnings[i])
+				}
+			}
+		})
+	}
+}
+
+// TestInternalNetworkName verifies that the network name changes based on
+// whether network isolation is enabled.
+func TestInternalNetworkName(t *testing.T) {
+	tests := []struct {
+		name string
+		cfg  config.Config
+		want string
+	}{
+		{
+			name: "isolation enabled returns vibewarden-internal",
+			cfg: config.Config{
+				Egress: config.EgressConfig{Enabled: true},
+			},
+			want: "vibewarden-internal",
+		},
+		{
+			name: "isolation disabled returns vibewarden",
+			cfg: config.Config{
+				Egress: config.EgressConfig{Enabled: true, NetworkIsolation: boolPtr(false)},
+			},
+			want: "vibewarden",
+		},
+		{
+			name: "egress disabled returns vibewarden",
+			cfg: config.Config{
+				Egress: config.EgressConfig{Enabled: false},
+			},
+			want: "vibewarden",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tt.cfg.InternalNetworkName()
+			if got != tt.want {
+				t.Errorf("InternalNetworkName() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+// TestEgressNoProxy verifies that the NO_PROXY value is correctly assembled
+// from the set of enabled internal services.
+func TestEgressNoProxy(t *testing.T) {
+	tests := []struct {
+		name string
+		cfg  config.Config
+		want string
+	}{
+		{
+			name: "minimal — only localhost and vibewarden",
+			cfg:  config.Config{},
+			want: "localhost,vibewarden",
+		},
+		{
+			name: "with kratos (local db)",
+			cfg: config.Config{
+				Auth: config.AuthConfig{Enabled: true, Mode: config.AuthModeKratos},
+			},
+			want: "localhost,vibewarden,kratos,kratos-db",
+		},
+		{
+			name: "with kratos (external db)",
+			cfg: config.Config{
+				Auth:     config.AuthConfig{Enabled: true, Mode: config.AuthModeKratos},
+				Database: config.DatabaseConfig{ExternalURL: "postgres://ext:5432/kratos"},
+			},
+			want: "localhost,vibewarden,kratos",
+		},
+		{
+			name: "with secrets",
+			cfg: config.Config{
+				Secrets: config.SecretsConfig{Enabled: true},
+			},
+			want: "localhost,vibewarden,openbao",
+		},
+		{
+			name: "with redis rate limiting",
+			cfg: config.Config{
+				RateLimit: config.RateLimitConfig{Store: "redis"},
+			},
+			want: "localhost,vibewarden,redis",
+		},
+		{
+			name: "with observability",
+			cfg: config.Config{
+				Observability: config.ObservabilityConfig{Enabled: true},
+			},
+			want: "localhost,vibewarden,prometheus,loki,promtail,otel-collector,jaeger,grafana",
+		},
+		{
+			name: "all services enabled",
+			cfg: config.Config{
+				Auth:          config.AuthConfig{Enabled: true, Mode: config.AuthModeKratos},
+				Secrets:       config.SecretsConfig{Enabled: true},
+				RateLimit:     config.RateLimitConfig{Store: "redis"},
+				Observability: config.ObservabilityConfig{Enabled: true},
+			},
+			want: "localhost,vibewarden,kratos,kratos-db,openbao,redis,prometheus,loki,promtail,otel-collector,jaeger,grafana",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tt.cfg.EgressNoProxy()
+			if got != tt.want {
+				t.Errorf("EgressNoProxy() = %q, want %q", got, tt.want)
 			}
 		})
 	}
