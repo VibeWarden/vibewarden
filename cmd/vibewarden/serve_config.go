@@ -107,6 +107,14 @@ func buildProxyConfig(cfg *config.Config, registry *plugins.Registry) *ports.Pro
 			Enabled:    cfg.Compression.Enabled,
 			Algorithms: cfg.Compression.Algorithms,
 		},
+		ResponseHeaders: ports.ResponseHeadersConfig{
+			Enabled: len(cfg.ResponseHeaders.Set) > 0 ||
+				len(cfg.ResponseHeaders.Add) > 0 ||
+				len(cfg.ResponseHeaders.Remove) > 0,
+			Set:    cfg.ResponseHeaders.Set,
+			Add:    cfg.ResponseHeaders.Add,
+			Remove: cfg.ResponseHeaders.Remove,
+		},
 	}
 }
 

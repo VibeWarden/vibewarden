@@ -47,7 +47,7 @@ func BuildCaddyConfig(cfg *ports.ProxyConfig) (map[string]any, error) {
 	}
 
 	// Build route handlers (middleware chain + reverse proxy).
-	// Middleware order: StripUserHeaders → SecurityHeaders → AdminAuth → BodySize → RateLimit → CircuitBreaker → Retry → Timeout → Compression → ReverseProxy
+	// Middleware order: StripUserHeaders → SecurityHeaders → ResponseHeaders → AdminAuth → BodySize → RateLimit → CircuitBreaker → Retry → Timeout → Compression → ReverseProxy
 	//
 	// The header strip handler MUST be first so that spoofed X-User-* headers sent
 	// by clients are removed before any other handler (including auth) runs.
@@ -58,6 +58,13 @@ func BuildCaddyConfig(cfg *ports.ProxyConfig) (map[string]any, error) {
 	// Add security headers handler if enabled.
 	if cfg.SecurityHeaders.Enabled {
 		handlers = append(handlers, buildSecurityHeadersHandler(cfg.SecurityHeaders, cfg.TLS.Enabled))
+	}
+
+	// Add response header modification handler if any rules are configured.
+	// This runs after security headers so that operator rules can override or
+	// extend headers set by the security-headers plugin.
+	if cfg.ResponseHeaders.Enabled {
+		handlers = append(handlers, buildResponseHeadersHandlerJSON(cfg.ResponseHeaders))
 	}
 
 	// Add admin auth handler. It is always included so that admin paths return

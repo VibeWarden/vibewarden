@@ -100,6 +100,42 @@ func buildSecurityHeadersHandler(cfg ports.SecurityHeadersConfig, tlsEnabled boo
 	}
 }
 
+// buildResponseHeadersHandlerJSON creates the Caddy headers handler that
+// applies operator-configured arbitrary response header modifications.
+//
+// Operations are applied in the order Caddy processes them: delete, then set,
+// then add. This matches the documented order of operations for the plugin.
+// Only non-empty sub-keys are included in the generated JSON to keep the
+// configuration minimal.
+func buildResponseHeadersHandlerJSON(cfg ports.ResponseHeadersConfig) map[string]any {
+	response := map[string]any{}
+
+	if len(cfg.Remove) > 0 {
+		response["delete"] = cfg.Remove
+	}
+
+	if len(cfg.Set) > 0 {
+		set := make(map[string][]string, len(cfg.Set))
+		for k, v := range cfg.Set {
+			set[k] = []string{v}
+		}
+		response["set"] = set
+	}
+
+	if len(cfg.Add) > 0 {
+		add := make(map[string][]string, len(cfg.Add))
+		for k, v := range cfg.Add {
+			add[k] = []string{v}
+		}
+		response["add"] = add
+	}
+
+	return map[string]any{
+		"handler":  "headers",
+		"response": response,
+	}
+}
+
 // buildCompressionHandlerJSON creates a Caddy encode handler that compresses
 // response bodies using the algorithms listed in cfg.Algorithms.
 //

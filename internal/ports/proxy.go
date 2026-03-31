@@ -73,6 +73,33 @@ type ProxyConfig struct {
 
 	// Compression configuration — controls response body compression.
 	Compression CompressionConfig
+
+	// ResponseHeaders configuration — controls arbitrary response header
+	// modifications applied after all other middleware (including security headers).
+	ResponseHeaders ResponseHeadersConfig
+}
+
+// ResponseHeadersConfig holds configuration for arbitrary response header modifications.
+// Operations are applied in the order: remove, then set, then add.
+// This handler is applied after security headers so that it can override or
+// extend any header set by the security-headers plugin.
+type ResponseHeadersConfig struct {
+	// Enabled toggles response header modification.
+	Enabled bool
+
+	// Set maps header names to values that overwrite the existing header value,
+	// or create the header if it is not already present.
+	// Values may reference environment variables using the ${VAR} syntax, which
+	// Caddy evaluates at request time via its placeholder mechanism.
+	Set map[string]string
+
+	// Add maps header names to values that are appended to the existing header
+	// value, or created when the header is not already present.
+	// Values may reference environment variables using the ${VAR} syntax.
+	Add map[string]string
+
+	// Remove is the list of header names to delete from every response.
+	Remove []string
 }
 
 // CompressionConfig holds configuration for response body compression.
