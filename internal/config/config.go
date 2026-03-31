@@ -212,6 +212,24 @@ type ServerConfig struct {
 	Host string `mapstructure:"host"`
 	// Port to listen on (default: 8443)
 	Port int `mapstructure:"port"`
+
+	// ReadTimeout is the maximum duration for reading the entire incoming
+	// request including body, expressed as a Go duration string (e.g. "30s").
+	// A value of "0" or "" disables the timeout (no limit).
+	// Default: "30s".
+	ReadTimeout string `mapstructure:"read_timeout"`
+
+	// WriteTimeout is the maximum duration before timing out writes of the
+	// response, expressed as a Go duration string (e.g. "60s").
+	// A value of "0" or "" disables the timeout (no limit).
+	// Default: "60s".
+	WriteTimeout string `mapstructure:"write_timeout"`
+
+	// IdleTimeout is the maximum amount of time to wait for the next request
+	// when keep-alives are enabled, expressed as a Go duration string (e.g. "120s").
+	// A value of "0" or "" disables the timeout (no limit).
+	// Default: "120s".
+	IdleTimeout string `mapstructure:"idle_timeout"`
 }
 
 // UpstreamConfig holds settings for the upstream application being protected.

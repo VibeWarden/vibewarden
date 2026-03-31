@@ -22,6 +22,27 @@ type ProxyServer interface {
 	Reload(ctx context.Context) error
 }
 
+// ServerTimeoutsConfig holds HTTP server-level timeout settings.
+// These are applied to the Caddy HTTP server and bound the total time for each
+// phase of an HTTP connection, independent of the upstream resilience timeout
+// (which only covers the time waiting for the upstream to respond).
+type ServerTimeoutsConfig struct {
+	// ReadTimeout is the maximum duration for reading the entire incoming request,
+	// including the body. A zero value means no timeout.
+	// Default: 30s.
+	ReadTimeout time.Duration
+
+	// WriteTimeout is the maximum duration before timing out writes of the
+	// response. A zero value means no timeout.
+	// Default: 60s.
+	WriteTimeout time.Duration
+
+	// IdleTimeout is the maximum amount of time to wait for the next request
+	// when keep-alives are enabled. A zero value means no timeout.
+	// Default: 120s.
+	IdleTimeout time.Duration
+}
+
 // ProxyConfig holds configuration for the proxy server.
 // This is a domain-agnostic configuration that ports can depend on.
 type ProxyConfig struct {
@@ -33,6 +54,9 @@ type ProxyConfig struct {
 
 	// Version is the binary version string, used in health check responses.
 	Version string
+
+	// ServerTimeouts holds HTTP server-level connection timeouts.
+	ServerTimeouts ServerTimeoutsConfig
 
 	// TLS configuration
 	TLS TLSConfig

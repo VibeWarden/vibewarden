@@ -2,6 +2,7 @@ package main
 
 import (
 	"testing"
+	"time"
 
 	"github.com/vibewarden/vibewarden/internal/config"
 )
@@ -104,6 +105,106 @@ func TestResolveCSP(t *testing.T) {
 			got := resolveCSP(tt.cfg)
 			if got != tt.want {
 				t.Errorf("resolveCSP() =\n  %q\nwant:\n  %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestBuildServerTimeoutsConfig(t *testing.T) {
+	tests := []struct {
+		name      string
+		serverCfg config.ServerConfig
+		wantRead  time.Duration
+		wantWrite time.Duration
+		wantIdle  time.Duration
+	}{
+		{
+			name:      "empty strings use defaults",
+			serverCfg: config.ServerConfig{},
+			wantRead:  30 * time.Second,
+			wantWrite: 60 * time.Second,
+			wantIdle:  120 * time.Second,
+		},
+		{
+			name: "explicit zero disables timeout",
+			serverCfg: config.ServerConfig{
+				ReadTimeout:  "0",
+				WriteTimeout: "0",
+				IdleTimeout:  "0",
+			},
+			wantRead:  0,
+			wantWrite: 0,
+			wantIdle:  0,
+		},
+		{
+			name: "custom valid durations are parsed",
+			serverCfg: config.ServerConfig{
+				ReadTimeout:  "10s",
+				WriteTimeout: "20s",
+				IdleTimeout:  "90s",
+			},
+			wantRead:  10 * time.Second,
+			wantWrite: 20 * time.Second,
+			wantIdle:  90 * time.Second,
+		},
+		{
+			name: "invalid read timeout falls back to default",
+			serverCfg: config.ServerConfig{
+				ReadTimeout:  "notaduration",
+				WriteTimeout: "60s",
+				IdleTimeout:  "120s",
+			},
+			wantRead:  30 * time.Second,
+			wantWrite: 60 * time.Second,
+			wantIdle:  120 * time.Second,
+		},
+		{
+			name: "invalid write timeout falls back to default",
+			serverCfg: config.ServerConfig{
+				ReadTimeout:  "30s",
+				WriteTimeout: "bad",
+				IdleTimeout:  "120s",
+			},
+			wantRead:  30 * time.Second,
+			wantWrite: 60 * time.Second,
+			wantIdle:  120 * time.Second,
+		},
+		{
+			name: "invalid idle timeout falls back to default",
+			serverCfg: config.ServerConfig{
+				ReadTimeout:  "30s",
+				WriteTimeout: "60s",
+				IdleTimeout:  "bad",
+			},
+			wantRead:  30 * time.Second,
+			wantWrite: 60 * time.Second,
+			wantIdle:  120 * time.Second,
+		},
+		{
+			name: "minute durations are accepted",
+			serverCfg: config.ServerConfig{
+				ReadTimeout:  "1m",
+				WriteTimeout: "2m",
+				IdleTimeout:  "5m",
+			},
+			wantRead:  time.Minute,
+			wantWrite: 2 * time.Minute,
+			wantIdle:  5 * time.Minute,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &config.Config{Server: tt.serverCfg}
+			got := buildServerTimeoutsConfig(cfg)
+			if got.ReadTimeout != tt.wantRead {
+				t.Errorf("ReadTimeout = %v, want %v", got.ReadTimeout, tt.wantRead)
+			}
+			if got.WriteTimeout != tt.wantWrite {
+				t.Errorf("WriteTimeout = %v, want %v", got.WriteTimeout, tt.wantWrite)
+			}
+			if got.IdleTimeout != tt.wantIdle {
+				t.Errorf("IdleTimeout = %v, want %v", got.IdleTimeout, tt.wantIdle)
 			}
 		})
 	}

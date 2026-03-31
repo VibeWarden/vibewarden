@@ -42,9 +42,10 @@ func buildProxyConfig(cfg *config.Config, registry *plugins.Registry) *ports.Pro
 	}
 
 	return &ports.ProxyConfig{
-		ListenAddr:   fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port),
-		UpstreamAddr: fmt.Sprintf("%s:%d", cfg.Upstream.Host, cfg.Upstream.Port),
-		Version:      version,
+		ListenAddr:     fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port),
+		UpstreamAddr:   fmt.Sprintf("%s:%d", cfg.Upstream.Host, cfg.Upstream.Port),
+		Version:        version,
+		ServerTimeouts: buildServerTimeoutsConfig(cfg),
 		TLS: ports.TLSConfig{
 			Enabled:     cfg.TLS.Enabled,
 			Provider:    ports.TLSProvider(cfg.TLS.Provider),
@@ -150,6 +151,51 @@ func buildBodySizePortsConfig(cfg *config.Config) ports.BodySizeConfig {
 	}
 
 	return bodySizeCfg
+}
+
+// buildServerTimeoutsConfig parses the server-level timeout duration strings and
+// returns a ports.ServerTimeoutsConfig. Unparseable values fall back to the
+// documented defaults (read: 30s, write: 60s, idle: 120s). A value of "0" or ""
+// disables that particular timeout (no limit).
+func buildServerTimeoutsConfig(cfg *config.Config) ports.ServerTimeoutsConfig {
+	result := ports.ServerTimeoutsConfig{}
+
+	parseTimeout := func(raw, name, defaultVal string) time.Duration {
+		if raw == "0" || raw == "" {
+			// Caller explicitly disabled the timeout.
+			return 0
+		}
+		d, err := time.ParseDuration(raw)
+		if err != nil {
+			slog.Default().Warn(fmt.Sprintf("server.%s parse error — using default %s", name, defaultVal),
+				slog.String("error", err.Error()),
+				slog.String("value", raw),
+			)
+			d, _ = time.ParseDuration(defaultVal)
+		}
+		return d
+	}
+
+	// Apply defaults when the field is empty (not explicitly set to "0").
+	readRaw := cfg.Server.ReadTimeout
+	if readRaw == "" {
+		readRaw = "30s"
+	}
+	result.ReadTimeout = parseTimeout(readRaw, "read_timeout", "30s")
+
+	writeRaw := cfg.Server.WriteTimeout
+	if writeRaw == "" {
+		writeRaw = "60s"
+	}
+	result.WriteTimeout = parseTimeout(writeRaw, "write_timeout", "60s")
+
+	idleRaw := cfg.Server.IdleTimeout
+	if idleRaw == "" {
+		idleRaw = "120s"
+	}
+	result.IdleTimeout = parseTimeout(idleRaw, "idle_timeout", "120s")
+
+	return result
 }
 
 // buildResiliencePortsConfig parses the resilience duration strings and returns
