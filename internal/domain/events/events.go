@@ -123,6 +123,11 @@ const (
 	// EventTypeAPIKeyForbidden is emitted when a valid API key is presented but
 	// lacks the required scopes to access the requested path+method combination.
 	EventTypeAPIKeyForbidden = "auth.api_key.forbidden"
+
+	// EventTypeMaintenanceRequestBlocked is emitted when a request is rejected
+	// because maintenance mode is enabled. The path and method of the blocked
+	// request are included in the payload.
+	EventTypeMaintenanceRequestBlocked = "maintenance.request_blocked"
 )
 
 // Event is the base structured log event.

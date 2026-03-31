@@ -12,6 +12,7 @@ import (
 	bodysizeplugin "github.com/vibewarden/vibewarden/internal/plugins/bodysize"
 	corsplugin "github.com/vibewarden/vibewarden/internal/plugins/cors"
 	ipfilterplugin "github.com/vibewarden/vibewarden/internal/plugins/ipfilter"
+	maintenanceplugin "github.com/vibewarden/vibewarden/internal/plugins/maintenance"
 	metricsplugin "github.com/vibewarden/vibewarden/internal/plugins/metrics"
 	ratelimitplugin "github.com/vibewarden/vibewarden/internal/plugins/ratelimit"
 	secretsplugin "github.com/vibewarden/vibewarden/internal/plugins/secrets"
@@ -30,6 +31,13 @@ func registerPlugins(
 	eventLogger ports.EventLogger,
 	logger *slog.Logger,
 ) {
+	// Maintenance mode — priority 5 (must run before all other middleware so
+	// that the sidecar is immediately quiesced during maintenance windows).
+	registry.Register(maintenanceplugin.New(maintenanceplugin.Config{
+		Enabled: cfg.Maintenance.Enabled,
+		Message: cfg.Maintenance.Message,
+	}, logger))
+
 	// IP filter — priority 15 (must run before all other middleware)
 	registry.Register(ipfilterplugin.New(ipfilterplugin.Config{
 		Enabled:           cfg.IPFilter.Enabled,
