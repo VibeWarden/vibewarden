@@ -104,6 +104,9 @@ type Config struct {
 
 	// ErrorPages configures custom error page responses for specific HTTP status codes.
 	ErrorPages ErrorPagesConfig `mapstructure:"error_pages"`
+
+	// Maintenance configures the maintenance mode plugin.
+	Maintenance MaintenanceConfig `mapstructure:"maintenance"`
 }
 
 // DatabasePoolConfig holds connection pool settings for PostgreSQL.
@@ -1191,6 +1194,19 @@ type ErrorPagesConfig struct {
 	// Directory is the path to the directory containing custom error page files.
 	// The directory must be readable at startup. Required when Enabled is true.
 	Directory string `mapstructure:"directory"`
+}
+
+// MaintenanceConfig holds all settings for the maintenance mode plugin.
+// It maps to the maintenance section of vibewarden.yaml.
+type MaintenanceConfig struct {
+	// Enabled toggles maintenance mode (default: false).
+	// When true, all requests except those to /_vibewarden/* paths receive
+	// a 503 Service Unavailable response.
+	Enabled bool `mapstructure:"enabled"`
+
+	// Message is the human-readable message returned to clients in the 503 body.
+	// Defaults to "Service is under maintenance" when empty.
+	Message string `mapstructure:"message"`
 }
 
 // Validate checks the loaded configuration for logical consistency.

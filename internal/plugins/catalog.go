@@ -24,6 +24,17 @@ type PluginDescriptor struct {
 // The order reflects the recommended initialisation priority.
 var Catalog = []PluginDescriptor{
 	{
+		Name:        "maintenance",
+		Description: "Maintenance mode: return 503 Service Unavailable for all requests except /_vibewarden/* health endpoints",
+		ConfigSchema: map[string]string{
+			"enabled": "Enable maintenance mode (default: false)",
+			"message": "Message returned to clients in the 503 response body (default: \"Service is under maintenance\")",
+		},
+		Example: `  maintenance:
+    enabled: true
+    message: "Scheduled maintenance — back in 30 minutes"`,
+	},
+	{
 		Name:        "waf",
 		Description: "WAF: Content-Type validation blocks body requests with missing or disallowed media types",
 		ConfigSchema: map[string]string{
