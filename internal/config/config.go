@@ -678,6 +678,10 @@ type LogConfig struct {
 	Level string `mapstructure:"level"`
 	// Format: "json" or "text" (default: "json")
 	Format string `mapstructure:"format"`
+	// AccessLog enables access logging of every completed HTTP request (default: true).
+	// When true, each request is logged at INFO level with method, path, status,
+	// duration, client IP, request ID, user agent, and bytes written.
+	AccessLog bool `mapstructure:"access_log"`
 }
 
 // AdminConfig holds admin API settings.
@@ -1785,6 +1789,7 @@ func Load(configPath string) (*Config, error) {
 	v.SetDefault("rate_limit.exempt_paths", []string{})
 	v.SetDefault("log.level", "info")
 	v.SetDefault("log.format", "json")
+	v.SetDefault("log.access_log", true)
 	v.SetDefault("admin.enabled", false)
 	v.SetDefault("admin.token", "")
 	v.SetDefault("security_headers.enabled", true)
