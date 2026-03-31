@@ -251,6 +251,7 @@ Minimal reference apps showing VibeWarden in front of common stacks:
 | Node.js / Express | [examples/node-express](examples/node-express/) | 3000 |
 | Python / Flask | [examples/python-flask](examples/python-flask/) | 5000 |
 | Next.js | [examples/nextjs](examples/nextjs/) | 3000 |
+| Spring Boot | [examples/spring-boot](examples/spring-boot/) | 3000 |
 
 Each example exposes `/health`, `/public`, and `/protected` endpoints and
 includes a `vibewarden.yaml`, `Dockerfile`, and a 3-step quick start README.
