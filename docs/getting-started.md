@@ -10,6 +10,12 @@ and explains what happens under the hood.
 - **Docker Engine 27+** and **Docker Compose v2+** installed and running.
 - Your app listening on a local port (e.g., `3000`).
 
+!!! note "Multi-architecture support"
+    VibeWarden Docker images are published as multi-arch manifests covering
+    `linux/amd64` and `linux/arm64`. Docker selects the correct image automatically —
+    no extra flags needed on Apple Silicon (M1/M2/M3) or ARM64 servers such as
+    AWS Graviton.
+
 ---
 
 ## Step 1 — Install the `vibew` wrapper

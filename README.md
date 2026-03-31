@@ -36,6 +36,10 @@ Invoke-WebRequest -Uri https://vibewarden.dev/vibew.ps1 -OutFile vibew.ps1
 .\vibew.ps1 dev
 ```
 
+Docker images are published to `ghcr.io/vibewarden/vibewarden` as multi-arch manifests
+covering `linux/amd64` and `linux/arm64`. Docker pulls the correct image automatically
+on both x86-64 servers and ARM64 machines (Apple Silicon, AWS Graviton).
+
 ---
 
 ## What `init` generates
@@ -115,6 +119,7 @@ It never holds external secrets or connects directly to third-party APIs.
 | AI-readable logs | Versioned JSON schema: `schema_version`, `event_type`, `ai_summary`, `payload` |
 | Audit log sinks | JSON file, OTel logs, webhook (HMAC-signed) with retry |
 | Admin API | User management at `/_vibewarden/admin/*` (bearer-token protected) |
+| Docker images | Multi-arch: `linux/amd64` and `linux/arm64` (Apple Silicon, AWS Graviton) |
 | Docker Compose | Profile-based: `--profile observability`, `--profile demo` |
 
 ---
