@@ -11,9 +11,12 @@ import (
 
 	caddyadapter "github.com/vibewarden/vibewarden/internal/adapters/caddy"
 	logadapter "github.com/vibewarden/vibewarden/internal/adapters/log"
+	pgadapter "github.com/vibewarden/vibewarden/internal/adapters/postgres"
+	migratesvc "github.com/vibewarden/vibewarden/internal/app/migrate"
 	"github.com/vibewarden/vibewarden/internal/app/proxy"
 	"github.com/vibewarden/vibewarden/internal/config"
 	"github.com/vibewarden/vibewarden/internal/plugins"
+	"github.com/vibewarden/vibewarden/migrations"
 )
 
 // Options configures the RunServe function behavior.
@@ -53,6 +56,25 @@ func RunServe(ctx context.Context, opts Options, extraPlugins ...plugins.PluginR
 		slog.String("listen", fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port)),
 		slog.String("upstream", fmt.Sprintf("%s:%d", cfg.Upstream.Host, cfg.Upstream.Port)),
 	)
+
+	// Run database migrations before plugin init when a database is configured.
+	if dbURL := cfg.Database.ResolveURL(); dbURL != "" {
+		runner, err := pgadapter.NewMigrationAdapter(dbURL, migrations.FS)
+		if err != nil {
+			return fmt.Errorf("creating migration runner: %w", err)
+		}
+
+		svc := migratesvc.NewService(runner, logger)
+		defer func() {
+			if closeErr := svc.Close(); closeErr != nil {
+				logger.Error("closing migration runner", slog.String("error", closeErr.Error()))
+			}
+		}()
+
+		if err := svc.Up(ctx); err != nil {
+			return fmt.Errorf("running database migrations: %w", err)
+		}
+	}
 
 	// Build the plugin registry and register all compiled-in plugins.
 	// At registration time we use a stdout-only event logger. After InitAll,
