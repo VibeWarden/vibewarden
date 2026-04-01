@@ -119,6 +119,47 @@ type Config struct {
 	ResponseHeaders ResponseHeadersConfig `mapstructure:"response_headers"`
 }
 
+// InternalNetworkName returns the Docker network name used for internal
+// service-to-service communication. When network isolation is enabled it
+// returns "vibewarden-internal"; otherwise it returns the legacy single
+// network name "vibewarden".
+func (c *Config) InternalNetworkName() string {
+	if c.Egress.IsNetworkIsolationEnabled() {
+		return "vibewarden-internal"
+	}
+	return "vibewarden"
+}
+
+// EgressNoProxy builds the NO_PROXY value for the app service based on which
+// internal services are enabled in the configuration. The value always includes
+// localhost and the vibewarden service name. Additional services are appended
+// based on configuration flags (e.g., kratos, openbao, redis).
+func (c *Config) EgressNoProxy() string {
+	parts := []string{"localhost", "127.0.0.1", "vibewarden"}
+
+	kratosMode := c.Auth.Enabled && c.Auth.Mode == AuthModeKratos && !c.Kratos.External
+	if kratosMode {
+		parts = append(parts, "kratos")
+		if c.Database.ExternalURL == "" {
+			parts = append(parts, "kratos-db")
+		}
+	}
+
+	if c.Secrets.Enabled {
+		parts = append(parts, "openbao")
+	}
+
+	if c.RateLimit.Store == "redis" && !c.RateLimit.Redis.HasExternalURL() {
+		parts = append(parts, "redis")
+	}
+
+	if c.Observability.Enabled {
+		parts = append(parts, "prometheus", "loki", "promtail", "otel-collector", "jaeger", "grafana")
+	}
+
+	return strings.Join(parts, ",")
+}
+
 // DatabasePoolConfig holds connection pool settings for PostgreSQL.
 type DatabasePoolConfig struct {
 	// MaxConns is the maximum number of open connections in the pool.

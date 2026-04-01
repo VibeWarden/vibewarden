@@ -5,6 +5,7 @@ package generate
 import (
 	"context"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -75,6 +76,17 @@ func (s *Service) Generate(ctx context.Context, cfg *config.Config, outputDir st
 	// Validate prod profile requirements before generating any files.
 	if cfg.Profile == "prod" && !cfg.Secrets.Enabled {
 		return fmt.Errorf("prod profile requires secrets.enabled: true (OpenBao is mandatory for production)")
+	}
+
+	// Emit egress-related warnings to stderr via slog.
+	for _, w := range cfg.Egress.EgressWarnings() {
+		slog.Warn(w)
+	}
+
+	// Warn when network isolation is enabled but the app is not containerized.
+	// A host-mode app bypasses Docker network isolation entirely.
+	if cfg.Egress.IsNetworkIsolationEnabled() && cfg.App.Build == "" && cfg.App.Image == "" {
+		slog.Warn("Network isolation is enabled but app.build and app.image are both empty: host-mode app bypasses Docker network isolation")
 	}
 
 	// kratosMode is true only when auth is enabled and mode is "kratos" and

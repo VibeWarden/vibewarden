@@ -43,7 +43,13 @@ services:
     image: ${VIBEWARDEN_APP_IMAGE:-{{ .App.Image }}}
 {{- end }}
     networks:
-      - vibewarden
+      - {{ .InternalNetworkName }}
+{{- if .Egress.Enabled }}
+    environment:
+      - HTTP_PROXY=http://vibewarden:{{ .Egress.ListenPort }}
+      - HTTPS_PROXY=http://vibewarden:{{ .Egress.ListenPort }}
+      - NO_PROXY={{ .EgressNoProxy }}
+{{- end }}
 {{- if ne .App.Healthcheck "none" }}
     healthcheck:
       test: ["CMD-SHELL", "{{ if .App.Healthcheck }}{{ .App.Healthcheck }}{{ else }}wget -q --spider http://localhost:{{ .Upstream.Port }}/health || exit 1{{ end }}"]
@@ -92,12 +98,18 @@ services:
       - VIBEWARDEN_TELEMETRY_OTLP_ENDPOINT=http://otel-collector:4318
       - VIBEWARDEN_TELEMETRY_LOGS_OTLP=true
 {{- end }}
+{{- if .Egress.Enabled }}
+      - VIBEWARDEN_EGRESS_LISTEN=0.0.0.0:{{ .Egress.ListenPort }}
+{{- end }}
 {{- if not (or .App.Build .App.Image) }}
     extra_hosts:
       - "host.docker.internal:host-gateway"
 {{- end }}
     networks:
-      - vibewarden
+      - {{ .InternalNetworkName }}
+{{- if .Egress.IsNetworkIsolationEnabled }}
+      - vibewarden-external
+{{- end }}
 {{- if or (and .Auth.Enabled (eq (printf "%s" .Auth.Mode) "kratos") (not .Kratos.External)) .App.Build .App.Image .Secrets.Enabled (and (eq .RateLimit.Store "redis") (not (.RateLimit.Redis.HasExternalURL))) }}
     depends_on:
 {{- if or .App.Build .App.Image }}
@@ -135,7 +147,7 @@ services:
     volumes:
       - kratos-db-data:/var/lib/postgresql/data
     networks:
-      - vibewarden
+      - {{ .InternalNetworkName }}
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U kratos"]
       interval: 5s
@@ -156,7 +168,7 @@ services:
       kratos-db:
         condition: service_healthy
     networks:
-      - vibewarden
+      - {{ .InternalNetworkName }}
 {{- end }}
 
   kratos:
@@ -179,7 +191,7 @@ services:
     volumes:
       - ./kratos:/etc/kratos:ro
     networks:
-      - vibewarden
+      - {{ .InternalNetworkName }}
 {{- if eq .Database.ExternalURL "" }}
     depends_on:
       kratos-migrate:
@@ -207,7 +219,7 @@ services:
     ports:
       - "8200:8200"
     networks:
-      - vibewarden
+      - {{ .InternalNetworkName }}
     healthcheck:
       test: ["CMD-SHELL", "BAO_ADDR=http://127.0.0.1:8200 bao status"]
       interval: 10s
@@ -233,7 +245,7 @@ services:
       openbao:
         condition: service_healthy
     networks:
-      - vibewarden
+      - {{ .InternalNetworkName }}
     restart: "no"
 {{- end }}
 {{- if and .Auth.Enabled (eq (printf "%s" .Auth.Mode) "kratos") (not .Kratos.External) }}
@@ -249,7 +261,7 @@ services:
       kratos:
         condition: service_healthy
     networks:
-      - vibewarden
+      - {{ .InternalNetworkName }}
     restart: "no"
 {{- end }}
 {{- if and (eq .RateLimit.Store "redis") (not (.RateLimit.Redis.HasExternalURL)) }}
@@ -261,7 +273,7 @@ services:
     volumes:
       - redis-data:/data
     networks:
-      - vibewarden
+      - {{ .InternalNetworkName }}
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
@@ -286,7 +298,7 @@ services:
       - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
       - prometheus-data:/prometheus
     networks:
-      - vibewarden
+      - {{ .InternalNetworkName }}
     healthcheck:
       test: ["CMD", "wget", "-q", "--spider", "http://localhost:9090/-/healthy"]
       interval: 10s
@@ -305,7 +317,7 @@ services:
       - ./observability/loki/loki-config.yml:/etc/loki/loki-config.yml:ro
       - loki-data:/loki
     networks:
-      - vibewarden
+      - {{ .InternalNetworkName }}
     healthcheck:
       test: ["CMD-SHELL", "wget -q --spider http://localhost:3100/ready || exit 1"]
       interval: 10s
@@ -323,7 +335,7 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
     networks:
-      - vibewarden
+      - {{ .InternalNetworkName }}
     depends_on:
       loki:
         condition: service_healthy
@@ -337,7 +349,7 @@ services:
     volumes:
       - ./observability/otel-collector/config.yaml:/etc/otelcol-contrib/config.yaml:ro
     networks:
-      - vibewarden
+      - {{ .InternalNetworkName }}
     depends_on:
       loki:
         condition: service_healthy
@@ -356,7 +368,7 @@ services:
     environment:
       COLLECTOR_OTLP_ENABLED: "true"
     networks:
-      - vibewarden
+      - {{ .InternalNetworkName }}
     healthcheck:
       test: ["CMD-SHELL", "wget -q --spider http://localhost:16686/ || exit 1"]
       interval: 10s
@@ -382,7 +394,7 @@ services:
       - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
       - grafana-data:/var/lib/grafana
     networks:
-      - vibewarden
+      - {{ .InternalNetworkName }}
     depends_on:
       prometheus:
         condition: service_healthy
@@ -400,8 +412,16 @@ services:
 {{- end }}
 
 networks:
+{{- if .Egress.IsNetworkIsolationEnabled }}
+  vibewarden-internal:
+    driver: bridge
+    internal: true
+  vibewarden-external:
+    driver: bridge
+{{- else }}
   vibewarden:
     driver: bridge
+{{- end }}
 {{- if or (and .Auth.Enabled (eq (printf "%s" .Auth.Mode) "kratos") (not .Kratos.External) (eq .Database.ExternalURL "")) .TLS.Enabled (and (eq .RateLimit.Store "redis") (not (.RateLimit.Redis.HasExternalURL))) .Observability.Enabled }}
 
 volumes:

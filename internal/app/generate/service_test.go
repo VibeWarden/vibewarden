@@ -1882,3 +1882,114 @@ func TestGenerate_Compose_ExternalKratosSkipsKratosFiles(t *testing.T) {
 		t.Errorf("docker-compose.yml should exist: %v", err)
 	}
 }
+
+// TestGenerate_EgressIsolationOn verifies that when egress is enabled with
+// network isolation on (the default), the generated docker-compose.yml uses
+// the dual-network topology: vibewarden-internal (internal: true) and
+// vibewarden-external, with the app on the internal network only and
+// vibewarden bridging both.
+func TestGenerate_EgressIsolationOn(t *testing.T) {
+	cfg := &config.Config{
+		Server:   config.ServerConfig{Host: "127.0.0.1", Port: 8080},
+		Upstream: config.UpstreamConfig{Host: "127.0.0.1", Port: 3000},
+		App:      config.AppConfig{Build: "."},
+		Egress: config.EgressConfig{
+			Enabled: true,
+			Listen:  "127.0.0.1:8081",
+		},
+	}
+
+	compose := renderCompose(t, cfg)
+
+	mustContain := []string{
+		"vibewarden-internal:",
+		"internal: true",
+		"vibewarden-external:",
+		"HTTP_PROXY=http://vibewarden:8081",
+		"HTTPS_PROXY=http://vibewarden:8081",
+		"NO_PROXY=localhost,127.0.0.1,vibewarden",
+		"VIBEWARDEN_EGRESS_LISTEN=0.0.0.0:8081",
+	}
+	for _, want := range mustContain {
+		if !bytes.Contains(compose, []byte(want)) {
+			t.Errorf("isolation-on compose missing %q", want)
+		}
+	}
+
+	// The single "vibewarden:" network definition should NOT appear as a
+	// top-level network (it will appear as a service name, so check the
+	// networks: section specifically).
+	if bytes.Contains(compose, []byte("\n  vibewarden:\n    driver: bridge\n")) {
+		t.Error("isolation-on compose should not have single 'vibewarden' network")
+	}
+}
+
+// TestGenerate_EgressIsolationOff verifies that when egress is enabled but
+// network isolation is explicitly disabled, the generated docker-compose.yml
+// uses a single bridge network and still injects proxy environment variables
+// and VIBEWARDEN_EGRESS_LISTEN.
+func TestGenerate_EgressIsolationOff(t *testing.T) {
+	isolationOff := false
+	cfg := &config.Config{
+		Server:   config.ServerConfig{Host: "127.0.0.1", Port: 8080},
+		Upstream: config.UpstreamConfig{Host: "127.0.0.1", Port: 3000},
+		App:      config.AppConfig{Build: "."},
+		Egress: config.EgressConfig{
+			Enabled:          true,
+			Listen:           "127.0.0.1:8081",
+			NetworkIsolation: &isolationOff,
+		},
+	}
+
+	compose := renderCompose(t, cfg)
+
+	mustContain := []string{
+		"HTTP_PROXY=http://vibewarden:8081",
+		"HTTPS_PROXY=http://vibewarden:8081",
+		"NO_PROXY=localhost,127.0.0.1,vibewarden",
+		"VIBEWARDEN_EGRESS_LISTEN=0.0.0.0:8081",
+	}
+	for _, want := range mustContain {
+		if !bytes.Contains(compose, []byte(want)) {
+			t.Errorf("isolation-off compose missing %q", want)
+		}
+	}
+
+	// Single network topology: "vibewarden" network, no "vibewarden-internal"
+	// or "vibewarden-external".
+	mustNotContain := []string{
+		"vibewarden-internal:",
+		"vibewarden-external:",
+		"internal: true",
+	}
+	for _, absent := range mustNotContain {
+		if bytes.Contains(compose, []byte(absent)) {
+			t.Errorf("isolation-off compose should not contain %q", absent)
+		}
+	}
+}
+
+// TestGenerate_EgressDisabledNoProxyVars verifies that when egress is disabled,
+// no proxy environment variables or VIBEWARDEN_EGRESS_LISTEN are injected.
+func TestGenerate_EgressDisabledNoProxyVars(t *testing.T) {
+	cfg := &config.Config{
+		Server:   config.ServerConfig{Host: "127.0.0.1", Port: 8080},
+		Upstream: config.UpstreamConfig{Host: "127.0.0.1", Port: 3000},
+		App:      config.AppConfig{Build: "."},
+		Egress:   config.EgressConfig{Enabled: false},
+	}
+
+	compose := renderCompose(t, cfg)
+
+	mustNotContain := []string{
+		"HTTP_PROXY=",
+		"HTTPS_PROXY=",
+		"NO_PROXY=",
+		"VIBEWARDEN_EGRESS_LISTEN=",
+	}
+	for _, absent := range mustNotContain {
+		if bytes.Contains(compose, []byte(absent)) {
+			t.Errorf("egress-disabled compose should not contain %q", absent)
+		}
+	}
+}
