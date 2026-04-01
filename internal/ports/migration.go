@@ -6,16 +6,20 @@ package ports
 
 import "context"
 
-// MigrationVersion represents the current state of database migrations.
-type MigrationVersion struct {
-	// Version is the current migration version number. A value of -1
+// MigrationStatus represents the current state of database migrations.
+type MigrationStatus struct {
+	// CurrentVersion is the current migration version number. A value of -1
 	// indicates that no migrations have been applied (the NilVersion
 	// sentinel from golang-migrate).
-	Version int
+	CurrentVersion int
 
 	// Dirty is true when a migration failed mid-execution and the
 	// database is in an inconsistent state requiring manual intervention.
 	Dirty bool
+
+	// PendingCount is the number of migrations that have not yet been
+	// applied. A value of 0 means the database is fully up to date.
+	PendingCount int
 }
 
 // MigrationRunner abstracts database schema migration operations.
@@ -32,9 +36,10 @@ type MigrationRunner interface {
 	// error if no migrations have been applied.
 	Down(ctx context.Context) error
 
-	// Version returns the current migration version and dirty state. A
-	// version of -1 means no migrations have been applied yet.
-	Version(ctx context.Context) (MigrationVersion, error)
+	// Status returns the current migration status including version,
+	// dirty state, and pending migration count. A CurrentVersion of -1
+	// means no migrations have been applied yet.
+	Status(ctx context.Context) (MigrationStatus, error)
 
 	// Close releases any resources held by the runner (e.g. database
 	// connections). It must be called when the runner is no longer needed.

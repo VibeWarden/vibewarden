@@ -105,7 +105,7 @@ func runMigrateUp(cmd *cobra.Command, configPath string) error {
 	}
 	defer svc.Close() //nolint:errcheck
 
-	if err := svc.Up(cmd.Context()); err != nil {
+	if err := svc.ApplyAll(cmd.Context()); err != nil {
 		return fmt.Errorf("migrate up: %w", err)
 	}
 
@@ -120,7 +120,7 @@ func runMigrateDown(cmd *cobra.Command, configPath string) error {
 	}
 	defer svc.Close() //nolint:errcheck
 
-	if err := svc.Down(cmd.Context()); err != nil {
+	if err := svc.Rollback(cmd.Context()); err != nil {
 		return fmt.Errorf("migrate down: %w", err)
 	}
 
@@ -135,19 +135,8 @@ func runMigrateStatus(cmd *cobra.Command, configPath string) error {
 	}
 	defer svc.Close() //nolint:errcheck
 
-	v, err := svc.Status(cmd.Context())
-	if err != nil {
+	if err := svc.PrintStatus(cmd.Context(), cmd.OutOrStdout()); err != nil {
 		return fmt.Errorf("migrate status: %w", err)
-	}
-
-	if v.Version == -1 {
-		fmt.Fprintln(cmd.OutOrStdout(), "No migrations applied yet.")
-	} else {
-		fmt.Fprintf(cmd.OutOrStdout(), "Current version: %d\n", v.Version)
-	}
-
-	if v.Dirty {
-		fmt.Fprintln(cmd.OutOrStdout(), "WARNING: database is in a dirty state — manual intervention required.")
 	}
 
 	return nil

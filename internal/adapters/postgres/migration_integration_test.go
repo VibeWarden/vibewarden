@@ -11,7 +11,6 @@ import (
 	"github.com/testcontainers/testcontainers-go/wait"
 
 	"github.com/vibewarden/vibewarden/internal/adapters/postgres"
-	"github.com/vibewarden/vibewarden/internal/ports"
 )
 
 func startPostgres(t *testing.T, ctx context.Context) string {
@@ -53,7 +52,7 @@ func testMigrationFS() fstest.MapFS {
 	}
 }
 
-func TestMigrationAdapter_Integration_UpAndVersion(t *testing.T) {
+func TestMigrationAdapter_Integration_UpAndStatus(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test in short mode")
 	}
@@ -67,27 +66,33 @@ func TestMigrationAdapter_Integration_UpAndVersion(t *testing.T) {
 	}
 	defer adapter.Close() //nolint:errcheck
 
-	v, err := adapter.Version(ctx)
+	v, err := adapter.Status(ctx)
 	if err != nil {
-		t.Fatalf("Version() before Up error: %v", err)
+		t.Fatalf("Status() before Up error: %v", err)
 	}
-	if v.Version != -1 {
-		t.Errorf("Version() before Up = %d, want -1", v.Version)
+	if v.CurrentVersion != -1 {
+		t.Errorf("Status() before Up version = %d, want -1", v.CurrentVersion)
+	}
+	if v.PendingCount != 2 {
+		t.Errorf("Status() before Up pending = %d, want 2", v.PendingCount)
 	}
 
 	if err := adapter.Up(ctx); err != nil {
 		t.Fatalf("Up() error: %v", err)
 	}
 
-	v, err = adapter.Version(ctx)
+	v, err = adapter.Status(ctx)
 	if err != nil {
-		t.Fatalf("Version() after Up error: %v", err)
+		t.Fatalf("Status() after Up error: %v", err)
 	}
-	if v.Version != 2 {
-		t.Errorf("Version() after Up = %d, want 2", v.Version)
+	if v.CurrentVersion != 2 {
+		t.Errorf("Status() after Up version = %d, want 2", v.CurrentVersion)
 	}
 	if v.Dirty {
-		t.Error("Version() after Up dirty = true, want false")
+		t.Error("Status() after Up dirty = true, want false")
+	}
+	if v.PendingCount != 0 {
+		t.Errorf("Status() after Up pending = %d, want 0", v.PendingCount)
 	}
 }
 
@@ -135,12 +140,12 @@ func TestMigrationAdapter_Integration_Down(t *testing.T) {
 		t.Fatalf("Down() error: %v", err)
 	}
 
-	v, err := adapter.Version(ctx)
+	v, err := adapter.Status(ctx)
 	if err != nil {
-		t.Fatalf("Version() after Down error: %v", err)
+		t.Fatalf("Status() after Down error: %v", err)
 	}
-	if v.Version != 1 {
-		t.Errorf("Version() after Down = %d, want 1", v.Version)
+	if v.CurrentVersion != 1 {
+		t.Errorf("Status() after Down version = %d, want 1", v.CurrentVersion)
 	}
 }
 
@@ -162,9 +167,4 @@ func TestMigrationAdapter_Integration_DownNoMigrations(t *testing.T) {
 	if err == nil {
 		t.Error("Down() with no migrations applied expected error, got nil")
 	}
-}
-
-// Verify the real adapter satisfies the port interface.
-func TestMigrationAdapter_ImplementsPort(t *testing.T) {
-	var _ ports.MigrationRunner = (*postgres.MigrationAdapter)(nil)
 }

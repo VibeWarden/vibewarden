@@ -71,9 +71,11 @@ func RunServe(ctx context.Context, opts Options, extraPlugins ...plugins.PluginR
 			}
 		}()
 
-		if err := svc.Up(ctx); err != nil {
+		if err := svc.ApplyAll(ctx); err != nil {
 			return fmt.Errorf("running database migrations: %w", err)
 		}
+	} else {
+		logger.Debug("no database configured, skipping migrations")
 	}
 
 	// Build the plugin registry and register all compiled-in plugins.

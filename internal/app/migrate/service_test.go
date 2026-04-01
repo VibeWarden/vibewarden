@@ -1,10 +1,12 @@
 package migrate_test
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"log/slog"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/vibewarden/vibewarden/internal/app/migrate"
@@ -13,22 +15,22 @@ import (
 
 // fakeMigrationRunner is a simple test double for ports.MigrationRunner.
 type fakeMigrationRunner struct {
-	version    ports.MigrationVersion
+	status     ports.MigrationStatus
 	upCalled   bool
 	downCalled bool
 	closed     bool
 
-	upErr      error
-	downErr    error
-	versionErr error
-	closeErr   error
+	upErr     error
+	downErr   error
+	statusErr error
+	closeErr  error
 
-	// versionAfterUp allows simulating a version bump after Up.
-	versionAfterUp *ports.MigrationVersion
-	// versionAfterDown allows simulating a version change after Down.
-	versionAfterDown *ports.MigrationVersion
+	// statusAfterUp allows simulating a version bump after Up.
+	statusAfterUp *ports.MigrationStatus
+	// statusAfterDown allows simulating a version change after Down.
+	statusAfterDown *ports.MigrationStatus
 
-	versionCallCount int
+	statusCallCount int
 }
 
 func (f *fakeMigrationRunner) Up(_ context.Context) error {
@@ -36,8 +38,8 @@ func (f *fakeMigrationRunner) Up(_ context.Context) error {
 	if f.upErr != nil {
 		return f.upErr
 	}
-	if f.versionAfterUp != nil {
-		f.version = *f.versionAfterUp
+	if f.statusAfterUp != nil {
+		f.status = *f.statusAfterUp
 	}
 	return nil
 }
@@ -47,18 +49,18 @@ func (f *fakeMigrationRunner) Down(_ context.Context) error {
 	if f.downErr != nil {
 		return f.downErr
 	}
-	if f.versionAfterDown != nil {
-		f.version = *f.versionAfterDown
+	if f.statusAfterDown != nil {
+		f.status = *f.statusAfterDown
 	}
 	return nil
 }
 
-func (f *fakeMigrationRunner) Version(_ context.Context) (ports.MigrationVersion, error) {
-	f.versionCallCount++
-	if f.versionErr != nil {
-		return ports.MigrationVersion{}, f.versionErr
+func (f *fakeMigrationRunner) Status(_ context.Context) (ports.MigrationStatus, error) {
+	f.statusCallCount++
+	if f.statusErr != nil {
+		return ports.MigrationStatus{}, f.statusErr
 	}
-	return f.version, nil
+	return f.status, nil
 }
 
 func (f *fakeMigrationRunner) Close() error {
@@ -70,7 +72,7 @@ func testLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelError}))
 }
 
-func TestService_Up(t *testing.T) {
+func TestService_ApplyAll(t *testing.T) {
 	tests := []struct {
 		name    string
 		runner  *fakeMigrationRunner
@@ -79,23 +81,23 @@ func TestService_Up(t *testing.T) {
 		{
 			name: "successful migration",
 			runner: &fakeMigrationRunner{
-				version:        ports.MigrationVersion{Version: -1},
-				versionAfterUp: &ports.MigrationVersion{Version: 20260326120000},
+				status:        ports.MigrationStatus{CurrentVersion: -1, PendingCount: 2},
+				statusAfterUp: &ports.MigrationStatus{CurrentVersion: 20260326120000, PendingCount: 0},
 			},
 			wantErr: false,
 		},
 		{
 			name: "up returns error",
 			runner: &fakeMigrationRunner{
-				version: ports.MigrationVersion{Version: -1},
-				upErr:   errors.New("connection refused"),
+				status: ports.MigrationStatus{CurrentVersion: -1},
+				upErr:  errors.New("connection refused"),
 			},
 			wantErr: true,
 		},
 		{
-			name: "version read error before up",
+			name: "status read error before apply",
 			runner: &fakeMigrationRunner{
-				versionErr: errors.New("timeout"),
+				statusErr: errors.New("timeout"),
 			},
 			wantErr: true,
 		},
@@ -104,18 +106,18 @@ func TestService_Up(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			svc := migrate.NewService(tt.runner, testLogger())
-			err := svc.Up(context.Background())
+			err := svc.ApplyAll(context.Background())
 			if (err != nil) != tt.wantErr {
-				t.Errorf("Up() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("ApplyAll() error = %v, wantErr %v", err, tt.wantErr)
 			}
 			if !tt.wantErr && !tt.runner.upCalled {
-				t.Error("Up() did not call runner.Up()")
+				t.Error("ApplyAll() did not call runner.Up()")
 			}
 		})
 	}
 }
 
-func TestService_Down(t *testing.T) {
+func TestService_Rollback(t *testing.T) {
 	tests := []struct {
 		name    string
 		runner  *fakeMigrationRunner
@@ -124,15 +126,15 @@ func TestService_Down(t *testing.T) {
 		{
 			name: "successful rollback",
 			runner: &fakeMigrationRunner{
-				version:          ports.MigrationVersion{Version: 20260326120000},
-				versionAfterDown: &ports.MigrationVersion{Version: -1},
+				status:          ports.MigrationStatus{CurrentVersion: 20260326120000},
+				statusAfterDown: &ports.MigrationStatus{CurrentVersion: -1},
 			},
 			wantErr: false,
 		},
 		{
 			name: "down returns error",
 			runner: &fakeMigrationRunner{
-				version: ports.MigrationVersion{Version: 20260326120000},
+				status:  ports.MigrationStatus{CurrentVersion: 20260326120000},
 				downErr: errors.New("no migrations to roll back"),
 			},
 			wantErr: true,
@@ -142,56 +144,54 @@ func TestService_Down(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			svc := migrate.NewService(tt.runner, testLogger())
-			err := svc.Down(context.Background())
+			err := svc.Rollback(context.Background())
 			if (err != nil) != tt.wantErr {
-				t.Errorf("Down() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("Rollback() error = %v, wantErr %v", err, tt.wantErr)
 			}
 			if !tt.wantErr && !tt.runner.downCalled {
-				t.Error("Down() did not call runner.Down()")
+				t.Error("Rollback() did not call runner.Down()")
 			}
 		})
 	}
 }
 
-func TestService_Status(t *testing.T) {
+func TestService_PrintStatus(t *testing.T) {
 	tests := []struct {
-		name        string
-		runner      *fakeMigrationRunner
-		wantVersion int
-		wantDirty   bool
-		wantErr     bool
+		name           string
+		runner         *fakeMigrationRunner
+		wantErr        bool
+		wantContains   []string
+		wantNotContain []string
 	}{
 		{
 			name: "no migrations applied",
 			runner: &fakeMigrationRunner{
-				version: ports.MigrationVersion{Version: -1, Dirty: false},
+				status: ports.MigrationStatus{CurrentVersion: -1, Dirty: false, PendingCount: 2},
 			},
-			wantVersion: -1,
-			wantDirty:   false,
-			wantErr:     false,
+			wantErr:      false,
+			wantContains: []string{"No migrations applied yet.", "Pending migrations: 2"},
 		},
 		{
 			name: "migration applied and clean",
 			runner: &fakeMigrationRunner{
-				version: ports.MigrationVersion{Version: 20260326120000, Dirty: false},
+				status: ports.MigrationStatus{CurrentVersion: 20260326120000, Dirty: false, PendingCount: 0},
 			},
-			wantVersion: 20260326120000,
-			wantDirty:   false,
-			wantErr:     false,
+			wantErr:        false,
+			wantContains:   []string{"Current version: 20260326120000"},
+			wantNotContain: []string{"WARNING", "Pending"},
 		},
 		{
 			name: "dirty state",
 			runner: &fakeMigrationRunner{
-				version: ports.MigrationVersion{Version: 20260326120000, Dirty: true},
+				status: ports.MigrationStatus{CurrentVersion: 20260326120000, Dirty: true},
 			},
-			wantVersion: 20260326120000,
-			wantDirty:   true,
-			wantErr:     false,
+			wantErr:      false,
+			wantContains: []string{"Current version: 20260326120000", "WARNING"},
 		},
 		{
-			name: "version read error",
+			name: "status read error",
 			runner: &fakeMigrationRunner{
-				versionErr: errors.New("connection lost"),
+				statusErr: errors.New("connection lost"),
 			},
 			wantErr: true,
 		},
@@ -200,16 +200,22 @@ func TestService_Status(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			svc := migrate.NewService(tt.runner, testLogger())
-			v, err := svc.Status(context.Background())
+			var buf bytes.Buffer
+			err := svc.PrintStatus(context.Background(), &buf)
 			if (err != nil) != tt.wantErr {
-				t.Errorf("Status() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("PrintStatus() error = %v, wantErr %v", err, tt.wantErr)
 			}
 			if !tt.wantErr {
-				if v.Version != tt.wantVersion {
-					t.Errorf("Status() version = %d, want %d", v.Version, tt.wantVersion)
+				output := buf.String()
+				for _, want := range tt.wantContains {
+					if !strings.Contains(output, want) {
+						t.Errorf("PrintStatus() output missing %q, got: %q", want, output)
+					}
 				}
-				if v.Dirty != tt.wantDirty {
-					t.Errorf("Status() dirty = %v, want %v", v.Dirty, tt.wantDirty)
+				for _, notWant := range tt.wantNotContain {
+					if strings.Contains(output, notWant) {
+						t.Errorf("PrintStatus() output should not contain %q, got: %q", notWant, output)
+					}
 				}
 			}
 		})
