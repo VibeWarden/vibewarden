@@ -65,8 +65,10 @@ log:
 admin:
   enabled: false
 
-metrics:
+telemetry:
   enabled: true
+  prometheus:
+    enabled: true
   path_patterns:
     - "/"
     - "/public"

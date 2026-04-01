@@ -66,7 +66,7 @@ The safest way to probe VibeWarden is against your own local instance:
 
 ```bash
 cd examples/demo-app
-docker compose up -d
+docker compose -f .vibewarden/generated/docker-compose.yml up -d
 # VibeWarden is now listening on https://localhost:8443
 ```
 

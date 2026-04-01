@@ -1,0 +1,836 @@
+# VibeWarden Configuration
+# Copy this file to vibewarden.yaml and customize as needed.
+# Environment variables can override any setting using VIBEWARDEN_ prefix.
+# Example: VIBEWARDEN_SERVER_PORT=9090 overrides server.port
+
+# Database configuration
+#
+# By default, VibeWarden uses the local Postgres container started by the
+# generated docker-compose.yml. Set external_url to switch to a managed
+# Postgres service (AWS RDS, Supabase, Neon, Hetzner Managed Databases).
+#
+# When external_url is set, vibew init omits the local postgres container from
+# the generated docker-compose.yml and uses this URL as the Kratos DSN.
+#
+# See docs/postgres.md for deployment strategies and provider-specific examples.
+#
+# database:
+#   # Full postgres:// connection URL for an external managed Postgres instance.
+#   # Set via VIBEWARDEN_DATABASE_EXTERNAL_URL env var in production.
+#   # Example (AWS RDS):
+#   #   external_url: "postgres://vibewarden:${DB_PASSWORD}@mydb.abc123.eu-west-1.rds.amazonaws.com:5432/vibewarden"
+#   # Example (Supabase pooler):
+#   #   external_url: "postgres://postgres.abcdefgh:${DB_PASSWORD}@aws-0-eu-central-1.pooler.supabase.com:6543/postgres"
+#   # Example (Neon):
+#   #   external_url: "postgres://vibewarden:${DB_PASSWORD}@ep-cool-rain-12345.eu-central-1.aws.neon.tech/neondb"
+#   # Example (Hetzner):
+#   #   external_url: "postgres://vibewarden:${DB_PASSWORD}@<db-host>.hc-<region>.hetzner.cloud:5432/vibewarden"
+#   external_url: ""
+#
+#   # PostgreSQL SSL/TLS negotiation mode.
+#   # Accepted values: "disable", "require", "verify-ca", "verify-full"
+#   # Default: "require"
+#   # Applied as sslmode=<value> in the connection string unless the URL already
+#   # includes an sslmode query parameter.
+#   # Use "disable" only on localhost or trusted private networks.
+#   # Use "verify-full" for strongest security (requires PGSSLROOTCERT to be set).
+#   tls_mode: require
+#
+#   # Connection pool settings
+#   pool:
+#     # Maximum number of open connections in the pool. Default: 10.
+#     # For multi-instance setups, size this so that N_instances * max_conns
+#     # stays below the database's max_connections limit.
+#     max_conns: 10
+#     # Minimum number of idle connections kept open. Default: 2.
+#     # Set to 0 or 1 on serverless databases (Neon, Supabase) to avoid
+#     # holding idle connections that count against the tier limit.
+#     min_conns: 2
+#
+#   # Maximum time to wait when establishing a new Postgres connection.
+#   # Go duration string (e.g. "10s", "30s"). Default: "10s".
+#   # Increase to "15s" or "30s" for serverless databases with cold-start latency.
+#   connect_timeout: "10s"
+
+# Server settings
+server:
+  # Host to bind to (use 0.0.0.0 to expose externally)
+  host: "127.0.0.1"
+  # Port to listen on
+  port: 8443
+
+# Upstream application being protected
+upstream:
+  # Host of your application
+  host: "127.0.0.1"
+  # Port of your application
+  port: 3000
+
+# TLS configuration
+tls:
+  # Enable TLS termination. Enabled by default — VibeWarden is secure by default.
+  # When enabled, HTTP requests on port 80 are automatically redirected to HTTPS.
+  enabled: true
+
+  # Provider selects how TLS certificates are obtained. Valid values:
+  #
+  #   letsencrypt  — Automatic ACME certificate via Let's Encrypt.
+  #                  Requires a public domain and open port 443.
+  #                  Also requires the "domain" field to be set.
+  #
+  #   self-signed  — Caddy generates an internal self-signed certificate.
+  #                  Suitable for local development and internal services.
+  #                  Browsers will show a security warning.
+  #
+  #   external     — You supply the certificate and key files.
+  #                  Requires "cert_path" and "key_path" to be set.
+  #                  Use this when TLS is already managed by Cloudflare,
+  #                  your registrar, AWS ACM, or another tool.
+  provider: "self-signed"
+
+  # Domain for certificate provisioning.
+  # Required when provider is "letsencrypt".
+  # Optional for "self-signed" (scopes the certificate to that hostname).
+  domain: ""
+
+  # Certificate and key paths — required when provider is "external".
+  cert_path: ""
+  key_path: ""
+
+  # Directory where Caddy stores ACME certificates.
+  # Uses the Caddy default (~/.local/share/caddy) when empty.
+  # Only applies when provider is "letsencrypt".
+  storage_path: ""
+
+# Ory Kratos (identity/auth) settings
+kratos:
+  # Kratos public API (user-facing flows). When set, VibeWarden automatically:
+  #   1. Validates session cookies against Kratos on every protected request.
+  #   2. Proxies all Kratos self-service flow paths to Kratos instead of the
+  #      upstream app. This includes:
+  #        /self-service/login/*       → Kratos login flow
+  #        /self-service/registration/*→ Kratos registration flow
+  #        /self-service/logout/*      → Kratos logout
+  #        /self-service/settings/*    → Kratos settings
+  #        /self-service/recovery/*    → Kratos recovery
+  #        /self-service/verification/*→ Kratos verification
+  #        /.ory/kratos/public/*       → Ory canonical prefix (alias)
+  #
+  # Leave empty to disable authentication (not recommended in production).
+  #
+  # Local binary (running outside Docker):
+  public_url: "http://127.0.0.1:4433"
+  # Kratos admin API (internal use — not exposed to the internet).
+  admin_url: "http://127.0.0.1:4434"
+  #
+  # Docker Compose dev environment:
+  # The VIBEWARDEN_KRATOS_PUBLIC_URL and VIBEWARDEN_KRATOS_ADMIN_URL environment
+  # variables in docker-compose.yml override these values so that the container
+  # resolves Kratos by its service name on the internal Docker network:
+  #
+  #   VIBEWARDEN_KRATOS_PUBLIC_URL: http://kratos:4433
+  #   VIBEWARDEN_KRATOS_ADMIN_URL:  http://kratos:4434
+
+  # Social login providers (OAuth 2.0 / OIDC).
+  #
+  # List the provider IDs that are active in your kratos.yml OIDC method config.
+  # VibeWarden uses this list for structured log enrichment only — credentials
+  # are configured exclusively in kratos.yml, never here.
+  #
+  # The OAuth callback URL for each provider follows this pattern:
+  #   https://<your-domain>/self-service/methods/oidc/callback/<provider-id>
+  #
+  # See docs/social-login.md for step-by-step setup guides for each provider.
+  #
+  # social_providers:
+  #   - google      # Google OAuth 2.0 — console.cloud.google.com
+  #   - github      # GitHub OAuth App — github.com/settings/developers
+  #   - apple       # Sign in with Apple — developer.apple.com
+  #   - facebook    # Meta / Facebook Login — developers.facebook.com
+  #   - microsoft   # Azure AD / Microsoft — portal.azure.com
+  #   - keycloak    # Generic OIDC — any provider with an OIDC discovery endpoint
+  social_providers: []
+
+# Auth middleware settings
+#
+# auth.mode selects the authentication strategy. Valid values:
+#
+#   none     — No authentication. All requests are forwarded to the upstream
+#              without any identity check. Use only for fully public apps.
+#
+#   jwt      — JWT/OIDC bearer token validation. VibeWarden validates
+#              "Authorization: Bearer <token>" on every protected request.
+#              Recommended for most applications. Works with Auth0, Keycloak,
+#              Firebase, Cognito, Okta, Supabase, or any OIDC provider.
+#              Configure the jwt sub-section below.
+#
+#   kratos   — Ory Kratos session-cookie validation. Kratos handles login,
+#              registration, MFA, recovery, and social login flows.
+#              Requires kratos.public_url to be set.
+#
+#   api-key  — API key header validation for machine-to-machine requests.
+#              Configure the api_key sub-section below.
+#
+# See docs/identity-providers.md for full configuration guide and
+# step-by-step examples for Auth0, Keycloak, Firebase, Cognito, Okta,
+# and Supabase.
+auth:
+  # Authentication mode (default: "none").
+  mode: "none"
+
+  # JWT/OIDC settings — used when mode is "jwt".
+  #
+  # jwt:
+  #   # URL to fetch the JSON Web Key Set.
+  #   # Mutually exclusive with issuer_url: if both are set, jwks_url wins.
+  #   # Example (Auth0):
+  #   #   jwks_url: "https://dev-abc123.us.auth0.com/.well-known/jwks.json"
+  #   # Example (Firebase):
+  #   #   jwks_url: "https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com"
+  #   jwks_url: ""
+  #
+  #   # OIDC issuer URL for auto-discovery (used if jwks_url is empty).
+  #   # VibeWarden appends /.well-known/openid-configuration to discover the JWKS URL.
+  #   # Example (Okta): "https://dev-abc123.okta.com/oauth2/default"
+  #   issuer_url: ""
+  #
+  #   # Expected "iss" claim value. Must match exactly what the provider puts in the token.
+  #   # Example (Auth0):   "https://dev-abc123.us.auth0.com/"   (trailing slash required)
+  #   # Example (Cognito): "https://cognito-idp.eu-west-1.amazonaws.com/eu-west-1_abc123"
+  #   issuer: ""
+  #
+  #   # Expected "aud" claim value. Usually your API identifier or app client ID.
+  #   # Example (Auth0):   "https://api.your-app.com"
+  #   # Example (Cognito): "<app-client-id>"
+  #   audience: ""
+  #
+  #   # JWT claims to inject as HTTP headers on every upstream request.
+  #   # The upstream app reads these headers like any other.
+  #   # Array-valued claims (e.g. roles) are joined with a comma.
+  #   # Default mapping is used when this section is omitted:
+  #   #   sub            → X-User-Id
+  #   #   email          → X-User-Email
+  #   #   email_verified → X-User-Verified
+  #   #
+  #   # Extended example:
+  #   # claims_to_headers:
+  #   #   sub: X-User-Id
+  #   #   email: X-User-Email
+  #   #   email_verified: X-User-Verified
+  #   #   name: X-User-Name
+  #   #   roles: X-User-Roles
+  #   #   org_id: X-Org-Id
+  #   claims_to_headers:
+  #     sub: X-User-Id
+  #     email: X-User-Email
+  #     email_verified: X-User-Verified
+  #
+  #   # Signing algorithms accepted. Default: [RS256, ES256].
+  #   # Never include "none" or HS256 in production.
+  #   allowed_algorithms: [RS256, ES256]
+  #
+  #   # How long to cache JWKS keys locally before re-fetching.
+  #   # Accepts Go duration strings: "30m", "1h". Default: "1h".
+  #   # Set shorter (e.g. "30m") for Firebase, which rotates keys hourly.
+  #   cache_ttl: "1h"
+
+  # API key settings — used when mode is "api-key".
+  #
+  # api_key:
+  #   # Header name the client sends the key in (default: X-API-Key).
+  #   header: X-API-Key
+  #
+  #   # Static pre-shared keys. Store only the SHA-256 hash, never the plaintext.
+  #   # Generate: openssl rand -hex 32
+  #   # Hash:     echo -n "<key>" | sha256sum
+  #   keys:
+  #     - name: ci-pipeline
+  #       hash: "e3b0c44298fc1c149afb4c8996fb92427ae41e4649b934ca495991b7852b855"
+  #       scopes: [deploy, read]
+  #     - name: monitoring
+  #       hash: "a665a45920422f9d417e4867efdc4fb8a04a1f3fff1fa07e998e86f7f7a27ae3"
+  #       scopes: [read]
+  #
+  #   # Load keys from OpenBao instead (recommended for production).
+  #   # openbao_path: "auth/api-keys"
+  #   # cache_ttl: "5m"
+  #
+  #   # Scope-based authorization rules (first match wins).
+  #   # scope_rules:
+  #   #   - path: "/admin/*"
+  #   #     required_scopes: [admin]
+  #   #   - path: "/api/v1/*"
+  #   #     methods: [GET, HEAD]
+  #   #     required_scopes: [read]
+
+  # List of URL path glob patterns that bypass authentication entirely.
+  # The /_vibewarden/* prefix is always public (health check etc.).
+  # Add your app's public routes here; supports * for single-segment wildcards.
+  # Example:
+  #   public_paths:
+  #     - "/static/*"
+  #     - "/favicon.ico"
+  #     - "/robots.txt"
+  public_paths: []
+
+  # Cookie name used by Kratos for session tokens.
+  # Only change this if you have customised your Kratos configuration.
+  # Only relevant when mode is "kratos".
+  session_cookie_name: "ory_kratos_session"
+
+  # URL to redirect unauthenticated users to.
+  # Defaults to /self-service/login/browser (Kratos browser login flow).
+  # Only relevant when mode is "kratos".
+  login_url: ""
+
+# Request body size limiting
+# VibeWarden can reject oversized request bodies before they reach the upstream.
+# This protects against payload-based denial-of-service attacks and enforces
+# upload limits without any application-level changes.
+#
+# Requests with a body larger than the configured limit receive:
+#   HTTP 413 Payload Too Large
+body_size:
+  # Global default maximum request body size.
+  # Supported units: B, KB, MB, GB, TB (case-insensitive).
+  # Set to "0" or empty to disable the global limit.
+  max: "1MB"
+
+  # Per-path overrides — takes precedence over the global max.
+  # Useful for upload endpoints that need to accept larger payloads.
+  # A path override with max "0" or empty means no limit for that path.
+  # Example:
+  #   overrides:
+  #     - path: /api/upload
+  #       max: "50MB"
+  #     - path: /api/avatar
+  #       max: "5MB"
+  overrides: []
+
+# Rate limiting
+# VibeWarden enforces two independent token-bucket rate limits:
+#   per_ip   — applied to every request, keyed by client IP address.
+#   per_user — applied only to authenticated requests, keyed by user ID.
+#              Both limits must pass for a request to be forwarded to the upstream.
+#
+# Requests that exceed a limit receive a 429 Too Many Requests response with:
+#   - Retry-After header indicating seconds until the limit resets.
+#   - JSON body: {"error":"rate_limit_exceeded","retry_after_seconds":N}
+rate_limit:
+  # Enable rate limiting (recommended: true in production).
+  enabled: true
+
+  # Backing store for rate limit state.
+  # "memory" (default) — per-process token bucket. No external dependencies.
+  #                      Resets on restart. Suitable for single-instance deployments.
+  # "redis"            — Redis-backed distributed token bucket. Shared state
+  #                      across restarts and multiple instances. Requires a Redis server.
+  store: memory
+
+  # Redis store configuration. Only used when store is "redis".
+  #
+  # For multi-instance deployments, set store to "redis" and configure this
+  # section so all instances share rate limit counters. See docs/rate-limiting.md
+  # for a full guide including external provider examples (Upstash, ElastiCache,
+  # Redis Cloud).
+  #
+  # redis:
+  #   # Full Redis URL. Takes precedence over address/password/db when set.
+  #   # Use redis:// for plain connections, rediss:// for TLS.
+  #   # Recommended for external providers — embed all credentials in one string
+  #   # and supply it via environment variable to keep secrets out of YAML.
+  #   #
+  #   # Examples:
+  #   #   Local:          redis://localhost:6379/0
+  #   #   With password:  redis://:mypassword@localhost:6379/0
+  #   #   TLS (Upstash):  rediss://default:${UPSTASH_REDIS_PASSWORD}@<endpoint>.upstash.io:6380
+  #   #   ElastiCache:    rediss://:${ELASTICACHE_AUTH_TOKEN}@<endpoint>.cache.amazonaws.com:6379
+  #   #   Redis Cloud:    rediss://default:${REDIS_CLOUD_PASSWORD}@redis-<id>.c<num>.eu-west-1-1.ec2.redns.redis-cloud.com:12345
+  #   #
+  #   # Override via environment variable:
+  #   #   VIBEWARDEN_RATE_LIMIT_REDIS_URL=rediss://...
+  #   url: ""
+  #
+  #   # Redis server address in host:port form. Used when url is empty.
+  #   # Required when store is "redis" and url is not set.
+  #   address: localhost:6379
+  #
+  #   # Redis AUTH password (leave empty if Redis has no auth configured).
+  #   # Ignored when url is set.
+  #   password: ""
+  #
+  #   # Redis logical database index (default: 0).
+  #   # Ignored when url is set.
+  #   db: 0
+  #
+  #   # Maximum number of socket connections in the pool.
+  #   # Default: 0 (go-redis chooses automatically based on CPU count).
+  #   # Set a low value (e.g. 5) for providers with connection limits (Upstash free tier).
+  #   pool_size: 0
+  #
+  #   # Namespace prefix for Redis keys. All keys are stored as:
+  #   #   <key_prefix>:ratelimit:<limiter>:<identifier>
+  #   key_prefix: vibewarden
+  #
+  #   # Graceful fallback to in-memory store when Redis is unavailable.
+  #   # true  (default) — fail-open: keep rate limiting with in-memory store.
+  #   #                   Counters are no longer shared across instances during
+  #   #                   the outage but requests are not blocked.
+  #   # false           — fail-closed: deny all requests when Redis is unreachable.
+  #   #                   Use this when rate limiting correctness is required.
+  #   fallback: true
+  #
+  #   # How often VibeWarden checks whether Redis has recovered after a failure.
+  #   # Accepts Go duration strings: "30s", "1m", "5m".
+  #   health_check_interval: 30s
+
+  # Per-IP rate limit — applied to ALL requests regardless of authentication.
+  per_ip:
+    # Sustained request rate allowed per IP address.
+    requests_per_second: 10
+    # Maximum burst: how many requests may arrive back-to-back before throttling.
+    # Should be >= requests_per_second.
+    burst: 20
+
+  # Per-user rate limit — applied only to authenticated requests.
+  # Higher limits than per_ip are typical because authenticated users are known.
+  per_user:
+    # Sustained request rate allowed per authenticated user.
+    requests_per_second: 100
+    # Maximum burst per user.
+    burst: 200
+
+  # Enable to read X-Forwarded-For for the real client IP.
+  # Only enable when VibeWarden sits behind a trusted reverse proxy (e.g. Nginx, Cloudflare).
+  # Leave false when VibeWarden is the outermost edge server to prevent IP spoofing.
+  trust_proxy_headers: false
+
+  # URL path glob patterns that bypass rate limiting entirely.
+  # The /_vibewarden/* prefix (health check etc.) is always exempt.
+  # Supports * for single-segment wildcards (e.g. "/static/*").
+  # Example:
+  #   exempt_paths:
+  #     - "/public/*"
+  #     - "/favicon.ico"
+  exempt_paths: []
+
+# Logging
+log:
+  # Level: debug, info, warn, error
+  level: "info"
+  # Format: json (recommended) or text
+  format: "json"
+
+# Admin API (for user management, metrics, etc.)
+admin:
+  # Enable admin API
+  enabled: false
+  # Bearer token for authentication (use env var VIBEWARDEN_ADMIN_TOKEN in production)
+  token: ""
+
+# DEPRECATED: Use telemetry: section instead.
+# This section remains for backward compatibility. Settings are automatically
+# migrated to telemetry: at startup with a deprecation warning.
+# This section will be removed in a future major version.
+#
+# Prometheus metrics
+# VibeWarden exposes a Prometheus-compatible metrics endpoint at /_vibewarden/metrics.
+# An internal HTTP server is started on a random localhost port; Caddy reverse-proxies
+# /_vibewarden/metrics to it so the metrics handler never handles TLS or auth directly.
+#
+# Scraped metrics include:
+#   vibewarden_requests_total            — request counter (labels: method, status_code, path_pattern)
+#   vibewarden_request_duration_seconds  — request duration histogram (labels: method, path_pattern)
+#   vibewarden_rate_limit_hits_total     — rate limit hits (labels: limit_type: ip|user)
+#   vibewarden_auth_decisions_total      — auth decisions (labels: decision: allowed|blocked)
+#   vibewarden_upstream_errors_total     — upstream connection errors
+#   vibewarden_active_connections        — current number of active proxy connections
+#   go_*                                 — Go runtime metrics
+#   process_*                            — process metrics
+metrics:
+  # Enable metrics endpoint at /_vibewarden/metrics (recommended: true)
+  enabled: true
+  # Path normalization patterns (moved to telemetry.path_patterns)
+  path_patterns: []
+
+# Telemetry configuration
+# VibeWarden uses OpenTelemetry as its telemetry foundation. This section controls
+# all metrics and log export behavior.
+#
+# Export modes:
+#   - Prometheus-only (default): Metrics scraped at /_vibewarden/metrics
+#   - OTLP-only: Metrics pushed to OTLP endpoint (no local metrics endpoint)
+#   - Dual-export: Both Prometheus scraping and OTLP push active
+#
+# See docs/observability.md for full configuration guide.
+telemetry:
+  # Master switch for telemetry collection (default: true)
+  enabled: true
+
+  # URL path normalization patterns using :param syntax.
+  # Configure the routes your app exposes to prevent high-cardinality labels.
+  # Example:
+  #   path_patterns:
+  #     - "/users/:id"
+  #     - "/api/v1/items/:item_id/comments/:comment_id"
+  path_patterns: []
+
+  # Prometheus pull-based exporter (metrics served at /_vibewarden/metrics)
+  prometheus:
+    # Enable Prometheus exporter (default: true)
+    # When enabled, metrics are available at /_vibewarden/metrics in Prometheus format.
+    enabled: true
+
+  # OTLP push-based exporter (metrics pushed to collector/backend)
+  otlp:
+    # Enable OTLP exporter (default: false)
+    # Requires endpoint to be set.
+    enabled: false
+
+    # OTLP HTTP endpoint URL.
+    # Examples:
+    #   Local collector: http://localhost:4318
+    #   Docker Compose:  http://otel-collector:4318
+    #   Grafana Cloud:   https://otlp-gateway-prod-us-central-0.grafana.net/otlp
+    endpoint: ""
+
+    # HTTP headers for OTLP requests (e.g., authentication).
+    # Example:
+    #   headers:
+    #     Authorization: "Basic ${GRAFANA_OTLP_TOKEN}"
+    headers: {}
+
+    # Export interval — how often metrics are batched and pushed (default: 30s).
+    # Shorter intervals reduce telemetry lag but increase network overhead.
+    interval: "30s"
+
+    # Transport protocol: "http" (supported) or "grpc" (reserved for future).
+    protocol: "http"
+
+  # Structured event log export
+  logs:
+    # Enable OTLP log export (default: false).
+    # When enabled, structured events (AI-readable logs) are exported to the same
+    # OTLP endpoint as metrics. Logs are also written to stdout (unchanged behavior).
+    # Requires telemetry.otlp.endpoint to be configured.
+    otlp: false
+
+# CORS (Cross-Origin Resource Sharing)
+# Injects Access-Control-* headers and handles OPTIONS preflight requests.
+# Enable this when your app is served from a different origin than the browser app
+# (e.g. API at api.example.com accessed by frontend at app.example.com).
+cors:
+  # Enable CORS middleware (default: false)
+  enabled: false
+  # Origins allowed to make cross-origin requests.
+  # Use ["*"] for development (all origins). Never use "*" with allow_credentials: true.
+  allowed_origins:
+    - "https://example.com"
+  # HTTP methods allowed in cross-origin requests
+  allowed_methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
+  # Request headers allowed in cross-origin requests
+  allowed_headers: ["Content-Type", "Authorization"]
+  # Response headers exposed to the browser (Access-Control-Expose-Headers)
+  exposed_headers: []
+  # Set Access-Control-Allow-Credentials: true.
+  # Must not be combined with allowed_origins: ["*"].
+  allow_credentials: false
+  # Seconds to cache preflight response (0 omits Access-Control-Max-Age)
+  max_age: 0
+
+# Web Application Firewall (WAF)
+# VibeWarden's built-in WAF inspects every inbound request for common attack
+# patterns before forwarding it to the upstream application.  No external
+# dependency is required — all detection runs in-process.
+#
+# Attack categories detected:
+#   sqli             — SQL injection payloads in query strings and request bodies
+#   xss              — Cross-site scripting payloads
+#   path_traversal   — Directory traversal sequences (e.g. "../..")
+#   command_injection — Shell metacharacters and command-chaining patterns
+#
+# When a request matches an active rule, VibeWarden responds immediately with:
+#   HTTP 400 Bad Request   (mode: block, default)
+#   HTTP 200 forwarded     (mode: detect  — request passes through, attack is logged)
+#
+waf:
+  # Enable the WAF middleware (default: false).
+  enabled: false
+
+  # Detection mode controls what happens when a rule fires.
+  # "block"  — reject the request with 400 Bad Request (recommended for production).
+  # "detect" — pass the request through but emit a structured log event.
+  #            Use detect mode to audit traffic before switching to block mode.
+  mode: block
+
+  # Content-Type validation — rejects requests whose Content-Type is not in the
+  # allowed list with 415 Unsupported Media Type.
+  content_type_validation:
+    # Enable Content-Type validation on body-bearing requests (default: false).
+    enabled: false
+    # Media types accepted for request bodies. Requests with any other
+    # Content-Type receive 415 Unsupported Media Type.
+    allowed:
+      - application/json
+      - application/x-www-form-urlencoded
+      - multipart/form-data
+
+  # Per-rule toggles. Each rule is enabled by default when waf.enabled is true.
+  # Set a rule to false to skip that check while keeping all others active.
+  rules:
+    # Detect SQL injection patterns in query strings and request bodies.
+    sqli: true
+    # Detect cross-site scripting payloads.
+    xss: true
+    # Detect directory traversal sequences (e.g. ../../etc/passwd).
+    path_traversal: true
+    # Detect shell command-injection metacharacters.
+    command_injection: true
+
+# Security headers added to all proxied responses
+security_headers:
+  # Enable security headers middleware (recommended: true)
+  enabled: true
+  # Strict-Transport-Security max-age in seconds (default: 31536000 = 1 year)
+  # HSTS is only sent over HTTPS connections — ignored on plain HTTP
+  hsts_max_age: 31536000
+  # Include the includeSubDomains directive in HSTS
+  hsts_include_subdomains: true
+  # Include the preload directive (requires manual submission to browser preload lists)
+  hsts_preload: false
+  # Set X-Content-Type-Options: nosniff
+  content_type_nosniff: true
+  # Set X-Frame-Options: "DENY", "SAMEORIGIN", or "" to disable
+  frame_option: "DENY"
+  # Content-Security-Policy value (empty string disables the header — the default).
+  # CSP is disabled by default because "default-src 'self'" breaks most real apps
+  # (inline styles, external fonts, CDN scripts, etc.).  Set an explicit policy
+  # once you know your app's requirements, e.g.:
+  #   content_security_policy: "default-src 'self'; style-src 'self' 'unsafe-inline'"
+  content_security_policy: ""
+  # Referrer-Policy value (empty string disables the header)
+  referrer_policy: "strict-origin-when-cross-origin"
+  # Permissions-Policy value (empty string disables the header)
+  # An empty value means no browser features are explicitly allowed or denied
+  # via this header; set to e.g. "camera=(), microphone=()" to restrict specific features.
+  permissions_policy: ""
+  # Cross-Origin-Opener-Policy — isolates the browsing context from cross-origin
+  # documents. "same-origin" is the most restrictive safe default.
+  cross_origin_opener_policy: "same-origin"
+  # Cross-Origin-Resource-Policy — prevents other origins from loading this
+  # resource in a no-cors cross-origin request.
+  cross_origin_resource_policy: "same-origin"
+  # X-Permitted-Cross-Domain-Policies — instructs Adobe Flash/PDF clients not
+  # to allow cross-domain requests. "none" disables all cross-domain access.
+  permitted_cross_domain_policies: "none"
+  # Suppress the Via header that Caddy's reverse proxy adds to forwarded
+  # responses. Suppressing it reduces information disclosure about the proxy.
+  suppress_via_header: true
+
+# Secret management (OpenBao integration)
+# VibeWarden integrates with OpenBao (open-source Vault fork) to fetch secrets
+# and inject them into proxied requests as headers or write them to a .env file.
+#
+# See docs/secret-management.md for full setup guide.
+#
+# Quick start:
+#   1. docker compose up -d  (starts openbao + openbao-bootstrap automatically)
+#   2. docker compose logs openbao-bootstrap  (copy role_id and secret_id)
+#   3. vibew secret store app/myapp api_key=<your-key>
+#   4. Enable this plugin and configure injection below.
+# Egress proxy configuration
+#
+# When enabled, the egress proxy listens on a dedicated localhost port and
+# forwards outbound HTTP requests from the wrapped application to external
+# services. Only routes listed in the allowlist are permitted; all others are
+# blocked by default (default_policy: deny).
+#
+# The wrapped application should send outbound API calls to the egress proxy
+# instead of directly to the internet:
+#
+#   export HTTP_PROXY=http://127.0.0.1:8081
+#   export HTTPS_PROXY=http://127.0.0.1:8081
+#
+# Or use named-route addressing for explicit control:
+#
+#   POST http://127.0.0.1:8081/_egress/stripe-api/v1/charges
+#
+# Features per route:
+#   - Secret injection: fetch an API key from OpenBao and inject it as a header
+#   - Rate limiting: per-route token-bucket rate limiter
+#   - Circuit breaking: automatically open the circuit on repeated failures
+#   - Retries with exponential backoff
+#   - SSRF protection: block requests to private/loopback IPs
+#
+egress:
+  # Enable the egress proxy plugin (default: false)
+  enabled: false
+
+  # TCP address the egress proxy binds to (default: "127.0.0.1:8081")
+  listen: "127.0.0.1:8081"
+
+  # Disposition for outbound requests that do not match any configured route.
+  # Accepted values: "allow", "deny" (default: "deny")
+  default_policy: deny
+
+  # Permit plain HTTP egress requests globally (default: false).
+  # Individual routes can override this with their own allow_insecure field.
+  allow_insecure: false
+
+  # Global request timeout applied when a route does not specify its own timeout.
+  # Go duration string (e.g. "30s", "1m"). Default: "30s".
+  default_timeout: "30s"
+
+  # Global maximum request body size. Human-readable string (e.g. "50MB").
+  # Empty means no global limit. Routes can override with body_size_limit.
+  # default_body_size_limit: "50MB"
+
+  # Global maximum response body size. Human-readable string (e.g. "50MB").
+  # Empty means no global limit. Routes can override with response_size_limit.
+  # default_response_size_limit: "50MB"
+
+  # DNS-level SSRF protection settings.
+  dns:
+    # Block requests to private, loopback, and reserved IP addresses.
+    # Mitigates SSRF attacks. Default: true.
+    block_private: true
+
+    # CIDR ranges exempt from block_private.
+    # Use this to allow egress to specific internal services in a private network.
+    # Example: ["10.0.0.0/8", "192.168.100.0/24"]
+    allowed_private: []
+
+  # Egress route allowlist.
+  # Routes are evaluated in declaration order; the first matching route wins.
+  # Each route must have a unique name and a URL glob pattern.
+  routes: []
+  # Example routes:
+  #
+  # routes:
+  #   # Stripe API — POST only, with secret injection and circuit breaking
+  #   - name: stripe-api
+  #     pattern: "https://api.stripe.com/**"
+  #     methods: ["POST"]
+  #     timeout: "10s"
+  #
+  #     # Inject an OpenBao secret as the Authorization header.
+  #     # Requires the secrets plugin to be enabled.
+  #     secret: app/stripe
+  #     secret_header: Authorization
+  #     secret_format: "Bearer {value}"
+  #
+  #     # Per-route rate limiting (100 requests per second).
+  #     rate_limit: "100/s"
+  #
+  #     # Circuit breaker: open after 5 consecutive failures, probe after 30 s.
+  #     circuit_breaker:
+  #       threshold: 5
+  #       reset_after: "30s"
+  #
+  #     # Retry up to 3 times with exponential backoff on transient errors.
+  #     retries:
+  #       max: 3
+  #       backoff: exponential
+  #
+  #   # GitHub API — GET and POST, no secret injection
+  #   - name: github-api
+  #     pattern: "https://api.github.com/**"
+  #     methods: ["GET", "POST"]
+  #     timeout: "15s"
+  #     rate_limit: "500/m"
+  #
+  #   # Internal service on a private network — requires block_private: false
+  #   # or adding the CIDR to allowed_private above.
+  #   - name: internal-payments
+  #     pattern: "http://payments.internal/**"
+  #     allow_insecure: true
+
+secrets:
+  # Enable the secrets plugin (default: false)
+  enabled: false
+
+  # Secret store backend (currently only "openbao" is supported)
+  provider: openbao
+
+  # OpenBao connection settings
+  openbao:
+    # OpenBao server URL. Inside Docker Compose use the container name.
+    # Set via VIBEWARDEN_SECRETS_OPENBAO_ADDRESS env var.
+    address: "http://openbao:8200"
+
+    auth:
+      # Auth method: "token" (dev/simple) or "approle" (recommended for production)
+      method: token
+
+      # Static token — only for dev mode. Set via VIBEWARDEN_SECRETS_OPENBAO_AUTH_TOKEN.
+      token: "${OPENBAO_DEV_TOKEN:-vibewarden-dev}"
+
+      # AppRole credentials — for production use.
+      # Generated by the openbao-bootstrap container; see docs/secret-management.md.
+      # role_id: "${OPENBAO_ROLE_ID}"
+      # secret_id: "${OPENBAO_SECRET_ID}"
+
+    # KV v2 mount path (default: "secret")
+    mount_path: secret
+
+  # Secret injection configuration
+  inject:
+    # Inject secrets as HTTP request headers on every proxied request.
+    # The upstream app receives these headers like any other request header.
+    # Example:
+    #   headers:
+    #     - secret_path: app/internal-api
+    #       secret_key: token
+    #       header: X-Internal-Token
+    headers: []
+
+    # Write secrets to a .env file that the upstream app reads at startup.
+    # The file is written with 0600 permissions.
+    # Set to empty string to disable env file writing.
+    env_file: ""
+
+    # Secrets to write into the env file.
+    # Example:
+    #   env:
+    #     - secret_path: app/database
+    #       secret_key: password
+    #       env_var: DATABASE_PASSWORD
+    env: []
+
+  # Dynamic Postgres credentials via OpenBao's database engine.
+  # OpenBao generates short-lived credentials that VibeWarden rotates automatically.
+  # Requires the database engine to be configured — see docs/secret-management.md.
+  dynamic:
+    postgres:
+      # Enable dynamic Postgres credential generation (default: false)
+      enabled: false
+
+      # OpenBao database roles to request credentials for.
+      # Example:
+      #   roles:
+      #     - name: app-readwrite
+      #       env_var_user: DATABASE_USER
+      #       env_var_password: DATABASE_PASSWORD
+      roles: []
+
+  # How long to cache static secrets in memory (default: 5m).
+  # VibeWarden re-fetches in the background and serves stale if refresh fails.
+  cache_ttl: "5m"
+
+  # Secret health check configuration
+  health:
+    # How often to run health checks (default: 6h)
+    check_interval: "6h"
+
+    # Maximum acceptable age for a static secret before a stale warning is emitted.
+    # Default: 2160h (90 days)
+    max_static_age: "2160h"
+
+    # Substrings that indicate a weak/default secret value (case-insensitive).
+    weak_patterns:
+      - "password"
+      - "changeme"
+      - "secret"
+      - "123456"
+      - "admin"
+      - "letmein"
