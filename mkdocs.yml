@@ -86,6 +86,7 @@ nav:
       - Rails: examples/rails.md
   - Upgrading: upgrading.md
   - Troubleshooting: troubleshooting.md
+  - FAQ: faq.md
   - Reference:
       - Architectural Decisions: decisions.md
 
