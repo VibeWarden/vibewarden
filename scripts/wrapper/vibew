@@ -60,6 +60,12 @@ detect_platform() {
         ;;
     esac
 }
+check_dependencies() {
+    if ! command -v tar >/dev/null 2>&1; then
+        echo "error: tar is required to extract the archive" >&2
+        exit 1
+    fi
+}
 download() {
     url="$1"
     dest="$2"
@@ -105,21 +111,24 @@ verify_checksum() {
     fi
 }
 detect_platform
+check_dependencies
 VERSION=$(resolve_version)
-BINARY_NAME="vibewarden-${VERSION}-${OS}-${ARCH}"
-CACHED_BIN="${CACHE_DIR}/${BINARY_NAME}"
+CLEAN_VERSION="${VERSION#v}"
+ARCHIVE_NAME="vibewarden_${CLEAN_VERSION}_${OS}_${ARCH}.tar.gz"
+CACHED_BIN="${CACHE_DIR}/vibewarden-${VERSION}"
 if [ ! -x "${CACHED_BIN}" ]; then
     BASE_URL="https://github.com/${REPO}/releases/download/${VERSION}"
-    CHECKSUMS_URL="${BASE_URL}/vibewarden-${VERSION}-checksums.txt"
-    BINARY_URL="${BASE_URL}/${BINARY_NAME}"
+    CHECKSUMS_URL="${BASE_URL}/checksums.txt"
+    ARCHIVE_URL="${BASE_URL}/${ARCHIVE_NAME}"
     TMP_DIR=$(mktemp -d)
     trap 'rm -rf "${TMP_DIR}"' EXIT
     echo "Downloading VibeWarden ${VERSION} (${OS}/${ARCH})..." >&2
-    download "${BINARY_URL}" "${TMP_DIR}/${BINARY_NAME}"
+    download "${ARCHIVE_URL}" "${TMP_DIR}/${ARCHIVE_NAME}"
     download "${CHECKSUMS_URL}" "${TMP_DIR}/checksums.txt"
-    verify_checksum "${TMP_DIR}/${BINARY_NAME}" "${TMP_DIR}/checksums.txt"
+    verify_checksum "${TMP_DIR}/${ARCHIVE_NAME}" "${TMP_DIR}/checksums.txt"
+    tar -xzf "${TMP_DIR}/${ARCHIVE_NAME}" -C "${TMP_DIR}" vibewarden
     mkdir -p "${CACHE_DIR}"
-    mv "${TMP_DIR}/${BINARY_NAME}" "${CACHED_BIN}"
+    mv "${TMP_DIR}/vibewarden" "${CACHED_BIN}"
     chmod +x "${CACHED_BIN}"
 fi
 exec "${CACHED_BIN}" "$@"

@@ -1,15 +1,16 @@
 # vibew.ps1 — zero-install wrapper for the VibeWarden CLI (Windows PowerShell)
 #
-# Usage: irm https://get.vibewarden.dev/vibew.ps1 | iex
+# Usage: irm https://vibewarden.dev/vibew.ps1 | iex
 #   Or: copy this file into your project and commit it.
 #
 # The script:
 #   1. Reads the required version from .vibewarden-version (or queries the
 #      GitHub API for the latest release).
-#   2. Downloads vibewarden-<version>-windows-amd64.exe from GitHub Releases.
+#   2. Downloads vibewarden_<version>_windows_amd64.zip from GitHub Releases.
 #   3. Downloads the checksum file and verifies the SHA256 hash.
-#   4. Caches the binary at %USERPROFILE%\.vibewarden\bin\vibewarden-<version>.exe
-#   5. Forwards all arguments and preserves the exit code.
+#   4. Extracts the binary from the archive.
+#   5. Caches the binary at %USERPROFILE%\.vibewarden\bin\vibewarden-<version>.exe
+#   6. Forwards all arguments and preserves the exit code.
 #
 # Environment variables:
 #   GITHUB_TOKEN — optional; avoids GitHub API rate limits.
@@ -93,30 +94,33 @@ function Confirm-Checksum {
 # ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
-$Version    = Resolve-Version
-$BinaryName = "vibewarden-$Version-windows-amd64.exe"
-$CachedBin  = Join-Path $CacheDir $BinaryName
+$Version      = Resolve-Version
+$CleanVersion = $Version -replace '^v', ''
+$ArchiveName  = "vibewarden_${CleanVersion}_windows_amd64.zip"
+$CachedBin    = Join-Path $CacheDir "vibewarden-$Version.exe"
 
 if (-not (Test-Path $CachedBin)) {
-    $BaseUrl       = "https://github.com/$Repo/releases/download/$Version"
-    $BinaryUrl     = "$BaseUrl/$BinaryName"
-    $ChecksumsUrl  = "$BaseUrl/vibewarden-$Version-checksums.txt"
+    $BaseUrl      = "https://github.com/$Repo/releases/download/$Version"
+    $ArchiveUrl   = "$BaseUrl/$ArchiveName"
+    $ChecksumsUrl = "$BaseUrl/checksums.txt"
 
     $TmpDir = [System.IO.Path]::GetTempPath() + [System.IO.Path]::GetRandomFileName()
     New-Item -ItemType Directory -Path $TmpDir | Out-Null
 
     try {
         Write-Host "Downloading VibeWarden $Version (windows/amd64)..." -ForegroundColor Cyan
-        Get-File -Url $BinaryUrl    -Dest (Join-Path $TmpDir $BinaryName)
+        Get-File -Url $ArchiveUrl   -Dest (Join-Path $TmpDir $ArchiveName)
         Get-File -Url $ChecksumsUrl -Dest (Join-Path $TmpDir 'checksums.txt')
 
-        Confirm-Checksum -FilePath (Join-Path $TmpDir $BinaryName) `
+        Confirm-Checksum -FilePath (Join-Path $TmpDir $ArchiveName) `
                          -ChecksumsPath (Join-Path $TmpDir 'checksums.txt')
+
+        Expand-Archive -Path (Join-Path $TmpDir $ArchiveName) -DestinationPath $TmpDir -Force
 
         if (-not (Test-Path $CacheDir)) {
             New-Item -ItemType Directory -Path $CacheDir | Out-Null
         }
-        Move-Item (Join-Path $TmpDir $BinaryName) $CachedBin
+        Move-Item (Join-Path $TmpDir 'vibewarden.exe') $CachedBin
     } finally {
         Remove-Item $TmpDir -Recurse -Force -ErrorAction SilentlyContinue
     }

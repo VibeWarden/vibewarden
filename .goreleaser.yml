@@ -156,7 +156,7 @@ release:
     docker pull ghcr.io/vibewarden/vibewarden:{{ .Version }}
 
     # Binary install
-    curl -fsSL https://vibewarden.dev/install.sh | sh
+    curl -fsSL https://vibewarden.dev/vibew -o vibew && chmod +x vibew
     ```
   footer: |
     **Full Changelog**: https://github.com/vibewarden/vibewarden/compare/{{ .PreviousTag }}...{{ .Tag }}
