@@ -149,11 +149,30 @@ func RegisterBuiltinPlugins(
 	}, logger))
 
 	// Rate limiting — priority 50
+	//
+	// When cfg.RateLimit.Store is "redis", pass nil as the factory so the
+	// plugin builds its own Redis (or Redis-with-fallback) factory during Init
+	// based on the RedisConfig. When the store is "memory" (or empty), pass the
+	// default memory factory directly for backward compatibility.
+	var rlFactory ports.RateLimiterFactory
+	if cfg.RateLimit.Store != "redis" {
+		rlFactory = ratelimitadapter.NewDefaultMemoryFactory()
+	}
 	registry.Register(ratelimitplugin.New(ratelimitplugin.Config{
 		Enabled:           cfg.RateLimit.Enabled,
-		Store:             "memory",
+		Store:             cfg.RateLimit.Store,
 		TrustProxyHeaders: cfg.RateLimit.TrustProxyHeaders,
 		ExemptPaths:       cfg.RateLimit.ExemptPaths,
+		Redis: ratelimitplugin.RedisConfig{
+			URL:                 cfg.RateLimit.Redis.URL,
+			Address:             cfg.RateLimit.Redis.Address,
+			Password:            cfg.RateLimit.Redis.Password,
+			DB:                  cfg.RateLimit.Redis.DB,
+			PoolSize:            cfg.RateLimit.Redis.PoolSize,
+			KeyPrefix:           cfg.RateLimit.Redis.KeyPrefix,
+			Fallback:            cfg.RateLimit.Redis.Fallback,
+			HealthCheckInterval: cfg.RateLimit.Redis.HealthCheckInterval,
+		},
 		PerIP: ratelimitplugin.RuleConfig{
 			RequestsPerSecond: cfg.RateLimit.PerIP.RequestsPerSecond,
 			Burst:             cfg.RateLimit.PerIP.Burst,
@@ -162,7 +181,7 @@ func RegisterBuiltinPlugins(
 			RequestsPerSecond: cfg.RateLimit.PerUser.RequestsPerSecond,
 			Burst:             cfg.RateLimit.PerUser.Burst,
 		},
-	}, ratelimitadapter.NewDefaultMemoryFactory(), logger))
+	}, rlFactory, logger))
 
 	// Auth — priority 40 (registered after rate-limiting for dependency clarity;
 	// actual order is controlled by priority, but registry order matches intent)
