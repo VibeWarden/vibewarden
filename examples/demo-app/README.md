@@ -20,7 +20,7 @@ Generated files are written to `.vibewarden/generated/` which is gitignored.
 
 ```bash
 make demo
-# Visit http://localhost:8080
+# Visit https://localhost:8443  (accept the self-signed certificate warning)
 ```
 
 `make demo` builds the VibeWarden Docker image locally, runs `vibewarden generate`
@@ -30,7 +30,7 @@ Wait ~30 seconds for the full stack to be healthy.
 
 | Service | URL | Credentials |
 |---|---|---|
-| Demo app (via VibeWarden) | http://localhost:8080 | see Demo credentials below |
+| Demo app (via VibeWarden) | https://localhost:8443 | see Demo credentials below |
 | Grafana | http://localhost:3001 | admin / admin |
 | Prometheus | http://localhost:9090 | — |
 | Kratos public API | http://localhost:4433 | — |
@@ -105,7 +105,7 @@ docker compose -f .vibewarden/generated/docker-compose.yml down -v
 | Rate limiting | `rate_limit.enabled: true` | 429 after 10 requests burst |
 | Security headers | `security_headers.enabled: true` | HSTS, CSP, X-Frame-Options on every response |
 | Secrets injection | `secrets.enabled: true` | `X-Demo-Api-Key` header injected from OpenBao |
-| Metrics | `metrics.enabled: true` | Prometheus scrapes VibeWarden metrics |
+| Metrics | `telemetry.enabled: true` | Prometheus scrapes VibeWarden metrics |
 | Observability | `observability.enabled: true` | Grafana dashboard, Loki log aggregation |
 
 ## Demo UI

@@ -140,7 +140,7 @@ services:
     volumes:
       # Mount the example config as vibewarden.yaml.  Override with your own
       # config file by replacing this volume mount.
-      - ./vibewarden.example.yaml:/vibewarden.yaml:ro
+      - ./vibewarden.reference.yaml:/vibewarden.yaml:ro
     environment:
       # Point Kratos URLs at the kratos container on the internal network.
       VIBEWARDEN_KRATOS_PUBLIC_URL: http://kratos:4433
