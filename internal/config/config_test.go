@@ -2699,3 +2699,51 @@ func TestValidate_RateLimitStoreActionable(t *testing.T) {
 		})
 	}
 }
+
+func TestDatabaseConfig_ResolveURL(t *testing.T) {
+	tests := []struct {
+		name string
+		cfg  config.DatabaseConfig
+		want string
+	}{
+		{
+			name: "URL takes precedence over ExternalURL",
+			cfg: config.DatabaseConfig{
+				URL:         "postgres://user:pass@localhost:5432/vibewarden?sslmode=disable",
+				ExternalURL: "postgres://user:pass@external:5432/vibewarden",
+			},
+			want: "postgres://user:pass@localhost:5432/vibewarden?sslmode=disable",
+		},
+		{
+			name: "falls back to BuildDSN when URL is empty",
+			cfg: config.DatabaseConfig{
+				ExternalURL:    "postgres://user:pass@external:5432/vibewarden",
+				TLSMode:        "disable",
+				ConnectTimeout: "5s",
+				Pool:           config.DatabasePoolConfig{MaxConns: 20},
+			},
+			want: "postgres://user:pass@external:5432/vibewarden?connect_timeout=5&pool_max_conns=20&sslmode=disable",
+		},
+		{
+			name: "returns empty when neither is set",
+			cfg:  config.DatabaseConfig{},
+			want: "",
+		},
+		{
+			name: "URL only",
+			cfg: config.DatabaseConfig{
+				URL: "postgres://localhost/mydb",
+			},
+			want: "postgres://localhost/mydb",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tt.cfg.ResolveURL()
+			if got != tt.want {
+				t.Errorf("ResolveURL() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}

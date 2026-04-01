@@ -250,6 +250,18 @@ func (d DatabaseConfig) BuildDSN() string {
 	return u.String()
 }
 
+// ResolveURL returns the database connection URL to use for migrations and
+// other direct database access. It prefers the explicit URL field; when that
+// is empty it falls back to BuildDSN (which derives a URL from ExternalURL
+// with resilience parameters appended). Returns an empty string when neither
+// URL nor ExternalURL is configured.
+func (d DatabaseConfig) ResolveURL() string {
+	if d.URL != "" {
+		return d.URL
+	}
+	return d.BuildDSN()
+}
+
 // ServerConfig holds server-related settings.
 type ServerConfig struct {
 	// Host to bind to (default: "127.0.0.1")
