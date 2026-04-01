@@ -287,8 +287,8 @@ Architectural decisions are documented in [docs/decisions.md](docs/decisions.md)
 | Egress proxy | [docs/egress.md](docs/egress.md) |
 | Observability | [docs/observability.md](docs/observability.md) |
 | Rate limiting at scale | [docs/rate-limiting.md](docs/rate-limiting.md) |
-| Production deployment | [docs/production.md](docs/production.md) |
-| Hardening checklist | [docs/hardening.md](docs/hardening.md) |
+| Production deployment | [docs/production-deployment.md](docs/production-deployment.md) |
+| Hardening checklist | [docs/production-hardening.md](docs/production-hardening.md) |
 | Architectural decisions | [docs/decisions.md](docs/decisions.md) |
 
 ---
