@@ -18,7 +18,7 @@ import (
 
 // supportedLanguages lists every language the init command accepts.
 // Add new entries here as new language templates are introduced.
-var supportedLanguages = []string{"go"}
+var supportedLanguages = []string{"go", "kotlin"}
 
 // NewInitCmd creates the `vibewarden init` subcommand.
 //
@@ -73,7 +73,10 @@ Examples:
 			}
 
 			language := domainscaffold.Language(lang)
-			if language != domainscaffold.LanguageGo {
+			switch language {
+			case domainscaffold.LanguageGo, domainscaffold.LanguageKotlin:
+				// supported
+			default:
 				return fmt.Errorf(
 					"unsupported language %q\n\nSupported languages:\n  %s\n\nExample:\n  vibewarden init --lang go myproject",
 					lang,
@@ -122,7 +125,7 @@ Examples:
 		},
 	}
 
-	cmd.Flags().StringVar(&lang, "lang", "", `programming language (required; supported: "go")`)
+	cmd.Flags().StringVar(&lang, "lang", "", `programming language (required; supported: "go", "kotlin")`)
 	cmd.Flags().StringVar(&module, "module", "", "Go module path (default: project name)")
 	cmd.Flags().IntVar(&port, "port", 3000, "HTTP port the generated app listens on")
 	cmd.Flags().BoolVar(&force, "force", false, "overwrite existing files")
@@ -139,18 +142,27 @@ func printInitSuccessMessage(cmd *cobra.Command, projectName string, opts scaffo
 	fmt.Fprintf(w, "Project %q created!\n", projectName)
 	fmt.Fprintln(w, "")
 	fmt.Fprintln(w, "Files created:")
-	fmt.Fprintf(w, "  cmd/%s/main.go         App entry point\n", projectName)
+
+	switch opts.Language {
+	case domainscaffold.LanguageKotlin:
+		fmt.Fprintf(w, "  src/main/kotlin/.../Application.kt  App entry point (Ktor)\n")
+		fmt.Fprintf(w, "  build.gradle.kts                     Gradle build file\n")
+		fmt.Fprintf(w, "  settings.gradle.kts                  Gradle settings\n")
+	default: // go
+		fmt.Fprintf(w, "  cmd/%s/main.go         App entry point\n", projectName)
+		modDisplay := opts.ModulePath
+		if modDisplay == "" {
+			modDisplay = projectName
+		}
+		fmt.Fprintf(w, "  go.mod                   Go module (path: %s)\n", modDisplay)
+	}
+
 	fmt.Fprintf(w, "  vibewarden.yaml          Security sidecar config\n")
 	fmt.Fprintf(w, "  CLAUDE.md                Project instructions for AI agents\n")
 	fmt.Fprintf(w, "  .claude/agents/          Architect, developer, reviewer agents\n")
 	fmt.Fprintf(w, "  vibew                    Wrapper script (macOS/Linux)\n")
 	fmt.Fprintf(w, "  vibew.ps1                Wrapper script (Windows)\n")
 	fmt.Fprintf(w, "  Dockerfile               Container build file\n")
-	modDisplay := opts.ModulePath
-	if modDisplay == "" {
-		modDisplay = projectName
-	}
-	fmt.Fprintf(w, "  go.mod                   Go module (path: %s)\n", modDisplay)
 	fmt.Fprintf(w, "  .gitignore               Git ignore rules\n")
 	fmt.Fprintln(w, "")
 	fmt.Fprintln(w, "Next steps:")

@@ -50,6 +50,22 @@ var goTemplateFiles = []struct {
 	{tmpl: "go/dev.md.tmpl", dest: filepath.Join(".claude", "agents", "dev.md")},
 }
 
+// kotlinTemplateFiles maps each output path (relative to the project root) to
+// the template name it is rendered from. These are Kotlin-language-specific
+// templates using the Ktor framework. Shared agent templates are in
+// sharedAgentTemplateFiles and are rendered separately.
+var kotlinTemplateFiles = []struct {
+	tmpl string
+	dest string
+}{
+	{tmpl: "kotlin/vibewarden.yaml.tmpl", dest: "vibewarden.yaml"},
+	{tmpl: "kotlin/build.gradle.kts.tmpl", dest: "build.gradle.kts"},
+	{tmpl: "kotlin/settings.gradle.kts.tmpl", dest: "settings.gradle.kts"},
+	{tmpl: "kotlin/dockerfile.tmpl", dest: "Dockerfile"},
+	{tmpl: "kotlin/gitignore.tmpl", dest: ".gitignore"},
+	{tmpl: "kotlin/dev.md.tmpl", dest: filepath.Join(".claude", "agents", "dev.md")},
+}
+
 // InitProjectOptions carries options for full project scaffolding.
 type InitProjectOptions struct {
 	// ProjectName is the project/directory name.
@@ -106,8 +122,11 @@ func NewInitProjectService(renderer ports.TemplateRenderer) *InitProjectService 
 // CLAUDE.md is rendered from the shared agents/claude.md.tmpl with Go-specific
 // code conventions appended from go/claude.md.tmpl.
 func (s *InitProjectService) InitProject(ctx context.Context, parentDir string, opts InitProjectOptions) error {
-	if opts.Language != domainscaffold.LanguageGo {
-		return fmt.Errorf("unsupported language %q (supported: go)", opts.Language)
+	switch opts.Language {
+	case domainscaffold.LanguageGo, domainscaffold.LanguageKotlin:
+		// supported
+	default:
+		return fmt.Errorf("unsupported language %q (supported: go, kotlin)", opts.Language)
 	}
 
 	if opts.ProjectName == "" {
@@ -156,43 +175,35 @@ func (s *InitProjectService) InitProject(ctx context.Context, parentDir string, 
 	}
 
 	// Render CLAUDE.md by concatenating the shared base template with the
-	// Go-specific code conventions appendix. This keeps CLAUDE.md output
-	// identical to the pre-refactor output while the base content is now
-	// shared across all language packs.
-	if err := s.renderCombinedCLAUDEmd(projectDir, data, opts.Force); err != nil {
+	// language-specific code conventions appendix. This keeps the vibew CLI
+	// reference and sidecar context in a single shared template while each
+	// language pack appends its own code conventions.
+	if err := s.renderCombinedCLAUDEmd(projectDir, opts.Language, data, opts.Force); err != nil {
 		return fmt.Errorf("rendering CLAUDE.md: %w", err)
 	}
 
-	// Render Go-language-specific template files.
-	for _, tf := range goTemplateFiles {
-		dest := filepath.Join(projectDir, tf.dest)
-		if err := s.renderer.RenderToFile(tf.tmpl, data, dest, opts.Force); err != nil {
-			if !errors.Is(err, os.ErrExist) {
-				return fmt.Errorf("rendering %s: %w", tf.dest, err)
+	// Render language-specific template files and entry point.
+	switch opts.Language {
+	case domainscaffold.LanguageKotlin:
+		if err := s.renderKotlinFiles(projectDir, data, opts.Force); err != nil {
+			return err
+		}
+	default: // LanguageGo
+		if err := s.renderGoFiles(projectDir, opts.ProjectName, data, opts.Force); err != nil {
+			return err
+		}
+		// Create empty package-structure directories with .gitkeep.
+		// These mirror the hexagonal architecture directory layout expected by Go projects.
+		for _, d := range initDirs {
+			dir := filepath.Join(projectDir, d)
+			if err := os.MkdirAll(dir, 0o750); err != nil {
+				return fmt.Errorf("creating directory %s: %w", d, err)
 			}
-			return fmt.Errorf("%s already exists; use --force to overwrite: %w", tf.dest, err)
-		}
-	}
-
-	// Render main.go into cmd/<project>/.
-	mainPath := filepath.Join(projectDir, "cmd", opts.ProjectName, "main.go")
-	if err := s.renderer.RenderToFile("go/main.go.tmpl", data, mainPath, opts.Force); err != nil {
-		if !errors.Is(err, os.ErrExist) {
-			return fmt.Errorf("rendering main.go: %w", err)
-		}
-		return fmt.Errorf("main.go already exists; use --force to overwrite: %w", err)
-	}
-
-	// Create empty package-structure directories with .gitkeep.
-	for _, d := range initDirs {
-		dir := filepath.Join(projectDir, d)
-		if err := os.MkdirAll(dir, 0o750); err != nil {
-			return fmt.Errorf("creating directory %s: %w", d, err)
-		}
-		keepPath := filepath.Join(dir, ".gitkeep")
-		if _, statErr := os.Stat(keepPath); errors.Is(statErr, os.ErrNotExist) {
-			if writeErr := os.WriteFile(keepPath, nil, 0o600); writeErr != nil {
-				return fmt.Errorf("creating .gitkeep in %s: %w", d, writeErr)
+			keepPath := filepath.Join(dir, ".gitkeep")
+			if _, statErr := os.Stat(keepPath); errors.Is(statErr, os.ErrNotExist) {
+				if writeErr := os.WriteFile(keepPath, nil, 0o600); writeErr != nil {
+					return fmt.Errorf("creating .gitkeep in %s: %w", d, writeErr)
+				}
 			}
 		}
 	}
@@ -213,13 +224,13 @@ func (s *InitProjectService) InitProject(ctx context.Context, parentDir string, 
 }
 
 // renderCombinedCLAUDEmd renders CLAUDE.md by concatenating the shared
-// agents/claude.md.tmpl with the language-specific go/claude.md.tmpl appendix.
+// agents/claude.md.tmpl with the language-specific <lang>/claude.md.tmpl appendix.
 // The combined output is written to CLAUDE.md in projectDir.
 //
 // This design keeps the vibew CLI reference and sidecar context in a single
 // shared template. Adding a new language pack appends its own code conventions
 // without duplicating the shared content.
-func (s *InitProjectService) renderCombinedCLAUDEmd(projectDir string, data any, overwrite bool) error {
+func (s *InitProjectService) renderCombinedCLAUDEmd(projectDir string, lang domainscaffold.Language, data any, overwrite bool) error {
 	dest := filepath.Join(projectDir, "CLAUDE.md")
 
 	if !overwrite {
@@ -233,18 +244,72 @@ func (s *InitProjectService) renderCombinedCLAUDEmd(projectDir string, data any,
 		return fmt.Errorf("rendering shared claude.md base: %w", err)
 	}
 
-	goConventions, err := s.renderer.Render("go/claude.md.tmpl", data)
+	conventionsTmpl := string(lang) + "/claude.md.tmpl"
+	langConventions, err := s.renderer.Render(conventionsTmpl, data)
 	if err != nil {
-		return fmt.Errorf("rendering go claude.md conventions: %w", err)
+		return fmt.Errorf("rendering %s claude.md conventions: %w", lang, err)
 	}
 
-	combined := bytes.Join([][]byte{shared, goConventions}, []byte("\n"))
+	combined := bytes.Join([][]byte{shared, langConventions}, []byte("\n"))
 
 	if err := os.MkdirAll(filepath.Dir(dest), 0o750); err != nil {
 		return fmt.Errorf("creating directories: %w", err)
 	}
 	if err := os.WriteFile(dest, combined, 0o600); err != nil {
 		return fmt.Errorf("writing CLAUDE.md: %w", err)
+	}
+	return nil
+}
+
+// renderGoFiles renders all Go-specific template files into projectDir.
+func (s *InitProjectService) renderGoFiles(projectDir, projectName string, data any, overwrite bool) error {
+	for _, tf := range goTemplateFiles {
+		dest := filepath.Join(projectDir, tf.dest)
+		if err := s.renderer.RenderToFile(tf.tmpl, data, dest, overwrite); err != nil {
+			if !errors.Is(err, os.ErrExist) {
+				return fmt.Errorf("rendering %s: %w", tf.dest, err)
+			}
+			return fmt.Errorf("%s already exists; use --force to overwrite: %w", tf.dest, err)
+		}
+	}
+
+	// Render main.go into cmd/<project>/.
+	mainPath := filepath.Join(projectDir, "cmd", projectName, "main.go")
+	if err := s.renderer.RenderToFile("go/main.go.tmpl", data, mainPath, overwrite); err != nil {
+		if !errors.Is(err, os.ErrExist) {
+			return fmt.Errorf("rendering main.go: %w", err)
+		}
+		return fmt.Errorf("main.go already exists; use --force to overwrite: %w", err)
+	}
+	return nil
+}
+
+// renderKotlinFiles renders all Kotlin-specific template files into projectDir.
+// The Application.kt entry point is placed at the standard Gradle/Maven source
+// path: src/main/kotlin/com/example/<project>/Application.kt.
+func (s *InitProjectService) renderKotlinFiles(projectDir string, data domainscaffold.InitProjectData, overwrite bool) error {
+	for _, tf := range kotlinTemplateFiles {
+		dest := filepath.Join(projectDir, tf.dest)
+		if err := s.renderer.RenderToFile(tf.tmpl, data, dest, overwrite); err != nil {
+			if !errors.Is(err, os.ErrExist) {
+				return fmt.Errorf("rendering %s: %w", tf.dest, err)
+			}
+			return fmt.Errorf("%s already exists; use --force to overwrite: %w", tf.dest, err)
+		}
+	}
+
+	// Render Application.kt into the standard Gradle source set path.
+	appPath := filepath.Join(
+		projectDir,
+		"src", "main", "kotlin",
+		"com", "example", data.ProjectName,
+		"Application.kt",
+	)
+	if err := s.renderer.RenderToFile("kotlin/Application.kt.tmpl", data, appPath, overwrite); err != nil {
+		if !errors.Is(err, os.ErrExist) {
+			return fmt.Errorf("rendering Application.kt: %w", err)
+		}
+		return fmt.Errorf("Application.kt already exists; use --force to overwrite: %w", err) //nolint:revive,staticcheck // user-facing CLI hint: intentional capitalization
 	}
 	return nil
 }

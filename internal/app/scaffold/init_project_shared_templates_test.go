@@ -172,6 +172,191 @@ func TestInitProject_CLAUDEmd_UsesBothSharedAndGoTemplates(t *testing.T) {
 	}
 }
 
+// TestInitProject_Kotlin_UsesKotlinDevTemplate verifies that dev.md for a Kotlin
+// project is rendered from the Kotlin-language-specific kotlin/ template.
+func TestInitProject_Kotlin_UsesKotlinDevTemplate(t *testing.T) {
+	renderer := newTrackingRenderer()
+	svc := scaffoldapp.NewInitProjectService(renderer)
+
+	parent := t.TempDir()
+	opts := scaffoldapp.InitProjectOptions{
+		ProjectName: "ktapp",
+		Language:    domainscaffold.LanguageKotlin,
+		Port:        3000,
+	}
+
+	if err := svc.InitProject(context.Background(), parent, opts); err != nil {
+		t.Fatalf("InitProject() Kotlin unexpected error: %v", err)
+	}
+
+	if !containsTemplate(renderer.renderToFileCalls, "kotlin/dev.md.tmpl") {
+		t.Errorf("expected kotlin/dev.md.tmpl to be used; RenderToFile calls: %v", renderer.renderToFileCalls)
+	}
+	if containsTemplate(renderer.renderToFileCalls, "go/dev.md.tmpl") {
+		t.Errorf("go/dev.md.tmpl must not be used for a Kotlin project; RenderToFile calls: %v", renderer.renderToFileCalls)
+	}
+}
+
+// TestInitProject_Kotlin_CLAUDEmd_UsesBothSharedAndKotlinTemplates verifies that
+// CLAUDE.md for a Kotlin project combines the shared agents/claude.md.tmpl with
+// the Kotlin-specific kotlin/claude.md.tmpl appendix.
+func TestInitProject_Kotlin_CLAUDEmd_UsesBothSharedAndKotlinTemplates(t *testing.T) {
+	renderer := newTrackingRenderer()
+	svc := scaffoldapp.NewInitProjectService(renderer)
+
+	parent := t.TempDir()
+	opts := scaffoldapp.InitProjectOptions{
+		ProjectName: "ktapp",
+		Language:    domainscaffold.LanguageKotlin,
+		Port:        3000,
+	}
+
+	if err := svc.InitProject(context.Background(), parent, opts); err != nil {
+		t.Fatalf("InitProject() Kotlin unexpected error: %v", err)
+	}
+
+	if !containsTemplate(renderer.renderCalls, "agents/claude.md.tmpl") {
+		t.Errorf("expected agents/claude.md.tmpl to be rendered; Render calls: %v", renderer.renderCalls)
+	}
+	if !containsTemplate(renderer.renderCalls, "kotlin/claude.md.tmpl") {
+		t.Errorf("expected kotlin/claude.md.tmpl to be rendered; Render calls: %v", renderer.renderCalls)
+	}
+	if containsTemplate(renderer.renderCalls, "go/claude.md.tmpl") {
+		t.Errorf("go/claude.md.tmpl must not be used for a Kotlin project; Render calls: %v", renderer.renderCalls)
+	}
+
+	claudePath := filepath.Join(parent, "ktapp", "CLAUDE.md")
+	data, err := os.ReadFile(claudePath)
+	if err != nil {
+		t.Fatalf("CLAUDE.md not found: %v", err)
+	}
+	content := string(data)
+
+	if !strings.Contains(content, "rendered:agents/claude.md.tmpl") {
+		t.Errorf("CLAUDE.md missing shared base content; got:\n%s", content)
+	}
+	if !strings.Contains(content, "rendered:kotlin/claude.md.tmpl") {
+		t.Errorf("CLAUDE.md missing Kotlin conventions content; got:\n%s", content)
+	}
+}
+
+// TestInitProject_Kotlin_UsesSharedArchitectTemplate verifies that architect.md
+// for a Kotlin project is rendered from the shared agents/ template.
+func TestInitProject_Kotlin_UsesSharedArchitectTemplate(t *testing.T) {
+	renderer := newTrackingRenderer()
+	svc := scaffoldapp.NewInitProjectService(renderer)
+
+	parent := t.TempDir()
+	opts := scaffoldapp.InitProjectOptions{
+		ProjectName: "ktapp",
+		Language:    domainscaffold.LanguageKotlin,
+		Port:        3000,
+	}
+
+	if err := svc.InitProject(context.Background(), parent, opts); err != nil {
+		t.Fatalf("InitProject() Kotlin unexpected error: %v", err)
+	}
+
+	if !containsTemplate(renderer.renderToFileCalls, "agents/architect.md.tmpl") {
+		t.Errorf("expected agents/architect.md.tmpl to be used; RenderToFile calls: %v", renderer.renderToFileCalls)
+	}
+}
+
+// TestInitProject_KotlinWithRealFS verifies that the Kotlin language pack
+// templates render correctly with the real embedded FS.
+func TestInitProject_KotlinWithRealFS(t *testing.T) {
+	r := mustBuildRealRenderer(t)
+	svc := scaffoldapp.NewInitProjectService(r)
+
+	parent := t.TempDir()
+	opts := scaffoldapp.InitProjectOptions{
+		ProjectName: "ktreal",
+		Language:    domainscaffold.LanguageKotlin,
+		Port:        3000,
+	}
+
+	if err := svc.InitProject(context.Background(), parent, opts); err != nil {
+		t.Fatalf("InitProject() Kotlin real FS unexpected error: %v", err)
+	}
+
+	tests := []struct {
+		file        string
+		mustContain []string
+	}{
+		{
+			file: filepath.Join(parent, "ktreal", "CLAUDE.md"),
+			mustContain: []string{
+				"VibeWarden",
+				"vibew CLI Reference",
+				// Kotlin-specific conventions from kotlin/claude.md.tmpl:
+				"ktlint",
+				"data class",
+				"sealed class",
+			},
+		},
+		{
+			file: filepath.Join(parent, "ktreal", ".claude", "agents", "dev.md"),
+			mustContain: []string{
+				"vibew CLI Reference",
+				"./vibew dev",
+				// Kotlin idioms:
+				"Kotlin idioms",
+				"ktlint",
+				"coroutine context",
+				"Null safety",
+			},
+		},
+		{
+			file: filepath.Join(parent, "ktreal", "src", "main", "kotlin", "com", "example", "ktreal", "Application.kt"),
+			mustContain: []string{
+				"ktreal",
+				"fun main()",
+				"/health",
+				"/public",
+				"/protected",
+				"X-User-Id",
+			},
+		},
+		{
+			file: filepath.Join(parent, "ktreal", "build.gradle.kts"),
+			mustContain: []string{
+				"ktreal",
+				"io.ktor",
+				"kotlin",
+			},
+		},
+		{
+			file: filepath.Join(parent, "ktreal", "settings.gradle.kts"),
+			mustContain: []string{
+				"ktreal",
+			},
+		},
+		{
+			file: filepath.Join(parent, "ktreal", "vibewarden.yaml"),
+			mustContain: []string{
+				"3000",
+				"rate_limit",
+				"tls",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.file, func(t *testing.T) {
+			raw, err := os.ReadFile(tt.file)
+			if err != nil {
+				t.Fatalf("reading %s: %v", tt.file, err)
+			}
+			content := string(raw)
+			for _, want := range tt.mustContain {
+				if !strings.Contains(content, want) {
+					t.Errorf("file %s missing %q\nContent:\n%s", tt.file, want, content)
+				}
+			}
+		})
+	}
+}
+
 // TestInitProject_SharedTemplatesWithRealFS verifies that the shared agent
 // templates (architect.md, reviewer.md, claude.md) render correctly with the
 // real embedded FS, producing output that contains the required vibew CLI

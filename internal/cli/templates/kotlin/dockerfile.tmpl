@@ -1,0 +1,18 @@
+# syntax=docker/dockerfile:1
+
+# Build stage — compile the fat JAR using the Gradle wrapper.
+FROM eclipse-temurin:21-jdk-alpine AS builder
+WORKDIR /app
+COPY gradlew gradlew.bat* ./
+COPY gradle/ gradle/
+COPY build.gradle.kts settings.gradle.kts gradle.properties* ./
+RUN ./gradlew dependencies --no-daemon --quiet || true
+COPY src/ src/
+RUN ./gradlew buildFatJar --no-daemon --quiet
+
+# Runtime stage — use a slim JRE image; no JDK needed at runtime.
+FROM eclipse-temurin:21-jre-alpine
+WORKDIR /app
+COPY --from=builder /app/build/libs/*-all.jar app.jar
+EXPOSE {{ .Port }}
+ENTRYPOINT ["java", "-jar", "app.jar"]

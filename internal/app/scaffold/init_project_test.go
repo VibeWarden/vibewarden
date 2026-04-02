@@ -233,6 +233,89 @@ func TestInitProject_RejectsProjectNameWithSlash(t *testing.T) {
 	}
 }
 
+func TestInitProject_Kotlin_CreatesStructure(t *testing.T) {
+	renderer := newFakeRenderer()
+	svc := scaffoldapp.NewInitProjectService(renderer)
+
+	parent := t.TempDir()
+	opts := scaffoldapp.InitProjectOptions{
+		ProjectName: "myktapp",
+		Language:    domainscaffold.LanguageKotlin,
+		Port:        3000,
+	}
+
+	if err := svc.InitProject(context.Background(), parent, opts); err != nil {
+		t.Fatalf("InitProject() Kotlin unexpected error: %v", err)
+	}
+
+	// Verify top-level files.
+	mustExist(t, parent, "myktapp", "vibewarden.yaml")
+	mustExist(t, parent, "myktapp", "build.gradle.kts")
+	mustExist(t, parent, "myktapp", "settings.gradle.kts")
+	mustExist(t, parent, "myktapp", "Dockerfile")
+	mustExist(t, parent, "myktapp", ".gitignore")
+	mustExist(t, parent, "myktapp", "CLAUDE.md")
+
+	// Verify Application.kt at the Gradle source path.
+	mustExist(t, parent, "myktapp", "src", "main", "kotlin", "com", "example", "myktapp", "Application.kt")
+
+	// Verify agent files.
+	mustExist(t, parent, "myktapp", ".claude", "agents", "architect.md")
+	mustExist(t, parent, "myktapp", ".claude", "agents", "dev.md")
+	mustExist(t, parent, "myktapp", ".claude", "agents", "reviewer.md")
+
+	// Verify wrapper scripts.
+	mustExist(t, parent, "myktapp", "vibew")
+	mustExist(t, parent, "myktapp", "vibew.ps1")
+	mustExist(t, parent, "myktapp", "vibew.cmd")
+	mustExist(t, parent, "myktapp", ".vibewarden-version")
+}
+
+func TestInitProject_Kotlin_DoesNotCreateGoFiles(t *testing.T) {
+	renderer := newFakeRenderer()
+	svc := scaffoldapp.NewInitProjectService(renderer)
+
+	parent := t.TempDir()
+	opts := scaffoldapp.InitProjectOptions{
+		ProjectName: "ktonly",
+		Language:    domainscaffold.LanguageKotlin,
+		Port:        3000,
+	}
+
+	if err := svc.InitProject(context.Background(), parent, opts); err != nil {
+		t.Fatalf("InitProject() Kotlin unexpected error: %v", err)
+	}
+
+	// Go-specific files must NOT be created.
+	goModPath := filepath.Join(parent, "ktonly", "go.mod")
+	if _, err := os.Stat(goModPath); err == nil {
+		t.Error("go.mod must not exist for a Kotlin project")
+	}
+
+	mainGoPath := filepath.Join(parent, "ktonly", "cmd", "ktonly", "main.go")
+	if _, err := os.Stat(mainGoPath); err == nil {
+		t.Error("cmd/ktonly/main.go must not exist for a Kotlin project")
+	}
+}
+
+func TestInitProject_Kotlin_DefaultsPort(t *testing.T) {
+	renderer := newFakeRenderer()
+	svc := scaffoldapp.NewInitProjectService(renderer)
+
+	parent := t.TempDir()
+	opts := scaffoldapp.InitProjectOptions{
+		ProjectName: "ktnoport",
+		Language:    domainscaffold.LanguageKotlin,
+		// Port deliberately zero — should default to 3000.
+	}
+
+	if err := svc.InitProject(context.Background(), parent, opts); err != nil {
+		t.Fatalf("InitProject() Kotlin unexpected error: %v", err)
+	}
+
+	mustExist(t, parent, "ktnoport", "vibewarden.yaml")
+}
+
 // mustExist is a test helper that fails if the file at path does not exist.
 func mustExist(t *testing.T, parts ...string) {
 	t.Helper()

@@ -279,6 +279,107 @@ func TestInitCmd_CustomPort(t *testing.T) {
 	}
 }
 
+// TestInitCmd_KotlinCreatesProject verifies that --lang kotlin scaffolds a project.
+func TestInitCmd_KotlinCreatesProject(t *testing.T) {
+	dir := t.TempDir()
+
+	if err := os.Chdir(dir); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+
+	root := cmd.NewRootCmd("test")
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetArgs([]string{"init", "--lang", "kotlin", "ktapp"})
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("init --lang kotlin failed: %v", err)
+	}
+
+	expectedFiles := []string{
+		filepath.Join("ktapp", "vibewarden.yaml"),
+		filepath.Join("ktapp", "build.gradle.kts"),
+		filepath.Join("ktapp", "settings.gradle.kts"),
+		filepath.Join("ktapp", "Dockerfile"),
+		filepath.Join("ktapp", ".gitignore"),
+		filepath.Join("ktapp", "CLAUDE.md"),
+		filepath.Join("ktapp", ".claude", "agents", "architect.md"),
+		filepath.Join("ktapp", ".claude", "agents", "dev.md"),
+		filepath.Join("ktapp", ".claude", "agents", "reviewer.md"),
+		filepath.Join("ktapp", "vibew"),
+		filepath.Join("ktapp", "vibew.ps1"),
+		filepath.Join("ktapp", "vibew.cmd"),
+		filepath.Join("ktapp", ".vibewarden-version"),
+		filepath.Join("ktapp", "src", "main", "kotlin", "com", "example", "ktapp", "Application.kt"),
+	}
+
+	for _, rel := range expectedFiles {
+		full := filepath.Join(dir, rel)
+		if _, err := os.Stat(full); err != nil {
+			t.Errorf("expected file %q to exist: %v", rel, err)
+		}
+	}
+}
+
+// TestInitCmd_KotlinDoesNotCreateGoFiles verifies that --lang kotlin does not
+// create Go-specific files.
+func TestInitCmd_KotlinDoesNotCreateGoFiles(t *testing.T) {
+	dir := t.TempDir()
+
+	if err := os.Chdir(dir); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+
+	root := cmd.NewRootCmd("test")
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetArgs([]string{"init", "--lang", "kotlin", "ktonly"})
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("init --lang kotlin failed: %v", err)
+	}
+
+	goSpecificFiles := []string{
+		filepath.Join("ktonly", "go.mod"),
+		filepath.Join("ktonly", "cmd", "ktonly", "main.go"),
+	}
+	for _, rel := range goSpecificFiles {
+		full := filepath.Join(dir, rel)
+		if _, err := os.Stat(full); err == nil {
+			t.Errorf("file %q must not exist for a Kotlin project", rel)
+		}
+	}
+}
+
+// TestInitCmd_KotlinPrintsSuccessMessage verifies the success message for Kotlin.
+func TestInitCmd_KotlinPrintsSuccessMessage(t *testing.T) {
+	dir := t.TempDir()
+
+	if err := os.Chdir(dir); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+
+	root := cmd.NewRootCmd("test")
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetArgs([]string{"init", "--lang", "kotlin", "ktmsg"})
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("init --lang kotlin failed: %v", err)
+	}
+
+	output := out.String()
+	if !strings.Contains(output, "ktmsg") {
+		t.Errorf("success message does not mention project name, got:\n%s", output)
+	}
+	if !strings.Contains(output, "./vibew dev") {
+		t.Errorf("success message should mention './vibew dev', got:\n%s", output)
+	}
+	if !strings.Contains(output, "Application.kt") {
+		t.Errorf("success message should mention Application.kt for Kotlin, got:\n%s", output)
+	}
+}
+
 // TestInitCmd_PrintsSuccessMessage verifies a success message is printed.
 func TestInitCmd_PrintsSuccessMessage(t *testing.T) {
 	dir := t.TempDir()
