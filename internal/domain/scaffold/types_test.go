@@ -263,6 +263,7 @@ func TestLanguage_Constants(t *testing.T) {
 	}{
 		{"go", scaffold.LanguageGo, "go"},
 		{"kotlin", scaffold.LanguageKotlin, "kotlin"},
+		{"typescript", scaffold.LanguageTypeScript, "typescript"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -276,6 +277,12 @@ func TestLanguage_Constants(t *testing.T) {
 func TestLanguage_Distinctness(t *testing.T) {
 	if scaffold.LanguageGo == scaffold.LanguageKotlin {
 		t.Error("LanguageGo and LanguageKotlin must be distinct")
+	}
+	if scaffold.LanguageGo == scaffold.LanguageTypeScript {
+		t.Error("LanguageGo and LanguageTypeScript must be distinct")
+	}
+	if scaffold.LanguageKotlin == scaffold.LanguageTypeScript {
+		t.Error("LanguageKotlin and LanguageTypeScript must be distinct")
 	}
 }
 

@@ -54,10 +54,10 @@ func TestInitCmd_RejectsUnknownLang(t *testing.T) {
 		wantInError []string
 	}{
 		{
-			name: "unknown language typescript",
-			lang: "typescript",
+			name: "unknown language ruby",
+			lang: "ruby",
 			wantInError: []string{
-				"typescript",
+				"ruby",
 				"go",
 				"vibewarden init --lang go",
 			},
@@ -377,6 +377,111 @@ func TestInitCmd_KotlinPrintsSuccessMessage(t *testing.T) {
 	}
 	if !strings.Contains(output, "Application.kt") {
 		t.Errorf("success message should mention Application.kt for Kotlin, got:\n%s", output)
+	}
+}
+
+// TestInitCmd_TypeScriptCreatesProject verifies that --lang typescript scaffolds a project.
+func TestInitCmd_TypeScriptCreatesProject(t *testing.T) {
+	dir := t.TempDir()
+
+	if err := os.Chdir(dir); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+
+	root := cmd.NewRootCmd("test")
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetArgs([]string{"init", "--lang", "typescript", "tsapp"})
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("init --lang typescript failed: %v", err)
+	}
+
+	expectedFiles := []string{
+		filepath.Join("tsapp", "vibewarden.yaml"),
+		filepath.Join("tsapp", "package.json"),
+		filepath.Join("tsapp", "tsconfig.json"),
+		filepath.Join("tsapp", "Dockerfile"),
+		filepath.Join("tsapp", ".gitignore"),
+		filepath.Join("tsapp", "CLAUDE.md"),
+		filepath.Join("tsapp", ".claude", "agents", "architect.md"),
+		filepath.Join("tsapp", ".claude", "agents", "dev.md"),
+		filepath.Join("tsapp", ".claude", "agents", "reviewer.md"),
+		filepath.Join("tsapp", "vibew"),
+		filepath.Join("tsapp", "vibew.ps1"),
+		filepath.Join("tsapp", "vibew.cmd"),
+		filepath.Join("tsapp", ".vibewarden-version"),
+		filepath.Join("tsapp", "src", "index.ts"),
+		filepath.Join("tsapp", "src", "domain", ".gitkeep"),
+		filepath.Join("tsapp", "src", "ports", ".gitkeep"),
+		filepath.Join("tsapp", "src", "adapters", ".gitkeep"),
+		filepath.Join("tsapp", "src", "app", ".gitkeep"),
+	}
+
+	for _, rel := range expectedFiles {
+		full := filepath.Join(dir, rel)
+		if _, err := os.Stat(full); err != nil {
+			t.Errorf("expected file %q to exist: %v", rel, err)
+		}
+	}
+}
+
+// TestInitCmd_TypeScriptDoesNotCreateGoFiles verifies that --lang typescript does
+// not create Go-specific files.
+func TestInitCmd_TypeScriptDoesNotCreateGoFiles(t *testing.T) {
+	dir := t.TempDir()
+
+	if err := os.Chdir(dir); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+
+	root := cmd.NewRootCmd("test")
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetArgs([]string{"init", "--lang", "typescript", "tsonly"})
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("init --lang typescript failed: %v", err)
+	}
+
+	goSpecificFiles := []string{
+		filepath.Join("tsonly", "go.mod"),
+		filepath.Join("tsonly", "cmd", "tsonly", "main.go"),
+	}
+	for _, rel := range goSpecificFiles {
+		full := filepath.Join(dir, rel)
+		if _, err := os.Stat(full); err == nil {
+			t.Errorf("file %q must not exist for a TypeScript project", rel)
+		}
+	}
+}
+
+// TestInitCmd_TypeScriptPrintsSuccessMessage verifies the success message for TypeScript.
+func TestInitCmd_TypeScriptPrintsSuccessMessage(t *testing.T) {
+	dir := t.TempDir()
+
+	if err := os.Chdir(dir); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+
+	root := cmd.NewRootCmd("test")
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetArgs([]string{"init", "--lang", "typescript", "tsmsg"})
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("init --lang typescript failed: %v", err)
+	}
+
+	output := out.String()
+	if !strings.Contains(output, "tsmsg") {
+		t.Errorf("success message does not mention project name, got:\n%s", output)
+	}
+	if !strings.Contains(output, "./vibew dev") {
+		t.Errorf("success message should mention './vibew dev', got:\n%s", output)
+	}
+	if !strings.Contains(output, "src/index.ts") {
+		t.Errorf("success message should mention src/index.ts for TypeScript, got:\n%s", output)
 	}
 }
 

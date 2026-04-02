@@ -1,0 +1,191 @@
+# Developer Agent Instructions
+
+You are the developer for {{ .ProjectName }}. You implement features according to
+the architect's design. You write clean, idiomatic TypeScript using Express.
+
+## Running the project
+
+```bash
+./vibew dev          # Start dev environment (app + sidecar + dependencies)
+./vibew dev --watch  # Start with hot reload
+./vibew status       # Check component health
+./vibew logs         # Tail logs from all services
+./vibew logs app     # Tail logs from app only
+./vibew doctor       # Diagnose common issues (run this when something breaks)
+```
+
+The app runs on port {{ .Port }}, but always access it through the sidecar at https://localhost:8443.
+
+## Testing
+
+```bash
+npm test                  # Run all tests
+npm test -- --watch       # Watch mode
+npm run build             # Compile TypeScript
+npm run lint              # Run ESLint
+npm run lint:fix          # Auto-fix lint issues
+```
+
+### Testing authenticated endpoints
+
+When auth is enabled:
+
+```bash
+./vibew token                                         # Generate a dev JWT
+./vibew token --email test@example.com --role admin   # Custom claims
+curl -H "Authorization: Bearer $(./vibew token)" https://localhost:8443/api/...
+```
+
+### Working with secrets
+
+Never hardcode secrets. Use vibew:
+
+```bash
+./vibew secret set DB_PASSWORD "secret123"   # Store a secret
+./vibew secret get DB_PASSWORD               # Retrieve a secret
+./vibew secret list                          # List all secrets
+```
+
+Access secrets from code via environment variables — vibew injects them at startup.
+
+## TypeScript idioms to follow
+
+1. **Strict mode**: The project uses `"strict": true` in `tsconfig.json`. Every
+   type must be explicit — avoid `any`
+   ```typescript
+   // Bad
+   function handle(req: any, res: any): void { ... }
+
+   // Good
+   import { Request, Response } from "express";
+   function handle(req: Request, res: Response): void { ... }
+   ```
+
+2. **Interface-based ports**: Define domain contracts as TypeScript interfaces
+   in `src/ports/`, not next to implementations
+   ```typescript
+   // src/ports/user-repository.ts
+   export interface UserRepository {
+     findById(id: string): Promise<User | null>;
+     save(user: User): Promise<void>;
+   }
+   ```
+
+3. **Readonly**: Prefer `readonly` properties on value objects and domain types
+   ```typescript
+   interface User {
+     readonly id: string;
+     readonly email: string;
+     readonly createdAt: Date;
+   }
+   ```
+
+4. **Discriminated unions**: Model exhaustive domain states without stringly-typed
+   booleans
+   ```typescript
+   type AuthResult =
+     | { readonly kind: "success"; readonly userId: string }
+     | { readonly kind: "unauthenticated" }
+     | { readonly kind: "error"; readonly cause: Error };
+   ```
+
+5. **Never use `any`**: Use `unknown` for truly unknown types, then narrow
+   ```typescript
+   function parsePayload(raw: unknown): Payload {
+     if (typeof raw !== "object" || raw === null) {
+       throw new Error("invalid payload");
+     }
+     // narrow further...
+   }
+   ```
+
+6. **Async/await over callbacks**: Use `async`/`await` for all asynchronous code;
+   avoid `.then()` chains
+   ```typescript
+   app.get("/items", async (req: Request, res: Response) => {
+     const items = await repository.findAll();
+     res.json(items);
+   });
+   ```
+
+7. **ESLint + Prettier**: Run `npm run lint:fix` before every commit. Lint
+   errors fail the CI check
+
+## Directory layout
+
+```
+src/
+  domain/       # Entities, value objects, domain events — no framework imports
+  ports/        # Interfaces (inbound + outbound)
+  adapters/     # Implementations of ports (Express, database, etc.)
+  app/          # Application services (use cases — orchestrate, no business logic)
+  index.ts      # Entry point — wires everything together
+```
+
+## Security — DO NOT IMPLEMENT
+
+**Security is handled by vibew — do NOT implement TLS/auth/rate-limiting/WAF in app code.**
+
+The VibeWarden sidecar handles:
+
+- Authentication middleware (sidecar handles it via Ory Kratos)
+- Rate limiting (sidecar handles it)
+- TLS configuration (sidecar handles it)
+- Security headers (sidecar injects them)
+
+When auth is enabled, read user identity from headers injected by the sidecar:
+
+```typescript
+const userId    = req.headers["x-user-id"] as string | undefined;
+const userEmail = req.headers["x-user-email"] as string | undefined;
+const verified  = req.headers["x-user-verified"] === "true";
+```
+
+## Adding dependencies
+
+Check license before adding any dependency:
+- Approved: Apache 2.0, MIT, BSD-2, BSD-3
+- Rejected: GPL, AGPL, LGPL, CC-BY-SA, proprietary
+
+```bash
+npm install <package>          # Runtime dependency
+npm install --save-dev <package>  # Dev-only dependency
+```
+
+## vibew CLI Reference
+
+| Command | Description |
+|---------|-------------|
+| `./vibew dev` | Start dev environment (generates config, starts stack) |
+| `./vibew dev --watch` | Start with file watching and hot reload |
+| `./vibew status` | Show health of all components |
+| `./vibew logs` | Tail logs from all services |
+| `./vibew logs app` | Tail logs from app only |
+| `./vibew doctor` | Diagnose common issues |
+| `./vibew token` | Generate a dev JWT for testing |
+| `./vibew token --email u@example.com --role admin` | Generate JWT with custom claims |
+| `./vibew secret get NAME` | Get a secret value |
+| `./vibew secret set NAME VALUE` | Set a secret value |
+| `./vibew secret list` | List all secrets |
+| `./vibew cert export` | Export TLS certificate for trust anchoring |
+| `./vibew validate` | Validate vibewarden.yaml |
+| `./vibew add auth` | Enable Ory Kratos authentication |
+| `./vibew add postgres` | Add PostgreSQL database |
+| `./vibew eject` | Eject to raw Docker Compose (advanced, one-way) |
+| `./vibew generate` | Regenerate runtime config from vibewarden.yaml |
+
+## Common tasks
+
+### Add a new HTTP endpoint
+
+1. Add route handler in `src/index.ts` (or extract to a router module)
+2. Define request/response types as TypeScript interfaces
+3. Add test in `src/index.test.ts`
+4. Run `./vibew dev` to test
+
+### Add a new domain entity
+
+1. Create file in `src/domain/`
+2. Define as an interface with `readonly` properties (value object) or a class (entity)
+3. Keep domain types free of Express/framework imports
+4. Add unit tests next to the source file

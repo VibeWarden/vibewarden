@@ -178,7 +178,7 @@ func TestInitProject_RejectsUnsupportedLanguage(t *testing.T) {
 	parent := t.TempDir()
 	opts := scaffoldapp.InitProjectOptions{
 		ProjectName: "badlang",
-		Language:    domainscaffold.Language("typescript"),
+		Language:    domainscaffold.Language("ruby"),
 		Port:        3000,
 	}
 
@@ -314,6 +314,101 @@ func TestInitProject_Kotlin_DefaultsPort(t *testing.T) {
 	}
 
 	mustExist(t, parent, "ktnoport", "vibewarden.yaml")
+}
+
+func TestInitProject_TypeScript_CreatesStructure(t *testing.T) {
+	renderer := newFakeRenderer()
+	svc := scaffoldapp.NewInitProjectService(renderer)
+
+	parent := t.TempDir()
+	opts := scaffoldapp.InitProjectOptions{
+		ProjectName: "mytsapp",
+		Language:    domainscaffold.LanguageTypeScript,
+		Port:        3000,
+	}
+
+	if err := svc.InitProject(context.Background(), parent, opts); err != nil {
+		t.Fatalf("InitProject() TypeScript unexpected error: %v", err)
+	}
+
+	// Verify top-level files.
+	mustExist(t, parent, "mytsapp", "vibewarden.yaml")
+	mustExist(t, parent, "mytsapp", "package.json")
+	mustExist(t, parent, "mytsapp", "tsconfig.json")
+	mustExist(t, parent, "mytsapp", "Dockerfile")
+	mustExist(t, parent, "mytsapp", ".gitignore")
+	mustExist(t, parent, "mytsapp", "CLAUDE.md")
+
+	// Verify entry point.
+	mustExist(t, parent, "mytsapp", "src", "index.ts")
+
+	// Verify hexagonal src layout with .gitkeep.
+	mustExist(t, parent, "mytsapp", "src", "domain", ".gitkeep")
+	mustExist(t, parent, "mytsapp", "src", "ports", ".gitkeep")
+	mustExist(t, parent, "mytsapp", "src", "adapters", ".gitkeep")
+	mustExist(t, parent, "mytsapp", "src", "app", ".gitkeep")
+
+	// Verify agent files.
+	mustExist(t, parent, "mytsapp", ".claude", "agents", "architect.md")
+	mustExist(t, parent, "mytsapp", ".claude", "agents", "dev.md")
+	mustExist(t, parent, "mytsapp", ".claude", "agents", "reviewer.md")
+
+	// Verify wrapper scripts.
+	mustExist(t, parent, "mytsapp", "vibew")
+	mustExist(t, parent, "mytsapp", "vibew.ps1")
+	mustExist(t, parent, "mytsapp", "vibew.cmd")
+	mustExist(t, parent, "mytsapp", ".vibewarden-version")
+}
+
+func TestInitProject_TypeScript_DoesNotCreateGoFiles(t *testing.T) {
+	renderer := newFakeRenderer()
+	svc := scaffoldapp.NewInitProjectService(renderer)
+
+	parent := t.TempDir()
+	opts := scaffoldapp.InitProjectOptions{
+		ProjectName: "tsonly",
+		Language:    domainscaffold.LanguageTypeScript,
+		Port:        3000,
+	}
+
+	if err := svc.InitProject(context.Background(), parent, opts); err != nil {
+		t.Fatalf("InitProject() TypeScript unexpected error: %v", err)
+	}
+
+	// Go-specific files must NOT be created.
+	goModPath := filepath.Join(parent, "tsonly", "go.mod")
+	if _, err := os.Stat(goModPath); err == nil {
+		t.Error("go.mod must not exist for a TypeScript project")
+	}
+
+	mainGoPath := filepath.Join(parent, "tsonly", "cmd", "tsonly", "main.go")
+	if _, err := os.Stat(mainGoPath); err == nil {
+		t.Error("cmd/tsonly/main.go must not exist for a TypeScript project")
+	}
+
+	// Kotlin-specific files must NOT be created.
+	buildGradlePath := filepath.Join(parent, "tsonly", "build.gradle.kts")
+	if _, err := os.Stat(buildGradlePath); err == nil {
+		t.Error("build.gradle.kts must not exist for a TypeScript project")
+	}
+}
+
+func TestInitProject_TypeScript_DefaultsPort(t *testing.T) {
+	renderer := newFakeRenderer()
+	svc := scaffoldapp.NewInitProjectService(renderer)
+
+	parent := t.TempDir()
+	opts := scaffoldapp.InitProjectOptions{
+		ProjectName: "tsnoport",
+		Language:    domainscaffold.LanguageTypeScript,
+		// Port deliberately zero — should default to 3000.
+	}
+
+	if err := svc.InitProject(context.Background(), parent, opts); err != nil {
+		t.Fatalf("InitProject() TypeScript unexpected error: %v", err)
+	}
+
+	mustExist(t, parent, "tsnoport", "vibewarden.yaml")
 }
 
 // mustExist is a test helper that fails if the file at path does not exist.

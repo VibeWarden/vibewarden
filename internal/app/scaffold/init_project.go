@@ -66,6 +66,31 @@ var kotlinTemplateFiles = []struct {
 	{tmpl: "kotlin/dev.md.tmpl", dest: filepath.Join(".claude", "agents", "dev.md")},
 }
 
+// typescriptTemplateFiles maps each output path (relative to the project root)
+// to the template name it is rendered from. These are TypeScript-language-specific
+// templates using the Express framework. Shared agent templates are in
+// sharedAgentTemplateFiles and are rendered separately.
+var typescriptTemplateFiles = []struct {
+	tmpl string
+	dest string
+}{
+	{tmpl: "typescript/vibewarden.yaml.tmpl", dest: "vibewarden.yaml"},
+	{tmpl: "typescript/package.json.tmpl", dest: "package.json"},
+	{tmpl: "typescript/tsconfig.json.tmpl", dest: "tsconfig.json"},
+	{tmpl: "typescript/dockerfile.tmpl", dest: "Dockerfile"},
+	{tmpl: "typescript/gitignore.tmpl", dest: ".gitignore"},
+	{tmpl: "typescript/dev.md.tmpl", dest: filepath.Join(".claude", "agents", "dev.md")},
+}
+
+// typescriptInitDirs lists the directories created for TypeScript projects.
+// They mirror the hexagonal architecture layout expected by the TS source tree.
+var typescriptInitDirs = []string{
+	filepath.Join("src", "domain"),
+	filepath.Join("src", "ports"),
+	filepath.Join("src", "adapters"),
+	filepath.Join("src", "app"),
+}
+
 // InitProjectOptions carries options for full project scaffolding.
 type InitProjectOptions struct {
 	// ProjectName is the project/directory name.
@@ -123,10 +148,10 @@ func NewInitProjectService(renderer ports.TemplateRenderer) *InitProjectService 
 // code conventions appended from go/claude.md.tmpl.
 func (s *InitProjectService) InitProject(ctx context.Context, parentDir string, opts InitProjectOptions) error {
 	switch opts.Language {
-	case domainscaffold.LanguageGo, domainscaffold.LanguageKotlin:
+	case domainscaffold.LanguageGo, domainscaffold.LanguageKotlin, domainscaffold.LanguageTypeScript:
 		// supported
 	default:
-		return fmt.Errorf("unsupported language %q (supported: go, kotlin)", opts.Language)
+		return fmt.Errorf("unsupported language %q (supported: go, kotlin, typescript)", opts.Language)
 	}
 
 	if opts.ProjectName == "" {
@@ -187,6 +212,24 @@ func (s *InitProjectService) InitProject(ctx context.Context, parentDir string, 
 	case domainscaffold.LanguageKotlin:
 		if err := s.renderKotlinFiles(projectDir, data, opts.Force); err != nil {
 			return err
+		}
+	case domainscaffold.LanguageTypeScript:
+		if err := s.renderTypeScriptFiles(projectDir, data, opts.Force); err != nil {
+			return err
+		}
+		// Create empty source-tree directories with .gitkeep.
+		// These mirror the hexagonal architecture layout expected by TypeScript projects.
+		for _, d := range typescriptInitDirs {
+			dir := filepath.Join(projectDir, d)
+			if err := os.MkdirAll(dir, 0o750); err != nil {
+				return fmt.Errorf("creating directory %s: %w", d, err)
+			}
+			keepPath := filepath.Join(dir, ".gitkeep")
+			if _, statErr := os.Stat(keepPath); errors.Is(statErr, os.ErrNotExist) {
+				if writeErr := os.WriteFile(keepPath, nil, 0o600); writeErr != nil {
+					return fmt.Errorf("creating .gitkeep in %s: %w", d, writeErr)
+				}
+			}
 		}
 	default: // LanguageGo
 		if err := s.renderGoFiles(projectDir, opts.ProjectName, data, opts.Force); err != nil {
@@ -310,6 +353,31 @@ func (s *InitProjectService) renderKotlinFiles(projectDir string, data domainsca
 			return fmt.Errorf("rendering Application.kt: %w", err)
 		}
 		return fmt.Errorf("Application.kt already exists; use --force to overwrite: %w", err) //nolint:revive,staticcheck // user-facing CLI hint: intentional capitalization
+	}
+	return nil
+}
+
+// renderTypeScriptFiles renders all TypeScript-specific template files into
+// projectDir. The index.ts entry point is placed at src/index.ts following
+// the conventional TypeScript project source layout.
+func (s *InitProjectService) renderTypeScriptFiles(projectDir string, data domainscaffold.InitProjectData, overwrite bool) error {
+	for _, tf := range typescriptTemplateFiles {
+		dest := filepath.Join(projectDir, tf.dest)
+		if err := s.renderer.RenderToFile(tf.tmpl, data, dest, overwrite); err != nil {
+			if !errors.Is(err, os.ErrExist) {
+				return fmt.Errorf("rendering %s: %w", tf.dest, err)
+			}
+			return fmt.Errorf("%s already exists; use --force to overwrite: %w", tf.dest, err)
+		}
+	}
+
+	// Render index.ts into the conventional TypeScript source directory.
+	indexPath := filepath.Join(projectDir, "src", "index.ts")
+	if err := s.renderer.RenderToFile("typescript/index.ts.tmpl", data, indexPath, overwrite); err != nil {
+		if !errors.Is(err, os.ErrExist) {
+			return fmt.Errorf("rendering index.ts: %w", err)
+		}
+		return fmt.Errorf("index.ts already exists; use --force to overwrite: %w", err)
 	}
 	return nil
 }

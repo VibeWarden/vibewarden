@@ -18,7 +18,7 @@ import (
 
 // supportedLanguages lists every language the init command accepts.
 // Add new entries here as new language templates are introduced.
-var supportedLanguages = []string{"go", "kotlin"}
+var supportedLanguages = []string{"go", "kotlin", "typescript"}
 
 // NewInitCmd creates the `vibewarden init` subcommand.
 //
@@ -74,7 +74,7 @@ Examples:
 
 			language := domainscaffold.Language(lang)
 			switch language {
-			case domainscaffold.LanguageGo, domainscaffold.LanguageKotlin:
+			case domainscaffold.LanguageGo, domainscaffold.LanguageKotlin, domainscaffold.LanguageTypeScript:
 				// supported
 			default:
 				return fmt.Errorf(
@@ -125,7 +125,7 @@ Examples:
 		},
 	}
 
-	cmd.Flags().StringVar(&lang, "lang", "", `programming language (required; supported: "go", "kotlin")`)
+	cmd.Flags().StringVar(&lang, "lang", "", `programming language (required; supported: "go", "kotlin", "typescript")`)
 	cmd.Flags().StringVar(&module, "module", "", "Go module path (default: project name)")
 	cmd.Flags().IntVar(&port, "port", 3000, "HTTP port the generated app listens on")
 	cmd.Flags().BoolVar(&force, "force", false, "overwrite existing files")
@@ -148,6 +148,10 @@ func printInitSuccessMessage(cmd *cobra.Command, projectName string, opts scaffo
 		fmt.Fprintf(w, "  src/main/kotlin/.../Application.kt  App entry point (Ktor)\n")
 		fmt.Fprintf(w, "  build.gradle.kts                     Gradle build file\n")
 		fmt.Fprintf(w, "  settings.gradle.kts                  Gradle settings\n")
+	case domainscaffold.LanguageTypeScript:
+		fmt.Fprintf(w, "  src/index.ts             App entry point (Express)\n")
+		fmt.Fprintf(w, "  package.json             Node.js package manifest\n")
+		fmt.Fprintf(w, "  tsconfig.json            TypeScript compiler options\n")
 	default: // go
 		fmt.Fprintf(w, "  cmd/%s/main.go         App entry point\n", projectName)
 		modDisplay := opts.ModulePath
