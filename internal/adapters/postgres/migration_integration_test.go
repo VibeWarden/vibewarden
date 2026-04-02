@@ -13,7 +13,7 @@ import (
 	"github.com/vibewarden/vibewarden/internal/adapters/postgres"
 )
 
-func startPostgres(t *testing.T, ctx context.Context) string {
+func startPostgres(ctx context.Context, t *testing.T) string { //nolint:thelper // ctx first per Go convention
 	t.Helper()
 
 	container, err := tcpostgres.Run(ctx,
@@ -58,7 +58,7 @@ func TestMigrationAdapter_Integration_UpAndStatus(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	connStr := startPostgres(t, ctx)
+	connStr := startPostgres(ctx, t)
 
 	adapter, err := postgres.NewMigrationAdapter(connStr, testMigrationFS())
 	if err != nil {
@@ -102,7 +102,7 @@ func TestMigrationAdapter_Integration_UpIdempotent(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	connStr := startPostgres(t, ctx)
+	connStr := startPostgres(ctx, t)
 
 	adapter, err := postgres.NewMigrationAdapter(connStr, testMigrationFS())
 	if err != nil {
@@ -124,7 +124,7 @@ func TestMigrationAdapter_Integration_Down(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	connStr := startPostgres(t, ctx)
+	connStr := startPostgres(ctx, t)
 
 	adapter, err := postgres.NewMigrationAdapter(connStr, testMigrationFS())
 	if err != nil {
@@ -155,7 +155,7 @@ func TestMigrationAdapter_Integration_DownNoMigrations(t *testing.T) {
 	}
 
 	ctx := context.Background()
-	connStr := startPostgres(t, ctx)
+	connStr := startPostgres(ctx, t)
 
 	adapter, err := postgres.NewMigrationAdapter(connStr, testMigrationFS())
 	if err != nil {

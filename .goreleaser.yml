@@ -18,7 +18,7 @@ project_name: vibewarden
 builds:
   - id: vibewarden
     main: ./cmd/vibewarden
-    binary: vibewarden
+    binary: vibew
     env:
       - CGO_ENABLED=0
     flags:

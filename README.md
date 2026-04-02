@@ -24,13 +24,13 @@ all in a single binary that sits next to your app.
 
 ```bash
 # macOS / Linux
-curl -fsSL https://vibewarden.dev/vibew > vibew && chmod +x vibew
+curl -sS https://vibewarden.dev/install.sh | sh
 
 # Scaffold VibeWarden into your project
-./vibew init --upstream 3000
+vibew init --upstream 3000
 
-# Start everything (generates runtime config, then starts the stack)
-./vibew dev
+# Start everything
+vibew dev
 ```
 
 Your app on port 3000 is now behind VibeWarden at `https://localhost:8443`. Done.
@@ -38,9 +38,9 @@ Your app on port 3000 is now behind VibeWarden at `https://localhost:8443`. Done
 **Windows:**
 
 ```powershell
-Invoke-WebRequest -Uri https://vibewarden.dev/vibew.ps1 -OutFile vibew.ps1
-.\vibew.ps1 init --upstream 3000
-.\vibew.ps1 dev
+irm vibewarden.dev/install.ps1 | iex
+vibew init --upstream 3000
+vibew dev
 ```
 
 Docker images are published to `ghcr.io/vibewarden/vibewarden` as multi-arch manifests
@@ -53,7 +53,7 @@ on both x86-64 servers and ARM64 machines (Apple Silicon, AWS Graviton).
 
 ```
 vibewarden.yaml          # Main config — commit this
-vibew / vibew.ps1        # Wrapper scripts (macOS/Linux/Windows)
+vibew                    # CLI binary (installed via install script)
 .vibewarden-version      # Pinned version
 .claude/CLAUDE.md        # AI agent context (Claude Code)
 .cursor/rules            # AI agent context (Cursor)

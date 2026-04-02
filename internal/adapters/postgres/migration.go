@@ -96,13 +96,13 @@ func (a *MigrationAdapter) Status(_ context.Context) (ports.MigrationStatus, err
 		return ports.MigrationStatus{}, fmt.Errorf("reading migration version: %w", err)
 	}
 
-	pending, countErr := a.countPending(int(version))
+	pending, countErr := a.countPending(int(version)) //nolint:gosec // version is a migration sequence number, never exceeds int range
 	if countErr != nil {
 		return ports.MigrationStatus{}, fmt.Errorf("counting pending migrations: %w", countErr)
 	}
 
 	return ports.MigrationStatus{
-		CurrentVersion: int(version),
+		CurrentVersion: int(version), //nolint:gosec // migration version fits in int
 		Dirty:          dirty,
 		PendingCount:   pending,
 	}, nil
