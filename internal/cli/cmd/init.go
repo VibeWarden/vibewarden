@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -14,6 +15,10 @@ import (
 	"github.com/vibewarden/vibewarden/internal/cli/templates"
 	domainscaffold "github.com/vibewarden/vibewarden/internal/domain/scaffold"
 )
+
+// supportedLanguages lists every language the init command accepts.
+// Add new entries here as new language templates are introduced.
+var supportedLanguages = []string{"go"}
 
 // NewInitCmd creates the `vibewarden init` subcommand.
 //
@@ -61,12 +66,19 @@ Examples:
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if lang == "" {
-				return fmt.Errorf("flag --lang is required (supported: go)")
+				return fmt.Errorf(
+					"--lang is required\n\nSupported languages:\n  %s\n\nExample:\n  vibewarden init --lang go myproject",
+					strings.Join(supportedLanguages, ", "),
+				)
 			}
 
 			language := domainscaffold.Language(lang)
 			if language != domainscaffold.LanguageGo {
-				return fmt.Errorf("unsupported language %q (supported: go)", lang)
+				return fmt.Errorf(
+					"unsupported language %q\n\nSupported languages:\n  %s\n\nExample:\n  vibewarden init --lang go myproject",
+					lang,
+					strings.Join(supportedLanguages, ", "),
+				)
 			}
 
 			// Determine project name and parent directory.
