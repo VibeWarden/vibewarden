@@ -5,7 +5,7 @@ package templates
 import "embed"
 
 // FS holds all template files embedded at compile time, including language pack
-// subdirectories (e.g. go/).
+// subdirectories (e.g. go/) and shared agent templates (agents/).
 //
-//go:embed *.tmpl go/*.tmpl
+//go:embed *.tmpl go/*.tmpl agents/*.tmpl
 var FS embed.FS
