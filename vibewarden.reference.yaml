@@ -9,7 +9,7 @@
 # generated docker-compose.yml. Set external_url to switch to a managed
 # Postgres service (AWS RDS, Supabase, Neon, Hetzner Managed Databases).
 #
-# When external_url is set, vibew init omits the local postgres container from
+# When external_url is set, vibew generate omits the local postgres container from
 # the generated docker-compose.yml and uses this URL as the Kratos DSN.
 #
 # See docs/postgres.md for deployment strategies and provider-specific examples.
