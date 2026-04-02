@@ -84,7 +84,41 @@ AGENTS.md                # AI agent context (generic)
 
 ---
 
-## Step 3 — `vibew dev`
+## Step 3 — Build and start
+
+### 3a — Build the app
+
+Build the app binary or artifact using your language's tool:
+
+=== "Go"
+
+    ```bash
+    go build ./...
+    ```
+
+=== "Gradle (Kotlin / Java)"
+
+    ```bash
+    ./gradlew build
+    ```
+
+=== "npm (TypeScript / Node.js)"
+
+    ```bash
+    npm run build
+    ```
+
+### 3b — Build the Docker image
+
+```bash
+./vibew build
+```
+
+This runs `docker build` using the `Dockerfile` in your project root and tags the
+image so the Compose stack can reference it. You can also run
+`docker build -t myapp .` directly if you prefer.
+
+### 3c — `vibew dev`
 
 Start the full local stack:
 
@@ -99,6 +133,18 @@ This command:
 2. Starts the stack with `docker compose up`.
 
 Your app is now protected at `https://localhost:8443`.
+
+### Restarting after a code change
+
+After you change application code and rebuild the binary or artifact (step 3a),
+restart the containers without rebuilding the Docker image:
+
+```bash
+./vibew restart
+```
+
+Use `vibew build` followed by `vibew restart` when you also need to update the
+Docker image.
 
 !!! tip "Trust the self-signed certificate"
     On first run, VibeWarden generates a self-signed CA certificate so your browser
@@ -213,6 +259,7 @@ examples with Auth0, Keycloak, Firebase, Cognito, Okta, Supabase, and Kratos.
 
 ```bash
 ./vibew add metrics
+./vibew build
 ./vibew dev
 ```
 
