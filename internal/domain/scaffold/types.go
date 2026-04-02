@@ -89,6 +89,8 @@ const (
 	LanguageGo Language = "go"
 	// LanguageKotlin is the Kotlin programming language.
 	LanguageKotlin Language = "kotlin"
+	// LanguageTypeScript is the TypeScript programming language.
+	LanguageTypeScript Language = "typescript"
 )
 
 // InitProjectData is the data passed to project scaffold templates when rendering.

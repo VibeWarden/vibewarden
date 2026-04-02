@@ -357,6 +357,182 @@ func TestInitProject_KotlinWithRealFS(t *testing.T) {
 	}
 }
 
+// TestInitProject_TypeScript_UsesTypeScriptDevTemplate verifies that dev.md for a
+// TypeScript project is rendered from the TypeScript-specific typescript/ template.
+func TestInitProject_TypeScript_UsesTypeScriptDevTemplate(t *testing.T) {
+	renderer := newTrackingRenderer()
+	svc := scaffoldapp.NewInitProjectService(renderer)
+
+	parent := t.TempDir()
+	opts := scaffoldapp.InitProjectOptions{
+		ProjectName: "tsapp",
+		Language:    domainscaffold.LanguageTypeScript,
+		Port:        3000,
+	}
+
+	if err := svc.InitProject(context.Background(), parent, opts); err != nil {
+		t.Fatalf("InitProject() TypeScript unexpected error: %v", err)
+	}
+
+	if !containsTemplate(renderer.renderToFileCalls, "typescript/dev.md.tmpl") {
+		t.Errorf("expected typescript/dev.md.tmpl to be used; RenderToFile calls: %v", renderer.renderToFileCalls)
+	}
+	if containsTemplate(renderer.renderToFileCalls, "go/dev.md.tmpl") {
+		t.Errorf("go/dev.md.tmpl must not be used for a TypeScript project; RenderToFile calls: %v", renderer.renderToFileCalls)
+	}
+	if containsTemplate(renderer.renderToFileCalls, "kotlin/dev.md.tmpl") {
+		t.Errorf("kotlin/dev.md.tmpl must not be used for a TypeScript project; RenderToFile calls: %v", renderer.renderToFileCalls)
+	}
+}
+
+// TestInitProject_TypeScript_CLAUDEmd_UsesBothSharedAndTypeScriptTemplates
+// verifies that CLAUDE.md for a TypeScript project combines the shared
+// agents/claude.md.tmpl with the TypeScript-specific typescript/claude.md.tmpl
+// appendix.
+func TestInitProject_TypeScript_CLAUDEmd_UsesBothSharedAndTypeScriptTemplates(t *testing.T) {
+	renderer := newTrackingRenderer()
+	svc := scaffoldapp.NewInitProjectService(renderer)
+
+	parent := t.TempDir()
+	opts := scaffoldapp.InitProjectOptions{
+		ProjectName: "tsapp",
+		Language:    domainscaffold.LanguageTypeScript,
+		Port:        3000,
+	}
+
+	if err := svc.InitProject(context.Background(), parent, opts); err != nil {
+		t.Fatalf("InitProject() TypeScript unexpected error: %v", err)
+	}
+
+	if !containsTemplate(renderer.renderCalls, "agents/claude.md.tmpl") {
+		t.Errorf("expected agents/claude.md.tmpl to be rendered; Render calls: %v", renderer.renderCalls)
+	}
+	if !containsTemplate(renderer.renderCalls, "typescript/claude.md.tmpl") {
+		t.Errorf("expected typescript/claude.md.tmpl to be rendered; Render calls: %v", renderer.renderCalls)
+	}
+	if containsTemplate(renderer.renderCalls, "go/claude.md.tmpl") {
+		t.Errorf("go/claude.md.tmpl must not be used for a TypeScript project; Render calls: %v", renderer.renderCalls)
+	}
+	if containsTemplate(renderer.renderCalls, "kotlin/claude.md.tmpl") {
+		t.Errorf("kotlin/claude.md.tmpl must not be used for a TypeScript project; Render calls: %v", renderer.renderCalls)
+	}
+
+	claudePath := filepath.Join(parent, "tsapp", "CLAUDE.md")
+	data, err := os.ReadFile(claudePath)
+	if err != nil {
+		t.Fatalf("CLAUDE.md not found: %v", err)
+	}
+	content := string(data)
+
+	if !strings.Contains(content, "rendered:agents/claude.md.tmpl") {
+		t.Errorf("CLAUDE.md missing shared base content; got:\n%s", content)
+	}
+	if !strings.Contains(content, "rendered:typescript/claude.md.tmpl") {
+		t.Errorf("CLAUDE.md missing TypeScript conventions content; got:\n%s", content)
+	}
+}
+
+// TestInitProject_TypeScript_WithRealFS verifies that the TypeScript language
+// pack templates render correctly with the real embedded FS.
+func TestInitProject_TypeScript_WithRealFS(t *testing.T) {
+	r := mustBuildRealRenderer(t)
+	svc := scaffoldapp.NewInitProjectService(r)
+
+	parent := t.TempDir()
+	opts := scaffoldapp.InitProjectOptions{
+		ProjectName: "tsreal",
+		Language:    domainscaffold.LanguageTypeScript,
+		Port:        3000,
+	}
+
+	if err := svc.InitProject(context.Background(), parent, opts); err != nil {
+		t.Fatalf("InitProject() TypeScript real FS unexpected error: %v", err)
+	}
+
+	tests := []struct {
+		file        string
+		mustContain []string
+	}{
+		{
+			file: filepath.Join(parent, "tsreal", "CLAUDE.md"),
+			mustContain: []string{
+				"VibeWarden",
+				"vibew CLI Reference",
+				// TypeScript-specific conventions from typescript/claude.md.tmpl:
+				"strict mode",
+				"readonly",
+				"discriminated unions",
+				"ESLint",
+			},
+		},
+		{
+			file: filepath.Join(parent, "tsreal", ".claude", "agents", "dev.md"),
+			mustContain: []string{
+				"vibew CLI Reference",
+				"./vibew dev",
+				// TypeScript idioms:
+				"TypeScript idioms",
+				"Strict mode",
+				"Interface-based ports",
+				"readonly",
+				"Discriminated unions",
+				"ESLint",
+			},
+		},
+		{
+			file: filepath.Join(parent, "tsreal", "src", "index.ts"),
+			mustContain: []string{
+				"tsreal",
+				`"/health"`,
+				`"/public"`,
+				`"/protected"`,
+				"x-user-id",
+				"express",
+			},
+		},
+		{
+			file: filepath.Join(parent, "tsreal", "package.json"),
+			mustContain: []string{
+				"tsreal",
+				"express",
+				"typescript",
+				"ts-node",
+			},
+		},
+		{
+			file: filepath.Join(parent, "tsreal", "tsconfig.json"),
+			mustContain: []string{
+				`"strict": true`,
+				`"outDir"`,
+				`"rootDir"`,
+			},
+		},
+		{
+			file: filepath.Join(parent, "tsreal", "vibewarden.yaml"),
+			mustContain: []string{
+				"3000",
+				"rate_limit",
+				"tls",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.file, func(t *testing.T) {
+			raw, err := os.ReadFile(tt.file)
+			if err != nil {
+				t.Fatalf("reading %s: %v", tt.file, err)
+			}
+			content := string(raw)
+			for _, want := range tt.mustContain {
+				if !strings.Contains(content, want) {
+					t.Errorf("file %s missing %q\nContent:\n%s", tt.file, want, content)
+				}
+			}
+		})
+	}
+}
+
 // TestInitProject_SharedTemplatesWithRealFS verifies that the shared agent
 // templates (architect.md, reviewer.md, claude.md) render correctly with the
 // real embedded FS, producing output that contains the required vibew CLI
