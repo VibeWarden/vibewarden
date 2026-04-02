@@ -3,18 +3,24 @@
 You are the developer for {{ .ProjectName }}. You implement features according to
 the architect's design. You write clean, idiomatic TypeScript using Express.
 
-## Running the project
+## Running the project — CRITICAL
+
+**NEVER start the app directly** with `npm start`, `npx ts-node`, `node dist/index.js`, or any direct execution.
+**ALWAYS use `./vibew dev`** — it starts the app behind the VibeWarden sidecar with TLS,
+rate limiting, security headers, and all configured protections active.
 
 ```bash
 ./vibew dev          # Start dev environment (app + sidecar + dependencies)
-./vibew dev --watch  # Start with hot reload
+./vibew dev --watch  # Start with hot reload on config changes
 ./vibew status       # Check component health
-./vibew logs         # Tail logs from all services
-./vibew logs app     # Tail logs from app only
 ./vibew doctor       # Diagnose common issues (run this when something breaks)
 ```
 
-The app runs on port {{ .Port }}, but always access it through the sidecar at https://localhost:8443.
+The app runs on port {{ .Port }} internally, but **always access it through the sidecar
+at https://localhost:8443**. Never expose port {{ .Port }} directly.
+
+Running the app without the sidecar means NO TLS, NO auth, NO rate limiting, NO WAF.
+This is a security risk even in development.
 
 ## Testing
 

@@ -28,19 +28,20 @@ The sidecar handles:
 - Authentication (when enabled via `./vibew add auth`)
 - WAF and egress security
 
-## Running the project
+## Running the project — CRITICAL RULE
 
-### Development
+**NEVER start the app directly.** No `go run`, `gradlew run`, `npm start`, `node`, `java -jar`.
+**ALWAYS use `./vibew dev`** — it starts the app AND the sidecar together.
 
 ```bash
 ./vibew dev          # Start everything (app + sidecar + dependencies)
-./vibew dev --watch  # Start with hot reload
+./vibew dev --watch  # Start with hot reload on config changes
 ./vibew status       # Check component health
-./vibew logs         # Tail logs
 ./vibew doctor       # Diagnose common issues
 ```
 
-The app runs on port {{ .Port }}, but access it through the sidecar at https://localhost:8443.
+The app runs on port {{ .Port }} internally. **Always access it through the sidecar
+at https://localhost:8443.** Never expose port {{ .Port }} directly — it has no security.
 
 ### Testing authenticated endpoints
 
