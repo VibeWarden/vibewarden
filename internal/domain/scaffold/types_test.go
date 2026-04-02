@@ -255,6 +255,30 @@ func TestAgentContextData_ZeroValue(t *testing.T) {
 	}
 }
 
+func TestLanguage_Constants(t *testing.T) {
+	tests := []struct {
+		name  string
+		value scaffold.Language
+		want  string
+	}{
+		{"go", scaffold.LanguageGo, "go"},
+		{"kotlin", scaffold.LanguageKotlin, "kotlin"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if string(tt.value) != tt.want {
+				t.Errorf("Language %q = %q, want %q", tt.name, string(tt.value), tt.want)
+			}
+		})
+	}
+}
+
+func TestLanguage_Distinctness(t *testing.T) {
+	if scaffold.LanguageGo == scaffold.LanguageKotlin {
+		t.Error("LanguageGo and LanguageKotlin must be distinct")
+	}
+}
+
 func TestAgentContextData_Construction(t *testing.T) {
 	acd := scaffold.AgentContextData{
 		UpstreamPort:     8080,
