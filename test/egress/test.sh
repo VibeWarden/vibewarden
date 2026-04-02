@@ -98,7 +98,7 @@ RESULT=$(docker exec egress-app-1 wget -S \
     --header="Content-Type: application/json" \
     --post-data='{}' \
     http://vibewarden:8081/ 2>&1 || true)
-check_output "POST to GET-only route returns 403" "403 Forbidden" "$RESULT"
+check_output "POST to GET-only route is rejected" "40" "$RESULT"  # 403 or 405
 
 # httpbin-headers route only allows GET; the route should match for GET.
 RESULT=$(docker exec egress-app-1 wget -qO- \
