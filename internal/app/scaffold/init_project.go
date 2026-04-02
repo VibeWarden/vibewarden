@@ -5,7 +5,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 
@@ -287,6 +289,34 @@ func (s *InitProjectService) InitProject(ctx context.Context, parentDir string, 
 		return fmt.Errorf("rendering wrapper scripts: %w", err)
 	}
 
+	// Initialize a git repository and create an initial commit.
+	if err := s.initGitRepo(projectDir); err != nil {
+		// Non-fatal — log and continue. The project is usable without git.
+		fmt.Fprintf(os.Stderr, "warning: could not initialize git repo: %v\n", err)
+	}
+
+	return nil
+}
+
+// initGitRepo runs `git init` and creates an initial commit in projectDir.
+// Requires git to be installed. Returns an error if git is not available.
+func (s *InitProjectService) initGitRepo(dir string) error {
+	cmds := []struct {
+		args []string
+	}{
+		{[]string{"git", "init"}},
+		{[]string{"git", "add", "."}},
+		{[]string{"git", "commit", "-m", "Initial commit — scaffolded with vibew init"}},
+	}
+	for _, c := range cmds {
+		cmd := exec.CommandContext(context.Background(), c.args[0], c.args[1:]...) //nolint:gosec // args are static strings
+		cmd.Dir = dir
+		cmd.Stdout = io.Discard
+		cmd.Stderr = io.Discard
+		if err := cmd.Run(); err != nil {
+			return fmt.Errorf("%s: %w", c.args[0], err)
+		}
+	}
 	return nil
 }
 
