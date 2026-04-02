@@ -5,6 +5,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	scaffoldapp "github.com/vibewarden/vibewarden/internal/app/scaffold"
@@ -409,6 +410,122 @@ func TestInitProject_TypeScript_DefaultsPort(t *testing.T) {
 	}
 
 	mustExist(t, parent, "tsnoport", "vibewarden.yaml")
+}
+
+// TestInitProject_WritesProjectMD verifies that PROJECT.md is created when a
+// description is provided, and omitted when the description is empty.
+func TestInitProject_WritesProjectMD(t *testing.T) {
+	tests := []struct {
+		name        string
+		description string
+		wantFile    bool
+	}{
+		{"with description", "a task management API", true},
+		{"empty description", "", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			renderer := newFakeRenderer()
+			svc := scaffoldapp.NewInitProjectService(renderer)
+
+			parent := t.TempDir()
+			opts := scaffoldapp.InitProjectOptions{
+				ProjectName: "myapp",
+				Language:    domainscaffold.LanguageGo,
+				Port:        3000,
+				Description: tt.description,
+			}
+
+			if err := svc.InitProject(context.Background(), parent, opts); err != nil {
+				t.Fatalf("InitProject() unexpected error: %v", err)
+			}
+
+			projectMDPath := filepath.Join(parent, "myapp", "PROJECT.md")
+			_, statErr := os.Stat(projectMDPath)
+			exists := statErr == nil
+
+			if exists != tt.wantFile {
+				t.Errorf("PROJECT.md exists=%v, want=%v (description=%q)", exists, tt.wantFile, tt.description)
+			}
+		})
+	}
+}
+
+// TestInitProject_DescriptionInData verifies that InitProjectData carries the
+// description through to the template renderer.
+func TestInitProject_DescriptionInData(t *testing.T) {
+	tracker := newTrackingRenderer()
+	svc := scaffoldapp.NewInitProjectService(tracker)
+
+	parent := t.TempDir()
+	opts := scaffoldapp.InitProjectOptions{
+		ProjectName: "descapp",
+		Language:    domainscaffold.LanguageGo,
+		Port:        3000,
+		Description: "an e-commerce platform",
+	}
+
+	if err := svc.InitProject(context.Background(), parent, opts); err != nil {
+		t.Fatalf("InitProject() unexpected error: %v", err)
+	}
+
+	// PROJECT.md must be rendered.
+	if !containsTemplate(tracker.renderToFileCalls, "agents/project.md.tmpl") {
+		t.Errorf("expected agents/project.md.tmpl to be rendered; RenderToFile calls: %v", tracker.renderToFileCalls)
+	}
+}
+
+// TestInitProject_WithRealFS_Description verifies that the real templates render
+// the description into PROJECT.md, CLAUDE.md, and architect.md.
+func TestInitProject_WithRealFS_Description(t *testing.T) {
+	r := mustBuildRealRenderer(t)
+	svc := scaffoldapp.NewInitProjectService(r)
+
+	parent := t.TempDir()
+	opts := scaffoldapp.InitProjectOptions{
+		ProjectName: "realwithDesc",
+		Language:    domainscaffold.LanguageGo,
+		Port:        3000,
+		Description: "a payment processing service",
+	}
+
+	if err := svc.InitProject(context.Background(), parent, opts); err != nil {
+		t.Fatalf("InitProject() unexpected error: %v", err)
+	}
+
+	tests := []struct {
+		file        string
+		mustContain []string
+	}{
+		{
+			file:        filepath.Join(parent, "realwithDesc", "PROJECT.md"),
+			mustContain: []string{"a payment processing service", "realwithDesc"},
+		},
+		{
+			file:        filepath.Join(parent, "realwithDesc", "CLAUDE.md"),
+			mustContain: []string{"a payment processing service"},
+		},
+		{
+			file:        filepath.Join(parent, "realwithDesc", ".claude", "agents", "architect.md"),
+			mustContain: []string{"a payment processing service"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.file, func(t *testing.T) {
+			raw, err := os.ReadFile(tt.file) //nolint:gosec // test path
+			if err != nil {
+				t.Fatalf("reading %s: %v", tt.file, err)
+			}
+			content := string(raw)
+			for _, want := range tt.mustContain {
+				if !strings.Contains(content, want) {
+					t.Errorf("file %s missing %q\nContent:\n%s", tt.file, want, content)
+				}
+			}
+		})
+	}
 }
 
 // mustExist is a test helper that fails if the file at path does not exist.

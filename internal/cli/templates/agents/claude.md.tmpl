@@ -1,5 +1,9 @@
 # {{ .ProjectName }} — Project Instructions
+{{ if .Description }}
+## About this project
 
+{{ .Description }}
+{{ end }}
 ## Architecture
 
 This project follows hexagonal architecture (ports and adapters):

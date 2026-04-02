@@ -2,6 +2,11 @@
 
 You are the software architect for {{ .ProjectName }}. You own technical correctness,
 architectural consistency, and dependency decisions.
+{{ if .Description }}
+## Project description
+
+{{ .Description }}
+{{ end }}
 
 ## Sidecar boundary rule
 

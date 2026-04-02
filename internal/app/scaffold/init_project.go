@@ -111,6 +111,10 @@ type InitProjectOptions struct {
 	// Version is the VibeWarden release version written into .vibewarden-version.
 	// When empty the wrapper falls back to the latest GitHub release at runtime.
 	Version string
+
+	// Description is an optional one-line description of what the project builds.
+	// When set it is included in PROJECT.md and injected into agent templates.
+	Description string
 }
 
 // InitProjectService scaffolds a complete new project from language-specific templates.
@@ -186,6 +190,7 @@ func (s *InitProjectService) InitProject(ctx context.Context, parentDir string, 
 		ModulePath:  opts.ModulePath,
 		Port:        opts.Port,
 		Language:    opts.Language,
+		Description: opts.Description,
 	}
 
 	// Render shared (language-agnostic) agent templates: architect.md, reviewer.md.
@@ -248,6 +253,13 @@ func (s *InitProjectService) InitProject(ctx context.Context, parentDir string, 
 					return fmt.Errorf("creating .gitkeep in %s: %w", d, writeErr)
 				}
 			}
+		}
+	}
+
+	// Write PROJECT.md when a description was supplied.
+	if opts.Description != "" {
+		if err := s.renderProjectMD(projectDir, data, opts.Force); err != nil {
+			return fmt.Errorf("rendering PROJECT.md: %w", err)
 		}
 	}
 
@@ -378,6 +390,20 @@ func (s *InitProjectService) renderTypeScriptFiles(projectDir string, data domai
 			return fmt.Errorf("rendering index.ts: %w", err)
 		}
 		return fmt.Errorf("index.ts already exists; use --force to overwrite: %w", err)
+	}
+	return nil
+}
+
+// renderProjectMD renders PROJECT.md from the shared project-md template into
+// projectDir. PROJECT.md captures the project description so that AI coding
+// assistants always have context about the project's purpose.
+func (s *InitProjectService) renderProjectMD(projectDir string, data any, overwrite bool) error {
+	dest := filepath.Join(projectDir, "PROJECT.md")
+	if err := s.renderer.RenderToFile("agents/project.md.tmpl", data, dest, overwrite); err != nil {
+		if !errors.Is(err, os.ErrExist) {
+			return fmt.Errorf("rendering PROJECT.md: %w", err)
+		}
+		return fmt.Errorf("PROJECT.md already exists; use --force to overwrite: %w", err)
 	}
 	return nil
 }

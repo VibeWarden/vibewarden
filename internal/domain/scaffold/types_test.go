@@ -286,6 +286,39 @@ func TestLanguage_Distinctness(t *testing.T) {
 	}
 }
 
+func TestInitProjectData_Description(t *testing.T) {
+	tests := []struct {
+		name        string
+		description string
+	}{
+		{"empty description", ""},
+		{"non-empty description", "a task management API"},
+		{"multi-word description", "real-time analytics dashboard for small businesses"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			data := scaffold.InitProjectData{
+				ProjectName: "myproject",
+				ModulePath:  "github.com/org/myproject",
+				Port:        3000,
+				Language:    scaffold.LanguageGo,
+				Description: tt.description,
+			}
+
+			if data.Description != tt.description {
+				t.Errorf("Description = %q, want %q", data.Description, tt.description)
+			}
+
+			// Value object: copy must equal original.
+			copy := data
+			if copy.Description != data.Description {
+				t.Error("Description mismatch after copy")
+			}
+		})
+	}
+}
+
 func TestAgentContextData_Construction(t *testing.T) {
 	acd := scaffold.AgentContextData{
 		UpstreamPort:     8080,
