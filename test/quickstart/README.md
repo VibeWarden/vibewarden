@@ -1,7 +1,7 @@
 # Quick start end-to-end validation
 
 This directory contains the automated validation script for the
-`vibew init → vibewarden generate` quick start flow (issue #422).
+`vibew wrap → vibewarden generate` quick start flow (issue #422).
 
 ## Purpose
 
@@ -9,7 +9,7 @@ The quick start flow is the primary user-facing experience for VibeWarden.
 This script validates the entire flow without requiring Docker, a network
 connection, or any external services.  It exercises:
 
-1. `vibewarden init --upstream 3000` — scaffold vibewarden.yaml and wrappers
+1. `vibewarden wrap --upstream 3000` — scaffold vibewarden.yaml and wrappers
 2. `vibewarden generate` — generate runtime config from vibewarden.yaml
 3. Structural validation of the generated docker-compose.yml
 
@@ -32,7 +32,7 @@ Exit code is `0` on success and `1` if any check fails.
 
 ## Checks performed
 
-### Step 1: vibewarden init
+### Step 1: vibewarden wrap
 
 | Check | Expected result |
 |---|---|
@@ -48,7 +48,7 @@ Exit code is `0` on success and `1` if any check fails.
 | vibewarden.yaml contains app.build section | `build:` present |
 | vibewarden.yaml contains security_headers section | `security_headers:` present |
 | .gitignore excludes .vibewarden/ | `.vibewarden/` entry present |
-| docker-compose.yml NOT generated at init time | file absent at project root |
+| docker-compose.yml NOT generated at wrap time | file absent at project root |
 
 ### Step 2: vibewarden generate
 
@@ -81,7 +81,7 @@ images and starts containers.  To validate manually:
 
 ```sh
 # In a fresh directory
-vibewarden init --upstream 3000
+vibewarden wrap --upstream 3000
 ./vibew dev
 ```
 
@@ -108,4 +108,4 @@ None at time of writing (issue #422).  Any issues discovered during manual
 
 This script is a black-box integration test that complements the unit and
 integration tests in `internal/`.  It is the canonical smoke test to run
-before any release that touches the `init` or `generate` commands.
+before any release that touches the `wrap` or `generate` commands.

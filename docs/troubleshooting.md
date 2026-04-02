@@ -239,7 +239,7 @@ vibew doctor --config /path/to/vibewarden.yaml
 If you have not created a config file yet, scaffold one:
 
 ```bash
-vibew init --upstream 3000
+vibew wrap --upstream 3000
 ```
 
 **Cause — YAML parse error**

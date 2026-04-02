@@ -137,7 +137,7 @@ Examples:
 					fmt.Fprintf(w, "  %s\n", s)
 				}
 				fmt.Fprintln(w, "")
-				fmt.Fprintln(w, "Run 'vibewarden init --agent all' to create context files,")
+				fmt.Fprintln(w, "Run 'vibewarden wrap --agent all' to create context files,")
 				fmt.Fprintln(w, "or use --force to create them during refresh.")
 				return nil
 			}

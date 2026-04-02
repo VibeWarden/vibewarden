@@ -28,7 +28,7 @@ Supported providers:
   self-signed   Self-signed certificate for local/internal use
   external      You manage the certificate (Cloudflare, registrar, AWS ACM, etc.)
 
-Run 'vibewarden init' first if vibewarden.yaml does not exist.
+Run 'vibewarden wrap' first if vibewarden.yaml does not exist.
 
 Examples:
   vibewarden add tls --domain example.com

@@ -23,7 +23,7 @@ Next steps after enabling metrics:
   2. Scrape http://localhost:8080/metrics with Prometheus
   3. Optionally add a Grafana dashboard for visualisation
 
-Run 'vibewarden init' first if vibewarden.yaml does not exist.`,
+Run 'vibewarden wrap' first if vibewarden.yaml does not exist.`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			dir := ""

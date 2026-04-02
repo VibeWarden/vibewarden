@@ -1,11 +1,11 @@
 #!/bin/sh
 # test/quickstart/test.sh — Quick start end-to-end validation
 #
-# Validates the vibew init → vibewarden generate flow without requiring
+# Validates the vibew wrap → vibewarden generate flow without requiring
 # Docker, a running network, or any external services.
 #
 # What is checked:
-#   1. vibewarden init --upstream 3000 scaffolds the expected files
+#   1. vibewarden wrap --upstream 3000 scaffolds the expected files
 #   2. Generated vibewarden.yaml contains the correct upstream port
 #   3. vibew wrapper script is executable
 #   4. .gitignore contains the .vibewarden/ exclusion
@@ -140,12 +140,12 @@ trap 'rm -rf "$WORKDIR"; [ -z "$VIBEWARDEN_BIN" ] && rm -f "$BIN"' EXIT
 
 printf "\nWork directory: %s\n\n" "$WORKDIR"
 
-# ── step 1: vibewarden init ───────────────────────────────────────────────────
+# ── step 1: vibewarden wrap ───────────────────────────────────────────────────
 
-printf "==> Step 1: vibewarden init --upstream 3000\n"
+printf "==> Step 1: vibewarden wrap --upstream 3000\n"
 
-# Run init without agent files to keep the output minimal.
-"$BIN" init --upstream 3000 --agent none "$WORKDIR" >/dev/null
+# Run wrap without agent files to keep the output minimal.
+"$BIN" wrap --upstream 3000 --agent none "$WORKDIR" >/dev/null
 
 check_file_exists  "vibewarden.yaml"          "$WORKDIR/vibewarden.yaml"
 check_file_exists  "vibew wrapper (shell)"    "$WORKDIR/vibew"

@@ -172,7 +172,7 @@ main() {
     ok "Installed to ${DEST}"
     echo ""
     ok "Get started:"
-    echo "  vibew init --upstream 3000"
+    echo "  vibew wrap --upstream 3000"
     echo "  vibew dev"
     echo ""
     ok "Docs: https://vibewarden.dev/docs/"

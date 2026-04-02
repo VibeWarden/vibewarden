@@ -250,23 +250,23 @@ func TestNewGenerateCmd_Short(t *testing.T) {
 	}
 }
 
-// TestQuickStartFlow_InitThenDev documents and exercises the two-command Quick
+// TestQuickStartFlow_WrapThenDev documents and exercises the two-command Quick
 // Start path from the README:
 //
-//	vibew init --upstream 3000
+//	vibew wrap --upstream 3000
 //	vibew dev
 //
-// Step 1 (init) must succeed and produce vibewarden.yaml with the configured
+// Step 1 (wrap) must succeed and produce vibewarden.yaml with the configured
 // upstream port. Step 2 (dev) must be reachable as a subcommand and must have
 // its generator wired — verified by checking that its Long description
 // documents that it generates runtime config before starting the stack.
-func TestQuickStartFlow_InitThenDev(t *testing.T) {
-	t.Run("step 1: init --upstream 3000 produces vibewarden.yaml", func(t *testing.T) {
+func TestQuickStartFlow_WrapThenDev(t *testing.T) {
+	t.Run("step 1: wrap --upstream 3000 produces vibewarden.yaml", func(t *testing.T) {
 		dir := t.TempDir()
 		root := cmd.NewRootCmd("test")
-		root.SetArgs([]string{"init", dir, "--upstream", "3000"})
+		root.SetArgs([]string{"wrap", dir, "--upstream", "3000"})
 		if err := root.Execute(); err != nil {
-			t.Fatalf("vibew init --upstream 3000 failed: %v", err)
+			t.Fatalf("vibew wrap --upstream 3000 failed: %v", err)
 		}
 
 		data, err := os.ReadFile(dir + "/vibewarden.yaml")
@@ -286,7 +286,7 @@ func TestQuickStartFlow_InitThenDev(t *testing.T) {
 		}
 		// The Long description must mention that runtime config files are
 		// generated before the stack starts — this is the contract that makes
-		// `vibew dev` a single self-contained step after `vibew init`.
+		// `vibew dev` a single self-contained step after `vibew wrap`.
 		if !strings.Contains(devCmd.Long, "generates runtime configuration") &&
 			!strings.Contains(devCmd.Long, "generates") {
 			t.Errorf("dev Long description does not mention config generation:\n%s", devCmd.Long)

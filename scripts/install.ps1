@@ -71,7 +71,7 @@ Remove-Item -Recurse -Force $TmpDir
 Write-Ok "Installed to $Dest"
 Write-Host ""
 Write-Ok "Get started:"
-Write-Host "  vibew init --upstream 3000"
+Write-Host "  vibew wrap --upstream 3000"
 Write-Host "  vibew dev"
 Write-Host ""
 Write-Ok "Docs: https://vibewarden.dev/docs/"

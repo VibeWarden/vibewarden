@@ -44,13 +44,13 @@ sudo mv vibew /usr/local/bin/vibew
 
 ---
 
-## Step 2 — `vibew init`
+## Step 2 — `vibew wrap`
 
-Run `vibew init` inside your project directory. Pass `--upstream` with the port
+Run `vibew wrap` inside your project directory. Pass `--upstream` with the port
 your app listens on. Add feature flags for the security plugins you want enabled.
 
 ```bash
-./vibew init --upstream 3000 --auth --rate-limit
+./vibew wrap --upstream 3000 --auth --rate-limit
 ```
 
 Common flags:
@@ -65,7 +65,7 @@ Common flags:
 | `--skip-wrapper` | Skip vibew wrapper script generation |
 | `--agent <type>` | Generate AI context files: `claude`, `cursor`, `generic`, `all`, or `none` |
 
-### What `init` generates
+### What `wrap` generates
 
 ```
 vibewarden.yaml          # Main config — commit this
@@ -77,7 +77,7 @@ AGENTS.md                # AI agent context (generic)
 ```
 
 !!! tip "AI agent context"
-    `vibew init` generates context files for your AI coding assistant. When you
+    `vibew wrap` generates context files for your AI coding assistant. When you
     ask Claude or Cursor to "add a login page," the AI knows to use Kratos flows
     instead of building auth from scratch. Regenerate after config changes with
     `./vibew context refresh`.
