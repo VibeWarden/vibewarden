@@ -44,6 +44,7 @@ Zero-to-secure in minutes.`,
 	root.AddCommand(NewTokenCmd())
 	root.AddCommand(NewEjectCmd())
 	root.AddCommand(NewMigrateCmd())
+	root.AddCommand(NewUpgradeCmd())
 
 	return root
 }
