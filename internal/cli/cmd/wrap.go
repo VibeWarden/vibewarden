@@ -15,7 +15,7 @@ import (
 	domainscaffold "github.com/vibewarden/vibewarden/internal/domain/scaffold"
 )
 
-// NewWrapCmd creates the `vibewarden wrap` subcommand.
+// NewWrapCmd creates the `vibew wrap` subcommand.
 //
 // The command scaffolds vibewarden.yaml and the vibew wrapper scripts in the
 // current directory (or the directory supplied as the first positional argument).
@@ -44,15 +44,15 @@ The command detects the project type and upstream port automatically.
 Pass flags to enable optional features.
 
 Examples:
-  vibewarden wrap
-  vibewarden wrap --upstream 8000
-  vibewarden wrap --auth --rate-limit
-  vibewarden wrap --tls --domain example.com
-  vibewarden wrap --version v0.2.0
-  vibewarden wrap --skip-wrapper
-  vibewarden wrap --agent claude
-  vibewarden wrap --agent all
-  vibewarden wrap --force`,
+  vibew wrap
+  vibew wrap --upstream 8000
+  vibew wrap --auth --rate-limit
+  vibew wrap --tls --domain example.com
+  vibew wrap --version v0.2.0
+  vibew wrap --skip-wrapper
+  vibew wrap --agent claude
+  vibew wrap --agent all
+  vibew wrap --force`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			dir := "."

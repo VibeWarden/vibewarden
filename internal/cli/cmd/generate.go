@@ -13,12 +13,12 @@ import (
 	configtemplates "github.com/vibewarden/vibewarden/internal/config/templates"
 )
 
-// NewGenerateCmd creates the "vibewarden generate" subcommand.
+// NewGenerateCmd creates the "vibew generate" subcommand.
 //
 // The command reads vibewarden.yaml and writes the generated runtime
 // configuration files under .vibewarden/generated/ without starting any
 // services. This is useful for inspecting the generated files before running
-// `vibewarden dev`, or for integrating into a CI pipeline.
+// `vibew dev`, or for integrating into a CI pipeline.
 func NewGenerateCmd() *cobra.Command {
 	var (
 		configPath string
@@ -41,9 +41,9 @@ Re-run this command after editing vibewarden.yaml to refresh generated files.
 The generated directory is excluded from version control by default (.gitignore).
 
 Examples:
-  vibewarden generate
-  vibewarden generate --config ./my-vibewarden.yaml
-  vibewarden generate --output-dir /tmp/vw-generated`,
+  vibew generate
+  vibew generate --config ./my-vibewarden.yaml
+  vibew generate --output-dir /tmp/vw-generated`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			cfg, err := config.Load(configPath)
 			if err != nil {

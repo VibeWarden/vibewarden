@@ -6,7 +6,7 @@ import (
 	domainscaffold "github.com/vibewarden/vibewarden/internal/domain/scaffold"
 )
 
-// newAddMetricsCmd creates the `vibewarden add metrics` subcommand.
+// newAddMetricsCmd creates the `vibew add metrics` subcommand.
 //
 // This command enables Prometheus metrics in vibewarden.yaml.
 func newAddMetricsCmd() *cobra.Command {
@@ -23,7 +23,7 @@ Next steps after enabling metrics:
   2. Scrape http://localhost:8080/metrics with Prometheus
   3. Optionally add a Grafana dashboard for visualisation
 
-Run 'vibewarden wrap' first if vibewarden.yaml does not exist.`,
+Run 'vibew wrap' first if vibewarden.yaml does not exist.`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			dir := ""

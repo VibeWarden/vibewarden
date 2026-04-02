@@ -25,7 +25,7 @@ var agentContextFiles = map[domainscaffold.AgentType]string{
 	domainscaffold.AgentTypeGeneric: "AGENTS.md",
 }
 
-// NewContextCmd creates the `vibewarden context` subcommand group.
+// NewContextCmd creates the `vibew context` subcommand group.
 //
 // The context command group contains operations for managing AI agent context
 // files. Currently only the `refresh` subcommand is registered.
@@ -49,7 +49,7 @@ vibewarden.yaml configuration.`,
 	return cmd
 }
 
-// newContextRefreshCmd creates the `vibewarden context refresh` subcommand.
+// newContextRefreshCmd creates the `vibew context refresh` subcommand.
 //
 // It reads vibewarden.yaml, derives the current feature state, and
 // regenerates each AI agent context file that already exists on disk.
@@ -137,7 +137,7 @@ Examples:
 					fmt.Fprintf(w, "  %s\n", s)
 				}
 				fmt.Fprintln(w, "")
-				fmt.Fprintln(w, "Run 'vibewarden wrap --agent all' to create context files,")
+				fmt.Fprintln(w, "Run 'vibew wrap --agent all' to create context files,")
 				fmt.Fprintln(w, "or use --force to create them during refresh.")
 				return nil
 			}

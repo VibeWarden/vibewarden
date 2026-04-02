@@ -6,7 +6,7 @@ import (
 	domainscaffold "github.com/vibewarden/vibewarden/internal/domain/scaffold"
 )
 
-// newAddAdminCmd creates the `vibewarden add admin` subcommand.
+// newAddAdminCmd creates the `vibew add admin` subcommand.
 //
 // This command enables the VibeWarden admin API in vibewarden.yaml.
 func newAddAdminCmd() *cobra.Command {
@@ -23,7 +23,7 @@ Next steps after enabling admin:
   2. Restart VibeWarden
   3. Access the admin API at http://localhost:8080/_vibewarden/admin/
 
-Run 'vibewarden wrap' first if vibewarden.yaml does not exist.`,
+Run 'vibew wrap' first if vibewarden.yaml does not exist.`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			dir := ""

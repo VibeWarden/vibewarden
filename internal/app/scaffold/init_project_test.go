@@ -49,9 +49,6 @@ func TestInitProject_CreatesStructure(t *testing.T) {
 	mustExist(t, parent, "myapp", "internal", "app", ".gitkeep")
 
 	// Verify wrapper scripts.
-	mustExist(t, parent, "myapp", "vibew")
-	mustExist(t, parent, "myapp", "vibew.ps1")
-	mustExist(t, parent, "myapp", "vibew.cmd")
 	mustExist(t, parent, "myapp", ".vibewarden-version")
 }
 
@@ -91,29 +88,23 @@ func TestInitProject_DefaultsModulePath(t *testing.T) {
 	mustExist(t, parent, "mymodule", "go.mod")
 }
 
-func TestInitProject_SetsExecutableBit(t *testing.T) {
+func TestInitProject_CreatesVersionFile(t *testing.T) {
 	renderer := newFakeRenderer()
 	svc := scaffoldapp.NewInitProjectService(renderer)
 
 	parent := t.TempDir()
 	opts := scaffoldapp.InitProjectOptions{
-		ProjectName: "exectest",
+		ProjectName: "vertest",
 		Language:    domainscaffold.LanguageGo,
 		Port:        3000,
+		Version:     "v0.2.1",
 	}
 
 	if err := svc.InitProject(context.Background(), parent, opts); err != nil {
 		t.Fatalf("InitProject() unexpected error: %v", err)
 	}
 
-	vibewPath := filepath.Join(parent, "exectest", "vibew")
-	info, err := os.Stat(vibewPath)
-	if err != nil {
-		t.Fatalf("stat vibew: %v", err)
-	}
-	if info.Mode()&0o111 == 0 {
-		t.Errorf("vibew is not executable: mode=%s", info.Mode())
-	}
+	mustExist(t, parent, "vertest", ".vibewarden-version")
 }
 
 func TestInitProject_RejectsNonEmptyDir(t *testing.T) {
@@ -267,9 +258,6 @@ func TestInitProject_Kotlin_CreatesStructure(t *testing.T) {
 	mustExist(t, parent, "myktapp", ".claude", "agents", "reviewer.md")
 
 	// Verify wrapper scripts.
-	mustExist(t, parent, "myktapp", "vibew")
-	mustExist(t, parent, "myktapp", "vibew.ps1")
-	mustExist(t, parent, "myktapp", "vibew.cmd")
 	mustExist(t, parent, "myktapp", ".vibewarden-version")
 }
 
@@ -356,9 +344,6 @@ func TestInitProject_TypeScript_CreatesStructure(t *testing.T) {
 	mustExist(t, parent, "mytsapp", ".claude", "agents", "reviewer.md")
 
 	// Verify wrapper scripts.
-	mustExist(t, parent, "mytsapp", "vibew")
-	mustExist(t, parent, "mytsapp", "vibew.ps1")
-	mustExist(t, parent, "mytsapp", "vibew.cmd")
 	mustExist(t, parent, "mytsapp", ".vibewarden-version")
 }
 

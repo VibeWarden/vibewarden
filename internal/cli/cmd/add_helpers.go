@@ -16,7 +16,7 @@ import (
 
 // runAddFeature executes the add-feature flow for a given feature and options.
 // dir is the project directory (defaults to "." when empty).
-// It is shared by all `vibewarden add <feature>` subcommands.
+// It is shared by all `vibew add <feature>` subcommands.
 func runAddFeature(
 	cmd *cobra.Command,
 	dir string,
@@ -45,7 +45,7 @@ func runAddFeature(
 		}
 		if errors.Is(err, domainscaffold.ErrConfigNotFound) {
 			return fmt.Errorf(
-				"vibewarden.yaml not found in %q — run 'vibewarden wrap' first",
+				"vibewarden.yaml not found in %q — run 'vibew wrap' first",
 				dir,
 			)
 		}

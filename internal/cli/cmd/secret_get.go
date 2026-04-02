@@ -19,7 +19,7 @@ import (
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
 
-// newSecretGetCmd creates the `vibewarden secret get <alias-or-path>` subcommand.
+// newSecretGetCmd creates the `vibew secret get <alias-or-path>` subcommand.
 //
 // It retrieves credentials for a well-known service alias or an arbitrary
 // OpenBao path. OpenBao is tried first; on failure the .credentials file is
@@ -48,10 +48,10 @@ Output formats:
   --env    — export KEY=value lines suitable for sourcing in a shell
 
 Examples:
-  vibewarden secret get postgres
-  vibewarden secret get kratos --json
-  vibewarden secret get grafana --env
-  vibewarden secret get demo/api-key`,
+  vibew secret get postgres
+  vibew secret get kratos --json
+  vibew secret get grafana --env
+  vibew secret get demo/api-key`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if asJSON && asEnv {
@@ -129,7 +129,7 @@ func formatSecretGetError(err error, aliasOrPath string) error {
 	switch {
 	case isErrNoSourceAvailable(err):
 		//nolint:revive,staticcheck // user-facing CLI hint: intentionally capitalised with trailing period
-		return fmt.Errorf("No secret source available. Run 'vibewarden generate' to create credentials, or start the stack with 'vibewarden dev'.") //nolint:revive,staticcheck
+		return fmt.Errorf("No secret source available. Run 'vibew generate' to create credentials, or start the stack with 'vibew dev'.") //nolint:revive,staticcheck
 	case isErrSecretNotFound(err):
 		//nolint:revive,staticcheck // user-facing CLI hint: intentionally capitalised with trailing period
 		return fmt.Errorf("Secret %q not found. Use 'vibew secret list' to see available secrets.", aliasOrPath) //nolint:revive,staticcheck

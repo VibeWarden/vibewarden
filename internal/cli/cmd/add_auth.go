@@ -6,7 +6,7 @@ import (
 	domainscaffold "github.com/vibewarden/vibewarden/internal/domain/scaffold"
 )
 
-// newAddAuthCmd creates the `vibewarden add auth` subcommand.
+// newAddAuthCmd creates the `vibew add auth` subcommand.
 //
 // This command enables Ory Kratos authentication in vibewarden.yaml by
 // appending the kratos and auth configuration sections.
@@ -17,7 +17,7 @@ func newAddAuthCmd() *cobra.Command {
 		Long: `Enable Ory Kratos authentication in vibewarden.yaml.
 
 Adds the kratos and auth configuration sections with sensible defaults.
-Run 'vibewarden wrap' first if vibewarden.yaml does not exist.
+Run 'vibew wrap' first if vibewarden.yaml does not exist.
 
 Next steps after enabling auth:
   1. Start Kratos: docker compose up kratos

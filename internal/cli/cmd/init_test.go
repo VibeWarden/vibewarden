@@ -21,7 +21,7 @@ func TestInitCmd_RequiresLang(t *testing.T) {
 			wantInError: []string{
 				"--lang",
 				"go",
-				"vibewarden init --lang go",
+				"vibew init --lang go",
 			},
 		},
 	}
@@ -59,7 +59,7 @@ func TestInitCmd_RejectsUnknownLang(t *testing.T) {
 			wantInError: []string{
 				"ruby",
 				"go",
-				"vibewarden init --lang go",
+				"vibew init --lang go",
 			},
 		},
 		{
@@ -142,9 +142,7 @@ func TestInitCmd_GeneratesAllFiles(t *testing.T) {
 		filepath.Join("newapp", ".claude", "agents", "architect.md"),
 		filepath.Join("newapp", ".claude", "agents", "dev.md"),
 		filepath.Join("newapp", ".claude", "agents", "reviewer.md"),
-		filepath.Join("newapp", "vibew"),
-		filepath.Join("newapp", "vibew.ps1"),
-		filepath.Join("newapp", "vibew.cmd"),
+
 		filepath.Join("newapp", ".vibewarden-version"),
 		filepath.Join("newapp", "internal", "domain", ".gitkeep"),
 		filepath.Join("newapp", "internal", "ports", ".gitkeep"),
@@ -306,9 +304,7 @@ func TestInitCmd_KotlinCreatesProject(t *testing.T) {
 		filepath.Join("ktapp", ".claude", "agents", "architect.md"),
 		filepath.Join("ktapp", ".claude", "agents", "dev.md"),
 		filepath.Join("ktapp", ".claude", "agents", "reviewer.md"),
-		filepath.Join("ktapp", "vibew"),
-		filepath.Join("ktapp", "vibew.ps1"),
-		filepath.Join("ktapp", "vibew.cmd"),
+
 		filepath.Join("ktapp", ".vibewarden-version"),
 		filepath.Join("ktapp", "src", "main", "kotlin", "ktapp", "ktapp", "Application.kt"),
 	}
@@ -372,8 +368,8 @@ func TestInitCmd_KotlinPrintsSuccessMessage(t *testing.T) {
 	if !strings.Contains(output, "ktmsg") {
 		t.Errorf("success message does not mention project name, got:\n%s", output)
 	}
-	if !strings.Contains(output, "./vibew dev") {
-		t.Errorf("success message should mention './vibew dev', got:\n%s", output)
+	if !strings.Contains(output, "vibew dev") {
+		t.Errorf("success message should mention 'vibew dev', got:\n%s", output)
 	}
 	if !strings.Contains(output, "Application.kt") {
 		t.Errorf("success message should mention Application.kt for Kotlin, got:\n%s", output)
@@ -407,9 +403,7 @@ func TestInitCmd_TypeScriptCreatesProject(t *testing.T) {
 		filepath.Join("tsapp", ".claude", "agents", "architect.md"),
 		filepath.Join("tsapp", ".claude", "agents", "dev.md"),
 		filepath.Join("tsapp", ".claude", "agents", "reviewer.md"),
-		filepath.Join("tsapp", "vibew"),
-		filepath.Join("tsapp", "vibew.ps1"),
-		filepath.Join("tsapp", "vibew.cmd"),
+
 		filepath.Join("tsapp", ".vibewarden-version"),
 		filepath.Join("tsapp", "src", "index.ts"),
 		filepath.Join("tsapp", "src", "domain", ".gitkeep"),
@@ -477,8 +471,8 @@ func TestInitCmd_TypeScriptPrintsSuccessMessage(t *testing.T) {
 	if !strings.Contains(output, "tsmsg") {
 		t.Errorf("success message does not mention project name, got:\n%s", output)
 	}
-	if !strings.Contains(output, "./vibew dev") {
-		t.Errorf("success message should mention './vibew dev', got:\n%s", output)
+	if !strings.Contains(output, "vibew dev") {
+		t.Errorf("success message should mention 'vibew dev', got:\n%s", output)
 	}
 	if !strings.Contains(output, "src/index.ts") {
 		t.Errorf("success message should mention src/index.ts for TypeScript, got:\n%s", output)
@@ -506,7 +500,7 @@ func TestInitCmd_PrintsSuccessMessage(t *testing.T) {
 	if !strings.Contains(output, "successapp") {
 		t.Errorf("success message does not mention project name, got:\n%s", output)
 	}
-	if !strings.Contains(output, "./vibew dev") {
-		t.Errorf("success message should mention './vibew dev', got:\n%s", output)
+	if !strings.Contains(output, "vibew dev") {
+		t.Errorf("success message should mention 'vibew dev', got:\n%s", output)
 	}
 }

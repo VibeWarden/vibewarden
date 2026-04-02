@@ -6,7 +6,7 @@ import (
 	domainscaffold "github.com/vibewarden/vibewarden/internal/domain/scaffold"
 )
 
-// newAddRateLimitCmd creates the `vibewarden add rate-limiting` subcommand.
+// newAddRateLimitCmd creates the `vibew add rate-limiting` subcommand.
 //
 // This command enables per-IP and per-user rate limiting in vibewarden.yaml.
 func newAddRateLimitCmd() *cobra.Command {
@@ -20,7 +20,7 @@ Adds the rate_limit configuration section with sensible defaults:
   - 50 requests/second per user (burst: 100)
   - /health and /ready paths are exempt
 
-Run 'vibewarden wrap' first if vibewarden.yaml does not exist.`,
+Run 'vibew wrap' first if vibewarden.yaml does not exist.`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			dir := ""

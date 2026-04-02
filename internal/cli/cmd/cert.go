@@ -12,7 +12,7 @@ import (
 // caddyLocalCARootCRT is the filename Caddy uses for the local CA root certificate.
 const caddyLocalCARootCRT = "pki/authorities/local/root.crt"
 
-// NewCertCmd creates the "vibewarden cert" subcommand group.
+// NewCertCmd creates the "vibew cert" subcommand group.
 //
 // The cert command group provides utilities for working with the TLS certificates
 // managed by the VibeWarden sidecar.
@@ -23,9 +23,9 @@ func NewCertCmd() *cobra.Command {
 		Long: `Utilities for working with the TLS certificates managed by the VibeWarden sidecar.
 
 Examples:
-  vibewarden cert export
-  vibewarden cert export > vibewarden-ca.pem
-  vibewarden cert export --path`,
+  vibew cert export
+  vibew cert export > vibewarden-ca.pem
+  vibew cert export --path`,
 		// Default: print help when no subcommand is given.
 		Run: func(cmd *cobra.Command, _ []string) {
 			cmd.Help() //nolint:errcheck
@@ -37,7 +37,7 @@ Examples:
 	return cmd
 }
 
-// newCertExportCmd creates the "vibewarden cert export" subcommand.
+// newCertExportCmd creates the "vibew cert export" subcommand.
 //
 // It locates Caddy's local CA root certificate and either prints the PEM
 // content to stdout or, with --path, prints only the resolved file path.
@@ -64,9 +64,9 @@ Use the PEM output to import the certificate into tools such as Postman,
 mobile devices, or share it with teammates.
 
 Examples:
-  vibewarden cert export
-  vibewarden cert export > vibewarden-ca.pem
-  vibewarden cert export --path`,
+  vibew cert export
+  vibew cert export > vibewarden-ca.pem
+  vibew cert export --path`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			var certPath string
 			if certPathFlag != "" {

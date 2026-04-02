@@ -12,7 +12,7 @@ import (
 	"github.com/vibewarden/vibewarden/internal/config"
 )
 
-// NewStatusCmd creates the "vibewarden status" subcommand.
+// NewStatusCmd creates the "vibew status" subcommand.
 //
 // The command queries each VibeWarden component and renders a terminal
 // health dashboard. Color output indicates healthy (green) or unhealthy (red).
@@ -32,8 +32,8 @@ Checked components:
   - TLS          provider and domain from config
 
 Examples:
-  vibewarden status
-  vibewarden status --config ./my-vibewarden.yaml`,
+  vibew status
+  vibew status --config ./my-vibewarden.yaml`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			cfg, err := config.Load(configPath)
 			if err != nil {
