@@ -30,8 +30,10 @@ type Config struct {
 	Upstream UpstreamConfig `mapstructure:"upstream"`
 
 	// App configures how the user's application is included in the generated
-	// Docker Compose file. When neither App.Build nor App.Image is set, no app
-	// service is rendered and the existing host.docker.internal fallback is used.
+	// Docker Compose file. By default, app.image is set to the project name
+	// with ":latest" tag. Set app.build to build from source instead.
+	// When neither is set, no app service is rendered and VibeWarden falls back
+	// to forwarding to host.docker.internal.
 	App AppConfig `mapstructure:"app"`
 
 	// TLS configuration
@@ -325,20 +327,19 @@ type UpstreamHealthConfig struct {
 }
 
 // AppConfig configures the user's application in the generated Docker Compose.
-// Either Build or Image should be set, depending on whether the user wants
-// to build from source (dev) or use a pre-built image (prod).
-// When both are set, Build takes precedence (dev-first workflow).
+// The default is to use a pre-built image (Image field). Build-from-source is
+// opt-in via the Build field. When both are set, Build takes precedence.
 // When neither is set, no app service is rendered and VibeWarden falls back
 // to forwarding to host.docker.internal.
 type AppConfig struct {
 	// Build is the Docker build context path (e.g., "." for the current directory).
-	// Used in dev/tls profiles. When set, the app service is rendered with
-	// a build: context directive.
+	// Opt-in: set this only when you want Compose to build the image from source.
+	// When set, the app service is rendered with a build: context directive.
 	Build string `mapstructure:"build"`
 
-	// Image is the Docker image reference (e.g., "ghcr.io/org/myapp:latest").
-	// Used in prod profile. Can be overridden at runtime via the
-	// VIBEWARDEN_APP_IMAGE environment variable.
+	// Image is the Docker image reference (e.g., "myapp:latest" or "ghcr.io/org/myapp:latest").
+	// Default: derived from the project name by `vibew init`/`vibew wrap` (e.g., "myapp:latest").
+	// Can be overridden at runtime via the VIBEWARDEN_APP_IMAGE environment variable.
 	Image string `mapstructure:"image"`
 
 	// Healthcheck is the Docker healthcheck command for the app container.

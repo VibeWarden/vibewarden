@@ -79,6 +79,10 @@ type TemplateData struct {
 	// Version is the VibeWarden release version to pin in .vibewarden-version.
 	// When empty the wrapper falls back to the latest GitHub release at runtime.
 	Version string
+
+	// ProjectName is the name of the project derived from the directory base name.
+	// Used in vibewarden.yaml to populate the default app.image value.
+	ProjectName string
 }
 
 // Language represents a supported programming language for project scaffolding.

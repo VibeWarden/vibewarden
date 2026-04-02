@@ -115,6 +115,7 @@ func (s *Service) Init(_ context.Context, dir string, opts InitOptions) error {
 		TLSEnabled:       opts.TLSEnabled,
 		TLSDomain:        opts.TLSDomain,
 		Version:          opts.Version,
+		ProjectName:      filepath.Base(filepath.Clean(dir)),
 	}
 
 	// Render vibewarden.yaml.

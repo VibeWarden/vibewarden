@@ -277,6 +277,57 @@ func TestInitCmd_CustomPort(t *testing.T) {
 	}
 }
 
+// TestInitCmd_AppImageDefaultsToProjectName verifies that the generated
+// vibewarden.yaml uses app.image derived from the project name rather than app.build.
+func TestInitCmd_AppImageDefaultsToProjectName(t *testing.T) {
+	tests := []struct {
+		name        string
+		lang        string
+		projectName string
+	}{
+		{"go uses image", "go", "mygoapp"},
+		{"kotlin uses image", "kotlin", "myktapp"},
+		{"typescript uses image", "typescript", "mytsapp"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			if err := os.Chdir(dir); err != nil {
+				t.Fatalf("chdir: %v", err)
+			}
+
+			root := cmd.NewRootCmd("test")
+			var out bytes.Buffer
+			root.SetOut(&out)
+			root.SetArgs([]string{"init", "--lang", tt.lang, tt.projectName})
+
+			if err := root.Execute(); err != nil {
+				t.Fatalf("init failed: %v", err)
+			}
+
+			vwPath := filepath.Join(dir, tt.projectName, "vibewarden.yaml")
+			data, err := os.ReadFile(vwPath) //nolint:gosec // test path
+			if err != nil {
+				t.Fatalf("reading vibewarden.yaml: %v", err)
+			}
+			content := string(data)
+
+			wantImage := "image: \"" + tt.projectName + ":latest\""
+			if !strings.Contains(content, wantImage) {
+				t.Errorf("vibewarden.yaml missing %q:\n%s", wantImage, content)
+			}
+			// "build:" must not appear as an active (uncommented) directive.
+			for _, line := range strings.Split(content, "\n") {
+				trimmed := strings.TrimSpace(line)
+				if strings.HasPrefix(trimmed, "build:") {
+					t.Errorf("vibewarden.yaml must not have an active 'build:' directive by default; found: %q\n\nContent:\n%s", line, content)
+				}
+			}
+		})
+	}
+}
+
 // TestInitCmd_KotlinCreatesProject verifies that --lang kotlin scaffolds a project.
 func TestInitCmd_KotlinCreatesProject(t *testing.T) {
 	dir := t.TempDir()

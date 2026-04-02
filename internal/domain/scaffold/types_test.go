@@ -194,6 +194,40 @@ func TestTemplateData_ZeroValue(t *testing.T) {
 	if td.TLSDomain != "" {
 		t.Errorf("zero TemplateData.TLSDomain = %q, want empty", td.TLSDomain)
 	}
+	if td.ProjectName != "" {
+		t.Errorf("zero TemplateData.ProjectName = %q, want empty", td.ProjectName)
+	}
+}
+
+func TestTemplateData_ProjectName(t *testing.T) {
+	tests := []struct {
+		name        string
+		projectName string
+	}{
+		{"empty project name", ""},
+		{"simple project name", "myapp"},
+		{"hyphenated project name", "my-cool-app"},
+		{"project name with underscore", "my_app"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			td := scaffold.TemplateData{
+				UpstreamPort: 3000,
+				ProjectName:  tt.projectName,
+			}
+
+			if td.ProjectName != tt.projectName {
+				t.Errorf("ProjectName = %q, want %q", td.ProjectName, tt.projectName)
+			}
+
+			// Value object: copy must equal original.
+			copy := td
+			if copy.ProjectName != td.ProjectName {
+				t.Error("ProjectName mismatch after copy")
+			}
+		})
+	}
 }
 
 func TestAgentType_Constants(t *testing.T) {
