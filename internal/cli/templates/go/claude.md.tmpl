@@ -1,0 +1,105 @@
+# {{ .ProjectName }} — Project Instructions
+
+## Architecture
+
+This project follows hexagonal architecture (ports and adapters):
+
+- `cmd/{{ .ProjectName }}/` — Main entry point
+- `internal/domain/` — Domain logic, zero external dependencies
+- `internal/ports/` — Interfaces (inbound and outbound)
+- `internal/adapters/` — Implementations of ports
+- `internal/app/` — Application services (use cases)
+
+## Security — VibeWarden Sidecar
+
+This project uses **VibeWarden** as its security sidecar. VibeWarden handles:
+
+- TLS termination (self-signed in dev, Let's Encrypt in prod)
+- Rate limiting (10 req/s per IP by default)
+- Security headers (HSTS, CSP, X-Frame-Options, etc.)
+- Authentication (when enabled via `./vibew add auth`)
+
+**Do not implement TLS, auth, rate limiting, or security headers in app code.**
+The sidecar handles all security concerns. App code focuses on business logic only.
+
+## Running the project
+
+### Development
+
+```bash
+./vibew dev          # Start everything (app + sidecar + dependencies)
+./vibew dev --watch  # Start with hot reload
+./vibew status       # Check component health
+./vibew logs         # Tail logs
+./vibew doctor       # Diagnose common issues
+```
+
+The app runs on port {{ .Port }}, but access it through the sidecar at https://localhost:8443.
+
+### Testing authenticated endpoints
+
+When auth is enabled:
+
+```bash
+./vibew token                                        # Generate a dev JWT
+./vibew token --email user@test.com --role admin     # Custom claims
+curl -H "Authorization: Bearer $(./vibew token)" https://localhost:8443/api/...
+```
+
+### Working with secrets
+
+Never hardcode secrets in code. Use the vibew secret commands:
+
+```bash
+./vibew secret set MY_SECRET "value"   # Store a secret
+./vibew secret get MY_SECRET           # Retrieve a secret
+./vibew secret list                    # List all secrets
+```
+
+Access secrets in code via environment variables — vibew injects them at runtime.
+
+## vibew CLI Reference
+
+| Command | Description |
+|---------|-------------|
+| `./vibew dev` | Start dev environment (generates config, starts stack) |
+| `./vibew dev --watch` | Start with file watching and hot reload |
+| `./vibew status` | Show health of all components |
+| `./vibew logs` | Tail logs from all services |
+| `./vibew logs app` | Tail logs from app only |
+| `./vibew doctor` | Diagnose common issues |
+| `./vibew token` | Generate a dev JWT for testing |
+| `./vibew token --email u@example.com --role admin` | Generate JWT with custom claims |
+| `./vibew secret get NAME` | Get a secret value |
+| `./vibew secret set NAME VALUE` | Set a secret value |
+| `./vibew secret list` | List all secrets |
+| `./vibew cert export` | Export TLS certificate for trust anchoring |
+| `./vibew validate` | Validate vibewarden.yaml |
+| `./vibew add auth` | Enable Ory Kratos authentication |
+| `./vibew add postgres` | Add PostgreSQL database |
+| `./vibew eject` | Eject to raw Docker Compose (advanced, one-way) |
+| `./vibew generate` | Regenerate runtime config from vibewarden.yaml |
+
+## Adding features
+
+Enable additional security features:
+
+```bash
+./vibew add auth       # Enable Ory Kratos authentication
+./vibew add postgres   # Add PostgreSQL database
+```
+
+These modify `vibewarden.yaml` — review changes before committing.
+
+## Code conventions
+
+- Go standard formatting (`gofmt`, `goimports`)
+- Error wrapping: `fmt.Errorf("context: %w", err)`
+- No `panic` in library code
+- Table-driven tests preferred
+- Interfaces defined in `internal/ports/`, not next to implementations
+
+## Dependencies
+
+- Check license before adding (approved: Apache 2.0, MIT, BSD-2, BSD-3)
+- Use latest stable versions unless there is a documented reason

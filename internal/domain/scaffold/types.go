@@ -81,6 +81,30 @@ type TemplateData struct {
 	Version string
 }
 
+// Language represents a supported programming language for project scaffolding.
+type Language string
+
+const (
+	// LanguageGo is the Go programming language.
+	LanguageGo Language = "go"
+	// Future: LanguageTypeScript, LanguageKotlin
+)
+
+// InitProjectData is the data passed to project scaffold templates when rendering.
+type InitProjectData struct {
+	// ProjectName is the name of the project (directory name, used in go.mod).
+	ProjectName string
+
+	// ModulePath is the Go module path (e.g., "github.com/user/myproject").
+	ModulePath string
+
+	// Port is the HTTP port the generated app listens on.
+	Port int
+
+	// Language is the target programming language.
+	Language Language
+}
+
 // AgentType identifies the target AI coding assistant for context generation.
 type AgentType string
 
