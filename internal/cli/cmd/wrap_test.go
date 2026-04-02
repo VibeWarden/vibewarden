@@ -266,6 +266,11 @@ func TestNewWrapCmd_RenderedYAMLValid(t *testing.T) {
 			args:       []string{},
 			wantInYAML: []string{"overrides"},
 		},
+		{
+			name:       "app.image defaults to project name derived from directory",
+			args:       []string{},
+			wantInYAML: []string{"image:", ":latest"},
+		},
 	}
 
 	for _, tt := range tests {
@@ -292,6 +297,40 @@ func TestNewWrapCmd_RenderedYAMLValid(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestNewWrapCmd_AppImageDerivedFromDirName verifies that the generated
+// vibewarden.yaml defaults to app.image using the directory base name.
+func TestNewWrapCmd_AppImageDerivedFromDirName(t *testing.T) {
+	parent := t.TempDir()
+	projectDir := filepath.Join(parent, "mywebapp")
+	if err := os.MkdirAll(projectDir, 0o750); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+
+	root := cmd.NewRootCmd("test")
+	root.SetArgs([]string{"wrap", projectDir})
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("Execute() unexpected error: %v", err)
+	}
+
+	yamlBytes, err := os.ReadFile(filepath.Join(projectDir, "vibewarden.yaml"))
+	if err != nil {
+		t.Fatalf("reading vibewarden.yaml: %v", err)
+	}
+	content := string(yamlBytes)
+
+	if !strings.Contains(content, `image: "mywebapp:latest"`) {
+		t.Errorf("vibewarden.yaml does not contain 'image: \"mywebapp:latest\"'\n\nContent:\n%s", content)
+	}
+	// "build:" must not appear as an active (uncommented) directive.
+	for _, line := range strings.Split(content, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "build:") {
+			t.Errorf("vibewarden.yaml must not have an active 'build:' directive by default; found: %q\n\nContent:\n%s", line, content)
+		}
 	}
 }
 
