@@ -101,6 +101,7 @@ func NewInitCmd() *cobra.Command {
 		version  string
 		nameFlag string
 		describe string
+		group    string
 	)
 
 	cmd := &cobra.Command{
@@ -215,6 +216,7 @@ Examples:
 				Force:       force,
 				Version:     version,
 				Description: describe,
+				GroupID:     group,
 			}
 
 			if err := svc.InitProject(context.Background(), parentDir, opts); err != nil {
@@ -236,6 +238,7 @@ Examples:
 	cmd.Flags().StringVar(&version, "version", "", "VibeWarden version to pin in .vibewarden-version (default: latest)")
 	cmd.Flags().StringVar(&nameFlag, "name", "", "project name (alternative to positional argument)")
 	cmd.Flags().StringVar(&describe, "describe", "", "one-line description of what the project builds; written to PROJECT.md and injected into agent files")
+	cmd.Flags().StringVar(&group, "group", "", "JVM group identifier for Kotlin projects (e.g., com.mycompany); defaults to sanitized project name")
 
 	return cmd
 }

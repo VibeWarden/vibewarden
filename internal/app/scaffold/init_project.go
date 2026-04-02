@@ -115,6 +115,10 @@ type InitProjectOptions struct {
 	// Description is an optional one-line description of what the project builds.
 	// When set it is included in PROJECT.md and injected into agent templates.
 	Description string
+
+	// GroupID is the JVM group identifier (e.g., "com.mycompany").
+	// Used for Kotlin/JVM package paths. Defaults to sanitized project name.
+	GroupID string
 }
 
 // InitProjectService scaffolds a complete new project from language-specific templates.
@@ -185,9 +189,17 @@ func (s *InitProjectService) InitProject(ctx context.Context, parentDir string, 
 		return fmt.Errorf("creating project directory: %w", err)
 	}
 
+	pkgName := domainscaffold.SanitizePackageName(opts.ProjectName)
+	groupID := opts.GroupID
+	if groupID == "" {
+		groupID = pkgName // simple default: project name as group
+	}
+
 	data := domainscaffold.InitProjectData{
 		ProjectName: opts.ProjectName,
 		ModulePath:  opts.ModulePath,
+		PackageName: pkgName,
+		GroupID:     groupID,
 		Port:        opts.Port,
 		Language:    opts.Language,
 		Description: opts.Description,
@@ -354,10 +366,12 @@ func (s *InitProjectService) renderKotlinFiles(projectDir string, data domainsca
 	}
 
 	// Render Application.kt into the standard Gradle source set path.
+	// GroupID "com.mycompany" → "com/mycompany", PackageName "my_app" → "my_app"
+	groupParts := filepath.Join(strings.Split(data.GroupID, ".")...)
 	appPath := filepath.Join(
 		projectDir,
 		"src", "main", "kotlin",
-		"com", "example", data.ProjectName,
+		groupParts, data.PackageName,
 		"Application.kt",
 	)
 	if err := s.renderer.RenderToFile("kotlin/Application.kt.tmpl", data, appPath, overwrite); err != nil {

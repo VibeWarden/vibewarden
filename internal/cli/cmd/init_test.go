@@ -310,7 +310,7 @@ func TestInitCmd_KotlinCreatesProject(t *testing.T) {
 		filepath.Join("ktapp", "vibew.ps1"),
 		filepath.Join("ktapp", "vibew.cmd"),
 		filepath.Join("ktapp", ".vibewarden-version"),
-		filepath.Join("ktapp", "src", "main", "kotlin", "com", "example", "ktapp", "Application.kt"),
+		filepath.Join("ktapp", "src", "main", "kotlin", "ktapp", "ktapp", "Application.kt"),
 	}
 
 	for _, rel := range expectedFiles {
