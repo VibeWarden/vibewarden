@@ -33,7 +33,7 @@ func (f *fakeCompose) Up(_ context.Context, composeFile string, profiles []strin
 	return f.upErr
 }
 
-func (f *fakeCompose) Restart(_ context.Context, _ string) error {
+func (f *fakeCompose) Restart(_ context.Context, _ string, _ []string) error {
 	f.restartCalled++
 	return f.restartErr
 }

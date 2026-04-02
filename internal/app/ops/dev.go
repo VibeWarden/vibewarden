@@ -133,7 +133,7 @@ func (s *DevService) watchLoop(ctx context.Context, cfg *config.Config, opts Dev
 				}
 			}
 
-			if err := s.compose.Restart(ctx, composeFile); err != nil {
+			if err := s.compose.Restart(ctx, composeFile, nil); err != nil {
 				slog.Error("compose restart failed", "error", err)
 				fmt.Fprintf(out, "compose restart failed: %v\n", err)
 			}
