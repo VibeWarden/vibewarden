@@ -126,6 +126,98 @@ type EgressRouteConfig struct {
 	// allowed status code ranges and content types. Responses that fail
 	// validation are dropped and the caller receives a 502 Bad Gateway.
 	ValidateResponse EgressResponseValidationConfig `mapstructure:"validate_response"`
+
+	// Headers holds per-route header injection and stripping rules.
+	// Use this to add static request headers before forwarding, strip sensitive
+	// request headers from reaching the upstream, or suppress server-fingerprinting
+	// response headers from being returned to the caller.
+	Headers EgressHeadersConfig `mapstructure:"headers"`
+
+	// Cache holds per-route in-memory response caching settings.
+	// Only GET and HEAD requests that receive a 2xx response are cached.
+	Cache EgressCacheConfig `mapstructure:"cache"`
+
+	// Sanitize holds per-route PII redaction rules.
+	// Header values are redacted in structured log output, query parameters are
+	// stripped before forwarding, and JSON body fields are replaced with "[REDACTED]"
+	// before the request is sent upstream.
+	Sanitize EgressSanitizeConfig `mapstructure:"sanitize"`
+
+	// MTLS holds mutual-TLS client certificate settings for this route.
+	// When set, the egress proxy presents the configured certificate during
+	// the TLS handshake with the upstream.
+	MTLS EgressMTLSConfig `mapstructure:"mtls"`
+}
+
+// EgressHeadersConfig holds per-route header manipulation rules as parsed from
+// vibewarden.yaml.
+type EgressHeadersConfig struct {
+	// Add is a map of header name to value. Each entry is set on the outbound
+	// request before forwarding. If the header already exists, its value is
+	// overwritten.
+	// Example: {"X-Api-Version": "2", "X-Source": "vibewarden"}
+	Add map[string]string `mapstructure:"add"`
+
+	// RemoveRequest is the list of request header names removed before the
+	// request is forwarded to the upstream.
+	// Example: ["Cookie", "Authorization"]
+	RemoveRequest []string `mapstructure:"remove_request"`
+
+	// RemoveResponse is the list of response header names removed from the
+	// upstream response before it is returned to the caller.
+	// Example: ["X-Powered-By", "Server"]
+	RemoveResponse []string `mapstructure:"remove_response"`
+}
+
+// EgressCacheConfig holds per-route in-memory response caching parameters as
+// parsed from vibewarden.yaml.
+type EgressCacheConfig struct {
+	// Enabled activates response caching for this route.
+	Enabled bool `mapstructure:"enabled"`
+
+	// TTL is how long a cached entry remains valid as a duration string
+	// (e.g. "60s", "5m"). An empty string means entries never expire.
+	TTL string `mapstructure:"ttl"`
+
+	// MaxSize is the maximum number of bytes allowed for a single cached
+	// response body as a human-readable string (e.g. "1MB"). When empty,
+	// no per-entry size limit is enforced.
+	MaxSize string `mapstructure:"max_size"`
+}
+
+// EgressSanitizeConfig holds per-route PII redaction rules as parsed from
+// vibewarden.yaml.
+type EgressSanitizeConfig struct {
+	// Headers is the list of request header names whose values are redacted in
+	// structured log events (e.g. "Authorization", "Cookie"). The header value
+	// is preserved in the actual forwarded request.
+	Headers []string `mapstructure:"headers"`
+
+	// QueryParams is the list of query parameter names stripped from the
+	// request URL before forwarding (e.g. "api_key", "token").
+	QueryParams []string `mapstructure:"query_params"`
+
+	// BodyFields is the list of JSON field names replaced with "[REDACTED]" in
+	// the request body before forwarding (e.g. "password", "ssn").
+	// Redaction applies only when Content-Type is application/json.
+	BodyFields []string `mapstructure:"body_fields"`
+}
+
+// EgressMTLSConfig holds mutual-TLS client certificate parameters for an egress
+// route as parsed from vibewarden.yaml.
+type EgressMTLSConfig struct {
+	// CertPath is the filesystem path to the PEM-encoded client certificate.
+	// Must be set together with KeyPath.
+	CertPath string `mapstructure:"cert_path"`
+
+	// KeyPath is the filesystem path to the PEM-encoded private key for the
+	// client certificate. Must be set together with CertPath.
+	KeyPath string `mapstructure:"key_path"`
+
+	// CAPath is an optional filesystem path to a PEM-encoded CA certificate
+	// bundle used to verify the server certificate. When empty, the system
+	// root CA pool is used.
+	CAPath string `mapstructure:"ca_path"`
 }
 
 // EgressResponseValidationConfig holds per-route upstream response validation

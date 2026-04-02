@@ -230,6 +230,16 @@ func buildEgressPlugin(cfg *config.Config, eventLogger ports.EventLogger, logger
 		bodySizeBytes, _ := config.ParseBodySize(rc.BodySizeLimit)
 		responseSizeBytes, _ := config.ParseBodySize(rc.ResponseSizeLimit)
 
+		cacheTTL, cacheTTLErr := time.ParseDuration(rc.Cache.TTL)
+		if cacheTTLErr != nil && rc.Cache.TTL != "" {
+			logger.Warn("egress route cache.ttl parse error — disabling TTL for route",
+				slog.String("route", rc.Name),
+				slog.String("error", cacheTTLErr.Error()),
+			)
+		}
+
+		cacheMaxSizeBytes, _ := config.ParseBodySize(rc.Cache.MaxSize)
+
 		pluginCfg.Routes = append(pluginCfg.Routes, egressplugin.RouteConfig{
 			Name:              rc.Name,
 			Pattern:           rc.Pattern,
@@ -254,6 +264,26 @@ func buildEgressPlugin(cfg *config.Config, eventLogger ports.EventLogger, logger
 			ValidateResponse: egressplugin.ResponseValidationConfig{
 				StatusCodes:  rc.ValidateResponse.StatusCodes,
 				ContentTypes: rc.ValidateResponse.ContentTypes,
+			},
+			Headers: egressplugin.HeadersConfig{
+				Add:            rc.Headers.Add,
+				RemoveRequest:  rc.Headers.RemoveRequest,
+				RemoveResponse: rc.Headers.RemoveResponse,
+			},
+			Cache: egressplugin.CacheConfig{
+				Enabled: rc.Cache.Enabled,
+				TTL:     cacheTTL,
+				MaxSize: cacheMaxSizeBytes,
+			},
+			Sanitize: egressplugin.SanitizeConfig{
+				Headers:     rc.Sanitize.Headers,
+				QueryParams: rc.Sanitize.QueryParams,
+				BodyFields:  rc.Sanitize.BodyFields,
+			},
+			MTLS: egressplugin.MTLSConfig{
+				CertPath: rc.MTLS.CertPath,
+				KeyPath:  rc.MTLS.KeyPath,
+				CAPath:   rc.MTLS.CAPath,
 			},
 		})
 	}
