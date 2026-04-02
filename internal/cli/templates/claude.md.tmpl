@@ -71,15 +71,27 @@ Use `/_vibewarden/health` as the liveness probe in Docker Compose or Kubernetes.
 
 ## Running the dev environment
 
-Start everything with:
+Use this workflow every time:
 
-```
+```bash
+# 1. Build the app with your language tool
+#    Go:       go build ./...
+#    Gradle:   ./gradlew build
+#    npm:      npm run build
+
+# 2. Build the Docker image
+vibew build          # or: docker build -t <app-name> .
+
+# 3. Start the full stack
 vibew dev
+
+# 4. After a code change, restart without a full rebuild
+vibew restart
 ```
 
-This generates all runtime config (Kratos, Docker Compose) into `.vibewarden/generated/`
-and starts the full stack. Do not run `docker compose up` directly — use `vibew dev`
-so that config is generated from `vibewarden.yaml` first.
+`vibew dev` generates all runtime config (Kratos, Docker Compose) into
+`.vibewarden/generated/` and starts the full stack. Do not run `docker compose up`
+directly — use `vibew dev` so that config is always generated from `vibewarden.yaml` first.
 
 ## Configuration reference
 

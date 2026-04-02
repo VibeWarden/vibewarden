@@ -31,10 +31,27 @@ The sidecar handles:
 ## Running the project — CRITICAL RULE
 
 **NEVER start the app directly.** No `go run`, `gradlew run`, `npm start`, `node`, `java -jar`.
-**ALWAYS use `vibew dev`** — it starts the app AND the sidecar together.
+**ALWAYS use the workflow below** — build the app first, then start the full stack via `vibew dev`.
 
 ```bash
-vibew dev          # Start everything (app + sidecar + dependencies)
+# 1. Build with your language tool first
+#    Go:         go build ./...
+#    Gradle:     ./gradlew build
+#    npm:        npm run build
+
+# 2. Build the Docker image
+vibew build          # or: docker build -t <app-name> .
+
+# 3. Start everything (app + sidecar + dependencies)
+vibew dev
+
+# 4. After a code change, restart containers without a full rebuild
+vibew restart
+```
+
+Additional commands:
+
+```bash
 vibew dev --watch  # Start with hot reload on config changes
 vibew status       # Check component health
 vibew doctor       # Diagnose common issues
@@ -69,8 +86,10 @@ Access secrets in code via environment variables — vibew injects them at runti
 
 | Command | Description |
 |---------|-------------|
+| `vibew build` | Build the Docker image for the app |
 | `vibew dev` | Start dev environment (generates config, starts stack) |
 | `vibew dev --watch` | Start with file watching and hot reload |
+| `vibew restart` | Restart containers without rebuilding the image |
 | `vibew status` | Show health of all components |
 | `vibew logs` | Tail logs from all services |
 | `vibew logs app` | Tail logs from app only |

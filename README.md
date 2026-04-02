@@ -29,6 +29,9 @@ curl -sS https://vibewarden.dev/install.sh | sh
 # Add VibeWarden to your existing project
 vibew wrap --upstream 3000
 
+# Build your app image
+vibew build
+
 # Start everything
 vibew dev
 ```
@@ -40,6 +43,7 @@ Your app on port 3000 is now behind VibeWarden at `https://localhost:8443`. Done
 ```powershell
 irm vibewarden.dev/install.ps1 | iex
 vibew wrap --upstream 3000
+vibew build
 vibew dev
 ```
 
@@ -197,7 +201,9 @@ If you need a general-purpose load balancer or a CDN edge, use the right tool fo
 | `vibew add tls --domain example.com` | Enable TLS |
 | `vibew add metrics` | Enable Prometheus metrics |
 | `vibew generate` | Regenerate `docker-compose.yml` from config |
+| `vibew build` | Build the Docker image for the app |
 | `vibew dev` | Start local dev environment |
+| `vibew restart` | Restart containers without rebuilding the image |
 | `vibew status` | Show health of all components |
 | `vibew doctor` | Diagnose common issues |
 | `vibew logs` | Pretty-print structured logs |
@@ -230,12 +236,14 @@ Regenerate after config changes:
 
 ```bash
 cd examples/demo-app
+./vibew build
 ./vibew dev
 # Open https://localhost:8443
 ```
 
-`vibew dev` generates the runtime configuration under `.vibewarden/generated/`
-and starts the full Docker Compose stack automatically.
+`vibew build` builds the demo app Docker image. `vibew dev` then generates the
+runtime configuration under `.vibewarden/generated/` and starts the full Docker
+Compose stack.
 
 The demo includes a Vulnerability Lab with live SQLi, XSS, and path traversal
 examples — and shows VibeWarden blocking them.

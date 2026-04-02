@@ -6,11 +6,28 @@ the architect's design. You write clean, idiomatic TypeScript using Express.
 ## Running the project — CRITICAL
 
 **NEVER start the app directly** with `npm start`, `npx ts-node`, `node dist/index.js`, or any direct execution.
-**ALWAYS use `vibew dev`** — it starts the app behind the VibeWarden sidecar with TLS,
-rate limiting, security headers, and all configured protections active.
+**ALWAYS use the workflow below** — it builds your app, then starts it behind the VibeWarden
+sidecar with TLS, rate limiting, security headers, and all configured protections active.
+
+### Workflow
 
 ```bash
-vibew dev          # Start dev environment (app + sidecar + dependencies)
+# 1. Build the app
+npm run build
+
+# 2. Build the Docker image (app image must exist before starting the stack)
+vibew build            # or: docker build -t {{ .ProjectName }} .
+
+# 3. Start the full stack (app + sidecar + dependencies)
+vibew dev
+
+# 4. Restart containers after a code change without a full rebuild
+vibew restart
+```
+
+Additional commands:
+
+```bash
 vibew dev --watch  # Start with hot reload on config changes
 vibew status       # Check component health
 vibew doctor       # Diagnose common issues (run this when something breaks)
@@ -162,8 +179,10 @@ npm install --save-dev <package>  # Dev-only dependency
 
 | Command | Description |
 |---------|-------------|
+| `vibew build` | Build the Docker image for the app |
 | `vibew dev` | Start dev environment (generates config, starts stack) |
 | `vibew dev --watch` | Start with file watching and hot reload |
+| `vibew restart` | Restart containers without rebuilding the image |
 | `vibew status` | Show health of all components |
 | `vibew logs` | Tail logs from all services |
 | `vibew logs app` | Tail logs from app only |
@@ -187,7 +206,7 @@ npm install --save-dev <package>  # Dev-only dependency
 1. Add route handler in `src/index.ts` (or extract to a router module)
 2. Define request/response types as TypeScript interfaces
 3. Add test in `src/index.test.ts`
-4. Run `vibew dev` to test
+4. Run `npm run build`, `vibew build`, then `vibew dev` to test
 
 ### Add a new domain entity
 
