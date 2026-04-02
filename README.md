@@ -26,8 +26,8 @@ all in a single binary that sits next to your app.
 # macOS / Linux
 curl -sS https://vibewarden.dev/install.sh | sh
 
-# Scaffold VibeWarden into your project
-vibew init --upstream 3000
+# Add VibeWarden to your existing project
+vibew wrap --upstream 3000
 
 # Start everything
 vibew dev
@@ -39,7 +39,7 @@ Your app on port 3000 is now behind VibeWarden at `https://localhost:8443`. Done
 
 ```powershell
 irm vibewarden.dev/install.ps1 | iex
-vibew init --upstream 3000
+vibew wrap --upstream 3000
 vibew dev
 ```
 
@@ -49,7 +49,7 @@ on both x86-64 servers and ARM64 machines (Apple Silicon, AWS Graviton).
 
 ---
 
-## What `init` generates
+## What `wrap` generates
 
 ```
 vibewarden.yaml          # Main config — commit this
@@ -191,7 +191,7 @@ If you need a general-purpose load balancer or a CDN edge, use the right tool fo
 
 | Command | Description |
 |---------|-------------|
-| `vibew init` | Scaffold VibeWarden into a project |
+| `vibew wrap` | Add VibeWarden sidecar to an existing project |
 | `vibew add auth` | Enable authentication |
 | `vibew add rate-limit` | Enable rate limiting |
 | `vibew add tls --domain example.com` | Enable TLS |
@@ -212,7 +212,7 @@ If you need a general-purpose load balancer or a CDN edge, use the right tool fo
 
 ## AI Agent Context
 
-`vibew init` generates context files for your AI coding assistant. When you say
+`vibew wrap` generates context files for your AI coding assistant. When you say
 "add a login page," the AI knows to use Kratos flows instead of building auth from scratch.
 
 Supported agents: **Claude Code** (`.claude/CLAUDE.md`), **Cursor** (`.cursor/rules`),

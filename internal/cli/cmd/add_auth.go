@@ -17,7 +17,7 @@ func newAddAuthCmd() *cobra.Command {
 		Long: `Enable Ory Kratos authentication in vibewarden.yaml.
 
 Adds the kratos and auth configuration sections with sensible defaults.
-Run 'vibewarden init' first if vibewarden.yaml does not exist.
+Run 'vibewarden wrap' first if vibewarden.yaml does not exist.
 
 Next steps after enabling auth:
   1. Start Kratos: docker compose up kratos

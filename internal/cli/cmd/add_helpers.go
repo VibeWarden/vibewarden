@@ -45,7 +45,7 @@ func runAddFeature(
 		}
 		if errors.Is(err, domainscaffold.ErrConfigNotFound) {
 			return fmt.Errorf(
-				"vibewarden.yaml not found in %q — run 'vibewarden init' first",
+				"vibewarden.yaml not found in %q — run 'vibewarden wrap' first",
 				dir,
 			)
 		}

@@ -41,7 +41,7 @@ only have the README, docs, example configs, and CLI output to guide you.
    - Could an AI agent follow the docs without human help?
 
 4. **Test the CLI** — run all user-facing commands:
-   - `vibew init`, `vibew dev`, `vibew validate`, `vibew status`, `vibew doctor`
+   - `vibew wrap`, `vibew dev`, `vibew validate`, `vibew status`, `vibew doctor`
    - Are the outputs clear? Do they guide you to fix problems?
    - Do error messages tell you what to do, not just what went wrong?
 

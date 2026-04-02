@@ -9,7 +9,7 @@ import (
 	"github.com/vibewarden/vibewarden/internal/cli/cmd"
 )
 
-func TestNewInitCmd_WrapperScripts(t *testing.T) {
+func TestNewWrapCmd_WrapperScripts(t *testing.T) {
 	wrapperFiles := []string{"vibew", "vibew.ps1", "vibew.cmd", ".vibewarden-version"}
 
 	tests := []struct {
@@ -20,7 +20,7 @@ func TestNewInitCmd_WrapperScripts(t *testing.T) {
 		absentFiles []string
 	}{
 		{
-			name:       "default init generates wrapper scripts",
+			name:       "default wrap generates wrapper scripts",
 			args:       []string{},
 			checkFiles: wrapperFiles,
 		},
@@ -46,7 +46,7 @@ func TestNewInitCmd_WrapperScripts(t *testing.T) {
 			dir := t.TempDir()
 
 			root := cmd.NewRootCmd("test")
-			allArgs := append([]string{"init", dir}, tt.args...)
+			allArgs := append([]string{"wrap", dir}, tt.args...)
 			root.SetArgs(allArgs)
 
 			err := root.Execute()
@@ -75,11 +75,11 @@ func TestNewInitCmd_WrapperScripts(t *testing.T) {
 	}
 }
 
-func TestNewInitCmd_VibewIsExecutable(t *testing.T) {
+func TestNewWrapCmd_VibewIsExecutable(t *testing.T) {
 	dir := t.TempDir()
 
 	root := cmd.NewRootCmd("test")
-	root.SetArgs([]string{"init", dir})
+	root.SetArgs([]string{"wrap", dir})
 
 	if err := root.Execute(); err != nil {
 		t.Fatalf("Execute() unexpected error: %v", err)
@@ -95,11 +95,11 @@ func TestNewInitCmd_VibewIsExecutable(t *testing.T) {
 	}
 }
 
-func TestNewInitCmd_VersionFilePinnedContent(t *testing.T) {
+func TestNewWrapCmd_VersionFilePinnedContent(t *testing.T) {
 	dir := t.TempDir()
 
 	root := cmd.NewRootCmd("test")
-	root.SetArgs([]string{"init", dir, "--version", "v0.5.0"})
+	root.SetArgs([]string{"wrap", dir, "--version", "v0.5.0"})
 
 	if err := root.Execute(); err != nil {
 		t.Fatalf("Execute() unexpected error: %v", err)
@@ -114,7 +114,7 @@ func TestNewInitCmd_VersionFilePinnedContent(t *testing.T) {
 	}
 }
 
-func TestNewInitCmd_VibewScriptContainsKeyPatterns(t *testing.T) {
+func TestNewWrapCmd_VibewScriptContainsKeyPatterns(t *testing.T) {
 	tests := []struct {
 		name     string
 		file     string
@@ -154,7 +154,7 @@ func TestNewInitCmd_VibewScriptContainsKeyPatterns(t *testing.T) {
 
 	dir := t.TempDir()
 	root := cmd.NewRootCmd("test")
-	root.SetArgs([]string{"init", dir})
+	root.SetArgs([]string{"wrap", dir})
 	if err := root.Execute(); err != nil {
 		t.Fatalf("Execute() unexpected error: %v", err)
 	}
@@ -174,13 +174,13 @@ func TestNewInitCmd_VibewScriptContainsKeyPatterns(t *testing.T) {
 	}
 }
 
-func TestNewInitCmd_SuccessMessageListsWrapperFiles(t *testing.T) {
+func TestNewWrapCmd_SuccessMessageListsWrapperFiles(t *testing.T) {
 	dir := t.TempDir()
 
 	root := cmd.NewRootCmd("test")
 	var outBuf strings.Builder
 	root.SetOut(&outBuf)
-	root.SetArgs([]string{"init", dir})
+	root.SetArgs([]string{"wrap", dir})
 
 	if err := root.Execute(); err != nil {
 		t.Fatalf("Execute() unexpected error: %v", err)

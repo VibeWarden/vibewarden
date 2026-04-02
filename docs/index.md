@@ -20,8 +20,8 @@ all in a single binary that sits next to your app.
     # Download the vibew wrapper
     curl -fsSL https://vibewarden.dev/vibew > vibew && chmod +x vibew
 
-    # Scaffold VibeWarden into your project (auth + rate limiting enabled)
-    ./vibew init --upstream 3000 --auth --rate-limit
+    # Add VibeWarden to your existing project (auth + rate limiting enabled)
+    ./vibew wrap --upstream 3000 --auth --rate-limit
 
     # Start everything
     ./vibew dev
@@ -31,7 +31,7 @@ all in a single binary that sits next to your app.
 
     ```powershell
     Invoke-WebRequest -Uri https://vibewarden.dev/vibew.ps1 -OutFile vibew.ps1
-    .\vibew.ps1 init --upstream 3000 --auth --rate-limit
+    .\vibew.ps1 wrap --upstream 3000 --auth --rate-limit
     .\vibew.ps1 dev
     ```
 
@@ -139,7 +139,7 @@ Your app receives authenticated user info via headers:
 
 | Command | Description |
 |---------|-------------|
-| `vibew init` | Scaffold VibeWarden into a project |
+| `vibew wrap` | Add VibeWarden sidecar to an existing project |
 | `vibew add auth` | Enable authentication |
 | `vibew add rate-limit` | Enable rate limiting |
 | `vibew add tls --domain example.com` | Enable TLS |

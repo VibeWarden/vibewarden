@@ -29,6 +29,7 @@ Zero-to-secure in minutes.`,
 
 	// Register all subcommands.
 	root.AddCommand(NewInitCmd())
+	root.AddCommand(NewWrapCmd())
 	root.AddCommand(NewContextCmd())
 	root.AddCommand(NewAddCmd())
 	root.AddCommand(NewDevCmd())

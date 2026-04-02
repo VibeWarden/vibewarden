@@ -20,7 +20,7 @@ Adds the rate_limit configuration section with sensible defaults:
   - 50 requests/second per user (burst: 100)
   - /health and /ready paths are exempt
 
-Run 'vibewarden init' first if vibewarden.yaml does not exist.`,
+Run 'vibewarden wrap' first if vibewarden.yaml does not exist.`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			dir := ""

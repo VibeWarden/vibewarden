@@ -15,7 +15,7 @@ func NewAddCmd() *cobra.Command {
 		Long: `Enable VibeWarden features incrementally by modifying vibewarden.yaml.
 
 Each subcommand enables a specific feature and updates the configuration file.
-Run 'vibewarden init' first if vibewarden.yaml does not exist.
+Run 'vibewarden wrap' first if vibewarden.yaml does not exist.
 
 Examples:
   vibewarden add auth

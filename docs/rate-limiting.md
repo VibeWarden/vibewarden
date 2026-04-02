@@ -94,7 +94,7 @@ rate_limit:
 **Local Redis via Docker Compose:**
 
 When `rate_limit.store` is `redis` and no `rate_limit.redis.url` is set,
-`vibew init` adds a `redis` service to the generated `docker-compose.yml`
+`vibew wrap` adds a `redis` service to the generated `docker-compose.yml`
 automatically. No manual configuration is needed for local dev.
 
 ---

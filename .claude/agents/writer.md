@@ -15,7 +15,7 @@ setup without human help?
    - README.md
    - All files in docs/
    - Example configs in examples/
-   - CLI help text (`vibew --help`, `vibew init --help`, etc.)
+   - CLI help text (`vibew --help`, `vibew wrap --help`, etc.)
    - Inline comments in vibewarden.yaml examples
    - SECURITY.md, ACKNOWLEDGMENTS.md
 
