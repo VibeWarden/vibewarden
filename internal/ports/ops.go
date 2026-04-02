@@ -44,6 +44,16 @@ type ComposeRunner interface {
 	PS(ctx context.Context, composeFile string) ([]ContainerInfo, error)
 }
 
+// DockerBuilder runs "docker build" commands.
+// Implementations shell out to the docker CLI.
+type DockerBuilder interface {
+	// Build runs "docker build -t <tag> <contextDir>".
+	// When noCache is true the --no-cache flag is passed to docker build.
+	// Output from the command is streamed to stdout/stderr so the user sees
+	// progress in real time.
+	Build(ctx context.Context, tag string, contextDir string, noCache bool) error
+}
+
 // HealthChecker performs HTTP health checks against VibeWarden endpoints.
 type HealthChecker interface {
 	// CheckHealth performs a GET request to the given URL and returns true
