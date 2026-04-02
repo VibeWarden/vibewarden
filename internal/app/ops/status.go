@@ -22,7 +22,7 @@ type ComponentStatus struct {
 	Detail string
 }
 
-// StatusService orchestrates the "vibewarden status" use case.
+// StatusService orchestrates the "vibew status" use case.
 // It queries each component and returns a structured summary.
 type StatusService struct {
 	health ports.HealthChecker
