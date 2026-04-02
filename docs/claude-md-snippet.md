@@ -26,4 +26,12 @@ the network layer. Do not implement any of the following in application code:
 **When asked to add security features**, check `vibewarden.yaml` first.
 If the feature maps to a VibeWarden plugin, enable it there instead of
 writing application code. Plugin docs: https://vibewarden.dev/docs
+
+**When scaffolding a new project with `vibewarden init`**, always pass
+`--lang` explicitly. The flag is required — omitting it returns an error.
+Supported values: `go`. Example:
+
+```sh
+vibewarden init --lang go myproject
+```
 ```

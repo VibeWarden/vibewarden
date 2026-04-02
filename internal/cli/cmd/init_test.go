@@ -10,35 +10,85 @@ import (
 	"github.com/vibewarden/vibewarden/internal/cli/cmd"
 )
 
-// TestInitCmd_RequiresLang verifies that omitting --lang returns an error.
+// TestInitCmd_RequiresLang verifies that omitting --lang returns a helpful error.
 func TestInitCmd_RequiresLang(t *testing.T) {
-	root := cmd.NewRootCmd("test")
-	var errOut bytes.Buffer
-	root.SetErr(&errOut)
-	root.SetArgs([]string{"init", "myproject"})
-
-	err := root.Execute()
-	if err == nil {
-		t.Fatal("expected error when --lang is missing, got nil")
+	tests := []struct {
+		name        string
+		wantInError []string
+	}{
+		{
+			name: "mentions --lang flag",
+			wantInError: []string{
+				"--lang",
+				"go",
+				"vibewarden init --lang go",
+			},
+		},
 	}
-	if !strings.Contains(err.Error(), "--lang") {
-		t.Errorf("expected error to mention --lang, got: %v", err)
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			root := cmd.NewRootCmd("test")
+			var errOut bytes.Buffer
+			root.SetErr(&errOut)
+			root.SetArgs([]string{"init", "myproject"})
+
+			err := root.Execute()
+			if err == nil {
+				t.Fatal("expected error when --lang is missing, got nil")
+			}
+			for _, want := range tt.wantInError {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("expected error to contain %q, got: %v", want, err)
+				}
+			}
+		})
 	}
 }
 
-// TestInitCmd_RejectsUnknownLang verifies an unsupported language is rejected.
+// TestInitCmd_RejectsUnknownLang verifies an unsupported language is rejected with a helpful error.
 func TestInitCmd_RejectsUnknownLang(t *testing.T) {
-	root := cmd.NewRootCmd("test")
-	var errOut bytes.Buffer
-	root.SetErr(&errOut)
-	root.SetArgs([]string{"init", "--lang", "typescript", "myproject"})
-
-	err := root.Execute()
-	if err == nil {
-		t.Fatal("expected error for unknown lang, got nil")
+	tests := []struct {
+		name        string
+		lang        string
+		wantInError []string
+	}{
+		{
+			name: "unknown language typescript",
+			lang: "typescript",
+			wantInError: []string{
+				"typescript",
+				"go",
+				"vibewarden init --lang go",
+			},
+		},
+		{
+			name: "unknown language python",
+			lang: "python",
+			wantInError: []string{
+				"python",
+				"go",
+			},
+		},
 	}
-	if !strings.Contains(err.Error(), "typescript") {
-		t.Errorf("expected error to mention 'typescript', got: %v", err)
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			root := cmd.NewRootCmd("test")
+			var errOut bytes.Buffer
+			root.SetErr(&errOut)
+			root.SetArgs([]string{"init", "--lang", tt.lang, "myproject"})
+
+			err := root.Execute()
+			if err == nil {
+				t.Fatalf("expected error for unknown lang %q, got nil", tt.lang)
+			}
+			for _, want := range tt.wantInError {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("expected error to contain %q, got: %v", want, err)
+				}
+			}
+		})
 	}
 }
 
