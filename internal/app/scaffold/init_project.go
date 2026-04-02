@@ -1,6 +1,7 @@
 package scaffold
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -21,9 +22,22 @@ var initDirs = []string{
 	filepath.Join("internal", "app"),
 }
 
+// sharedAgentTemplateFiles lists the agent templates that are shared across all
+// language packs. They live in the agents/ subdirectory of the templates FS.
+// Adding a new language pack requires only a language-specific dev.md and a
+// project scaffold — architect.md, reviewer.md, and CLAUDE.md come from here.
+var sharedAgentTemplateFiles = []struct {
+	tmpl string
+	dest string
+}{
+	{tmpl: "agents/architect.md.tmpl", dest: filepath.Join(".claude", "agents", "architect.md")},
+	{tmpl: "agents/reviewer.md.tmpl", dest: filepath.Join(".claude", "agents", "reviewer.md")},
+}
+
 // goTemplateFiles maps each output path (relative to the project root) to the
-// template name it is rendered from.  Paths that begin with the special prefix
-// "go/" are read from the Go language pack FS; all others use the default FS.
+// template name it is rendered from. These are Go-language-specific templates.
+// Shared agent templates (architect.md, reviewer.md, CLAUDE.md) are in
+// sharedAgentTemplateFiles and are rendered separately.
 var goTemplateFiles = []struct {
 	tmpl string
 	dest string
@@ -33,10 +47,7 @@ var goTemplateFiles = []struct {
 	{tmpl: "go/go.mod.tmpl", dest: "go.mod"},
 	{tmpl: "go/dockerfile.tmpl", dest: "Dockerfile"},
 	{tmpl: "go/gitignore.tmpl", dest: ".gitignore"},
-	{tmpl: "go/claude.md.tmpl", dest: "CLAUDE.md"},
-	{tmpl: "go/architect.md.tmpl", dest: filepath.Join(".claude", "agents", "architect.md")},
 	{tmpl: "go/dev.md.tmpl", dest: filepath.Join(".claude", "agents", "dev.md")},
-	{tmpl: "go/reviewer.md.tmpl", dest: filepath.Join(".claude", "agents", "reviewer.md")},
 }
 
 // InitProjectOptions carries options for full project scaffolding.
@@ -89,6 +100,11 @@ func NewInitProjectService(renderer ports.TemplateRenderer) *InitProjectService 
 //	├── vibewarden.yaml
 //	├── vibew, vibew.ps1, vibew.cmd, .vibewarden-version
 //	└── .gitignore
+//
+// architect.md and reviewer.md are rendered from language-agnostic shared
+// templates (agents/). dev.md is rendered from the Go-specific template.
+// CLAUDE.md is rendered from the shared agents/claude.md.tmpl with Go-specific
+// code conventions appended from go/claude.md.tmpl.
 func (s *InitProjectService) InitProject(ctx context.Context, parentDir string, opts InitProjectOptions) error {
 	if opts.Language != domainscaffold.LanguageGo {
 		return fmt.Errorf("unsupported language %q (supported: go)", opts.Language)
@@ -128,7 +144,26 @@ func (s *InitProjectService) InitProject(ctx context.Context, parentDir string, 
 		Language:    opts.Language,
 	}
 
-	// Render language-agnostic and Go-specific template files.
+	// Render shared (language-agnostic) agent templates: architect.md, reviewer.md.
+	for _, tf := range sharedAgentTemplateFiles {
+		dest := filepath.Join(projectDir, tf.dest)
+		if err := s.renderer.RenderToFile(tf.tmpl, data, dest, opts.Force); err != nil {
+			if !errors.Is(err, os.ErrExist) {
+				return fmt.Errorf("rendering %s: %w", tf.dest, err)
+			}
+			return fmt.Errorf("%s already exists; use --force to overwrite: %w", tf.dest, err)
+		}
+	}
+
+	// Render CLAUDE.md by concatenating the shared base template with the
+	// Go-specific code conventions appendix. This keeps CLAUDE.md output
+	// identical to the pre-refactor output while the base content is now
+	// shared across all language packs.
+	if err := s.renderCombinedCLAUDEmd(projectDir, data, opts.Force); err != nil {
+		return fmt.Errorf("rendering CLAUDE.md: %w", err)
+	}
+
+	// Render Go-language-specific template files.
 	for _, tf := range goTemplateFiles {
 		dest := filepath.Join(projectDir, tf.dest)
 		if err := s.renderer.RenderToFile(tf.tmpl, data, dest, opts.Force); err != nil {
@@ -174,6 +209,43 @@ func (s *InitProjectService) InitProject(ctx context.Context, parentDir string, 
 		return fmt.Errorf("rendering wrapper scripts: %w", err)
 	}
 
+	return nil
+}
+
+// renderCombinedCLAUDEmd renders CLAUDE.md by concatenating the shared
+// agents/claude.md.tmpl with the language-specific go/claude.md.tmpl appendix.
+// The combined output is written to CLAUDE.md in projectDir.
+//
+// This design keeps the vibew CLI reference and sidecar context in a single
+// shared template. Adding a new language pack appends its own code conventions
+// without duplicating the shared content.
+func (s *InitProjectService) renderCombinedCLAUDEmd(projectDir string, data any, overwrite bool) error {
+	dest := filepath.Join(projectDir, "CLAUDE.md")
+
+	if !overwrite {
+		if _, err := os.Stat(dest); err == nil {
+			return fmt.Errorf("file already exists: %w", os.ErrExist)
+		}
+	}
+
+	shared, err := s.renderer.Render("agents/claude.md.tmpl", data)
+	if err != nil {
+		return fmt.Errorf("rendering shared claude.md base: %w", err)
+	}
+
+	goConventions, err := s.renderer.Render("go/claude.md.tmpl", data)
+	if err != nil {
+		return fmt.Errorf("rendering go claude.md conventions: %w", err)
+	}
+
+	combined := bytes.Join([][]byte{shared, goConventions}, []byte("\n"))
+
+	if err := os.MkdirAll(filepath.Dir(dest), 0o750); err != nil {
+		return fmt.Errorf("creating directories: %w", err)
+	}
+	if err := os.WriteFile(dest, combined, 0o600); err != nil {
+		return fmt.Errorf("writing CLAUDE.md: %w", err)
+	}
 	return nil
 }
 
