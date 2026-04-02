@@ -9,7 +9,7 @@ import (
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
 
-// AddFeatureService orchestrates the `vibewarden add <feature>` flow:
+// AddFeatureService orchestrates the `vibew add <feature>` flow:
 //  1. Check vibewarden.yaml exists.
 //  2. Check feature not already enabled (returns ErrFeatureAlreadyEnabled).
 //  3. Enable the feature in vibewarden.yaml.
@@ -24,7 +24,7 @@ func NewAddFeatureService(toggler ports.FeatureToggler, renderer ports.TemplateR
 	return &AddFeatureService{toggler: toggler, renderer: renderer}
 }
 
-// AddFeatureOptions carries options for a single `vibewarden add` invocation.
+// AddFeatureOptions carries options for a single `vibew add` invocation.
 type AddFeatureOptions struct {
 	// Feature is the feature to enable.
 	Feature domainscaffold.Feature

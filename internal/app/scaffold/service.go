@@ -33,7 +33,7 @@ const (
 )
 
 // InitOptions carries the options supplied by the user when running
-// `vibewarden wrap`.
+// `vibew wrap`.
 type InitOptions struct {
 	// UpstreamPort is the port of the protected application.
 	UpstreamPort int

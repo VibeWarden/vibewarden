@@ -96,7 +96,7 @@ func TestDevService_Run(t *testing.T) {
 			wantOutputContains: []string{
 				"Proxy (VibeWarden):",
 				"https://localhost:8443",
-				"vibewarden status",
+				"vibew status",
 			},
 		},
 		{

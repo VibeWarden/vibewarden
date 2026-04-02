@@ -16,7 +16,7 @@ import (
 
 const generatedOutputDir = ".vibewarden/generated"
 
-// DevService orchestrates the "vibewarden dev" use case.
+// DevService orchestrates the "vibew dev" use case.
 // It optionally generates runtime configuration files from vibewarden.yaml
 // before starting the Docker Compose stack and can watch the config file for
 // changes when --watch is enabled.
@@ -193,5 +193,5 @@ func printServiceURLs(cfg *config.Config, opts DevOptions, out io.Writer) {
 		fmt.Fprintf(out, "  Grafana:             http://localhost:3000\n")
 	}
 	fmt.Fprintln(out, "")
-	fmt.Fprintln(out, "Tip: run 'vibewarden status' to check component health.")
+	fmt.Fprintln(out, "Tip: run 'vibew status' to check component health.")
 }

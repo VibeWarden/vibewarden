@@ -40,7 +40,7 @@ type CheckResult struct {
 // OK returns true when the check severity is OK.
 func (c CheckResult) OK() bool { return c.Severity == SeverityOK }
 
-// DoctorService orchestrates the "vibewarden doctor" use case.
+// DoctorService orchestrates the "vibew doctor" use case.
 // Every check runs independently — a failing check does not stop subsequent ones.
 type DoctorService struct {
 	compose       ports.ComposeRunner
@@ -222,7 +222,7 @@ func checkGeneratedFiles(composePath string) CheckResult {
 		return CheckResult{
 			Name:     "Generated files",
 			Severity: SeverityWarn,
-			Detail:   fmt.Sprintf("%s not found — run 'vibewarden generate' first", composePath),
+			Detail:   fmt.Sprintf("%s not found — run 'vibew generate' first", composePath),
 		}
 	}
 	return CheckResult{
@@ -251,7 +251,7 @@ func (s *DoctorService) checkContainerHealth(ctx context.Context, composePath st
 		return CheckResult{
 			Name:     "Container health",
 			Severity: SeverityWarn,
-			Detail:   "no containers found — run 'vibewarden dev' to start the stack",
+			Detail:   "no containers found — run 'vibew dev' to start the stack",
 		}
 	}
 
