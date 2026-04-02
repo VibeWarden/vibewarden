@@ -72,7 +72,7 @@ func promptLang(w *os.File, r *bufio.Reader) (string, error) {
 	}
 }
 
-// NewInitCmd creates the `vibewarden init` subcommand.
+// NewInitCmd creates the `vibew init` subcommand.
 //
 // The command scaffolds a complete new project from language-specific templates.
 // In interactive mode (TTY detected and --lang omitted) the user is prompted for
@@ -86,12 +86,12 @@ func promptLang(w *os.File, r *bufio.Reader) (string, error) {
 //
 // Usage:
 //
-//	vibewarden init --lang go myproject
-//	vibewarden init --lang go                (uses current directory name)
-//	vibewarden init --lang go --port 8080 myproject
-//	vibewarden init --lang go --module github.com/org/myproject myproject
-//	vibewarden init --lang go --describe "a task management API" myproject
-//	vibewarden init --name myproject --describe "a task management API"
+//	vibew init --lang go myproject
+//	vibew init --lang go                (uses current directory name)
+//	vibew init --lang go --port 8080 myproject
+//	vibew init --lang go --module github.com/org/myproject myproject
+//	vibew init --lang go --describe "a task management API" myproject
+//	vibew init --name myproject --describe "a task management API"
 func NewInitCmd() *cobra.Command {
 	var (
 		lang     string
@@ -112,7 +112,7 @@ func NewInitCmd() *cobra.Command {
 The command creates a project directory containing:
   - Minimal app source code that compiles and runs immediately
   - vibewarden.yaml (TLS self-signed, rate limiting enabled)
-  - vibew wrapper scripts (vibew, vibew.ps1, vibew.cmd)
+  - .vibewarden-version (pins the vibew version for this project)
   - .claude/agents/ with architect, developer, and reviewer agent files
   - CLAUDE.md with full vibew CLI reference
   - PROJECT.md with project description (when --describe is given)
@@ -124,12 +124,12 @@ language, project name, and description.  In non-interactive mode (piped/CI) you
 must supply --lang.
 
 Examples:
-  vibewarden init --lang go myproject
-  vibewarden init --lang go myproject --module github.com/org/myproject
-  vibewarden init --lang go myproject --port 8080
-  vibewarden init --lang go --describe "a task management API" myproject
-  vibewarden init --lang go --force myproject
-  vibewarden init --name myproject --describe "a task management API"`,
+  vibew init --lang go myproject
+  vibew init --lang go myproject --module github.com/org/myproject
+  vibew init --lang go myproject --port 8080
+  vibew init --lang go --describe "a task management API" myproject
+  vibew init --lang go --force myproject
+  vibew init --name myproject --describe "a task management API"`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			interactive := lang == "" && IsTTY(os.Stdin)
@@ -143,7 +143,7 @@ Examples:
 			if lang == "" {
 				if !interactive {
 					return fmt.Errorf(
-						"--lang is required in non-interactive mode\n\nSupported languages:\n  %s\n\nExample:\n  vibewarden init --lang go myproject",
+						"--lang is required in non-interactive mode\n\nSupported languages:\n  %s\n\nExample:\n  vibew init --lang go myproject",
 						strings.Join(supportedLanguages, ", "),
 					)
 				}
@@ -161,7 +161,7 @@ Examples:
 				// supported
 			default:
 				return fmt.Errorf(
-					"unsupported language %q\n\nSupported languages:\n  %s\n\nExample:\n  vibewarden init --lang go myproject",
+					"unsupported language %q\n\nSupported languages:\n  %s\n\nExample:\n  vibew init --lang go myproject",
 					lang,
 					strings.Join(supportedLanguages, ", "),
 				)
@@ -279,16 +279,14 @@ func printInitSuccessMessage(cmd *cobra.Command, projectName string, opts scaffo
 		fmt.Fprintf(w, "  PROJECT.md               Project description\n")
 	}
 	fmt.Fprintf(w, "  .claude/agents/          Architect, developer, reviewer agents\n")
-	fmt.Fprintf(w, "  vibew                    Wrapper script (macOS/Linux)\n")
-	fmt.Fprintf(w, "  vibew.ps1                Wrapper script (Windows)\n")
 	fmt.Fprintf(w, "  Dockerfile               Container build file\n")
 	fmt.Fprintf(w, "  .gitignore               Git ignore rules\n")
 	fmt.Fprintln(w, "")
 	fmt.Fprintln(w, "Next steps:")
 	fmt.Fprintf(w, "  cd %s\n", projectName)
-	fmt.Fprintln(w, "  ./vibew dev              Start dev environment (app + sidecar)")
-	fmt.Fprintln(w, "  ./vibew status           Check component health")
-	fmt.Fprintln(w, "  ./vibew doctor           Diagnose common issues")
+	fmt.Fprintln(w, "  vibew dev                Start dev environment (app + sidecar)")
+	fmt.Fprintln(w, "  vibew status             Check component health")
+	fmt.Fprintln(w, "  vibew doctor             Diagnose common issues")
 	fmt.Fprintln(w, "")
 	fmt.Fprintf(w, "App runs on port %d, access via sidecar at https://localhost:8443\n", opts.Port)
 	fmt.Fprintln(w, "")

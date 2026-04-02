@@ -15,7 +15,7 @@ the VibeWarden sidecar and must never be reimplemented in app code:
 - TLS configuration in app code (sidecar handles TLS termination — reject this)
 - Security header middleware (sidecar injects headers — reject this)
 - WAF or egress security logic (sidecar handles this — reject this)
-- Hardcoded secrets (use `./vibew secret set` — reject this)
+- Hardcoded secrets (use `vibew secret set` — reject this)
 
 If auth is needed, verify the code reads identity from sidecar-injected headers:
 - `X-User-Id` — user identifier
@@ -58,37 +58,37 @@ If auth is needed, verify the code reads identity from sidecar-injected headers:
 ## Running verification
 
 ```bash
-./vibew validate     # Validate vibewarden.yaml
-./vibew dev          # Start and manually verify
-./vibew doctor       # Check for issues
+vibew validate     # Validate vibewarden.yaml
+vibew dev          # Start and manually verify
+vibew doctor       # Check for issues
 ```
 
 ## vibew CLI Reference
 
 | Command | Description |
 |---------|-------------|
-| `./vibew dev` | Start dev environment (generates config, starts stack) |
-| `./vibew dev --watch` | Start with file watching and hot reload |
-| `./vibew status` | Show health of all components |
-| `./vibew logs` | Tail logs from all services |
-| `./vibew doctor` | Diagnose common issues |
-| `./vibew token` | Generate a dev JWT for testing |
-| `./vibew secret get NAME` | Get a secret value |
-| `./vibew secret set NAME VALUE` | Set a secret value |
-| `./vibew secret list` | List all secrets |
-| `./vibew cert export` | Export TLS certificate |
-| `./vibew validate` | Validate vibewarden.yaml |
-| `./vibew add auth` | Enable Ory Kratos authentication |
-| `./vibew add postgres` | Add PostgreSQL database |
-| `./vibew eject` | Eject to raw Docker Compose (advanced, one-way) |
-| `./vibew generate` | Regenerate runtime config from vibewarden.yaml |
+| `vibew dev` | Start dev environment (generates config, starts stack) |
+| `vibew dev --watch` | Start with file watching and hot reload |
+| `vibew status` | Show health of all components |
+| `vibew logs` | Tail logs from all services |
+| `vibew doctor` | Diagnose common issues |
+| `vibew token` | Generate a dev JWT for testing |
+| `vibew secret get NAME` | Get a secret value |
+| `vibew secret set NAME VALUE` | Set a secret value |
+| `vibew secret list` | List all secrets |
+| `vibew cert export` | Export TLS certificate |
+| `vibew validate` | Validate vibewarden.yaml |
+| `vibew add auth` | Enable Ory Kratos authentication |
+| `vibew add postgres` | Add PostgreSQL database |
+| `vibew eject` | Eject to raw Docker Compose (advanced, one-way) |
+| `vibew generate` | Regenerate runtime config from vibewarden.yaml |
 
 ## Common rejection reasons
 
 1. **Reimplementing sidecar features**: "This rate limiter duplicates what vibew provides.
    Remove this middleware and configure rate limiting in vibewarden.yaml instead."
 
-2. **Hardcoded secrets**: "DB_PASSWORD is hardcoded. Use `./vibew secret set DB_PASSWORD value`
+2. **Hardcoded secrets**: "DB_PASSWORD is hardcoded. Use `vibew secret set DB_PASSWORD value`
    and read from environment variable at runtime."
 
 3. **Domain with external deps**: "internal/domain/user.go imports an external database package.

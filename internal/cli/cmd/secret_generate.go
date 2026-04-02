@@ -20,7 +20,7 @@ const (
 	maxSecretLength = 256
 )
 
-// newSecretGenerateCmd creates the `vibewarden secret generate` subcommand.
+// newSecretGenerateCmd creates the `vibew secret generate` subcommand.
 //
 // It generates a cryptographically secure random token using crypto/rand and
 // prints it as a lowercase hex string to stdout. The output is intentionally
@@ -45,16 +45,16 @@ name prefixed in the output, making it easy to pipe into a .env file.
 
 Examples:
   # Generic 32-byte secret
-  vibewarden secret generate
+  vibew secret generate
 
   # 64-byte secret
-  vibewarden secret generate --length 64
+  vibew secret generate --length 64
 
   # Admin API token (ready to paste into .env)
-  vibewarden secret generate --admin-token
+  vibew secret generate --admin-token
 
   # Fleet dashboard key
-  vibewarden secret generate --fleet-key`,
+  vibew secret generate --fleet-key`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			// --admin-token and --fleet-key are mutually exclusive.
 			if adminToken && fleetKey {

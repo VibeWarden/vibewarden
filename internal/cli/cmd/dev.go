@@ -15,7 +15,7 @@ import (
 	configtemplates "github.com/vibewarden/vibewarden/internal/config/templates"
 )
 
-// NewDevCmd creates the "vibewarden dev" subcommand.
+// NewDevCmd creates the "vibew dev" subcommand.
 //
 // The command generates runtime config files under .vibewarden/generated/,
 // then starts the Docker Compose dev environment in detached mode and
@@ -48,10 +48,10 @@ Pass --watch to watch vibewarden.yaml for changes and automatically
 regenerate config files and restart the stack (blocks until Ctrl+C).
 
 Examples:
-  vibewarden dev
-  vibewarden dev --observability
-  vibewarden dev --watch
-  vibewarden dev --config ./my-vibewarden.yaml`,
+  vibew dev
+  vibew dev --observability
+  vibew dev --watch
+  vibew dev --config ./my-vibewarden.yaml`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			cfg, err := config.Load(configPath)
 			if err != nil {

@@ -298,7 +298,7 @@ func TestInitProject_KotlinWithRealFS(t *testing.T) {
 			file: filepath.Join(parent, "ktreal", ".claude", "agents", "dev.md"),
 			mustContain: []string{
 				"vibew CLI Reference",
-				"./vibew dev",
+				"vibew dev",
 				// Kotlin idioms:
 				"Kotlin idioms",
 				"ktlint",
@@ -469,7 +469,7 @@ func TestInitProject_TypeScript_WithRealFS(t *testing.T) {
 			file: filepath.Join(parent, "tsreal", ".claude", "agents", "dev.md"),
 			mustContain: []string{
 				"vibew CLI Reference",
-				"./vibew dev",
+				"vibew dev",
 				// TypeScript idioms:
 				"TypeScript idioms",
 				"Strict mode",
@@ -562,10 +562,10 @@ func TestInitProject_SharedTemplatesWithRealFS(t *testing.T) {
 			mustContain: []string{
 				"Sidecar boundary rule",
 				"vibew CLI Reference",
-				"./vibew dev",
-				"./vibew doctor",
-				"./vibew token",
-				"./vibew secret get",
+				"vibew dev",
+				"vibew doctor",
+				"vibew token",
+				"vibew secret get",
 				"TLS termination",
 				"App code focuses on",
 			},
@@ -576,8 +576,8 @@ func TestInitProject_SharedTemplatesWithRealFS(t *testing.T) {
 				"Sidecar reimplementation rule",
 				"REJECT",
 				"vibew CLI Reference",
-				"./vibew dev",
-				"./vibew doctor",
+				"vibew dev",
+				"vibew doctor",
 				"Custom rate limiter",
 				"Custom auth middleware",
 				"TLS configuration in app code",
@@ -587,9 +587,9 @@ func TestInitProject_SharedTemplatesWithRealFS(t *testing.T) {
 			file: filepath.Join(parent, "realapp", "CLAUDE.md"),
 			mustContain: []string{
 				"vibew CLI Reference",
-				"./vibew dev",
-				"./vibew token",
-				"./vibew secret get",
+				"vibew dev",
+				"vibew token",
+				"vibew secret get",
 				"VibeWarden",
 				// Go-specific conventions appended by go/claude.md.tmpl:
 				"Code conventions",
@@ -600,8 +600,8 @@ func TestInitProject_SharedTemplatesWithRealFS(t *testing.T) {
 			file: filepath.Join(parent, "realapp", ".claude", "agents", "dev.md"),
 			mustContain: []string{
 				"vibew CLI Reference",
-				"./vibew token",
-				"./vibew doctor",
+				"vibew token",
+				"vibew doctor",
 				// Go-specific idioms:
 				"Go idioms",
 				"gofmt",

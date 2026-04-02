@@ -7,7 +7,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// newSecretListCmd creates the `vibewarden secret list` subcommand.
+// newSecretListCmd creates the `vibew secret list` subcommand.
 //
 // It lists all managed secret paths from both OpenBao and the .credentials
 // file, deduplicated and sorted.
@@ -27,8 +27,8 @@ Well-known aliases are always included. When OpenBao is running, additional
 paths from the 'infra/' and 'app/' prefixes are listed as well.
 
 Examples:
-  vibewarden secret list
-  vibewarden secret list --json`,
+  vibew secret list
+  vibew secret list --json`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			svc, err := buildSecretService(configPath, outputDir)
 			if err != nil {

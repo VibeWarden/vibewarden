@@ -14,7 +14,7 @@ import (
 	"github.com/vibewarden/vibewarden/internal/config"
 )
 
-// NewDoctorCmd creates the "vibewarden doctor" subcommand.
+// NewDoctorCmd creates the "vibew doctor" subcommand.
 //
 // The command runs a series of independent diagnostics and reports problems.
 // It exits with status 1 when any check fails so it can be used in scripts.
@@ -41,9 +41,9 @@ Each check runs independently — a failure does not stop subsequent checks.
 Exit code is 1 when any check fails.
 
 Examples:
-  vibewarden doctor
-  vibewarden doctor --config ./my-vibewarden.yaml
-  vibewarden doctor --json`,
+  vibew doctor
+  vibew doctor --config ./my-vibewarden.yaml
+  vibew doctor --json`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			// Load config — pass nil-safe; doctor will report missing config.
 			cfg, loadErr := config.Load(configPath)

@@ -12,7 +12,7 @@ import (
 	"github.com/vibewarden/vibewarden/internal/plugins"
 )
 
-// NewPluginsCmd creates the "vibewarden plugins" subcommand.
+// NewPluginsCmd creates the "vibew plugins" subcommand.
 //
 // Without a subcommand it lists all compiled-in plugins with their
 // enabled/disabled status as read from the config file.
@@ -48,7 +48,7 @@ Examples:
 	return cmd
 }
 
-// newPluginsShowCmd creates the "vibewarden plugins show <name>" subcommand.
+// newPluginsShowCmd creates the "vibew plugins show <name>" subcommand.
 func newPluginsShowCmd() *cobra.Command {
 	return &cobra.Command{
 		Use:   "show <plugin-name>",

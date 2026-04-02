@@ -277,16 +277,16 @@ func (s *InitProjectService) InitProject(ctx context.Context, parentDir string, 
 		}
 	}
 
-	// Render the vibew wrapper scripts using the shared Service helper.
-	// NewService with a nil detector is safe here because renderWrappers only
-	// calls s.renderer, never s.detector.
-	wrapSvc := NewService(s.renderer, nil)
-	wrapData := domainscaffold.TemplateData{
-		UpstreamPort: opts.Port,
-		Version:      opts.Version,
-	}
-	if err := wrapSvc.renderWrappers(projectDir, wrapData, opts.Force); err != nil {
-		return fmt.Errorf("rendering wrapper scripts: %w", err)
+	// Write .vibewarden-version for version pinning.
+	versionPath := filepath.Join(projectDir, ".vibewarden-version")
+	if opts.Version != "" {
+		if err := os.WriteFile(versionPath, []byte(opts.Version+"\n"), 0o600); err != nil {
+			return fmt.Errorf("writing .vibewarden-version: %w", err)
+		}
+	} else {
+		if err := os.WriteFile(versionPath, []byte(""), 0o600); err != nil {
+			return fmt.Errorf("writing .vibewarden-version: %w", err)
+		}
 	}
 
 	// Initialize a git repository and create an initial commit.

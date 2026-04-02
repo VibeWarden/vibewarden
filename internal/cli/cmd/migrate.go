@@ -13,9 +13,9 @@ import (
 	"github.com/vibewarden/vibewarden/migrations"
 )
 
-// NewMigrateCmd creates the `vibewarden migrate` command group and its
+// NewMigrateCmd creates the `vibew migrate` command group and its
 // subcommands (up, down, status). When invoked without a subcommand it
-// applies all pending migrations (equivalent to `vibewarden migrate up`).
+// applies all pending migrations (equivalent to `vibew migrate up`).
 func NewMigrateCmd() *cobra.Command {
 	var configPath string
 
@@ -29,10 +29,10 @@ When invoked without a subcommand, applies all pending migrations (same as "migr
 Requires a configured database URL in vibewarden.yaml (database.url or database.external_url).
 
 Examples:
-  vibewarden migrate
-  vibewarden migrate up
-  vibewarden migrate down
-  vibewarden migrate status`,
+  vibew migrate
+  vibew migrate up
+  vibew migrate down
+  vibew migrate status`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runMigrateUp(cmd, configPath)
 		},

@@ -4,7 +4,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// NewAddCmd creates the `vibewarden add` subcommand group.
+// NewAddCmd creates the `vibew add` subcommand group.
 //
 // The add command group contains subcommands that incrementally enable
 // VibeWarden features in an existing project by modifying vibewarden.yaml.
@@ -15,14 +15,14 @@ func NewAddCmd() *cobra.Command {
 		Long: `Enable VibeWarden features incrementally by modifying vibewarden.yaml.
 
 Each subcommand enables a specific feature and updates the configuration file.
-Run 'vibewarden wrap' first if vibewarden.yaml does not exist.
+Run 'vibew wrap' first if vibewarden.yaml does not exist.
 
 Examples:
-  vibewarden add auth
-  vibewarden add rate-limiting
-  vibewarden add tls --domain example.com
-  vibewarden add admin
-  vibewarden add metrics`,
+  vibew add auth
+  vibew add rate-limiting
+  vibew add tls --domain example.com
+  vibew add admin
+  vibew add metrics`,
 		// Default: print help when no subcommand is given.
 		Run: func(cmd *cobra.Command, _ []string) {
 			cmd.Help() //nolint:errcheck

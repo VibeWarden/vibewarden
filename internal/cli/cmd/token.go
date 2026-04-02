@@ -21,7 +21,7 @@ type devTokenClaims struct {
 	Role  string `json:"role"`
 }
 
-// NewTokenCmd creates the "vibewarden token" subcommand.
+// NewTokenCmd creates the "vibew token" subcommand.
 //
 // The command loads the dev RSA private key from .vibewarden/dev-keys/private.pem,
 // signs a JWT with the supplied claims, and writes the token to stdout. When
@@ -45,20 +45,20 @@ func NewTokenCmd() *cobra.Command {
 		Short: "Generate a signed dev JWT for local testing",
 		Long: `Generate a signed JWT using the local dev RSA private key.
 
-The key must exist at .vibewarden/dev-keys/private.pem. Run "vibewarden dev"
-or "vibewarden generate" first if the key is missing — VibeWarden creates the
+The key must exist at .vibewarden/dev-keys/private.pem. Run "vibew dev"
+or "vibew generate" first if the key is missing — VibeWarden creates the
 key pair automatically on first run.
 
 The generated token is signed with RS256, uses kid=` + jwtadapter.DevKID + `,
 iss=` + jwtadapter.DevIssuer + `, and aud=` + jwtadapter.DevAudience + `.
 
 Examples:
-  vibewarden token
-  vibewarden token --sub user-123 --email alice@test.com --role admin
-  vibewarden token --expires 24h
-  vibewarden token --json
+  vibew token
+  vibew token --sub user-123 --email alice@test.com --role admin
+  vibew token --expires 24h
+  vibew token --json
   curl https://localhost:8443/api/me \
-    -H "Authorization: Bearer $(vibewarden token --json)"`,
+    -H "Authorization: Bearer $(vibew token --json)"`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			return runToken(cmd, keyDir, sub, email, name, role, expires, jsonOut)
 		},
@@ -87,7 +87,7 @@ func runToken(cmd *cobra.Command, keyDir, sub, email, name, role, expires string
 	privPath := filepath.Join(dir, jwtadapter.DevPrivateKeyFile)
 	if _, err := os.Stat(privPath); err != nil {
 		return fmt.Errorf(
-			"dev keys not found at %s: run \"vibewarden dev\" or \"vibewarden generate\" first",
+			"dev keys not found at %s: run \"vibew dev\" or \"vibew generate\" first",
 			privPath,
 		)
 	}
@@ -123,7 +123,7 @@ func runToken(cmd *cobra.Command, keyDir, sub, email, name, role, expires string
 	fmt.Fprintln(cmd.OutOrStdout())
 	fmt.Fprintf(cmd.OutOrStdout(), "Or inline via shell substitution:\n")
 	fmt.Fprintf(cmd.OutOrStdout(), "  curl https://localhost:8443/api/me \\\n")
-	fmt.Fprintf(cmd.OutOrStdout(), "    -H \"Authorization: Bearer $(vibewarden token --json)\"\n")
+	fmt.Fprintf(cmd.OutOrStdout(), "    -H \"Authorization: Bearer $(vibew token --json)\"\n")
 
 	return nil
 }

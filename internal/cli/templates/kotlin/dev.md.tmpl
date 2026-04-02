@@ -6,14 +6,14 @@ the architect's design. You write clean, idiomatic Kotlin code using Ktor.
 ## Running the project — CRITICAL
 
 **NEVER start the app directly** with `./gradlew run`, `java -jar`, or any direct execution.
-**ALWAYS use `./vibew dev`** — it starts the app behind the VibeWarden sidecar with TLS,
+**ALWAYS use `vibew dev`** — it starts the app behind the VibeWarden sidecar with TLS,
 rate limiting, security headers, and all configured protections active.
 
 ```bash
-./vibew dev          # Start dev environment (app + sidecar + dependencies)
-./vibew dev --watch  # Start with hot reload on config changes
-./vibew status       # Check component health
-./vibew doctor       # Diagnose common issues (run this when something breaks)
+vibew dev          # Start dev environment (app + sidecar + dependencies)
+vibew dev --watch  # Start with hot reload on config changes
+vibew status       # Check component health
+vibew doctor       # Diagnose common issues (run this when something breaks)
 ```
 
 The app runs on port {{ .Port }} internally, but **always access it through the sidecar
@@ -37,9 +37,9 @@ This is a security risk even in development.
 When auth is enabled:
 
 ```bash
-./vibew token                                         # Generate a dev JWT
-./vibew token --email test@example.com --role admin   # Custom claims
-curl -H "Authorization: Bearer $(./vibew token)" https://localhost:8443/api/...
+vibew token                                         # Generate a dev JWT
+vibew token --email test@example.com --role admin   # Custom claims
+curl -H "Authorization: Bearer $(vibew token)" https://localhost:8443/api/...
 ```
 
 ### Working with secrets
@@ -47,9 +47,9 @@ curl -H "Authorization: Bearer $(./vibew token)" https://localhost:8443/api/...
 Never hardcode secrets. Use vibew:
 
 ```bash
-./vibew secret set DB_PASSWORD "secret123"   # Store a secret
-./vibew secret get DB_PASSWORD               # Retrieve a secret
-./vibew secret list                          # List all secrets
+vibew secret set DB_PASSWORD "secret123"   # Store a secret
+vibew secret get DB_PASSWORD               # Retrieve a secret
+vibew secret list                          # List all secrets
 ```
 
 Access secrets from code via environment variables — vibew injects them at startup.
@@ -135,23 +135,23 @@ dependencies {
 
 | Command | Description |
 |---------|-------------|
-| `./vibew dev` | Start dev environment (generates config, starts stack) |
-| `./vibew dev --watch` | Start with file watching and hot reload |
-| `./vibew status` | Show health of all components |
-| `./vibew logs` | Tail logs from all services |
-| `./vibew logs app` | Tail logs from app only |
-| `./vibew doctor` | Diagnose common issues |
-| `./vibew token` | Generate a dev JWT for testing |
-| `./vibew token --email u@example.com --role admin` | Generate JWT with custom claims |
-| `./vibew secret get NAME` | Get a secret value |
-| `./vibew secret set NAME VALUE` | Set a secret value |
-| `./vibew secret list` | List all secrets |
-| `./vibew cert export` | Export TLS certificate for trust anchoring |
-| `./vibew validate` | Validate vibewarden.yaml |
-| `./vibew add auth` | Enable Ory Kratos authentication |
-| `./vibew add postgres` | Add PostgreSQL database |
-| `./vibew eject` | Eject to raw Docker Compose (advanced, one-way) |
-| `./vibew generate` | Regenerate runtime config from vibewarden.yaml |
+| `vibew dev` | Start dev environment (generates config, starts stack) |
+| `vibew dev --watch` | Start with file watching and hot reload |
+| `vibew status` | Show health of all components |
+| `vibew logs` | Tail logs from all services |
+| `vibew logs app` | Tail logs from app only |
+| `vibew doctor` | Diagnose common issues |
+| `vibew token` | Generate a dev JWT for testing |
+| `vibew token --email u@example.com --role admin` | Generate JWT with custom claims |
+| `vibew secret get NAME` | Get a secret value |
+| `vibew secret set NAME VALUE` | Set a secret value |
+| `vibew secret list` | List all secrets |
+| `vibew cert export` | Export TLS certificate for trust anchoring |
+| `vibew validate` | Validate vibewarden.yaml |
+| `vibew add auth` | Enable Ory Kratos authentication |
+| `vibew add postgres` | Add PostgreSQL database |
+| `vibew eject` | Eject to raw Docker Compose (advanced, one-way) |
+| `vibew generate` | Regenerate runtime config from vibewarden.yaml |
 
 ## Common tasks
 
@@ -160,7 +160,7 @@ dependencies {
 1. Add route in `configureRouting()` inside `Application.kt`
 2. Create a data class for request/response if needed
 3. Add test in `ApplicationTest.kt`
-4. Run `./vibew dev` to test
+4. Run `vibew dev` to test
 
 ### Add a new domain entity
 

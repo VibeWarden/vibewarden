@@ -9,7 +9,7 @@ import (
 	opsapp "github.com/vibewarden/vibewarden/internal/app/ops"
 )
 
-// NewLogsCmd creates the "vibewarden logs" subcommand.
+// NewLogsCmd creates the "vibew logs" subcommand.
 //
 // Without flags the command tails recent docker compose logs for the vibewarden
 // service and pretty-prints each structured JSON line with colors. Non-JSON

@@ -8,7 +8,7 @@ import (
 	domainscaffold "github.com/vibewarden/vibewarden/internal/domain/scaffold"
 )
 
-// newAddTLSCmd creates the `vibewarden add tls` subcommand.
+// newAddTLSCmd creates the `vibew add tls` subcommand.
 //
 // This command enables TLS in vibewarden.yaml with a domain and provider.
 func newAddTLSCmd() *cobra.Command {
@@ -28,12 +28,12 @@ Supported providers:
   self-signed   Self-signed certificate for local/internal use
   external      You manage the certificate (Cloudflare, registrar, AWS ACM, etc.)
 
-Run 'vibewarden wrap' first if vibewarden.yaml does not exist.
+Run 'vibew wrap' first if vibewarden.yaml does not exist.
 
 Examples:
-  vibewarden add tls --domain example.com
-  vibewarden add tls --domain example.com --provider letsencrypt
-  vibewarden add tls --domain internal.corp --provider self-signed`,
+  vibew add tls --domain example.com
+  vibew add tls --domain example.com --provider letsencrypt
+  vibew add tls --domain internal.corp --provider self-signed`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if domain == "" {

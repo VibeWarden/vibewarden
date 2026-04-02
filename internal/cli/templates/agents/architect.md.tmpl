@@ -61,28 +61,28 @@ Before adding any dependency:
 Use vibew commands to run and validate during design review:
 
 ```bash
-./vibew dev          # Start dev environment (app + sidecar)
-./vibew doctor       # Diagnose issues
-./vibew validate     # Validate vibewarden.yaml
-./vibew status       # Check component health
+vibew dev          # Start dev environment (app + sidecar)
+vibew doctor       # Diagnose issues
+vibew validate     # Validate vibewarden.yaml
+vibew status       # Check component health
 ```
 
 ## vibew CLI Reference
 
 | Command | Description |
 |---------|-------------|
-| `./vibew dev` | Start dev environment (generates config, starts stack) |
-| `./vibew dev --watch` | Start with file watching and hot reload |
-| `./vibew status` | Show health of all components |
-| `./vibew logs` | Tail logs from all services |
-| `./vibew doctor` | Diagnose common issues |
-| `./vibew token` | Generate a dev JWT for testing |
-| `./vibew secret get NAME` | Get a secret value |
-| `./vibew secret set NAME VALUE` | Set a secret value |
-| `./vibew secret list` | List all secrets |
-| `./vibew cert export` | Export TLS certificate |
-| `./vibew validate` | Validate vibewarden.yaml |
-| `./vibew add auth` | Enable Ory Kratos authentication |
-| `./vibew add postgres` | Add PostgreSQL database |
-| `./vibew eject` | Eject to raw Docker Compose (advanced, one-way) |
-| `./vibew generate` | Regenerate runtime config from vibewarden.yaml |
+| `vibew dev` | Start dev environment (generates config, starts stack) |
+| `vibew dev --watch` | Start with file watching and hot reload |
+| `vibew status` | Show health of all components |
+| `vibew logs` | Tail logs from all services |
+| `vibew doctor` | Diagnose common issues |
+| `vibew token` | Generate a dev JWT for testing |
+| `vibew secret get NAME` | Get a secret value |
+| `vibew secret set NAME VALUE` | Set a secret value |
+| `vibew secret list` | List all secrets |
+| `vibew cert export` | Export TLS certificate |
+| `vibew validate` | Validate vibewarden.yaml |
+| `vibew add auth` | Enable Ory Kratos authentication |
+| `vibew add postgres` | Add PostgreSQL database |
+| `vibew eject` | Eject to raw Docker Compose (advanced, one-way) |
+| `vibew generate` | Regenerate runtime config from vibewarden.yaml |

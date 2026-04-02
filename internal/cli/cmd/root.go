@@ -12,7 +12,7 @@ import (
 // version is printed by the --version flag.
 func NewRootCmd(version string) *cobra.Command {
 	root := &cobra.Command{
-		Use:   "vibewarden",
+		Use:   "vibew",
 		Short: "VibeWarden - Security sidecar for vibe-coded apps",
 		Long: `VibeWarden is an open-source security sidecar that handles
 TLS, authentication, rate limiting, and AI-readable structured logs.
@@ -25,7 +25,7 @@ Zero-to-secure in minutes.`,
 		},
 	}
 
-	root.SetVersionTemplate("vibewarden {{.Version}}\n")
+	root.SetVersionTemplate("vibew {{.Version}}\n")
 
 	// Register all subcommands.
 	root.AddCommand(NewInitCmd())

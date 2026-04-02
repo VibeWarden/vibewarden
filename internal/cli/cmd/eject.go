@@ -12,7 +12,7 @@ import (
 	"github.com/vibewarden/vibewarden/internal/config"
 )
 
-// NewEjectCmd creates the "vibewarden eject" subcommand.
+// NewEjectCmd creates the "vibew eject" subcommand.
 //
 // The command reads vibewarden.yaml (or the path supplied via --config) and
 // prints the equivalent raw proxy configuration to stdout. This allows
@@ -46,9 +46,9 @@ generated config. Metrics and admin API routes are omitted because their
 internal servers are managed by VibeWarden and have no equivalent outside it.
 
 Examples:
-  vibewarden eject
-  vibewarden eject --config ./path/to/vibewarden.yaml
-  vibewarden eject --format caddy > caddy.json`,
+  vibew eject
+  vibew eject --config ./path/to/vibewarden.yaml
+  vibew eject --format caddy > caddy.json`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			f := ejectapp.Format(format)
 			if f != ejectapp.FormatCaddy {

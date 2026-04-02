@@ -37,7 +37,7 @@ var validFrameOptions = map[string]bool{
 	"SAMEORIGIN": true,
 }
 
-// NewValidateCmd creates the `vibewarden validate` subcommand.
+// NewValidateCmd creates the `vibew validate` subcommand.
 //
 // The command loads vibewarden.yaml (or the path supplied as the first
 // positional argument), runs semantic validation rules beyond what YAML
@@ -67,8 +67,8 @@ Checks performed:
 Exits with code 0 when configuration is valid, code 1 when invalid.
 
 Examples:
-  vibewarden validate
-  vibewarden validate ./path/to/vibewarden.yaml`,
+  vibew validate
+  vibew validate ./path/to/vibewarden.yaml`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			configPath := ""
@@ -164,7 +164,7 @@ func validateConfig(cfg *config.Config) []string {
 
 	// admin.token required when admin is enabled
 	if cfg.Admin.Enabled && cfg.Admin.Token == "" {
-		errs = append(errs, "admin.token is required when admin.enabled is true (run: vibewarden secret generate --admin-token)")
+		errs = append(errs, "admin.token is required when admin.enabled is true (run: vibew secret generate --admin-token)")
 	}
 
 	// security_headers.frame_option

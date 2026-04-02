@@ -175,11 +175,11 @@ main() {
     echo ""
     echo "  New project:"
     echo "    vibew init --lang go myapp"
-    echo "    cd myapp && ./vibew dev"
+    echo "    cd myapp && vibew dev"
     echo ""
     echo "  Existing project:"
     echo "    vibew wrap --upstream 3000"
-    echo "    ./vibew dev"
+    echo "    vibew dev"
     echo ""
     ok "Docs: https://vibewarden.dev/docs/"
 }
