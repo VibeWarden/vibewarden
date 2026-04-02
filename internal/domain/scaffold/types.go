@@ -106,6 +106,11 @@ type InitProjectData struct {
 
 	// Language is the target programming language.
 	Language Language
+
+	// Description is an optional one-line description of what the project builds.
+	// When set it is included in PROJECT.md, CLAUDE.md, and agent files so that
+	// AI coding assistants have context about the project's purpose from the start.
+	Description string
 }
 
 // AgentType identifies the target AI coding assistant for context generation.
