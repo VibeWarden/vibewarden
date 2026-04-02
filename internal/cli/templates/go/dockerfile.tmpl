@@ -1,12 +1,7 @@
-# syntax=docker/dockerfile:1
-FROM golang:1.24-alpine AS builder
-WORKDIR /app
-COPY go.mod go.sum* ./
-RUN go mod download
-COPY . .
-RUN CGO_ENABLED=0 GOOS=linux go build -o /{{ .ProjectName }} ./cmd/{{ .ProjectName }}
-
-FROM gcr.io/distroless/static-debian12
-COPY --from=builder /{{ .ProjectName }} /{{ .ProjectName }}
+# Build your app first, then build this image.
+# Example: go build -o bin/{{ .ProjectName }} ./cmd/{{ .ProjectName }}
+FROM alpine:3.21
+RUN apk add --no-cache ca-certificates wget
+COPY bin/{{ .ProjectName }} /app
 EXPOSE {{ .Port }}
-ENTRYPOINT ["/{{ .ProjectName }}"]
+CMD ["/app"]
