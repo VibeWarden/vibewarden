@@ -134,7 +134,11 @@ func printInitSuccessMessage(cmd *cobra.Command, projectName string, opts scaffo
 	fmt.Fprintf(w, "  vibew                    Wrapper script (macOS/Linux)\n")
 	fmt.Fprintf(w, "  vibew.ps1                Wrapper script (Windows)\n")
 	fmt.Fprintf(w, "  Dockerfile               Container build file\n")
-	fmt.Fprintf(w, "  go.mod                   Go module (path: %s)\n", opts.ModulePath)
+	modDisplay := opts.ModulePath
+	if modDisplay == "" {
+		modDisplay = projectName
+	}
+	fmt.Fprintf(w, "  go.mod                   Go module (path: %s)\n", modDisplay)
 	fmt.Fprintf(w, "  .gitignore               Git ignore rules\n")
 	fmt.Fprintln(w, "")
 	fmt.Fprintln(w, "Next steps:")
