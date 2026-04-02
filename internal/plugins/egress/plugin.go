@@ -114,9 +114,17 @@ func (p *Plugin) Init(ctx context.Context) error {
 		proxyCfg.SSRFGuard = guard
 	}
 
-	// Wire per-route circuit breakers and rate limiters.
+	// Wire per-route circuit breakers, rate limiters, and response caches.
 	proxyCfg.CircuitBreakers = egressadapter.NewCircuitBreakerRegistry(p.logger, p.eventLogger)
 	proxyCfg.RateLimiters = egressadapter.NewRateLimiterRegistry(p.logger, p.eventLogger)
+	proxyCfg.ResponseCaches = egressadapter.NewResponseCacheRegistry()
+
+	// Build per-route mTLS clients for routes that have an MTLSConfig.
+	mtlsClients, err := egressadapter.BuildMTLSClients(routes, nil)
+	if err != nil {
+		return fmt.Errorf("egress plugin init: building mTLS clients: %w", err)
+	}
+	proxyCfg.MTLSClients = mtlsClients
 
 	resolver := egressadapter.NewRouteResolver(routes)
 	p.proxy = egressadapter.NewProxy(proxyCfg, resolver, nil, p.logger)
@@ -263,6 +271,38 @@ func routeOptions(rc RouteConfig) ([]domainegress.RouteOption, error) {
 		opts = append(opts, domainegress.WithValidateResponse(domainegress.ResponseValidationConfig{
 			StatusCodes:  rc.ValidateResponse.StatusCodes,
 			ContentTypes: rc.ValidateResponse.ContentTypes,
+		}))
+	}
+
+	if len(rc.Headers.Add) > 0 || len(rc.Headers.RemoveRequest) > 0 || len(rc.Headers.RemoveResponse) > 0 {
+		opts = append(opts, domainegress.WithHeaders(domainegress.HeadersConfig{
+			InjectHeaders:        rc.Headers.Add,
+			StripRequestHeaders:  rc.Headers.RemoveRequest,
+			StripResponseHeaders: rc.Headers.RemoveResponse,
+		}))
+	}
+
+	if rc.Cache.Enabled {
+		opts = append(opts, domainegress.WithCache(domainegress.CacheConfig{
+			Enabled: rc.Cache.Enabled,
+			TTL:     rc.Cache.TTL,
+			MaxSize: rc.Cache.MaxSize,
+		}))
+	}
+
+	if len(rc.Sanitize.Headers) > 0 || len(rc.Sanitize.QueryParams) > 0 || len(rc.Sanitize.BodyFields) > 0 {
+		opts = append(opts, domainegress.WithSanitize(domainegress.SanitizeConfig{
+			Headers:     rc.Sanitize.Headers,
+			QueryParams: rc.Sanitize.QueryParams,
+			BodyFields:  rc.Sanitize.BodyFields,
+		}))
+	}
+
+	if rc.MTLS.CertPath != "" || rc.MTLS.KeyPath != "" || rc.MTLS.CAPath != "" {
+		opts = append(opts, domainegress.WithMTLS(domainegress.MTLSConfig{
+			CertPath: rc.MTLS.CertPath,
+			KeyPath:  rc.MTLS.KeyPath,
+			CAPath:   rc.MTLS.CAPath,
 		}))
 	}
 

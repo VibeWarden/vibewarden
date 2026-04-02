@@ -89,11 +89,50 @@ RESULT=$(docker exec egress-app-1 wget -S \
     http://vibewarden:8081/ 2>&1 || true)
 check_output "Unlisted URL returns 403" "403 Forbidden" "$RESULT"
 
-# --- Known issues (config wiring not yet complete — see #583) ---
-echo "--- Known issues (skipped until #583 is fixed) ---"
-echo "  [SKIP] Method enforcement (methods field not wired to route matching)"
-echo "  [SKIP] Header injection (headers.add not wired from config to plugin)"
-echo "  [SKIP] Header stripping (headers.remove_request not wired from config to plugin)"
+# --- Method enforcement (#583) ---
+echo "--- Method enforcement ---"
+
+# httpbin-get route only allows GET; a POST should not match and fall to deny.
+RESULT=$(docker exec egress-app-1 wget -S \
+    --header="X-Egress-URL: http://httpbin/get" \
+    --header="Content-Type: application/json" \
+    --post-data='{}' \
+    http://vibewarden:8081/ 2>&1 || true)
+check_output "POST to GET-only route returns 403" "403 Forbidden" "$RESULT"
+
+# httpbin-headers route only allows GET; the route should match for GET.
+RESULT=$(docker exec egress-app-1 wget -qO- \
+    --header="X-Egress-URL: http://httpbin/headers" \
+    http://vibewarden:8081/ 2>&1 || true)
+check_output "GET to headers route succeeds" '"headers"' "$RESULT"
+
+# --- Header injection (#583) ---
+echo "--- Header injection ---"
+
+# httpbin-headers route injects X-Injected-By: vibewarden-egress.
+# httpbin /headers echoes the request headers in the response body.
+RESULT=$(docker exec egress-app-1 wget -qO- \
+    --header="X-Egress-URL: http://httpbin/headers" \
+    http://vibewarden:8081/ 2>&1 || true)
+check_output "Injected header appears in upstream request" "vibewarden-egress" "$RESULT"
+
+# --- Header stripping (#583) ---
+echo "--- Header stripping ---"
+
+# httpbin-headers route strips Cookie; Cookie should not appear upstream.
+RESULT=$(docker exec egress-app-1 wget -qO- \
+    --header="X-Egress-URL: http://httpbin/headers" \
+    --header="Cookie: session=abc123" \
+    http://vibewarden:8081/ 2>&1 || true)
+# httpbin echoes headers; Cookie must not appear in the response body.
+if echo "$RESULT" | grep -qi '"Cookie"'; then
+    echo "  [FAIL] Cookie header should have been stripped before forwarding"
+    FAIL=$((FAIL + 1))
+else
+    echo "  [PASS] Cookie header stripped before forwarding"
+    PASS=$((PASS + 1))
+fi
+TOTAL=$((TOTAL + 1))
 
 # --- Summary ---
 echo ""

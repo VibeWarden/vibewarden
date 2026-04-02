@@ -92,6 +92,82 @@ type RouteConfig struct {
 	// allowed status code ranges and content types. Responses that fail
 	// validation are dropped and the caller receives a 502 Bad Gateway.
 	ValidateResponse ResponseValidationConfig
+
+	// Headers holds per-route header injection and stripping rules applied before
+	// forwarding the request and before returning the response to the caller.
+	Headers HeadersConfig
+
+	// Cache holds per-route in-memory response caching settings.
+	// Only GET and HEAD requests that receive a 2xx response are cached.
+	Cache CacheConfig
+
+	// Sanitize holds per-route PII redaction rules applied to outbound requests
+	// before forwarding and to structured log output.
+	Sanitize SanitizeConfig
+
+	// MTLS holds mutual-TLS client certificate settings for this route.
+	// When non-zero, the egress proxy presents the configured certificate during
+	// the TLS handshake with the upstream.
+	MTLS MTLSConfig
+}
+
+// HeadersConfig holds per-route header injection and stripping rules for the
+// egress plugin configuration layer. Fields mirror the domain HeadersConfig.
+type HeadersConfig struct {
+	// Add is a map of header name to value injected into the outbound request.
+	// If the header already exists, its value is overwritten.
+	Add map[string]string
+
+	// RemoveRequest is the list of request header names removed before forwarding.
+	RemoveRequest []string
+
+	// RemoveResponse is the list of response header names removed before
+	// returning the upstream response to the caller.
+	RemoveResponse []string
+}
+
+// CacheConfig holds per-route in-memory response caching parameters for the
+// egress plugin configuration layer.
+type CacheConfig struct {
+	// Enabled activates response caching for this route.
+	Enabled bool
+
+	// TTL is how long a cached entry remains valid. Zero means entries never expire.
+	TTL time.Duration
+
+	// MaxSize is the maximum number of bytes for a single cached response body.
+	// Zero means no per-entry size limit.
+	MaxSize int64
+}
+
+// SanitizeConfig holds per-route PII redaction rules for the egress plugin
+// configuration layer.
+type SanitizeConfig struct {
+	// Headers is the list of request header names redacted in log output.
+	// The actual forwarded header value is preserved unchanged.
+	Headers []string
+
+	// QueryParams is the list of query parameter names stripped from the
+	// request URL before forwarding.
+	QueryParams []string
+
+	// BodyFields is the list of JSON field names replaced with "[REDACTED]"
+	// in the request body before forwarding.
+	BodyFields []string
+}
+
+// MTLSConfig holds mutual-TLS client certificate parameters for the egress
+// plugin configuration layer.
+type MTLSConfig struct {
+	// CertPath is the filesystem path to the PEM-encoded client certificate.
+	CertPath string
+
+	// KeyPath is the filesystem path to the PEM-encoded private key.
+	KeyPath string
+
+	// CAPath is an optional path to a PEM-encoded CA certificate bundle used
+	// to verify the server certificate. Empty means use the system root CA pool.
+	CAPath string
 }
 
 // ResponseValidationConfig holds per-route upstream response validation
