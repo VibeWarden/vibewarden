@@ -258,7 +258,8 @@ func TestInitProject_Kotlin_CreatesStructure(t *testing.T) {
 	mustExist(t, parent, "myktapp", "CLAUDE.md")
 
 	// Verify Application.kt at the Gradle source path.
-	mustExist(t, parent, "myktapp", "src", "main", "kotlin", "com", "example", "myktapp", "Application.kt")
+	// GroupID defaults to sanitized project name; package path is <groupID>/<packageName>/
+	mustExist(t, parent, "myktapp", "src", "main", "kotlin", "myktapp", "myktapp", "Application.kt")
 
 	// Verify agent files.
 	mustExist(t, parent, "myktapp", ".claude", "agents", "architect.md")

@@ -307,7 +307,7 @@ func TestInitProject_KotlinWithRealFS(t *testing.T) {
 			},
 		},
 		{
-			file: filepath.Join(parent, "ktreal", "src", "main", "kotlin", "com", "example", "ktreal", "Application.kt"),
+			file: filepath.Join(parent, "ktreal", "src", "main", "kotlin", "ktreal", "ktreal", "Application.kt"),
 			mustContain: []string{
 				"ktreal",
 				"fun main()",

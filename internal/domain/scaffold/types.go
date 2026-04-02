@@ -93,6 +93,25 @@ const (
 	LanguageTypeScript Language = "typescript"
 )
 
+// SanitizePackageName converts a project name into a valid JVM/TypeScript package
+// identifier by replacing hyphens and dots with underscores and lowercasing.
+func SanitizePackageName(name string) string {
+	var b []byte
+	for _, c := range []byte(name) {
+		switch {
+		case c >= 'a' && c <= 'z', c >= '0' && c <= '9', c == '_':
+			b = append(b, c)
+		case c >= 'A' && c <= 'Z':
+			b = append(b, c+32) // lowercase
+		case c == '-', c == '.':
+			b = append(b, '_')
+		default:
+			b = append(b, '_')
+		}
+	}
+	return string(b)
+}
+
 // InitProjectData is the data passed to project scaffold templates when rendering.
 type InitProjectData struct {
 	// ProjectName is the name of the project (directory name, used in go.mod).
@@ -100,6 +119,14 @@ type InitProjectData struct {
 
 	// ModulePath is the Go module path (e.g., "github.com/user/myproject").
 	ModulePath string
+
+	// PackageName is the sanitized project name safe for JVM/TypeScript package identifiers.
+	// Hyphens are replaced with underscores, everything is lowercased.
+	PackageName string
+
+	// GroupID is the JVM group identifier (e.g., "com.mycompany").
+	// Defaults to the sanitized project name when not specified.
+	GroupID string
 
 	// Port is the HTTP port the generated app listens on.
 	Port int
