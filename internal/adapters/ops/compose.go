@@ -48,14 +48,17 @@ func (c *ComposeAdapter) Up(ctx context.Context, composeFile string, profiles []
 	return nil
 }
 
-// Restart runs "docker compose [-f <composeFile>] restart".
+// Restart runs "docker compose [-f <composeFile>] restart [<service>...]".
 // When composeFile is non-empty it is passed as the -f flag.
-func (c *ComposeAdapter) Restart(ctx context.Context, composeFile string) error {
+// When services is non-empty each service name is appended so that only those
+// services are restarted; when empty all services are restarted.
+func (c *ComposeAdapter) Restart(ctx context.Context, composeFile string, services []string) error {
 	args := []string{"compose"}
 	if composeFile != "" {
 		args = append(args, "-f", composeFile)
 	}
 	args = append(args, "restart")
+	args = append(args, services...)
 
 	cmd := exec.CommandContext(ctx, "docker", args...)
 	if err := cmd.Run(); err != nil {

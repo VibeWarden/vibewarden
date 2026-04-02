@@ -250,6 +250,68 @@ func TestNewGenerateCmd_Short(t *testing.T) {
 	}
 }
 
+// TestNewRestartCmd_RegisteredOnRoot verifies that the restart subcommand is
+// reachable from the root command.
+func TestNewRestartCmd_RegisteredOnRoot(t *testing.T) {
+	root := cmd.NewRootCmd("test")
+
+	restartCmd, _, err := root.Find([]string{"restart"})
+	if err != nil {
+		t.Fatalf("Find(restart) error: %v", err)
+	}
+	if restartCmd == nil || restartCmd.Use == "" {
+		t.Fatal("expected 'restart' subcommand to be registered on root")
+	}
+}
+
+// TestNewRestartCmd_Short verifies the Short description is set.
+func TestNewRestartCmd_Short(t *testing.T) {
+	root := cmd.NewRootCmd("test")
+	restartCmd, _, _ := root.Find([]string{"restart"})
+	if restartCmd.Short == "" {
+		t.Error("expected non-empty Short description on 'restart' command")
+	}
+}
+
+// TestNewRestartCmd_Help verifies that help output for restart contains expected content.
+func TestNewRestartCmd_Help(t *testing.T) {
+	root := cmd.NewRootCmd("test")
+	var outBuf strings.Builder
+	root.SetOut(&outBuf)
+	root.SetArgs([]string{"restart", "--help"})
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("Execute() unexpected error: %v", err)
+	}
+
+	out := outBuf.String()
+	for _, want := range []string{"restart", "service", ".vibewarden/generated"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("help output missing %q\ngot:\n%s", want, out)
+		}
+	}
+}
+
+// TestNewRestartCmd_AcceptsServiceArgs verifies that the command accepts
+// optional positional arguments (service names).
+func TestNewRestartCmd_AcceptsServiceArgs(t *testing.T) {
+	root := cmd.NewRootCmd("test")
+	restartCmd, _, _ := root.Find([]string{"restart"})
+
+	// Args validator must accept any number of args (including zero).
+	if restartCmd.Args != nil {
+		if err := restartCmd.Args(restartCmd, []string{}); err != nil {
+			t.Errorf("Args validator rejected empty args: %v", err)
+		}
+		if err := restartCmd.Args(restartCmd, []string{"app"}); err != nil {
+			t.Errorf("Args validator rejected single service arg: %v", err)
+		}
+		if err := restartCmd.Args(restartCmd, []string{"app", "kratos"}); err != nil {
+			t.Errorf("Args validator rejected multiple service args: %v", err)
+		}
+	}
+}
+
 // TestQuickStartFlow_WrapThenDev documents and exercises the two-command Quick
 // Start path from the README:
 //

@@ -84,6 +84,97 @@ func TestComposeAdapter_UpArgsWithComposeFile(t *testing.T) {
 	}
 }
 
+func TestComposeAdapter_Restart_CancelledContext(t *testing.T) {
+	if !dockerAvailable() {
+		t.Skip("docker binary not available")
+	}
+
+	adapter := opsadapter.NewComposeAdapter()
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	err := adapter.Restart(ctx, "", nil)
+	if err == nil {
+		t.Fatal("expected an error because context was cancelled")
+	}
+}
+
+func TestComposeAdapter_Restart_CancelledContextWithService(t *testing.T) {
+	if !dockerAvailable() {
+		t.Skip("docker binary not available")
+	}
+
+	adapter := opsadapter.NewComposeAdapter()
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	err := adapter.Restart(ctx, ".vibewarden/generated/docker-compose.yml", []string{"app"})
+	if err == nil {
+		t.Fatal("expected an error because context was cancelled")
+	}
+}
+
+// restartArgs mirrors the argument-construction logic of ComposeAdapter.Restart
+// for use in table-driven tests.
+func restartArgs(composeFile string, services []string) []string {
+	args := []string{"compose"}
+	if composeFile != "" {
+		args = append(args, "-f", composeFile)
+	}
+	args = append(args, "restart")
+	args = append(args, services...)
+	return args
+}
+
+func TestRestartArgsConstruction(t *testing.T) {
+	tests := []struct {
+		name        string
+		composeFile string
+		services    []string
+		want        []string
+	}{
+		{
+			name: "no file, no services",
+			want: []string{"compose", "restart"},
+		},
+		{
+			name:     "no file, single service",
+			services: []string{"app"},
+			want:     []string{"compose", "restart", "app"},
+		},
+		{
+			name:     "no file, multiple services",
+			services: []string{"app", "kratos"},
+			want:     []string{"compose", "restart", "app", "kratos"},
+		},
+		{
+			name:        "with file, no services",
+			composeFile: ".vibewarden/generated/docker-compose.yml",
+			want:        []string{"compose", "-f", ".vibewarden/generated/docker-compose.yml", "restart"},
+		},
+		{
+			name:        "with file and service",
+			composeFile: ".vibewarden/generated/docker-compose.yml",
+			services:    []string{"app"},
+			want:        []string{"compose", "-f", ".vibewarden/generated/docker-compose.yml", "restart", "app"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := restartArgs(tt.composeFile, tt.services)
+			if len(got) != len(tt.want) {
+				t.Fatalf("len(args) = %d, want %d\ngot:  %v\nwant: %v", len(got), len(tt.want), got, tt.want)
+			}
+			for i := range got {
+				if got[i] != tt.want[i] {
+					t.Errorf("args[%d] = %q, want %q", i, got[i], tt.want[i])
+				}
+			}
+		})
+	}
+}
+
 func TestComposeAdapter_VersionReturnsErrorWhenDockerMissing(t *testing.T) {
 	if dockerAvailable() {
 		t.Skip("docker is available; skipping missing-docker test")
