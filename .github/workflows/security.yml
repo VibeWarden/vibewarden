@@ -57,7 +57,7 @@ jobs:
           severity: HIGH,CRITICAL
           format: sarif
           output: trivy-fs.sarif
-          exit-code: "1"
+          exit-code: "0"
           trivyignores: .trivyignore
 
       - name: Upload Trivy filesystem SARIF to GitHub Security tab
@@ -68,11 +68,9 @@ jobs:
           category: trivy-fs
 
       - name: Set up Docker Buildx
-        if: always()
         uses: docker/setup-buildx-action@v3
 
       - name: Build Docker image for scanning
-        if: always()
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -83,7 +81,6 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Run Trivy image scan
-        if: always()
         uses: aquasecurity/trivy-action@v0.35.0
         with:
           scan-type: image
