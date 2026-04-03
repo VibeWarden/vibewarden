@@ -11,7 +11,7 @@ import (
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
 
-// LogsOptions holds the options passed to the "vibewarden logs" command.
+// LogsOptions holds the options passed to the "vibew logs" command.
 type LogsOptions struct {
 	// Follow tails the log stream in real time (docker compose logs -f).
 	Follow bool
@@ -21,7 +21,7 @@ type LogsOptions struct {
 	Stdin io.Reader
 }
 
-// LogsService orchestrates the "vibewarden logs" use case.
+// LogsService orchestrates the "vibew logs" use case.
 // It reads structured log lines from docker compose (or stdin) and delegates
 // formatting to a LogPrinter.
 type LogsService struct {

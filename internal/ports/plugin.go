@@ -205,7 +205,7 @@ type PluginMeta interface {
 	Description() string
 
 	// ConfigSchema returns a map of field name to field description for use
-	// in "vibewarden plugins show <name>" output. Fields should be listed in
+	// in "vibew plugins show <name>" output. Fields should be listed in
 	// logical order; the caller is responsible for display ordering.
 	ConfigSchema() map[string]string
 

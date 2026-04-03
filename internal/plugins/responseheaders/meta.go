@@ -6,7 +6,7 @@ func (p *Plugin) Description() string {
 }
 
 // ConfigSchema returns the configuration field descriptions for the
-// response-headers plugin, used by "vibewarden plugins show response-headers".
+// response-headers plugin, used by "vibew plugins show response-headers".
 func (p *Plugin) ConfigSchema() map[string]string {
 	return map[string]string{
 		"set":    "Map of header names to values that overwrite any existing value (or create the header). Values support ${ENV_VAR} substitution.",
