@@ -6,11 +6,14 @@
     <parent>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-parent</artifactId>
-        <version>3.4.4</version>
+        <version>3.5.5</version>
     </parent>
     <groupId>com.example</groupId>
     <artifactId>vibewarden-demo</artifactId>
     <version>0.0.1</version>
+    <properties>
+        <tomcat.version>10.1.52</tomcat.version>
+    </properties>
     <dependencies>
         <dependency>
             <groupId>org.springframework.boot</groupId>
