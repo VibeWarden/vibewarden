@@ -341,6 +341,195 @@ func TestService_Run_UpdatesVersionFile(t *testing.T) {
 	}
 }
 
+// TestResolveExecutablePath verifies that ResolveExecutablePath returns a
+// non-empty, absolute path that actually exists on disk.
+func TestResolveExecutablePath(t *testing.T) {
+	got, err := upgrade.ResolveExecutablePath()
+	if err != nil {
+		t.Fatalf("ResolveExecutablePath() unexpected error: %v", err)
+	}
+	if got == "" {
+		t.Fatal("ResolveExecutablePath() returned empty string")
+	}
+	if !filepath.IsAbs(got) {
+		t.Errorf("ResolveExecutablePath() returned non-absolute path: %q", got)
+	}
+	if _, statErr := os.Stat(got); statErr != nil {
+		t.Errorf("ResolveExecutablePath() returned path that does not exist: %q (%v)", got, statErr)
+	}
+}
+
+// TestService_Run_UsesExecutablePath verifies that when ExecutablePath is set
+// (and InstallDir is empty) the service installs the binary to that exact
+// path rather than ~/.vibewarden/bin.
+func TestService_Run_UsesExecutablePath(t *testing.T) {
+	version := "v0.8.0"
+	goos := "linux"
+	goarch := "amd64"
+	cleanVersion := "0.8.0"
+	archiveName := fmt.Sprintf("vibewarden_%s_%s_%s.tar.gz", cleanVersion, goos, goarch)
+
+	archiveBytes, checksumHex := buildFakeArchive(t, "vibew", "#!/bin/sh\necho vibewarden")
+	checksumBytes := buildChecksums(archiveName, checksumHex)
+
+	baseURL := fmt.Sprintf("https://github.com/vibewarden/vibewarden/releases/download/%s", version)
+	client := &fakeHTTPClient{
+		responses: map[string]fakeResponse{
+			baseURL + "/" + archiveName: {status: http.StatusOK, body: archiveBytes},
+			baseURL + "/checksums.txt":  {status: http.StatusOK, body: checksumBytes},
+		},
+	}
+	svc := upgrade.NewService(client)
+
+	// Simulate the running binary living at a custom path (e.g. /usr/local/bin/vibew).
+	customBinDir := t.TempDir()
+	// Pre-create the "running" binary so the path exists.
+	customBinPath := filepath.Join(customBinDir, "vibew")
+	if err := os.WriteFile(customBinPath, []byte("old binary"), 0o755); err != nil {
+		t.Fatalf("creating fake running binary: %v", err)
+	}
+
+	var out strings.Builder
+	opts := upgrade.Options{
+		Version:        version,
+		ExecutablePath: customBinPath, // no InstallDir — should use this
+		Stdout:         &out,
+		GOOS:           goos,
+		GOARCH:         goarch,
+	}
+
+	if err := svc.Run(context.Background(), opts); err != nil {
+		t.Fatalf("Run() unexpected error: %v\nOutput:\n%s", err, out.String())
+	}
+
+	// Binary must be replaced at the exact ExecutablePath.
+	info, err := os.Stat(customBinPath)
+	if err != nil {
+		t.Fatalf("binary not found at %s: %v", customBinPath, err)
+	}
+	if info.Mode()&0o111 == 0 {
+		t.Errorf("binary not executable, mode=%v", info.Mode())
+	}
+
+	content, err := os.ReadFile(customBinPath)
+	if err != nil {
+		t.Fatalf("reading installed binary: %v", err)
+	}
+	if string(content) == "old binary" {
+		t.Error("binary was not replaced: still contains old content")
+	}
+
+	// Output must mention the resolved path.
+	if !strings.Contains(out.String(), customBinPath) {
+		t.Errorf("expected install path %s in output, got:\n%s", customBinPath, out.String())
+	}
+}
+
+// TestService_Run_InstallDirTakesPriorityOverExecutablePath verifies that
+// --install-dir overrides ExecutablePath when both are set.
+func TestService_Run_InstallDirTakesPriorityOverExecutablePath(t *testing.T) {
+	version := "v0.8.1"
+	goos := "linux"
+	goarch := "amd64"
+	cleanVersion := "0.8.1"
+	archiveName := fmt.Sprintf("vibewarden_%s_%s_%s.tar.gz", cleanVersion, goos, goarch)
+
+	archiveBytes, checksumHex := buildFakeArchive(t, "vibew", "#!/bin/sh")
+	checksumBytes := buildChecksums(archiveName, checksumHex)
+
+	baseURL := fmt.Sprintf("https://github.com/vibewarden/vibewarden/releases/download/%s", version)
+	client := &fakeHTTPClient{
+		responses: map[string]fakeResponse{
+			baseURL + "/" + archiveName: {status: http.StatusOK, body: archiveBytes},
+			baseURL + "/checksums.txt":  {status: http.StatusOK, body: checksumBytes},
+		},
+	}
+	svc := upgrade.NewService(client)
+
+	explicitDir := t.TempDir()
+	exeDir := t.TempDir()
+	exePath := filepath.Join(exeDir, "vibew")
+	if err := os.WriteFile(exePath, []byte("exe"), 0o755); err != nil {
+		t.Fatalf("creating fake exe: %v", err)
+	}
+
+	opts := upgrade.Options{
+		Version:        version,
+		InstallDir:     explicitDir,
+		ExecutablePath: exePath,
+		Stdout:         io.Discard,
+		GOOS:           goos,
+		GOARCH:         goarch,
+	}
+
+	if err := svc.Run(context.Background(), opts); err != nil {
+		t.Fatalf("Run() unexpected error: %v", err)
+	}
+
+	// Binary must land in explicitDir, not exeDir.
+	expectedPath := filepath.Join(explicitDir, "vibew")
+	if _, err := os.Stat(expectedPath); err != nil {
+		t.Fatalf("expected binary at %s: %v", expectedPath, err)
+	}
+	if _, err := os.Stat(exePath); err == nil {
+		// exePath content should be the old "exe" stub, not replaced.
+		content, _ := os.ReadFile(exePath)
+		if string(content) != "exe" {
+			t.Error("InstallDir did not take priority: ExecutablePath was modified")
+		}
+	}
+}
+
+// TestService_Run_FallsBackToHomeDirWhenNoExecutablePath verifies that when
+// both InstallDir and ExecutablePath are empty the binary is installed to
+// ~/.vibewarden/bin/vibew.
+func TestService_Run_FallsBackToHomeDirWhenNoExecutablePath(t *testing.T) {
+	version := "v0.8.2"
+	goos := "linux"
+	goarch := "amd64"
+	cleanVersion := "0.8.2"
+	archiveName := fmt.Sprintf("vibewarden_%s_%s_%s.tar.gz", cleanVersion, goos, goarch)
+
+	archiveBytes, checksumHex := buildFakeArchive(t, "vibew", "#!/bin/sh")
+	checksumBytes := buildChecksums(archiveName, checksumHex)
+
+	baseURL := fmt.Sprintf("https://github.com/vibewarden/vibewarden/releases/download/%s", version)
+	client := &fakeHTTPClient{
+		responses: map[string]fakeResponse{
+			baseURL + "/" + archiveName: {status: http.StatusOK, body: archiveBytes},
+			baseURL + "/checksums.txt":  {status: http.StatusOK, body: checksumBytes},
+		},
+	}
+	svc := upgrade.NewService(client)
+
+	// Override HOME so we can check the fallback path without touching the
+	// real home directory.
+	fakeHome := t.TempDir()
+	t.Setenv("HOME", fakeHome)
+
+	var out strings.Builder
+	opts := upgrade.Options{
+		Version: version,
+		// InstallDir and ExecutablePath intentionally empty.
+		Stdout: &out,
+		GOOS:   goos,
+		GOARCH: goarch,
+	}
+
+	if err := svc.Run(context.Background(), opts); err != nil {
+		t.Fatalf("Run() unexpected error: %v\nOutput:\n%s", err, out.String())
+	}
+
+	expectedPath := filepath.Join(fakeHome, ".vibewarden", "bin", "vibew")
+	if _, err := os.Stat(expectedPath); err != nil {
+		t.Fatalf("expected binary at fallback path %s: %v", expectedPath, err)
+	}
+
+	if !strings.Contains(out.String(), expectedPath) {
+		t.Errorf("expected fallback path %s in output, got:\n%s", expectedPath, out.String())
+	}
+}
+
 func TestService_Run_RegeneratesWrappers(t *testing.T) {
 	version := "v0.7.0"
 	goos := "linux"
