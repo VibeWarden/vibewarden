@@ -353,6 +353,73 @@ func TestInitProjectData_Description(t *testing.T) {
 	}
 }
 
+func TestSanitizePackageName(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  string
+	}{
+		{
+			name:  "already valid lowercase",
+			input: "myapp",
+			want:  "myapp",
+		},
+		{
+			name:  "uppercase letters are lowercased",
+			input: "MyApp",
+			want:  "myapp",
+		},
+		{
+			name:  "hyphens replaced with underscores",
+			input: "my-app",
+			want:  "my_app",
+		},
+		{
+			name:  "dots replaced with underscores",
+			input: "my.app",
+			want:  "my_app",
+		},
+		{
+			name:  "mixed hyphens dots and uppercase",
+			input: "My-Cool.App",
+			want:  "my_cool_app",
+		},
+		{
+			name:  "digits preserved",
+			input: "app123",
+			want:  "app123",
+		},
+		{
+			name:  "underscores preserved",
+			input: "my_app",
+			want:  "my_app",
+		},
+		{
+			name:  "special characters replaced with underscores",
+			input: "my@app!",
+			want:  "my_app_",
+		},
+		{
+			name:  "empty string",
+			input: "",
+			want:  "",
+		},
+		{
+			name:  "all uppercase",
+			input: "MYAPP",
+			want:  "myapp",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := scaffold.SanitizePackageName(tt.input)
+			if got != tt.want {
+				t.Errorf("SanitizePackageName(%q) = %q, want %q", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestAgentContextData_Construction(t *testing.T) {
 	acd := scaffold.AgentContextData{
 		UpstreamPort:     8080,

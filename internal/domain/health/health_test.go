@@ -138,6 +138,36 @@ func TestNewUpstreamHealth(t *testing.T) {
 	})
 }
 
+// TestUpstreamHealth_Config verifies that Config() returns the configuration
+// that was passed to NewUpstreamHealth.
+func TestUpstreamHealth_Config(t *testing.T) {
+	cfg := validConfig()
+	u, err := health.NewUpstreamHealth(cfg)
+	if err != nil {
+		t.Fatalf("NewUpstreamHealth() unexpected error: %v", err)
+	}
+
+	got := u.Config()
+	if got.Path != cfg.Path {
+		t.Errorf("Config().Path = %q, want %q", got.Path, cfg.Path)
+	}
+	if got.Interval != cfg.Interval {
+		t.Errorf("Config().Interval = %v, want %v", got.Interval, cfg.Interval)
+	}
+	if got.Timeout != cfg.Timeout {
+		t.Errorf("Config().Timeout = %v, want %v", got.Timeout, cfg.Timeout)
+	}
+	if got.UnhealthyThreshold != cfg.UnhealthyThreshold {
+		t.Errorf("Config().UnhealthyThreshold = %d, want %d", got.UnhealthyThreshold, cfg.UnhealthyThreshold)
+	}
+	if got.HealthyThreshold != cfg.HealthyThreshold {
+		t.Errorf("Config().HealthyThreshold = %d, want %d", got.HealthyThreshold, cfg.HealthyThreshold)
+	}
+	if got.Enabled != cfg.Enabled {
+		t.Errorf("Config().Enabled = %v, want %v", got.Enabled, cfg.Enabled)
+	}
+}
+
 func TestRecordSuccess_TransitionsToHealthy(t *testing.T) {
 	cfg := validConfig()
 	cfg.HealthyThreshold = 2
