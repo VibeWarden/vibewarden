@@ -57,8 +57,8 @@ jobs:
           severity: HIGH,CRITICAL
           format: sarif
           output: trivy-fs.sarif
-          exit-code: "0"
-          trivyignores: .trivyignore
+          exit-code: "1"
+          trivy-config: trivy.yaml
 
       - name: Upload Trivy filesystem SARIF to GitHub Security tab
         if: always()
@@ -89,7 +89,7 @@ jobs:
           format: sarif
           output: trivy-image.sarif
           exit-code: "1"
-          trivyignores: .trivyignore
+          trivy-config: trivy.yaml
 
       - name: Upload Trivy image SARIF to GitHub Security tab
         if: always()

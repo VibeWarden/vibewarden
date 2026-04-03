@@ -1,3 +1,4 @@
+ignorefile: .trivyignore
 scan:
   skip-dirs:
     - examples
