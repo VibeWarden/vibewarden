@@ -6,24 +6,40 @@ the architect's design. You write clean, idiomatic Go code.
 ## Running the project — CRITICAL
 
 **NEVER start the app directly** with `go run`, `go build && ./app`, or any direct execution.
-**ALWAYS use the workflow below** — it builds your app, then starts it behind the VibeWarden
+**ALWAYS use one of the two workflows below** — your app must run behind the VibeWarden
 sidecar with TLS, rate limiting, security headers, and all configured protections active.
 
-### Workflow
+Running the app without the sidecar means NO TLS, NO auth, NO rate limiting, NO WAF.
+This is a security risk even in development.
+
+### First run (just works)
+
+The generated `Dockerfile` is a multi-stage build — it compiles the app inside Docker
+using the Go toolchain baked into the builder image, so no local Go installation is
+required:
 
 ```bash
-# 1. Build the app binary
-go build ./...
+vibew dev   # generates config, builds image (multi-stage), starts full stack
+```
 
-# 2. Build the Docker image (app image must exist before starting the stack)
+### Iterative development (faster rebuilds)
+
+The multi-stage Docker build recompiles from source on every `vibew build`, which can
+take 30–60 seconds. For fast iteration, build locally and copy the binary into a thin
+image instead:
+
+```bash
+# 1. Compile the binary locally (a few seconds)
+go build -o bin/{{ .ProjectName }} ./cmd/{{ .ProjectName }}
+
+# 2. Package the binary into a thin Docker image
 vibew build            # or: docker build -t {{ .ProjectName }} .
 
-# 3. Start the full stack (app + sidecar + dependencies)
-vibew dev
-
-# 4. Restart containers after a code change without a full rebuild
+# 3. Restart containers without a full recreate
 vibew restart
 ```
+
+Use `vibew dev` (full recreate) only when you add new services or change `vibewarden.yaml`.
 
 Additional commands:
 
@@ -35,9 +51,6 @@ vibew doctor       # Diagnose common issues (run this when something breaks)
 
 The app runs on port {{ .Port }} internally, but **always access it through the sidecar
 at https://localhost:8443**. Never expose port {{ .Port }} directly.
-
-Running the app without the sidecar means NO TLS, NO auth, NO rate limiting, NO WAF.
-This is a security risk even in development.
 
 ## Testing
 
@@ -175,7 +188,7 @@ Rejected: GPL, AGPL, LGPL, CC-BY-SA, proprietary
 1. Add handler function in appropriate package
 2. Register route in `cmd/{{ .ProjectName }}/main.go`
 3. Add test in `*_test.go` next to the handler
-4. Run `go build ./...`, `vibew build`, then `vibew dev` to test
+4. Run `go build -o bin/{{ .ProjectName }} ./cmd/{{ .ProjectName }}`, `vibew build`, then `vibew restart` to test
 
 ### Add a new domain entity
 
