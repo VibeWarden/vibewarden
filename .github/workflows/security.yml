@@ -49,18 +49,20 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Install Trivy
+        run: |
+          curl -sfL https://raw.githubusercontent.com/aquasecurity/trivy/main/contrib/install.sh | sh -s -- -b /usr/local/bin v0.69.3
+
       - name: Run Trivy filesystem scan (dependencies)
-        uses: aquasecurity/trivy-action@v0.35.0
-        env:
-          TRIVY_IGNOREFILE: ${{ github.workspace }}/.trivyignore
-        with:
-          scan-type: fs
-          scan-ref: .
-          severity: HIGH,CRITICAL
-          format: sarif
-          output: trivy-fs.sarif
-          exit-code: "1"
-          skip-dirs: examples
+        run: |
+          trivy fs \
+            --severity HIGH,CRITICAL \
+            --format sarif \
+            --output trivy-fs.sarif \
+            --exit-code 1 \
+            --ignorefile .trivyignore \
+            --skip-dirs examples \
+            .
 
       - name: Upload Trivy filesystem SARIF to GitHub Security tab
         if: always()
@@ -83,16 +85,14 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Run Trivy image scan
-        uses: aquasecurity/trivy-action@v0.35.0
-        env:
-          TRIVY_IGNOREFILE: ${{ github.workspace }}/.trivyignore
-        with:
-          scan-type: image
-          image-ref: vibewarden:scan
-          severity: HIGH,CRITICAL
-          format: sarif
-          output: trivy-image.sarif
-          exit-code: "1"
+        run: |
+          trivy image \
+            --severity HIGH,CRITICAL \
+            --format sarif \
+            --output trivy-image.sarif \
+            --exit-code 1 \
+            --ignorefile .trivyignore \
+            vibewarden:scan
 
       - name: Upload Trivy image SARIF to GitHub Security tab
         if: always()
