@@ -6,24 +6,40 @@ the architect's design. You write clean, idiomatic Kotlin code using Ktor.
 ## Running the project — CRITICAL
 
 **NEVER start the app directly** with `./gradlew run`, `java -jar`, or any direct execution.
-**ALWAYS use the workflow below** — it builds your app, then starts it behind the VibeWarden
+**ALWAYS use one of the two workflows below** — your app must run behind the VibeWarden
 sidecar with TLS, rate limiting, security headers, and all configured protections active.
 
-### Workflow
+Running the app without the sidecar means NO TLS, NO auth, NO rate limiting, NO WAF.
+This is a security risk even in development.
+
+### First run (just works)
+
+The generated `Dockerfile` is a multi-stage build — it compiles the app inside Docker
+using the Gradle wrapper baked into the builder image, so no local JDK installation is
+required:
 
 ```bash
-# 1. Build the app JAR
+vibew dev   # generates config, builds image (multi-stage), starts full stack
+```
+
+### Iterative development (faster rebuilds)
+
+The multi-stage Docker build runs the full Gradle build on every `vibew build`, which
+can take 60+ seconds. For fast iteration, build the fat JAR locally and copy it into a
+thin image instead:
+
+```bash
+# 1. Compile the fat JAR locally
 ./gradlew build
 
-# 2. Build the Docker image (app image must exist before starting the stack)
+# 2. Package the JAR into a thin Docker image
 vibew build            # or: docker build -t {{ .ProjectName }} .
 
-# 3. Start the full stack (app + sidecar + dependencies)
-vibew dev
-
-# 4. Restart containers after a code change without a full rebuild
+# 3. Restart containers without a full recreate
 vibew restart
 ```
+
+Use `vibew dev` (full recreate) only when you add new services or change `vibewarden.yaml`.
 
 Additional commands:
 
@@ -35,9 +51,6 @@ vibew doctor       # Diagnose common issues (run this when something breaks)
 
 The app runs on port {{ .Port }} internally, but **always access it through the sidecar
 at https://localhost:8443**. Never expose port {{ .Port }} directly.
-
-Running the app without the sidecar means NO TLS, NO auth, NO rate limiting, NO WAF.
-This is a security risk even in development.
 
 ## Testing
 
@@ -179,7 +192,7 @@ dependencies {
 1. Add route in `configureRouting()` inside `Application.kt`
 2. Create a data class for request/response if needed
 3. Add test in `ApplicationTest.kt`
-4. Run `./gradlew build`, `vibew build`, then `vibew dev` to test
+4. Run `./gradlew build`, `vibew build`, then `vibew restart` to test
 
 ### Add a new domain entity
 

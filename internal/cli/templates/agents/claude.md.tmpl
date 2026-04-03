@@ -31,23 +31,35 @@ The sidecar handles:
 ## Running the project — CRITICAL RULE
 
 **NEVER start the app directly.** No `go run`, `gradlew run`, `npm start`, `node`, `java -jar`.
-**ALWAYS use the workflow below** — build the app first, then start the full stack via `vibew dev`.
+**ALWAYS use one of the two workflows below.**
+
+### First run (just works)
+
+The generated `Dockerfile` is a multi-stage build — it compiles the app inside Docker,
+so no local toolchain is required:
 
 ```bash
-# 1. Build with your language tool first
-#    Go:         go build ./...
+vibew dev   # generates config, builds image (multi-stage), starts full stack
+```
+
+### Iterative development (faster rebuilds)
+
+Build locally with your language tool, then package into a thin image and restart:
+
+```bash
+# 1. Build the app artifact locally (seconds, not minutes)
+#    Go:         go build -o bin/{{ .ProjectName }} ./cmd/{{ .ProjectName }}
 #    Gradle:     ./gradlew build
 #    npm:        npm run build
 
-# 2. Build the Docker image
-vibew build          # or: docker build -t <app-name> .
+# 2. Package the artifact into a thin Docker image
+vibew build          # or: docker build -t {{ .ProjectName }} .
 
-# 3. Start everything (app + sidecar + dependencies)
-vibew dev
-
-# 4. After a code change, restart containers without a full rebuild
+# 3. Restart containers without a full recreate
 vibew restart
 ```
+
+Use `vibew dev` (full recreate) only when you add new services or change `vibewarden.yaml`.
 
 Additional commands:
 

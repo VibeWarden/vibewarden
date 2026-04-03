@@ -26,26 +26,36 @@ all in a single binary that sits next to your app.
 # macOS / Linux
 curl -sS https://vibewarden.dev/install.sh | sh
 
-# Add VibeWarden to your existing project
-vibew wrap --upstream 3000
-
-# Build your app image
-vibew build
-
-# Start everything
+# Create a new project — multi-stage Dockerfile builds everything automatically
+vibew init --lang go myapp
+cd myapp
 vibew dev
 ```
 
-Your app on port 3000 is now behind VibeWarden at `https://localhost:8443`. Done.
+Your app is now behind VibeWarden at `https://localhost:8443`. Done.
 
 **Windows:**
 
 ```powershell
 irm vibewarden.dev/install.ps1 | iex
-vibew wrap --upstream 3000
-vibew build
+vibew init --lang go myapp
+cd myapp
 vibew dev
 ```
+
+### Faster iteration after the first run
+
+Once the stack is running, build locally for faster rebuilds instead of waiting for
+the full multi-stage Docker build:
+
+```bash
+go build -o bin/myapp ./cmd/myapp   # fast local build (seconds, not minutes)
+vibew build                          # package the artifact into a thin image
+vibew restart                        # restart containers without a full recreate
+```
+
+Use `vibew build` + `vibew restart` whenever you change code. Use `vibew dev` only when
+you add new services or change `vibewarden.yaml`.
 
 Docker images are published to `ghcr.io/vibewarden/vibewarden` as multi-arch manifests
 covering `linux/amd64` and `linux/arm64`. Docker pulls the correct image automatically

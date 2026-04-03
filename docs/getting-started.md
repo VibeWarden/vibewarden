@@ -86,14 +86,44 @@ AGENTS.md                # AI agent context (generic)
 
 ## Step 3 — Build and start
 
-### 3a — Build the app
+There are two development modes. Choose based on where you are in your workflow.
 
-Build the app binary or artifact using your language's tool:
+---
+
+### Mode 1 — First run (just works)
+
+The generated `Dockerfile` is a multi-stage build. It compiles your app inside
+Docker, so you do not need any language toolchain installed locally. Run:
+
+```bash
+./vibew dev
+```
+
+This command:
+
+1. Runs `vibew generate` to produce `.vibewarden/generated/docker-compose.yml`
+   from your `vibewarden.yaml`.
+2. Runs `docker build` (multi-stage: compiles your app inside the container).
+3. Starts the full stack with `docker compose up`.
+
+Your app is protected at `https://localhost:8443`. Nothing else is required for the
+first run.
+
+---
+
+### Mode 2 — Iterative development (faster rebuilds)
+
+The multi-stage Docker build recompiles from source every time, which can take
+30–60 seconds. For fast iteration, build locally with your language tool and then
+package the resulting artifact into a thin Docker image. This build takes only a
+few seconds.
+
+**Step 3a — Build the app artifact locally**
 
 === "Go"
 
     ```bash
-    go build ./...
+    go build -o bin/myapp ./cmd/myapp
     ```
 
 === "Gradle (Kotlin / Java)"
@@ -108,43 +138,41 @@ Build the app binary or artifact using your language's tool:
     npm run build
     ```
 
-### 3b — Build the Docker image
+**Step 3b — Package into a thin Docker image**
 
 ```bash
 ./vibew build
 ```
 
-This runs `docker build` using the `Dockerfile` in your project root and tags the
-image so the Compose stack can reference it. You can also run
+This runs `docker build` using the thin-image stage in your `Dockerfile` (the
+commented-out section at the bottom). It copies the pre-built artifact instead of
+recompiling, so the image builds in seconds. You can also run
 `docker build -t myapp .` directly if you prefer.
 
-### 3c — `vibew dev`
+**Step 3c — Start or restart the stack**
 
-Start the full local stack:
+On first start:
 
 ```bash
 ./vibew dev
 ```
 
-This command:
-
-1. Runs `vibew generate` to produce `.vibewarden/generated/docker-compose.yml`
-   from your `vibewarden.yaml`.
-2. Starts the stack with `docker compose up`.
-
-Your app is now protected at `https://localhost:8443`.
-
-### Restarting after a code change
-
-After you change application code and rebuild the binary or artifact (step 3a),
-restart the containers without rebuilding the Docker image:
+After subsequent code changes — restart containers without a full `docker compose`
+recreate:
 
 ```bash
 ./vibew restart
 ```
 
-Use `vibew build` followed by `vibew restart` when you also need to update the
-Docker image.
+---
+
+### When to use which mode
+
+| Situation | Command |
+|-----------|---------|
+| First run, no local toolchain needed | `vibew dev` |
+| Code change, want fast feedback | build locally, then `vibew build` + `vibew restart` |
+| Added a new service or changed `vibewarden.yaml` | `vibew dev` (full recreate) |
 
 !!! tip "Trust the self-signed certificate"
     On first run, VibeWarden generates a self-signed CA certificate so your browser
