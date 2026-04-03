@@ -867,7 +867,8 @@ func TestPlugin_DevJWKS_DefaultsIssuerAndAudience(t *testing.T) {
 	}
 }
 
-func TestPlugin_DevJWKS_DisabledPlugin_NoRoutes(t *testing.T) {
+func TestPlugin_JWTMode_ImpliesEnabled(t *testing.T) {
+	// Setting mode: jwt without enabled: true should still activate the plugin.
 	cfg := auth.Config{
 		Enabled: false,
 		Mode:    auth.ModeJWT,
@@ -882,8 +883,8 @@ func TestPlugin_DevJWKS_DisabledPlugin_NoRoutes(t *testing.T) {
 	defer p.Stop(context.Background()) //nolint:errcheck
 
 	routes := p.ContributeCaddyRoutes()
-	if len(routes) != 0 {
-		t.Errorf("ContributeCaddyRoutes() = %d routes for disabled plugin, want 0", len(routes))
+	if len(routes) == 0 {
+		t.Error("ContributeCaddyRoutes() = 0 routes, want >0 — JWT mode implies enabled")
 	}
 }
 

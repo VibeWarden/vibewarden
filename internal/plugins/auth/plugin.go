@@ -113,19 +113,20 @@ func (p *Plugin) Priority() int { return 40 }
 // Returns an error if Mode is ModeKratos but KratosPublicURL is absent or
 // invalid.
 func (p *Plugin) Init(_ context.Context) error {
-	if !p.cfg.Enabled {
-		p.healthy = true
-		p.healthMsg = "auth disabled"
-		return nil
-	}
-
 	// Normalise empty mode to ModeNone for new installations.
-	// Empty string is accepted for backwards compatibility with configs that
-	// pre-date the Mode field.
 	mode := p.cfg.Mode
 	if mode == "" {
 		mode = ModeNone
 	}
+
+	// If a mode is explicitly set (not "none"), treat as enabled even if
+	// auth.enabled is false. Setting mode: jwt implies enabled: true.
+	if !p.cfg.Enabled && mode == ModeNone {
+		p.healthy = true
+		p.healthMsg = "auth disabled"
+		return nil
+	}
+	p.cfg.Enabled = true
 
 	// Kratos-specific initialisation is only performed when mode is "kratos".
 	if mode == ModeKratos {
