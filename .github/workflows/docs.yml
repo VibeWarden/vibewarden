@@ -44,6 +44,6 @@ jobs:
           external_repository: vibewarden/vibewarden.dev
           publish_branch: main
           publish_dir: ./_site/docs
-          destination_dir: docs
+          destination_dir: docs/vibewarden
           keep_files: true
           commit_message: "docs: sync from vibewarden/vibewarden@${{ github.sha }}"
