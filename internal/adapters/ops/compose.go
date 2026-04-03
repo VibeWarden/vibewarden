@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os/exec"
 
@@ -91,6 +92,33 @@ type composeContainer struct {
 	Service string `json:"Service"`
 	State   string `json:"State"`
 	Health  string `json:"Health"`
+}
+
+// ImageCheckerAdapter implements ports.DockerImageChecker by shelling out to
+// the docker CLI.
+type ImageCheckerAdapter struct{}
+
+// NewImageCheckerAdapter creates a new ImageCheckerAdapter.
+func NewImageCheckerAdapter() *ImageCheckerAdapter {
+	return &ImageCheckerAdapter{}
+}
+
+// ImageExists runs "docker image inspect <name>" and returns true when the
+// exit code is 0 (image found). A non-zero exit code is treated as a missing
+// image, not as an error. Other failures (e.g. daemon unreachable) are
+// returned as errors.
+func (a *ImageCheckerAdapter) ImageExists(ctx context.Context, name string) (bool, error) {
+	args := []string{"image", "inspect", name}
+	cmd := exec.CommandContext(ctx, "docker", args...) //nolint:gosec // args are constructed from caller-supplied image name, not user shell input
+	if err := cmd.Run(); err != nil {
+		// ExitError with code 1 means the image was not found.
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
+			return false, nil
+		}
+		return false, fmt.Errorf("docker image inspect: %w", err)
+	}
+	return true, nil
 }
 
 // PS runs "docker compose [-f <composeFile>] ps --format json" and returns one

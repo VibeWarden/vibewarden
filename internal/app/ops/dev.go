@@ -14,6 +14,15 @@ import (
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
 
+// buildInstructionsByLang maps known language identifiers (detected from common
+// project files) to human-readable build command examples.
+var buildInstructionsByLang = map[string]string{
+	"go":         "go build -o bin/<project> ./cmd/<project> && vibew build",
+	"kotlin":     "./gradlew buildFatJar && vibew build",
+	"typescript": "npm run build && vibew build",
+	"node":       "npm run build && vibew build",
+}
+
 const generatedOutputDir = ".vibewarden/generated"
 
 // DevService orchestrates the "vibew dev" use case.
@@ -21,9 +30,10 @@ const generatedOutputDir = ".vibewarden/generated"
 // before starting the Docker Compose stack and can watch the config file for
 // changes when --watch is enabled.
 type DevService struct {
-	compose   ports.ComposeRunner
-	generator ports.ConfigGenerator // optional; nil disables generation
-	watcher   ports.ConfigWatcher   // optional; nil disables file watching
+	compose      ports.ComposeRunner
+	generator    ports.ConfigGenerator    // optional; nil disables generation
+	watcher      ports.ConfigWatcher      // optional; nil disables file watching
+	imageChecker ports.DockerImageChecker // optional; nil disables pre-flight image check
 }
 
 // NewDevService creates a new DevService without config generation or file watching.
@@ -46,6 +56,14 @@ func NewDevServiceWithWatcher(compose ports.ComposeRunner, generator ports.Confi
 	return &DevService{compose: compose, generator: generator, watcher: watcher}
 }
 
+// WithImageChecker attaches a DockerImageChecker to the DevService.
+// When set, Run performs a pre-flight check that the app service image exists
+// locally before starting the compose stack.
+func (s *DevService) WithImageChecker(checker ports.DockerImageChecker) *DevService {
+	s.imageChecker = checker
+	return s
+}
+
 // DevOptions holds options for the dev command.
 type DevOptions struct {
 	// Observability enables the "observability" compose profile, which starts
@@ -61,6 +79,11 @@ type DevOptions struct {
 	// ConfigPath is the path to vibewarden.yaml that should be watched.
 	// When empty the default "./vibewarden.yaml" is used.
 	ConfigPath string
+
+	// DetectedLang is the programming language detected in the project directory
+	// (e.g. "go", "kotlin", "typescript"). When non-empty it is used to provide
+	// language-specific build instructions in the pre-flight image-missing error.
+	DetectedLang string
 }
 
 // Run generates runtime config files (when a generator is configured), then
@@ -83,6 +106,11 @@ func (s *DevService) Run(ctx context.Context, cfg *config.Config, opts DevOption
 	composeFile, err := s.resolveComposeFile(ctx, cfg, out)
 	if err != nil {
 		return fmt.Errorf("resolving compose file: %w", err)
+	}
+
+	// Pre-flight: verify the app image exists when using a pre-built image.
+	if err := s.checkAppImage(ctx, cfg, opts, out); err != nil {
+		return err
 	}
 
 	if err := s.compose.Up(ctx, composeFile, profiles); err != nil {
@@ -168,6 +196,59 @@ func (s *DevService) resolveComposeFile(ctx context.Context, cfg *config.Config,
 	// Nothing available — return empty and let docker compose fail with a
 	// clear error message.
 	return "", nil
+}
+
+// checkAppImage verifies that the app service image exists in the local Docker
+// daemon before attempting to start the compose stack.
+//
+// The check is skipped when:
+//   - No imageChecker is wired (s.imageChecker == nil).
+//   - cfg.App.Image is empty (no image configured).
+//   - cfg.App.Build is set (compose will build the image itself).
+//
+// When the image is missing, a descriptive error with language-specific build
+// instructions is returned so the user knows exactly what to do.
+func (s *DevService) checkAppImage(ctx context.Context, cfg *config.Config, opts DevOptions, out io.Writer) error {
+	if s.imageChecker == nil {
+		return nil
+	}
+	if cfg.App.Image == "" || cfg.App.Build != "" {
+		// Nothing to check: no image configured, or compose builds it.
+		return nil
+	}
+
+	image := cfg.App.Image
+	fmt.Fprintf(out, "Checking app image: %s\n", image)
+
+	exists, err := s.imageChecker.ImageExists(ctx, image)
+	if err != nil {
+		return fmt.Errorf("checking app image %q: %w", image, err)
+	}
+	if exists {
+		return nil
+	}
+
+	return buildMissingImageError(image, opts.DetectedLang)
+}
+
+// buildMissingImageError constructs a descriptive error for a missing Docker
+// image, including language-specific instructions when available.
+func buildMissingImageError(image, lang string) error {
+	msg := fmt.Sprintf("app image %q not found in the local Docker daemon.\n", image)
+	msg += "Build the image first, then run `vibew dev` again.\n\n"
+
+	if instructions, ok := buildInstructionsByLang[lang]; ok {
+		msg += fmt.Sprintf("For %s projects:\n  %s\n", lang, instructions)
+	} else {
+		msg += "Build steps:\n"
+		msg += "  1. Build your application binary / artifact.\n"
+		msg += "  2. Run `vibew build` to build the Docker image.\n"
+		msg += "\n"
+		msg += "Tip: set `app.build: \".\"` in vibewarden.yaml to have Compose build the\n"
+		msg += "image automatically on every `vibew dev` run (no pre-build required)."
+	}
+
+	return fmt.Errorf("%s", msg) //nolint:err113 // dynamic user-facing error message
 }
 
 // printServiceURLs writes a human-readable summary of the running services.

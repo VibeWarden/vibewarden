@@ -8,11 +8,13 @@ import (
 
 	credentialsadapter "github.com/vibewarden/vibewarden/internal/adapters/credentials"
 	opsadapter "github.com/vibewarden/vibewarden/internal/adapters/ops"
+	scaffoldadapter "github.com/vibewarden/vibewarden/internal/adapters/scaffold"
 	templateadapter "github.com/vibewarden/vibewarden/internal/adapters/template"
 	generateapp "github.com/vibewarden/vibewarden/internal/app/generate"
 	opsapp "github.com/vibewarden/vibewarden/internal/app/ops"
 	"github.com/vibewarden/vibewarden/internal/config"
 	configtemplates "github.com/vibewarden/vibewarden/internal/config/templates"
+	"github.com/vibewarden/vibewarden/internal/domain/scaffold"
 )
 
 // NewDevCmd creates the "vibew dev" subcommand.
@@ -74,10 +76,19 @@ Examples:
 				svc = opsapp.NewDevServiceWithGenerator(compose, generator)
 			}
 
+			// Wire the image checker so that `vibew dev` fails early with a
+			// helpful message when the app image has not been built yet.
+			svc = svc.WithImageChecker(opsadapter.NewImageCheckerAdapter())
+
+			// Detect the project language to provide language-specific build
+			// instructions when the image is missing.
+			detectedLang := detectProjectLang(".")
+
 			opts := opsapp.DevOptions{
 				Observability: observability,
 				Watch:         watch,
 				ConfigPath:    configPath,
+				DetectedLang:  detectedLang,
 			}
 
 			return svc.Run(cmd.Context(), cfg, opts, cmd.OutOrStdout())
@@ -96,4 +107,39 @@ Examples:
 	}
 
 	return cmd
+}
+
+// detectProjectLang uses the scaffold Detector to infer the project language
+// from well-known indicator files in dir. Returns the language string expected
+// by DevOptions.DetectedLang ("go", "kotlin", "typescript", or "").
+func detectProjectLang(dir string) string {
+	d := scaffoldadapter.NewDetector()
+	proj, err := d.Detect(dir)
+	if err != nil {
+		return ""
+	}
+	switch proj.Type {
+	case scaffold.ProjectTypeGo:
+		return "go"
+	case scaffold.ProjectTypeNode:
+		// The scaffold detector uses "node" for all JS/TS projects; map to
+		// "typescript" when a tsconfig.json is present, otherwise "node".
+		if fileExistsAt(dir, "tsconfig.json") {
+			return "typescript"
+		}
+		return "node"
+	default:
+		// Kotlin is not currently detected by the scaffold Detector; fall back
+		// to file-based heuristic.
+		if fileExistsAt(dir, "build.gradle.kts") || fileExistsAt(dir, "build.gradle") {
+			return "kotlin"
+		}
+		return ""
+	}
+}
+
+// fileExistsAt returns true when the named file exists inside dir.
+func fileExistsAt(dir, name string) bool {
+	info, err := os.Stat(fmt.Sprintf("%s/%s", dir, name))
+	return err == nil && !info.IsDir()
 }

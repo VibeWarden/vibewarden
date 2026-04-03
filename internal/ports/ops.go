@@ -69,3 +69,13 @@ type PortChecker interface {
 	// host:port address.
 	IsPortAvailable(ctx context.Context, host string, port int) (bool, error)
 }
+
+// DockerImageChecker checks whether a Docker image exists in the local daemon.
+// Implementations shell out to the docker CLI.
+type DockerImageChecker interface {
+	// ImageExists returns true when the named image is present in the local
+	// Docker image store. name is a full image reference such as "myapp:latest".
+	// Returns an error only for unexpected failures (e.g. docker daemon
+	// unreachable); a missing image is not an error — it returns (false, nil).
+	ImageExists(ctx context.Context, name string) (bool, error)
+}

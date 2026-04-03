@@ -344,3 +344,186 @@ func TestDevService_Watch_WatcherNil_DoesNotBlock(t *testing.T) {
 		t.Fatalf("Run() unexpected error: %v", err)
 	}
 }
+
+// fakeImageChecker is a test double for ports.DockerImageChecker.
+type fakeImageChecker struct {
+	exists bool
+	err    error
+}
+
+func (f *fakeImageChecker) ImageExists(_ context.Context, _ string) (bool, error) {
+	return f.exists, f.err
+}
+
+// Ensure fakeImageChecker satisfies the interface at compile time.
+var _ ports.DockerImageChecker = (*fakeImageChecker)(nil)
+
+func TestDevService_ImageCheck_SkippedWhenNoChecker(t *testing.T) {
+	// Without an image checker wired, Run should succeed even when app.image is set.
+	fc := &fakeCompose{}
+	svc := ops.NewDevService(fc)
+	cfg := defaultConfig()
+	cfg.App.Image = "myapp:latest"
+	var buf bytes.Buffer
+
+	if err := svc.Run(context.Background(), cfg, ops.DevOptions{}, &buf); err != nil {
+		t.Fatalf("Run() unexpected error: %v", err)
+	}
+}
+
+func TestDevService_ImageCheck_SkippedWhenBuildSet(t *testing.T) {
+	// When app.build is set, compose builds the image — skip the check.
+	fc := &fakeCompose{}
+	fi := &fakeImageChecker{exists: false} // would fail if called
+	svc := ops.NewDevService(fc).WithImageChecker(fi)
+	cfg := defaultConfig()
+	cfg.App.Build = "."
+	cfg.App.Image = "myapp:latest"
+	var buf bytes.Buffer
+
+	if err := svc.Run(context.Background(), cfg, ops.DevOptions{}, &buf); err != nil {
+		t.Fatalf("Run() unexpected error when build is set: %v", err)
+	}
+}
+
+func TestDevService_ImageCheck_SkippedWhenNoImage(t *testing.T) {
+	// When app.image is empty, no check is performed.
+	fc := &fakeCompose{}
+	fi := &fakeImageChecker{exists: false} // would fail if called
+	svc := ops.NewDevService(fc).WithImageChecker(fi)
+	cfg := defaultConfig()
+	cfg.App.Image = ""
+	var buf bytes.Buffer
+
+	if err := svc.Run(context.Background(), cfg, ops.DevOptions{}, &buf); err != nil {
+		t.Fatalf("Run() unexpected error when no image configured: %v", err)
+	}
+}
+
+func TestDevService_ImageCheck_ImageExists_Proceeds(t *testing.T) {
+	// When the image exists, Run proceeds normally.
+	fc := &fakeCompose{}
+	fi := &fakeImageChecker{exists: true}
+	svc := ops.NewDevService(fc).WithImageChecker(fi)
+	cfg := defaultConfig()
+	cfg.App.Image = "myapp:latest"
+	var buf bytes.Buffer
+
+	if err := svc.Run(context.Background(), cfg, ops.DevOptions{}, &buf); err != nil {
+		t.Fatalf("Run() unexpected error: %v", err)
+	}
+	out := buf.String()
+	if !strings.Contains(out, "myapp:latest") {
+		t.Errorf("expected output to mention image name, got:\n%s", out)
+	}
+}
+
+func TestDevService_ImageCheck_ImageMissing_ReturnsError(t *testing.T) {
+	// When the image is absent, Run must return an error before calling compose.
+	fc := &fakeCompose{}
+	fi := &fakeImageChecker{exists: false}
+	svc := ops.NewDevService(fc).WithImageChecker(fi)
+	cfg := defaultConfig()
+	cfg.App.Image = "myapp:latest"
+	var buf bytes.Buffer
+
+	err := svc.Run(context.Background(), cfg, ops.DevOptions{}, &buf)
+	if err == nil {
+		t.Fatal("Run() expected error for missing image, got nil")
+	}
+	if !strings.Contains(err.Error(), "myapp:latest") {
+		t.Errorf("error should mention image name, got: %v", err)
+	}
+	// compose.Up must NOT have been called
+	if fc.capturedComposeFile != "" || fc.capturedProfiles != nil {
+		t.Errorf("compose.Up should not have been called when image is missing")
+	}
+}
+
+func TestDevService_ImageCheck_ImageMissing_WithGoLang_ContainsBuildHint(t *testing.T) {
+	// Error message for Go projects should include go build instructions.
+	fc := &fakeCompose{}
+	fi := &fakeImageChecker{exists: false}
+	svc := ops.NewDevService(fc).WithImageChecker(fi)
+	cfg := defaultConfig()
+	cfg.App.Image = "myapp:latest"
+	var buf bytes.Buffer
+
+	err := svc.Run(context.Background(), cfg, ops.DevOptions{DetectedLang: "go"}, &buf)
+	if err == nil {
+		t.Fatal("Run() expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "go build") {
+		t.Errorf("error should contain 'go build' hint for Go projects, got: %v", err)
+	}
+}
+
+func TestDevService_ImageCheck_ImageMissing_WithKotlinLang_ContainsBuildHint(t *testing.T) {
+	fc := &fakeCompose{}
+	fi := &fakeImageChecker{exists: false}
+	svc := ops.NewDevService(fc).WithImageChecker(fi)
+	cfg := defaultConfig()
+	cfg.App.Image = "myapp:latest"
+	var buf bytes.Buffer
+
+	err := svc.Run(context.Background(), cfg, ops.DevOptions{DetectedLang: "kotlin"}, &buf)
+	if err == nil {
+		t.Fatal("Run() expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "gradlew") {
+		t.Errorf("error should contain 'gradlew' hint for Kotlin projects, got: %v", err)
+	}
+}
+
+func TestDevService_ImageCheck_ImageMissing_WithTypeScriptLang_ContainsBuildHint(t *testing.T) {
+	fc := &fakeCompose{}
+	fi := &fakeImageChecker{exists: false}
+	svc := ops.NewDevService(fc).WithImageChecker(fi)
+	cfg := defaultConfig()
+	cfg.App.Image = "myapp:latest"
+	var buf bytes.Buffer
+
+	err := svc.Run(context.Background(), cfg, ops.DevOptions{DetectedLang: "typescript"}, &buf)
+	if err == nil {
+		t.Fatal("Run() expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "npm run build") {
+		t.Errorf("error should contain 'npm run build' hint for TypeScript projects, got: %v", err)
+	}
+}
+
+func TestDevService_ImageCheck_ImageMissing_UnknownLang_ContainsGenericHint(t *testing.T) {
+	fc := &fakeCompose{}
+	fi := &fakeImageChecker{exists: false}
+	svc := ops.NewDevService(fc).WithImageChecker(fi)
+	cfg := defaultConfig()
+	cfg.App.Image = "myapp:latest"
+	var buf bytes.Buffer
+
+	err := svc.Run(context.Background(), cfg, ops.DevOptions{DetectedLang: ""}, &buf)
+	if err == nil {
+		t.Fatal("Run() expected error, got nil")
+	}
+	if !strings.Contains(err.Error(), "vibew build") {
+		t.Errorf("error should mention 'vibew build', got: %v", err)
+	}
+}
+
+func TestDevService_ImageCheck_CheckerError_ReturnsError(t *testing.T) {
+	// When the image checker itself fails (e.g. docker daemon down), Run returns
+	// the wrapped error.
+	fc := &fakeCompose{}
+	fi := &fakeImageChecker{err: errors.New("docker daemon not running")}
+	svc := ops.NewDevService(fc).WithImageChecker(fi)
+	cfg := defaultConfig()
+	cfg.App.Image = "myapp:latest"
+	var buf bytes.Buffer
+
+	err := svc.Run(context.Background(), cfg, ops.DevOptions{}, &buf)
+	if err == nil {
+		t.Fatal("Run() expected error when checker fails, got nil")
+	}
+	if !strings.Contains(err.Error(), "docker daemon not running") {
+		t.Errorf("error should wrap checker error, got: %v", err)
+	}
+}
