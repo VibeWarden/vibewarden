@@ -52,7 +52,7 @@ jobs:
       - name: Run Trivy filesystem scan (dependencies)
         uses: aquasecurity/trivy-action@v0.35.0
         env:
-          TRIVY_IGNOREFILE: .trivyignore
+          TRIVY_IGNOREFILE: ${{ github.workspace }}/.trivyignore
         with:
           scan-type: fs
           scan-ref: .
@@ -85,7 +85,7 @@ jobs:
       - name: Run Trivy image scan
         uses: aquasecurity/trivy-action@v0.35.0
         env:
-          TRIVY_IGNOREFILE: .trivyignore
+          TRIVY_IGNOREFILE: ${{ github.workspace }}/.trivyignore
         with:
           scan-type: image
           image-ref: vibewarden:scan
