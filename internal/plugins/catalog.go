@@ -11,7 +11,7 @@ type PluginDescriptor struct {
 	Description string
 
 	// ConfigSchema maps configuration field names to their descriptions.
-	// Used by "vibewarden plugins show <name>".
+	// Used by "vibew plugins show <name>".
 	ConfigSchema map[string]string
 
 	// Example is a minimal YAML snippet illustrating an enabled configuration.
@@ -20,7 +20,7 @@ type PluginDescriptor struct {
 }
 
 // Catalog is the static list of all plugins compiled into the VibeWarden binary.
-// It is the authoritative source of truth for "vibewarden plugins" output.
+// It is the authoritative source of truth for "vibew plugins" output.
 // The order reflects the recommended initialisation priority.
 var Catalog = []PluginDescriptor{
 	{
