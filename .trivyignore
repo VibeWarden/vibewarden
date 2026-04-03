@@ -1,0 +1,10 @@
+# Dev keys generated during tests — not real secrets
+private-key
+
+# github.com/docker/docker v29+ not available as Go module yet.
+# Indirect dep from testcontainers-go (test only). Not exploitable in our binary.
+CVE-2026-34040
+
+# spring-core 6.2.11 not yet bundled in any Spring Boot release.
+# Only affects examples/spring-boot, not the VibeWarden binary.
+CVE-2025-41249
