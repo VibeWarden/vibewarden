@@ -2,31 +2,31 @@ package cmd
 
 import (
 	"context"
+	"crypto/tls"
+	"encoding/json"
 	"fmt"
+	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"time"
 
-	"github.com/go-jose/go-jose/v4"
-	josejwt "github.com/go-jose/go-jose/v4/jwt"
 	"github.com/spf13/cobra"
 
 	jwtadapter "github.com/vibewarden/vibewarden/internal/adapters/jwt"
 )
 
-// devTokenClaims holds the custom claims written into the dev JWT.
-type devTokenClaims struct {
-	Email string `json:"email"`
-	Name  string `json:"name"`
-	Role  string `json:"role"`
-}
+// devSidecarTokenURL is the URL of the dev token endpoint on the sidecar.
+// The sidecar self-signs TLS, so we skip certificate verification for localhost.
+const devSidecarTokenURL = "https://localhost:8443" + jwtadapter.DevTokenPath
 
 // NewTokenCmd creates the "vibew token" subcommand.
 //
-// The command loads the dev RSA private key from .vibewarden/dev-keys/private.pem,
-// signs a JWT with the supplied claims, and writes the token to stdout. When
-// --json is given only the raw token string is printed, which makes the output
-// suitable for shell interpolation:
+// The command first tries the sidecar at https://localhost:8443/_vibewarden/token.
+// When the sidecar is not reachable (e.g. before "vibew dev" has been run) it
+// falls back to loading the dev RSA private key from .vibewarden/dev-keys/ and
+// signing locally. The --json flag prints only the raw token for shell
+// interpolation:
 //
 //	curl -H "Authorization: Bearer $(vibew token)" https://localhost:8443/api/me
 func NewTokenCmd() *cobra.Command {
@@ -78,25 +78,11 @@ Examples:
 // runToken is the testable core of the token command. It is separated from the
 // cobra RunE closure so it can be exercised by unit tests without constructing
 // a cobra.Command.
+//
+// It validates the --expires flag first (to surface bad input before any I/O),
+// then attempts to get a token from the running sidecar. If the sidecar is
+// unreachable it falls back to local key signing.
 func runToken(cmd *cobra.Command, keyDir, sub, email, name, role, expires string, jsonOut bool) error {
-	dir, err := resolveKeyDir(keyDir)
-	if err != nil {
-		return err
-	}
-
-	privPath := filepath.Join(dir, jwtadapter.DevPrivateKeyFile)
-	if _, err := os.Stat(privPath); err != nil {
-		return fmt.Errorf(
-			"dev keys not found at %s: run \"vibew dev\" or \"vibew generate\" first",
-			privPath,
-		)
-	}
-
-	kp, err := jwtadapter.LoadOrGenerateDevKeys(dir)
-	if err != nil {
-		return fmt.Errorf("loading dev key pair: %w", err)
-	}
-
 	ttl, err := time.ParseDuration(expires)
 	if err != nil {
 		return fmt.Errorf("invalid --expires value %q: %w", expires, err)
@@ -105,9 +91,15 @@ func runToken(cmd *cobra.Command, keyDir, sub, email, name, role, expires string
 		return fmt.Errorf("--expires must be a positive duration, got %q", expires)
 	}
 
-	token, err := SignDevToken(context.Background(), kp, sub, email, name, role, ttl)
+	// Attempt to obtain a token from the running sidecar. This is the preferred
+	// path when "vibew dev" is running because the sidecar holds the private key.
+	token, err := fetchTokenFromSidecar(context.Background(), sub, email, name, role, ttl)
 	if err != nil {
-		return fmt.Errorf("signing token: %w", err)
+		// Sidecar is not reachable — fall back to local key signing.
+		token, err = signTokenLocally(keyDir, sub, email, name, role, ttl)
+		if err != nil {
+			return err
+		}
 	}
 
 	if jsonOut {
@@ -128,41 +120,96 @@ func runToken(cmd *cobra.Command, keyDir, sub, email, name, role, expires string
 	return nil
 }
 
+// fetchTokenFromSidecar calls the running sidecar's dev token endpoint.
+// It uses a short timeout and skips TLS verification because the sidecar uses a
+// self-signed certificate. Returns an error when the sidecar is unreachable or
+// returns a non-200 response.
+func fetchTokenFromSidecar(ctx context.Context, sub, email, name, role string, ttl time.Duration) (string, error) {
+	params := url.Values{}
+	params.Set("sub", sub)
+	params.Set("email", email)
+	params.Set("name", name)
+	params.Set("role", role)
+	params.Set("expires", ttl.String())
+
+	reqURL := devSidecarTokenURL + "?" + params.Encode()
+
+	reqCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, reqURL, nil)
+	if err != nil {
+		return "", fmt.Errorf("building sidecar token request: %w", err)
+	}
+
+	// Accept self-signed certificates — the sidecar always runs on localhost.
+	//nolint:gosec // localhost self-signed TLS is intentional for dev mode
+	client := &http.Client{
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true},
+		},
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("sidecar unreachable: %w", err)
+	}
+	defer func() { _ = resp.Body.Close() }() //nolint:errcheck
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("sidecar returned HTTP %d", resp.StatusCode)
+	}
+
+	var body struct {
+		Token string `json:"token"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		return "", fmt.Errorf("decoding sidecar response: %w", err)
+	}
+	if body.Token == "" {
+		return "", fmt.Errorf("sidecar returned empty token")
+	}
+
+	return body.Token, nil
+}
+
+// signTokenLocally loads the dev private key from keyDir and signs a JWT.
+// This is the fallback path when the sidecar is not running.
+func signTokenLocally(keyDir, sub, email, name, role string, ttl time.Duration) (string, error) {
+	dir, err := resolveKeyDir(keyDir)
+	if err != nil {
+		return "", err
+	}
+
+	privPath := filepath.Join(dir, jwtadapter.DevPrivateKeyFile)
+	if _, err := os.Stat(privPath); err != nil {
+		return "", fmt.Errorf(
+			"dev keys not found at %s: run \"vibew dev\" first (sidecar was also unreachable)",
+			privPath,
+		)
+	}
+
+	kp, err := jwtadapter.LoadOrGenerateDevKeys(dir)
+	if err != nil {
+		return "", fmt.Errorf("loading dev key pair: %w", err)
+	}
+
+	token, err := SignDevToken(context.Background(), kp, sub, email, name, role, ttl)
+	if err != nil {
+		return "", fmt.Errorf("signing token: %w", err)
+	}
+
+	return token, nil
+}
+
 // SignDevToken signs a JWT with the dev RSA private key and returns the compact
 // serialisation. It is a pure function (aside from time.Now()) and is exposed
 // so package-level tests can call it directly with a pre-built key pair.
-func SignDevToken(_ context.Context, kp *jwtadapter.DevKeyPair, sub, email, name, role string, ttl time.Duration) (string, error) {
-	sig, err := jose.NewSigner(
-		jose.SigningKey{Algorithm: jose.RS256, Key: kp.PrivateKey},
-		(&jose.SignerOptions{}).
-			WithType("JWT").
-			WithHeader("kid", jwtadapter.DevKID),
-	)
-	if err != nil {
-		return "", fmt.Errorf("creating signer: %w", err)
-	}
-
-	now := time.Now()
-	std := josejwt.Claims{
-		Issuer:   jwtadapter.DevIssuer,
-		Audience: josejwt.Audience{jwtadapter.DevAudience},
-		Subject:  sub,
-		IssuedAt: josejwt.NewNumericDate(now),
-		Expiry:   josejwt.NewNumericDate(now.Add(ttl)),
-	}
-
-	custom := devTokenClaims{
-		Email: email,
-		Name:  name,
-		Role:  role,
-	}
-
-	raw, err := josejwt.Signed(sig).Claims(std).Claims(custom).Serialize()
-	if err != nil {
-		return "", fmt.Errorf("serialising token: %w", err)
-	}
-
-	return raw, nil
+//
+// It delegates to the jwt adapter package's internal signing function so that
+// the HTTP token handler and the CLI command share a single implementation.
+func SignDevToken(ctx context.Context, kp *jwtadapter.DevKeyPair, sub, email, name, role string, ttl time.Duration) (string, error) {
+	return jwtadapter.SignToken(ctx, kp, sub, email, name, role, ttl)
 }
 
 // resolveKeyDir returns the absolute path to the dev key directory.

@@ -101,6 +101,16 @@ type ProxyConfig struct {
 	// ResponseHeaders configuration — controls arbitrary response header
 	// modifications applied after all other middleware (including security headers).
 	ResponseHeaders ResponseHeadersConfig
+
+	// ExtraRoutes holds additional named routes contributed by plugins via
+	// CaddyContributor.ContributeCaddyRoutes. Routes are inserted before the
+	// catch-all proxy route, ordered by ascending Priority.
+	ExtraRoutes []CaddyRoute
+
+	// ExtraHandlers holds additional handlers contributed by plugins via
+	// CaddyContributor.ContributeCaddyHandlers. Handlers are inserted into the
+	// catch-all route's handler chain, ordered by ascending Priority.
+	ExtraHandlers []CaddyHandler
 }
 
 // ResponseHeadersConfig holds configuration for arbitrary response header modifications.

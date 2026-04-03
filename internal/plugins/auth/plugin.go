@@ -113,19 +113,20 @@ func (p *Plugin) Priority() int { return 40 }
 // Returns an error if Mode is ModeKratos but KratosPublicURL is absent or
 // invalid.
 func (p *Plugin) Init(_ context.Context) error {
-	if !p.cfg.Enabled {
-		p.healthy = true
-		p.healthMsg = "auth disabled"
-		return nil
-	}
-
 	// Normalise empty mode to ModeNone for new installations.
-	// Empty string is accepted for backwards compatibility with configs that
-	// pre-date the Mode field.
 	mode := p.cfg.Mode
 	if mode == "" {
 		mode = ModeNone
 	}
+
+	// If a mode is explicitly set (not "none"), treat as enabled even if
+	// auth.enabled is false. Setting mode: jwt implies enabled: true.
+	if !p.cfg.Enabled && mode == ModeNone {
+		p.healthy = true
+		p.healthMsg = "auth disabled"
+		return nil
+	}
+	p.cfg.Enabled = true
 
 	// Kratos-specific initialisation is only performed when mode is "kratos".
 	if mode == ModeKratos {
@@ -497,6 +498,8 @@ func (p *Plugin) ContributeCaddyRoutes() []ports.CaddyRoute {
 
 	// JWT dev JWKS route: expose /_vibewarden/jwks.json through Caddy so
 	// external clients can fetch the auto-generated public signing key.
+	// JWT dev token route: expose /_vibewarden/token through Caddy so that
+	// "vibew token" and clients can obtain signed dev tokens from the sidecar.
 	if p.devJWKSServer != nil {
 		jwksAddr := p.devJWKSServer.Addr()
 		routes = append(routes, ports.CaddyRoute{
@@ -516,6 +519,24 @@ func (p *Plugin) ContributeCaddyRoutes() []ports.CaddyRoute {
 				},
 			},
 		})
+
+		routes = append(routes, ports.CaddyRoute{
+			MatchPath: jwtadapter.DevTokenPath,
+			Priority:  38, // before catch-all, same tier as JWKS
+			Handler: map[string]any{
+				"match": []map[string]any{
+					{"path": []string{jwtadapter.DevTokenPath}},
+				},
+				"handle": []map[string]any{
+					{
+						"handler": "reverse_proxy",
+						"upstreams": []map[string]any{
+							{"dial": jwksAddr},
+						},
+					},
+				},
+			},
+		})
 	}
 
 	return routes
@@ -524,16 +545,59 @@ func (p *Plugin) ContributeCaddyRoutes() []ports.CaddyRoute {
 // ContributeCaddyHandlers returns the Caddy handlers that the auth plugin
 // injects into the catch-all route's handler chain.
 //
-// Two handlers are returned (both at Priority 40):
+// For ModeKratos, two handlers are returned (Priority 40 and 41):
 //  1. An auth middleware handler that validates the Kratos session cookie and
 //     redirects unauthenticated requests to the login URL.
 //  2. An identity-headers handler that forwards the authenticated user's ID,
 //     email, and verification status to the upstream application as
 //     X-User-Id, X-User-Email, and X-User-Verified request headers.
 //
-// Returns nil when the plugin is disabled.
+// For ModeJWT (dev mode — no external jwks_url), a JWT bearer token validation
+// handler is returned (Priority 40). This handler validates the Bearer token
+// from the Authorization header against the auto-generated dev JWKS.
+//
+// Returns nil when the plugin is disabled or when Mode is ModeNone or ModeAPIKey
+// (those modes handle auth elsewhere or not at all in the catch-all chain).
 func (p *Plugin) ContributeCaddyHandlers() []ports.CaddyHandler {
 	if !p.cfg.Enabled {
+		return nil
+	}
+
+	mode := p.cfg.Mode
+	// Legacy compatibility: when mode is unset but a Kratos URL is configured,
+	// treat the plugin as running in Kratos mode for handler contributions.
+	if mode == "" {
+		if p.cfg.KratosPublicURL != "" {
+			mode = ModeKratos
+		} else {
+			mode = ModeNone
+		}
+	}
+
+	// JWT dev mode: contribute a bearer-token validation handler.
+	if mode == ModeJWT && p.devJWKSServer != nil {
+		publicPaths := []string{"/_vibewarden/*"}
+		publicPaths = append(publicPaths, p.cfg.PublicPaths...)
+
+		issuer := p.cfg.JWT.Issuer
+		if issuer == "" {
+			issuer = jwtadapter.DevIssuer
+		}
+		audience := p.cfg.JWT.Audience
+		if audience == "" {
+			audience = jwtadapter.DevAudience
+		}
+
+		return []ports.CaddyHandler{
+			{
+				Handler:  buildJWTBearerHandler(p.devJWKSServer.LocalJWKSURL(), issuer, audience, publicPaths),
+				Priority: 40,
+			},
+		}
+	}
+
+	// Non-Kratos modes without a dev JWKS server: no catch-all handlers.
+	if mode != ModeKratos {
 		return nil
 	}
 
@@ -586,6 +650,24 @@ func (p *Plugin) ContributeCaddyHandlers() []ports.CaddyHandler {
 // ---------------------------------------------------------------------------
 // Internal builders — pure functions, no side effects.
 // ---------------------------------------------------------------------------
+
+// buildJWTBearerHandler creates the Caddy handler configuration for JWT bearer
+// token validation in dev mode. It uses the vibewarden_jwt_bearer Caddy handler
+// type (a custom VibeWarden handler) that checks the Authorization: Bearer header
+// and validates the JWT against the JWKS endpoint.
+//
+// publicPaths is the list of path glob patterns that bypass JWT validation.
+// The /_vibewarden/* prefix is always included so that the JWKS and token
+// endpoints remain accessible without a token.
+func buildJWTBearerHandler(jwksURL, issuer, audience string, publicPaths []string) map[string]any {
+	return map[string]any{
+		"handler":      "jwt_bearer",
+		"jwks_url":     jwksURL,
+		"issuer":       issuer,
+		"audience":     audience,
+		"public_paths": publicPaths,
+	}
+}
 
 // validateKratosConfig checks that the Kratos-specific configuration is
 // self-consistent. It is only called when Mode is ModeKratos.

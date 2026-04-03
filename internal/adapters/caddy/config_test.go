@@ -1988,3 +1988,184 @@ func TestBuildCaddyConfig_ServerTimeouts(t *testing.T) {
 		})
 	}
 }
+
+// ---------------------------------------------------------------------------
+// ExtraRoutes and ExtraHandlers
+// ---------------------------------------------------------------------------
+
+func TestBuildCaddyConfig_ExtraRoutes_AddedBeforeCatchAll(t *testing.T) {
+	cfg := minimalConfig()
+	cfg.ExtraRoutes = []ports.CaddyRoute{
+		{
+			MatchPath: "/_vibewarden/jwks.json",
+			Priority:  38,
+			Handler: map[string]any{
+				"match": []map[string]any{
+					{"path": []string{"/_vibewarden/jwks.json"}},
+				},
+				"handle": []map[string]any{
+					{
+						"handler": "reverse_proxy",
+						"upstreams": []map[string]any{
+							{"dial": "127.0.0.1:55000"},
+						},
+					},
+				},
+			},
+		},
+	}
+
+	out, err := BuildCaddyConfig(cfg)
+	if err != nil {
+		t.Fatalf("BuildCaddyConfig: %v", err)
+	}
+
+	routes := extractRoutes(t, out)
+	// The JWKS extra route must appear before the catch-all (last route).
+	found := false
+	for i, r := range routes {
+		matchSlice, ok := r["match"].([]map[string]any)
+		if !ok {
+			continue
+		}
+		if len(matchSlice) == 0 {
+			continue
+		}
+		paths, ok := matchSlice[0]["path"].([]string)
+		if !ok {
+			continue
+		}
+		for _, p := range paths {
+			if p == "/_vibewarden/jwks.json" {
+				// Must not be the last route.
+				if i == len(routes)-1 {
+					t.Error("JWKS extra route is the catch-all (last) route; want it before catch-all")
+				}
+				found = true
+			}
+		}
+	}
+	if !found {
+		t.Error("JWKS extra route not found in Caddy config routes")
+	}
+}
+
+func TestBuildCaddyConfig_ExtraHandlers_InCatchAllChain(t *testing.T) {
+	cfg := minimalConfig()
+	cfg.ExtraHandlers = []ports.CaddyHandler{
+		{
+			Handler:  map[string]any{"handler": "jwt_bearer", "jwks_url": "http://127.0.0.1:55000/_vibewarden/jwks.json"},
+			Priority: 40,
+		},
+	}
+
+	out, err := BuildCaddyConfig(cfg)
+	if err != nil {
+		t.Fatalf("BuildCaddyConfig: %v", err)
+	}
+
+	routes := extractRoutes(t, out)
+	if len(routes) == 0 {
+		t.Fatal("no routes")
+	}
+
+	// The catch-all route is last.
+	catchAll := routes[len(routes)-1]
+	handles, ok := catchAll["handle"].([]map[string]any)
+	if !ok {
+		t.Fatalf("catch-all handle is not []map[string]any: %T", catchAll["handle"])
+	}
+
+	found := false
+	for _, h := range handles {
+		if h["handler"] == "jwt_bearer" {
+			found = true
+		}
+	}
+	if !found {
+		t.Error("jwt_bearer extra handler not found in catch-all handler chain")
+	}
+}
+
+func TestBuildCaddyConfig_ExtraHandlers_OrderedByPriority(t *testing.T) {
+	cfg := minimalConfig()
+	// ExtraHandlers are pre-sorted by buildProxyConfig before reaching BuildCaddyConfig.
+	// Pass them already in ascending priority order (as buildProxyConfig guarantees).
+	cfg.ExtraHandlers = []ports.CaddyHandler{
+		{Handler: map[string]any{"handler": "first", "priority_marker": "a"}, Priority: 41},
+		{Handler: map[string]any{"handler": "second", "priority_marker": "b"}, Priority: 42},
+	}
+
+	out, err := BuildCaddyConfig(cfg)
+	if err != nil {
+		t.Fatalf("BuildCaddyConfig: %v", err)
+	}
+
+	routes := extractRoutes(t, out)
+	if len(routes) == 0 {
+		t.Fatal("no routes")
+	}
+
+	catchAll := routes[len(routes)-1]
+	handles, ok := catchAll["handle"].([]map[string]any)
+	if !ok {
+		t.Fatalf("catch-all handle is not []map[string]any: %T", catchAll["handle"])
+	}
+
+	// Find the "first" and "second" handlers and verify ordering.
+	firstIdx, secondIdx := -1, -1
+	for i, h := range handles {
+		switch h["handler"] {
+		case "first":
+			firstIdx = i
+		case "second":
+			secondIdx = i
+		}
+	}
+
+	if firstIdx == -1 {
+		t.Fatal("'first' extra handler not found in chain")
+	}
+	if secondIdx == -1 {
+		t.Fatal("'second' extra handler not found in chain")
+	}
+	if firstIdx >= secondIdx {
+		t.Errorf("'first' (priority 41) at index %d should come before 'second' (priority 42) at index %d",
+			firstIdx, secondIdx)
+	}
+}
+
+// minimalConfig returns a ProxyConfig with just the required fields set.
+func minimalConfig() *ports.ProxyConfig {
+	return &ports.ProxyConfig{
+		ListenAddr:   "127.0.0.1:8080",
+		UpstreamAddr: "127.0.0.1:3000",
+	}
+}
+
+// extractRoutes navigates the Caddy config map and returns the slice of route maps.
+func extractRoutes(t *testing.T, cfg map[string]any) []map[string]any {
+	t.Helper()
+
+	apps, ok := cfg["apps"].(map[string]any)
+	if !ok {
+		t.Fatalf("apps is not map[string]any: %T", cfg["apps"])
+	}
+	httpApp, ok := apps["http"].(map[string]any)
+	if !ok {
+		t.Fatalf("http is not map[string]any: %T", apps["http"])
+	}
+	servers, ok := httpApp["servers"].(map[string]any)
+	if !ok {
+		t.Fatalf("servers is not map[string]any: %T", httpApp["servers"])
+	}
+	vw, ok := servers["vibewarden"].(map[string]any)
+	if !ok {
+		t.Fatalf("vibewarden server is not map[string]any: %T", servers["vibewarden"])
+	}
+	rawRoutes, ok := vw["routes"].([]map[string]any)
+	if !ok {
+		t.Fatalf("routes is not []map[string]any: %T", vw["routes"])
+	}
+	return rawRoutes
+}

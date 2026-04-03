@@ -47,7 +47,9 @@ func BuildCaddyConfig(cfg *ports.ProxyConfig) (map[string]any, error) {
 	}
 
 	// Build route handlers (middleware chain + reverse proxy).
-	// Middleware order: StripUserHeaders → SecurityHeaders → ResponseHeaders → AdminAuth → BodySize → RateLimit → CircuitBreaker → Retry → Timeout → Compression → ReverseProxy
+	// Middleware order: StripUserHeaders → SecurityHeaders → ResponseHeaders → AdminAuth →
+	// [ExtraHandlers from plugins, sorted by Priority] →
+	// BodySize → RateLimit → CircuitBreaker → Retry → Timeout → Compression → ReverseProxy
 	//
 	// The header strip handler MUST be first so that spoofed X-User-* headers sent
 	// by clients are removed before any other handler (including auth) runs.
@@ -75,6 +77,14 @@ func BuildCaddyConfig(cfg *ports.ProxyConfig) (map[string]any, error) {
 		return nil, fmt.Errorf("building admin auth handler config: %w", err)
 	}
 	handlers = append(handlers, adminAuthHandler)
+
+	// Insert extra handlers contributed by plugins (e.g. JWT bearer auth).
+	// These run after AdminAuth but before BodySize/RateLimit/proxy so that
+	// auth decisions are made before any resource-intensive processing.
+	// The slice is pre-sorted by ascending Priority in buildProxyConfig.
+	for _, eh := range cfg.ExtraHandlers {
+		handlers = append(handlers, eh.Handler)
+	}
 
 	// Add body size handler if enabled. It must run before the reverse proxy
 	// so that oversized request bodies are rejected before any upstream I/O.
@@ -202,6 +212,14 @@ func BuildCaddyConfig(cfg *ports.ProxyConfig) (map[string]any, error) {
 		routes = append(routes, docsRoute)
 	}
 
+	// Add extra routes contributed by plugins (e.g. JWKS endpoint, token endpoint).
+	// These are already sorted by ascending Priority in buildProxyConfig.
+	for _, r := range cfg.ExtraRoutes {
+		// Each CaddyRoute.Handler is the raw route object — it contains both
+		// the "match" and "handle" keys. Convert it to the Caddy route map.
+		routes = append(routes, buildExtraRoute(r))
+	}
+
 	catchAllRoute := map[string]any{
 		"handle": handlers,
 	}
@@ -285,6 +303,13 @@ func BuildCaddyConfig(cfg *ports.ProxyConfig) (map[string]any, error) {
 	return map[string]any{
 		"apps": apps,
 	}, nil
+}
+
+// buildExtraRoute converts a ports.CaddyRoute into the raw Caddy route map
+// expected by the Caddy JSON configuration. CaddyRoute.Handler already contains
+// the full route object (with "match" and "handle" keys) so it is used directly.
+func buildExtraRoute(r ports.CaddyRoute) map[string]any {
+	return r.Handler
 }
 
 // validateTLSConfig checks that the TLS configuration is self-consistent.
