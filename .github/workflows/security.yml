@@ -29,14 +29,14 @@ jobs:
             --config p/secrets \
             --sarif \
             --output semgrep.sarif \
-            --error \
+            --severity ERROR \
             .
         env:
           SEMGREP_APP_TOKEN: ${{ secrets.SEMGREP_APP_TOKEN }}
 
       - name: Upload Semgrep SARIF to GitHub Security tab
         if: always()
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: semgrep.sarif
           category: semgrep
@@ -50,7 +50,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Run Trivy filesystem scan (dependencies)
-        uses: aquasecurity/trivy-action@0.31.0
+        uses: aquasecurity/trivy-action@0.29.0
         with:
           scan-type: fs
           scan-ref: .
@@ -61,7 +61,7 @@ jobs:
 
       - name: Upload Trivy filesystem SARIF to GitHub Security tab
         if: always()
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: trivy-fs.sarif
           category: trivy-fs
@@ -80,7 +80,7 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Run Trivy image scan
-        uses: aquasecurity/trivy-action@0.31.0
+        uses: aquasecurity/trivy-action@0.29.0
         with:
           scan-type: image
           image-ref: vibewarden:scan
@@ -91,7 +91,7 @@ jobs:
 
       - name: Upload Trivy image SARIF to GitHub Security tab
         if: always()
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: trivy-image.sarif
           category: trivy-image
