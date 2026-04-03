@@ -3,6 +3,7 @@ package serve
 import (
 	"fmt"
 	"log/slog"
+	"sort"
 	"time"
 
 	"github.com/vibewarden/vibewarden/internal/config"
@@ -39,6 +40,24 @@ func buildProxyConfig(cfg *config.Config, registry *plugins.Registry, version st
 			}
 		}
 	}
+
+	// Collect routes and handlers contributed by CaddyContributor plugins.
+	// Both slices are sorted by ascending Priority before being stored so that
+	// BuildCaddyConfig can insert them in a deterministic order.
+	var extraRoutes []ports.CaddyRoute
+	var extraHandlers []ports.CaddyHandler
+
+	for _, contrib := range registry.CaddyContributors() {
+		extraRoutes = append(extraRoutes, contrib.ContributeCaddyRoutes()...)
+		extraHandlers = append(extraHandlers, contrib.ContributeCaddyHandlers()...)
+	}
+
+	sort.Slice(extraRoutes, func(i, j int) bool {
+		return extraRoutes[i].Priority < extraRoutes[j].Priority
+	})
+	sort.Slice(extraHandlers, func(i, j int) bool {
+		return extraHandlers[i].Priority < extraHandlers[j].Priority
+	})
 
 	return &ports.ProxyConfig{
 		ListenAddr:     fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port),
@@ -117,6 +136,8 @@ func buildProxyConfig(cfg *config.Config, registry *plugins.Registry, version st
 			Add:    cfg.ResponseHeaders.Add,
 			Remove: cfg.ResponseHeaders.Remove,
 		},
+		ExtraRoutes:   extraRoutes,
+		ExtraHandlers: extraHandlers,
 	}
 }
 

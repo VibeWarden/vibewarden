@@ -502,6 +502,189 @@ func TestPlugin_ContributeCaddyRoutes_Priority(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// JWT dev mode — ContributeCaddyRoutes
+// ---------------------------------------------------------------------------
+
+func TestPlugin_ContributeCaddyRoutes_JWTDevMode_HasJWKSRoute(t *testing.T) {
+	cfg := auth.Config{
+		Enabled: true,
+		Mode:    auth.ModeJWT,
+		JWT:     auth.JWTPluginConfig{DevKeyDir: t.TempDir()},
+	}
+	p := auth.New(cfg, discardLogger(), nil)
+	if err := p.Init(context.Background()); err != nil {
+		t.Fatalf("Init() error: %v", err)
+	}
+	defer func() { _ = p.Stop(context.Background()) }()
+
+	routes := p.ContributeCaddyRoutes()
+	if len(routes) == 0 {
+		t.Fatal("ContributeCaddyRoutes() returned empty slice for JWT dev mode")
+	}
+
+	// Find the JWKS route.
+	found := false
+	for _, r := range routes {
+		if r.MatchPath == "/_vibewarden/jwks.json" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("no route with MatchPath %q; routes: %v",
+			"/_vibewarden/jwks.json", routePaths(routes))
+	}
+}
+
+func TestPlugin_ContributeCaddyRoutes_JWTDevMode_HasTokenRoute(t *testing.T) {
+	cfg := auth.Config{
+		Enabled: true,
+		Mode:    auth.ModeJWT,
+		JWT:     auth.JWTPluginConfig{DevKeyDir: t.TempDir()},
+	}
+	p := auth.New(cfg, discardLogger(), nil)
+	if err := p.Init(context.Background()); err != nil {
+		t.Fatalf("Init() error: %v", err)
+	}
+	defer func() { _ = p.Stop(context.Background()) }()
+
+	routes := p.ContributeCaddyRoutes()
+
+	// Find the token route.
+	found := false
+	for _, r := range routes {
+		if r.MatchPath == "/_vibewarden/token" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("no route with MatchPath %q; routes: %v",
+			"/_vibewarden/token", routePaths(routes))
+	}
+}
+
+// routePaths is a helper for printing route match paths in test error messages.
+func routePaths(routes []ports.CaddyRoute) []string {
+	paths := make([]string, len(routes))
+	for i, r := range routes {
+		paths[i] = r.MatchPath
+	}
+	return paths
+}
+
+// ---------------------------------------------------------------------------
+// JWT dev mode — ContributeCaddyHandlers
+// ---------------------------------------------------------------------------
+
+func TestPlugin_ContributeCaddyHandlers_JWTDevMode_HasJWTBearerHandler(t *testing.T) {
+	cfg := auth.Config{
+		Enabled: true,
+		Mode:    auth.ModeJWT,
+		JWT:     auth.JWTPluginConfig{DevKeyDir: t.TempDir()},
+	}
+	p := auth.New(cfg, discardLogger(), nil)
+	if err := p.Init(context.Background()); err != nil {
+		t.Fatalf("Init() error: %v", err)
+	}
+	defer func() { _ = p.Stop(context.Background()) }()
+
+	handlers := p.ContributeCaddyHandlers()
+	if len(handlers) == 0 {
+		t.Fatal("ContributeCaddyHandlers() returned empty slice for JWT dev mode")
+	}
+
+	h := handlers[0]
+	if h.Priority != 40 {
+		t.Errorf("JWT bearer handler Priority = %d, want 40", h.Priority)
+	}
+	if got := h.Handler["handler"]; got != "jwt_bearer" {
+		t.Errorf("handler type = %q, want %q", got, "jwt_bearer")
+	}
+	if _, ok := h.Handler["jwks_url"]; !ok {
+		t.Error("jwt_bearer handler missing jwks_url field")
+	}
+	if _, ok := h.Handler["issuer"]; !ok {
+		t.Error("jwt_bearer handler missing issuer field")
+	}
+	if _, ok := h.Handler["audience"]; !ok {
+		t.Error("jwt_bearer handler missing audience field")
+	}
+	if _, ok := h.Handler["public_paths"]; !ok {
+		t.Error("jwt_bearer handler missing public_paths field")
+	}
+}
+
+func TestPlugin_ContributeCaddyHandlers_JWTDevMode_PublicPathsIncludeVibewardenPrefix(t *testing.T) {
+	cfg := auth.Config{
+		Enabled: true,
+		Mode:    auth.ModeJWT,
+		JWT:     auth.JWTPluginConfig{DevKeyDir: t.TempDir()},
+	}
+	p := auth.New(cfg, discardLogger(), nil)
+	if err := p.Init(context.Background()); err != nil {
+		t.Fatalf("Init() error: %v", err)
+	}
+	defer func() { _ = p.Stop(context.Background()) }()
+
+	handlers := p.ContributeCaddyHandlers()
+	if len(handlers) == 0 {
+		t.Fatal("no handlers")
+	}
+
+	paths, ok := handlers[0].Handler["public_paths"].([]string)
+	if !ok {
+		t.Fatalf("public_paths is not []string: %T", handlers[0].Handler["public_paths"])
+	}
+
+	found := false
+	for _, p := range paths {
+		if p == "/_vibewarden/*" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("public_paths does not contain %q; got: %v", "/_vibewarden/*", paths)
+	}
+}
+
+func TestPlugin_ContributeCaddyHandlers_JWTDevMode_UserPublicPathsIncluded(t *testing.T) {
+	cfg := auth.Config{
+		Enabled:     true,
+		Mode:        auth.ModeJWT,
+		JWT:         auth.JWTPluginConfig{DevKeyDir: t.TempDir()},
+		PublicPaths: []string{"/public/*"},
+	}
+	p := auth.New(cfg, discardLogger(), nil)
+	if err := p.Init(context.Background()); err != nil {
+		t.Fatalf("Init() error: %v", err)
+	}
+	defer func() { _ = p.Stop(context.Background()) }()
+
+	handlers := p.ContributeCaddyHandlers()
+	if len(handlers) == 0 {
+		t.Fatal("no handlers")
+	}
+
+	paths, ok := handlers[0].Handler["public_paths"].([]string)
+	if !ok {
+		t.Fatalf("public_paths is not []string: %T", handlers[0].Handler["public_paths"])
+	}
+
+	found := false
+	for _, p := range paths {
+		if p == "/public/*" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("public_paths does not contain /public/*; got: %v", paths)
+	}
+}
+
+// ---------------------------------------------------------------------------
 // ContributeCaddyHandlers
 // ---------------------------------------------------------------------------
 

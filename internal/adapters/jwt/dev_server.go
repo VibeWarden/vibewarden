@@ -35,16 +35,16 @@ func NewDevServer(keyPair *DevKeyPair, logger *slog.Logger) *DevServer {
 	}
 }
 
-// Start binds a random localhost TCP port and begins serving the JWKS endpoint.
-// It returns immediately; the server runs until Stop is called.
+// Start binds a random localhost TCP port and begins serving the JWKS and token
+// endpoints. It returns immediately; the server runs until Stop is called.
 // Start must be called before Addr.
 //
 // Returns an error if the TCP listener cannot be bound or if the JWKS handler
 // cannot be constructed from the key pair.
 func (s *DevServer) Start() error {
-	handler, err := NewJWKSHandler(PublicKey(s.keyPair))
+	jwksHandler, err := NewJWKSHandler(PublicKey(s.keyPair))
 	if err != nil {
-		return fmt.Errorf("dev jwks server: building handler: %w", err)
+		return fmt.Errorf("dev jwks server: building jwks handler: %w", err)
 	}
 
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
@@ -54,7 +54,8 @@ func (s *DevServer) Start() error {
 	s.listener = ln
 
 	mux := http.NewServeMux()
-	mux.Handle(DevJWKSPath, handler)
+	mux.Handle(DevJWKSPath, jwksHandler)
+	mux.Handle(DevTokenPath, NewTokenHandler(s.keyPair))
 
 	s.server = &http.Server{
 		Handler:           mux,
@@ -69,7 +70,8 @@ func (s *DevServer) Start() error {
 
 	s.logger.Info("dev JWKS server started",
 		slog.String("addr", ln.Addr().String()),
-		slog.String("path", DevJWKSPath),
+		slog.String("jwks_path", DevJWKSPath),
+		slog.String("token_path", DevTokenPath),
 		slog.String("key_dir", s.keyPair.Dir),
 	)
 
