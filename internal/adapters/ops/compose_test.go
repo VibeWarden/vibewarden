@@ -228,6 +228,38 @@ func commandArgs(composeFile string, profiles []string) []string {
 	return args
 }
 
+func TestImageCheckerAdapter_ImageExists_NondexistentImage(t *testing.T) {
+	// Run "docker image inspect" against a clearly non-existent image name.
+	// This verifies that a missing image returns (false, nil) and not an error.
+	if !dockerAvailable() {
+		t.Skip("docker binary not available")
+	}
+
+	adapter := opsadapter.NewImageCheckerAdapter()
+	exists, err := adapter.ImageExists(context.Background(), "vibewarden-test-nonexistent-image:definitely-not-here")
+	if err != nil {
+		t.Fatalf("ImageExists() unexpected error: %v", err)
+	}
+	if exists {
+		t.Error("ImageExists() = true, want false for a non-existent image")
+	}
+}
+
+func TestImageCheckerAdapter_ImageExists_CancelledContext(t *testing.T) {
+	if !dockerAvailable() {
+		t.Skip("docker binary not available")
+	}
+
+	adapter := opsadapter.NewImageCheckerAdapter()
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_, err := adapter.ImageExists(ctx, "alpine:latest")
+	if err == nil {
+		t.Fatal("ImageExists() expected error with cancelled context, got nil")
+	}
+}
+
 func TestCommandArgsConstruction(t *testing.T) {
 	tests := []struct {
 		name        string

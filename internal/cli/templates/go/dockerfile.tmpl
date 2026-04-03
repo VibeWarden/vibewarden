@@ -1,7 +1,20 @@
-# Build your app first, then build this image.
-# Example: go build -o bin/{{ .ProjectName }} ./cmd/{{ .ProjectName }}
+# Multi-stage build — works out of the box with `vibew dev` (no pre-build needed).
+FROM golang:1.24-alpine AS build
+WORKDIR /app
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+RUN CGO_ENABLED=0 go build -o /bin/app ./cmd/{{ .ProjectName }}
+
 FROM alpine:3.21
 RUN apk add --no-cache ca-certificates wget
-COPY bin/{{ .ProjectName }} /app
+COPY --from=build /bin/app /app
 EXPOSE {{ .Port }}
 CMD ["/app"]
+
+# Thin-image alternative (requires pre-built binary; faster rebuilds):
+# FROM alpine:3.21
+# RUN apk add --no-cache ca-certificates wget
+# COPY bin/{{ .ProjectName }} /app
+# EXPOSE {{ .Port }}
+# CMD ["/app"]
