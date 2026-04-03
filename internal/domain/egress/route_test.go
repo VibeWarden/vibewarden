@@ -295,6 +295,198 @@ func TestRoute_MatchesMethod(t *testing.T) {
 	}
 }
 
+// TestMTLSConfig_IsZero verifies zero-value detection for MTLSConfig.
+func TestMTLSConfig_IsZero(t *testing.T) {
+	tests := []struct {
+		name string
+		cfg  egress.MTLSConfig
+		want bool
+	}{
+		{
+			name: "zero value is zero",
+			cfg:  egress.MTLSConfig{},
+			want: true,
+		},
+		{
+			name: "cert path set",
+			cfg:  egress.MTLSConfig{CertPath: "/etc/certs/client.crt"},
+			want: false,
+		},
+		{
+			name: "key path set",
+			cfg:  egress.MTLSConfig{KeyPath: "/etc/certs/client.key"},
+			want: false,
+		},
+		{
+			name: "ca path set",
+			cfg:  egress.MTLSConfig{CAPath: "/etc/certs/ca.crt"},
+			want: false,
+		},
+		{
+			name: "all fields set",
+			cfg: egress.MTLSConfig{
+				CertPath: "/etc/certs/client.crt",
+				KeyPath:  "/etc/certs/client.key",
+				CAPath:   "/etc/certs/ca.crt",
+			},
+			want: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.cfg.IsZero(); got != tt.want {
+				t.Errorf("MTLSConfig.IsZero() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+// TestCacheConfig_IsZero verifies zero-value detection for CacheConfig.
+func TestCacheConfig_IsZero(t *testing.T) {
+	tests := []struct {
+		name string
+		cfg  egress.CacheConfig
+		want bool
+	}{
+		{
+			name: "zero value is zero",
+			cfg:  egress.CacheConfig{},
+			want: true,
+		},
+		{
+			name: "disabled is zero",
+			cfg:  egress.CacheConfig{Enabled: false, TTL: 5 * time.Second},
+			want: true,
+		},
+		{
+			name: "enabled is not zero",
+			cfg:  egress.CacheConfig{Enabled: true},
+			want: false,
+		},
+		{
+			name: "enabled with TTL and MaxSize",
+			cfg:  egress.CacheConfig{Enabled: true, TTL: 30 * time.Second, MaxSize: 1024},
+			want: false,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.cfg.IsZero(); got != tt.want {
+				t.Errorf("CacheConfig.IsZero() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+// TestNewRoute_WithSanitizeMTLSCache verifies that WithSanitize, WithMTLS, and
+// WithCache options are applied and their accessor methods return correct values.
+func TestNewRoute_WithSanitizeMTLSCache(t *testing.T) {
+	mtls := egress.MTLSConfig{
+		CertPath: "/etc/certs/client.crt",
+		KeyPath:  "/etc/certs/client.key",
+		CAPath:   "/etc/certs/ca.crt",
+	}
+	cache := egress.CacheConfig{
+		Enabled: true,
+		TTL:     60 * time.Second,
+		MaxSize: 4096,
+	}
+	sanitize := egress.SanitizeConfig{
+		Headers:     []string{"Authorization"},
+		QueryParams: []string{"api_key"},
+	}
+	retry := egress.RetryConfig{
+		Max:            3,
+		Methods:        []string{"GET", "PUT"},
+		Backoff:        egress.RetryBackoffFixed,
+		InitialBackoff: 100 * time.Millisecond,
+	}
+
+	r, err := egress.NewRoute(
+		"secure-api",
+		"https://api.example.com/**",
+		egress.WithSanitize(sanitize),
+		egress.WithMTLS(mtls),
+		egress.WithCache(cache),
+		egress.WithRetry(retry),
+		egress.WithMethods("GET", "PUT"),
+	)
+	if err != nil {
+		t.Fatalf("NewRoute() unexpected error: %v", err)
+	}
+
+	// MTLS and Cache can be compared directly (no slice fields in MTLSConfig/CacheConfig).
+	if got := r.MTLS(); got != mtls {
+		t.Errorf("MTLS() = %+v, want %+v", got, mtls)
+	}
+	if got := r.Cache(); got != cache {
+		t.Errorf("Cache() = %+v, want %+v", got, cache)
+	}
+
+	// SanitizeConfig contains slices — compare fields individually.
+	gotSanitize := r.Sanitize()
+	if len(gotSanitize.Headers) != len(sanitize.Headers) || gotSanitize.Headers[0] != sanitize.Headers[0] {
+		t.Errorf("Sanitize().Headers = %v, want %v", gotSanitize.Headers, sanitize.Headers)
+	}
+	if len(gotSanitize.QueryParams) != len(sanitize.QueryParams) || gotSanitize.QueryParams[0] != sanitize.QueryParams[0] {
+		t.Errorf("Sanitize().QueryParams = %v, want %v", gotSanitize.QueryParams, sanitize.QueryParams)
+	}
+
+	// RetryConfig contains slices — compare fields individually.
+	gotRetry := r.Retry()
+	if gotRetry.Max != retry.Max {
+		t.Errorf("Retry().Max = %d, want %d", gotRetry.Max, retry.Max)
+	}
+	if gotRetry.Backoff != retry.Backoff {
+		t.Errorf("Retry().Backoff = %q, want %q", gotRetry.Backoff, retry.Backoff)
+	}
+	if gotRetry.InitialBackoff != retry.InitialBackoff {
+		t.Errorf("Retry().InitialBackoff = %v, want %v", gotRetry.InitialBackoff, retry.InitialBackoff)
+	}
+	if len(gotRetry.Methods) != len(retry.Methods) {
+		t.Errorf("Retry().Methods len = %d, want %d", len(gotRetry.Methods), len(retry.Methods))
+	}
+
+	wantMethods := []string{"GET", "PUT"}
+	got := r.Methods()
+	if len(got) != len(wantMethods) {
+		t.Errorf("Methods() len = %d, want %d", len(got), len(wantMethods))
+	} else {
+		for i, m := range got {
+			if m != wantMethods[i] {
+				t.Errorf("Methods()[%d] = %q, want %q", i, m, wantMethods[i])
+			}
+		}
+	}
+}
+
+// TestNewRoute_DefaultAccessors verifies that accessor methods return zero
+// values when no options are applied.
+func TestNewRoute_DefaultAccessors(t *testing.T) {
+	r, err := egress.NewRoute("r", "https://example.com/**")
+	if err != nil {
+		t.Fatalf("NewRoute() unexpected error: %v", err)
+	}
+
+	if got := r.Methods(); len(got) != 0 {
+		t.Errorf("Methods() = %v, want empty slice", got)
+	}
+	gotRetry := r.Retry()
+	if gotRetry.Max != 0 || gotRetry.Backoff != "" || len(gotRetry.Methods) != 0 {
+		t.Errorf("Retry() = %+v, want zero value", gotRetry)
+	}
+	gotSanitize := r.Sanitize()
+	if len(gotSanitize.Headers) != 0 || len(gotSanitize.QueryParams) != 0 {
+		t.Errorf("Sanitize() = %+v, want zero value", gotSanitize)
+	}
+	if got := r.MTLS(); !got.IsZero() {
+		t.Errorf("MTLS() = %+v, want zero value", got)
+	}
+	if got := r.Cache(); !got.IsZero() {
+		t.Errorf("Cache() = %+v, want zero value", got)
+	}
+}
+
 func TestRoute_MatchesURL(t *testing.T) {
 	tests := []struct {
 		name    string

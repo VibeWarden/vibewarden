@@ -186,6 +186,79 @@ func TestNewEgressBlocked(t *testing.T) {
 	}
 }
 
+// --- egress.circuit_breaker.opened ---
+
+func TestNewEgressCircuitBreakerOpened(t *testing.T) {
+	tests := []struct {
+		name   string
+		params events.EgressCircuitBreakerOpenedParams
+	}{
+		{
+			name: "circuit tripped after threshold failures",
+			params: events.EgressCircuitBreakerOpenedParams{
+				Route:          "stripe",
+				Threshold:      5,
+				TimeoutSeconds: 30.0,
+			},
+		},
+		{
+			name: "circuit tripped with single failure threshold",
+			params: events.EgressCircuitBreakerOpenedParams{
+				Route:          "payments",
+				Threshold:      1,
+				TimeoutSeconds: 60.0,
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			e := events.NewEgressCircuitBreakerOpened(tt.params)
+
+			assertEvent(t, e, events.EventTypeEgressCircuitBreakerOpened)
+			requireSummaryContains(t, e.AISummary, tt.params.Route)
+			requirePayloadString(t, e.Payload, "route", tt.params.Route)
+			requirePayloadKey(t, e.Payload, "threshold")
+			requirePayloadKey(t, e.Payload, "timeout_seconds")
+
+			if got := e.Payload["threshold"]; got != tt.params.Threshold {
+				t.Errorf("Payload[threshold] = %v, want %v", got, tt.params.Threshold)
+			}
+			if got := e.Payload["timeout_seconds"]; got != tt.params.TimeoutSeconds {
+				t.Errorf("Payload[timeout_seconds] = %v, want %v", got, tt.params.TimeoutSeconds)
+			}
+		})
+	}
+}
+
+// --- egress.circuit_breaker.closed ---
+
+func TestNewEgressCircuitBreakerClosed(t *testing.T) {
+	tests := []struct {
+		name   string
+		params events.EgressCircuitBreakerClosedParams
+	}{
+		{
+			name:   "circuit recovered for stripe route",
+			params: events.EgressCircuitBreakerClosedParams{Route: "stripe"},
+		},
+		{
+			name:   "circuit recovered for payments route",
+			params: events.EgressCircuitBreakerClosedParams{Route: "payments"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			e := events.NewEgressCircuitBreakerClosed(tt.params)
+
+			assertEvent(t, e, events.EventTypeEgressCircuitBreakerClosed)
+			requireSummaryContains(t, e.AISummary, tt.params.Route)
+			requirePayloadString(t, e.Payload, "route", tt.params.Route)
+		})
+	}
+}
+
 // --- egress.error ---
 
 func TestNewEgressError(t *testing.T) {
