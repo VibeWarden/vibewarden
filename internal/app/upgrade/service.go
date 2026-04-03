@@ -1,12 +1,19 @@
 // Package upgrade provides the application service for the `vibew upgrade`
 // command. It fetches the latest (or a pinned) VibeWarden release from GitHub,
-// verifies the SHA-256 checksum, replaces the running binary (or installs to
-// ~/.vibewarden/bin/), updates .vibewarden-version when found, and regenerates
-// wrapper scripts when they exist.
+// verifies the SHA-256 checksum, replaces the running binary (resolved via
+// os.Executable + filepath.EvalSymlinks), updates .vibewarden-version when
+// found, and regenerates wrapper scripts when they exist.
+//
+// Install path resolution order:
+//  1. opts.InstallDir — explicit override (--install-dir flag).
+//  2. opts.ExecutablePath — the directory that contains the currently running
+//     binary, populated by the CLI layer via ResolveExecutablePath.
+//  3. ~/.vibewarden/bin — last resort fallback when os.Executable fails.
 package upgrade
 
 import (
 	"archive/tar"
+	"bytes"
 	"compress/gzip"
 	"context"
 	"crypto/sha256"
@@ -16,6 +23,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -45,9 +53,17 @@ type Options struct {
 	// When empty the service resolves the latest GitHub release.
 	Version string
 
-	// InstallDir is where the binary is written.
-	// Defaults to ~/.vibewarden/bin when the running binary is not writable.
+	// InstallDir is an explicit override for where the binary is written.
+	// When set it takes priority over ExecutablePath.
+	// Corresponds to the --install-dir CLI flag.
 	InstallDir string
+
+	// ExecutablePath is the absolute, symlink-resolved path of the currently
+	// running binary, populated by the CLI layer via ResolveExecutablePath.
+	// When InstallDir is empty the service installs over this path (i.e. it
+	// replaces the binary that is currently running).  When ExecutablePath is
+	// also empty the service falls back to ~/.vibewarden/bin/.
+	ExecutablePath string
 
 	// DryRun prints what would happen without downloading or writing any files.
 	DryRun bool
@@ -58,6 +74,25 @@ type Options struct {
 	// GOOS / GOARCH override the detected platform (useful in tests).
 	GOOS   string
 	GOARCH string
+}
+
+// ResolveExecutablePath returns the absolute, symlink-resolved path of the
+// currently running binary.  Call this in the CLI layer and pass the result to
+// Options.ExecutablePath so that the upgrade service can replace the correct
+// binary.
+//
+// Returns an empty string (and a non-nil error) when os.Executable fails; the
+// caller should fall back to the default install directory in that case.
+func ResolveExecutablePath() (string, error) {
+	exe, err := os.Executable()
+	if err != nil {
+		return "", fmt.Errorf("resolving executable path: %w", err)
+	}
+	resolved, err := filepath.EvalSymlinks(exe)
+	if err != nil {
+		return "", fmt.Errorf("evaluating symlinks for %q: %w", exe, err)
+	}
+	return resolved, nil
 }
 
 // githubRelease is the subset of the GitHub releases API response that the
@@ -132,20 +167,32 @@ func (s *Service) Run(ctx context.Context, opts Options) error {
 	archiveURL := fmt.Sprintf("%s/%s", baseURL, archiveName)
 	checksumsURL := fmt.Sprintf("%s/%s", baseURL, checksumsName)
 
-	// Resolve install directory.
-	installDir := opts.InstallDir
-	if installDir == "" {
-		home, err := os.UserHomeDir()
-		if err != nil {
-			return fmt.Errorf("resolving home directory: %w", err)
-		}
-		installDir = filepath.Join(home, ".vibewarden", "bin")
-	}
+	// Resolve install path.
+	//
+	// Priority:
+	//  1. --install-dir flag  (opts.InstallDir)
+	//  2. Directory of the running binary  (opts.ExecutablePath)
+	//  3. ~/.vibewarden/bin  (fallback)
 	binaryName := "vibew"
 	if goos == "windows" {
 		binaryName = "vibew.exe"
 	}
-	destPath := filepath.Join(installDir, binaryName)
+
+	var destPath string
+	switch {
+	case opts.InstallDir != "":
+		destPath = filepath.Join(opts.InstallDir, binaryName)
+	case opts.ExecutablePath != "":
+		destPath = opts.ExecutablePath
+	default:
+		home, err := os.UserHomeDir()
+		if err != nil {
+			return fmt.Errorf("resolving home directory: %w", err)
+		}
+		destPath = filepath.Join(home, ".vibewarden", "bin", binaryName)
+	}
+
+	installDir := filepath.Dir(destPath)
 
 	fmt.Fprintf(w, "Install path:   %s\n", destPath)
 
@@ -197,7 +244,7 @@ func (s *Service) Run(ctx context.Context, opts Options) error {
 	if err := os.MkdirAll(installDir, permExec); err != nil {
 		return fmt.Errorf("creating install directory %q: %w", installDir, err)
 	}
-	if err := atomicReplace(extractedBin, destPath, permExec); err != nil {
+	if err := installBinary(extractedBin, destPath, permExec, w); err != nil {
 		return fmt.Errorf("installing binary: %w", err)
 	}
 	fmt.Fprintf(w, "Installed: %s\n", destPath)
@@ -382,6 +429,39 @@ func extractTarGz(archivePath, destDir, targetFile string) error {
 		return nil
 	}
 	return fmt.Errorf("%q not found in archive %q", targetFile, archivePath)
+}
+
+// installBinary installs the binary at src to dest. It first attempts a direct
+// atomicReplace. When the target directory is not writable on a Unix-like
+// system it retries via `sudo install -m 755 src dest` so that users who
+// installed to /usr/local/bin without a writable permission can still upgrade
+// without manually re-running with sudo.
+//
+// The sudo retry only happens on non-Windows platforms and only when the
+// initial attempt fails with a permission error.
+func installBinary(src, dest string, mode os.FileMode, w io.Writer) error {
+	err := atomicReplace(src, dest, mode)
+	if err == nil {
+		return nil
+	}
+
+	// Only attempt sudo on non-Windows and only for permission errors.
+	if runtime.GOOS == "windows" || !os.IsPermission(err) {
+		return err
+	}
+
+	fmt.Fprintf(w, "No write permission for %s — retrying with sudo...\n", filepath.Dir(dest))
+
+	// Use `sudo install` which handles atomic replacement correctly.
+	sudoArgs := []string{"install", "-m", fmt.Sprintf("%04o", mode.Perm()), src, dest}
+	//nolint:gosec // sudo path is controlled by the OS, arguments are from internal sources
+	cmd := exec.Command("sudo", sudoArgs...)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	if sudoErr := cmd.Run(); sudoErr != nil {
+		return fmt.Errorf("sudo install failed (%w); stderr: %s", sudoErr, stderr.String())
+	}
+	return nil
 }
 
 // atomicReplace installs src to dest atomically using a temp file in the same
