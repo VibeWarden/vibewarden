@@ -9,15 +9,6 @@ Target: vibe coders who need zero-to-secure in minutes.
 
 **The sidecar always runs locally, next to the app, on localhost. It is never hosted.**
 
-Business model:
-- **OSS core** (Apache 2.0) — local sidecar, free forever
-- **Pro tier** (name TBD, placeholder "VibeWarden Pro") — fleet dashboard at `app.vibewarden.dev`,
-  aggregates logs + metrics from multiple local instances. Target: small businesses and
-  indie devs running multiple apps.
-- **Enterprise** (future) — self-hosted fleet dashboard, SSO, compliance
-
-Romanian SRL, VAT registered. Solo founder.
-
 ---
 
 ## Locked decisions (do not relitigate)
