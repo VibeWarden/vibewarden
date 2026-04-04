@@ -141,7 +141,18 @@ It never holds external secrets or connects directly to third-party APIs.
 | Audit log sinks | JSON file, OTel logs, webhook (HMAC-signed) with retry |
 | Admin API | User management at `/_vibewarden/admin/*` (bearer-token protected) |
 | Docker images | Multi-arch: `linux/amd64` and `linux/arm64` (Apple Silicon, AWS Graviton) |
-| Docker Compose | Profile-based: `--profile observability`, `--profile demo` |
+| Docker Compose | Profile-based: `--profile observability` |
+| IP filter | Allowlist / blocklist by IP or CIDR range |
+| Body size limiting | Global and per-path request body size limits |
+| Input validation | Content-type enforcement and request size limits |
+| Maintenance mode | Serve a maintenance page with one config flag |
+| Response headers | Modify upstream response headers before forwarding |
+| Webhook verification | Signature verification for Stripe, GitHub, Slack, Twilio |
+| Hot reload | File watcher + admin API — no restart required |
+| MCP server | `vibew mcp` — AI agent integration via Model Context Protocol |
+| Config schema | JSON schema for `vibewarden.yaml` — editor autocomplete |
+| Agent context | `AGENTS-VIBEWARDEN.md` generated for AI coding tools |
+| Eject | `vibew eject` — export raw proxy config to graduate past VibeWarden |
 
 ---
 
@@ -207,7 +218,7 @@ If you need a general-purpose load balancer or a CDN edge, use the right tool fo
 |---------|-------------|
 | `vibew wrap` | Add VibeWarden sidecar to an existing project |
 | `vibew add auth` | Enable authentication |
-| `vibew add rate-limit` | Enable rate limiting |
+| `vibew add rate-limiting` | Enable rate limiting |
 | `vibew add tls --domain example.com` | Enable TLS |
 | `vibew add metrics` | Enable Prometheus metrics |
 | `vibew generate` | Regenerate `docker-compose.yml` from config |
@@ -223,6 +234,8 @@ If you need a general-purpose load balancer or a CDN edge, use the right tool fo
 | `vibew cert export` | Export the local CA certificate (for curl, Postman, …) |
 | `vibew validate` | Validate configuration |
 | `vibew context refresh` | Regenerate AI agent context files |
+| `vibew eject` | Export raw proxy config to graduate past VibeWarden |
+| `vibew mcp` | Start MCP server for AI agent integration |
 
 ---
 
