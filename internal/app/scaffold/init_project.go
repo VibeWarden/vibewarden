@@ -24,22 +24,8 @@ var initDirs = []string{
 	filepath.Join("internal", "app"),
 }
 
-// sharedAgentTemplateFiles lists the agent templates that are shared across all
-// language packs. They live in the agents/ subdirectory of the templates FS.
-// Adding a new language pack requires only a language-specific dev.md and a
-// project scaffold — architect.md, reviewer.md, and CLAUDE.md come from here.
-var sharedAgentTemplateFiles = []struct {
-	tmpl string
-	dest string
-}{
-	{tmpl: "agents/architect.md.tmpl", dest: filepath.Join(".claude", "agents", "architect.md")},
-	{tmpl: "agents/reviewer.md.tmpl", dest: filepath.Join(".claude", "agents", "reviewer.md")},
-}
-
 // goTemplateFiles maps each output path (relative to the project root) to the
 // template name it is rendered from. These are Go-language-specific templates.
-// Shared agent templates (architect.md, reviewer.md, CLAUDE.md) are in
-// sharedAgentTemplateFiles and are rendered separately.
 var goTemplateFiles = []struct {
 	tmpl string
 	dest string
@@ -49,13 +35,11 @@ var goTemplateFiles = []struct {
 	{tmpl: "go/go.mod.tmpl", dest: "go.mod"},
 	{tmpl: "go/dockerfile.tmpl", dest: "Dockerfile"},
 	{tmpl: "go/gitignore.tmpl", dest: ".gitignore"},
-	{tmpl: "go/dev.md.tmpl", dest: filepath.Join(".claude", "agents", "dev.md")},
 }
 
 // kotlinTemplateFiles maps each output path (relative to the project root) to
 // the template name it is rendered from. These are Kotlin-language-specific
-// templates using the Ktor framework. Shared agent templates are in
-// sharedAgentTemplateFiles and are rendered separately.
+// templates using the Ktor framework.
 var kotlinTemplateFiles = []struct {
 	tmpl string
 	dest string
@@ -65,13 +49,11 @@ var kotlinTemplateFiles = []struct {
 	{tmpl: "kotlin/settings.gradle.kts.tmpl", dest: "settings.gradle.kts"},
 	{tmpl: "kotlin/dockerfile.tmpl", dest: "Dockerfile"},
 	{tmpl: "kotlin/gitignore.tmpl", dest: ".gitignore"},
-	{tmpl: "kotlin/dev.md.tmpl", dest: filepath.Join(".claude", "agents", "dev.md")},
 }
 
 // typescriptTemplateFiles maps each output path (relative to the project root)
 // to the template name it is rendered from. These are TypeScript-language-specific
-// templates using the Express framework. Shared agent templates are in
-// sharedAgentTemplateFiles and are rendered separately.
+// templates using the Express framework.
 var typescriptTemplateFiles = []struct {
 	tmpl string
 	dest string
@@ -81,7 +63,6 @@ var typescriptTemplateFiles = []struct {
 	{tmpl: "typescript/tsconfig.json.tmpl", dest: "tsconfig.json"},
 	{tmpl: "typescript/dockerfile.tmpl", dest: "Dockerfile"},
 	{tmpl: "typescript/gitignore.tmpl", dest: ".gitignore"},
-	{tmpl: "typescript/dev.md.tmpl", dest: filepath.Join(".claude", "agents", "dev.md")},
 }
 
 // typescriptInitDirs lists the directories created for TypeScript projects.
@@ -144,18 +125,20 @@ func NewInitProjectService(renderer ports.TemplateRenderer) *InitProjectService 
 //	<project>/
 //	├── cmd/<project>/main.go
 //	├── internal/{domain,ports,adapters,app}/.gitkeep
-//	├── .claude/agents/{architect,dev,reviewer}.md
+//	├── AGENTS.md                  (user-owned, references AGENTS-VIBEWARDEN.md)
+//	├── AGENTS-VIBEWARDEN.md       (vibew-owned, regenerated on updates)
 //	├── CLAUDE.md
 //	├── go.mod
 //	├── Dockerfile
 //	├── vibewarden.yaml
-//	├── vibew, vibew.ps1, vibew.cmd, .vibewarden-version
+//	├── .vibewarden-version
 //	└── .gitignore
 //
-// architect.md and reviewer.md are rendered from language-agnostic shared
-// templates (agents/). dev.md is rendered from the Go-specific template.
-// CLAUDE.md is rendered from the shared agents/claude.md.tmpl with Go-specific
-// code conventions appended from go/claude.md.tmpl.
+// AGENTS-VIBEWARDEN.md consolidates all vibew-specific agent instructions.
+// AGENTS.md is user-owned; it is created with a reference to AGENTS-VIBEWARDEN.md
+// when absent, or the reference is appended when it is missing from an existing file.
+// CLAUDE.md is rendered from the shared agents/claude.md.tmpl with language-specific
+// code conventions appended from <lang>/claude.md.tmpl.
 func (s *InitProjectService) InitProject(ctx context.Context, parentDir string, opts InitProjectOptions) error {
 	switch opts.Language {
 	case domainscaffold.LanguageGo, domainscaffold.LanguageKotlin, domainscaffold.LanguageTypeScript:
@@ -207,15 +190,14 @@ func (s *InitProjectService) InitProject(ctx context.Context, parentDir string, 
 		Description: opts.Description,
 	}
 
-	// Render shared (language-agnostic) agent templates: architect.md, reviewer.md.
-	for _, tf := range sharedAgentTemplateFiles {
-		dest := filepath.Join(projectDir, tf.dest)
-		if err := s.renderer.RenderToFile(tf.tmpl, data, dest, opts.Force); err != nil {
-			if !errors.Is(err, os.ErrExist) {
-				return fmt.Errorf("rendering %s: %w", tf.dest, err)
-			}
-			return fmt.Errorf("%s already exists; use --force to overwrite: %w", tf.dest, err)
-		}
+	// Render AGENTS-VIBEWARDEN.md — always overwritten (vibew-owned file).
+	if err := s.renderAgentsVibewardenMD(projectDir, opts.Language, data); err != nil {
+		return fmt.Errorf("rendering AGENTS-VIBEWARDEN.md: %w", err)
+	}
+
+	// Ensure AGENTS.md exists and contains a reference to AGENTS-VIBEWARDEN.md.
+	if err := s.ensureAgentsMD(projectDir); err != nil {
+		return fmt.Errorf("ensuring AGENTS.md: %w", err)
 	}
 
 	// Render CLAUDE.md by concatenating the shared base template with the
@@ -354,6 +336,85 @@ func (s *InitProjectService) renderCombinedCLAUDEmd(projectDir string, lang doma
 	}
 	if err := os.WriteFile(dest, combined, 0o600); err != nil {
 		return fmt.Errorf("writing CLAUDE.md: %w", err)
+	}
+	return nil
+}
+
+// renderAgentsVibewardenMD renders AGENTS-VIBEWARDEN.md by combining the shared
+// agents/agents-vibewarden.md.tmpl template with the language-specific code
+// conventions from <lang>/claude.md.tmpl.
+//
+// AGENTS-VIBEWARDEN.md is always overwritten because it is vibew-owned. The
+// warning header inside the file makes this clear to users.
+func (s *InitProjectService) renderAgentsVibewardenMD(
+	projectDir string,
+	lang domainscaffold.Language,
+	data any,
+) error {
+	dest := filepath.Join(projectDir, "AGENTS-VIBEWARDEN.md")
+
+	shared, err := s.renderer.Render("agents/agents-vibewarden.md.tmpl", data)
+	if err != nil {
+		return fmt.Errorf("rendering shared agents-vibewarden.md base: %w", err)
+	}
+
+	conventionsTmpl := string(lang) + "/claude.md.tmpl"
+	langConventions, err := s.renderer.Render(conventionsTmpl, data)
+	if err != nil {
+		return fmt.Errorf("rendering %s code conventions: %w", lang, err)
+	}
+
+	combined := bytes.Join([][]byte{shared, langConventions}, []byte("\n"))
+
+	if err := os.MkdirAll(filepath.Dir(dest), 0o750); err != nil {
+		return fmt.Errorf("creating directories: %w", err)
+	}
+	if err := os.WriteFile(dest, combined, 0o600); err != nil {
+		return fmt.Errorf("writing AGENTS-VIBEWARDEN.md: %w", err)
+	}
+	return nil
+}
+
+// ensureAgentsMD ensures AGENTS.md exists and contains a reference to
+// AGENTS-VIBEWARDEN.md.
+//
+// Behaviour:
+//   - If AGENTS.md does not exist, it is created from agents/agents.md.tmpl.
+//   - If AGENTS.md exists but does not contain a reference to AGENTS-VIBEWARDEN.md,
+//     the reference line is appended.
+//   - If AGENTS.md already contains the reference, it is left unchanged.
+//
+// The reference detection uses a simple substring match for "AGENTS-VIBEWARDEN.md".
+func (s *InitProjectService) ensureAgentsMD(projectDir string) error {
+	dest := filepath.Join(projectDir, "AGENTS.md")
+
+	existing, err := os.ReadFile(dest) //nolint:gosec // path is constructed from trusted inputs
+	if errors.Is(err, os.ErrNotExist) {
+		// Create from template.
+		if createErr := s.renderer.RenderToFile("agents/agents.md.tmpl", nil, dest, false); createErr != nil {
+			return fmt.Errorf("creating AGENTS.md: %w", createErr)
+		}
+		return nil
+	}
+	if err != nil {
+		return fmt.Errorf("reading AGENTS.md: %w", err)
+	}
+
+	// File exists — check whether the reference is already present.
+	if strings.Contains(string(existing), "AGENTS-VIBEWARDEN.md") {
+		return nil
+	}
+
+	// Append reference.
+	f, err := os.OpenFile(dest, os.O_APPEND|os.O_WRONLY, 0o600) //nolint:gosec // path is trusted
+	if err != nil {
+		return fmt.Errorf("opening AGENTS.md for append: %w", err)
+	}
+	defer f.Close() //nolint:errcheck // best-effort close on read path
+
+	const referenceBlock = "\n\nSee [AGENTS-VIBEWARDEN.md](./AGENTS-VIBEWARDEN.md) for VibeWarden sidecar instructions.\n"
+	if _, writeErr := f.WriteString(referenceBlock); writeErr != nil {
+		return fmt.Errorf("appending reference to AGENTS.md: %w", writeErr)
 	}
 	return nil
 }

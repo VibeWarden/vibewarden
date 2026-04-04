@@ -86,9 +86,9 @@ func TestInitCmd_DescribeInjectsCLAUDEmd(t *testing.T) {
 	}
 }
 
-// TestInitCmd_DescribeInjectsArchitectMD verifies that --describe injects the
-// description into .claude/agents/architect.md.
-func TestInitCmd_DescribeInjectsArchitectMD(t *testing.T) {
+// TestInitCmd_DescribeInjectsAgentsVibewardenMD verifies that --describe injects
+// the description into AGENTS-VIBEWARDEN.md.
+func TestInitCmd_DescribeInjectsAgentsVibewardenMD(t *testing.T) {
 	dir := t.TempDir()
 
 	if err := os.Chdir(dir); err != nil {
@@ -107,13 +107,13 @@ func TestInitCmd_DescribeInjectsArchitectMD(t *testing.T) {
 		t.Fatalf("init failed: %v", err)
 	}
 
-	archPath := filepath.Join(dir, "chatapp", ".claude", "agents", "architect.md")
-	data, err := os.ReadFile(archPath) //nolint:gosec // test path
+	agentsVWPath := filepath.Join(dir, "chatapp", "AGENTS-VIBEWARDEN.md")
+	data, err := os.ReadFile(agentsVWPath) //nolint:gosec // test path
 	if err != nil {
-		t.Fatalf("architect.md not found: %v", err)
+		t.Fatalf("AGENTS-VIBEWARDEN.md not found: %v", err)
 	}
 	if !strings.Contains(string(data), "a real-time chat service") {
-		t.Errorf("architect.md does not contain description:\n%s", string(data))
+		t.Errorf("AGENTS-VIBEWARDEN.md does not contain description:\n%s", string(data))
 	}
 }
 

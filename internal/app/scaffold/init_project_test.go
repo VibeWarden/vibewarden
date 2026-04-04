@@ -39,9 +39,8 @@ func TestInitProject_CreatesStructure(t *testing.T) {
 	mustExist(t, parent, "myapp", "cmd", "myapp", "main.go")
 
 	// Verify agent files.
-	mustExist(t, parent, "myapp", ".claude", "agents", "architect.md")
-	mustExist(t, parent, "myapp", ".claude", "agents", "dev.md")
-	mustExist(t, parent, "myapp", ".claude", "agents", "reviewer.md")
+	mustExist(t, parent, "myapp", "AGENTS-VIBEWARDEN.md")
+	mustExist(t, parent, "myapp", "AGENTS.md")
 
 	// Verify empty directories with .gitkeep.
 	mustExist(t, parent, "myapp", "internal", "domain", ".gitkeep")
@@ -254,9 +253,8 @@ func TestInitProject_Kotlin_CreatesStructure(t *testing.T) {
 	mustExist(t, parent, "myktapp", "src", "main", "kotlin", "myktapp", "myktapp", "Application.kt")
 
 	// Verify agent files.
-	mustExist(t, parent, "myktapp", ".claude", "agents", "architect.md")
-	mustExist(t, parent, "myktapp", ".claude", "agents", "dev.md")
-	mustExist(t, parent, "myktapp", ".claude", "agents", "reviewer.md")
+	mustExist(t, parent, "myktapp", "AGENTS-VIBEWARDEN.md")
+	mustExist(t, parent, "myktapp", "AGENTS.md")
 
 	// Verify wrapper scripts.
 	mustExist(t, parent, "myktapp", ".vibewarden-version")
@@ -340,9 +338,8 @@ func TestInitProject_TypeScript_CreatesStructure(t *testing.T) {
 	mustExist(t, parent, "mytsapp", "src", "app", ".gitkeep")
 
 	// Verify agent files.
-	mustExist(t, parent, "mytsapp", ".claude", "agents", "architect.md")
-	mustExist(t, parent, "mytsapp", ".claude", "agents", "dev.md")
-	mustExist(t, parent, "mytsapp", ".claude", "agents", "reviewer.md")
+	mustExist(t, parent, "mytsapp", "AGENTS-VIBEWARDEN.md")
+	mustExist(t, parent, "mytsapp", "AGENTS.md")
 
 	// Verify wrapper scripts.
 	mustExist(t, parent, "mytsapp", ".vibewarden-version")
@@ -494,7 +491,7 @@ func TestInitProject_WithRealFS_Description(t *testing.T) {
 			mustContain: []string{"a payment processing service"},
 		},
 		{
-			file:        filepath.Join(parent, "realwithDesc", ".claude", "agents", "architect.md"),
+			file:        filepath.Join(parent, "realwithDesc", "AGENTS-VIBEWARDEN.md"),
 			mustContain: []string{"a payment processing service"},
 		},
 	}
@@ -869,6 +866,228 @@ func TestInitProject_CLAUDEmd_ExistError(t *testing.T) {
 	}
 	if !errors.Is(err, os.ErrExist) {
 		t.Errorf("expected errors.Is(err, os.ErrExist), got: %v", err)
+	}
+}
+
+// TestInitProject_CreatesAgentsVibewardenMD verifies that AGENTS-VIBEWARDEN.md
+// is created and contains content from both the shared base template and the
+// language-specific code conventions template.
+func TestInitProject_CreatesAgentsVibewardenMD(t *testing.T) {
+	renderer := newTrackingRenderer()
+	svc := scaffoldapp.NewInitProjectService(renderer)
+
+	parent := t.TempDir()
+	opts := scaffoldapp.InitProjectOptions{
+		ProjectName: "agentsvw",
+		Language:    domainscaffold.LanguageGo,
+		Port:        3000,
+	}
+
+	if err := svc.InitProject(context.Background(), parent, opts); err != nil {
+		t.Fatalf("InitProject() unexpected error: %v", err)
+	}
+
+	mustExist(t, parent, "agentsvw", "AGENTS-VIBEWARDEN.md")
+
+	// Both templates must be rendered via Render (not RenderToFile).
+	if !containsTemplate(renderer.renderCalls, "agents/agents-vibewarden.md.tmpl") {
+		t.Errorf("expected agents/agents-vibewarden.md.tmpl to be rendered; Render calls: %v", renderer.renderCalls)
+	}
+	// Language-specific conventions are appended from the claude.md template.
+	if !containsTemplate(renderer.renderCalls, "go/claude.md.tmpl") {
+		t.Errorf("expected go/claude.md.tmpl to be rendered; Render calls: %v", renderer.renderCalls)
+	}
+
+	// AGENTS-VIBEWARDEN.md must contain output from both renders.
+	data, err := os.ReadFile(filepath.Join(parent, "agentsvw", "AGENTS-VIBEWARDEN.md"))
+	if err != nil {
+		t.Fatalf("reading AGENTS-VIBEWARDEN.md: %v", err)
+	}
+	content := string(data)
+	if !strings.Contains(content, "rendered:agents/agents-vibewarden.md.tmpl") {
+		t.Errorf("AGENTS-VIBEWARDEN.md missing shared base content; got:\n%s", content)
+	}
+	if !strings.Contains(content, "rendered:go/claude.md.tmpl") {
+		t.Errorf("AGENTS-VIBEWARDEN.md missing Go conventions content; got:\n%s", content)
+	}
+}
+
+// TestInitProject_CreatesAgentsMD_WhenMissing verifies that AGENTS.md is created
+// from the agents/agents.md.tmpl template when it does not already exist.
+func TestInitProject_CreatesAgentsMD_WhenMissing(t *testing.T) {
+	renderer := newTrackingRenderer()
+	svc := scaffoldapp.NewInitProjectService(renderer)
+
+	parent := t.TempDir()
+	opts := scaffoldapp.InitProjectOptions{
+		ProjectName: "agentsmd",
+		Language:    domainscaffold.LanguageGo,
+		Port:        3000,
+	}
+
+	if err := svc.InitProject(context.Background(), parent, opts); err != nil {
+		t.Fatalf("InitProject() unexpected error: %v", err)
+	}
+
+	mustExist(t, parent, "agentsmd", "AGENTS.md")
+
+	if !containsTemplate(renderer.renderToFileCalls, "agents/agents.md.tmpl") {
+		t.Errorf("expected agents/agents.md.tmpl to be used; RenderToFile calls: %v", renderer.renderToFileCalls)
+	}
+}
+
+// TestInitProject_AppendsToAgentsMD_WhenMissingRef verifies that when AGENTS.md
+// already exists but does not contain a reference to AGENTS-VIBEWARDEN.md, the
+// reference is appended.
+func TestInitProject_AppendsToAgentsMD_WhenMissingRef(t *testing.T) {
+	renderer := newFakeRenderer()
+	svc := scaffoldapp.NewInitProjectService(renderer)
+
+	parent := t.TempDir()
+	projectDir := filepath.Join(parent, "appendtest")
+	if err := os.MkdirAll(projectDir, 0o750); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+	existing := "# My Agent Instructions\n\nSome custom instructions here.\n"
+	agentsMDPath := filepath.Join(projectDir, "AGENTS.md")
+	if err := os.WriteFile(agentsMDPath, []byte(existing), 0o600); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+
+	opts := scaffoldapp.InitProjectOptions{
+		ProjectName: "appendtest",
+		Language:    domainscaffold.LanguageGo,
+		Port:        3000,
+		Force:       true,
+	}
+
+	if err := svc.InitProject(context.Background(), parent, opts); err != nil {
+		t.Fatalf("InitProject() unexpected error: %v", err)
+	}
+
+	data, err := os.ReadFile(agentsMDPath)
+	if err != nil {
+		t.Fatalf("reading AGENTS.md: %v", err)
+	}
+	content := string(data)
+	if !strings.Contains(content, "AGENTS-VIBEWARDEN.md") {
+		t.Errorf("AGENTS.md missing reference after append; content:\n%s", content)
+	}
+	// Original content must be preserved.
+	if !strings.Contains(content, "Some custom instructions here.") {
+		t.Errorf("AGENTS.md lost original content; content:\n%s", content)
+	}
+}
+
+// TestInitProject_PreservesAgentsMD_WhenHasRef verifies that AGENTS.md is left
+// unchanged when it already contains a reference to AGENTS-VIBEWARDEN.md.
+func TestInitProject_PreservesAgentsMD_WhenHasRef(t *testing.T) {
+	renderer := newFakeRenderer()
+	svc := scaffoldapp.NewInitProjectService(renderer)
+
+	parent := t.TempDir()
+	projectDir := filepath.Join(parent, "preservetest")
+	if err := os.MkdirAll(projectDir, 0o750); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+	existing := "# My Instructions\n\nSee [AGENTS-VIBEWARDEN.md](./AGENTS-VIBEWARDEN.md) for VibeWarden.\n"
+	agentsMDPath := filepath.Join(projectDir, "AGENTS.md")
+	if err := os.WriteFile(agentsMDPath, []byte(existing), 0o600); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+
+	opts := scaffoldapp.InitProjectOptions{
+		ProjectName: "preservetest",
+		Language:    domainscaffold.LanguageGo,
+		Port:        3000,
+		Force:       true,
+	}
+
+	if err := svc.InitProject(context.Background(), parent, opts); err != nil {
+		t.Fatalf("InitProject() unexpected error: %v", err)
+	}
+
+	data, err := os.ReadFile(agentsMDPath)
+	if err != nil {
+		t.Fatalf("reading AGENTS.md: %v", err)
+	}
+	// Content must be unchanged — no duplicate reference appended.
+	if string(data) != existing {
+		t.Errorf("AGENTS.md was modified unnecessarily:\ngot:  %q\nwant: %q", string(data), existing)
+	}
+}
+
+// TestInitProject_OverwritesAgentsVibewardenMD verifies that AGENTS-VIBEWARDEN.md
+// is overwritten even when opts.Force is false, because it is vibew-owned.
+func TestInitProject_OverwritesAgentsVibewardenMD(t *testing.T) {
+	renderer := newFakeRenderer()
+	svc := scaffoldapp.NewInitProjectService(renderer)
+
+	parent := t.TempDir()
+	projectDir := filepath.Join(parent, "overwritevw")
+	if err := os.MkdirAll(projectDir, 0o750); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+	// Write a stale AGENTS-VIBEWARDEN.md.
+	agentsVWPath := filepath.Join(projectDir, "AGENTS-VIBEWARDEN.md")
+	if err := os.WriteFile(agentsVWPath, []byte("old content"), 0o600); err != nil {
+		t.Fatalf("setup: %v", err)
+	}
+
+	opts := scaffoldapp.InitProjectOptions{
+		ProjectName: "overwritevw",
+		Language:    domainscaffold.LanguageGo,
+		Port:        3000,
+		Force:       true, // force needed for CLAUDE.md and other files
+	}
+
+	if err := svc.InitProject(context.Background(), parent, opts); err != nil {
+		t.Fatalf("InitProject() unexpected error: %v", err)
+	}
+
+	data, err := os.ReadFile(agentsVWPath)
+	if err != nil {
+		t.Fatalf("reading AGENTS-VIBEWARDEN.md: %v", err)
+	}
+	if string(data) == "old content" {
+		t.Error("AGENTS-VIBEWARDEN.md was not overwritten")
+	}
+}
+
+// TestInitProject_NoClaudeAgentsDir verifies that the .claude/agents/ directory
+// is NOT created for any language.
+func TestInitProject_NoClaudeAgentsDir(t *testing.T) {
+	tests := []struct {
+		name string
+		lang domainscaffold.Language
+		proj string
+	}{
+		{"go", domainscaffold.LanguageGo, "gonodir"},
+		{"kotlin", domainscaffold.LanguageKotlin, "ktnodir"},
+		{"typescript", domainscaffold.LanguageTypeScript, "tsnodir"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			renderer := newFakeRenderer()
+			svc := scaffoldapp.NewInitProjectService(renderer)
+
+			parent := t.TempDir()
+			opts := scaffoldapp.InitProjectOptions{
+				ProjectName: tt.proj,
+				Language:    tt.lang,
+				Port:        3000,
+			}
+
+			if err := svc.InitProject(context.Background(), parent, opts); err != nil {
+				t.Fatalf("InitProject() unexpected error: %v", err)
+			}
+
+			claudeAgentsDir := filepath.Join(parent, tt.proj, ".claude", "agents")
+			if _, err := os.Stat(claudeAgentsDir); err == nil {
+				t.Errorf(".claude/agents/ directory must not be created, but it exists at %s", claudeAgentsDir)
+			}
+		})
 	}
 }
 
