@@ -116,12 +116,12 @@ func (h *WebhookSignatureHandler) Provision(_ gocaddy.Context) error {
 // ServeHTTP implements caddyhttp.MiddlewareHandler.
 // It delegates to the compiled Go middleware handler.
 func (h *WebhookSignatureHandler) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddyhttp.Handler) error {
+	var nextErr error
 	stdNext := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		//nolint:errcheck
-		_ = next.ServeHTTP(w, r)
+		nextErr = next.ServeHTTP(w, r)
 	})
 	h.handler(stdNext).ServeHTTP(w, r)
-	return nil
+	return nextErr
 }
 
 // validateProvider returns an error when the provider string is not one of
