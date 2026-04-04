@@ -16,6 +16,7 @@ import (
 	sechdrs "github.com/vibewarden/vibewarden/internal/plugins/securityheaders"
 	usermgmtplugin "github.com/vibewarden/vibewarden/internal/plugins/usermgmt"
 	wafplugin "github.com/vibewarden/vibewarden/internal/plugins/waf"
+	webhooksigplugin "github.com/vibewarden/vibewarden/internal/plugins/webhooksig"
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
 
@@ -147,6 +148,23 @@ func RegisterBuiltinPlugins(
 		LogsOTLPEnabled:   cfg.Telemetry.Logs.OTLP,
 		TracesEnabled:     cfg.Telemetry.Traces.Enabled,
 	}, logger))
+
+	// Webhook signature verification — priority 35 (after admin auth at 30, before rate limiting at 50)
+	{
+		paths := make([]webhooksigplugin.RuleConfig, 0, len(cfg.Webhooks.SignatureVerification.Paths))
+		for _, p := range cfg.Webhooks.SignatureVerification.Paths {
+			paths = append(paths, webhooksigplugin.RuleConfig{
+				Path:         p.Path,
+				Provider:     p.Provider,
+				SecretEnvVar: p.SecretEnvVar,
+				Header:       p.Header,
+			})
+		}
+		registry.Register(webhooksigplugin.New(webhooksigplugin.Config{
+			Enabled: cfg.Webhooks.SignatureVerification.Enabled,
+			Paths:   paths,
+		}, logger))
+	}
 
 	// Rate limiting — priority 50
 	//
