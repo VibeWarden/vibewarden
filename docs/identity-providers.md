@@ -496,6 +496,166 @@ If you started with `auth.mode: kratos` and want to move to JWT/OIDC:
 
 ---
 
+## Dev/Prod auth split
+
+Your application code never needs to know which auth provider is active. The
+app reads the same `X-User-Id`, `X-User-Email`, and `X-User-Verified` headers
+in every environment. Only the VibeWarden config changes between development
+and production.
+
+### The pattern
+
+| Environment | Auth mode | Why |
+|-------------|-----------|-----|
+| `dev` | `kratos` | Local login/registration/password-reset flows without cloud accounts or internet access |
+| `prod` | `jwt` | Validate tokens from your cloud IAM — no extra infrastructure to run |
+
+### Development config (`vibewarden.dev.yaml`)
+
+Use Kratos for a fully local auth loop. Kratos handles registration, login,
+password reset, and email verification inside your Docker Compose stack.
+
+```yaml
+# vibewarden.dev.yaml
+server:
+  upstream: "http://localhost:3000"
+  listen: ":8080"
+
+auth:
+  mode: kratos
+
+kratos:
+  public_url: "http://127.0.0.1:4433"
+  admin_url: "http://127.0.0.1:4434"
+  # external: false  — VibeWarden starts Kratos for you (default)
+
+plugins:
+  user-management:
+    enabled: true
+    adapter: postgres
+```
+
+No cloud accounts, no API keys, no internet access required.
+
+### Production config (`vibewarden.yaml`)
+
+Validate JWTs from your cloud IAM. Pick the example that matches your provider.
+
+**Amazon Cognito:**
+
+```yaml
+# vibewarden.yaml
+server:
+  upstream: "http://localhost:3000"
+  listen: ":8080"
+
+auth:
+  mode: jwt
+  jwt:
+    jwks_url: "https://cognito-idp.<region>.amazonaws.com/<user-pool-id>/.well-known/jwks.json"
+    issuer: "https://cognito-idp.<region>.amazonaws.com/<user-pool-id>"
+    audience: "<app-client-id>"
+    claims_to_headers:
+      sub: X-User-Id
+      email: X-User-Email
+      email_verified: X-User-Verified
+```
+
+**Auth0:**
+
+```yaml
+auth:
+  mode: jwt
+  jwt:
+    jwks_url: "https://<tenant>.us.auth0.com/.well-known/jwks.json"
+    issuer: "https://<tenant>.us.auth0.com/"
+    audience: "https://api.your-app.com"
+    claims_to_headers:
+      sub: X-User-Id
+      email: X-User-Email
+      email_verified: X-User-Verified
+```
+
+**Azure AD (Microsoft Entra ID):**
+
+```yaml
+auth:
+  mode: jwt
+  jwt:
+    jwks_url: "https://login.microsoftonline.com/<tenant-id>/discovery/v2.0/keys"
+    issuer: "https://login.microsoftonline.com/<tenant-id>/v2.0"
+    audience: "<application-client-id>"
+    claims_to_headers:
+      sub: X-User-Id
+      email: X-User-Email
+      name: X-User-Name
+```
+
+Replace the angle-bracket placeholders with your real values. The JWKS URLs
+above are the canonical patterns published by each provider — they do not
+change unless you migrate regions or tenants.
+
+### Switching via the `--config` flag
+
+Pass the config file at startup. No code changes, no environment variables
+required:
+
+```bash
+# development
+vibewarden start --config vibewarden.dev.yaml
+
+# production (default name picked up automatically)
+vibewarden start
+```
+
+Keep both files in version control. Do not commit secrets — use environment
+variable interpolation for sensitive values (see below).
+
+### Switching via environment variables
+
+VibeWarden interpolates `${VAR}` placeholders in the config file. Set a
+single env var to select the provider, and override only the fields that
+change between environments:
+
+```yaml
+# vibewarden.yaml — works in dev and prod
+auth:
+  mode: jwt
+  jwt:
+    jwks_url: "${AUTH_JWKS_URL}"
+    issuer: "${AUTH_ISSUER}"
+    audience: "${AUTH_AUDIENCE}"
+    claims_to_headers:
+      sub: X-User-Id
+      email: X-User-Email
+      email_verified: X-User-Verified
+```
+
+Then export the appropriate values per environment:
+
+```bash
+# .env.dev
+AUTH_JWKS_URL=http://127.0.0.1:4433/.well-known/jwks.json
+AUTH_ISSUER=http://127.0.0.1:4433
+AUTH_AUDIENCE=vibewarden-dev
+
+# .env.prod
+AUTH_JWKS_URL=https://cognito-idp.eu-west-1.amazonaws.com/eu-west-1_XXXXXX/.well-known/jwks.json
+AUTH_ISSUER=https://cognito-idp.eu-west-1.amazonaws.com/eu-west-1_XXXXXX
+AUTH_AUDIENCE=6rp8xxxxxxxxxxxxxxxxxxxxxxxx
+```
+
+### Key message
+
+**Same app code. Same headers. Only config changes.**
+
+Your upstream receives `X-User-Id`, `X-User-Email`, and `X-User-Verified`
+regardless of whether VibeWarden is running in Kratos mode locally or
+validating Cognito JWTs in production. The auth split is entirely a
+deployment-time concern.
+
+---
+
 ## AI-agent-readable summary
 
 ```json
@@ -513,6 +673,12 @@ If you started with `auth.mode: kratos` and want to move to JWT/OIDC:
   },
   "provider_examples": ["auth0", "keycloak", "firebase", "cognito", "okta", "supabase"],
   "kratos_use_cases": ["browser_flows", "mfa", "social_login", "self_hosted_accounts"],
-  "api_key_use_cases": ["machine_to_machine", "ci_cd", "service_accounts"]
+  "api_key_use_cases": ["machine_to_machine", "ci_cd", "service_accounts"],
+  "dev_prod_split": {
+    "dev_mode": "kratos",
+    "prod_mode": "jwt",
+    "switching_mechanisms": ["--config flag", "env var interpolation"],
+    "upstream_headers_unchanged": true
+  }
 }
 ```
