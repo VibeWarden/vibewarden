@@ -40,10 +40,8 @@ type RPCError struct {
 // JSON-RPC 2.0 error codes.
 const (
 	errCodeParse          = -32700
-	errCodeInvalidRequest = -32600
 	errCodeMethodNotFound = -32601
 	errCodeInvalidParams  = -32602
-	errCodeInternal       = -32603
 )
 
 // ToolDefinition describes an MCP tool that the server exposes.
