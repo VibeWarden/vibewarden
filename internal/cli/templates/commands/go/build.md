@@ -4,12 +4,6 @@ Build the Go application. Run:
 go build ./...
 ```
 
-To build the main binary:
-
-```bash
-go build -o bin/app ./cmd/app
-```
-
 After building locally, package it into a Docker image using:
 
 ```bash
