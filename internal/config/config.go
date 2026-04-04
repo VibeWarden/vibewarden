@@ -119,6 +119,20 @@ type Config struct {
 	// ResponseHeaders configures arbitrary response header modifications applied
 	// after all other middleware including security headers.
 	ResponseHeaders ResponseHeadersConfig `mapstructure:"response_headers"`
+
+	// Watch configures the config file watcher for hot reload.
+	Watch WatchConfig `mapstructure:"watch"`
+}
+
+// WatchConfig holds settings for the config file watcher.
+type WatchConfig struct {
+	// Enabled toggles automatic config reload on file changes. Default: true.
+	Enabled bool `mapstructure:"enabled"`
+
+	// Debounce is the duration to wait after the last file change before
+	// triggering a reload, expressed as a Go duration string (e.g. "500ms").
+	// Default: "500ms".
+	Debounce string `mapstructure:"debounce"`
 }
 
 // InternalNetworkName returns the Docker network name used for internal
@@ -2189,6 +2203,8 @@ func Load(configPath string) (*Config, error) {
 	v.SetDefault("error_pages.directory", "")
 	v.SetDefault("compression.enabled", true)
 	v.SetDefault("compression.algorithms", []string{"zstd", "gzip"})
+	v.SetDefault("watch.enabled", true)
+	v.SetDefault("watch.debounce", "500ms")
 
 	// Config file
 	if configPath != "" {

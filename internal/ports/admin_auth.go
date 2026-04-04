@@ -14,4 +14,9 @@ type AdminAuthConfig struct {
 	// Enabled is true; if it is empty with Enabled true the middleware returns
 	// 500 to surface the misconfiguration.
 	Token string
+
+	// ConfigPath is an additional path prefix that the middleware protects
+	// with the same bearer token. When empty only AdminPath is protected.
+	// Used to guard /_vibewarden/config/* alongside /_vibewarden/admin/*.
+	ConfigPath string
 }

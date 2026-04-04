@@ -10,12 +10,16 @@ import (
 	"time"
 
 	caddyadapter "github.com/vibewarden/vibewarden/internal/adapters/caddy"
+	fsnotifyadapter "github.com/vibewarden/vibewarden/internal/adapters/fsnotify"
 	logadapter "github.com/vibewarden/vibewarden/internal/adapters/log"
 	pgadapter "github.com/vibewarden/vibewarden/internal/adapters/postgres"
 	migratesvc "github.com/vibewarden/vibewarden/internal/app/migrate"
 	"github.com/vibewarden/vibewarden/internal/app/proxy"
+	reloadsvc "github.com/vibewarden/vibewarden/internal/app/reload"
 	"github.com/vibewarden/vibewarden/internal/config"
 	"github.com/vibewarden/vibewarden/internal/plugins"
+	usermgmtplugin "github.com/vibewarden/vibewarden/internal/plugins/usermgmt"
+	"github.com/vibewarden/vibewarden/internal/ports"
 	"github.com/vibewarden/vibewarden/migrations"
 )
 
@@ -149,6 +153,73 @@ func RunServe(ctx context.Context, opts Options, extraPlugins ...plugins.PluginR
 
 	// Create Caddy adapter and proxy service.
 	adapter := caddyadapter.NewAdapter(proxyCfg, logger, eventLogger)
+
+	// Build the reload service. The rebuildFn captures the registry and version
+	// so that a reload can rebuild ProxyConfig without needing to re-initialise
+	// plugins (which must not restart on hot reload).
+	rebuildFn := func(newCfg *config.Config) *ports.ProxyConfig {
+		return buildProxyConfig(newCfg, registry, opts.Version)
+	}
+
+	reloadService := reloadsvc.NewService(
+		opts.ConfigPath,
+		cfg,
+		adapter,
+		eventLogger,
+		logger,
+		rebuildFn,
+	)
+
+	// Inject the reload service into the user-management plugin's admin
+	// handlers so that /_vibewarden/config/reload and /_vibewarden/config
+	// are accessible via the admin API.
+	for _, p := range registry.Plugins() {
+		if ump, ok := p.(*usermgmtplugin.Plugin); ok {
+			ump.InjectReloader(reloadService)
+			break
+		}
+	}
+
+	// Start file watcher goroutine when watch is enabled.
+	if cfg.Watch.Enabled {
+		debounce, err := time.ParseDuration(cfg.Watch.Debounce)
+		if err != nil {
+			logger.Warn("invalid watch.debounce, using default 500ms",
+				slog.String("debounce", cfg.Watch.Debounce),
+				slog.String("error", err.Error()),
+			)
+			debounce = 500 * time.Millisecond
+		}
+
+		watcher := fsnotifyadapter.NewWatcher(logger, ports.WithDebounce(debounce))
+		watchPath := opts.ConfigPath
+		if watchPath == "" {
+			watchPath = "vibewarden.yaml"
+		}
+
+		ch, watchErr := watcher.Watch(ctx, watchPath)
+		if watchErr != nil {
+			// Non-fatal: log the error but continue without file watching.
+			logger.Warn("config file watcher failed to start",
+				slog.String("path", watchPath),
+				slog.String("error", watchErr.Error()),
+			)
+		} else {
+			go func() {
+				for range ch {
+					logger.Info("config file changed, triggering reload",
+						slog.String("path", watchPath),
+					)
+					if reloadErr := reloadService.Reload(ctx, "file_watcher"); reloadErr != nil {
+						logger.Error("hot reload failed",
+							slog.String("error", reloadErr.Error()),
+						)
+					}
+				}
+			}()
+		}
+	}
+
 	svc := proxy.NewService(adapter, logger)
 
 	if err := svc.Run(ctx); err != nil {

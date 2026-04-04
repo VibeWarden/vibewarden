@@ -138,6 +138,14 @@ const (
 	// when a TLS certificate expires within 7 days. The payload includes the
 	// certificate subject, issuer, expiry time, and days remaining.
 	EventTypeTLSCertExpiryCritical = "tls.cert_expiry_critical"
+
+	// EventTypeConfigReloaded is emitted when configuration is successfully
+	// reloaded from disk and applied to all components.
+	EventTypeConfigReloaded = "config.reloaded"
+
+	// EventTypeConfigReloadFailed is emitted when configuration reload fails
+	// due to validation errors or other issues. The old config remains active.
+	EventTypeConfigReloadFailed = "config.reload_failed"
 )
 
 // Event is the base structured log event.

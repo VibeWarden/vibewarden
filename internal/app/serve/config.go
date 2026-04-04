@@ -112,8 +112,9 @@ func buildProxyConfig(cfg *config.Config, registry *plugins.Registry, version st
 		},
 		Metrics: metricsCfg,
 		AdminAuth: ports.AdminAuthConfig{
-			Enabled: cfg.Admin.Enabled,
-			Token:   cfg.Admin.Token,
+			Enabled:    cfg.Admin.Enabled,
+			Token:      cfg.Admin.Token,
+			ConfigPath: "/_vibewarden/config/",
 		},
 		Admin:    adminCfg,
 		BodySize: buildBodySizePortsConfig(cfg),
