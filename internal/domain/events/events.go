@@ -146,6 +146,14 @@ const (
 	// EventTypeConfigReloadFailed is emitted when configuration reload fails
 	// due to validation errors or other issues. The old config remains active.
 	EventTypeConfigReloadFailed = "config.reload_failed"
+
+	// EventTypeWebhookSignatureValid is emitted when an inbound webhook request
+	// carries a valid signature that matches the configured secret.
+	EventTypeWebhookSignatureValid = "webhook.signature_valid"
+
+	// EventTypeWebhookSignatureInvalid is emitted when an inbound webhook request
+	// carries an invalid or missing signature. The request is rejected with 401.
+	EventTypeWebhookSignatureInvalid = "webhook.signature_invalid"
 )
 
 // Event is the base structured log event.
