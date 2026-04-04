@@ -113,7 +113,8 @@ The command creates a project directory containing:
   - Minimal app source code that compiles and runs immediately
   - vibewarden.yaml (TLS self-signed, rate limiting enabled)
   - .vibewarden-version (pins the vibew version for this project)
-  - .claude/agents/ with architect, developer, and reviewer agent files
+  - AGENTS-VIBEWARDEN.md with all agent instructions (auto-generated, vibew-owned)
+  - AGENTS.md with a reference to AGENTS-VIBEWARDEN.md (user-owned)
   - CLAUDE.md with full vibew CLI reference
   - PROJECT.md with project description (when --describe is given)
   - Dockerfile
@@ -278,7 +279,8 @@ func printInitSuccessMessage(cmd *cobra.Command, projectName string, opts scaffo
 	if opts.Description != "" {
 		fmt.Fprintf(w, "  PROJECT.md               Project description\n")
 	}
-	fmt.Fprintf(w, "  .claude/agents/          Architect, developer, reviewer agents\n")
+	fmt.Fprintf(w, "  AGENTS-VIBEWARDEN.md     Agent instructions (vibew-owned, auto-generated)\n")
+	fmt.Fprintf(w, "  AGENTS.md                Agent instructions entry point (user-owned)\n")
 	fmt.Fprintf(w, "  Dockerfile               Container build file\n")
 	fmt.Fprintf(w, "  .gitignore               Git ignore rules\n")
 	fmt.Fprintln(w, "")

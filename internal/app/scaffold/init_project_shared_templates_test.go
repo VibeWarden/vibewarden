@@ -54,11 +54,9 @@ func containsTemplate(calls []string, templateName string) bool {
 	return false
 }
 
-// TestInitProject_UsesSharedArchitectTemplate verifies that architect.md is
-// rendered from the language-agnostic agents/ template, not from go/.
-// This ensures that adding a new language pack does not require duplicating the
-// architect.md template.
-func TestInitProject_UsesSharedArchitectTemplate(t *testing.T) {
+// TestInitProject_UsesAgentsVibewardenTemplate verifies that AGENTS-VIBEWARDEN.md
+// is rendered from the shared agents/agents-vibewarden.md.tmpl template.
+func TestInitProject_UsesAgentsVibewardenTemplate(t *testing.T) {
 	renderer := newTrackingRenderer()
 	svc := scaffoldapp.NewInitProjectService(renderer)
 
@@ -73,17 +71,14 @@ func TestInitProject_UsesSharedArchitectTemplate(t *testing.T) {
 		t.Fatalf("InitProject() unexpected error: %v", err)
 	}
 
-	if !containsTemplate(renderer.renderToFileCalls, "agents/architect.md.tmpl") {
-		t.Errorf("expected agents/architect.md.tmpl to be used; RenderToFile calls: %v", renderer.renderToFileCalls)
-	}
-	if containsTemplate(renderer.renderToFileCalls, "go/architect.md.tmpl") {
-		t.Errorf("go/architect.md.tmpl must not be used; architect.md is a shared template")
+	if !containsTemplate(renderer.renderCalls, "agents/agents-vibewarden.md.tmpl") {
+		t.Errorf("expected agents/agents-vibewarden.md.tmpl to be used; Render calls: %v", renderer.renderCalls)
 	}
 }
 
-// TestInitProject_UsesSharedReviewerTemplate verifies that reviewer.md is
-// rendered from the language-agnostic agents/ template, not from go/.
-func TestInitProject_UsesSharedReviewerTemplate(t *testing.T) {
+// TestInitProject_UsesAgentsMDTemplate verifies that agents/agents.md.tmpl is used
+// when creating a new AGENTS.md.
+func TestInitProject_UsesAgentsMDTemplate(t *testing.T) {
 	renderer := newTrackingRenderer()
 	svc := scaffoldapp.NewInitProjectService(renderer)
 
@@ -98,33 +93,8 @@ func TestInitProject_UsesSharedReviewerTemplate(t *testing.T) {
 		t.Fatalf("InitProject() unexpected error: %v", err)
 	}
 
-	if !containsTemplate(renderer.renderToFileCalls, "agents/reviewer.md.tmpl") {
-		t.Errorf("expected agents/reviewer.md.tmpl to be used; RenderToFile calls: %v", renderer.renderToFileCalls)
-	}
-	if containsTemplate(renderer.renderToFileCalls, "go/reviewer.md.tmpl") {
-		t.Errorf("go/reviewer.md.tmpl must not be used; reviewer.md is a shared template")
-	}
-}
-
-// TestInitProject_UsesGoDevTemplate verifies that dev.md is rendered from the
-// Go-language-specific go/ template.
-func TestInitProject_UsesGoDevTemplate(t *testing.T) {
-	renderer := newTrackingRenderer()
-	svc := scaffoldapp.NewInitProjectService(renderer)
-
-	parent := t.TempDir()
-	opts := scaffoldapp.InitProjectOptions{
-		ProjectName: "myapp",
-		Language:    domainscaffold.LanguageGo,
-		Port:        3000,
-	}
-
-	if err := svc.InitProject(context.Background(), parent, opts); err != nil {
-		t.Fatalf("InitProject() unexpected error: %v", err)
-	}
-
-	if !containsTemplate(renderer.renderToFileCalls, "go/dev.md.tmpl") {
-		t.Errorf("expected go/dev.md.tmpl to be used; RenderToFile calls: %v", renderer.renderToFileCalls)
+	if !containsTemplate(renderer.renderToFileCalls, "agents/agents.md.tmpl") {
+		t.Errorf("expected agents/agents.md.tmpl to be used; RenderToFile calls: %v", renderer.renderToFileCalls)
 	}
 }
 
@@ -172,31 +142,6 @@ func TestInitProject_CLAUDEmd_UsesBothSharedAndGoTemplates(t *testing.T) {
 	}
 }
 
-// TestInitProject_Kotlin_UsesKotlinDevTemplate verifies that dev.md for a Kotlin
-// project is rendered from the Kotlin-language-specific kotlin/ template.
-func TestInitProject_Kotlin_UsesKotlinDevTemplate(t *testing.T) {
-	renderer := newTrackingRenderer()
-	svc := scaffoldapp.NewInitProjectService(renderer)
-
-	parent := t.TempDir()
-	opts := scaffoldapp.InitProjectOptions{
-		ProjectName: "ktapp",
-		Language:    domainscaffold.LanguageKotlin,
-		Port:        3000,
-	}
-
-	if err := svc.InitProject(context.Background(), parent, opts); err != nil {
-		t.Fatalf("InitProject() Kotlin unexpected error: %v", err)
-	}
-
-	if !containsTemplate(renderer.renderToFileCalls, "kotlin/dev.md.tmpl") {
-		t.Errorf("expected kotlin/dev.md.tmpl to be used; RenderToFile calls: %v", renderer.renderToFileCalls)
-	}
-	if containsTemplate(renderer.renderToFileCalls, "go/dev.md.tmpl") {
-		t.Errorf("go/dev.md.tmpl must not be used for a Kotlin project; RenderToFile calls: %v", renderer.renderToFileCalls)
-	}
-}
-
 // TestInitProject_Kotlin_CLAUDEmd_UsesBothSharedAndKotlinTemplates verifies that
 // CLAUDE.md for a Kotlin project combines the shared agents/claude.md.tmpl with
 // the Kotlin-specific kotlin/claude.md.tmpl appendix.
@@ -240,28 +185,6 @@ func TestInitProject_Kotlin_CLAUDEmd_UsesBothSharedAndKotlinTemplates(t *testing
 	}
 }
 
-// TestInitProject_Kotlin_UsesSharedArchitectTemplate verifies that architect.md
-// for a Kotlin project is rendered from the shared agents/ template.
-func TestInitProject_Kotlin_UsesSharedArchitectTemplate(t *testing.T) {
-	renderer := newTrackingRenderer()
-	svc := scaffoldapp.NewInitProjectService(renderer)
-
-	parent := t.TempDir()
-	opts := scaffoldapp.InitProjectOptions{
-		ProjectName: "ktapp",
-		Language:    domainscaffold.LanguageKotlin,
-		Port:        3000,
-	}
-
-	if err := svc.InitProject(context.Background(), parent, opts); err != nil {
-		t.Fatalf("InitProject() Kotlin unexpected error: %v", err)
-	}
-
-	if !containsTemplate(renderer.renderToFileCalls, "agents/architect.md.tmpl") {
-		t.Errorf("expected agents/architect.md.tmpl to be used; RenderToFile calls: %v", renderer.renderToFileCalls)
-	}
-}
-
 // TestInitProject_KotlinWithRealFS verifies that the Kotlin language pack
 // templates render correctly with the real embedded FS.
 func TestInitProject_KotlinWithRealFS(t *testing.T) {
@@ -295,15 +218,15 @@ func TestInitProject_KotlinWithRealFS(t *testing.T) {
 			},
 		},
 		{
-			file: filepath.Join(parent, "ktreal", ".claude", "agents", "dev.md"),
+			file: filepath.Join(parent, "ktreal", "AGENTS-VIBEWARDEN.md"),
 			mustContain: []string{
+				"VibeWarden Sidecar",
 				"vibew CLI Reference",
 				"vibew dev",
-				// Kotlin idioms:
-				"Kotlin idioms",
+				// Kotlin-specific conventions appended from kotlin/claude.md.tmpl:
 				"ktlint",
-				"coroutine context",
-				"Null safety",
+				"data class",
+				"sealed class",
 			},
 		},
 		{
@@ -354,34 +277,6 @@ func TestInitProject_KotlinWithRealFS(t *testing.T) {
 				}
 			}
 		})
-	}
-}
-
-// TestInitProject_TypeScript_UsesTypeScriptDevTemplate verifies that dev.md for a
-// TypeScript project is rendered from the TypeScript-specific typescript/ template.
-func TestInitProject_TypeScript_UsesTypeScriptDevTemplate(t *testing.T) {
-	renderer := newTrackingRenderer()
-	svc := scaffoldapp.NewInitProjectService(renderer)
-
-	parent := t.TempDir()
-	opts := scaffoldapp.InitProjectOptions{
-		ProjectName: "tsapp",
-		Language:    domainscaffold.LanguageTypeScript,
-		Port:        3000,
-	}
-
-	if err := svc.InitProject(context.Background(), parent, opts); err != nil {
-		t.Fatalf("InitProject() TypeScript unexpected error: %v", err)
-	}
-
-	if !containsTemplate(renderer.renderToFileCalls, "typescript/dev.md.tmpl") {
-		t.Errorf("expected typescript/dev.md.tmpl to be used; RenderToFile calls: %v", renderer.renderToFileCalls)
-	}
-	if containsTemplate(renderer.renderToFileCalls, "go/dev.md.tmpl") {
-		t.Errorf("go/dev.md.tmpl must not be used for a TypeScript project; RenderToFile calls: %v", renderer.renderToFileCalls)
-	}
-	if containsTemplate(renderer.renderToFileCalls, "kotlin/dev.md.tmpl") {
-		t.Errorf("kotlin/dev.md.tmpl must not be used for a TypeScript project; RenderToFile calls: %v", renderer.renderToFileCalls)
 	}
 }
 
@@ -466,16 +361,15 @@ func TestInitProject_TypeScript_WithRealFS(t *testing.T) {
 			},
 		},
 		{
-			file: filepath.Join(parent, "tsreal", ".claude", "agents", "dev.md"),
+			file: filepath.Join(parent, "tsreal", "AGENTS-VIBEWARDEN.md"),
 			mustContain: []string{
+				"VibeWarden Sidecar",
 				"vibew CLI Reference",
 				"vibew dev",
-				// TypeScript idioms:
-				"TypeScript idioms",
-				"Strict mode",
-				"Interface-based ports",
+				// TypeScript-specific conventions appended from typescript/claude.md.tmpl:
+				"strict mode",
 				"readonly",
-				"Discriminated unions",
+				"discriminated unions",
 				"ESLint",
 			},
 		},
@@ -533,10 +427,9 @@ func TestInitProject_TypeScript_WithRealFS(t *testing.T) {
 	}
 }
 
-// TestInitProject_SharedTemplatesWithRealFS verifies that the shared agent
-// templates (architect.md, reviewer.md, claude.md) render correctly with the
-// real embedded FS, producing output that contains the required vibew CLI
-// reference and sidecar boundary rules.
+// TestInitProject_SharedTemplatesWithRealFS verifies that AGENTS-VIBEWARDEN.md
+// and CLAUDE.md render correctly with the real embedded FS, producing output that
+// contains the required vibew CLI reference and sidecar boundary rules.
 func TestInitProject_SharedTemplatesWithRealFS(t *testing.T) {
 	templateadapter := mustBuildRealRenderer(t)
 	svc := scaffoldapp.NewInitProjectService(templateadapter)
@@ -558,29 +451,26 @@ func TestInitProject_SharedTemplatesWithRealFS(t *testing.T) {
 		mustNotContain []string
 	}{
 		{
-			file: filepath.Join(parent, "realapp", ".claude", "agents", "architect.md"),
+			file: filepath.Join(parent, "realapp", "AGENTS-VIBEWARDEN.md"),
 			mustContain: []string{
-				"Sidecar boundary rule",
+				"VibeWarden Sidecar",
+				"Security boundary rule",
 				"vibew CLI Reference",
 				"vibew dev",
 				"vibew doctor",
 				"vibew token",
-				"vibew secret get",
+				"vibew secret get/set/list",
 				"TLS termination",
 				"App code focuses on",
+				// Go-specific conventions appended by go/claude.md.tmpl:
+				"Code conventions",
+				"gofmt",
 			},
 		},
 		{
-			file: filepath.Join(parent, "realapp", ".claude", "agents", "reviewer.md"),
+			file: filepath.Join(parent, "realapp", "AGENTS.md"),
 			mustContain: []string{
-				"Sidecar reimplementation rule",
-				"REJECT",
-				"vibew CLI Reference",
-				"vibew dev",
-				"vibew doctor",
-				"Custom rate limiter",
-				"Custom auth middleware",
-				"TLS configuration in app code",
+				"AGENTS-VIBEWARDEN.md",
 			},
 		},
 		{
@@ -593,17 +483,6 @@ func TestInitProject_SharedTemplatesWithRealFS(t *testing.T) {
 				"VibeWarden",
 				// Go-specific conventions appended by go/claude.md.tmpl:
 				"Code conventions",
-				"gofmt",
-			},
-		},
-		{
-			file: filepath.Join(parent, "realapp", ".claude", "agents", "dev.md"),
-			mustContain: []string{
-				"vibew CLI Reference",
-				"vibew token",
-				"vibew doctor",
-				// Go-specific idioms:
-				"Go idioms",
 				"gofmt",
 			},
 		},
