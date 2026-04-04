@@ -38,6 +38,23 @@ The open-source core is Apache 2.0 — free forever. A Pro tier (fleet dashboard
 
 Yes, as a sidecar container in the same pod as your application. A Helm chart is planned. For now, deploy the Docker image directly.
 
+## Can I use a different auth provider in dev vs prod?
+
+Yes. This is the recommended pattern. Use `auth.mode: kratos` locally for a
+full self-contained auth loop (registration, login, password reset — no
+internet required), and `auth.mode: jwt` in production to validate tokens from
+your cloud IAM (Cognito, Auth0, Azure AD, etc.).
+
+Your application code does not change between environments. VibeWarden injects
+the same `X-User-Id`, `X-User-Email`, and `X-User-Verified` headers in both
+modes. Only the VibeWarden config differs.
+
+Switch between them with `vibewarden start --config vibewarden.dev.yaml` or
+via environment variable interpolation in a single shared config file.
+
+See the [Dev/Prod auth split](identity-providers.md#devprod-auth-split) section
+in the identity providers guide for full examples.
+
 ## Where do I report security vulnerabilities?
 
 See [SECURITY.md](https://github.com/vibewarden/vibewarden/blob/main/SECURITY.md). Use GitHub Security Advisories or email security@vibewarden.dev.
