@@ -32,6 +32,10 @@ type AdminAuthHandlerConfig struct {
 
 	// Token is the bearer token clients must supply in X-Admin-Key.
 	Token string `json:"token"`
+
+	// ConfigPath is an additional path prefix to protect.
+	// When set, requests starting with this prefix are also authenticated.
+	ConfigPath string `json:"config_path,omitempty"`
 }
 
 // AdminAuthHandler is a Caddy HTTP handler module that enforces bearer-token
@@ -63,8 +67,9 @@ func (AdminAuthHandler) CaddyModule() gocaddy.ModuleInfo {
 // compiled middleware handler from the configuration.
 func (h *AdminAuthHandler) Provision(_ gocaddy.Context) error {
 	cfg := ports.AdminAuthConfig{
-		Enabled: h.Config.Enabled,
-		Token:   h.Config.Token,
+		Enabled:    h.Config.Enabled,
+		Token:      h.Config.Token,
+		ConfigPath: h.Config.ConfigPath,
 	}
 	auditLogger := auditadapter.NewJSONWriter(os.Stdout)
 	h.handler = middleware.AdminAuthMiddleware(cfg, auditLogger)

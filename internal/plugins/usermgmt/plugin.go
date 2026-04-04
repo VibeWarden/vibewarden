@@ -24,6 +24,12 @@ const adminPath = "/_vibewarden/admin/*"
 // adminPathPrefix is the route prefix used when matching admin requests.
 const adminPathPrefix = "/_vibewarden/admin/"
 
+// configPath is the URL path wildcard for config hot-reload endpoints.
+const configPath = "/_vibewarden/config/*"
+
+// configPathPrefix is the route prefix for config endpoints.
+const configPathPrefix = "/_vibewarden/config/"
+
 // healthCheckTimeout is the deadline used for Kratos admin API connectivity
 // probes performed during HealthCheck.
 const healthCheckTimeout = 3 * time.Second
@@ -152,6 +158,18 @@ func New(cfg Config, eventLogger ports.EventLogger, logger *slog.Logger) *Plugin
 // Name returns the canonical plugin identifier "user-management".
 // This must match the key used under plugins: in vibewarden.yaml.
 func (p *Plugin) Name() string { return "user-management" }
+
+// InjectReloader sets the ConfigReloader on the admin handlers after the
+// reload service has been constructed in serve.go. It must be called after
+// Init and before Start so that the handlers are updated before the admin
+// server begins serving requests.
+//
+// When the plugin is disabled this is a no-op.
+func (p *Plugin) InjectReloader(r ports.ConfigReloader) {
+	if p.handlers != nil {
+		p.handlers = p.handlers.WithReloader(r)
+	}
+}
 
 // Priority returns the plugin's initialisation priority.
 // User management is assigned priority 60 so it is initialised after TLS (10),
@@ -356,6 +374,23 @@ func (p *Plugin) ContributeCaddyRoutes() []ports.CaddyRoute {
 				},
 			},
 		},
+		{
+			MatchPath: configPath,
+			Priority:  61,
+			Handler: map[string]any{
+				"match": []map[string]any{
+					{"path": []string{configPath}},
+				},
+				"handle": []map[string]any{
+					{
+						"handler": "reverse_proxy",
+						"upstreams": []map[string]any{
+							{"dial": p.internalAddr},
+						},
+					},
+				},
+			},
+		},
 	}
 }
 
@@ -377,6 +412,7 @@ func (p *Plugin) ContributeCaddyHandlers() []ports.CaddyHandler {
 				"handler":     "admin_auth",
 				"admin_token": p.cfg.AdminToken,
 				"admin_path":  adminPathPrefix,
+				"config_path": configPathPrefix,
 			},
 			Priority: 60,
 		},

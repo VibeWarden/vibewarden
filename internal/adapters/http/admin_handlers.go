@@ -24,18 +24,28 @@ const (
 // AdminHandlers holds the HTTP handler functions for the admin user management API.
 // All routes are registered under the /_vibewarden/admin/ prefix.
 type AdminHandlers struct {
-	svc    ports.AdminService
-	logger *slog.Logger
+	svc      ports.AdminService
+	reloader ports.ConfigReloader
+	logger   *slog.Logger
 }
 
 // NewAdminHandlers creates a new AdminHandlers backed by the supplied service.
 // logger is used to record internal errors that must not be exposed to clients;
 // pass slog.Default() when no custom logger is available.
+//
+// reloader may be nil; when nil the config reload and inspection endpoints
+// return 503 Service Unavailable.
 func NewAdminHandlers(svc ports.AdminService, logger *slog.Logger) *AdminHandlers {
 	if logger == nil {
 		logger = slog.Default()
 	}
 	return &AdminHandlers{svc: svc, logger: logger}
+}
+
+// WithReloader returns a copy of h with the ConfigReloader set. It is called
+// from serve.go after the reload service has been constructed.
+func (h *AdminHandlers) WithReloader(r ports.ConfigReloader) *AdminHandlers {
+	return &AdminHandlers{svc: h.svc, reloader: r, logger: h.logger}
 }
 
 // RegisterRoutes registers all admin routes on mux using the Go 1.22+
@@ -49,6 +59,10 @@ func (h *AdminHandlers) RegisterRoutes(mux *http.ServeMux) {
 	// the ID segment manually.
 	mux.HandleFunc("GET /_vibewarden/admin/users/", h.getUser)
 	mux.HandleFunc("DELETE /_vibewarden/admin/users/", h.deactivateUser)
+
+	// Config hot-reload endpoints.
+	mux.HandleFunc("POST /_vibewarden/config/reload", h.reloadConfig)
+	mux.HandleFunc("GET /_vibewarden/config", h.getConfig)
 }
 
 // ------------------------------------------------------------------
@@ -300,4 +314,47 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 // machine-readable error code, and human-readable message.
 func writeError(w http.ResponseWriter, status int, code, message string) {
 	writeJSON(w, status, errorResponse{Error: code, Message: message})
+}
+
+// ------------------------------------------------------------------
+// Config reload handlers
+// ------------------------------------------------------------------
+
+// reloadConfig handles POST /_vibewarden/config/reload.
+// It triggers a configuration reload from disk and returns a ReloadResult.
+func (h *AdminHandlers) reloadConfig(w http.ResponseWriter, r *http.Request) {
+	if h.reloader == nil {
+		h.logger.Error("config reload requested but no reloader is configured")
+		writeJSON(w, http.StatusServiceUnavailable, ports.ReloadResult{
+			Success: false,
+			Message: "Config reload is not available",
+		})
+		return
+	}
+
+	if err := h.reloader.Reload(r.Context(), "admin_api"); err != nil {
+		h.logger.Error("config reload failed", slog.String("error", err.Error()))
+		writeJSON(w, http.StatusInternalServerError, ports.ReloadResult{
+			Success: false,
+			Message: "Reload failed: " + err.Error(),
+		})
+		return
+	}
+
+	writeJSON(w, http.StatusOK, ports.ReloadResult{
+		Success: true,
+		Message: "Configuration reloaded successfully",
+	})
+}
+
+// getConfig handles GET /_vibewarden/config.
+// It returns the current running configuration with sensitive fields redacted.
+func (h *AdminHandlers) getConfig(w http.ResponseWriter, r *http.Request) {
+	if h.reloader == nil {
+		h.logger.Error("config inspection requested but no reloader is configured")
+		writeError(w, http.StatusServiceUnavailable, "service_unavailable", "Config inspection is not available")
+		return
+	}
+
+	writeJSON(w, http.StatusOK, h.reloader.CurrentConfig())
 }

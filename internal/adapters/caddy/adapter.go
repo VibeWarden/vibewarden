@@ -92,6 +92,13 @@ func (a *Adapter) Reload(_ context.Context) error {
 	return nil
 }
 
+// UpdateConfig replaces the adapter's ProxyConfig with the supplied value.
+// It is called by the reload service immediately before Reload so that the
+// next caddy.Load call uses the updated settings.
+func (a *Adapter) UpdateConfig(cfg *ports.ProxyConfig) {
+	a.config = cfg
+}
+
 // buildConfigJSON constructs and marshals the Caddy JSON configuration.
 func (a *Adapter) buildConfigJSON() ([]byte, error) {
 	cfg, err := BuildCaddyConfig(a.config)

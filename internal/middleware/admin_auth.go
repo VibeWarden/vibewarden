@@ -19,11 +19,13 @@ const (
 // AdminAuthMiddleware returns HTTP middleware that protects all
 // /_vibewarden/admin/* endpoints with a static bearer token.
 //
+// When cfg.ConfigPath is set, that path prefix is also protected.
+//
 // Request handling rules:
-//   - Requests that do not start with /_vibewarden/admin/ pass through
-//     unchanged to the next handler.
-//   - When cfg.Enabled is false, all /_vibewarden/admin/* requests receive
-//     404 Not Found so the admin surface is not disclosed.
+//   - Requests that do not start with /_vibewarden/admin/ (or cfg.ConfigPath
+//     when set) pass through unchanged to the next handler.
+//   - When cfg.Enabled is false, all protected requests receive 404 Not Found
+//     so the admin surface is not disclosed.
 //   - When cfg.Enabled is true but cfg.Token is empty, all admin requests
 //     receive 500 Internal Server Error to surface the misconfiguration.
 //   - When the X-Admin-Key header is absent or does not match cfg.Token the
@@ -40,8 +42,10 @@ const (
 func AdminAuthMiddleware(cfg ports.AdminAuthConfig, auditLogger ports.AuditEventLogger) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			// Only apply to the admin path prefix.
-			if !strings.HasPrefix(r.URL.Path, adminPathPrefix) {
+			// Only apply to protected path prefixes.
+			isAdmin := strings.HasPrefix(r.URL.Path, adminPathPrefix)
+			isConfig := cfg.ConfigPath != "" && strings.HasPrefix(r.URL.Path, cfg.ConfigPath)
+			if !isAdmin && !isConfig {
 				next.ServeHTTP(w, r)
 				return
 			}

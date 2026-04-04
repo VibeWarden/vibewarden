@@ -473,3 +473,146 @@ func assertErrorResponse(t *testing.T, rec *httptest.ResponseRecorder, wantStatu
 		t.Errorf("error code = %v, want %q", resp["error"], wantCode)
 	}
 }
+
+// ------------------------------------------------------------------
+// Config reload handler tests
+// ------------------------------------------------------------------
+
+// fakeReloader is a test double for ports.ConfigReloader.
+type fakeReloader struct {
+	reloadErr     error
+	currentConfig ports.RedactedConfig
+	reloadCalled  bool
+	source        string
+}
+
+func (f *fakeReloader) Reload(_ context.Context, source string) error {
+	f.reloadCalled = true
+	f.source = source
+	return f.reloadErr
+}
+
+func (f *fakeReloader) CurrentConfig() ports.RedactedConfig {
+	if f.currentConfig == nil {
+		// Use capitalised keys to match Go struct JSON marshalling (no json tags on Config).
+		return ports.RedactedConfig{
+			"Server": map[string]any{"Host": "127.0.0.1", "Port": float64(8443)},
+			"Admin":  map[string]any{"Enabled": true, "Token": "[REDACTED]"},
+		}
+	}
+	return f.currentConfig
+}
+
+func newMuxWithReloader(svc ports.AdminService, reloader ports.ConfigReloader) *http.ServeMux {
+	mux := http.NewServeMux()
+	h := vibehttp.NewAdminHandlers(svc, nil).WithReloader(reloader)
+	h.RegisterRoutes(mux)
+	return mux
+}
+
+func TestReloadConfig_Success(t *testing.T) {
+	reloader := &fakeReloader{}
+	mux := newMuxWithReloader(&fakeAdminService{}, reloader)
+
+	req := httptest.NewRequest(http.MethodPost, "/_vibewarden/config/reload", nil)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+
+	var resp ports.ReloadResult
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+
+	if !resp.Success {
+		t.Errorf("Success = false, want true")
+	}
+	if resp.Message == "" {
+		t.Error("Message should not be empty on success")
+	}
+	if !reloader.reloadCalled {
+		t.Error("Reload was not called on the reloader")
+	}
+	if reloader.source != "admin_api" {
+		t.Errorf("source = %q, want admin_api", reloader.source)
+	}
+}
+
+func TestReloadConfig_ReloaderError(t *testing.T) {
+	reloader := &fakeReloader{reloadErr: errors.New("proxy reload failed")}
+	mux := newMuxWithReloader(&fakeAdminService{}, reloader)
+
+	req := httptest.NewRequest(http.MethodPost, "/_vibewarden/config/reload", nil)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusInternalServerError, rec.Body.String())
+	}
+
+	var resp ports.ReloadResult
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+
+	if resp.Success {
+		t.Error("Success = true, want false")
+	}
+	if resp.Message == "" {
+		t.Error("Message should describe the error")
+	}
+}
+
+func TestReloadConfig_NoReloader(t *testing.T) {
+	mux := newMux(&fakeAdminService{})
+
+	req := httptest.NewRequest(http.MethodPost, "/_vibewarden/config/reload", nil)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusServiceUnavailable, rec.Body.String())
+	}
+}
+
+func TestGetConfig_Success(t *testing.T) {
+	reloader := &fakeReloader{}
+	mux := newMuxWithReloader(&fakeAdminService{}, reloader)
+
+	req := httptest.NewRequest(http.MethodGet, "/_vibewarden/config", nil)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d; body: %s", rec.Code, http.StatusOK, rec.Body.String())
+	}
+
+	var resp map[string]any
+	if err := json.NewDecoder(rec.Body).Decode(&resp); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+
+	// Verify sensitive field is redacted in the response.
+	adminMap, ok := resp["Admin"].(map[string]any)
+	if !ok {
+		t.Fatal("Admin field missing from response")
+	}
+	if adminMap["Token"] != "[REDACTED]" {
+		t.Errorf("Admin.Token = %v, want [REDACTED]", adminMap["Token"])
+	}
+}
+
+func TestGetConfig_NoReloader(t *testing.T) {
+	mux := newMux(&fakeAdminService{})
+
+	req := httptest.NewRequest(http.MethodGet, "/_vibewarden/config", nil)
+	rec := httptest.NewRecorder()
+	mux.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusServiceUnavailable {
+		t.Fatalf("status = %d, want %d", rec.Code, http.StatusServiceUnavailable)
+	}
+}
