@@ -3,14 +3,12 @@ package ports
 import (
 	"context"
 	"time"
-
-	"github.com/vibewarden/vibewarden/internal/config"
 )
 
 // RedactedConfig is a JSON-serializable representation of the running
 // configuration with sensitive fields masked. It is safe to return to
 // external callers such as the admin API.
-type RedactedConfig = config.RedactedConfig
+type RedactedConfig map[string]any
 
 // ReloadResult represents the outcome of a config reload operation returned
 // by the admin API.

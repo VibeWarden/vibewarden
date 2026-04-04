@@ -56,6 +56,7 @@ func (w *Watcher) Watch(ctx context.Context, path string) (<-chan struct{}, erro
 	}
 
 	ch := make(chan struct{}, 1)
+	done := make(chan struct{})
 
 	go func() {
 		defer close(ch)
@@ -73,11 +74,13 @@ func (w *Watcher) Watch(ctx context.Context, path string) (<-chan struct{}, erro
 				if timer != nil {
 					timer.Stop()
 				}
+				close(done)
 				return
 
 			case event, ok := <-fw.Events:
 				if !ok {
 					w.logger.Error("fsnotify events channel closed unexpectedly")
+					close(done)
 					return
 				}
 
@@ -92,6 +95,8 @@ func (w *Watcher) Watch(ctx context.Context, path string) (<-chan struct{}, erro
 					}
 					timer = time.AfterFunc(w.debounce, func() {
 						select {
+						case <-done:
+							// Watcher shut down; do not send.
 						case ch <- struct{}{}:
 						default:
 							// A signal is already pending; drop the duplicate.
@@ -102,6 +107,7 @@ func (w *Watcher) Watch(ctx context.Context, path string) (<-chan struct{}, erro
 			case watchErr, ok := <-fw.Errors:
 				if !ok {
 					w.logger.Error("fsnotify errors channel closed unexpectedly")
+					close(done)
 					return
 				}
 				// Watcher errors are transient on most systems (e.g. spurious

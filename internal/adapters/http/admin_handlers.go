@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/vibewarden/vibewarden/internal/domain/user"
 	"github.com/vibewarden/vibewarden/internal/ports"
@@ -334,7 +335,12 @@ func (h *AdminHandlers) reloadConfig(w http.ResponseWriter, r *http.Request) {
 
 	if err := h.reloader.Reload(r.Context(), "admin_api"); err != nil {
 		h.logger.Error("config reload failed", slog.String("error", err.Error()))
-		writeJSON(w, http.StatusInternalServerError, ports.ReloadResult{
+		// Validation/loading errors return 400; proxy reload errors return 500.
+		status := http.StatusInternalServerError
+		if strings.Contains(err.Error(), "loading config:") {
+			status = http.StatusBadRequest
+		}
+		writeJSON(w, status, ports.ReloadResult{
 			Success: false,
 			Message: "Reload failed: " + err.Error(),
 		})

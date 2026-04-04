@@ -81,6 +81,7 @@ func (s *Service) Reload(ctx context.Context, source string) error {
 	}
 
 	s.mu.Lock()
+	prevCfg := s.currentCfg
 	s.currentCfg = newCfg
 	proxyCfg := s.rebuildProxyConfig(newCfg)
 	s.mu.Unlock()
@@ -94,6 +95,11 @@ func (s *Service) Reload(ctx context.Context, source string) error {
 	}
 
 	if err := s.proxy.Reload(ctx); err != nil {
+		// Roll back to previous config since proxy is still running old config.
+		s.mu.Lock()
+		s.currentCfg = prevCfg
+		s.mu.Unlock()
+
 		reason := err.Error()
 		s.logger.Error("proxy reload failed",
 			slog.String("source", source),
@@ -119,7 +125,7 @@ func (s *Service) CurrentConfig() ports.RedactedConfig {
 	s.mu.RLock()
 	cfg := s.currentCfg
 	s.mu.RUnlock()
-	return config.Redact(cfg)
+	return ports.RedactedConfig(config.Redact(cfg))
 }
 
 // Config returns the currently active config.Config (unredacted, for internal
