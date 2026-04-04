@@ -1018,7 +1018,8 @@ func TestInitProject_PreservesAgentsMD_WhenHasRef(t *testing.T) {
 }
 
 // TestInitProject_OverwritesAgentsVibewardenMD verifies that AGENTS-VIBEWARDEN.md
-// is overwritten even when opts.Force is false, because it is vibew-owned.
+// is always overwritten because it is vibew-owned. Force is set to true here
+// because other files (CLAUDE.md, etc.) need it to avoid ErrExist errors.
 func TestInitProject_OverwritesAgentsVibewardenMD(t *testing.T) {
 	renderer := newFakeRenderer()
 	svc := scaffoldapp.NewInitProjectService(renderer)
