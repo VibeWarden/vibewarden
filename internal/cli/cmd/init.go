@@ -207,7 +207,7 @@ Examples:
 			}
 
 			renderer := templateadapter.NewRenderer(templates.FS)
-			svc := scaffoldapp.NewInitProjectService(renderer)
+			svc := scaffoldapp.NewInitProjectService(renderer, templates.FS)
 
 			opts := scaffoldapp.InitProjectOptions{
 				ProjectName: projectName,

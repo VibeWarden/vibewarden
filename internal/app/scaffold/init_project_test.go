@@ -15,7 +15,7 @@ import (
 
 func TestInitProject_CreatesStructure(t *testing.T) {
 	renderer := newFakeRenderer()
-	svc := scaffoldapp.NewInitProjectService(renderer)
+	svc := scaffoldapp.NewInitProjectService(renderer, nil)
 
 	parent := t.TempDir()
 	opts := scaffoldapp.InitProjectOptions{
@@ -54,7 +54,7 @@ func TestInitProject_CreatesStructure(t *testing.T) {
 
 func TestInitProject_DefaultsPort(t *testing.T) {
 	renderer := newFakeRenderer()
-	svc := scaffoldapp.NewInitProjectService(renderer)
+	svc := scaffoldapp.NewInitProjectService(renderer, nil)
 
 	parent := t.TempDir()
 	opts := scaffoldapp.InitProjectOptions{
@@ -72,7 +72,7 @@ func TestInitProject_DefaultsPort(t *testing.T) {
 
 func TestInitProject_DefaultsModulePath(t *testing.T) {
 	renderer := newFakeRenderer()
-	svc := scaffoldapp.NewInitProjectService(renderer)
+	svc := scaffoldapp.NewInitProjectService(renderer, nil)
 
 	parent := t.TempDir()
 	opts := scaffoldapp.InitProjectOptions{
@@ -90,7 +90,7 @@ func TestInitProject_DefaultsModulePath(t *testing.T) {
 
 func TestInitProject_CreatesVersionFile(t *testing.T) {
 	renderer := newFakeRenderer()
-	svc := scaffoldapp.NewInitProjectService(renderer)
+	svc := scaffoldapp.NewInitProjectService(renderer, nil)
 
 	parent := t.TempDir()
 	opts := scaffoldapp.InitProjectOptions{
@@ -109,7 +109,7 @@ func TestInitProject_CreatesVersionFile(t *testing.T) {
 
 func TestInitProject_RejectsNonEmptyDir(t *testing.T) {
 	renderer := newFakeRenderer()
-	svc := scaffoldapp.NewInitProjectService(renderer)
+	svc := scaffoldapp.NewInitProjectService(renderer, nil)
 
 	parent := t.TempDir()
 	// Pre-create the directory with a file.
@@ -138,7 +138,7 @@ func TestInitProject_RejectsNonEmptyDir(t *testing.T) {
 
 func TestInitProject_ForceOverwritesExistingDir(t *testing.T) {
 	renderer := newFakeRenderer()
-	svc := scaffoldapp.NewInitProjectService(renderer)
+	svc := scaffoldapp.NewInitProjectService(renderer, nil)
 
 	parent := t.TempDir()
 	projectDir := filepath.Join(parent, "forcetest")
@@ -165,7 +165,7 @@ func TestInitProject_ForceOverwritesExistingDir(t *testing.T) {
 
 func TestInitProject_RejectsUnsupportedLanguage(t *testing.T) {
 	renderer := newFakeRenderer()
-	svc := scaffoldapp.NewInitProjectService(renderer)
+	svc := scaffoldapp.NewInitProjectService(renderer, nil)
 
 	parent := t.TempDir()
 	opts := scaffoldapp.InitProjectOptions{
@@ -182,7 +182,7 @@ func TestInitProject_RejectsUnsupportedLanguage(t *testing.T) {
 
 func TestInitProject_RejectsEmptyProjectName(t *testing.T) {
 	renderer := newFakeRenderer()
-	svc := scaffoldapp.NewInitProjectService(renderer)
+	svc := scaffoldapp.NewInitProjectService(renderer, nil)
 
 	parent := t.TempDir()
 	opts := scaffoldapp.InitProjectOptions{
@@ -199,7 +199,7 @@ func TestInitProject_RejectsEmptyProjectName(t *testing.T) {
 
 func TestInitProject_RejectsProjectNameWithSlash(t *testing.T) {
 	renderer := newFakeRenderer()
-	svc := scaffoldapp.NewInitProjectService(renderer)
+	svc := scaffoldapp.NewInitProjectService(renderer, nil)
 
 	tests := []struct {
 		name        string
@@ -227,7 +227,7 @@ func TestInitProject_RejectsProjectNameWithSlash(t *testing.T) {
 
 func TestInitProject_Kotlin_CreatesStructure(t *testing.T) {
 	renderer := newFakeRenderer()
-	svc := scaffoldapp.NewInitProjectService(renderer)
+	svc := scaffoldapp.NewInitProjectService(renderer, nil)
 
 	parent := t.TempDir()
 	opts := scaffoldapp.InitProjectOptions{
@@ -262,7 +262,7 @@ func TestInitProject_Kotlin_CreatesStructure(t *testing.T) {
 
 func TestInitProject_Kotlin_DoesNotCreateGoFiles(t *testing.T) {
 	renderer := newFakeRenderer()
-	svc := scaffoldapp.NewInitProjectService(renderer)
+	svc := scaffoldapp.NewInitProjectService(renderer, nil)
 
 	parent := t.TempDir()
 	opts := scaffoldapp.InitProjectOptions{
@@ -289,7 +289,7 @@ func TestInitProject_Kotlin_DoesNotCreateGoFiles(t *testing.T) {
 
 func TestInitProject_Kotlin_DefaultsPort(t *testing.T) {
 	renderer := newFakeRenderer()
-	svc := scaffoldapp.NewInitProjectService(renderer)
+	svc := scaffoldapp.NewInitProjectService(renderer, nil)
 
 	parent := t.TempDir()
 	opts := scaffoldapp.InitProjectOptions{
@@ -307,7 +307,7 @@ func TestInitProject_Kotlin_DefaultsPort(t *testing.T) {
 
 func TestInitProject_TypeScript_CreatesStructure(t *testing.T) {
 	renderer := newFakeRenderer()
-	svc := scaffoldapp.NewInitProjectService(renderer)
+	svc := scaffoldapp.NewInitProjectService(renderer, nil)
 
 	parent := t.TempDir()
 	opts := scaffoldapp.InitProjectOptions{
@@ -347,7 +347,7 @@ func TestInitProject_TypeScript_CreatesStructure(t *testing.T) {
 
 func TestInitProject_TypeScript_DoesNotCreateGoFiles(t *testing.T) {
 	renderer := newFakeRenderer()
-	svc := scaffoldapp.NewInitProjectService(renderer)
+	svc := scaffoldapp.NewInitProjectService(renderer, nil)
 
 	parent := t.TempDir()
 	opts := scaffoldapp.InitProjectOptions{
@@ -380,7 +380,7 @@ func TestInitProject_TypeScript_DoesNotCreateGoFiles(t *testing.T) {
 
 func TestInitProject_TypeScript_DefaultsPort(t *testing.T) {
 	renderer := newFakeRenderer()
-	svc := scaffoldapp.NewInitProjectService(renderer)
+	svc := scaffoldapp.NewInitProjectService(renderer, nil)
 
 	parent := t.TempDir()
 	opts := scaffoldapp.InitProjectOptions{
@@ -411,7 +411,7 @@ func TestInitProject_WritesProjectMD(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			renderer := newFakeRenderer()
-			svc := scaffoldapp.NewInitProjectService(renderer)
+			svc := scaffoldapp.NewInitProjectService(renderer, nil)
 
 			parent := t.TempDir()
 			opts := scaffoldapp.InitProjectOptions{
@@ -440,7 +440,7 @@ func TestInitProject_WritesProjectMD(t *testing.T) {
 // description through to the template renderer.
 func TestInitProject_DescriptionInData(t *testing.T) {
 	tracker := newTrackingRenderer()
-	svc := scaffoldapp.NewInitProjectService(tracker)
+	svc := scaffoldapp.NewInitProjectService(tracker, nil)
 
 	parent := t.TempDir()
 	opts := scaffoldapp.InitProjectOptions{
@@ -464,7 +464,7 @@ func TestInitProject_DescriptionInData(t *testing.T) {
 // the description into PROJECT.md, CLAUDE.md, and architect.md.
 func TestInitProject_WithRealFS_Description(t *testing.T) {
 	r := mustBuildRealRenderer(t)
-	svc := scaffoldapp.NewInitProjectService(r)
+	svc := scaffoldapp.NewInitProjectService(r, nil)
 
 	parent := t.TempDir()
 	opts := scaffoldapp.InitProjectOptions{
@@ -556,7 +556,7 @@ func (r *selectiveErrorRenderer) RenderToFile(templateName string, data any, pat
 // TestInitProject_Go_RenderError verifies that errors from renderGoFiles propagate.
 func TestInitProject_Go_RenderError(t *testing.T) {
 	renderer := newSelectiveErrorRenderer("go/vibewarden.yaml.tmpl", errors.New("disk full"))
-	svc := scaffoldapp.NewInitProjectService(renderer)
+	svc := scaffoldapp.NewInitProjectService(renderer, nil)
 
 	parent := t.TempDir()
 	opts := scaffoldapp.InitProjectOptions{
@@ -575,7 +575,7 @@ func TestInitProject_Go_RenderError(t *testing.T) {
 // renderGoFiles propagates wrapped.
 func TestInitProject_Go_RenderExistError(t *testing.T) {
 	renderer := newSelectiveErrorRenderer("go/vibewarden.yaml.tmpl", fmt.Errorf("file exists: %w", os.ErrExist))
-	svc := scaffoldapp.NewInitProjectService(renderer)
+	svc := scaffoldapp.NewInitProjectService(renderer, nil)
 
 	parent := t.TempDir()
 	opts := scaffoldapp.InitProjectOptions{
@@ -596,7 +596,7 @@ func TestInitProject_Go_RenderExistError(t *testing.T) {
 // TestInitProject_TypeScript_RenderError verifies that errors from renderTypeScriptFiles propagate.
 func TestInitProject_TypeScript_RenderError(t *testing.T) {
 	renderer := newSelectiveErrorRenderer("typescript/vibewarden.yaml.tmpl", errors.New("disk full"))
-	svc := scaffoldapp.NewInitProjectService(renderer)
+	svc := scaffoldapp.NewInitProjectService(renderer, nil)
 
 	parent := t.TempDir()
 	opts := scaffoldapp.InitProjectOptions{
@@ -615,7 +615,7 @@ func TestInitProject_TypeScript_RenderError(t *testing.T) {
 // from renderTypeScriptFiles propagates wrapped.
 func TestInitProject_TypeScript_RenderExistError(t *testing.T) {
 	renderer := newSelectiveErrorRenderer("typescript/vibewarden.yaml.tmpl", fmt.Errorf("file exists: %w", os.ErrExist))
-	svc := scaffoldapp.NewInitProjectService(renderer)
+	svc := scaffoldapp.NewInitProjectService(renderer, nil)
 
 	parent := t.TempDir()
 	opts := scaffoldapp.InitProjectOptions{
@@ -637,7 +637,7 @@ func TestInitProject_TypeScript_RenderExistError(t *testing.T) {
 // PROJECT.md propagates correctly.
 func TestInitProject_ProjectMD_RenderError(t *testing.T) {
 	renderer := newSelectiveErrorRenderer("agents/project.md.tmpl", errors.New("disk full"))
-	svc := scaffoldapp.NewInitProjectService(renderer)
+	svc := scaffoldapp.NewInitProjectService(renderer, nil)
 
 	parent := t.TempDir()
 	opts := scaffoldapp.InitProjectOptions{
@@ -657,7 +657,7 @@ func TestInitProject_ProjectMD_RenderError(t *testing.T) {
 // from renderProjectMD propagates wrapped.
 func TestInitProject_ProjectMD_RenderExistError(t *testing.T) {
 	renderer := newSelectiveErrorRenderer("agents/project.md.tmpl", fmt.Errorf("file exists: %w", os.ErrExist))
-	svc := scaffoldapp.NewInitProjectService(renderer)
+	svc := scaffoldapp.NewInitProjectService(renderer, nil)
 
 	parent := t.TempDir()
 	opts := scaffoldapp.InitProjectOptions{
@@ -680,7 +680,7 @@ func TestInitProject_ProjectMD_RenderExistError(t *testing.T) {
 // template render propagates from renderGoFiles.
 func TestInitProject_Go_MainGoRenderError(t *testing.T) {
 	renderer := newSelectiveErrorRenderer("go/main.go.tmpl", errors.New("disk full"))
-	svc := scaffoldapp.NewInitProjectService(renderer)
+	svc := scaffoldapp.NewInitProjectService(renderer, nil)
 
 	parent := t.TempDir()
 	opts := scaffoldapp.InitProjectOptions{
@@ -699,7 +699,7 @@ func TestInitProject_Go_MainGoRenderError(t *testing.T) {
 // propagates wrapped from renderGoFiles.
 func TestInitProject_Go_MainGoExistError(t *testing.T) {
 	renderer := newSelectiveErrorRenderer("go/main.go.tmpl", fmt.Errorf("file exists: %w", os.ErrExist))
-	svc := scaffoldapp.NewInitProjectService(renderer)
+	svc := scaffoldapp.NewInitProjectService(renderer, nil)
 
 	parent := t.TempDir()
 	opts := scaffoldapp.InitProjectOptions{
@@ -721,7 +721,7 @@ func TestInitProject_Go_MainGoExistError(t *testing.T) {
 // index.ts template render propagates from renderTypeScriptFiles.
 func TestInitProject_TypeScript_IndexTsRenderError(t *testing.T) {
 	renderer := newSelectiveErrorRenderer("typescript/index.ts.tmpl", errors.New("disk full"))
-	svc := scaffoldapp.NewInitProjectService(renderer)
+	svc := scaffoldapp.NewInitProjectService(renderer, nil)
 
 	parent := t.TempDir()
 	opts := scaffoldapp.InitProjectOptions{
@@ -740,7 +740,7 @@ func TestInitProject_TypeScript_IndexTsRenderError(t *testing.T) {
 // index.ts propagates wrapped from renderTypeScriptFiles.
 func TestInitProject_TypeScript_IndexTsExistError(t *testing.T) {
 	renderer := newSelectiveErrorRenderer("typescript/index.ts.tmpl", fmt.Errorf("file exists: %w", os.ErrExist))
-	svc := scaffoldapp.NewInitProjectService(renderer)
+	svc := scaffoldapp.NewInitProjectService(renderer, nil)
 
 	parent := t.TempDir()
 	opts := scaffoldapp.InitProjectOptions{
@@ -761,7 +761,7 @@ func TestInitProject_TypeScript_IndexTsExistError(t *testing.T) {
 // TestInitProject_Kotlin_RenderError verifies that errors from renderKotlinFiles propagate.
 func TestInitProject_Kotlin_RenderError(t *testing.T) {
 	renderer := newSelectiveErrorRenderer("kotlin/vibewarden.yaml.tmpl", errors.New("disk full"))
-	svc := scaffoldapp.NewInitProjectService(renderer)
+	svc := scaffoldapp.NewInitProjectService(renderer, nil)
 
 	parent := t.TempDir()
 	opts := scaffoldapp.InitProjectOptions{
@@ -780,7 +780,7 @@ func TestInitProject_Kotlin_RenderError(t *testing.T) {
 // from renderKotlinFiles propagates wrapped.
 func TestInitProject_Kotlin_RenderExistError(t *testing.T) {
 	renderer := newSelectiveErrorRenderer("kotlin/vibewarden.yaml.tmpl", fmt.Errorf("file exists: %w", os.ErrExist))
-	svc := scaffoldapp.NewInitProjectService(renderer)
+	svc := scaffoldapp.NewInitProjectService(renderer, nil)
 
 	parent := t.TempDir()
 	opts := scaffoldapp.InitProjectOptions{
@@ -802,7 +802,7 @@ func TestInitProject_Kotlin_RenderExistError(t *testing.T) {
 // rendering the shared agents/claude.md.tmpl propagates from renderCombinedCLAUDEmd.
 func TestInitProject_CLAUDEmd_SharedRenderError(t *testing.T) {
 	renderer := newSelectiveRenderErrorRenderer("agents/claude.md.tmpl", errors.New("template missing"))
-	svc := scaffoldapp.NewInitProjectService(renderer)
+	svc := scaffoldapp.NewInitProjectService(renderer, nil)
 
 	parent := t.TempDir()
 	opts := scaffoldapp.InitProjectOptions{
@@ -821,7 +821,7 @@ func TestInitProject_CLAUDEmd_SharedRenderError(t *testing.T) {
 // from rendering the language-specific claude.md template propagates.
 func TestInitProject_CLAUDEmd_LangConventionsRenderError(t *testing.T) {
 	renderer := newSelectiveRenderErrorRenderer("go/claude.md.tmpl", errors.New("template missing"))
-	svc := scaffoldapp.NewInitProjectService(renderer)
+	svc := scaffoldapp.NewInitProjectService(renderer, nil)
 
 	parent := t.TempDir()
 	opts := scaffoldapp.InitProjectOptions{
@@ -840,7 +840,7 @@ func TestInitProject_CLAUDEmd_LangConventionsRenderError(t *testing.T) {
 // when it already exists (overwrite=false) returns os.ErrExist.
 func TestInitProject_CLAUDEmd_ExistError(t *testing.T) {
 	renderer := newFakeRenderer()
-	svc := scaffoldapp.NewInitProjectService(renderer)
+	svc := scaffoldapp.NewInitProjectService(renderer, nil)
 
 	parent := t.TempDir()
 	projectDir := filepath.Join(parent, "claudeexist")
@@ -874,7 +874,7 @@ func TestInitProject_CLAUDEmd_ExistError(t *testing.T) {
 // language-specific code conventions template.
 func TestInitProject_CreatesAgentsVibewardenMD(t *testing.T) {
 	renderer := newTrackingRenderer()
-	svc := scaffoldapp.NewInitProjectService(renderer)
+	svc := scaffoldapp.NewInitProjectService(renderer, nil)
 
 	parent := t.TempDir()
 	opts := scaffoldapp.InitProjectOptions{
@@ -916,7 +916,7 @@ func TestInitProject_CreatesAgentsVibewardenMD(t *testing.T) {
 // from the agents/agents.md.tmpl template when it does not already exist.
 func TestInitProject_CreatesAgentsMD_WhenMissing(t *testing.T) {
 	renderer := newTrackingRenderer()
-	svc := scaffoldapp.NewInitProjectService(renderer)
+	svc := scaffoldapp.NewInitProjectService(renderer, nil)
 
 	parent := t.TempDir()
 	opts := scaffoldapp.InitProjectOptions{
@@ -941,7 +941,7 @@ func TestInitProject_CreatesAgentsMD_WhenMissing(t *testing.T) {
 // reference is appended.
 func TestInitProject_AppendsToAgentsMD_WhenMissingRef(t *testing.T) {
 	renderer := newFakeRenderer()
-	svc := scaffoldapp.NewInitProjectService(renderer)
+	svc := scaffoldapp.NewInitProjectService(renderer, nil)
 
 	parent := t.TempDir()
 	projectDir := filepath.Join(parent, "appendtest")
@@ -983,7 +983,7 @@ func TestInitProject_AppendsToAgentsMD_WhenMissingRef(t *testing.T) {
 // unchanged when it already contains a reference to AGENTS-VIBEWARDEN.md.
 func TestInitProject_PreservesAgentsMD_WhenHasRef(t *testing.T) {
 	renderer := newFakeRenderer()
-	svc := scaffoldapp.NewInitProjectService(renderer)
+	svc := scaffoldapp.NewInitProjectService(renderer, nil)
 
 	parent := t.TempDir()
 	projectDir := filepath.Join(parent, "preservetest")
@@ -1022,7 +1022,7 @@ func TestInitProject_PreservesAgentsMD_WhenHasRef(t *testing.T) {
 // because other files (CLAUDE.md, etc.) need it to avoid ErrExist errors.
 func TestInitProject_OverwritesAgentsVibewardenMD(t *testing.T) {
 	renderer := newFakeRenderer()
-	svc := scaffoldapp.NewInitProjectService(renderer)
+	svc := scaffoldapp.NewInitProjectService(renderer, nil)
 
 	parent := t.TempDir()
 	projectDir := filepath.Join(parent, "overwritevw")
@@ -1071,7 +1071,7 @@ func TestInitProject_NoClaudeAgentsDir(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			renderer := newFakeRenderer()
-			svc := scaffoldapp.NewInitProjectService(renderer)
+			svc := scaffoldapp.NewInitProjectService(renderer, nil)
 
 			parent := t.TempDir()
 			opts := scaffoldapp.InitProjectOptions{

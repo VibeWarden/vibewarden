@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -107,11 +108,17 @@ type InitProjectOptions struct {
 // InitProjectService scaffolds a complete new project from language-specific templates.
 type InitProjectService struct {
 	renderer ports.TemplateRenderer
+	// skillsFS is the filesystem used to read static Claude Code skill files
+	// from commands/. When nil, the .claude/commands/ directory is not generated.
+	skillsFS fs.ReadFileFS
 }
 
 // NewInitProjectService creates a new InitProjectService.
-func NewInitProjectService(renderer ports.TemplateRenderer) *InitProjectService {
-	return &InitProjectService{renderer: renderer}
+// skillsFS is the filesystem used to read static Claude Code skill files embedded
+// under commands/. Pass the templates.FS embed; pass nil to skip skill generation
+// (e.g. in tests that do not need the commands directory).
+func NewInitProjectService(renderer ports.TemplateRenderer, skillsFS fs.ReadFileFS) *InitProjectService {
+	return &InitProjectService{renderer: renderer, skillsFS: skillsFS}
 }
 
 // InitProject creates a new project directory with all scaffolded files.
@@ -269,6 +276,11 @@ func (s *InitProjectService) InitProject(ctx context.Context, parentDir string, 
 		if err := os.WriteFile(versionPath, []byte(""), 0o600); err != nil {
 			return fmt.Errorf("writing .vibewarden-version: %w", err)
 		}
+	}
+
+	// Write .claude/commands/ skill files for Claude Code slash commands.
+	if err := s.writeClaudeSkills(projectDir, opts.Language); err != nil {
+		return fmt.Errorf("writing Claude Code skills: %w", err)
 	}
 
 	// Initialize a git repository and create an initial commit.
@@ -509,6 +521,62 @@ func (s *InitProjectService) renderProjectMD(projectDir string, data any, overwr
 			return fmt.Errorf("rendering PROJECT.md: %w", err)
 		}
 		return fmt.Errorf("PROJECT.md already exists; use --force to overwrite: %w", err)
+	}
+	return nil
+}
+
+// writeClaudeSkills writes static Markdown skill files into .claude/commands/
+// inside projectDir. Skill files are read from the embedded commands/ directory
+// in skillsFS. When skillsFS is nil, the method is a no-op.
+//
+// The generated directory structure is:
+//
+//	.claude/commands/
+//	├── dev.md       (shared: vibew dev)
+//	├── doctor.md    (shared: vibew doctor)
+//	├── token.md     (shared: vibew token)
+//	├── test.md      (language-specific)
+//	├── lint.md      (language-specific)
+//	└── build.md     (language-specific)
+func (s *InitProjectService) writeClaudeSkills(projectDir string, lang domainscaffold.Language) error {
+	if s.skillsFS == nil {
+		return nil
+	}
+
+	commandsDir := filepath.Join(projectDir, ".claude", "commands")
+	if err := os.MkdirAll(commandsDir, 0o750); err != nil {
+		return fmt.Errorf("creating .claude/commands directory: %w", err)
+	}
+
+	// Shared sidecar skills — same for all languages.
+	sharedSkills := []string{"dev.md", "doctor.md", "token.md"}
+	for _, name := range sharedSkills {
+		src := "commands/shared/" + name
+		if err := s.copySkillFile(src, filepath.Join(commandsDir, name)); err != nil {
+			return fmt.Errorf("writing shared skill %s: %w", name, err)
+		}
+	}
+
+	// Language-specific skills.
+	langSkills := []string{"test.md", "lint.md", "build.md"}
+	for _, name := range langSkills {
+		src := "commands/" + string(lang) + "/" + name
+		if err := s.copySkillFile(src, filepath.Join(commandsDir, name)); err != nil {
+			return fmt.Errorf("writing %s skill %s: %w", lang, name, err)
+		}
+	}
+
+	return nil
+}
+
+// copySkillFile reads a static skill file from skillsFS and writes it to dest.
+func (s *InitProjectService) copySkillFile(src, dest string) error {
+	content, err := s.skillsFS.ReadFile(src)
+	if err != nil {
+		return fmt.Errorf("reading skill file %q: %w", src, err)
+	}
+	if err := os.WriteFile(dest, content, 0o600); err != nil {
+		return fmt.Errorf("writing skill file to %q: %w", dest, err)
 	}
 	return nil
 }

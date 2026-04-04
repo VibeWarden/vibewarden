@@ -58,7 +58,7 @@ func containsTemplate(calls []string, templateName string) bool {
 // is rendered from the shared agents/agents-vibewarden.md.tmpl template.
 func TestInitProject_UsesAgentsVibewardenTemplate(t *testing.T) {
 	renderer := newTrackingRenderer()
-	svc := scaffoldapp.NewInitProjectService(renderer)
+	svc := scaffoldapp.NewInitProjectService(renderer, nil)
 
 	parent := t.TempDir()
 	opts := scaffoldapp.InitProjectOptions{
@@ -80,7 +80,7 @@ func TestInitProject_UsesAgentsVibewardenTemplate(t *testing.T) {
 // when creating a new AGENTS.md.
 func TestInitProject_UsesAgentsMDTemplate(t *testing.T) {
 	renderer := newTrackingRenderer()
-	svc := scaffoldapp.NewInitProjectService(renderer)
+	svc := scaffoldapp.NewInitProjectService(renderer, nil)
 
 	parent := t.TempDir()
 	opts := scaffoldapp.InitProjectOptions{
@@ -103,7 +103,7 @@ func TestInitProject_UsesAgentsMDTemplate(t *testing.T) {
 // sidecar context) with the Go-specific go/claude.md.tmpl (code conventions).
 func TestInitProject_CLAUDEmd_UsesBothSharedAndGoTemplates(t *testing.T) {
 	renderer := newTrackingRenderer()
-	svc := scaffoldapp.NewInitProjectService(renderer)
+	svc := scaffoldapp.NewInitProjectService(renderer, nil)
 
 	parent := t.TempDir()
 	opts := scaffoldapp.InitProjectOptions{
@@ -147,7 +147,7 @@ func TestInitProject_CLAUDEmd_UsesBothSharedAndGoTemplates(t *testing.T) {
 // the Kotlin-specific kotlin/claude.md.tmpl appendix.
 func TestInitProject_Kotlin_CLAUDEmd_UsesBothSharedAndKotlinTemplates(t *testing.T) {
 	renderer := newTrackingRenderer()
-	svc := scaffoldapp.NewInitProjectService(renderer)
+	svc := scaffoldapp.NewInitProjectService(renderer, nil)
 
 	parent := t.TempDir()
 	opts := scaffoldapp.InitProjectOptions{
@@ -189,7 +189,7 @@ func TestInitProject_Kotlin_CLAUDEmd_UsesBothSharedAndKotlinTemplates(t *testing
 // templates render correctly with the real embedded FS.
 func TestInitProject_KotlinWithRealFS(t *testing.T) {
 	r := mustBuildRealRenderer(t)
-	svc := scaffoldapp.NewInitProjectService(r)
+	svc := scaffoldapp.NewInitProjectService(r, nil)
 
 	parent := t.TempDir()
 	opts := scaffoldapp.InitProjectOptions{
@@ -286,7 +286,7 @@ func TestInitProject_KotlinWithRealFS(t *testing.T) {
 // appendix.
 func TestInitProject_TypeScript_CLAUDEmd_UsesBothSharedAndTypeScriptTemplates(t *testing.T) {
 	renderer := newTrackingRenderer()
-	svc := scaffoldapp.NewInitProjectService(renderer)
+	svc := scaffoldapp.NewInitProjectService(renderer, nil)
 
 	parent := t.TempDir()
 	opts := scaffoldapp.InitProjectOptions{
@@ -331,7 +331,7 @@ func TestInitProject_TypeScript_CLAUDEmd_UsesBothSharedAndTypeScriptTemplates(t 
 // pack templates render correctly with the real embedded FS.
 func TestInitProject_TypeScript_WithRealFS(t *testing.T) {
 	r := mustBuildRealRenderer(t)
-	svc := scaffoldapp.NewInitProjectService(r)
+	svc := scaffoldapp.NewInitProjectService(r, nil)
 
 	parent := t.TempDir()
 	opts := scaffoldapp.InitProjectOptions{
@@ -432,7 +432,7 @@ func TestInitProject_TypeScript_WithRealFS(t *testing.T) {
 // contains the required vibew CLI reference and sidecar boundary rules.
 func TestInitProject_SharedTemplatesWithRealFS(t *testing.T) {
 	templateadapter := mustBuildRealRenderer(t)
-	svc := scaffoldapp.NewInitProjectService(templateadapter)
+	svc := scaffoldapp.NewInitProjectService(templateadapter, nil)
 
 	parent := t.TempDir()
 	opts := scaffoldapp.InitProjectOptions{
