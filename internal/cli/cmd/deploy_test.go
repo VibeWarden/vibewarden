@@ -174,3 +174,88 @@ func TestDeployCmd_SubcommandHelp(t *testing.T) {
 		})
 	}
 }
+
+func TestDeployCmd_SecretsFromFlagRegistered(t *testing.T) {
+	root := cmd.NewRootCmd("test")
+	deployCmd, _, err := root.Find([]string{"deploy"})
+	if err != nil {
+		t.Fatalf("Find(deploy) error: %v", err)
+	}
+	if deployCmd.Flags().Lookup("secrets-from") == nil {
+		t.Error("expected --secrets-from flag on deploy command")
+	}
+}
+
+func TestDeployCmd_RotateSecretsFlagRegistered(t *testing.T) {
+	root := cmd.NewRootCmd("test")
+	deployCmd, _, err := root.Find([]string{"deploy"})
+	if err != nil {
+		t.Fatalf("Find(deploy) error: %v", err)
+	}
+	if deployCmd.Flags().Lookup("rotate-secrets") == nil {
+		t.Error("expected --rotate-secrets flag on deploy command")
+	}
+}
+
+func TestDeployCmd_UnsealKeyFlagRegistered(t *testing.T) {
+	root := cmd.NewRootCmd("test")
+	deployCmd, _, err := root.Find([]string{"deploy"})
+	if err != nil {
+		t.Fatalf("Find(deploy) error: %v", err)
+	}
+	if deployCmd.Flags().Lookup("unseal-key") == nil {
+		t.Error("expected --unseal-key flag on deploy command")
+	}
+}
+
+func TestDeployCmd_SecretsFromDefaultIsEmpty(t *testing.T) {
+	root := cmd.NewRootCmd("test")
+	deployCmd, _, err := root.Find([]string{"deploy"})
+	if err != nil {
+		t.Fatalf("Find(deploy) error: %v", err)
+	}
+	f := deployCmd.Flags().Lookup("secrets-from")
+	if f == nil {
+		t.Fatal("--secrets-from flag not found")
+	}
+	if f.DefValue != "" {
+		t.Errorf("--secrets-from default should be empty, got %q", f.DefValue)
+	}
+}
+
+func TestDeployCmd_RotateSecretsDefaultIsFalse(t *testing.T) {
+	root := cmd.NewRootCmd("test")
+	deployCmd, _, err := root.Find([]string{"deploy"})
+	if err != nil {
+		t.Fatalf("Find(deploy) error: %v", err)
+	}
+	f := deployCmd.Flags().Lookup("rotate-secrets")
+	if f == nil {
+		t.Fatal("--rotate-secrets flag not found")
+	}
+	if f.DefValue != "false" {
+		t.Errorf("--rotate-secrets default should be false, got %q", f.DefValue)
+	}
+}
+
+func TestDeployCmd_HelpContainsSecretsFromExample(t *testing.T) {
+	root := cmd.NewRootCmd("test")
+	deployCmd, _, err := root.Find([]string{"deploy"})
+	if err != nil {
+		t.Fatalf("Find(deploy) error: %v", err)
+	}
+	if !strings.Contains(deployCmd.Long, "--secrets-from") {
+		t.Error("deploy command long description should mention --secrets-from")
+	}
+}
+
+func TestDeployCmd_HelpContainsRotateSecretsExample(t *testing.T) {
+	root := cmd.NewRootCmd("test")
+	deployCmd, _, err := root.Find([]string{"deploy"})
+	if err != nil {
+		t.Fatalf("Find(deploy) error: %v", err)
+	}
+	if !strings.Contains(deployCmd.Long, "--rotate-secrets") {
+		t.Error("deploy command long description should mention --rotate-secrets")
+	}
+}
