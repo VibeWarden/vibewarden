@@ -146,6 +146,13 @@ func (c *Config) InternalNetworkName() string {
 	return "vibewarden"
 }
 
+// IsProdProfile reports whether the deployment profile is "prod".
+// It is used by templates to select production-grade service configuration
+// (e.g. OpenBao server mode instead of dev mode).
+func (c *Config) IsProdProfile() bool {
+	return c.Profile == "prod"
+}
+
 // EgressNoProxy builds the NO_PROXY value for the app service based on which
 // internal services are enabled in the configuration. The value always includes
 // localhost and the vibewarden service name. Additional services are appended

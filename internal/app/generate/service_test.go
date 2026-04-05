@@ -2008,3 +2008,169 @@ func TestGenerate_EgressDisabledNoProxyVars(t *testing.T) {
 		}
 	}
 }
+
+// renderComposeAndDir runs Generate with the real template renderer and returns
+// both the docker-compose.yml contents and the output directory path so callers
+// can inspect additional generated files.
+func renderComposeAndDir(t *testing.T, cfg *config.Config) ([]byte, string) {
+	t.Helper()
+	outputDir := t.TempDir()
+	svc := generate.NewService(realRenderer())
+	if err := svc.Generate(context.Background(), cfg, outputDir); err != nil {
+		t.Fatalf("Generate() unexpected error: %v", err)
+	}
+	data, err := os.ReadFile(filepath.Join(outputDir, "docker-compose.yml"))
+	if err != nil {
+		t.Fatalf("reading docker-compose.yml: %v", err)
+	}
+	return data, outputDir
+}
+
+// prodSecretsConfig returns a Config with the prod profile and secrets enabled.
+func prodSecretsConfig() *config.Config {
+	return &config.Config{
+		Profile:  "prod",
+		Server:   config.ServerConfig{Host: "127.0.0.1", Port: 8080},
+		Upstream: config.UpstreamConfig{Host: "127.0.0.1", Port: 3000},
+		Secrets: config.SecretsConfig{
+			Enabled: true,
+			OpenBao: config.SecretsOpenBaoConfig{
+				MountPath: "secret",
+			},
+		},
+	}
+}
+
+func TestGenerate_OpenBaoProdMode_ServerCommand(t *testing.T) {
+	cfg := prodSecretsConfig()
+	compose := renderCompose(t, cfg)
+
+	if !bytes.Contains(compose, []byte("openbao:")) {
+		t.Error("expected 'openbao:' service when secrets.enabled is true in prod profile")
+	}
+	if !bytes.Contains(compose, []byte(`"server"`)) {
+		t.Error("expected server command in prod mode openbao service")
+	}
+	if !bytes.Contains(compose, []byte("config.hcl")) {
+		t.Error("expected config.hcl volume mount in prod mode openbao service")
+	}
+}
+
+func TestGenerate_OpenBaoProdMode_NoDevEnvVars(t *testing.T) {
+	cfg := prodSecretsConfig()
+	compose := renderCompose(t, cfg)
+
+	if bytes.Contains(compose, []byte("BAO_DEV_ROOT_TOKEN_ID")) {
+		t.Error("BAO_DEV_ROOT_TOKEN_ID must not appear in prod mode openbao service")
+	}
+	if bytes.Contains(compose, []byte("BAO_DEV_LISTEN_ADDRESS")) {
+		t.Error("BAO_DEV_LISTEN_ADDRESS must not appear in prod mode openbao service")
+	}
+}
+
+func TestGenerate_OpenBaoProdMode_PersistentVolume(t *testing.T) {
+	cfg := prodSecretsConfig()
+	compose := renderCompose(t, cfg)
+
+	if !bytes.Contains(compose, []byte("openbao-data:")) {
+		t.Error("expected 'openbao-data:' named volume in prod mode")
+	}
+	if !bytes.Contains(compose, []byte("openbao-data:/openbao/data")) {
+		t.Error("expected openbao-data volume mount on /openbao/data in prod mode")
+	}
+}
+
+func TestGenerate_OpenBaoProdMode_IpcLockCapability(t *testing.T) {
+	cfg := prodSecretsConfig()
+	compose := renderCompose(t, cfg)
+
+	if !bytes.Contains(compose, []byte("IPC_LOCK")) {
+		t.Error("expected IPC_LOCK capability in prod mode openbao service")
+	}
+}
+
+func TestGenerate_OpenBaoDevMode_UsesDevEnvVars(t *testing.T) {
+	cfg := secretsConfig(true, nil, nil)
+	// ensure no profile — defaults to dev behaviour
+	cfg.Profile = "dev"
+	compose := renderCompose(t, cfg)
+
+	if !bytes.Contains(compose, []byte("BAO_DEV_ROOT_TOKEN_ID")) {
+		t.Error("expected BAO_DEV_ROOT_TOKEN_ID env var in dev mode openbao service")
+	}
+	if !bytes.Contains(compose, []byte("BAO_DEV_LISTEN_ADDRESS")) {
+		t.Error("expected BAO_DEV_LISTEN_ADDRESS env var in dev mode openbao service")
+	}
+}
+
+func TestGenerate_OpenBaoDevMode_NoServerCommand(t *testing.T) {
+	cfg := secretsConfig(true, nil, nil)
+	cfg.Profile = ""
+	compose := renderCompose(t, cfg)
+
+	if bytes.Contains(compose, []byte(`"server"`)) {
+		t.Error("server command must not appear in dev mode openbao service")
+	}
+}
+
+func TestGenerate_OpenBaoDevMode_NoPersistentVolume(t *testing.T) {
+	cfg := secretsConfig(true, nil, nil)
+	cfg.Profile = ""
+	compose := renderCompose(t, cfg)
+
+	if bytes.Contains(compose, []byte("openbao-data:")) {
+		t.Error("openbao-data volume must not appear in dev mode")
+	}
+}
+
+func TestGenerate_OpenBaoConfigHCL_GeneratedForProd(t *testing.T) {
+	cfg := prodSecretsConfig()
+	_, outputDir := renderComposeAndDir(t, cfg)
+
+	hclPath := filepath.Join(outputDir, "openbao", "config.hcl")
+	data, err := os.ReadFile(hclPath)
+	if err != nil {
+		t.Fatalf("expected openbao/config.hcl to exist: %v", err)
+	}
+	if !bytes.Contains(data, []byte(`storage "file"`)) {
+		t.Errorf("openbao/config.hcl missing file storage backend: %s", data)
+	}
+	if !bytes.Contains(data, []byte("/openbao/data")) {
+		t.Errorf("openbao/config.hcl missing /openbao/data path: %s", data)
+	}
+	if !bytes.Contains(data, []byte(`listener "tcp"`)) {
+		t.Errorf("openbao/config.hcl missing tcp listener: %s", data)
+	}
+	if !bytes.Contains(data, []byte("0.0.0.0:8200")) {
+		t.Errorf("openbao/config.hcl missing bind address: %s", data)
+	}
+	if !bytes.Contains(data, []byte("api_addr")) {
+		t.Errorf("openbao/config.hcl missing api_addr: %s", data)
+	}
+	if !bytes.Contains(data, []byte("disable_mlock")) {
+		t.Errorf("openbao/config.hcl missing disable_mlock: %s", data)
+	}
+}
+
+func TestGenerate_OpenBaoConfigHCL_NotGeneratedForDev(t *testing.T) {
+	cfg := secretsConfig(true, nil, nil)
+	cfg.Profile = "dev"
+	_, outputDir := renderComposeAndDir(t, cfg)
+
+	hclPath := filepath.Join(outputDir, "openbao", "config.hcl")
+	if _, err := os.Stat(hclPath); err == nil {
+		t.Error("openbao/config.hcl must not be generated in dev mode")
+	}
+}
+
+func TestGenerate_OpenBaoConfigHCL_NotGeneratedWhenSecretsDisabled(t *testing.T) {
+	cfg := minimalConfig()
+	cfg.Profile = "prod"
+	cfg.Secrets.Enabled = false
+	_, outputDir := renderComposeAndDir(t, cfg)
+
+	hclPath := filepath.Join(outputDir, "openbao", "config.hcl")
+	if _, err := os.Stat(hclPath); err == nil {
+		t.Error("openbao/config.hcl must not be generated when secrets.enabled is false")
+	}
+}

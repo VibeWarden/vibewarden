@@ -2747,3 +2747,24 @@ func TestDatabaseConfig_ResolveURL(t *testing.T) {
 		})
 	}
 }
+
+func TestIsProdProfile(t *testing.T) {
+	tests := []struct {
+		name    string
+		profile string
+		want    bool
+	}{
+		{"prod returns true", "prod", true},
+		{"dev returns false", "dev", false},
+		{"tls returns false", "tls", false},
+		{"empty returns false", "", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &config.Config{Profile: tt.profile}
+			if got := cfg.IsProdProfile(); got != tt.want {
+				t.Errorf("IsProdProfile() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
