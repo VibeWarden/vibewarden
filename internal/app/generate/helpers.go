@@ -25,6 +25,14 @@ func NeedsObservability(cfg *config.Config) bool {
 	return cfg.Observability.Enabled
 }
 
+// NeedsOpenBaoConfig returns true if an openbao/config.hcl file should be
+// generated. This is the case when the secrets plugin is enabled and the
+// deployment profile is "prod" — OpenBao runs in server mode and requires an
+// explicit HCL configuration file. In dev mode no config file is needed.
+func NeedsOpenBaoConfig(cfg *config.Config) bool {
+	return cfg.Secrets.Enabled && cfg.Profile == "prod"
+}
+
 // NeedsSeedSecrets returns true if dev mode should seed OpenBao with demo
 // secrets. This is true when the secrets plugin is enabled AND at least one
 // header or env injection entry is configured.

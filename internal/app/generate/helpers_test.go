@@ -141,6 +141,49 @@ func TestNeedsRedis(t *testing.T) {
 	}
 }
 
+func TestNeedsOpenBaoConfig(t *testing.T) {
+	tests := []struct {
+		name string
+		cfg  *config.Config
+		want bool
+	}{
+		{
+			name: "secrets enabled with prod profile returns true",
+			cfg:  &config.Config{Profile: "prod", Secrets: config.SecretsConfig{Enabled: true}},
+			want: true,
+		},
+		{
+			name: "secrets enabled with dev profile returns false",
+			cfg:  &config.Config{Profile: "dev", Secrets: config.SecretsConfig{Enabled: true}},
+			want: false,
+		},
+		{
+			name: "secrets enabled with empty profile returns false",
+			cfg:  &config.Config{Profile: "", Secrets: config.SecretsConfig{Enabled: true}},
+			want: false,
+		},
+		{
+			name: "secrets disabled with prod profile returns false",
+			cfg:  &config.Config{Profile: "prod", Secrets: config.SecretsConfig{Enabled: false}},
+			want: false,
+		},
+		{
+			name: "zero value config returns false",
+			cfg:  &config.Config{},
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := generate.NeedsOpenBaoConfig(tt.cfg)
+			if got != tt.want {
+				t.Errorf("NeedsOpenBaoConfig() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestNeedsSeedSecrets(t *testing.T) {
 	tests := []struct {
 		name string

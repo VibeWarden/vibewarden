@@ -211,11 +211,18 @@ services:
     restart: unless-stopped
     cap_add:
       - IPC_LOCK
+{{- if .IsProdProfile }}
+    command: ["server", "-config=/openbao/config/config.hcl"]
+    volumes:
+      - openbao-data:/openbao/data
+      - ./openbao/config.hcl:/openbao/config/config.hcl:ro
+{{- else }}
     env_file:
       - ./.credentials
     environment:
       BAO_DEV_ROOT_TOKEN_ID: ${OPENBAO_DEV_ROOT_TOKEN}
       BAO_DEV_LISTEN_ADDRESS: "0.0.0.0:8200"
+{{- end }}
     ports:
       - "8200:8200"
     networks:
@@ -422,7 +429,7 @@ networks:
   vibewarden:
     driver: bridge
 {{- end }}
-{{- if or (and .Auth.Enabled (eq (printf "%s" .Auth.Mode) "kratos") (not .Kratos.External) (eq .Database.ExternalURL "")) .TLS.Enabled (and (eq .RateLimit.Store "redis") (not (.RateLimit.Redis.HasExternalURL))) .Observability.Enabled }}
+{{- if or (and .Auth.Enabled (eq (printf "%s" .Auth.Mode) "kratos") (not .Kratos.External) (eq .Database.ExternalURL "")) .TLS.Enabled (and (eq .RateLimit.Store "redis") (not (.RateLimit.Redis.HasExternalURL))) .Observability.Enabled (and .Secrets.Enabled .IsProdProfile) }}
 
 volumes:
 {{- if and .Auth.Enabled (eq (printf "%s" .Auth.Mode) "kratos") (not .Kratos.External) (eq .Database.ExternalURL "") }}
@@ -433,6 +440,9 @@ volumes:
 {{- end }}
 {{- if and (eq .RateLimit.Store "redis") (not (.RateLimit.Redis.HasExternalURL)) }}
   redis-data:
+{{- end }}
+{{- if and .Secrets.Enabled .IsProdProfile }}
+  openbao-data:
 {{- end }}
 {{- if .Observability.Enabled }}
   prometheus-data:

@@ -198,6 +198,20 @@ func (s *Service) Generate(ctx context.Context, cfg *config.Config, outputDir st
 		}
 	}
 
+	// Generate openbao/config.hcl when the secrets plugin is enabled and the
+	// profile is prod. The file configures OpenBao in server mode with file
+	// storage backend and is mounted read-only into the openbao container.
+	if NeedsOpenBaoConfig(cfg) {
+		openbaoDir := filepath.Join(outputDir, "openbao")
+		if err := os.MkdirAll(openbaoDir, permDir); err != nil {
+			return fmt.Errorf("creating openbao directory: %w", err)
+		}
+		hclPath := filepath.Join(openbaoDir, "config.hcl")
+		if err := s.renderer.RenderToFile("openbao-config.hcl.tmpl", cfg, hclPath, true); err != nil {
+			return fmt.Errorf("rendering openbao/config.hcl: %w", err)
+		}
+	}
+
 	// Generate seed-secrets.sh when the secrets plugin is enabled and has
 	// inject entries. The script is mounted into the seed-secrets init container
 	// defined in docker-compose.yml to populate OpenBao with demo values.
