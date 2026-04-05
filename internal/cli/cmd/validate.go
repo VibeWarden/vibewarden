@@ -39,11 +39,16 @@ var validFrameOptions = map[string]bool{
 
 // NewValidateCmd creates the `vibew validate` subcommand.
 //
-// The command loads vibewarden.yaml (or the path supplied as the first
-// positional argument), runs semantic validation rules beyond what YAML
-// parsing provides, and reports any errors. It exits with code 0 when the
-// configuration is valid and code 1 otherwise.
+// The command loads vibewarden.yaml (or the path supplied via --config or as
+// the first positional argument), runs semantic validation rules beyond what
+// YAML parsing provides, and reports any errors. It exits with code 0 when
+// the configuration is valid and code 1 otherwise.
+//
+// When both --config and a positional argument are provided, --config takes
+// precedence. The positional argument is kept for backward compatibility.
 func NewValidateCmd() *cobra.Command {
+	var configFlag string
+
 	cmd := &cobra.Command{
 		Use:   "validate [config-file]",
 		Short: "Validate vibewarden.yaml configuration",
@@ -68,11 +73,13 @@ Exits with code 0 when configuration is valid, code 1 when invalid.
 
 Examples:
   vibew validate
-  vibew validate ./path/to/vibewarden.yaml`,
+  vibew validate ./path/to/vibewarden.yaml
+  vibew validate --config ./my-vibewarden.yaml`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			configPath := ""
-			if len(args) > 0 {
+			// --config takes precedence over the positional argument.
+			configPath := configFlag
+			if configPath == "" && len(args) > 0 {
 				configPath = args[0]
 			}
 
@@ -112,6 +119,15 @@ Examples:
 			fmt.Fprintf(cmd.OutOrStdout(), "Configuration valid (%s)\n", displayPath)
 			return nil
 		},
+	}
+
+	cmd.Flags().StringVar(&configFlag, "config", "", "path to vibewarden.yaml (default: ./vibewarden.yaml)")
+
+	if err := cmd.RegisterFlagCompletionFunc("config", func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
+		return []string{"yaml", "yml"}, cobra.ShellCompDirectiveFilterFileExt
+	}); err != nil {
+		// registration can only fail when called on a non-existent flag; safe to ignore
+		fmt.Fprintln(os.Stderr, "warning: flag completion registration failed:", err)
 	}
 
 	return cmd
