@@ -147,6 +147,11 @@ type EgressRouteConfig struct {
 	// When set, the egress proxy presents the configured certificate during
 	// the TLS handshake with the upstream.
 	MTLS EgressMTLSConfig `mapstructure:"mtls"`
+
+	// PromptInjection holds per-route prompt injection detection settings.
+	// When Enabled is true, request bodies are scanned for prompt injection
+	// payloads before being forwarded to the upstream LLM API.
+	PromptInjection EgressPromptInjectionConfig `mapstructure:"prompt_injection"`
 }
 
 // EgressHeadersConfig holds per-route header manipulation rules as parsed from
@@ -260,6 +265,31 @@ type EgressRetryConfig struct {
 	// Backoff selects the backoff strategy: "exponential" or "fixed".
 	// Defaults to "exponential" when empty.
 	Backoff string `mapstructure:"backoff"`
+}
+
+// EgressPromptInjectionConfig holds per-route prompt injection detection settings
+// as parsed from vibewarden.yaml.
+type EgressPromptInjectionConfig struct {
+	// Enabled toggles prompt injection scanning for this route.
+	// When false (default), no scanning is performed.
+	Enabled bool `mapstructure:"enabled"`
+
+	// ContentPaths is the list of JSON path expressions used to extract text
+	// from the request body before scanning. Each expression must start with
+	// a dot and may use array wildcards (e.g. ".messages[].content", ".prompt").
+	// When empty and Enabled is true, the entire raw body is scanned.
+	ContentPaths []string `mapstructure:"content_paths"`
+
+	// ExtraPatterns is a list of additional raw regular expressions to include
+	// alongside the built-in detection patterns. Each expression is compiled
+	// with case-insensitive matching.
+	ExtraPatterns []string `mapstructure:"extra_patterns"`
+
+	// Action controls what happens when an injection is detected.
+	// Accepted values:
+	//   "block"  — reject the request with 400 Bad Request (default).
+	//   "detect" — log the event and forward the request unchanged.
+	Action string `mapstructure:"action"`
 }
 
 // IsNetworkIsolationEnabled returns true when network-level egress isolation
