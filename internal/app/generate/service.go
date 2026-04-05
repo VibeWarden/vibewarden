@@ -73,9 +73,11 @@ func (s *Service) Generate(ctx context.Context, cfg *config.Config, outputDir st
 	// Sanitise the caller-supplied output directory to prevent path traversal.
 	outputDir = filepath.Clean(outputDir)
 
-	// Validate prod profile requirements before generating any files.
+	// Warn when prod profile is used without secrets enabled.
+	// OpenBao is strongly recommended for production but is no longer mandatory
+	// so that operators who manage secrets externally are not blocked.
 	if cfg.Profile == "prod" && !cfg.Secrets.Enabled {
-		return fmt.Errorf("prod profile requires secrets.enabled: true (OpenBao is mandatory for production)")
+		slog.Warn("prod profile is running without secrets.enabled: true; OpenBao is strongly recommended for production secret management")
 	}
 
 	// Emit egress-related warnings to stderr via slog.
