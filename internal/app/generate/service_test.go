@@ -1423,7 +1423,9 @@ func fixedCreds() *gendomain.GeneratedCredentials {
 	}
 }
 
-func TestGenerate_ProdProfile_RequiresSecrets(t *testing.T) {
+func TestGenerate_ProdProfile_SecretsDisabled_Succeeds(t *testing.T) {
+	// Secrets are no longer mandatory for the prod profile; generation must
+	// succeed so that operators who manage secrets externally are not blocked.
 	outputDir := t.TempDir()
 	svc := generate.NewServiceWithCredentials(
 		&fakeRenderer{},
@@ -1434,12 +1436,25 @@ func TestGenerate_ProdProfile_RequiresSecrets(t *testing.T) {
 	cfg.Profile = "prod"
 	cfg.Secrets.Enabled = false
 
-	err := svc.Generate(context.Background(), cfg, outputDir)
-	if err == nil {
-		t.Fatal("Generate() expected error for prod profile without secrets.enabled, got nil")
+	if err := svc.Generate(context.Background(), cfg, outputDir); err != nil {
+		t.Errorf("Generate() unexpected error for prod profile without secrets.enabled: %v", err)
 	}
-	if !strings.Contains(err.Error(), "prod profile requires secrets.enabled") {
-		t.Errorf("Generate() error = %q, want message about prod profile requiring secrets", err.Error())
+}
+
+func TestGenerate_ProdProfile_SecretsDisabled_OpenBaoAbsent(t *testing.T) {
+	// When secrets.enabled is false on a prod profile the openbao service must
+	// not appear in the generated docker-compose.yml.
+	cfg := minimalConfig()
+	cfg.Profile = "prod"
+	cfg.Secrets.Enabled = false
+
+	compose := renderCompose(t, cfg)
+
+	if bytes.Contains(compose, []byte("openbao:")) {
+		t.Error("openbao service must not be present in compose when secrets.enabled is false")
+	}
+	if bytes.Contains(compose, []byte("VIBEWARDEN_SECRETS_OPENBAO_ADDRESS")) {
+		t.Error("VIBEWARDEN_SECRETS_OPENBAO_ADDRESS must not be present in compose when secrets.enabled is false")
 	}
 }
 
