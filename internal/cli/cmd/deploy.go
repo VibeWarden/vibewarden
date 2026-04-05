@@ -19,12 +19,16 @@ import (
 // NewDeployCmd creates the "vibew deploy" command and its subcommands.
 //
 // vibew deploy --config vibewarden.prod.yaml --target ssh://user@host
+// vibew deploy --config vibewarden.prod.yaml --target ssh://user@host --secrets-from .env.prod
 // vibew deploy status --target ssh://user@host
 // vibew deploy logs   --target ssh://user@host [--lines 50]
 func NewDeployCmd() *cobra.Command {
 	var (
-		configPath string
-		target     string
+		configPath    string
+		target        string
+		secretsFrom   string
+		rotateSecrets bool
+		unsealKey     string
 	)
 
 	cmd := &cobra.Command{
@@ -34,6 +38,14 @@ func NewDeployCmd() *cobra.Command {
 
 The command generates runtime configuration, transfers files via rsync, and
 starts Docker Compose on the remote host.
+
+When the secrets plugin is enabled (secrets.enabled: true in vibewarden.yaml),
+the first deploy also bootstraps OpenBao: initialises, unseals, enables KV v2
+and AppRole, creates the vibewarden policy and role, and seeds secrets from
+--secrets-from when provided.
+
+On subsequent deploys the unseal key stored in ~/vibewarden/<project>/.openbao-credentials
+is used automatically unless you supply --unseal-key explicitly.
 
 Target URL format:
   ssh://user@host
@@ -46,7 +58,9 @@ Remote directory: ~/vibewarden/<project-name>/
 
 Examples:
   vibew deploy --config vibewarden.prod.yaml --target ssh://ubuntu@203.0.113.10
-  vibew deploy --config vibewarden.prod.yaml --target ssh://deploy@myserver.example.com:2222`,
+  vibew deploy --config vibewarden.prod.yaml --target ssh://deploy@myserver.example.com:2222
+  vibew deploy --config vibewarden.prod.yaml --target ssh://ubuntu@203.0.113.10 --secrets-from .env.prod
+  vibew deploy --config vibewarden.prod.yaml --target ssh://ubuntu@203.0.113.10 --rotate-secrets --secrets-from .env.prod`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if target == "" {
 				return fmt.Errorf("--target is required (e.g. ssh://user@host)")
@@ -76,21 +90,63 @@ Examples:
 				absConfig = configPath
 			}
 
-			return svc.Deploy(cmd.Context(), cfg, deployapp.RunOptions{
+			projectName := deployapp.ProjectNameFromConfig(absConfig)
+			remoteDir := "~/vibewarden/" + projectName + "/"
+
+			opts := deployapp.RunOptions{
 				ConfigPath: absConfig,
 				Out:        cmd.OutOrStdout(),
-			})
+			}
+
+			// Bootstrap OpenBao when the secrets plugin is enabled.
+			if cfg.Secrets.Enabled {
+				bootstrapper := deployapp.NewOpenBaoBootstrapper(executor)
+				result, err := bootstrapper.Bootstrap(cmd.Context(), deployapp.BootstrapOptions{
+					SecretsFile:   secretsFrom,
+					RotateSecrets: rotateSecrets,
+					UnsealKey:     unsealKey,
+					RemoteDir:     remoteDir,
+					Out:           cmd.OutOrStdout(),
+				})
+				if err != nil {
+					return fmt.Errorf("openbao bootstrap: %w", err)
+				}
+				if result.UnsealKey != "" {
+					fmt.Fprintln(cmd.OutOrStdout())
+					fmt.Fprintln(cmd.OutOrStdout(), "=======================================================")
+					fmt.Fprintln(cmd.OutOrStdout(), "  IMPORTANT: Save your OpenBao unseal key now!")
+					fmt.Fprintln(cmd.OutOrStdout(), "  You will need it to unseal OpenBao after a restart.")
+					fmt.Fprintln(cmd.OutOrStdout(), "  This key will NOT be shown again.")
+					fmt.Fprintln(cmd.OutOrStdout(), "=======================================================")
+					fmt.Fprintf(cmd.OutOrStdout(), "  Unseal Key : %s\n", result.UnsealKey)
+					fmt.Fprintf(cmd.OutOrStdout(), "  Root Token : %s\n", result.RootToken)
+					fmt.Fprintf(cmd.OutOrStdout(), "  Role ID    : %s\n", result.RoleID)
+					fmt.Fprintf(cmd.OutOrStdout(), "  Secret ID  : %s\n", result.SecretID)
+					fmt.Fprintln(cmd.OutOrStdout(), "=======================================================")
+					fmt.Fprintln(cmd.OutOrStdout())
+				}
+			}
+
+			return svc.Deploy(cmd.Context(), cfg, opts)
 		},
 	}
 
 	cmd.Flags().StringVar(&configPath, "config", "", "path to vibewarden.yaml (default: ./vibewarden.yaml)")
 	cmd.Flags().StringVar(&target, "target", "", "remote target in ssh://user@host[:port] format (required)")
+	cmd.Flags().StringVar(&secretsFrom, "secrets-from", "", "path to a .env-format file whose KEY=VALUE pairs are seeded into OpenBao")
+	cmd.Flags().BoolVar(&rotateSecrets, "rotate-secrets", false, "re-seed secrets from --secrets-from on subsequent deploys")
+	cmd.Flags().StringVar(&unsealKey, "unseal-key", "", "OpenBao unseal key (required when redeploying a sealed instance); overrides stored key")
 
 	if err := cmd.MarkFlagRequired("target"); err != nil {
 		fmt.Fprintln(os.Stderr, "warning: flag required registration failed:", err)
 	}
 	if err := cmd.RegisterFlagCompletionFunc("config", func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
 		return []string{"yaml", "yml"}, cobra.ShellCompDirectiveFilterFileExt
+	}); err != nil {
+		fmt.Fprintln(os.Stderr, "warning: flag completion registration failed:", err)
+	}
+	if err := cmd.RegisterFlagCompletionFunc("secrets-from", func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
+		return []string{"env"}, cobra.ShellCompDirectiveFilterFileExt
 	}); err != nil {
 		fmt.Fprintln(os.Stderr, "warning: flag completion registration failed:", err)
 	}

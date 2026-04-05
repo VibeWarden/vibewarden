@@ -94,7 +94,7 @@ func (s *Service) Deploy(ctx context.Context, cfg *config.Config, opts RunOption
 
 	projectName := opts.ProjectName
 	if projectName == "" {
-		projectName = projectNameFromConfig(opts.ConfigPath)
+		projectName = ProjectNameFromConfig(opts.ConfigPath)
 	}
 	remoteDir := remoteBaseDir + "/" + projectName + "/"
 
@@ -275,10 +275,11 @@ func (s *Service) checkHealth(ctx context.Context, healthURL string) (bool, erro
 	return resp.StatusCode >= 200 && resp.StatusCode < 300, nil
 }
 
-// projectNameFromConfig derives a project name from the config file path.
+// ProjectNameFromConfig derives a project name from the config file path.
 // It returns the base name of the directory containing the config file, which
-// is the project directory name by convention.
-func projectNameFromConfig(configPath string) string {
+// is the project directory name by convention. It is exported so the CLI can
+// compute the remote directory before calling Deploy.
+func ProjectNameFromConfig(configPath string) string {
 	if configPath == "" {
 		return "vibewarden"
 	}
