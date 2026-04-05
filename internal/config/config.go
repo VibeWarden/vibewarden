@@ -2064,6 +2064,19 @@ func validateEgressConfig(cfg EgressConfig) []string {
 				errs = append(errs, fmt.Sprintf("%s.secret_header is required when secret or secret_format is set", prefix))
 			}
 		}
+
+		// prompt_injection validation.
+		if r.PromptInjection.Enabled {
+			switch r.PromptInjection.Action {
+			case "", "block", "detect":
+				// valid — empty defaults to "block"
+			default:
+				errs = append(errs, fmt.Sprintf(
+					"%s.prompt_injection.action %q is invalid; accepted values: \"block\", \"detect\"",
+					prefix, r.PromptInjection.Action,
+				))
+			}
+		}
 	}
 
 	return errs
