@@ -152,6 +152,11 @@ type EgressRouteConfig struct {
 	// When Enabled is true, request bodies are scanned for prompt injection
 	// payloads before being forwarded to the upstream LLM API.
 	PromptInjection EgressPromptInjectionConfig `mapstructure:"prompt_injection"`
+
+	// LLMResponseValidation holds per-route LLM response schema validation
+	// settings. When Enabled is true, upstream JSON responses are validated
+	// against the configured JSON Schema.
+	LLMResponseValidation EgressLLMResponseValidationConfig `mapstructure:"response_validation"`
 }
 
 // EgressHeadersConfig holds per-route header manipulation rules as parsed from
@@ -265,6 +270,35 @@ type EgressRetryConfig struct {
 	// Backoff selects the backoff strategy: "exponential" or "fixed".
 	// Defaults to "exponential" when empty.
 	Backoff string `mapstructure:"backoff"`
+}
+
+// EgressLLMResponseValidationConfig holds per-route LLM response schema
+// validation settings as parsed from vibewarden.yaml.
+//
+// When Enabled is true, each upstream response with Content-Type
+// application/json is validated against the provided JSON Schema. Responses
+// that fail validation are either blocked (502 Bad Gateway) or passed through
+// with a warning logged, depending on Action.
+type EgressLLMResponseValidationConfig struct {
+	// Enabled toggles LLM response schema validation for this route.
+	// When false (default), no validation is performed.
+	Enabled bool `mapstructure:"enabled"`
+
+	// Action controls what happens when validation fails.
+	// Accepted values:
+	//   "block" — reject the response with 502 Bad Gateway (default).
+	//   "warn"  — log a warning and pass the response through unchanged.
+	Action string `mapstructure:"action"`
+
+	// Schema is the JSON Schema document used to validate the upstream response
+	// body. Must be a valid JSON Schema object.
+	// Example:
+	//   type: object
+	//   required: [choices]
+	//   properties:
+	//     choices:
+	//       type: array
+	Schema map[string]any `mapstructure:"schema"`
 }
 
 // EgressPromptInjectionConfig holds per-route prompt injection detection settings

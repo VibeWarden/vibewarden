@@ -109,6 +109,11 @@ type RouteConfig struct {
 	// When non-zero, the egress proxy presents the configured certificate during
 	// the TLS handshake with the upstream.
 	MTLS MTLSConfig
+
+	// LLMResponseValidation holds per-route LLM response schema validation
+	// settings. When Enabled is true, upstream JSON responses are validated
+	// against the configured JSON Schema before being returned to the caller.
+	LLMResponseValidation LLMResponseValidationConfig
 }
 
 // HeadersConfig holds per-route header injection and stripping rules for the
@@ -184,6 +189,26 @@ type ResponseValidationConfig struct {
 	// When empty, no Content-Type validation is performed.
 	// Example: ["application/json", "text/plain"]
 	ContentTypes []string
+}
+
+// LLMResponseValidationConfig holds per-route LLM response schema validation
+// parameters for the egress plugin configuration layer.
+//
+// When Enabled is true, each upstream response with Content-Type
+// application/json is validated against the provided JSON Schema. Responses
+// that fail validation are either blocked (502 Bad Gateway) or passed through
+// with a warning logged, depending on Action.
+type LLMResponseValidationConfig struct {
+	// Enabled activates LLM response schema validation for this route.
+	Enabled bool
+
+	// Action controls what happens when validation fails.
+	// Accepted values: "block" (default) or "warn".
+	Action string
+
+	// Schema is the JSON Schema document used to validate upstream response
+	// bodies. Must be a non-nil map representing a valid JSON Schema object.
+	Schema map[string]any
 }
 
 // CircuitBreakerConfig holds circuit breaker parameters for a route.

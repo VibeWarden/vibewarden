@@ -4,11 +4,13 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"sync/atomic"
 	"time"
 
 	egressadapter "github.com/vibewarden/vibewarden/internal/adapters/egress"
 	domainegress "github.com/vibewarden/vibewarden/internal/domain/egress"
+	"github.com/vibewarden/vibewarden/internal/middleware"
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
 
@@ -38,8 +40,9 @@ type Plugin struct {
 	logger      *slog.Logger
 	eventLogger ports.EventLogger
 
-	proxy   *egressadapter.Proxy
-	running atomic.Bool
+	proxy             *egressadapter.Proxy
+	llmResponseRoutes []middleware.LLMResponseValidationRouteConfig
+	running           atomic.Bool
 }
 
 // New creates a new egress Plugin.
@@ -85,6 +88,14 @@ func (p *Plugin) Init(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("egress plugin init: building routes: %w", err)
 	}
+
+	// Build LLM response validation routes for routes that have it enabled.
+	llmValInputs := buildLLMResponseValidationInputs(p.cfg.Routes)
+	llmValRoutes, err := middleware.BuildLLMResponseValidationRoutes(llmValInputs)
+	if err != nil {
+		return fmt.Errorf("egress plugin init: building LLM response validation routes: %w", err)
+	}
+	p.llmResponseRoutes = llmValRoutes
 
 	policy := domainegress.Policy(p.cfg.DefaultPolicy)
 	if policy != domainegress.PolicyAllow && policy != domainegress.PolicyDeny {
@@ -134,8 +145,23 @@ func (p *Plugin) Init(ctx context.Context) error {
 		slog.String("default_policy", p.cfg.DefaultPolicy),
 		slog.Int("routes", len(routes)),
 		slog.Bool("block_private", p.cfg.BlockPrivate),
+		slog.Int("llm_response_validation_routes", len(llmValRoutes)),
 	)
 	return nil
+}
+
+// LLMResponseValidationMiddleware returns the LLM response schema validation
+// middleware configured from the plugin's route definitions.
+//
+// The returned middleware intercepts upstream JSON responses and validates them
+// against the per-route JSON Schema. On validation failure the behaviour is
+// controlled by the route's Action field: "block" returns 502 Bad Gateway and
+// "warn" passes the response through while logging an llm.response_invalid event.
+//
+// Returns a no-op passthrough middleware when no routes have LLM response
+// validation enabled.
+func (p *Plugin) LLMResponseValidationMiddleware() func(http.Handler) http.Handler {
+	return middleware.LLMResponseValidationMiddleware(p.llmResponseRoutes, p.logger, p.eventLogger)
 }
 
 // Start binds the TCP listener and begins serving egress requests.
@@ -183,6 +209,28 @@ func (p *Plugin) Health() ports.HealthStatus {
 		return ports.HealthStatus{Healthy: true, Message: fmt.Sprintf("listening on %s", p.cfg.Listen)}
 	}
 	return ports.HealthStatus{Healthy: false, Message: "egress proxy not running"}
+}
+
+// buildLLMResponseValidationInputs converts the plugin RouteConfig slice into
+// LLMResponseValidationRouteInput values for routes that have LLM response
+// validation enabled. Routes with LLMResponseValidation.Enabled == false are
+// skipped by BuildLLMResponseValidationRoutes but are included here for
+// completeness.
+func buildLLMResponseValidationInputs(cfgs []RouteConfig) []middleware.LLMResponseValidationRouteInput {
+	inputs := make([]middleware.LLMResponseValidationRouteInput, 0, len(cfgs))
+	for _, rc := range cfgs {
+		if !rc.LLMResponseValidation.Enabled {
+			continue
+		}
+		inputs = append(inputs, middleware.LLMResponseValidationRouteInput{
+			Name:    rc.Name,
+			Pattern: rc.Pattern,
+			Enabled: rc.LLMResponseValidation.Enabled,
+			Schema:  rc.LLMResponseValidation.Schema,
+			Action:  rc.LLMResponseValidation.Action,
+		})
+	}
+	return inputs
 }
 
 // buildRoutes converts the plugin RouteConfig slice into domain Route values.
