@@ -15,13 +15,16 @@ import (
 	"github.com/vibewarden/vibewarden/internal/config"
 )
 
-// RegisterDefaultTools registers the four standard VibeWarden MCP tools onto s.
+// RegisterDefaultTools registers all standard VibeWarden MCP tools onto s.
 // It is a convenience function that wires the tool definitions and handlers together.
 func RegisterDefaultTools(s *Server) {
 	s.RegisterTool(statusToolDef(), handleStatus)
 	s.RegisterTool(doctorToolDef(), handleDoctor)
 	s.RegisterTool(validateToolDef(), handleValidate)
 	s.RegisterTool(explainToolDef(), handleExplain)
+	s.RegisterTool(prepareDeployToolDef(), handlePrepareDeploy)
+	s.RegisterTool(verifyDeployToolDef(), handleVerifyDeploy)
+	s.RegisterTool(getDeployLogsToolDef(), handleGetDeployLogs)
 }
 
 // ---------------------------------------------------------------------------
@@ -380,6 +383,222 @@ func explainConfig(cfg *config.Config, path string) string {
 	}
 
 	return sb.String()
+}
+
+// ---------------------------------------------------------------------------
+// vibewarden_prepare_deploy
+// ---------------------------------------------------------------------------
+
+func prepareDeployToolDef() ToolDefinition {
+	return ToolDefinition{
+		Name:        "vibewarden_prepare_deploy",
+		Description: "Generate a deployment spec for the VibeWarden sidecar on a target platform. Returns a sidecar container spec, a vibewarden.yaml template, a platform-native config snippet, a health check URL, and platform-specific notes.",
+		InputSchema: InputSchema{
+			Type: "object",
+			Properties: map[string]Property{
+				"platform": {
+					Type:        "string",
+					Description: "Target platform: 'docker' (generic Docker Compose / SSH), 'railway' (Railway.app), or 'flyio' (Fly.io).",
+				},
+				"app_port": {
+					Type:        "string",
+					Description: "The port your application listens on (e.g. '3000'). Passed as a string because JSON schemas do not enforce integer types in all MCP clients.",
+				},
+				"config_path": {
+					Type:        "string",
+					Description: "Optional path to an existing vibewarden.yaml to read the app_port from. Ignored when app_port is provided.",
+				},
+			},
+			Required: []string{"platform", "app_port"},
+		},
+	}
+}
+
+// prepareDeployArgs holds the arguments for vibewarden_prepare_deploy.
+type prepareDeployArgs struct {
+	Platform   string `json:"platform"`
+	AppPort    any    `json:"app_port"`    // accept string or number
+	ConfigPath string `json:"config_path"` // optional
+}
+
+func handlePrepareDeploy(_ context.Context, params json.RawMessage) ([]ContentItem, error) {
+	var args prepareDeployArgs
+	if len(params) > 0 {
+		if err := json.Unmarshal(params, &args); err != nil {
+			return nil, fmt.Errorf("invalid arguments: %w", err)
+		}
+	}
+
+	// Parse app_port — accept both JSON number and quoted string.
+	appPort, err := parsePort(args.AppPort)
+	if err != nil {
+		return nil, fmt.Errorf("app_port: %w", err)
+	}
+	if appPort < 1 || appPort > 65535 {
+		return nil, fmt.Errorf("app_port must be between 1 and 65535, got %d", appPort)
+	}
+
+	var spec DeploySpec
+	switch Platform(args.Platform) {
+	case PlatformDocker:
+		spec = PrepareDockerSpec(appPort)
+	case PlatformRailway:
+		spec = PrepareRailwaySpec(appPort)
+	case PlatformFlyio:
+		spec = PrepareFlyioSpec(appPort)
+	default:
+		return nil, fmt.Errorf("unsupported platform %q — supported values: docker, railway, flyio", args.Platform)
+	}
+
+	out, err := json.MarshalIndent(spec, "", "  ")
+	if err != nil {
+		return nil, fmt.Errorf("marshalling deploy spec: %w", err)
+	}
+	return text(string(out)), nil
+}
+
+// parsePort converts an interface{} value (string or float64 from JSON) to int.
+func parsePort(v any) (int, error) {
+	switch val := v.(type) {
+	case float64:
+		return int(val), nil
+	case string:
+		var p int
+		if _, err := fmt.Sscanf(val, "%d", &p); err != nil {
+			return 0, fmt.Errorf("cannot parse %q as a port number", val)
+		}
+		return p, nil
+	case nil:
+		return 0, fmt.Errorf("app_port is required")
+	default:
+		return 0, fmt.Errorf("unexpected type %T for port", v)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// vibewarden_verify_deploy
+// ---------------------------------------------------------------------------
+
+func verifyDeployToolDef() ToolDefinition {
+	return ToolDefinition{
+		Name:        "vibewarden_verify_deploy",
+		Description: "Verify that a deployed VibeWarden sidecar is reachable and healthy by hitting its /_vibewarden/health endpoint. Returns the HTTP status and any warnings.",
+		InputSchema: InputSchema{
+			Type: "object",
+			Properties: map[string]Property{
+				"url": {
+					Type:        "string",
+					Description: "Base URL of the deployed sidecar, e.g. 'https://my-app.fly.dev'. The health endpoint is appended automatically.",
+				},
+			},
+			Required: []string{"url"},
+		},
+	}
+}
+
+// verifyDeployArgs holds the arguments for vibewarden_verify_deploy.
+type verifyDeployArgs struct {
+	URL string `json:"url"`
+}
+
+func handleVerifyDeploy(ctx context.Context, params json.RawMessage) ([]ContentItem, error) {
+	var args verifyDeployArgs
+	if len(params) > 0 {
+		if err := json.Unmarshal(params, &args); err != nil {
+			return nil, fmt.Errorf("invalid arguments: %w", err)
+		}
+	}
+	if args.URL == "" {
+		return nil, fmt.Errorf("url is required")
+	}
+
+	healthURL := strings.TrimRight(args.URL, "/") + "/_vibewarden/health"
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	checker := opsadapter.NewHTTPHealthChecker(client)
+
+	checkCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	ok, code, err := checker.CheckHealth(checkCtx, healthURL)
+	if err != nil {
+		return text(fmt.Sprintf("sidecar unreachable at %s: %v\nWarning: ensure the sidecar is running and the URL is correct.", healthURL, err)), nil
+	}
+	if !ok {
+		return text(fmt.Sprintf("sidecar returned HTTP %d at %s — not healthy.\nWarning: check the sidecar logs with: vibew deploy logs", code, healthURL)), nil
+	}
+
+	return text(fmt.Sprintf("sidecar is healthy at %s (HTTP %d)", healthURL, code)), nil
+}
+
+// ---------------------------------------------------------------------------
+// vibewarden_get_deploy_logs
+// ---------------------------------------------------------------------------
+
+func getDeployLogsToolDef() ToolDefinition {
+	return ToolDefinition{
+		Name:        "vibewarden_get_deploy_logs",
+		Description: "Retrieve recent sidecar logs from a deployed instance. NOTE: direct remote log retrieval is not available without admin access; this tool explains how to fetch logs using the vibew CLI.",
+		InputSchema: InputSchema{
+			Type: "object",
+			Properties: map[string]Property{
+				"url": {
+					Type:        "string",
+					Description: "Base URL of the deployed sidecar (informational only).",
+				},
+				"lines": {
+					Type:        "string",
+					Description: "Number of log lines to retrieve (informational only).",
+				},
+			},
+		},
+	}
+}
+
+// getDeployLogsArgs holds the arguments for vibewarden_get_deploy_logs.
+type getDeployLogsArgs struct {
+	URL   string `json:"url"`
+	Lines string `json:"lines"`
+}
+
+func handleGetDeployLogs(_ context.Context, params json.RawMessage) ([]ContentItem, error) {
+	var args getDeployLogsArgs
+	if len(params) > 0 {
+		if err := json.Unmarshal(params, &args); err != nil {
+			return nil, fmt.Errorf("invalid arguments: %w", err)
+		}
+	}
+
+	lines := "50"
+	if args.Lines != "" {
+		lines = args.Lines
+	}
+	target := args.URL
+	if target == "" {
+		target = "<your-sidecar-url>"
+	}
+
+	msg := fmt.Sprintf(`Remote log retrieval is not available via MCP without direct server access.
+
+To fetch sidecar logs, use the vibew CLI on the machine where the sidecar is running:
+
+  # Docker Compose deployments (SSH or local):
+  vibew deploy logs --lines %s
+
+  # Or directly via Docker:
+  docker compose logs vibewarden --tail %s --follow
+
+  # Fly.io:
+  fly logs --app <your-app-name>
+
+  # Railway:
+  railway logs --service vibewarden
+
+Targeted URL was: %s
+If you have SSH access to the host, you can also run:
+  ssh <user>@<host> "docker compose logs vibewarden --tail %s"`, lines, lines, target, lines)
+
+	return text(msg), nil
 }
 
 // ---------------------------------------------------------------------------
