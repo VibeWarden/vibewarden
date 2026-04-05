@@ -446,3 +446,118 @@ upstream:
 		t.Errorf("Execute() unexpected error for minimal valid config: %v\nstderr: %s", err, errBuf.String())
 	}
 }
+
+// TestValidateCmd_ConfigFlag verifies that --config <path> works as an
+// alternative to the positional argument.
+func TestValidateCmd_ConfigFlag(t *testing.T) {
+	tests := []struct {
+		name    string
+		yaml    string
+		wantErr bool
+	}{
+		{
+			name: "valid config via flag",
+			yaml: `
+server:
+  port: 8080
+upstream:
+  port: 3000
+tls:
+  enabled: false
+  provider: self-signed
+log:
+  level: info
+  format: json
+`,
+			wantErr: false,
+		},
+		{
+			name: "invalid config via flag",
+			yaml: `
+server:
+  port: 0
+upstream:
+  port: 3000
+`,
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			path := writeConfig(t, tt.yaml)
+
+			root := cmd.NewRootCmd("test")
+			var outBuf, errBuf bytes.Buffer
+			root.SetOut(&outBuf)
+			root.SetErr(&errBuf)
+			root.SetArgs([]string{"validate", "--config", path})
+
+			err := root.Execute()
+			if (err != nil) != tt.wantErr {
+				t.Errorf("Execute() error = %v, wantErr %v\nstderr: %s", err, tt.wantErr, errBuf.String())
+			}
+		})
+	}
+}
+
+// TestValidateCmd_ConfigFlagNotFound verifies that --config with a
+// non-existent path returns a clear "not found" error.
+func TestValidateCmd_ConfigFlagNotFound(t *testing.T) {
+	root := cmd.NewRootCmd("test")
+	var outBuf, errBuf bytes.Buffer
+	root.SetOut(&outBuf)
+	root.SetErr(&errBuf)
+	root.SetArgs([]string{"validate", "--config", "/nonexistent/path/vibewarden.yaml"})
+
+	err := root.Execute()
+	if err == nil {
+		t.Error("Execute() expected error for nonexistent --config path, got nil")
+	}
+	if !strings.Contains(err.Error(), "not found") {
+		t.Errorf("expected 'not found' in error, got: %v", err)
+	}
+}
+
+// TestValidateCmd_ConfigFlagPrecedenceOverPositional verifies that --config
+// takes precedence over the positional argument when both are provided.
+func TestValidateCmd_ConfigFlagPrecedenceOverPositional(t *testing.T) {
+	// Write a valid config for the flag and an invalid one for the positional arg.
+	validPath := writeConfig(t, `
+server:
+  port: 8080
+upstream:
+  port: 3000
+`)
+	invalidPath := writeConfig(t, `
+server:
+  port: 0
+upstream:
+  port: 3000
+`)
+
+	root := cmd.NewRootCmd("test")
+	var outBuf, errBuf bytes.Buffer
+	root.SetOut(&outBuf)
+	root.SetErr(&errBuf)
+	// --config points to the valid file; positional arg points to the invalid one.
+	root.SetArgs([]string{"validate", "--config", validPath, invalidPath})
+
+	err := root.Execute()
+	if err != nil {
+		t.Errorf("Execute() expected success (--config takes precedence), got: %v\nstderr: %s", err, errBuf.String())
+	}
+}
+
+// TestValidateCmd_ConfigFlagRegistered verifies that --config is registered
+// on the validate subcommand.
+func TestValidateCmd_ConfigFlagRegistered(t *testing.T) {
+	root := cmd.NewRootCmd("test")
+	validateCmd, _, err := root.Find([]string{"validate"})
+	if err != nil {
+		t.Fatalf("Find(validate) error: %v", err)
+	}
+	if validateCmd.Flags().Lookup("config") == nil {
+		t.Error("expected --config flag to be registered on 'validate' command")
+	}
+}
