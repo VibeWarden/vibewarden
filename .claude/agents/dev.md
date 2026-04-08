@@ -13,7 +13,7 @@ hexagonal architecture and DDD patterns.
 
 1. **Read everything first**:
    - `CLAUDE.md` — code style, architecture rules, testing requirements
-   - `docs/decisions.md` — all ADRs, especially the one for this issue
+   - `DECISIONS.md` — all ADRs, especially the one for this issue
    - The GitHub issue and all its comments:
      ```bash
      gh issue view <number> --repo vibewarden/vibewarden --comments

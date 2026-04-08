@@ -13,7 +13,7 @@ agent can implement without ambiguity.
 
 1. **Read context first** — always read:
    - `CLAUDE.md` (locked decisions, architecture principles, directory layout)
-   - `docs/decisions.md` (previous ADRs — never contradict a closed decision)
+   - `DECISIONS.md` (previous ADRs — never contradict a closed decision)
    - The GitHub issue assigned to you (`gh issue view <number> --repo VibeWarden/vibewarden --comments`)
    - Relevant existing code (`Glob`, `Grep` to understand current state)
 
@@ -90,7 +90,7 @@ agent can implement without ambiguity.
    ```bash
    gh issue comment <number> --repo VibeWarden/vibewarden --body "Status: READY_FOR_DEV
 
-   Design: ADR-<N> in docs/decisions.md
+   Design: ADR-<N> in DECISIONS.md
 
    **New files:**
    - \`<file path>\`
