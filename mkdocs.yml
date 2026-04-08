@@ -87,6 +87,7 @@ nav:
   - Reference:
       - Claude Code Snippet: claude-md-snippet.md
       - Schema Evolution: schema-evolution.md
+      - AI Log Schema: ai-log-schema.md
 
 extra:
   social:
