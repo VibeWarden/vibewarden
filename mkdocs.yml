@@ -81,13 +81,13 @@ nav:
   - Framework Examples:
       - Express (Node.js): examples/express.md
       - Next.js: examples/nextjs.md
-      - Django: examples/django.md
-      - Rails: examples/rails.md
   - Upgrading: upgrading.md
   - Troubleshooting: troubleshooting.md
   - FAQ: faq.md
   - Reference:
       - Architectural Decisions: decisions.md
+      - Claude Code Snippet: claude-md-snippet.md
+      - Schema Evolution: schema-evolution.md
 
 extra:
   social:

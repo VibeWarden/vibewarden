@@ -74,6 +74,7 @@ vibew / vibew.ps1        # Wrapper scripts (macOS/Linux/Windows)
 .claude/CLAUDE.md        # AI agent context (Claude Code)
 .cursor/rules            # AI agent context (Cursor)
 AGENTS.md                # AI agent context (generic)
+AGENTS-VIBEWARDEN.md     # Tool-agnostic AI agent context (all agents)
 ```
 
 !!! tip "AI agent context"
