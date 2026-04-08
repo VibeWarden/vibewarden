@@ -40,9 +40,10 @@ type Plugin struct {
 	logger      *slog.Logger
 	eventLogger ports.EventLogger
 
-	proxy             *egressadapter.Proxy
-	llmResponseRoutes []middleware.LLMResponseValidationRouteConfig
-	running           atomic.Bool
+	proxy                 *egressadapter.Proxy
+	llmResponseRoutes     []middleware.LLMResponseValidationRouteConfig
+	promptInjectionRoutes []middleware.PromptInjectionRouteConfig
+	running               atomic.Bool
 }
 
 // New creates a new egress Plugin.
@@ -97,6 +98,14 @@ func (p *Plugin) Init(ctx context.Context) error {
 	}
 	p.llmResponseRoutes = llmValRoutes
 
+	// Build prompt injection routes for routes that have it enabled.
+	piInputs := buildPromptInjectionInputs(p.cfg.Routes)
+	piRoutes, err := middleware.BuildPromptInjectionRoutes(piInputs)
+	if err != nil {
+		return fmt.Errorf("egress plugin init: building prompt injection routes: %w", err)
+	}
+	p.promptInjectionRoutes = piRoutes
+
 	policy := domainegress.Policy(p.cfg.DefaultPolicy)
 	if policy != domainegress.PolicyAllow && policy != domainegress.PolicyDeny {
 		return fmt.Errorf("egress plugin init: unknown default_policy %q (must be \"allow\" or \"deny\")", p.cfg.DefaultPolicy)
@@ -111,6 +120,7 @@ func (p *Plugin) Init(ctx context.Context) error {
 		Routes:                   routes,
 		AllowInsecure:            p.cfg.AllowInsecure,
 		EventLogger:              p.eventLogger,
+		PromptInjectionRoutes:    p.promptInjectionRoutes,
 	}
 
 	// Wire SSRF guard when private-IP blocking is enabled.
@@ -146,8 +156,24 @@ func (p *Plugin) Init(ctx context.Context) error {
 		slog.Int("routes", len(routes)),
 		slog.Bool("block_private", p.cfg.BlockPrivate),
 		slog.Int("llm_response_validation_routes", len(llmValRoutes)),
+		slog.Int("prompt_injection_routes", len(piRoutes)),
 	)
 	return nil
+}
+
+// PromptInjectionMiddleware returns the prompt injection detection middleware
+// configured from the plugin's route definitions.
+//
+// The returned middleware scans outbound LLM API request bodies for prompt
+// injection payloads before they are forwarded to the upstream. On detection,
+// the behaviour is controlled by the per-route Action field: "block" returns
+// 400 Bad Request and "detect" passes the request through while logging an
+// llm.prompt_injection_detected event.
+//
+// Returns a no-op passthrough middleware when no routes have prompt injection
+// enabled.
+func (p *Plugin) PromptInjectionMiddleware() func(http.Handler) http.Handler {
+	return middleware.PromptInjectionMiddleware(p.promptInjectionRoutes, p.logger, p.eventLogger)
 }
 
 // LLMResponseValidationMiddleware returns the LLM response schema validation
@@ -162,6 +188,16 @@ func (p *Plugin) Init(ctx context.Context) error {
 // validation enabled.
 func (p *Plugin) LLMResponseValidationMiddleware() func(http.Handler) http.Handler {
 	return middleware.LLMResponseValidationMiddleware(p.llmResponseRoutes, p.logger, p.eventLogger)
+}
+
+// Addr returns the TCP address the egress proxy is listening on.
+// Must only be called after a successful Start. Returns an empty string when
+// the plugin is disabled or Start has not been called.
+func (p *Plugin) Addr() string {
+	if p.proxy == nil {
+		return ""
+	}
+	return p.proxy.Addr()
 }
 
 // Start binds the TCP listener and begins serving egress requests.
@@ -209,6 +245,27 @@ func (p *Plugin) Health() ports.HealthStatus {
 		return ports.HealthStatus{Healthy: true, Message: fmt.Sprintf("listening on %s", p.cfg.Listen)}
 	}
 	return ports.HealthStatus{Healthy: false, Message: "egress proxy not running"}
+}
+
+// buildPromptInjectionInputs converts the plugin RouteConfig slice into
+// PromptInjectionRouteInput values for routes that have prompt injection enabled.
+// Routes with PromptInjection.Enabled == false are skipped.
+func buildPromptInjectionInputs(cfgs []RouteConfig) []middleware.PromptInjectionRouteInput {
+	inputs := make([]middleware.PromptInjectionRouteInput, 0, len(cfgs))
+	for _, rc := range cfgs {
+		if !rc.PromptInjection.Enabled {
+			continue
+		}
+		inputs = append(inputs, middleware.PromptInjectionRouteInput{
+			Name:                   rc.Name,
+			Pattern:                rc.Pattern,
+			PromptInjectionEnabled: rc.PromptInjection.Enabled,
+			ContentPaths:           rc.PromptInjection.ContentPaths,
+			ExtraPatterns:          rc.PromptInjection.ExtraPatterns,
+			Action:                 rc.PromptInjection.Action,
+		})
+	}
+	return inputs
 }
 
 // buildLLMResponseValidationInputs converts the plugin RouteConfig slice into
