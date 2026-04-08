@@ -72,6 +72,7 @@ vibew                    # CLI binary (installed via install script)
 .claude/CLAUDE.md        # AI agent context (Claude Code)
 .cursor/rules            # AI agent context (Cursor)
 AGENTS.md                # AI agent context (generic)
+AGENTS-VIBEWARDEN.md     # Tool-agnostic AI agent context (all agents)
 ```
 
 Running `vibew dev` or `vibew generate` creates runtime files under
@@ -221,6 +222,7 @@ If you need a general-purpose load balancer or a CDN edge, use the right tool fo
 | `vibew add rate-limiting` | Enable rate limiting |
 | `vibew add tls --domain example.com` | Enable TLS |
 | `vibew add metrics` | Enable Prometheus metrics |
+| `vibew add admin` | Enable admin API |
 | `vibew generate` | Regenerate `docker-compose.yml` from config |
 | `vibew build` | Build the Docker image for the app |
 | `vibew dev` | Start local dev environment |
