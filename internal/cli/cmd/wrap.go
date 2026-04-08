@@ -116,7 +116,7 @@ Examples:
 	cmd.Flags().BoolVar(&force, "force", false, "overwrite existing files")
 	cmd.Flags().BoolVar(&skipWrapper, "skip-wrapper", false, "skip vibew wrapper script generation")
 	cmd.Flags().StringVar(&version, "version", "", "VibeWarden version to pin in .vibewarden-version (default: latest)")
-	cmd.Flags().StringVar(&agent, "agent", "all", `generate AI agent context files: "claude", "cursor", "generic", "all", or "none"`)
+	cmd.Flags().StringVar(&agent, "agent", "all", `generate AI agent context files: "claude", "generic", "all", or "none"`)
 
 	return cmd
 }
@@ -126,7 +126,6 @@ Examples:
 func parseAgentType(value string) (domainscaffold.AgentType, error) {
 	switch domainscaffold.AgentType(value) {
 	case domainscaffold.AgentTypeClaude,
-		domainscaffold.AgentTypeCursor,
 		domainscaffold.AgentTypeGeneric,
 		domainscaffold.AgentTypeAll:
 		return domainscaffold.AgentType(value), nil
@@ -134,7 +133,7 @@ func parseAgentType(value string) (domainscaffold.AgentType, error) {
 		return "", nil
 	default:
 		return "", fmt.Errorf(
-			"unknown --agent value %q: must be one of claude, cursor, generic, all, none",
+			"unknown --agent value %q: must be one of claude, generic, all, none",
 			value,
 		)
 	}
