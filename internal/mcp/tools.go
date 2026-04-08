@@ -26,6 +26,7 @@ func RegisterDefaultTools(s *Server) {
 	s.RegisterTool(verifyDeployToolDef(), handleVerifyDeploy)
 	s.RegisterTool(getDeployLogsToolDef(), handleGetDeployLogs)
 	s.RegisterTool(watchEventsToolDef(), handleWatchEvents)
+	s.RegisterTool(schemaDescribeToolDef(), handleSchemaDescribe)
 	RegisterProposalTools(s)
 }
 
@@ -601,6 +602,108 @@ If you have SSH access to the host, you can also run:
   ssh <user>@<host> "docker compose logs vibewarden --tail %s"`, lines, lines, target, lines)
 
 	return text(msg), nil
+}
+
+// ---------------------------------------------------------------------------
+// vibewarden_schema_describe
+// ---------------------------------------------------------------------------
+
+func schemaDescribeToolDef() ToolDefinition {
+	return ToolDefinition{
+		Name:        "vibewarden_schema_describe",
+		Description: "Describe the VibeWarden AI-readable log schema. With no arguments, lists all event types with one-line descriptions. With event_type, returns full field definitions for that event type. Pure metadata — no admin token or live sidecar required.",
+		InputSchema: InputSchema{
+			Type: "object",
+			Properties: map[string]Property{
+				"event_type": {
+					Type:        "string",
+					Description: "Optional event type to describe (e.g. \"auth.success\", \"rate_limit.hit\"). Omit to list all event types.",
+				},
+			},
+		},
+	}
+}
+
+// schemaDescribeArgs are the optional arguments for vibewarden_schema_describe.
+type schemaDescribeArgs struct {
+	EventType string `json:"event_type"`
+}
+
+func handleSchemaDescribe(_ context.Context, params json.RawMessage) ([]ContentItem, error) {
+	var args schemaDescribeArgs
+	if len(params) > 0 {
+		if err := json.Unmarshal(params, &args); err != nil {
+			return nil, fmt.Errorf("invalid arguments: %w", err)
+		}
+	}
+
+	if args.EventType == "" {
+		return text(renderEventTypeList()), nil
+	}
+
+	info, ok := LookupEventType(args.EventType)
+	if !ok {
+		return text(fmt.Sprintf("Unknown event type %q. Use vibewarden_schema_describe with no arguments to see all event types.", args.EventType)), nil
+	}
+
+	return text(renderEventTypeDetail(args.EventType, info)), nil
+}
+
+// renderEventTypeList formats the registry as a listing of event type names and
+// one-line descriptions, grouped by subsystem prefix.
+func renderEventTypeList() string {
+	var sb strings.Builder
+	fmt.Fprintf(&sb, "VibeWarden AI-readable log schema — event types (schema_version: v1)\n\n")
+	fmt.Fprintf(&sb, "Every event also carries these top-level fields:\n")
+	fmt.Fprintf(&sb, "  schema_version  string    Always \"v1\".\n")
+	fmt.Fprintf(&sb, "  event_type      string    One of the types listed below.\n")
+	fmt.Fprintf(&sb, "  timestamp       RFC3339   When the event occurred (UTC).\n")
+	fmt.Fprintf(&sb, "  ai_summary      string    One-sentence human+AI-readable summary (≤200 chars).\n")
+	fmt.Fprintf(&sb, "  actor           Actor     Who initiated the action (type, id, ip).\n")
+	fmt.Fprintf(&sb, "  resource        Resource  What was acted on (type, path, method).\n")
+	fmt.Fprintf(&sb, "  outcome         string    allowed | blocked | rate_limited | failed | (empty for informational).\n")
+	fmt.Fprintf(&sb, "  risk_signals    []Signal  Machine-detectable risk indicators (signal, score, details).\n")
+	fmt.Fprintf(&sb, "  request_id      string    X-Request-ID header value. May be empty.\n")
+	fmt.Fprintf(&sb, "  trace_id        string    W3C trace-id. May be empty.\n")
+	fmt.Fprintf(&sb, "  triggered_by    string    Internal component that raised the event.\n")
+	fmt.Fprintf(&sb, "  payload         object    Event-specific fields (see individual event types below).\n\n")
+	fmt.Fprintf(&sb, "Use vibewarden_schema_describe with event_type=<type> for full field definitions.\n\n")
+	fmt.Fprintf(&sb, "Event types:\n\n")
+
+	for _, et := range AllEventTypes() {
+		info := eventTypeRegistry[et]
+		fmt.Fprintf(&sb, "  %-42s  %s\n", et, info.Description)
+	}
+
+	return sb.String()
+}
+
+// renderEventTypeDetail formats the full field list for a single event type.
+func renderEventTypeDetail(eventType string, info EventTypeInfo) string {
+	var sb strings.Builder
+	fmt.Fprintf(&sb, "Event type: %s\n\n", eventType)
+	fmt.Fprintf(&sb, "%s\n\n", info.Description)
+
+	fmt.Fprintf(&sb, "Top-level fields (present on all events):\n")
+	fmt.Fprintf(&sb, "  schema_version  string    Always \"v1\".\n")
+	fmt.Fprintf(&sb, "  event_type      string    Always %q for this event.\n", eventType)
+	fmt.Fprintf(&sb, "  timestamp       RFC3339   When the event occurred (UTC).\n")
+	fmt.Fprintf(&sb, "  ai_summary      string    One-sentence summary (≤200 chars).\n")
+	fmt.Fprintf(&sb, "  request_id      string    X-Request-ID header. May be empty.\n")
+	fmt.Fprintf(&sb, "  trace_id        string    W3C trace-id. May be empty.\n")
+	fmt.Fprintf(&sb, "  triggered_by    string    Internal component that raised the event.\n\n")
+
+	if len(info.Fields) == 0 {
+		fmt.Fprintf(&sb, "Payload fields: (none — this event carries no additional fields)\n")
+		return sb.String()
+	}
+
+	fmt.Fprintf(&sb, "Event-specific fields:\n")
+	for _, f := range info.Fields {
+		fmt.Fprintf(&sb, "  %-30s  %-12s  %s\n", f.Name, f.Type, f.Description)
+	}
+
+	return sb.String()
 }
 
 // ---------------------------------------------------------------------------
