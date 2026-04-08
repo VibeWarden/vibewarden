@@ -1,0 +1,27 @@
+{
+  "schema_version": "v1",
+  "event_type": "request.blocked",
+  "timestamp": "2026-03-28T14:35:22Z",
+  "severity": "medium",
+  "category": "policy",
+  "ai_summary": "Request blocked by ip_blocklist: IP blocklist match",
+  "payload": {
+    "method": "GET",
+    "path": "/admin",
+    "reason": "IP blocklist match",
+    "blocked_by": "ip_blocklist",
+    "client_ip": "1.2.3.4"
+  },
+  "actor": {
+    "type": "ip",
+    "id": "1.2.3.4",
+    "ip": "1.2.3.4"
+  },
+  "resource": {
+    "type": "http_endpoint",
+    "path": "/admin",
+    "method": "GET"
+  },
+  "outcome": "blocked",
+  "triggered_by": "ip_blocklist"
+}

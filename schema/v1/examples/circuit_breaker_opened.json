@@ -1,0 +1,17 @@
+{
+  "schema_version": "v1",
+  "event_type": "circuit_breaker.opened",
+  "timestamp": "2026-03-28T14:37:45Z",
+  "severity": "high",
+  "category": "resilience",
+  "ai_summary": "Circuit breaker opened after 5 consecutive failures; upstream blocked for 30s",
+  "payload": {
+    "threshold": 5,
+    "timeout_seconds": 30
+  },
+  "actor": {
+    "type": "system",
+    "id": ""
+  },
+  "triggered_by": "circuit_breaker_middleware"
+}

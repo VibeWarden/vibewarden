@@ -11,6 +11,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -543,27 +544,27 @@ func TestSchemaRejectsInvalidEvents(t *testing.T) {
 	}{
 		{
 			name:    "missing schema_version",
-			jsonStr: `{"event_type":"auth.success","timestamp":"2026-03-28T12:00:00Z","ai_summary":"ok","payload":{}}`,
+			jsonStr: `{"event_type":"auth.success","timestamp":"2026-03-28T12:00:00Z","severity":"info","category":"auth","ai_summary":"ok","payload":{}}`,
 		},
 		{
 			name:    "wrong schema_version",
-			jsonStr: `{"schema_version":"v2","event_type":"auth.success","timestamp":"2026-03-28T12:00:00Z","ai_summary":"ok","payload":{}}`,
+			jsonStr: `{"schema_version":"v2","event_type":"auth.success","timestamp":"2026-03-28T12:00:00Z","severity":"info","category":"auth","ai_summary":"ok","payload":{}}`,
 		},
 		{
 			name:    "missing required field payload",
-			jsonStr: `{"schema_version":"v1","event_type":"auth.success","timestamp":"2026-03-28T12:00:00Z","ai_summary":"ok"}`,
+			jsonStr: `{"schema_version":"v1","event_type":"auth.success","timestamp":"2026-03-28T12:00:00Z","severity":"info","category":"auth","ai_summary":"ok"}`,
 		},
 		{
 			name:    "ai_summary exceeds 200 chars",
-			jsonStr: fmt.Sprintf(`{"schema_version":"v1","event_type":"auth.success","timestamp":"2026-03-28T12:00:00Z","ai_summary":%q,"payload":{}}`, strings.Repeat("x", 201)),
+			jsonStr: fmt.Sprintf(`{"schema_version":"v1","event_type":"auth.success","timestamp":"2026-03-28T12:00:00Z","severity":"info","category":"auth","ai_summary":%q,"payload":{}}`, strings.Repeat("x", 201)),
 		},
 		{
 			name:    "invalid timestamp format",
-			jsonStr: `{"schema_version":"v1","event_type":"auth.success","timestamp":"not-a-date","ai_summary":"ok","payload":{}}`,
+			jsonStr: `{"schema_version":"v1","event_type":"auth.success","timestamp":"not-a-date","severity":"info","category":"auth","ai_summary":"ok","payload":{}}`,
 		},
 		{
 			name:    "additional top-level property",
-			jsonStr: `{"schema_version":"v1","event_type":"auth.success","timestamp":"2026-03-28T12:00:00Z","ai_summary":"ok","payload":{},"extra_field":"bad"}`,
+			jsonStr: `{"schema_version":"v1","event_type":"auth.success","timestamp":"2026-03-28T12:00:00Z","severity":"info","category":"auth","ai_summary":"ok","payload":{},"extra_field":"bad"}`,
 		},
 	}
 
@@ -594,15 +595,15 @@ func TestSchemaForwardCompatibility(t *testing.T) {
 	}{
 		{
 			name:    "unknown future event type with empty payload",
-			jsonStr: `{"schema_version":"v1","event_type":"newplugin.action","timestamp":"2026-03-28T12:00:00Z","ai_summary":"A future event type","payload":{}}`,
+			jsonStr: `{"schema_version":"v1","event_type":"newplugin.action","timestamp":"2026-03-28T12:00:00Z","severity":"info","category":"network","ai_summary":"A future event type","payload":{}}`,
 		},
 		{
 			name:    "unknown future event type with arbitrary payload",
-			jsonStr: `{"schema_version":"v1","event_type":"fleet.connected","timestamp":"2026-03-28T12:00:00Z","ai_summary":"Fleet connection established","payload":{"node_id":"n-123","region":"eu-central-1"}}`,
+			jsonStr: `{"schema_version":"v1","event_type":"fleet.connected","timestamp":"2026-03-28T12:00:00Z","severity":"info","category":"network","ai_summary":"Fleet connection established","payload":{"node_id":"n-123","region":"eu-central-1"}}`,
 		},
 		{
 			name:    "unknown three-segment event type",
-			jsonStr: `{"schema_version":"v1","event_type":"egress.circuit_breaker.future_state","timestamp":"2026-03-28T12:00:00Z","ai_summary":"Circuit breaker entered a future state","payload":{"route":"payments"}}`,
+			jsonStr: `{"schema_version":"v1","event_type":"egress.circuit_breaker.future_state","timestamp":"2026-03-28T12:00:00Z","severity":"info","category":"resilience","ai_summary":"Circuit breaker entered a future state","payload":{"route":"payments"}}`,
 		},
 	}
 
@@ -628,31 +629,109 @@ func TestSchemaRejectsInvalidEventTypePatterns(t *testing.T) {
 	}{
 		{
 			name:    "event_type starts with digit",
-			jsonStr: `{"schema_version":"v1","event_type":"1plugin.action","timestamp":"2026-03-28T12:00:00Z","ai_summary":"bad","payload":{}}`,
+			jsonStr: `{"schema_version":"v1","event_type":"1plugin.action","timestamp":"2026-03-28T12:00:00Z","severity":"info","category":"auth","ai_summary":"bad","payload":{}}`,
 		},
 		{
 			name:    "event_type starts with dot",
-			jsonStr: `{"schema_version":"v1","event_type":".auth.success","timestamp":"2026-03-28T12:00:00Z","ai_summary":"bad","payload":{}}`,
+			jsonStr: `{"schema_version":"v1","event_type":".auth.success","timestamp":"2026-03-28T12:00:00Z","severity":"info","category":"auth","ai_summary":"bad","payload":{}}`,
 		},
 		{
 			name:    "event_type ends with dot",
-			jsonStr: `{"schema_version":"v1","event_type":"auth.success.","timestamp":"2026-03-28T12:00:00Z","ai_summary":"bad","payload":{}}`,
+			jsonStr: `{"schema_version":"v1","event_type":"auth.success.","timestamp":"2026-03-28T12:00:00Z","severity":"info","category":"auth","ai_summary":"bad","payload":{}}`,
 		},
 		{
 			name:    "event_type contains uppercase",
-			jsonStr: `{"schema_version":"v1","event_type":"Auth.success","timestamp":"2026-03-28T12:00:00Z","ai_summary":"bad","payload":{}}`,
+			jsonStr: `{"schema_version":"v1","event_type":"Auth.success","timestamp":"2026-03-28T12:00:00Z","severity":"info","category":"auth","ai_summary":"bad","payload":{}}`,
 		},
 		{
 			name:    "event_type is empty string",
-			jsonStr: `{"schema_version":"v1","event_type":"","timestamp":"2026-03-28T12:00:00Z","ai_summary":"bad","payload":{}}`,
+			jsonStr: `{"schema_version":"v1","event_type":"","timestamp":"2026-03-28T12:00:00Z","severity":"info","category":"auth","ai_summary":"bad","payload":{}}`,
 		},
 		{
 			name:    "event_type contains consecutive dots",
-			jsonStr: `{"schema_version":"v1","event_type":"auth..success","timestamp":"2026-03-28T12:00:00Z","ai_summary":"bad","payload":{}}`,
+			jsonStr: `{"schema_version":"v1","event_type":"auth..success","timestamp":"2026-03-28T12:00:00Z","severity":"info","category":"auth","ai_summary":"bad","payload":{}}`,
 		},
 		{
 			name:    "event_type contains hyphen",
-			jsonStr: `{"schema_version":"v1","event_type":"auth-success","timestamp":"2026-03-28T12:00:00Z","ai_summary":"bad","payload":{}}`,
+			jsonStr: `{"schema_version":"v1","event_type":"auth-success","timestamp":"2026-03-28T12:00:00Z","severity":"info","category":"auth","ai_summary":"bad","payload":{}}`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			inst, err := jsschema.UnmarshalJSON(strings.NewReader(tt.jsonStr))
+			if err != nil {
+				t.Fatalf("unmarshal test JSON: %v", err)
+			}
+			if err := sch.Validate(inst); err == nil {
+				t.Errorf("expected schema validation to fail for %q, but it passed", tt.name)
+			}
+		})
+	}
+}
+
+// TestExampleEventsValidateAgainstSchema loads every JSON file in the
+// schema/v1/examples/ directory and validates it against the v1 event schema.
+// This ensures the published examples remain correct as the schema evolves.
+func TestExampleEventsValidateAgainstSchema(t *testing.T) {
+	sch := compileSchema(t)
+
+	_, file, _, _ := runtime.Caller(0)
+	examplesDir := filepath.Join(filepath.Dir(file), "examples")
+
+	entries, err := os.ReadDir(examplesDir)
+	if err != nil {
+		t.Fatalf("read examples directory: %v", err)
+	}
+
+	if len(entries) == 0 {
+		t.Fatal("no example files found in schema/v1/examples/")
+	}
+
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".json") {
+			continue
+		}
+		t.Run(entry.Name(), func(t *testing.T) {
+			data, err := os.ReadFile(filepath.Join(examplesDir, entry.Name()))
+			if err != nil {
+				t.Fatalf("read example file: %v", err)
+			}
+
+			inst, err := jsschema.UnmarshalJSON(strings.NewReader(string(data)))
+			if err != nil {
+				t.Fatalf("unmarshal example JSON: %v", err)
+			}
+
+			assertValid(t, sch, inst)
+		})
+	}
+}
+
+// TestSeverityAndCategoryRequired verifies that severity and category are
+// required top-level fields and rejects events missing them.
+func TestSeverityAndCategoryRequired(t *testing.T) {
+	sch := compileSchema(t)
+
+	tests := []struct {
+		name    string
+		jsonStr string
+	}{
+		{
+			name:    "missing severity",
+			jsonStr: `{"schema_version":"v1","event_type":"auth.success","timestamp":"2026-03-28T12:00:00Z","category":"auth","ai_summary":"ok","payload":{}}`,
+		},
+		{
+			name:    "missing category",
+			jsonStr: `{"schema_version":"v1","event_type":"auth.success","timestamp":"2026-03-28T12:00:00Z","severity":"info","ai_summary":"ok","payload":{}}`,
+		},
+		{
+			name:    "invalid severity value",
+			jsonStr: `{"schema_version":"v1","event_type":"auth.success","timestamp":"2026-03-28T12:00:00Z","severity":"urgent","category":"auth","ai_summary":"ok","payload":{}}`,
+		},
+		{
+			name:    "invalid category value",
+			jsonStr: `{"schema_version":"v1","event_type":"auth.success","timestamp":"2026-03-28T12:00:00Z","severity":"info","category":"unknown","ai_summary":"ok","payload":{}}`,
 		},
 	}
 

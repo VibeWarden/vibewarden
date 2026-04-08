@@ -57,7 +57,9 @@ func TestNewEgressRequest(t *testing.T) {
 			requirePayloadString(t, e.Payload, "route", tt.wantRoute)
 			requirePayloadString(t, e.Payload, "method", tt.wantMethod)
 			requirePayloadString(t, e.Payload, "url", tt.wantURL)
-			requirePayloadString(t, e.Payload, "trace_id", tt.wantTraceID)
+			if e.TraceID != tt.wantTraceID {
+				t.Errorf("TraceID = %q, want %q", e.TraceID, tt.wantTraceID)
+			}
 		})
 	}
 }
@@ -123,7 +125,9 @@ func TestNewEgressResponse(t *testing.T) {
 			requirePayloadKey(t, e.Payload, "status_code")
 			requirePayloadKey(t, e.Payload, "duration_seconds")
 			requirePayloadKey(t, e.Payload, "attempts")
-			requirePayloadString(t, e.Payload, "trace_id", tt.params.TraceID)
+			if e.TraceID != tt.params.TraceID {
+				t.Errorf("TraceID = %q, want %q", e.TraceID, tt.params.TraceID)
+			}
 		})
 	}
 }
@@ -181,7 +185,9 @@ func TestNewEgressBlocked(t *testing.T) {
 			requirePayloadString(t, e.Payload, "method", tt.params.Method)
 			requirePayloadString(t, e.Payload, "url", tt.params.URL)
 			requirePayloadString(t, e.Payload, "reason", tt.params.Reason)
-			requirePayloadString(t, e.Payload, "trace_id", tt.params.TraceID)
+			if e.TraceID != tt.params.TraceID {
+				t.Errorf("TraceID = %q, want %q", e.TraceID, tt.params.TraceID)
+			}
 		})
 	}
 }
@@ -316,7 +322,9 @@ func TestNewEgressError(t *testing.T) {
 			requirePayloadString(t, e.Payload, "url", tt.params.URL)
 			requirePayloadString(t, e.Payload, "error", tt.params.Error)
 			requirePayloadKey(t, e.Payload, "attempts")
-			requirePayloadString(t, e.Payload, "trace_id", tt.params.TraceID)
+			if e.TraceID != tt.params.TraceID {
+				t.Errorf("TraceID = %q, want %q", e.TraceID, tt.params.TraceID)
+			}
 		})
 	}
 }

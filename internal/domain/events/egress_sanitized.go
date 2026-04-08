@@ -49,6 +49,8 @@ func NewEgressSanitized(params EgressSanitizedParams) Event {
 		SchemaVersion: SchemaVersion,
 		EventType:     EventTypeEgressSanitized,
 		Timestamp:     time.Now().UTC(),
+		Severity:      SeverityInfo,
+		Category:      CategoryNetwork,
 		AISummary: fmt.Sprintf(
 			"Egress request sanitized: %s %s via route %q — %d field(s) redacted (%d header(s), %d query param(s), %d body field(s))",
 			params.Method, params.URL, params.Route,
@@ -63,7 +65,6 @@ func NewEgressSanitized(params EgressSanitizedParams) Event {
 			"stripped_query_params": params.StrippedQueryParams,
 			"redacted_body_fields":  params.RedactedBodyFields,
 			"total_redacted":        total,
-			"trace_id":              params.TraceID,
 		},
 		Actor:       Actor{Type: ActorTypeSystem},
 		Resource:    Resource{Type: ResourceTypeEgressRoute, Path: params.Route, Method: params.Method},

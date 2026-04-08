@@ -28,6 +28,8 @@ func NewAPIKeySuccess(params APIKeySuccessParams) Event {
 		SchemaVersion: SchemaVersion,
 		EventType:     EventTypeAPIKeySuccess,
 		Timestamp:     time.Now().UTC(),
+		Severity:      SeverityInfo,
+		Category:      CategoryAuth,
 		AISummary: fmt.Sprintf(
 			"API key authenticated: %s %s (key %q)",
 			params.Method, params.Path, params.KeyName,
@@ -82,6 +84,8 @@ func NewAPIKeyForbidden(params APIKeyForbiddenParams) Event {
 		SchemaVersion: SchemaVersion,
 		EventType:     EventTypeAPIKeyForbidden,
 		Timestamp:     time.Now().UTC(),
+		Severity:      SeverityMedium,
+		Category:      CategoryAuth,
 		AISummary: fmt.Sprintf(
 			"API key %q forbidden: %s %s — key scopes %v do not satisfy required %v",
 			params.KeyName, params.Method, params.Path, params.KeyScopes, params.RequiredScopes,
@@ -103,6 +107,8 @@ func NewAPIKeyFailed(params APIKeyFailedParams) Event {
 		SchemaVersion: SchemaVersion,
 		EventType:     EventTypeAPIKeyFailed,
 		Timestamp:     time.Now().UTC(),
+		Severity:      SeverityMedium,
+		Category:      CategoryAuth,
 		AISummary: fmt.Sprintf(
 			"API key authentication rejected: %s",
 			params.Reason,

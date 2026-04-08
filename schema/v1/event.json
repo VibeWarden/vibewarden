@@ -1,10 +1,19 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://vibewarden.dev/schema/v1/event.json",
+  "$comment": "Schema evolution policy: see docs/schema-evolution.md. v1 payloads are frozen; adding required fields to existing payloads requires schema_version v2.",
   "title": "VibeWarden Event Schema v1",
-  "description": "Schema for all structured log events emitted by the VibeWarden security sidecar. Every event carries five required top-level fields: schema_version, event_type, timestamp, ai_summary, and payload. Optional enrichment fields (actor, resource, outcome, risk_signals, request_id, triggered_by, trace_id, span_id) are present when relevant context is available.",
+  "description": "Schema for all structured log events emitted by the VibeWarden security sidecar. Every event carries seven required top-level fields: schema_version, event_type, timestamp, severity, category, ai_summary, and payload. Optional enrichment fields (actor, resource, outcome, risk_signals, request_id, triggered_by, trace_id, span_id) are present when relevant context is available.",
   "type": "object",
-  "required": ["schema_version", "event_type", "timestamp", "ai_summary", "payload"],
+  "required": [
+    "schema_version",
+    "event_type",
+    "timestamp",
+    "severity",
+    "category",
+    "ai_summary",
+    "payload"
+  ],
   "additionalProperties": false,
   "properties": {
     "schema_version": {
@@ -14,13 +23,37 @@
     },
     "event_type": {
       "type": "string",
-      "description": "Identifies the kind of event. Dot-separated namespace (e.g. 'auth.success'). Unknown event types must be accepted and passed through — this schema is intentionally open to allow forward-compatible addition of new event types without breaking existing consumers.",
+      "description": "Identifies the kind of event. Dot-separated namespace (e.g. 'auth.success'). Unknown event types must be accepted and passed through \u2014 this schema is intentionally open to allow forward-compatible addition of new event types without breaking existing consumers.",
       "pattern": "^[a-z][a-z0-9_]*(\\.[a-z][a-z0-9_]*)*$"
     },
     "timestamp": {
       "type": "string",
       "format": "date-time",
       "description": "UTC timestamp of when the event occurred, in RFC 3339 / ISO 8601 format."
+    },
+    "severity": {
+      "type": "string",
+      "enum": [
+        "info",
+        "low",
+        "medium",
+        "high",
+        "critical"
+      ],
+      "description": "Severity level for agent triage. Ranges from 'info' (routine operational events) to 'critical' (events requiring immediate response)."
+    },
+    "category": {
+      "type": "string",
+      "enum": [
+        "auth",
+        "network",
+        "policy",
+        "resilience",
+        "secret",
+        "user",
+        "audit"
+      ],
+      "description": "Event category for grouping and filtering. Maps to the security domain the event belongs to."
     },
     "ai_summary": {
       "type": "string",
@@ -42,7 +75,12 @@
     "outcome": {
       "type": "string",
       "description": "The enforcement result of this event. Omitted for purely informational events where no enforcement decision was taken.",
-      "enum": ["allowed", "blocked", "rate_limited", "failed"]
+      "enum": [
+        "allowed",
+        "blocked",
+        "rate_limited",
+        "failed"
+      ]
     },
     "risk_signals": {
       "type": "array",
@@ -71,346 +109,819 @@
   },
   "allOf": [
     {
-      "if": { "properties": { "event_type": { "const": "proxy.started" } }, "required": ["event_type"] },
+      "if": {
+        "properties": {
+          "event_type": {
+            "const": "proxy.started"
+          }
+        },
+        "required": [
+          "event_type"
+        ]
+      },
       "then": {
         "properties": {
-          "payload": { "$ref": "#/$defs/payload_proxy_started" }
+          "payload": {
+            "$ref": "#/$defs/payload_proxy_started"
+          }
         }
       }
     },
     {
-      "if": { "properties": { "event_type": { "const": "proxy.kratos_flow" } }, "required": ["event_type"] },
+      "if": {
+        "properties": {
+          "event_type": {
+            "const": "proxy.kratos_flow"
+          }
+        },
+        "required": [
+          "event_type"
+        ]
+      },
       "then": {
         "properties": {
-          "payload": { "$ref": "#/$defs/payload_proxy_kratos_flow" }
+          "payload": {
+            "$ref": "#/$defs/payload_proxy_kratos_flow"
+          }
         }
       }
     },
     {
-      "if": { "properties": { "event_type": { "const": "auth.success" } }, "required": ["event_type"] },
+      "if": {
+        "properties": {
+          "event_type": {
+            "const": "auth.success"
+          }
+        },
+        "required": [
+          "event_type"
+        ]
+      },
       "then": {
         "properties": {
-          "payload": { "$ref": "#/$defs/payload_auth_success" }
+          "payload": {
+            "$ref": "#/$defs/payload_auth_success"
+          }
         }
       }
     },
     {
-      "if": { "properties": { "event_type": { "const": "auth.failed" } }, "required": ["event_type"] },
+      "if": {
+        "properties": {
+          "event_type": {
+            "const": "auth.failed"
+          }
+        },
+        "required": [
+          "event_type"
+        ]
+      },
       "then": {
         "properties": {
-          "payload": { "$ref": "#/$defs/payload_auth_failed" }
+          "payload": {
+            "$ref": "#/$defs/payload_auth_failed"
+          }
         }
       }
     },
     {
-      "if": { "properties": { "event_type": { "const": "auth.provider_unavailable" } }, "required": ["event_type"] },
+      "if": {
+        "properties": {
+          "event_type": {
+            "const": "auth.provider_unavailable"
+          }
+        },
+        "required": [
+          "event_type"
+        ]
+      },
       "then": {
         "properties": {
-          "payload": { "$ref": "#/$defs/payload_auth_provider_unavailable" }
+          "payload": {
+            "$ref": "#/$defs/payload_auth_provider_unavailable"
+          }
         }
       }
     },
     {
-      "if": { "properties": { "event_type": { "const": "auth.provider_recovered" } }, "required": ["event_type"] },
+      "if": {
+        "properties": {
+          "event_type": {
+            "const": "auth.provider_recovered"
+          }
+        },
+        "required": [
+          "event_type"
+        ]
+      },
       "then": {
         "properties": {
-          "payload": { "$ref": "#/$defs/payload_auth_provider_recovered" }
+          "payload": {
+            "$ref": "#/$defs/payload_auth_provider_recovered"
+          }
         }
       }
     },
     {
-      "if": { "properties": { "event_type": { "const": "auth.api_key.success" } }, "required": ["event_type"] },
+      "if": {
+        "properties": {
+          "event_type": {
+            "const": "auth.api_key.success"
+          }
+        },
+        "required": [
+          "event_type"
+        ]
+      },
       "then": {
         "properties": {
-          "payload": { "$ref": "#/$defs/payload_api_key_success" }
+          "payload": {
+            "$ref": "#/$defs/payload_api_key_success"
+          }
         }
       }
     },
     {
-      "if": { "properties": { "event_type": { "const": "auth.api_key.failed" } }, "required": ["event_type"] },
+      "if": {
+        "properties": {
+          "event_type": {
+            "const": "auth.api_key.failed"
+          }
+        },
+        "required": [
+          "event_type"
+        ]
+      },
       "then": {
         "properties": {
-          "payload": { "$ref": "#/$defs/payload_api_key_failed" }
+          "payload": {
+            "$ref": "#/$defs/payload_api_key_failed"
+          }
         }
       }
     },
     {
-      "if": { "properties": { "event_type": { "const": "auth.api_key.forbidden" } }, "required": ["event_type"] },
+      "if": {
+        "properties": {
+          "event_type": {
+            "const": "auth.api_key.forbidden"
+          }
+        },
+        "required": [
+          "event_type"
+        ]
+      },
       "then": {
         "properties": {
-          "payload": { "$ref": "#/$defs/payload_api_key_forbidden" }
+          "payload": {
+            "$ref": "#/$defs/payload_api_key_forbidden"
+          }
         }
       }
     },
     {
-      "if": { "properties": { "event_type": { "const": "auth.jwt_valid" } }, "required": ["event_type"] },
+      "if": {
+        "properties": {
+          "event_type": {
+            "const": "auth.jwt_valid"
+          }
+        },
+        "required": [
+          "event_type"
+        ]
+      },
       "then": {
         "properties": {
-          "payload": { "$ref": "#/$defs/payload_jwt_valid" }
+          "payload": {
+            "$ref": "#/$defs/payload_jwt_valid"
+          }
         }
       }
     },
     {
-      "if": { "properties": { "event_type": { "const": "auth.jwt_invalid" } }, "required": ["event_type"] },
+      "if": {
+        "properties": {
+          "event_type": {
+            "const": "auth.jwt_invalid"
+          }
+        },
+        "required": [
+          "event_type"
+        ]
+      },
       "then": {
         "properties": {
-          "payload": { "$ref": "#/$defs/payload_jwt_invalid" }
+          "payload": {
+            "$ref": "#/$defs/payload_jwt_invalid"
+          }
         }
       }
     },
     {
-      "if": { "properties": { "event_type": { "const": "auth.jwt_expired" } }, "required": ["event_type"] },
+      "if": {
+        "properties": {
+          "event_type": {
+            "const": "auth.jwt_expired"
+          }
+        },
+        "required": [
+          "event_type"
+        ]
+      },
       "then": {
         "properties": {
-          "payload": { "$ref": "#/$defs/payload_jwt_expired" }
+          "payload": {
+            "$ref": "#/$defs/payload_jwt_expired"
+          }
         }
       }
     },
     {
-      "if": { "properties": { "event_type": { "const": "auth.jwks_refresh" } }, "required": ["event_type"] },
+      "if": {
+        "properties": {
+          "event_type": {
+            "const": "auth.jwks_refresh"
+          }
+        },
+        "required": [
+          "event_type"
+        ]
+      },
       "then": {
         "properties": {
-          "payload": { "$ref": "#/$defs/payload_jwks_refresh" }
+          "payload": {
+            "$ref": "#/$defs/payload_jwks_refresh"
+          }
         }
       }
     },
     {
-      "if": { "properties": { "event_type": { "const": "auth.jwks_error" } }, "required": ["event_type"] },
+      "if": {
+        "properties": {
+          "event_type": {
+            "const": "auth.jwks_error"
+          }
+        },
+        "required": [
+          "event_type"
+        ]
+      },
       "then": {
         "properties": {
-          "payload": { "$ref": "#/$defs/payload_jwks_error" }
+          "payload": {
+            "$ref": "#/$defs/payload_jwks_error"
+          }
         }
       }
     },
     {
-      "if": { "properties": { "event_type": { "const": "rate_limit.hit" } }, "required": ["event_type"] },
+      "if": {
+        "properties": {
+          "event_type": {
+            "const": "rate_limit.hit"
+          }
+        },
+        "required": [
+          "event_type"
+        ]
+      },
       "then": {
         "properties": {
-          "payload": { "$ref": "#/$defs/payload_rate_limit_hit" }
+          "payload": {
+            "$ref": "#/$defs/payload_rate_limit_hit"
+          }
         }
       }
     },
     {
-      "if": { "properties": { "event_type": { "const": "rate_limit.unidentified_client" } }, "required": ["event_type"] },
+      "if": {
+        "properties": {
+          "event_type": {
+            "const": "rate_limit.unidentified_client"
+          }
+        },
+        "required": [
+          "event_type"
+        ]
+      },
       "then": {
         "properties": {
-          "payload": { "$ref": "#/$defs/payload_rate_limit_unidentified" }
+          "payload": {
+            "$ref": "#/$defs/payload_rate_limit_unidentified"
+          }
         }
       }
     },
     {
-      "if": { "properties": { "event_type": { "const": "rate_limit.store_fallback" } }, "required": ["event_type"] },
+      "if": {
+        "properties": {
+          "event_type": {
+            "const": "rate_limit.store_fallback"
+          }
+        },
+        "required": [
+          "event_type"
+        ]
+      },
       "then": {
         "properties": {
-          "payload": { "$ref": "#/$defs/payload_rate_limit_store_fallback" }
+          "payload": {
+            "$ref": "#/$defs/payload_rate_limit_store_fallback"
+          }
         }
       }
     },
     {
-      "if": { "properties": { "event_type": { "const": "rate_limit.store_recovered" } }, "required": ["event_type"] },
+      "if": {
+        "properties": {
+          "event_type": {
+            "const": "rate_limit.store_recovered"
+          }
+        },
+        "required": [
+          "event_type"
+        ]
+      },
       "then": {
         "properties": {
-          "payload": { "$ref": "#/$defs/payload_rate_limit_store_recovered" }
+          "payload": {
+            "$ref": "#/$defs/payload_rate_limit_store_recovered"
+          }
         }
       }
     },
     {
-      "if": { "properties": { "event_type": { "const": "request.blocked" } }, "required": ["event_type"] },
+      "if": {
+        "properties": {
+          "event_type": {
+            "const": "request.blocked"
+          }
+        },
+        "required": [
+          "event_type"
+        ]
+      },
       "then": {
         "properties": {
-          "payload": { "$ref": "#/$defs/payload_request_blocked" }
+          "payload": {
+            "$ref": "#/$defs/payload_request_blocked"
+          }
         }
       }
     },
     {
-      "if": { "properties": { "event_type": { "const": "tls.certificate_issued" } }, "required": ["event_type"] },
+      "if": {
+        "properties": {
+          "event_type": {
+            "const": "tls.certificate_issued"
+          }
+        },
+        "required": [
+          "event_type"
+        ]
+      },
       "then": {
         "properties": {
-          "payload": { "$ref": "#/$defs/payload_tls_certificate_issued" }
+          "payload": {
+            "$ref": "#/$defs/payload_tls_certificate_issued"
+          }
         }
       }
     },
     {
-      "if": { "properties": { "event_type": { "const": "user.created" } }, "required": ["event_type"] },
+      "if": {
+        "properties": {
+          "event_type": {
+            "const": "user.created"
+          }
+        },
+        "required": [
+          "event_type"
+        ]
+      },
       "then": {
         "properties": {
-          "payload": { "$ref": "#/$defs/payload_user_created" }
+          "payload": {
+            "$ref": "#/$defs/payload_user_created"
+          }
         }
       }
     },
     {
-      "if": { "properties": { "event_type": { "const": "user.deleted" } }, "required": ["event_type"] },
+      "if": {
+        "properties": {
+          "event_type": {
+            "const": "user.deleted"
+          }
+        },
+        "required": [
+          "event_type"
+        ]
+      },
       "then": {
         "properties": {
-          "payload": { "$ref": "#/$defs/payload_user_deleted" }
+          "payload": {
+            "$ref": "#/$defs/payload_user_deleted"
+          }
         }
       }
     },
     {
-      "if": { "properties": { "event_type": { "const": "user.deactivated" } }, "required": ["event_type"] },
+      "if": {
+        "properties": {
+          "event_type": {
+            "const": "user.deactivated"
+          }
+        },
+        "required": [
+          "event_type"
+        ]
+      },
       "then": {
         "properties": {
-          "payload": { "$ref": "#/$defs/payload_user_deactivated" }
+          "payload": {
+            "$ref": "#/$defs/payload_user_deactivated"
+          }
         }
       }
     },
     {
-      "if": { "properties": { "event_type": { "const": "audit.log_failure" } }, "required": ["event_type"] },
+      "if": {
+        "properties": {
+          "event_type": {
+            "const": "audit.log_failure"
+          }
+        },
+        "required": [
+          "event_type"
+        ]
+      },
       "then": {
         "properties": {
-          "payload": { "$ref": "#/$defs/payload_audit_log_failure" }
+          "payload": {
+            "$ref": "#/$defs/payload_audit_log_failure"
+          }
         }
       }
     },
     {
-      "if": { "properties": { "event_type": { "const": "ip_filter.blocked" } }, "required": ["event_type"] },
+      "if": {
+        "properties": {
+          "event_type": {
+            "const": "ip_filter.blocked"
+          }
+        },
+        "required": [
+          "event_type"
+        ]
+      },
       "then": {
         "properties": {
-          "payload": { "$ref": "#/$defs/payload_ip_filter_blocked" }
+          "payload": {
+            "$ref": "#/$defs/payload_ip_filter_blocked"
+          }
         }
       }
     },
     {
-      "if": { "properties": { "event_type": { "const": "secret.rotated" } }, "required": ["event_type"] },
+      "if": {
+        "properties": {
+          "event_type": {
+            "const": "secret.rotated"
+          }
+        },
+        "required": [
+          "event_type"
+        ]
+      },
       "then": {
         "properties": {
-          "payload": { "$ref": "#/$defs/payload_secret_rotated" }
+          "payload": {
+            "$ref": "#/$defs/payload_secret_rotated"
+          }
         }
       }
     },
     {
-      "if": { "properties": { "event_type": { "const": "secret.rotation_failed" } }, "required": ["event_type"] },
+      "if": {
+        "properties": {
+          "event_type": {
+            "const": "secret.rotation_failed"
+          }
+        },
+        "required": [
+          "event_type"
+        ]
+      },
       "then": {
         "properties": {
-          "payload": { "$ref": "#/$defs/payload_secret_rotation_failed" }
+          "payload": {
+            "$ref": "#/$defs/payload_secret_rotation_failed"
+          }
         }
       }
     },
     {
-      "if": { "properties": { "event_type": { "const": "secret.health_check" } }, "required": ["event_type"] },
+      "if": {
+        "properties": {
+          "event_type": {
+            "const": "secret.health_check"
+          }
+        },
+        "required": [
+          "event_type"
+        ]
+      },
       "then": {
         "properties": {
-          "payload": { "$ref": "#/$defs/payload_secret_health_check" }
+          "payload": {
+            "$ref": "#/$defs/payload_secret_health_check"
+          }
         }
       }
     },
     {
-      "if": { "properties": { "event_type": { "const": "upstream.timeout" } }, "required": ["event_type"] },
+      "if": {
+        "properties": {
+          "event_type": {
+            "const": "upstream.timeout"
+          }
+        },
+        "required": [
+          "event_type"
+        ]
+      },
       "then": {
         "properties": {
-          "payload": { "$ref": "#/$defs/payload_upstream_timeout" }
+          "payload": {
+            "$ref": "#/$defs/payload_upstream_timeout"
+          }
         }
       }
     },
     {
-      "if": { "properties": { "event_type": { "const": "upstream.retry" } }, "required": ["event_type"] },
+      "if": {
+        "properties": {
+          "event_type": {
+            "const": "upstream.retry"
+          }
+        },
+        "required": [
+          "event_type"
+        ]
+      },
       "then": {
         "properties": {
-          "payload": { "$ref": "#/$defs/payload_upstream_retry" }
+          "payload": {
+            "$ref": "#/$defs/payload_upstream_retry"
+          }
         }
       }
     },
     {
-      "if": { "properties": { "event_type": { "const": "upstream.health_changed" } }, "required": ["event_type"] },
+      "if": {
+        "properties": {
+          "event_type": {
+            "const": "upstream.health_changed"
+          }
+        },
+        "required": [
+          "event_type"
+        ]
+      },
       "then": {
         "properties": {
-          "payload": { "$ref": "#/$defs/payload_upstream_health_changed" }
+          "payload": {
+            "$ref": "#/$defs/payload_upstream_health_changed"
+          }
         }
       }
     },
     {
-      "if": { "properties": { "event_type": { "const": "circuit_breaker.opened" } }, "required": ["event_type"] },
+      "if": {
+        "properties": {
+          "event_type": {
+            "const": "circuit_breaker.opened"
+          }
+        },
+        "required": [
+          "event_type"
+        ]
+      },
       "then": {
         "properties": {
-          "payload": { "$ref": "#/$defs/payload_circuit_breaker_opened" }
+          "payload": {
+            "$ref": "#/$defs/payload_circuit_breaker_opened"
+          }
         }
       }
     },
     {
-      "if": { "properties": { "event_type": { "const": "circuit_breaker.half_open" } }, "required": ["event_type"] },
+      "if": {
+        "properties": {
+          "event_type": {
+            "const": "circuit_breaker.half_open"
+          }
+        },
+        "required": [
+          "event_type"
+        ]
+      },
       "then": {
         "properties": {
-          "payload": { "$ref": "#/$defs/payload_circuit_breaker_half_open" }
+          "payload": {
+            "$ref": "#/$defs/payload_circuit_breaker_half_open"
+          }
         }
       }
     },
     {
-      "if": { "properties": { "event_type": { "const": "circuit_breaker.closed" } }, "required": ["event_type"] },
+      "if": {
+        "properties": {
+          "event_type": {
+            "const": "circuit_breaker.closed"
+          }
+        },
+        "required": [
+          "event_type"
+        ]
+      },
       "then": {
         "properties": {
-          "payload": { "$ref": "#/$defs/payload_circuit_breaker_closed" }
+          "payload": {
+            "$ref": "#/$defs/payload_circuit_breaker_closed"
+          }
         }
       }
     },
     {
-      "if": { "properties": { "event_type": { "const": "egress.request" } }, "required": ["event_type"] },
+      "if": {
+        "properties": {
+          "event_type": {
+            "const": "egress.request"
+          }
+        },
+        "required": [
+          "event_type"
+        ]
+      },
       "then": {
         "properties": {
-          "payload": { "$ref": "#/$defs/payload_egress_request" }
+          "payload": {
+            "$ref": "#/$defs/payload_egress_request"
+          }
         }
       }
     },
     {
-      "if": { "properties": { "event_type": { "const": "egress.response" } }, "required": ["event_type"] },
+      "if": {
+        "properties": {
+          "event_type": {
+            "const": "egress.response"
+          }
+        },
+        "required": [
+          "event_type"
+        ]
+      },
       "then": {
         "properties": {
-          "payload": { "$ref": "#/$defs/payload_egress_response" }
+          "payload": {
+            "$ref": "#/$defs/payload_egress_response"
+          }
         }
       }
     },
     {
-      "if": { "properties": { "event_type": { "const": "egress.blocked" } }, "required": ["event_type"] },
+      "if": {
+        "properties": {
+          "event_type": {
+            "const": "egress.blocked"
+          }
+        },
+        "required": [
+          "event_type"
+        ]
+      },
       "then": {
         "properties": {
-          "payload": { "$ref": "#/$defs/payload_egress_blocked" }
+          "payload": {
+            "$ref": "#/$defs/payload_egress_blocked"
+          }
         }
       }
     },
     {
-      "if": { "properties": { "event_type": { "const": "egress.error" } }, "required": ["event_type"] },
+      "if": {
+        "properties": {
+          "event_type": {
+            "const": "egress.error"
+          }
+        },
+        "required": [
+          "event_type"
+        ]
+      },
       "then": {
         "properties": {
-          "payload": { "$ref": "#/$defs/payload_egress_error" }
+          "payload": {
+            "$ref": "#/$defs/payload_egress_error"
+          }
         }
       }
     },
     {
-      "if": { "properties": { "event_type": { "const": "egress.sanitized" } }, "required": ["event_type"] },
+      "if": {
+        "properties": {
+          "event_type": {
+            "const": "egress.sanitized"
+          }
+        },
+        "required": [
+          "event_type"
+        ]
+      },
       "then": {
         "properties": {
-          "payload": { "$ref": "#/$defs/payload_egress_sanitized" }
+          "payload": {
+            "$ref": "#/$defs/payload_egress_sanitized"
+          }
         }
       }
     },
     {
-      "if": { "properties": { "event_type": { "const": "egress.response_invalid" } }, "required": ["event_type"] },
+      "if": {
+        "properties": {
+          "event_type": {
+            "const": "egress.response_invalid"
+          }
+        },
+        "required": [
+          "event_type"
+        ]
+      },
       "then": {
         "properties": {
-          "payload": { "$ref": "#/$defs/payload_egress_response_invalid" }
+          "payload": {
+            "$ref": "#/$defs/payload_egress_response_invalid"
+          }
         }
       }
     },
     {
-      "if": { "properties": { "event_type": { "const": "egress.rate_limit_hit" } }, "required": ["event_type"] },
+      "if": {
+        "properties": {
+          "event_type": {
+            "const": "egress.rate_limit_hit"
+          }
+        },
+        "required": [
+          "event_type"
+        ]
+      },
       "then": {
         "properties": {
-          "payload": { "$ref": "#/$defs/payload_egress_rate_limit_hit" }
+          "payload": {
+            "$ref": "#/$defs/payload_egress_rate_limit_hit"
+          }
         }
       }
     },
     {
-      "if": { "properties": { "event_type": { "const": "egress.circuit_breaker.opened" } }, "required": ["event_type"] },
+      "if": {
+        "properties": {
+          "event_type": {
+            "const": "egress.circuit_breaker.opened"
+          }
+        },
+        "required": [
+          "event_type"
+        ]
+      },
       "then": {
         "properties": {
-          "payload": { "$ref": "#/$defs/payload_egress_circuit_breaker_opened" }
+          "payload": {
+            "$ref": "#/$defs/payload_egress_circuit_breaker_opened"
+          }
         }
       }
     },
     {
-      "if": { "properties": { "event_type": { "const": "egress.circuit_breaker.closed" } }, "required": ["event_type"] },
+      "if": {
+        "properties": {
+          "event_type": {
+            "const": "egress.circuit_breaker.closed"
+          }
+        },
+        "required": [
+          "event_type"
+        ]
+      },
       "then": {
         "properties": {
-          "payload": { "$ref": "#/$defs/payload_egress_circuit_breaker_closed" }
+          "payload": {
+            "$ref": "#/$defs/payload_egress_circuit_breaker_closed"
+          }
         }
       }
     }
@@ -419,13 +930,21 @@
     "Actor": {
       "description": "Describes the entity that initiated a security-relevant action.",
       "type": "object",
-      "required": ["type", "id"],
+      "required": [
+        "type",
+        "id"
+      ],
       "additionalProperties": false,
       "properties": {
         "type": {
           "type": "string",
           "description": "The category of the actor.",
-          "enum": ["ip", "user", "api_key", "system"]
+          "enum": [
+            "ip",
+            "user",
+            "api_key",
+            "system"
+          ]
         },
         "id": {
           "type": "string",
@@ -440,13 +959,20 @@
     "Resource": {
       "description": "Describes the target of a security-relevant action.",
       "type": "object",
-      "required": ["type", "path"],
+      "required": [
+        "type",
+        "path"
+      ],
       "additionalProperties": false,
       "properties": {
         "type": {
           "type": "string",
           "description": "The category of the resource.",
-          "enum": ["http_endpoint", "egress_route", "config"]
+          "enum": [
+            "http_endpoint",
+            "egress_route",
+            "config"
+          ]
         },
         "path": {
           "type": "string",
@@ -461,7 +987,11 @@
     "RiskSignal": {
       "description": "A single machine-detectable risk indicator associated with a security event.",
       "type": "object",
-      "required": ["signal", "score", "details"],
+      "required": [
+        "signal",
+        "score",
+        "details"
+      ],
       "additionalProperties": false,
       "properties": {
         "signal": {
@@ -481,9 +1011,16 @@
       }
     },
     "payload_proxy_started": {
-      "description": "Payload for proxy.started — emitted once when the reverse proxy is ready.",
+      "description": "Payload for proxy.started \u2014 emitted once when the reverse proxy is ready.",
       "type": "object",
-      "required": ["listen", "upstream", "tls_enabled", "tls_provider", "security_headers_enabled", "version"],
+      "required": [
+        "listen",
+        "upstream",
+        "tls_enabled",
+        "tls_provider",
+        "security_headers_enabled",
+        "version"
+      ],
       "additionalProperties": false,
       "properties": {
         "listen": {
@@ -513,9 +1050,12 @@
       }
     },
     "payload_proxy_kratos_flow": {
-      "description": "Payload for proxy.kratos_flow — emitted when a request is routed to the Kratos self-service API.",
+      "description": "Payload for proxy.kratos_flow \u2014 emitted when a request is routed to the Kratos self-service API.",
       "type": "object",
-      "required": ["method", "path"],
+      "required": [
+        "method",
+        "path"
+      ],
       "additionalProperties": false,
       "properties": {
         "method": {
@@ -529,9 +1069,15 @@
       }
     },
     "payload_auth_success": {
-      "description": "Payload for auth.success — emitted when a Kratos session is validated.",
+      "description": "Payload for auth.success \u2014 emitted when a Kratos session is validated.",
       "type": "object",
-      "required": ["method", "path", "session_id", "identity_id", "email"],
+      "required": [
+        "method",
+        "path",
+        "session_id",
+        "identity_id",
+        "email"
+      ],
       "additionalProperties": false,
       "properties": {
         "method": {
@@ -557,9 +1103,14 @@
       }
     },
     "payload_auth_failed": {
-      "description": "Payload for auth.failed — emitted when a request is rejected due to missing or invalid session.",
+      "description": "Payload for auth.failed \u2014 emitted when a request is rejected due to missing or invalid session.",
       "type": "object",
-      "required": ["method", "path", "reason", "detail"],
+      "required": [
+        "method",
+        "path",
+        "reason",
+        "detail"
+      ],
       "additionalProperties": false,
       "properties": {
         "method": {
@@ -581,9 +1132,13 @@
       }
     },
     "payload_auth_provider_unavailable": {
-      "description": "Payload for auth.provider_unavailable — emitted when Ory Kratos cannot be reached.",
+      "description": "Payload for auth.provider_unavailable \u2014 emitted when Ory Kratos cannot be reached.",
       "type": "object",
-      "required": ["provider_url", "error", "affected_path"],
+      "required": [
+        "provider_url",
+        "error",
+        "affected_path"
+      ],
       "additionalProperties": false,
       "properties": {
         "provider_url": {
@@ -601,9 +1156,11 @@
       }
     },
     "payload_auth_provider_recovered": {
-      "description": "Payload for auth.provider_recovered — emitted when Kratos is reachable again.",
+      "description": "Payload for auth.provider_recovered \u2014 emitted when Kratos is reachable again.",
       "type": "object",
-      "required": ["provider_url"],
+      "required": [
+        "provider_url"
+      ],
       "additionalProperties": false,
       "properties": {
         "provider_url": {
@@ -613,9 +1170,14 @@
       }
     },
     "payload_api_key_success": {
-      "description": "Payload for auth.api_key.success — emitted when a request is authenticated via API key.",
+      "description": "Payload for auth.api_key.success \u2014 emitted when a request is authenticated via API key.",
       "type": "object",
-      "required": ["method", "path", "key_name", "scopes"],
+      "required": [
+        "method",
+        "path",
+        "key_name",
+        "scopes"
+      ],
       "additionalProperties": false,
       "properties": {
         "method": {
@@ -632,15 +1194,21 @@
         },
         "scopes": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "description": "List of scopes granted by the key."
         }
       }
     },
     "payload_api_key_failed": {
-      "description": "Payload for auth.api_key.failed — emitted when a request is rejected due to a missing or invalid API key.",
+      "description": "Payload for auth.api_key.failed \u2014 emitted when a request is rejected due to a missing or invalid API key.",
       "type": "object",
-      "required": ["method", "path", "reason"],
+      "required": [
+        "method",
+        "path",
+        "reason"
+      ],
       "additionalProperties": false,
       "properties": {
         "method": {
@@ -658,9 +1226,15 @@
       }
     },
     "payload_api_key_forbidden": {
-      "description": "Payload for auth.api_key.forbidden — emitted when a valid key lacks required scopes.",
+      "description": "Payload for auth.api_key.forbidden \u2014 emitted when a valid key lacks required scopes.",
       "type": "object",
-      "required": ["method", "path", "key_name", "key_scopes", "required_scopes"],
+      "required": [
+        "method",
+        "path",
+        "key_name",
+        "key_scopes",
+        "required_scopes"
+      ],
       "additionalProperties": false,
       "properties": {
         "method": {
@@ -677,20 +1251,30 @@
         },
         "key_scopes": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "description": "List of scopes held by the key."
         },
         "required_scopes": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "description": "List of scopes required by the matching scope rule."
         }
       }
     },
     "payload_jwt_valid": {
-      "description": "Payload for auth.jwt_valid — emitted when a JWT token passes all validation checks.",
+      "description": "Payload for auth.jwt_valid \u2014 emitted when a JWT token passes all validation checks.",
       "type": "object",
-      "required": ["method", "path", "subject", "issuer", "audience"],
+      "required": [
+        "method",
+        "path",
+        "subject",
+        "issuer",
+        "audience"
+      ],
       "additionalProperties": false,
       "properties": {
         "method": {
@@ -716,9 +1300,14 @@
       }
     },
     "payload_jwt_invalid": {
-      "description": "Payload for auth.jwt_invalid — emitted when a JWT token fails validation.",
+      "description": "Payload for auth.jwt_invalid \u2014 emitted when a JWT token fails validation.",
       "type": "object",
-      "required": ["method", "path", "reason", "detail"],
+      "required": [
+        "method",
+        "path",
+        "reason",
+        "detail"
+      ],
       "additionalProperties": false,
       "properties": {
         "method": {
@@ -740,9 +1329,14 @@
       }
     },
     "payload_jwt_expired": {
-      "description": "Payload for auth.jwt_expired — emitted when a JWT token is structurally valid but past expiry.",
+      "description": "Payload for auth.jwt_expired \u2014 emitted when a JWT token is structurally valid but past expiry.",
       "type": "object",
-      "required": ["method", "path", "subject", "expired_at"],
+      "required": [
+        "method",
+        "path",
+        "subject",
+        "expired_at"
+      ],
       "additionalProperties": false,
       "properties": {
         "method": {
@@ -765,9 +1359,12 @@
       }
     },
     "payload_jwks_refresh": {
-      "description": "Payload for auth.jwks_refresh — emitted when the JWKS cache is successfully refreshed.",
+      "description": "Payload for auth.jwks_refresh \u2014 emitted when the JWKS cache is successfully refreshed.",
       "type": "object",
-      "required": ["jwks_url", "key_count"],
+      "required": [
+        "jwks_url",
+        "key_count"
+      ],
       "additionalProperties": false,
       "properties": {
         "jwks_url": {
@@ -782,9 +1379,12 @@
       }
     },
     "payload_jwks_error": {
-      "description": "Payload for auth.jwks_error — emitted when fetching or parsing the JWKS fails.",
+      "description": "Payload for auth.jwks_error \u2014 emitted when fetching or parsing the JWKS fails.",
       "type": "object",
-      "required": ["jwks_url", "detail"],
+      "required": [
+        "jwks_url",
+        "detail"
+      ],
       "additionalProperties": false,
       "properties": {
         "jwks_url": {
@@ -798,14 +1398,25 @@
       }
     },
     "payload_rate_limit_hit": {
-      "description": "Payload for rate_limit.hit — emitted when a request is rejected for exceeding the rate limit.",
+      "description": "Payload for rate_limit.hit \u2014 emitted when a request is rejected for exceeding the rate limit.",
       "type": "object",
-      "required": ["limit_type", "identifier", "requests_per_second", "burst", "retry_after_seconds", "path", "method"],
+      "required": [
+        "limit_type",
+        "identifier",
+        "requests_per_second",
+        "burst",
+        "retry_after_seconds",
+        "path",
+        "method"
+      ],
       "additionalProperties": false,
       "properties": {
         "limit_type": {
           "type": "string",
-          "enum": ["ip", "user"],
+          "enum": [
+            "ip",
+            "user"
+          ],
           "description": "The kind of limit that was exceeded."
         },
         "identifier": {
@@ -842,9 +1453,12 @@
       }
     },
     "payload_rate_limit_unidentified": {
-      "description": "Payload for rate_limit.unidentified_client — emitted when the client IP cannot be determined.",
+      "description": "Payload for rate_limit.unidentified_client \u2014 emitted when the client IP cannot be determined.",
       "type": "object",
-      "required": ["path", "method"],
+      "required": [
+        "path",
+        "method"
+      ],
       "additionalProperties": false,
       "properties": {
         "path": {
@@ -858,9 +1472,12 @@
       }
     },
     "payload_rate_limit_store_fallback": {
-      "description": "Payload for rate_limit.store_fallback — emitted when Redis is unavailable and the limiter switches to in-memory.",
+      "description": "Payload for rate_limit.store_fallback \u2014 emitted when Redis is unavailable and the limiter switches to in-memory.",
       "type": "object",
-      "required": ["reason", "store"],
+      "required": [
+        "reason",
+        "store"
+      ],
       "additionalProperties": false,
       "properties": {
         "reason": {
@@ -875,9 +1492,11 @@
       }
     },
     "payload_rate_limit_store_recovered": {
-      "description": "Payload for rate_limit.store_recovered — emitted when the Redis store is reachable again.",
+      "description": "Payload for rate_limit.store_recovered \u2014 emitted when the Redis store is reachable again.",
       "type": "object",
-      "required": ["store"],
+      "required": [
+        "store"
+      ],
       "additionalProperties": false,
       "properties": {
         "store": {
@@ -888,9 +1507,15 @@
       }
     },
     "payload_request_blocked": {
-      "description": "Payload for request.blocked — emitted when a request is blocked by a security policy.",
+      "description": "Payload for request.blocked \u2014 emitted when a request is blocked by a security policy.",
       "type": "object",
-      "required": ["method", "path", "reason", "blocked_by", "client_ip"],
+      "required": [
+        "method",
+        "path",
+        "reason",
+        "blocked_by",
+        "client_ip"
+      ],
       "additionalProperties": false,
       "properties": {
         "method": {
@@ -916,9 +1541,13 @@
       }
     },
     "payload_tls_certificate_issued": {
-      "description": "Payload for tls.certificate_issued — emitted when a TLS certificate is obtained or renewed.",
+      "description": "Payload for tls.certificate_issued \u2014 emitted when a TLS certificate is obtained or renewed.",
       "type": "object",
-      "required": ["domain", "provider", "expires_at"],
+      "required": [
+        "domain",
+        "provider",
+        "expires_at"
+      ],
       "additionalProperties": false,
       "properties": {
         "domain": {
@@ -936,9 +1565,13 @@
       }
     },
     "payload_user_created": {
-      "description": "Payload for user.created — emitted when a new user identity is created.",
+      "description": "Payload for user.created \u2014 emitted when a new user identity is created.",
       "type": "object",
-      "required": ["identity_id", "email", "actor_id"],
+      "required": [
+        "identity_id",
+        "email",
+        "actor_id"
+      ],
       "additionalProperties": false,
       "properties": {
         "identity_id": {
@@ -956,9 +1589,14 @@
       }
     },
     "payload_user_deleted": {
-      "description": "Payload for user.deleted — emitted when a user identity is deleted.",
+      "description": "Payload for user.deleted \u2014 emitted when a user identity is deleted.",
       "type": "object",
-      "required": ["identity_id", "email", "actor_id", "reason"],
+      "required": [
+        "identity_id",
+        "email",
+        "actor_id",
+        "reason"
+      ],
       "additionalProperties": false,
       "properties": {
         "identity_id": {
@@ -980,9 +1618,14 @@
       }
     },
     "payload_user_deactivated": {
-      "description": "Payload for user.deactivated — emitted when a user identity is deactivated.",
+      "description": "Payload for user.deactivated \u2014 emitted when a user identity is deactivated.",
       "type": "object",
-      "required": ["identity_id", "email", "actor_id", "reason"],
+      "required": [
+        "identity_id",
+        "email",
+        "actor_id",
+        "reason"
+      ],
       "additionalProperties": false,
       "properties": {
         "identity_id": {
@@ -1004,9 +1647,13 @@
       }
     },
     "payload_audit_log_failure": {
-      "description": "Payload for audit.log_failure — emitted when an audit entry cannot be persisted.",
+      "description": "Payload for audit.log_failure \u2014 emitted when an audit entry cannot be persisted.",
       "type": "object",
-      "required": ["action", "user_id", "error"],
+      "required": [
+        "action",
+        "user_id",
+        "error"
+      ],
       "additionalProperties": false,
       "properties": {
         "action": {
@@ -1024,9 +1671,14 @@
       }
     },
     "payload_ip_filter_blocked": {
-      "description": "Payload for ip_filter.blocked — emitted when a request is rejected by the IP filter plugin.",
+      "description": "Payload for ip_filter.blocked \u2014 emitted when a request is rejected by the IP filter plugin.",
       "type": "object",
-      "required": ["client_ip", "mode", "method", "path"],
+      "required": [
+        "client_ip",
+        "mode",
+        "method",
+        "path"
+      ],
       "additionalProperties": false,
       "properties": {
         "client_ip": {
@@ -1035,7 +1687,10 @@
         },
         "mode": {
           "type": "string",
-          "enum": ["allowlist", "blocklist"],
+          "enum": [
+            "allowlist",
+            "blocklist"
+          ],
           "description": "Filter mode in effect."
         },
         "method": {
@@ -1049,9 +1704,9 @@
       }
     },
     "payload_secret_rotated": {
-      "description": "Payload for secret.rotated — emitted when a dynamic secret is successfully rotated.",
+      "description": "Payload for secret.rotated \u2014 emitted when a dynamic secret is successfully rotated.",
       "type": "object",
-      "additionalProperties": true,
+      "additionalProperties": false,
       "properties": {
         "secret_name": {
           "type": "string",
@@ -1064,9 +1719,9 @@
       }
     },
     "payload_secret_rotation_failed": {
-      "description": "Payload for secret.rotation_failed — emitted when a dynamic secret rotation attempt fails.",
+      "description": "Payload for secret.rotation_failed \u2014 emitted when a dynamic secret rotation attempt fails.",
       "type": "object",
-      "additionalProperties": true,
+      "additionalProperties": false,
       "properties": {
         "secret_name": {
           "type": "string",
@@ -1079,21 +1734,28 @@
       }
     },
     "payload_secret_health_check": {
-      "description": "Payload for secret.health_check — emitted on each scheduled secret health check run.",
+      "description": "Payload for secret.health_check \u2014 emitted on each scheduled secret health check run.",
       "type": "object",
-      "additionalProperties": true,
+      "additionalProperties": false,
       "properties": {
         "findings": {
           "type": "array",
-          "items": { "type": "string" },
+          "items": {
+            "type": "string"
+          },
           "description": "List of findings from the health check. Empty array when healthy."
         }
       }
     },
     "payload_upstream_timeout": {
-      "description": "Payload for upstream.timeout — emitted when the upstream does not respond within the configured timeout.",
+      "description": "Payload for upstream.timeout \u2014 emitted when the upstream does not respond within the configured timeout.",
       "type": "object",
-      "required": ["method", "path", "timeout_seconds", "client_ip"],
+      "required": [
+        "method",
+        "path",
+        "timeout_seconds",
+        "client_ip"
+      ],
       "additionalProperties": false,
       "properties": {
         "method": {
@@ -1116,9 +1778,15 @@
       }
     },
     "payload_upstream_retry": {
-      "description": "Payload for upstream.retry — emitted each time the retry middleware re-sends a failed upstream request.",
+      "description": "Payload for upstream.retry \u2014 emitted each time the retry middleware re-sends a failed upstream request.",
       "type": "object",
-      "required": ["method", "path", "attempt", "status_code", "client_ip"],
+      "required": [
+        "method",
+        "path",
+        "attempt",
+        "status_code",
+        "client_ip"
+      ],
       "additionalProperties": false,
       "properties": {
         "method": {
@@ -1147,19 +1815,32 @@
       }
     },
     "payload_upstream_health_changed": {
-      "description": "Payload for upstream.health_changed — emitted when the upstream health status transitions.",
+      "description": "Payload for upstream.health_changed \u2014 emitted when the upstream health status transitions.",
       "type": "object",
-      "required": ["previous_status", "new_status", "consecutive", "upstream_url"],
+      "required": [
+        "previous_status",
+        "new_status",
+        "consecutive",
+        "upstream_url"
+      ],
       "additionalProperties": false,
       "properties": {
         "previous_status": {
           "type": "string",
-          "enum": ["unknown", "healthy", "unhealthy"],
+          "enum": [
+            "unknown",
+            "healthy",
+            "unhealthy"
+          ],
           "description": "Health status before the transition."
         },
         "new_status": {
           "type": "string",
-          "enum": ["unknown", "healthy", "unhealthy"],
+          "enum": [
+            "unknown",
+            "healthy",
+            "unhealthy"
+          ],
           "description": "Health status after the transition."
         },
         "consecutive": {
@@ -1178,9 +1859,12 @@
       }
     },
     "payload_circuit_breaker_opened": {
-      "description": "Payload for circuit_breaker.opened — emitted when the circuit breaker trips from Closed to Open.",
+      "description": "Payload for circuit_breaker.opened \u2014 emitted when the circuit breaker trips from Closed to Open.",
       "type": "object",
-      "required": ["threshold", "timeout_seconds"],
+      "required": [
+        "threshold",
+        "timeout_seconds"
+      ],
       "additionalProperties": false,
       "properties": {
         "threshold": {
@@ -1196,9 +1880,11 @@
       }
     },
     "payload_circuit_breaker_half_open": {
-      "description": "Payload for circuit_breaker.half_open — emitted when the circuit breaker enters HalfOpen state.",
+      "description": "Payload for circuit_breaker.half_open \u2014 emitted when the circuit breaker enters HalfOpen state.",
       "type": "object",
-      "required": ["timeout_seconds"],
+      "required": [
+        "timeout_seconds"
+      ],
       "additionalProperties": false,
       "properties": {
         "timeout_seconds": {
@@ -1209,15 +1895,19 @@
       }
     },
     "payload_circuit_breaker_closed": {
-      "description": "Payload for circuit_breaker.closed — emitted when the circuit breaker returns to Closed after a successful probe.",
+      "description": "Payload for circuit_breaker.closed \u2014 emitted when the circuit breaker returns to Closed after a successful probe.",
       "type": "object",
       "additionalProperties": false,
       "properties": {}
     },
     "payload_egress_request": {
-      "description": "Payload for egress.request — emitted when the egress proxy begins forwarding an outbound request.",
+      "description": "Payload for egress.request \u2014 emitted when the egress proxy begins forwarding an outbound request.",
       "type": "object",
-      "required": ["route", "method", "url", "trace_id"],
+      "required": [
+        "route",
+        "method",
+        "url"
+      ],
       "additionalProperties": false,
       "properties": {
         "route": {
@@ -1231,17 +1921,20 @@
         "url": {
           "type": "string",
           "description": "Destination URL of the outbound request. Never includes bearer tokens or credentials."
-        },
-        "trace_id": {
-          "type": "string",
-          "description": "W3C trace-id of the inbound request. Empty string when no trace context is available."
         }
       }
     },
     "payload_egress_response": {
-      "description": "Payload for egress.response — emitted when the egress proxy receives a complete response.",
+      "description": "Payload for egress.response \u2014 emitted when the egress proxy receives a complete response.",
       "type": "object",
-      "required": ["route", "method", "url", "status_code", "duration_seconds", "attempts", "trace_id"],
+      "required": [
+        "route",
+        "method",
+        "url",
+        "status_code",
+        "duration_seconds",
+        "attempts"
+      ],
       "additionalProperties": false,
       "properties": {
         "route": {
@@ -1271,17 +1964,18 @@
           "type": "number",
           "minimum": 1,
           "description": "Total number of upstream attempts (1 = no retries)."
-        },
-        "trace_id": {
-          "type": "string",
-          "description": "W3C trace-id of the inbound request. Empty string when no trace context is available."
         }
       }
     },
     "payload_egress_blocked": {
-      "description": "Payload for egress.blocked — emitted when the egress proxy refuses to forward a request due to policy.",
+      "description": "Payload for egress.blocked \u2014 emitted when the egress proxy refuses to forward a request due to policy.",
       "type": "object",
-      "required": ["route", "method", "url", "reason", "trace_id"],
+      "required": [
+        "route",
+        "method",
+        "url",
+        "reason"
+      ],
       "additionalProperties": false,
       "properties": {
         "route": {
@@ -1299,17 +1993,19 @@
         "reason": {
           "type": "string",
           "description": "Short human-readable description of why the request was blocked."
-        },
-        "trace_id": {
-          "type": "string",
-          "description": "W3C trace-id of the inbound request. Empty string when no trace context is available."
         }
       }
     },
     "payload_egress_error": {
-      "description": "Payload for egress.error — emitted when the egress proxy encounters a transport-level error.",
+      "description": "Payload for egress.error \u2014 emitted when the egress proxy encounters a transport-level error.",
       "type": "object",
-      "required": ["route", "method", "url", "error", "attempts", "trace_id"],
+      "required": [
+        "route",
+        "method",
+        "url",
+        "error",
+        "attempts"
+      ],
       "additionalProperties": false,
       "properties": {
         "route": {
@@ -1332,17 +2028,21 @@
           "type": "number",
           "minimum": 1,
           "description": "Total number of upstream attempts made before failing."
-        },
-        "trace_id": {
-          "type": "string",
-          "description": "W3C trace-id of the inbound request. Empty string when no trace context is available."
         }
       }
     },
     "payload_egress_sanitized": {
-      "description": "Payload for egress.sanitized — emitted after the egress proxy applies PII redaction rules.",
+      "description": "Payload for egress.sanitized \u2014 emitted after the egress proxy applies PII redaction rules.",
       "type": "object",
-      "required": ["route", "method", "url", "redacted_headers", "stripped_query_params", "redacted_body_fields", "total_redacted", "trace_id"],
+      "required": [
+        "route",
+        "method",
+        "url",
+        "redacted_headers",
+        "stripped_query_params",
+        "redacted_body_fields",
+        "total_redacted"
+      ],
       "additionalProperties": false,
       "properties": {
         "route": {
@@ -1376,17 +2076,20 @@
           "type": "number",
           "minimum": 0,
           "description": "Total count of redacted fields (sum of the three categories above)."
-        },
-        "trace_id": {
-          "type": "string",
-          "description": "W3C trace-id of the inbound request. Empty string when no trace context is available."
         }
       }
     },
     "payload_egress_response_invalid": {
-      "description": "Payload for egress.response_invalid — emitted when the upstream response fails per-route validation.",
+      "description": "Payload for egress.response_invalid \u2014 emitted when the upstream response fails per-route validation.",
       "type": "object",
-      "required": ["route", "method", "url", "status_code", "content_type", "reason", "trace_id"],
+      "required": [
+        "route",
+        "method",
+        "url",
+        "status_code",
+        "content_type",
+        "reason"
+      ],
       "additionalProperties": false,
       "properties": {
         "route": {
@@ -1414,17 +2117,17 @@
         "reason": {
           "type": "string",
           "description": "Short human-readable description of why the response was considered invalid."
-        },
-        "trace_id": {
-          "type": "string",
-          "description": "W3C trace-id of the inbound request. Empty string when no trace context is available."
         }
       }
     },
     "payload_egress_rate_limit_hit": {
-      "description": "Payload for egress.rate_limit_hit — emitted when an outbound request is rejected by a per-route rate limit.",
+      "description": "Payload for egress.rate_limit_hit \u2014 emitted when an outbound request is rejected by a per-route rate limit.",
       "type": "object",
-      "required": ["route", "limit", "retry_after_seconds"],
+      "required": [
+        "route",
+        "limit",
+        "retry_after_seconds"
+      ],
       "additionalProperties": false,
       "properties": {
         "route": {
@@ -1444,9 +2147,13 @@
       }
     },
     "payload_egress_circuit_breaker_opened": {
-      "description": "Payload for egress.circuit_breaker.opened — emitted when the per-route egress circuit breaker trips.",
+      "description": "Payload for egress.circuit_breaker.opened \u2014 emitted when the per-route egress circuit breaker trips.",
       "type": "object",
-      "required": ["route", "threshold", "timeout_seconds"],
+      "required": [
+        "route",
+        "threshold",
+        "timeout_seconds"
+      ],
       "additionalProperties": false,
       "properties": {
         "route": {
@@ -1466,9 +2173,11 @@
       }
     },
     "payload_egress_circuit_breaker_closed": {
-      "description": "Payload for egress.circuit_breaker.closed — emitted when the per-route egress circuit breaker returns to Closed.",
+      "description": "Payload for egress.circuit_breaker.closed \u2014 emitted when the per-route egress circuit breaker returns to Closed.",
       "type": "object",
-      "required": ["route"],
+      "required": [
+        "route"
+      ],
       "additionalProperties": false,
       "properties": {
         "route": {

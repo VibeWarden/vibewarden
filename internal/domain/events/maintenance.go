@@ -25,6 +25,8 @@ func NewMaintenanceRequestBlocked(params MaintenanceRequestBlockedParams) Event 
 		SchemaVersion: SchemaVersion,
 		EventType:     EventTypeMaintenanceRequestBlocked,
 		Timestamp:     time.Now().UTC(),
+		Severity:      SeverityMedium,
+		Category:      CategoryPolicy,
 		AISummary: fmt.Sprintf(
 			"Request blocked by maintenance mode: %s %s",
 			params.Method, params.Path,

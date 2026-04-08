@@ -53,6 +53,8 @@ func NewJWTValid(params JWTValidParams) Event {
 		SchemaVersion: SchemaVersion,
 		EventType:     EventTypeJWTValid,
 		Timestamp:     time.Now().UTC(),
+		Severity:      SeverityInfo,
+		Category:      CategoryAuth,
 		AISummary: fmt.Sprintf(
 			"JWT validated: %s %s (sub=%s)",
 			params.Method, params.Path, params.Subject,
@@ -91,6 +93,8 @@ func NewJWTInvalid(params JWTInvalidParams) Event {
 		SchemaVersion: SchemaVersion,
 		EventType:     EventTypeJWTInvalid,
 		Timestamp:     time.Now().UTC(),
+		Severity:      SeverityMedium,
+		Category:      CategoryAuth,
 		AISummary: fmt.Sprintf(
 			"JWT validation failed: %s",
 			params.Reason,
@@ -126,6 +130,8 @@ func NewJWTExpired(params JWTExpiredParams) Event {
 		SchemaVersion: SchemaVersion,
 		EventType:     EventTypeJWTExpired,
 		Timestamp:     time.Now().UTC(),
+		Severity:      SeverityMedium,
+		Category:      CategoryAuth,
 		AISummary: fmt.Sprintf(
 			"JWT expired at %s for subject %s",
 			params.ExpiredAt.UTC().Format(time.RFC3339),
@@ -156,6 +162,8 @@ func NewJWKSRefresh(params JWKSRefreshParams) Event {
 		SchemaVersion: SchemaVersion,
 		EventType:     EventTypeJWKSRefresh,
 		Timestamp:     time.Now().UTC(),
+		Severity:      SeverityInfo,
+		Category:      CategoryAuth,
 		AISummary: fmt.Sprintf(
 			"JWKS refreshed from %s (%d keys)",
 			params.JWKSURL, params.KeyCount,
@@ -183,6 +191,8 @@ func NewJWKSError(params JWKSErrorParams) Event {
 		SchemaVersion: SchemaVersion,
 		EventType:     EventTypeJWKSError,
 		Timestamp:     time.Now().UTC(),
+		Severity:      SeverityMedium,
+		Category:      CategoryAuth,
 		AISummary: fmt.Sprintf(
 			"JWKS fetch failed from %s: %s",
 			params.JWKSURL, params.Detail,

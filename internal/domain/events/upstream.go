@@ -31,6 +31,8 @@ func NewUpstreamRetry(params UpstreamRetryParams) Event {
 		SchemaVersion: SchemaVersion,
 		EventType:     EventTypeUpstreamRetry,
 		Timestamp:     time.Now().UTC(),
+		Severity:      SeverityLow,
+		Category:      CategoryNetwork,
 		AISummary: fmt.Sprintf(
 			"Upstream retry attempt %d for %s %s (previous status %d) from %s",
 			params.Attempt, params.Method, params.Path, params.StatusCode, params.ClientIP,
@@ -68,6 +70,8 @@ func NewUpstreamTimeout(params UpstreamTimeoutParams) Event {
 		SchemaVersion: SchemaVersion,
 		EventType:     EventTypeUpstreamTimeout,
 		Timestamp:     time.Now().UTC(),
+		Severity:      SeverityMedium,
+		Category:      CategoryNetwork,
 		AISummary: fmt.Sprintf(
 			"Upstream timed out after %.0fs for %s %s from %s",
 			params.TimeoutSeconds, params.Method, params.Path, params.ClientIP,

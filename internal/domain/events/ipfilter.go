@@ -28,6 +28,8 @@ func NewIPFilterBlocked(params IPFilterBlockedParams) Event {
 		SchemaVersion: SchemaVersion,
 		EventType:     EventTypeIPFilterBlocked,
 		Timestamp:     time.Now().UTC(),
+		Severity:      SeverityMedium,
+		Category:      CategoryPolicy,
 		AISummary: fmt.Sprintf(
 			"Request from %s blocked by IP filter (%s mode): %s %s",
 			params.ClientIP, params.Mode, params.Method, params.Path,

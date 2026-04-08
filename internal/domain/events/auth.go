@@ -41,6 +41,8 @@ func NewAuthSuccess(params AuthSuccessParams) Event {
 		SchemaVersion: SchemaVersion,
 		EventType:     EventTypeAuthSuccess,
 		Timestamp:     time.Now().UTC(),
+		Severity:      SeverityInfo,
+		Category:      CategoryAuth,
 		AISummary: fmt.Sprintf(
 			"Authenticated request allowed: %s %s (identity %s)",
 			params.Method, params.Path, params.IdentityID,
@@ -95,6 +97,8 @@ func NewAuthFailed(params AuthFailedParams) Event {
 		SchemaVersion: SchemaVersion,
 		EventType:     EventTypeAuthFailed,
 		Timestamp:     time.Now().UTC(),
+		Severity:      SeverityMedium,
+		Category:      CategoryAuth,
 		AISummary: fmt.Sprintf(
 			"Unauthenticated request rejected: %s",
 			params.Reason,

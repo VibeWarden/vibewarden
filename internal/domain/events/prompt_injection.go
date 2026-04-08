@@ -55,6 +55,8 @@ func NewLLMPromptInjectionBlocked(params LLMPromptInjectionParams) Event {
 		SchemaVersion: SchemaVersion,
 		EventType:     EventTypeLLMPromptInjectionBlocked,
 		Timestamp:     time.Now().UTC(),
+		Severity:      SeverityHigh,
+		Category:      CategoryPolicy,
 		AISummary: fmt.Sprintf(
 			"Prompt injection blocked on route %q: pattern %q matched in %s",
 			params.Route, params.Pattern, params.ContentPath,
@@ -88,6 +90,8 @@ func NewLLMPromptInjectionDetected(params LLMPromptInjectionParams) Event {
 		SchemaVersion: SchemaVersion,
 		EventType:     EventTypeLLMPromptInjectionDetected,
 		Timestamp:     time.Now().UTC(),
+		Severity:      SeverityLow,
+		Category:      CategoryPolicy,
 		AISummary: fmt.Sprintf(
 			"Prompt injection detected (allowed) on route %q: pattern %q matched in %s",
 			params.Route, params.Pattern, params.ContentPath,

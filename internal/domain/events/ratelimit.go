@@ -71,6 +71,8 @@ func NewRateLimitHit(params RateLimitHitParams) Event {
 		SchemaVersion: SchemaVersion,
 		EventType:     EventTypeRateLimitHit,
 		Timestamp:     time.Now().UTC(),
+		Severity:      SeverityMedium,
+		Category:      CategoryResilience,
 		AISummary: fmt.Sprintf(
 			"Rate limit exceeded for %s %s: %.0f requests/second limit reached",
 			params.LimitType, params.Identifier, params.RequestsPerSecond,
@@ -110,6 +112,8 @@ func NewRateLimitUnidentified(params RateLimitUnidentifiedParams) Event {
 		SchemaVersion: SchemaVersion,
 		EventType:     EventTypeRateLimitUnidentified,
 		Timestamp:     time.Now().UTC(),
+		Severity:      SeverityLow,
+		Category:      CategoryResilience,
 		AISummary:     "Request rejected because the client IP could not be determined",
 		Payload: map[string]any{
 			"path":   params.Path,

@@ -42,6 +42,8 @@ func NewConfigReloaded(params ConfigReloadedParams) Event {
 		SchemaVersion: SchemaVersion,
 		EventType:     EventTypeConfigReloaded,
 		Timestamp:     time.Now().UTC(),
+		Severity:      SeverityInfo,
+		Category:      CategoryAudit,
 		AISummary: fmt.Sprintf(
 			"Configuration reloaded from %s (source: %s) in %dms",
 			params.ConfigPath, params.TriggerSource, params.DurationMS,
@@ -69,6 +71,8 @@ func NewConfigReloadFailed(params ConfigReloadFailedParams) Event {
 		SchemaVersion: SchemaVersion,
 		EventType:     EventTypeConfigReloadFailed,
 		Timestamp:     time.Now().UTC(),
+		Severity:      SeverityMedium,
+		Category:      CategoryAudit,
 		AISummary: fmt.Sprintf(
 			"Configuration reload failed for %s (source: %s): %s",
 			params.ConfigPath, params.TriggerSource, params.Reason,

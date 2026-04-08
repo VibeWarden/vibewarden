@@ -103,6 +103,8 @@ func (l *SlogEventLogger) Log(ctx context.Context, event events.Event) error {
 		slog.String("schema_version", event.SchemaVersion),
 		slog.String("event_type", event.EventType),
 		slog.Time("timestamp", event.Timestamp),
+		slog.String("severity", string(event.Severity)),
+		slog.String("category", string(event.Category)),
 		slog.String("ai_summary", event.AISummary),
 		slog.Any("payload", json.RawMessage(payloadBytes)),
 	}
