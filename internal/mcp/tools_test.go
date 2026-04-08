@@ -269,6 +269,7 @@ func TestRegisterDefaultTools(t *testing.T) {
 		"vibewarden_prepare_deploy",
 		"vibewarden_verify_deploy",
 		"vibewarden_get_deploy_logs",
+		"vibewarden_watch_events",
 	}
 
 	for _, name := range expectedTools {
