@@ -34,14 +34,9 @@ vibew dev
 
 Your app is now behind VibeWarden at `https://localhost:8443`. Done.
 
-**Windows:**
-
-```powershell
-irm vibewarden.dev/install.ps1 | iex
-vibew init --lang go myapp
-cd myapp
-vibew dev
-```
+> **Windows support is planned** — see [#667 (winget)](https://github.com/vibewarden/vibewarden/issues/667)
+> and [#668 (Scoop)](https://github.com/vibewarden/vibewarden/issues/668).
+> VibeWarden currently builds for macOS and Linux only.
 
 ### Faster iteration after the first run
 

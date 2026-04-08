@@ -30,11 +30,10 @@ it pins the version your team uses.
     curl -fsSL https://vibewarden.dev/vibew > vibew && chmod +x vibew
     ```
 
-=== "Windows (PowerShell)"
-
-    ```powershell
-    Invoke-WebRequest -Uri https://vibewarden.dev/vibew.ps1 -OutFile vibew.ps1
-    ```
+!!! note "Windows"
+    Windows support is planned — see [#667 (winget)](https://github.com/vibewarden/vibewarden/issues/667)
+    and [#668 (Scoop)](https://github.com/vibewarden/vibewarden/issues/668).
+    VibeWarden currently builds for macOS and Linux only.
 
 You can also install `vibew` globally:
 
@@ -69,7 +68,7 @@ Common flags:
 
 ```
 vibewarden.yaml          # Main config — commit this
-vibew / vibew.ps1        # Wrapper scripts (macOS/Linux/Windows)
+vibew                    # Wrapper script (macOS/Linux)
 .vibewarden-version      # Pinned version
 .claude/CLAUDE.md        # AI agent context (Claude Code)
 .cursor/rules            # AI agent context (Cursor)
