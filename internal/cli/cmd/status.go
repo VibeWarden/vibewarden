@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"crypto/tls"
 	"fmt"
 	"net/http"
 	"time"
@@ -40,7 +41,7 @@ Examples:
 				return fmt.Errorf("loading config: %w", err)
 			}
 
-			httpClient := &http.Client{Timeout: 5 * time.Second}
+			httpClient := newStatusHTTPClient(cfg)
 			checker := opsadapter.NewHTTPHealthChecker(httpClient)
 			svc := opsapp.NewStatusService(checker)
 
@@ -51,4 +52,19 @@ Examples:
 	cmd.Flags().StringVar(&configPath, "config", "", "path to vibewarden.yaml (default: ./vibewarden.yaml)")
 
 	return cmd
+}
+
+// newStatusHTTPClient returns an HTTP client suitable for health checks.
+// When the TLS provider is "self-signed", the client skips certificate
+// verification so that status checks against localhost succeed without
+// importing the CA into the system trust store.
+func newStatusHTTPClient(cfg *config.Config) *http.Client {
+	transport := http.DefaultTransport.(*http.Transport).Clone()
+	if cfg.TLS.Enabled && cfg.TLS.Provider == "self-signed" {
+		transport.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} //nolint:gosec // self-signed health-check only
+	}
+	return &http.Client{
+		Timeout:   5 * time.Second,
+		Transport: transport,
+	}
 }
