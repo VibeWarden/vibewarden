@@ -1,5 +1,7 @@
 # VibeWarden — Decisions Log
 
+> Note: ADR numbering became inconsistent during rapid iteration (ADR-023 jumps to ADR-497). ADR-064 onward follows the corrected convention.
+
 This file is the living record of all architectural decisions and agent activity.
 Updated by the architect agent (ADRs) and PM agent (planning log).
 Never delete entries — mark superseded decisions as `Superseded by ADR-N`.

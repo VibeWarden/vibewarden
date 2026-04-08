@@ -85,7 +85,6 @@ nav:
   - Troubleshooting: troubleshooting.md
   - FAQ: faq.md
   - Reference:
-      - Architectural Decisions: decisions.md
       - Claude Code Snippet: claude-md-snippet.md
       - Schema Evolution: schema-evolution.md
 

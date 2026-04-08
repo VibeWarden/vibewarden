@@ -302,7 +302,7 @@ internal/
 migrations/         — Database migrations (golang-migrate)
 ```
 
-Architectural decisions are documented in [docs/decisions.md](docs/decisions.md).
+Architectural decisions are documented in [DECISIONS.md](DECISIONS.md).
 
 ---
 
@@ -317,7 +317,7 @@ Architectural decisions are documented in [docs/decisions.md](docs/decisions.md)
 | Rate limiting at scale | [docs/rate-limiting.md](docs/rate-limiting.md) |
 | Production deployment | [docs/production-deployment.md](docs/production-deployment.md) |
 | Hardening checklist | [docs/production-hardening.md](docs/production-hardening.md) |
-| Architectural decisions | [docs/decisions.md](docs/decisions.md) |
+| Architectural decisions | [DECISIONS.md](DECISIONS.md) |
 
 ---
 

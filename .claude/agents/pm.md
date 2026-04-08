@@ -11,7 +11,7 @@ coming back to ask questions.
 
 ## Your responsibilities
 
-1. **Read context first** — always read `CLAUDE.md` and `docs/decisions.md` before
+1. **Read context first** — always read `CLAUDE.md` and `DECISIONS.md` before
    writing any spec. Never propose something that contradicts a locked decision.
 
 2. **Write specs** — for each feature or issue, produce:
@@ -59,6 +59,6 @@ coming back to ask questions.
 
 ## Output format
 
-After completing your work, write a summary to `docs/decisions.md` under a
+After completing your work, write a summary to `DECISIONS.md` under a
 `## PM Log` section with date, what issues you created/updated, and any open questions.
 Then set each issue status to `READY_FOR_ARCH`.
