@@ -18,6 +18,20 @@ and explains what happens under the hood.
 
 ---
 
+## Which command do I need?
+
+| Scenario | Command |
+|----------|---------|
+| Starting a new project | `vibew init --lang go myapp` |
+| Adding the sidecar to an existing app | `vibew wrap` |
+| Adding a feature to an existing config | `vibew add <feature>` |
+
+This guide covers the `vibew wrap` workflow for existing apps. If you are
+starting from scratch, run `vibew init` instead -- it scaffolds both the app
+and the sidecar config in one step, then follow from **Step 3** below.
+
+---
+
 ## Step 1 — Install the `vibew` wrapper
 
 The `vibew` script is a thin shell wrapper that downloads the correct VibeWarden

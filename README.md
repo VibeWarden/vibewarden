@@ -63,7 +63,9 @@ on both x86-64 servers and ARM64 machines (Apple Silicon, AWS Graviton).
 
 ---
 
-## What `wrap` generates
+## What `init` / `wrap` generates
+
+Both `vibew init` and `vibew wrap` produce the same project scaffolding:
 
 ```
 vibewarden.yaml          # Main config — commit this
@@ -213,10 +215,25 @@ If you need a general-purpose load balancer or a CDN edge, use the right tool fo
 
 ---
 
+## Which command do I need?
+
+| Scenario | Command |
+|----------|---------|
+| Starting a new project | `vibew init --lang go myapp` |
+| Adding the sidecar to an existing app | `vibew wrap` |
+| Adding a feature to an existing config | `vibew add <feature>` |
+
+Use `vibew init` when you have nothing yet -- it scaffolds both the app and the
+sidecar config. Use `vibew wrap` when you already have an app and just want to
+add VibeWarden. Use `vibew add` to enable individual features after the initial setup.
+
+---
+
 ## CLI Reference
 
 | Command | Description |
 |---------|-------------|
+| `vibew init --lang <lang> <name>` | Scaffold a new project with VibeWarden |
 | `vibew wrap` | Add VibeWarden sidecar to an existing project |
 | `vibew add auth` | Enable authentication |
 | `vibew add rate-limiting` | Enable rate limiting |
