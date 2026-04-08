@@ -1,5 +1,7 @@
 # Binaries
 /bin/
+/vibewarden
+/vibew
 *.exe
 
 # Environment and secrets
@@ -26,6 +28,8 @@ vendor/
 
 # Test artifacts
 coverage.out
+*.cov.out
+domain_app_cov.out
 coverage.html
 .venv/
 
