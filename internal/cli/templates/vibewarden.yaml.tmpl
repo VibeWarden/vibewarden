@@ -12,11 +12,11 @@ upstream:
   port: {{ .UpstreamPort }}
 
 # app configures how your application is included in the generated docker-compose.yml.
-# Set app.image to pull a pre-built image (default), or app.build to build from source (opt-in).
+# Set app.build to build from source (default), or app.image to pull a pre-built image (production).
 # Remove this section if you manage your app service manually.
 app:
-  image: "{{ .ProjectName }}:latest"  # overridden at runtime by VIBEWARDEN_APP_IMAGE
-  # build: "."  # uncomment to build from source instead of pulling an image
+  build: "."
+  # image: "{{ .ProjectName }}:latest"  # use in production instead of build
 
 log:
   level: "info"

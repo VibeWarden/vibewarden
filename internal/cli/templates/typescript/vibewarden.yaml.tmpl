@@ -12,8 +12,8 @@ upstream:
   port: {{ .Port }}
 
 app:
-  image: "{{ .ProjectName }}:latest"  # overridden at runtime by VIBEWARDEN_APP_IMAGE
-  # build: "."  # uncomment to build from source instead of pulling an image
+  build: "."
+  # image: "{{ .ProjectName }}:latest"  # use in production instead of build
 
 log:
   level: "info"
