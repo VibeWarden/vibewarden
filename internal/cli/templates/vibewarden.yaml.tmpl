@@ -4,11 +4,11 @@
 # Full reference: https://vibewarden.dev/docs/config
 
 server:
-  host: "127.0.0.1"
+  host: "0.0.0.0"
   port: 8443
 
 upstream:
-  host: "127.0.0.1"
+  host: "0.0.0.0"
   port: {{ .UpstreamPort }}
 
 # app configures how your application is included in the generated docker-compose.yml.
