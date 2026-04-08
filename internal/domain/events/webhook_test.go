@@ -53,6 +53,29 @@ func TestNewWebhookSignatureValid(t *testing.T) {
 			requirePayloadString(t, e.Payload, "method", tt.params.Method)
 			requirePayloadString(t, e.Payload, "provider", tt.params.Provider)
 			requirePayloadString(t, e.Payload, "client_ip", tt.params.ClientIP)
+
+			// Verify enrichment fields.
+			if e.Actor.Type != events.ActorTypeIP {
+				t.Errorf("Actor.Type = %q, want %q", e.Actor.Type, events.ActorTypeIP)
+			}
+			if e.Actor.IP != tt.params.ClientIP {
+				t.Errorf("Actor.IP = %q, want %q", e.Actor.IP, tt.params.ClientIP)
+			}
+			if e.Resource.Type != events.ResourceTypeHTTPEndpoint {
+				t.Errorf("Resource.Type = %q, want %q", e.Resource.Type, events.ResourceTypeHTTPEndpoint)
+			}
+			if e.Resource.Path != tt.params.Path {
+				t.Errorf("Resource.Path = %q, want %q", e.Resource.Path, tt.params.Path)
+			}
+			if e.Resource.Method != tt.params.Method {
+				t.Errorf("Resource.Method = %q, want %q", e.Resource.Method, tt.params.Method)
+			}
+			if e.Outcome != events.OutcomeAllowed {
+				t.Errorf("Outcome = %q, want %q", e.Outcome, events.OutcomeAllowed)
+			}
+			if e.TriggeredBy != "webhook_middleware" {
+				t.Errorf("TriggeredBy = %q, want %q", e.TriggeredBy, "webhook_middleware")
+			}
 		})
 	}
 }
@@ -98,6 +121,29 @@ func TestNewWebhookSignatureInvalid(t *testing.T) {
 			requirePayloadString(t, e.Payload, "provider", tt.params.Provider)
 			requirePayloadString(t, e.Payload, "reason", tt.params.Reason)
 			requirePayloadString(t, e.Payload, "client_ip", tt.params.ClientIP)
+
+			// Verify enrichment fields.
+			if e.Actor.Type != events.ActorTypeIP {
+				t.Errorf("Actor.Type = %q, want %q", e.Actor.Type, events.ActorTypeIP)
+			}
+			if e.Actor.IP != tt.params.ClientIP {
+				t.Errorf("Actor.IP = %q, want %q", e.Actor.IP, tt.params.ClientIP)
+			}
+			if e.Resource.Type != events.ResourceTypeHTTPEndpoint {
+				t.Errorf("Resource.Type = %q, want %q", e.Resource.Type, events.ResourceTypeHTTPEndpoint)
+			}
+			if e.Resource.Path != tt.params.Path {
+				t.Errorf("Resource.Path = %q, want %q", e.Resource.Path, tt.params.Path)
+			}
+			if e.Resource.Method != tt.params.Method {
+				t.Errorf("Resource.Method = %q, want %q", e.Resource.Method, tt.params.Method)
+			}
+			if e.Outcome != events.OutcomeBlocked {
+				t.Errorf("Outcome = %q, want %q", e.Outcome, events.OutcomeBlocked)
+			}
+			if e.TriggeredBy != "webhook_middleware" {
+				t.Errorf("TriggeredBy = %q, want %q", e.TriggeredBy, "webhook_middleware")
+			}
 		})
 	}
 }

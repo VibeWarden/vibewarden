@@ -65,5 +65,9 @@ func NewEgressSanitized(params EgressSanitizedParams) Event {
 			"total_redacted":        total,
 			"trace_id":              params.TraceID,
 		},
+		Actor:       Actor{Type: ActorTypeSystem},
+		Resource:    Resource{Type: ResourceTypeEgressRoute, Path: params.Route, Method: params.Method},
+		TraceID:     params.TraceID,
+		TriggeredBy: "egress_sanitizer",
 	}
 }

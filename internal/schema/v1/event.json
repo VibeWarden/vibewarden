@@ -31,6 +31,42 @@
     "payload": {
       "type": "object",
       "description": "Event-specific structured data. The shape depends on event_type; see the conditional schemas below."
+    },
+    "actor": {
+      "$ref": "#/$defs/Actor",
+      "description": "The entity that initiated the action. Omitted for events where the actor is implicit (e.g. system-internal events with no inbound request)."
+    },
+    "resource": {
+      "$ref": "#/$defs/Resource",
+      "description": "The target of the action. Omitted for informational events with no specific target resource."
+    },
+    "outcome": {
+      "type": "string",
+      "description": "The enforcement result of this event.",
+      "enum": ["allowed", "blocked", "rate_limited", "failed"]
+    },
+    "risk_signals": {
+      "type": "array",
+      "description": "Machine-detectable risk indicators associated with this event. Omitted or empty when no risk signals were detected.",
+      "items": {
+        "$ref": "#/$defs/RiskSignal"
+      }
+    },
+    "request_id": {
+      "type": "string",
+      "description": "The inbound request identifier propagated from the client (e.g. the X-Request-ID header value). Omitted when not present."
+    },
+    "trace_id": {
+      "type": "string",
+      "description": "The W3C trace-id of the active OpenTelemetry span at the time the event was emitted. Omitted when no tracing context is available."
+    },
+    "span_id": {
+      "type": "string",
+      "description": "The W3C span-id of the active OpenTelemetry span at the time the event was emitted. Omitted when no tracing context is available."
+    },
+    "triggered_by": {
+      "type": "string",
+      "description": "The internal component or subsystem that raised this event (e.g. 'auth_middleware', 'rate_limit_middleware'). Omitted when the source is implicit from the event_type."
     }
   },
   "allOf": [
@@ -166,6 +202,70 @@
     }
   ],
   "$defs": {
+    "Actor": {
+      "type": "object",
+      "description": "The entity that initiated a security-relevant action.",
+      "required": ["type", "id"],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "type": "string",
+          "description": "The category of the actor.",
+          "enum": ["ip", "user", "api_key", "system"]
+        },
+        "id": {
+          "type": "string",
+          "description": "The actor's unique identifier within its type namespace."
+        },
+        "ip": {
+          "type": "string",
+          "description": "The client IP address. Present for 'ip' type actors and optionally for 'user' and 'api_key' actors when the source IP is known."
+        }
+      }
+    },
+    "Resource": {
+      "type": "object",
+      "description": "The target of a security-relevant action.",
+      "required": ["type", "path"],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "type": "string",
+          "description": "The category of the resource.",
+          "enum": ["http_endpoint", "egress_route", "config"]
+        },
+        "path": {
+          "type": "string",
+          "description": "The URL path, route name, or file path of the resource."
+        },
+        "method": {
+          "type": "string",
+          "description": "The HTTP method. Only meaningful when type is 'http_endpoint'."
+        }
+      }
+    },
+    "RiskSignal": {
+      "type": "object",
+      "description": "A single machine-detectable risk indicator.",
+      "required": ["signal", "score", "details"],
+      "additionalProperties": false,
+      "properties": {
+        "signal": {
+          "type": "string",
+          "description": "Stable identifier for the risk pattern (e.g. 'brute_force', 'sqli_attempt', 'prompt_injection')."
+        },
+        "score": {
+          "type": "number",
+          "description": "Normalised risk score in [0.0, 1.0]. Higher values indicate higher confidence.",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "details": {
+          "type": "string",
+          "description": "Human-readable explanation of why this signal was raised."
+        }
+      }
+    },
     "ProxyStartedPayload": {
       "type": "object",
       "description": "Payload for proxy.started events. Emitted once at startup when the reverse proxy is ready to accept connections.",

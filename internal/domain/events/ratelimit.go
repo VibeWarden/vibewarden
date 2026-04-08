@@ -34,6 +34,12 @@ type RateLimitHitParams struct {
 	// "user" to record which IP the user was connecting from.
 	// May be empty when LimitType is "ip" (identifier already is the IP).
 	ClientIP string
+
+	// RequestID is the inbound request identifier (e.g. X-Request-ID header).
+	RequestID string
+
+	// TraceID is the W3C trace-id of the active OTel span. May be empty.
+	TraceID string
 }
 
 // NewRateLimitHit creates a rate_limit.hit event indicating that a request
@@ -52,6 +58,15 @@ func NewRateLimitHit(params RateLimitHitParams) Event {
 		payload["client_ip"] = params.ClientIP
 	}
 
+	// Build the actor from the limit type and identifier.
+	var actor Actor
+	switch params.LimitType {
+	case "user":
+		actor = Actor{Type: ActorTypeUser, ID: params.Identifier, IP: params.ClientIP}
+	default:
+		actor = Actor{Type: ActorTypeIP, ID: params.Identifier, IP: params.Identifier}
+	}
+
 	return Event{
 		SchemaVersion: SchemaVersion,
 		EventType:     EventTypeRateLimitHit,
@@ -60,7 +75,14 @@ func NewRateLimitHit(params RateLimitHitParams) Event {
 			"Rate limit exceeded for %s %s: %.0f requests/second limit reached",
 			params.LimitType, params.Identifier, params.RequestsPerSecond,
 		),
-		Payload: payload,
+		Payload:     payload,
+		Actor:       actor,
+		Resource:    Resource{Type: ResourceTypeHTTPEndpoint, Path: params.Path, Method: params.Method},
+		Outcome:     OutcomeRateLimited,
+		RiskSignals: []RiskSignal{{Signal: "rate_limit_exceeded", Score: 0.5, Details: fmt.Sprintf("%s %s exceeded %.0f req/s", params.LimitType, params.Identifier, params.RequestsPerSecond)}},
+		RequestID:   params.RequestID,
+		TraceID:     params.TraceID,
+		TriggeredBy: "rate_limit_middleware",
 	}
 }
 
@@ -72,6 +94,12 @@ type RateLimitUnidentifiedParams struct {
 
 	// Method is the HTTP method of the rejected request.
 	Method string
+
+	// RequestID is the inbound request identifier (e.g. X-Request-ID header).
+	RequestID string
+
+	// TraceID is the W3C trace-id of the active OTel span. May be empty.
+	TraceID string
 }
 
 // NewRateLimitUnidentified creates a rate_limit.unidentified_client event
@@ -87,5 +115,11 @@ func NewRateLimitUnidentified(params RateLimitUnidentifiedParams) Event {
 			"path":   params.Path,
 			"method": params.Method,
 		},
+		Actor:       Actor{Type: ActorTypeIP, ID: ""},
+		Resource:    Resource{Type: ResourceTypeHTTPEndpoint, Path: params.Path, Method: params.Method},
+		Outcome:     OutcomeBlocked,
+		RequestID:   params.RequestID,
+		TraceID:     params.TraceID,
+		TriggeredBy: "rate_limit_middleware",
 	}
 }

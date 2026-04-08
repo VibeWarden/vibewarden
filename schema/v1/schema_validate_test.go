@@ -461,6 +461,67 @@ func TestSchemaValidation(t *testing.T) {
 				Route: "payments",
 			}),
 		},
+		// --- webhook ---
+		{
+			name: "webhook.signature_valid",
+			event: events.NewWebhookSignatureValid(events.WebhookSignatureValidParams{
+				Path:     "/webhooks/stripe",
+				Method:   "POST",
+				Provider: "stripe",
+				ClientIP: "1.2.3.4",
+			}),
+		},
+		{
+			name: "webhook.signature_invalid",
+			event: events.NewWebhookSignatureInvalid(events.WebhookSignatureInvalidParams{
+				Path:     "/webhooks/github",
+				Method:   "POST",
+				Provider: "github",
+				Reason:   "signature mismatch",
+				ClientIP: "140.82.112.1",
+			}),
+		},
+		// --- config ---
+		{
+			name: "config.reloaded",
+			event: events.NewConfigReloaded(events.ConfigReloadedParams{
+				ConfigPath:    "/etc/vibewarden/vibewarden.yaml",
+				TriggerSource: "file_watcher",
+				DurationMS:    12,
+			}),
+		},
+		{
+			name: "config.reload_failed",
+			event: events.NewConfigReloadFailed(events.ConfigReloadFailedParams{
+				ConfigPath:       "/etc/vibewarden/vibewarden.yaml",
+				TriggerSource:    "file_watcher",
+				Reason:           "validation error",
+				ValidationErrors: []string{"plugins.tls: unknown provider"},
+			}),
+		},
+		// --- llm ---
+		{
+			name: "llm.prompt_injection_blocked",
+			event: events.NewLLMPromptInjectionBlocked(events.LLMPromptInjectionParams{
+				Route:       "openai-chat",
+				Method:      "POST",
+				URL:         "https://api.openai.com/v1/chat/completions",
+				Pattern:     "ignore_previous_instructions",
+				ContentPath: ".messages[0].content",
+				Action:      "block",
+			}),
+		},
+		{
+			name: "llm.prompt_injection_detected",
+			event: events.NewLLMPromptInjectionDetected(events.LLMPromptInjectionParams{
+				Route:       "anthropic",
+				Method:      "POST",
+				URL:         "https://api.anthropic.com/v1/complete",
+				Pattern:     "jailbreak_pattern",
+				ContentPath: ".prompt",
+				Action:      "detect",
+			}),
+		},
 	}
 
 	for _, tt := range tests {
