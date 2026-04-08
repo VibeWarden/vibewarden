@@ -27,6 +27,7 @@ const (
 type AdminHandlers struct {
 	svc      ports.AdminService
 	reloader ports.ConfigReloader
+	ringBuf  ports.EventRingBuffer
 	logger   *slog.Logger
 }
 
@@ -46,7 +47,7 @@ func NewAdminHandlers(svc ports.AdminService, logger *slog.Logger) *AdminHandler
 // WithReloader returns a copy of h with the ConfigReloader set. It is called
 // from serve.go after the reload service has been constructed.
 func (h *AdminHandlers) WithReloader(r ports.ConfigReloader) *AdminHandlers {
-	return &AdminHandlers{svc: h.svc, reloader: r, logger: h.logger}
+	return &AdminHandlers{svc: h.svc, reloader: r, ringBuf: h.ringBuf, logger: h.logger}
 }
 
 // RegisterRoutes registers all admin routes on mux using the Go 1.22+
@@ -60,6 +61,9 @@ func (h *AdminHandlers) RegisterRoutes(mux *http.ServeMux) {
 	// the ID segment manually.
 	mux.HandleFunc("GET /_vibewarden/admin/users/", h.getUser)
 	mux.HandleFunc("DELETE /_vibewarden/admin/users/", h.deactivateUser)
+
+	// Event ring buffer query endpoint.
+	mux.HandleFunc("GET /_vibewarden/admin/events", h.listEvents)
 
 	// Config hot-reload endpoints.
 	mux.HandleFunc("POST /_vibewarden/config/reload", h.reloadConfig)
