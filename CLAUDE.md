@@ -95,6 +95,7 @@ internal/
 migrations/           # golang-migrate SQL files
 .claude/
   agents/             # subagent definitions
+docs/                   # published documentation (mkdocs site)
 DECISIONS.md            # living architectural decisions log (ADRs) — repo root, not published
 ```
 
