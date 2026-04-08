@@ -388,47 +388,11 @@ func (s *InitProjectService) renderAgentsVibewardenMD(
 }
 
 // ensureAgentsMD ensures AGENTS.md exists and contains a reference to
-// AGENTS-VIBEWARDEN.md.
-//
-// Behaviour:
-//   - If AGENTS.md does not exist, it is created from agents/agents.md.tmpl.
-//   - If AGENTS.md exists but does not contain a reference to AGENTS-VIBEWARDEN.md,
-//     the reference line is appended.
-//   - If AGENTS.md already contains the reference, it is left unchanged.
-//
-// The reference detection uses a simple substring match for "AGENTS-VIBEWARDEN.md".
+// AGENTS-VIBEWARDEN.md. It delegates to the package-level ensureAgentsMD
+// function so that the same logic is shared with AgentContextService.
 func (s *InitProjectService) ensureAgentsMD(projectDir string) error {
 	dest := filepath.Join(projectDir, "AGENTS.md")
-
-	existing, err := os.ReadFile(dest) //nolint:gosec // path is constructed from trusted inputs
-	if errors.Is(err, os.ErrNotExist) {
-		// Create from template.
-		if createErr := s.renderer.RenderToFile("agents/agents.md.tmpl", nil, dest, false); createErr != nil {
-			return fmt.Errorf("creating AGENTS.md: %w", createErr)
-		}
-		return nil
-	}
-	if err != nil {
-		return fmt.Errorf("reading AGENTS.md: %w", err)
-	}
-
-	// File exists — check whether the reference is already present.
-	if strings.Contains(string(existing), "AGENTS-VIBEWARDEN.md") {
-		return nil
-	}
-
-	// Append reference.
-	f, err := os.OpenFile(dest, os.O_APPEND|os.O_WRONLY, 0o600) //nolint:gosec // path is trusted
-	if err != nil {
-		return fmt.Errorf("opening AGENTS.md for append: %w", err)
-	}
-	defer f.Close() //nolint:errcheck // best-effort close on read path
-
-	const referenceBlock = "\n\nSee [AGENTS-VIBEWARDEN.md](./AGENTS-VIBEWARDEN.md) for VibeWarden sidecar instructions.\n"
-	if _, writeErr := f.WriteString(referenceBlock); writeErr != nil {
-		return fmt.Errorf("appending reference to AGENTS.md: %w", writeErr)
-	}
-	return nil
+	return ensureAgentsMD(s.renderer, dest)
 }
 
 // renderGoFiles renders all Go-specific template files into projectDir.

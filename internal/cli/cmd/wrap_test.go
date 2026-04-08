@@ -148,11 +148,11 @@ func TestNewWrapCmd_AgentFlag(t *testing.T) {
 		checkFiles []string
 	}{
 		{
-			name: "agent all generates three context files",
+			name: "agent all generates claude and generic files",
 			args: []string{"--agent", "all"},
 			checkFiles: []string{
 				filepath.Join(".claude", "CLAUDE.md"),
-				filepath.Join(".cursor", "rules"),
+				"AGENTS-VIBEWARDEN.md",
 				"AGENTS.md",
 			},
 		},
@@ -162,14 +162,9 @@ func TestNewWrapCmd_AgentFlag(t *testing.T) {
 			checkFiles: []string{filepath.Join(".claude", "CLAUDE.md")},
 		},
 		{
-			name:       "agent cursor generates .cursor/rules only",
-			args:       []string{"--agent", "cursor"},
-			checkFiles: []string{filepath.Join(".cursor", "rules")},
-		},
-		{
-			name:       "agent generic generates AGENTS.md only",
+			name:       "agent generic generates AGENTS-VIBEWARDEN.md and AGENTS.md",
 			args:       []string{"--agent", "generic"},
-			checkFiles: []string{"AGENTS.md"},
+			checkFiles: []string{"AGENTS-VIBEWARDEN.md", "AGENTS.md"},
 		},
 		{
 			name:       "agent none generates no context files",
@@ -182,11 +177,16 @@ func TestNewWrapCmd_AgentFlag(t *testing.T) {
 			wantErr: true,
 		},
 		{
+			name:    "cursor agent value returns error (removed)",
+			args:    []string{"--agent", "cursor"},
+			wantErr: true,
+		},
+		{
 			name: "default agent all is used when flag omitted",
 			args: []string{},
 			checkFiles: []string{
 				filepath.Join(".claude", "CLAUDE.md"),
-				filepath.Join(".cursor", "rules"),
+				"AGENTS-VIBEWARDEN.md",
 				"AGENTS.md",
 			},
 		},

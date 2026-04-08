@@ -103,7 +103,7 @@ tls:
 	// Verify files were actually created.
 	expectedFiles := []string{
 		filepath.Join(".claude", "CLAUDE.md"),
-		filepath.Join(".cursor", "rules"),
+		"AGENTS-VIBEWARDEN.md",
 		"AGENTS.md",
 	}
 	for _, f := range expectedFiles {

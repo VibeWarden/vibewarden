@@ -19,10 +19,11 @@ import (
 // agentContextFiles returns the output paths for each agent type, relative to
 // the project root. These must stay in sync with the specs in
 // internal/app/scaffold/agent_context.go.
+// For AgentTypeGeneric the key file is AGENTS-VIBEWARDEN.md (vibew-owned);
+// AGENTS.md is also managed but its path is derived inside GenerateAgentContext.
 var agentContextFiles = map[domainscaffold.AgentType]string{
 	domainscaffold.AgentTypeClaude:  filepath.Join(".claude", "CLAUDE.md"),
-	domainscaffold.AgentTypeCursor:  filepath.Join(".cursor", "rules"),
-	domainscaffold.AgentTypeGeneric: "AGENTS.md",
+	domainscaffold.AgentTypeGeneric: "AGENTS-VIBEWARDEN.md",
 }
 
 // NewContextCmd creates the `vibew context` subcommand group.
