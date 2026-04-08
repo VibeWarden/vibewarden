@@ -114,6 +114,11 @@ type RouteConfig struct {
 	// settings. When Enabled is true, upstream JSON responses are validated
 	// against the configured JSON Schema before being returned to the caller.
 	LLMResponseValidation LLMResponseValidationConfig
+
+	// PromptInjection holds per-route prompt injection detection settings.
+	// When Enabled is true, request bodies are scanned for prompt injection
+	// payloads before being forwarded to the upstream LLM API.
+	PromptInjection PromptInjectionConfig
 }
 
 // HeadersConfig holds per-route header injection and stripping rules for the
@@ -233,4 +238,26 @@ type RetryConfig struct {
 
 	// InitialBackoff is the base wait before the first retry. Zero means 100 ms.
 	InitialBackoff time.Duration
+}
+
+// PromptInjectionConfig holds per-route prompt injection detection settings for
+// the egress plugin configuration layer.
+type PromptInjectionConfig struct {
+	// Enabled toggles prompt injection scanning for this route.
+	// When false (default), no scanning is performed.
+	Enabled bool
+
+	// ContentPaths is the list of JSON path expressions used to extract text
+	// from the request body before scanning (e.g. ".messages[].content", ".prompt").
+	// When empty and Enabled is true, the entire raw body is scanned.
+	ContentPaths []string
+
+	// ExtraPatterns is a list of additional regular expressions to include
+	// alongside the built-in detection patterns. Each expression is compiled
+	// with case-insensitive matching.
+	ExtraPatterns []string
+
+	// Action controls what happens when an injection is detected.
+	// Accepted values: "block" (default) or "detect".
+	Action string
 }

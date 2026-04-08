@@ -19,6 +19,7 @@ import (
 
 	domainegress "github.com/vibewarden/vibewarden/internal/domain/egress"
 	"github.com/vibewarden/vibewarden/internal/domain/events"
+	"github.com/vibewarden/vibewarden/internal/middleware"
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
 
@@ -163,6 +164,12 @@ type ProxyConfig struct {
 	// an entry in this map, its dedicated client is used for that request
 	// instead of the proxy default client. Build this map with BuildMTLSClients.
 	MTLSClients MTLSClientMap
+
+	// PromptInjectionRoutes, when non-empty, enables prompt injection scanning
+	// for matching egress routes. The middleware runs before the request is
+	// forwarded to the upstream. Build this slice with
+	// middleware.BuildPromptInjectionRoutes in the plugin init path.
+	PromptInjectionRoutes []middleware.PromptInjectionRouteConfig
 }
 
 // Proxy is an HTTP server that listens on a dedicated localhost port and
@@ -248,8 +255,16 @@ func (p *Proxy) Start() error {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/", p.handleRequest)
 
+	// Wrap the mux with the prompt injection middleware when routes are configured.
+	// The middleware runs before handleRequest so that injected requests are
+	// blocked prior to any upstream contact.
+	var handler http.Handler = mux
+	if len(p.cfg.PromptInjectionRoutes) > 0 {
+		handler = middleware.PromptInjectionMiddleware(p.cfg.PromptInjectionRoutes, p.logger, p.cfg.EventLogger)(mux)
+	}
+
 	p.server = &http.Server{
-		Handler:           mux,
+		Handler:           handler,
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 	go func() {
