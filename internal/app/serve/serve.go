@@ -124,7 +124,10 @@ func RunServe(ctx context.Context, opts Options, extraPlugins ...plugins.PluginR
 
 	// After InitAll, retrieve the OTel log handler from the metrics plugin
 	// (if log export is enabled) and build the final event logger.
-	eventLogger := buildEventLogger(registry, logger)
+	// The ring buffer is created here and wired both as an additional event
+	// sink and into the admin API so that recent events can be queried.
+	ringBuf := logadapter.NewRingBuffer(logadapter.DefaultRingBufferCapacity)
+	eventLogger := buildEventLogger(registry, logger, ringBuf)
 
 	// Wire the metrics collector into the TLS cert expiry monitor so that
 	// the vibewarden_tls_cert_expiry_seconds gauge is populated. This must
@@ -170,12 +173,13 @@ func RunServe(ctx context.Context, opts Options, extraPlugins ...plugins.PluginR
 		rebuildFn,
 	)
 
-	// Inject the reload service into the user-management plugin's admin
-	// handlers so that /_vibewarden/config/reload and /_vibewarden/config
-	// are accessible via the admin API.
+	// Inject the reload service and ring buffer into the user-management
+	// plugin's admin handlers so that config and events endpoints are
+	// available via the admin API.
 	for _, p := range registry.Plugins() {
 		if ump, ok := p.(*usermgmtplugin.Plugin); ok {
 			ump.InjectReloader(reloadService)
+			ump.InjectRingBuffer(ringBuf)
 			break
 		}
 	}

@@ -41,15 +41,22 @@ func buildLogger(cfg config.LogConfig) *slog.Logger {
 // other consumers. When the metrics plugin has an OTel log handler available,
 // the logger fans out to both stdout JSON and OTel via a MultiHandler.
 // Falls back to stdout-only when log export is disabled or unavailable.
-func buildEventLogger(registry *plugins.Registry, logger *slog.Logger) ports.EventLogger {
+//
+// The ring buffer is always wired as an additional sink so that the admin
+// events endpoint can serve recent structured events without a database.
+func buildEventLogger(registry *plugins.Registry, logger *slog.Logger, ringBuf ports.EventLogger) ports.EventLogger {
+	var slogLogger ports.EventLogger
 	for _, p := range registry.Plugins() {
 		if mp, ok := p.(*metricsplugin.Plugin); ok {
 			if h := mp.LogHandler(); h != nil {
 				logger.Info("event logger: OTel log export enabled")
-				return logadapter.NewSlogEventLogger(os.Stdout, h)
+				slogLogger = logadapter.NewSlogEventLogger(os.Stdout, h)
 			}
 			break
 		}
 	}
-	return logadapter.NewSlogEventLogger(os.Stdout)
+	if slogLogger == nil {
+		slogLogger = logadapter.NewSlogEventLogger(os.Stdout)
+	}
+	return logadapter.NewMultiEventLogger(slogLogger, ringBuf)
 }
