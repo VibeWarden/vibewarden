@@ -39,6 +39,10 @@ func NewWebhookSignatureValid(params WebhookSignatureValidParams) Event {
 			"provider":  params.Provider,
 			"client_ip": params.ClientIP,
 		},
+		Actor:       Actor{Type: ActorTypeIP, ID: params.ClientIP, IP: params.ClientIP},
+		Resource:    Resource{Type: ResourceTypeHTTPEndpoint, Path: params.Path, Method: params.Method},
+		Outcome:     OutcomeAllowed,
+		TriggeredBy: "webhook_middleware",
 	}
 }
 
@@ -81,5 +85,9 @@ func NewWebhookSignatureInvalid(params WebhookSignatureInvalidParams) Event {
 			"reason":    params.Reason,
 			"client_ip": params.ClientIP,
 		},
+		Actor:       Actor{Type: ActorTypeIP, ID: params.ClientIP, IP: params.ClientIP},
+		Resource:    Resource{Type: ResourceTypeHTTPEndpoint, Path: params.Path, Method: params.Method},
+		Outcome:     OutcomeBlocked,
+		TriggeredBy: "webhook_middleware",
 	}
 }

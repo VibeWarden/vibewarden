@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://vibewarden.dev/schema/v1/event.json",
   "title": "VibeWarden Event Schema v1",
-  "description": "Schema for all structured log events emitted by the VibeWarden security sidecar. Every event carries five top-level fields: schema_version, event_type, timestamp, ai_summary, and payload. Optional tracing fields (trace_id, span_id) are present when an active OTel span is associated with the event.",
+  "description": "Schema for all structured log events emitted by the VibeWarden security sidecar. Every event carries five required top-level fields: schema_version, event_type, timestamp, ai_summary, and payload. Optional enrichment fields (actor, resource, outcome, risk_signals, request_id, triggered_by, trace_id, span_id) are present when relevant context is available.",
   "type": "object",
   "required": ["schema_version", "event_type", "timestamp", "ai_summary", "payload"],
   "additionalProperties": false,
@@ -31,10 +31,37 @@
       "type": "object",
       "description": "Event-specific structured data. The set of keys is defined per event_type by the if/then constraints in this schema."
     },
+    "actor": {
+      "$ref": "#/$defs/Actor",
+      "description": "The entity that initiated the action. Omitted for events where the actor is implicit or unknown."
+    },
+    "resource": {
+      "$ref": "#/$defs/Resource",
+      "description": "The target of the action. Omitted for informational events with no specific target resource."
+    },
+    "outcome": {
+      "type": "string",
+      "description": "The enforcement result of this event. Omitted for purely informational events where no enforcement decision was taken.",
+      "enum": ["allowed", "blocked", "rate_limited", "failed"]
+    },
+    "risk_signals": {
+      "type": "array",
+      "description": "Machine-detectable risk indicators associated with this event. Omitted or empty when no risk signals were detected.",
+      "items": {
+        "$ref": "#/$defs/RiskSignal"
+      }
+    },
+    "request_id": {
+      "type": "string",
+      "description": "The inbound request identifier propagated from the client (e.g. the X-Request-ID header value). Omitted when not present."
+    },
+    "triggered_by": {
+      "type": "string",
+      "description": "The internal component or subsystem that raised this event (e.g. 'auth_middleware', 'rate_limit_middleware'). Omitted when the source is implicit from the event_type."
+    },
     "trace_id": {
       "type": "string",
-      "description": "OTel W3C trace ID (32 lowercase hex characters). Present only when the event is associated with an active tracing span.",
-      "pattern": "^[0-9a-f]{32}$"
+      "description": "W3C trace ID associated with the active OpenTelemetry span or the inbound request. Present only when tracing context is available."
     },
     "span_id": {
       "type": "string",
@@ -389,6 +416,70 @@
     }
   ],
   "$defs": {
+    "Actor": {
+      "description": "Describes the entity that initiated a security-relevant action.",
+      "type": "object",
+      "required": ["type", "id"],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "type": "string",
+          "description": "The category of the actor.",
+          "enum": ["ip", "user", "api_key", "system"]
+        },
+        "id": {
+          "type": "string",
+          "description": "The actor's unique identifier within its type namespace: a user ID for 'user', an API key name for 'api_key', an IP address for 'ip', or an empty string for 'system'."
+        },
+        "ip": {
+          "type": "string",
+          "description": "The client IP address. Present for 'ip' actors (where it equals id) and optionally for 'user' and 'api_key' actors when the source IP is known. Omitted for 'system' actors."
+        }
+      }
+    },
+    "Resource": {
+      "description": "Describes the target of a security-relevant action.",
+      "type": "object",
+      "required": ["type", "path"],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "type": "string",
+          "description": "The category of the resource.",
+          "enum": ["http_endpoint", "egress_route", "config"]
+        },
+        "path": {
+          "type": "string",
+          "description": "The URL path (for HTTP endpoints), route name (for egress routes), or file path (for config)."
+        },
+        "method": {
+          "type": "string",
+          "description": "The HTTP method (e.g. 'GET', 'POST'). Only meaningful when type is 'http_endpoint'. Omitted otherwise."
+        }
+      }
+    },
+    "RiskSignal": {
+      "description": "A single machine-detectable risk indicator associated with a security event.",
+      "type": "object",
+      "required": ["signal", "score", "details"],
+      "additionalProperties": false,
+      "properties": {
+        "signal": {
+          "type": "string",
+          "description": "A stable identifier for the risk pattern (e.g. 'brute_force', 'sqli_attempt', 'prompt_injection')."
+        },
+        "score": {
+          "type": "number",
+          "description": "A normalised risk score in the range [0.0, 1.0]. Higher values indicate higher confidence that the signal is a genuine threat.",
+          "minimum": 0.0,
+          "maximum": 1.0
+        },
+        "details": {
+          "type": "string",
+          "description": "A free-form human-readable explanation of why this signal was raised."
+        }
+      }
+    },
     "payload_proxy_started": {
       "description": "Payload for proxy.started — emitted once when the reverse proxy is ready.",
       "type": "object",

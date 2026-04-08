@@ -54,6 +54,23 @@ func TestNewConfigReloaded(t *testing.T) {
 			if ev.Payload["duration_ms"] != tt.params.DurationMS {
 				t.Errorf("duration_ms = %v, want %d", ev.Payload["duration_ms"], tt.params.DurationMS)
 			}
+
+			// Verify enrichment fields.
+			if ev.Actor.Type != events.ActorTypeSystem {
+				t.Errorf("Actor.Type = %q, want %q", ev.Actor.Type, events.ActorTypeSystem)
+			}
+			if ev.Resource.Type != events.ResourceTypeConfig {
+				t.Errorf("Resource.Type = %q, want %q", ev.Resource.Type, events.ResourceTypeConfig)
+			}
+			if ev.Resource.Path != tt.params.ConfigPath {
+				t.Errorf("Resource.Path = %q, want %q", ev.Resource.Path, tt.params.ConfigPath)
+			}
+			if ev.Outcome != events.OutcomeAllowed {
+				t.Errorf("Outcome = %q, want %q", ev.Outcome, events.OutcomeAllowed)
+			}
+			if ev.TriggeredBy != tt.params.TriggerSource {
+				t.Errorf("TriggeredBy = %q, want %q", ev.TriggeredBy, tt.params.TriggerSource)
+			}
 		})
 	}
 }
@@ -116,6 +133,23 @@ func TestNewConfigReloadFailed(t *testing.T) {
 			wantLen := len(tt.params.ValidationErrors)
 			if len(errs) != wantLen {
 				t.Errorf("len(validation_errors) = %d, want %d", len(errs), wantLen)
+			}
+
+			// Verify enrichment fields.
+			if ev.Actor.Type != events.ActorTypeSystem {
+				t.Errorf("Actor.Type = %q, want %q", ev.Actor.Type, events.ActorTypeSystem)
+			}
+			if ev.Resource.Type != events.ResourceTypeConfig {
+				t.Errorf("Resource.Type = %q, want %q", ev.Resource.Type, events.ResourceTypeConfig)
+			}
+			if ev.Resource.Path != tt.params.ConfigPath {
+				t.Errorf("Resource.Path = %q, want %q", ev.Resource.Path, tt.params.ConfigPath)
+			}
+			if ev.Outcome != events.OutcomeFailed {
+				t.Errorf("Outcome = %q, want %q", ev.Outcome, events.OutcomeFailed)
+			}
+			if ev.TriggeredBy != tt.params.TriggerSource {
+				t.Errorf("TriggeredBy = %q, want %q", ev.TriggeredBy, tt.params.TriggerSource)
 			}
 		})
 	}

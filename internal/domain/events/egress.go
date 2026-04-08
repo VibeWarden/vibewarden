@@ -63,6 +63,10 @@ func NewEgressRequest(params EgressRequestParams) Event {
 			"url":      params.URL,
 			"trace_id": params.TraceID,
 		},
+		Actor:       Actor{Type: ActorTypeSystem},
+		Resource:    Resource{Type: ResourceTypeEgressRoute, Path: params.Route, Method: params.Method},
+		TraceID:     params.TraceID,
+		TriggeredBy: "egress_proxy",
 	}
 }
 
@@ -113,6 +117,10 @@ func NewEgressResponse(params EgressResponseParams) Event {
 			"attempts":         params.Attempts,
 			"trace_id":         params.TraceID,
 		},
+		Actor:       Actor{Type: ActorTypeSystem},
+		Resource:    Resource{Type: ResourceTypeEgressRoute, Path: params.Route, Method: params.Method},
+		TraceID:     params.TraceID,
+		TriggeredBy: "egress_proxy",
 	}
 }
 
@@ -155,6 +163,11 @@ func NewEgressBlocked(params EgressBlockedParams) Event {
 			"reason":   params.Reason,
 			"trace_id": params.TraceID,
 		},
+		Actor:       Actor{Type: ActorTypeSystem},
+		Resource:    Resource{Type: ResourceTypeEgressRoute, Path: params.Route, Method: params.Method},
+		Outcome:     OutcomeBlocked,
+		TraceID:     params.TraceID,
+		TriggeredBy: "egress_proxy",
 	}
 }
 
@@ -199,6 +212,11 @@ func NewEgressError(params EgressErrorParams) Event {
 			"attempts": params.Attempts,
 			"trace_id": params.TraceID,
 		},
+		Actor:       Actor{Type: ActorTypeSystem},
+		Resource:    Resource{Type: ResourceTypeEgressRoute, Path: params.Route, Method: params.Method},
+		Outcome:     OutcomeFailed,
+		TraceID:     params.TraceID,
+		TriggeredBy: "egress_proxy",
 	}
 }
 
@@ -246,6 +264,9 @@ func NewEgressCircuitBreakerOpened(params EgressCircuitBreakerOpenedParams) Even
 			"threshold":       params.Threshold,
 			"timeout_seconds": params.TimeoutSeconds,
 		},
+		Actor:       Actor{Type: ActorTypeSystem},
+		Resource:    Resource{Type: ResourceTypeEgressRoute, Path: params.Route},
+		TriggeredBy: "egress_circuit_breaker",
 	}
 }
 
@@ -271,6 +292,9 @@ func NewEgressCircuitBreakerClosed(params EgressCircuitBreakerClosedParams) Even
 		Payload: map[string]any{
 			"route": params.Route,
 		},
+		Actor:       Actor{Type: ActorTypeSystem},
+		Resource:    Resource{Type: ResourceTypeEgressRoute, Path: params.Route},
+		TriggeredBy: "egress_circuit_breaker",
 	}
 }
 
@@ -328,6 +352,11 @@ func NewEgressResponseInvalid(params EgressResponseInvalidParams) Event {
 			"reason":       params.Reason,
 			"trace_id":     params.TraceID,
 		},
+		Actor:       Actor{Type: ActorTypeSystem},
+		Resource:    Resource{Type: ResourceTypeEgressRoute, Path: params.Route, Method: params.Method},
+		Outcome:     OutcomeFailed,
+		TraceID:     params.TraceID,
+		TriggeredBy: "egress_proxy",
 	}
 }
 
@@ -364,5 +393,10 @@ func NewEgressRateLimitHit(params EgressRateLimitHitParams) Event {
 			"limit":               params.Limit,
 			"retry_after_seconds": params.RetryAfterSeconds,
 		},
+		Actor:       Actor{Type: ActorTypeSystem},
+		Resource:    Resource{Type: ResourceTypeEgressRoute, Path: params.Route},
+		Outcome:     OutcomeRateLimited,
+		RiskSignals: []RiskSignal{{Signal: "rate_limit_exceeded", Score: 0.5, Details: fmt.Sprintf("route %q exceeded %.2f req/s", params.Route, params.Limit)}},
+		TriggeredBy: "egress_rate_limit_middleware",
 	}
 }

@@ -24,6 +24,12 @@ type RequestBlockedParams struct {
 	// ClientIP is the client IP address. May be empty if it could not be
 	// determined.
 	ClientIP string
+
+	// RequestID is the inbound request identifier (e.g. X-Request-ID header).
+	RequestID string
+
+	// TraceID is the W3C trace-id of the active OTel span. May be empty.
+	TraceID string
 }
 
 // NewRequestBlocked creates a request.blocked event indicating that a request
@@ -45,6 +51,12 @@ func NewRequestBlocked(params RequestBlockedParams) Event {
 			"blocked_by": params.BlockedBy,
 			"client_ip":  params.ClientIP,
 		},
+		Actor:       Actor{Type: ActorTypeIP, ID: params.ClientIP, IP: params.ClientIP},
+		Resource:    Resource{Type: ResourceTypeHTTPEndpoint, Path: params.Path, Method: params.Method},
+		Outcome:     OutcomeBlocked,
+		RequestID:   params.RequestID,
+		TraceID:     params.TraceID,
+		TriggeredBy: params.BlockedBy,
 	}
 }
 

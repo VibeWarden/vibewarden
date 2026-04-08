@@ -66,8 +66,17 @@ func NewLLMPromptInjectionBlocked(params LLMPromptInjectionParams) Event {
 			"pattern":      params.Pattern,
 			"content_path": params.ContentPath,
 			"action":       params.Action,
-			"trace_id":     params.TraceID,
 		},
+		Actor:    Actor{Type: ActorTypeSystem},
+		Resource: Resource{Type: ResourceTypeEgressRoute, Path: params.Route, Method: params.Method},
+		Outcome:  OutcomeBlocked,
+		RiskSignals: []RiskSignal{{
+			Signal:  "prompt_injection",
+			Score:   1.0,
+			Details: fmt.Sprintf("pattern %q matched at %s", params.Pattern, params.ContentPath),
+		}},
+		TraceID:     params.TraceID,
+		TriggeredBy: "prompt_injection_middleware",
 	}
 }
 
@@ -90,7 +99,16 @@ func NewLLMPromptInjectionDetected(params LLMPromptInjectionParams) Event {
 			"pattern":      params.Pattern,
 			"content_path": params.ContentPath,
 			"action":       params.Action,
-			"trace_id":     params.TraceID,
 		},
+		Actor:    Actor{Type: ActorTypeSystem},
+		Resource: Resource{Type: ResourceTypeEgressRoute, Path: params.Route, Method: params.Method},
+		Outcome:  OutcomeAllowed,
+		RiskSignals: []RiskSignal{{
+			Signal:  "prompt_injection",
+			Score:   0.9,
+			Details: fmt.Sprintf("pattern %q matched at %s (log-only)", params.Pattern, params.ContentPath),
+		}},
+		TraceID:     params.TraceID,
+		TriggeredBy: "prompt_injection_middleware",
 	}
 }

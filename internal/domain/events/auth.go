@@ -22,6 +22,16 @@ type AuthSuccessParams struct {
 
 	// Email is the email address associated with the authenticated identity.
 	Email string
+
+	// ClientIP is the IP address of the authenticated client. Used to populate
+	// the Actor.IP field. May be empty.
+	ClientIP string
+
+	// RequestID is the inbound request identifier (e.g. X-Request-ID header).
+	RequestID string
+
+	// TraceID is the W3C trace-id of the active OTel span. May be empty.
+	TraceID string
 }
 
 // NewAuthSuccess creates an auth.success event indicating that a request
@@ -42,6 +52,12 @@ func NewAuthSuccess(params AuthSuccessParams) Event {
 			"identity_id": params.IdentityID,
 			"email":       params.Email,
 		},
+		Actor:       Actor{Type: ActorTypeUser, ID: params.IdentityID, IP: params.ClientIP},
+		Resource:    Resource{Type: ResourceTypeHTTPEndpoint, Path: params.Path, Method: params.Method},
+		Outcome:     OutcomeAllowed,
+		RequestID:   params.RequestID,
+		TraceID:     params.TraceID,
+		TriggeredBy: "auth_middleware",
 	}
 }
 
@@ -61,6 +77,15 @@ type AuthFailedParams struct {
 	// Detail is an optional additional detail string (e.g. an error message).
 	// May be empty.
 	Detail string
+
+	// ClientIP is the IP address of the unauthenticated client. May be empty.
+	ClientIP string
+
+	// RequestID is the inbound request identifier (e.g. X-Request-ID header).
+	RequestID string
+
+	// TraceID is the W3C trace-id of the active OTel span. May be empty.
+	TraceID string
 }
 
 // NewAuthFailed creates an auth.failed event indicating that a request was
@@ -80,5 +105,11 @@ func NewAuthFailed(params AuthFailedParams) Event {
 			"reason": params.Reason,
 			"detail": params.Detail,
 		},
+		Actor:       Actor{Type: ActorTypeIP, ID: params.ClientIP, IP: params.ClientIP},
+		Resource:    Resource{Type: ResourceTypeHTTPEndpoint, Path: params.Path, Method: params.Method},
+		Outcome:     OutcomeBlocked,
+		RequestID:   params.RequestID,
+		TraceID:     params.TraceID,
+		TriggeredBy: "auth_middleware",
 	}
 }

@@ -177,4 +177,33 @@ type Event struct {
 	// Payload contains event-specific structured data.
 	// Keys and value types are defined per event type in the JSON schema.
 	Payload map[string]any
+
+	// Actor identifies the entity that initiated the action (e.g. a client IP,
+	// an authenticated user, or the internal system). Zero value means unknown.
+	Actor Actor
+
+	// Resource describes the target of the action (e.g. an HTTP endpoint, an
+	// egress route, the configuration file). Zero value means unknown.
+	Resource Resource
+
+	// Outcome is the enforcement result: allowed, blocked, rate_limited, or
+	// failed. Empty string means the event is informational (no decision taken).
+	Outcome Outcome
+
+	// RiskSignals is the list of machine-detectable risk indicators associated
+	// with this event. Nil or empty means no risk signals were detected.
+	RiskSignals []RiskSignal
+
+	// RequestID is the inbound request identifier propagated from the client
+	// (e.g. the X-Request-ID header value). Empty when not present.
+	RequestID string
+
+	// TraceID is the W3C trace-id of the active OpenTelemetry span at the time
+	// the event was emitted. Empty when no tracing context is available.
+	TraceID string
+
+	// TriggeredBy is the internal component or subsystem that raised this event
+	// (e.g. "auth_middleware", "rate_limit_middleware", "egress_proxy").
+	// Empty when the source is implicit from the EventType.
+	TriggeredBy string
 }

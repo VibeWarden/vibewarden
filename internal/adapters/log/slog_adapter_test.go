@@ -554,3 +554,220 @@ func TestSlogEventLogger_Log_WithInvalidSpanContext(t *testing.T) {
 		t.Error("span_id should be absent for invalid span context, but it was present")
 	}
 }
+
+// TestSlogEventLogger_EnrichmentFields verifies that the optional enrichment
+// fields (actor, resource, outcome, risk_signals, request_id, trace_id,
+// triggered_by) are serialized to the top-level JSON object when present, and
+// are absent when not set.
+func TestSlogEventLogger_EnrichmentFields(t *testing.T) {
+	tests := []struct {
+		name          string
+		event         events.Event
+		wantActor     bool
+		wantResource  bool
+		wantOutcome   string
+		wantRiskLen   int
+		wantRequestID string
+		wantTraceID   string
+		wantTriggered string
+	}{
+		{
+			name: "auth success — all enrichment fields present",
+			event: events.NewAuthSuccess(events.AuthSuccessParams{
+				Method:     "GET",
+				Path:       "/api/data",
+				SessionID:  "sess-1",
+				IdentityID: "user-1",
+				Email:      "a@example.com",
+				ClientIP:   "10.0.0.1",
+				RequestID:  "req-abc",
+				TraceID:    "4bf92f3577b34da6a3ce929d0e0e4736",
+			}),
+			wantActor:     true,
+			wantResource:  true,
+			wantOutcome:   "allowed",
+			wantRiskLen:   0,
+			wantRequestID: "req-abc",
+			wantTraceID:   "4bf92f3577b34da6a3ce929d0e0e4736",
+			wantTriggered: "auth_middleware",
+		},
+		{
+			name: "rate limit hit — risk signal present",
+			event: events.NewRateLimitHit(events.RateLimitHitParams{
+				LimitType:         "ip",
+				Identifier:        "192.168.1.1",
+				RequestsPerSecond: 5,
+				Burst:             10,
+				RetryAfterSeconds: 1,
+				Path:              "/api",
+				Method:            "POST",
+			}),
+			wantActor:     true,
+			wantResource:  true,
+			wantOutcome:   "rate_limited",
+			wantRiskLen:   1,
+			wantTriggered: "rate_limit_middleware",
+		},
+		{
+			name: "base event with no enrichment — fields absent",
+			event: fixedEvent(
+				events.EventTypeProxyStarted,
+				"Reverse proxy started",
+				map[string]any{"listen": ":8080", "upstream": "localhost:3000"},
+			),
+			wantActor:    false,
+			wantResource: false,
+		},
+		{
+			name: "config reloaded — system actor",
+			event: events.NewConfigReloaded(events.ConfigReloadedParams{
+				ConfigPath:    "vibewarden.yaml",
+				TriggerSource: "file_watcher",
+				DurationMS:    20,
+			}),
+			wantActor:     true,
+			wantResource:  true,
+			wantOutcome:   "allowed",
+			wantTriggered: "file_watcher",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := logAndDecode(t, tt.event)
+
+			// actor
+			_, hasActor := result["actor"]
+			if hasActor != tt.wantActor {
+				t.Errorf("actor present = %v, want %v", hasActor, tt.wantActor)
+			}
+
+			// resource
+			_, hasResource := result["resource"]
+			if hasResource != tt.wantResource {
+				t.Errorf("resource present = %v, want %v", hasResource, tt.wantResource)
+			}
+
+			// outcome
+			if tt.wantOutcome != "" {
+				got, ok := result["outcome"].(string)
+				if !ok {
+					t.Errorf("outcome is not a string: %T", result["outcome"])
+				} else if got != tt.wantOutcome {
+					t.Errorf("outcome = %q, want %q", got, tt.wantOutcome)
+				}
+			} else {
+				if _, ok := result["outcome"]; ok {
+					t.Error("outcome should be absent but was present")
+				}
+			}
+
+			// risk_signals
+			if tt.wantRiskLen > 0 {
+				rs, ok := result["risk_signals"].([]any)
+				if !ok {
+					t.Errorf("risk_signals is not an array: %T", result["risk_signals"])
+				} else if len(rs) != tt.wantRiskLen {
+					t.Errorf("risk_signals length = %d, want %d", len(rs), tt.wantRiskLen)
+				}
+			}
+
+			// request_id
+			if tt.wantRequestID != "" {
+				if got, ok := result["request_id"].(string); !ok || got != tt.wantRequestID {
+					t.Errorf("request_id = %v, want %q", result["request_id"], tt.wantRequestID)
+				}
+			}
+
+			// trace_id
+			if tt.wantTraceID != "" {
+				if got, ok := result["trace_id"].(string); !ok || got != tt.wantTraceID {
+					t.Errorf("trace_id = %v, want %q", result["trace_id"], tt.wantTraceID)
+				}
+			}
+
+			// triggered_by
+			if tt.wantTriggered != "" {
+				if got, ok := result["triggered_by"].(string); !ok || got != tt.wantTriggered {
+					t.Errorf("triggered_by = %v, want %q", result["triggered_by"], tt.wantTriggered)
+				}
+			}
+		})
+	}
+}
+
+// TestSlogEventLogger_ActorFields verifies that the actor object is correctly
+// serialized with its type, id, and optional ip fields.
+func TestSlogEventLogger_ActorFields(t *testing.T) {
+	event := events.NewAuthSuccess(events.AuthSuccessParams{
+		Method:     "GET",
+		Path:       "/",
+		IdentityID: "user-42",
+		ClientIP:   "10.1.2.3",
+	})
+
+	result := logAndDecode(t, event)
+
+	actor, ok := result["actor"].(map[string]any)
+	if !ok {
+		t.Fatalf("actor is not a JSON object: %T", result["actor"])
+	}
+
+	if got := actor["type"]; got != "user" {
+		t.Errorf("actor.type = %v, want %q", got, "user")
+	}
+	if got := actor["id"]; got != "user-42" {
+		t.Errorf("actor.id = %v, want %q", got, "user-42")
+	}
+	if got := actor["ip"]; got != "10.1.2.3" {
+		t.Errorf("actor.ip = %v, want %q", got, "10.1.2.3")
+	}
+}
+
+// TestSlogEventLogger_ResourceFields verifies that the resource object is
+// correctly serialized with its type, path, and optional method fields.
+func TestSlogEventLogger_ResourceFields(t *testing.T) {
+	event := events.NewAuthFailed(events.AuthFailedParams{
+		Method:   "POST",
+		Path:     "/api/submit",
+		Reason:   "missing session",
+		ClientIP: "1.2.3.4",
+	})
+
+	result := logAndDecode(t, event)
+
+	resource, ok := result["resource"].(map[string]any)
+	if !ok {
+		t.Fatalf("resource is not a JSON object: %T", result["resource"])
+	}
+
+	if got := resource["type"]; got != "http_endpoint" {
+		t.Errorf("resource.type = %v, want %q", got, "http_endpoint")
+	}
+	if got := resource["path"]; got != "/api/submit" {
+		t.Errorf("resource.path = %v, want %q", got, "/api/submit")
+	}
+	if got := resource["method"]; got != "POST" {
+		t.Errorf("resource.method = %v, want %q", got, "POST")
+	}
+}
+
+// TestSlogEventLogger_DomainTraceIDPreferredOverOTel verifies that when the
+// domain Event carries a TraceID set by the constructor, it is emitted as the
+// trace_id field even if no OTel span is active in the context.
+func TestSlogEventLogger_DomainTraceIDPreferredOverOTel(t *testing.T) {
+	const domainTraceID = "aabbccddeeff00112233445566778899"
+	event := events.NewAuthSuccess(events.AuthSuccessParams{
+		Method:     "GET",
+		Path:       "/",
+		IdentityID: "u1",
+		TraceID:    domainTraceID,
+	})
+
+	result := logAndDecodeWithCtx(t, context.Background(), event)
+
+	got, ok := result["trace_id"].(string)
+	if !ok || got != domainTraceID {
+		t.Errorf("trace_id = %v, want %q", result["trace_id"], domainTraceID)
+	}
+}

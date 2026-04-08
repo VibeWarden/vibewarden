@@ -51,6 +51,10 @@ func NewConfigReloaded(params ConfigReloadedParams) Event {
 			"trigger_source": params.TriggerSource,
 			"duration_ms":    params.DurationMS,
 		},
+		Actor:       Actor{Type: ActorTypeSystem},
+		Resource:    Resource{Type: ResourceTypeConfig, Path: params.ConfigPath},
+		Outcome:     OutcomeAllowed,
+		TriggeredBy: params.TriggerSource,
 	}
 }
 
@@ -75,5 +79,9 @@ func NewConfigReloadFailed(params ConfigReloadFailedParams) Event {
 			"reason":            params.Reason,
 			"validation_errors": errs,
 		},
+		Actor:       Actor{Type: ActorTypeSystem},
+		Resource:    Resource{Type: ResourceTypeConfig, Path: params.ConfigPath},
+		Outcome:     OutcomeFailed,
+		TriggeredBy: params.TriggerSource,
 	}
 }

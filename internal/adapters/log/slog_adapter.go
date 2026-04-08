@@ -107,14 +107,65 @@ func (l *SlogEventLogger) Log(ctx context.Context, event events.Event) error {
 		slog.Any("payload", json.RawMessage(payloadBytes)),
 	}
 
-	// Extract trace context if the request context carries a valid OTel span.
+	// Append optional enrichment fields. Each field is only included when it
+	// carries a meaningful value so that consumers are not burdened with empty
+	// strings or zero structs that add noise to every log line.
+
+	// Actor — omit when the zero value (unknown actor).
+	if event.Actor.Type != "" {
+		actorBytes, err := json.Marshal(event.Actor)
+		if err == nil {
+			attrs = append(attrs, slog.Any("actor", json.RawMessage(actorBytes)))
+		}
+	}
+
+	// Resource — omit when the zero value (informational events with no target).
+	if event.Resource.Type != "" {
+		resourceBytes, err := json.Marshal(event.Resource)
+		if err == nil {
+			attrs = append(attrs, slog.Any("resource", json.RawMessage(resourceBytes)))
+		}
+	}
+
+	// Outcome — omit for informational events that carry no enforcement decision.
+	if event.Outcome != "" {
+		attrs = append(attrs, slog.String("outcome", string(event.Outcome)))
+	}
+
+	// RiskSignals — omit when nil or empty.
+	if len(event.RiskSignals) > 0 {
+		rsBytes, err := json.Marshal(event.RiskSignals)
+		if err == nil {
+			attrs = append(attrs, slog.Any("risk_signals", json.RawMessage(rsBytes)))
+		}
+	}
+
+	// RequestID — omit when absent (most internal events do not carry one).
+	if event.RequestID != "" {
+		attrs = append(attrs, slog.String("request_id", event.RequestID))
+	}
+
+	// TriggeredBy — omit when implicit from the event type.
+	if event.TriggeredBy != "" {
+		attrs = append(attrs, slog.String("triggered_by", event.TriggeredBy))
+	}
+
+	// TraceID resolution: prefer the domain-level TraceID stored on the event
+	// (set by constructors that receive it from the middleware context). Fall
+	// back to the live OTel span context on the ctx argument for events that
+	// do not carry a pre-resolved trace ID.
+	//
 	// SpanContextFromContext is a cheap map lookup and returns an invalid
 	// SpanContext when no span has been stored — no allocation occurs.
+	resolvedTraceID := event.TraceID
 	if sc := trace.SpanContextFromContext(ctx); sc.IsValid() {
-		attrs = append(attrs,
-			slog.String("trace_id", sc.TraceID().String()),
-			slog.String("span_id", sc.SpanID().String()),
-		)
+		attrs = append(attrs, slog.String("span_id", sc.SpanID().String()))
+		if resolvedTraceID == "" {
+			resolvedTraceID = sc.TraceID().String()
+		}
+	}
+	if resolvedTraceID != "" {
+		attrs = append(attrs, slog.String("trace_id", resolvedTraceID))
 	}
 
 	l.logger.LogAttrs(
