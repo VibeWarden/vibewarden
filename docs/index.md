@@ -27,15 +27,12 @@ all in a single binary that sits next to your app.
     ./vibew dev
     ```
 
-=== "Windows"
-
-    ```powershell
-    Invoke-WebRequest -Uri https://vibewarden.dev/vibew.ps1 -OutFile vibew.ps1
-    .\vibew.ps1 wrap --upstream 3000 --auth --rate-limit
-    .\vibew.ps1 dev
-    ```
-
 Your app on port 3000 is now behind VibeWarden at `https://localhost:8443`. Done.
+
+!!! note "Windows"
+    Windows support is planned — see [#667 (winget)](https://github.com/vibewarden/vibewarden/issues/667)
+    and [#668 (Scoop)](https://github.com/vibewarden/vibewarden/issues/668).
+    VibeWarden currently builds for macOS and Linux only.
 
 ---
 
