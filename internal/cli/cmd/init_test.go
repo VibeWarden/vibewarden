@@ -276,17 +276,17 @@ func TestInitCmd_CustomPort(t *testing.T) {
 	}
 }
 
-// TestInitCmd_AppImageDefaultsToProjectName verifies that the generated
-// vibewarden.yaml uses app.image derived from the project name rather than app.build.
-func TestInitCmd_AppImageDefaultsToProjectName(t *testing.T) {
+// TestInitCmd_AppBuildDefaultsToCurrentDir verifies that the generated
+// vibewarden.yaml uses app.build = "." by default rather than app.image.
+func TestInitCmd_AppBuildDefaultsToCurrentDir(t *testing.T) {
 	tests := []struct {
 		name        string
 		lang        string
 		projectName string
 	}{
-		{"go uses image", "go", "mygoapp"},
-		{"kotlin uses image", "kotlin", "myktapp"},
-		{"typescript uses image", "typescript", "mytsapp"},
+		{"go uses build", "go", "mygoapp"},
+		{"kotlin uses build", "kotlin", "myktapp"},
+		{"typescript uses build", "typescript", "mytsapp"},
 	}
 
 	for _, tt := range tests {
@@ -312,15 +312,15 @@ func TestInitCmd_AppImageDefaultsToProjectName(t *testing.T) {
 			}
 			content := string(data)
 
-			wantImage := "image: \"" + tt.projectName + ":latest\""
-			if !strings.Contains(content, wantImage) {
-				t.Errorf("vibewarden.yaml missing %q:\n%s", wantImage, content)
+			// app.build must be the active directive.
+			if !strings.Contains(content, `build: "."`) {
+				t.Errorf("vibewarden.yaml missing active 'build: \".\"':\n%s", content)
 			}
-			// "build:" must not appear as an active (uncommented) directive.
+			// app.image must not appear as an active (uncommented) directive.
 			for _, line := range strings.Split(content, "\n") {
 				trimmed := strings.TrimSpace(line)
-				if strings.HasPrefix(trimmed, "build:") {
-					t.Errorf("vibewarden.yaml must not have an active 'build:' directive by default; found: %q\n\nContent:\n%s", line, content)
+				if strings.HasPrefix(trimmed, "image:") {
+					t.Errorf("vibewarden.yaml must not have an active 'image:' directive by default; found: %q\n\nContent:\n%s", line, content)
 				}
 			}
 		})
