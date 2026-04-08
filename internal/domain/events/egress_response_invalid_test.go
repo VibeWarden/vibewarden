@@ -92,7 +92,9 @@ func TestNewEgressResponseInvalid(t *testing.T) {
 			requirePayloadInt(t, e.Payload, "status_code", tt.wantStatus)
 			requirePayloadString(t, e.Payload, "content_type", tt.wantCT)
 			requirePayloadString(t, e.Payload, "reason", tt.wantReason)
-			requirePayloadString(t, e.Payload, "trace_id", tt.wantTraceID)
+			if e.TraceID != tt.wantTraceID {
+				t.Errorf("TraceID = %q, want %q", e.TraceID, tt.wantTraceID)
+			}
 		})
 	}
 }

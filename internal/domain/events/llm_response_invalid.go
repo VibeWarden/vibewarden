@@ -53,6 +53,8 @@ func NewLLMResponseInvalid(params LLMResponseInvalidParams) Event {
 		SchemaVersion: SchemaVersion,
 		EventType:     EventTypeLLMResponseInvalid,
 		Timestamp:     time.Now().UTC(),
+		Severity:      SeverityMedium,
+		Category:      CategoryPolicy,
 		AISummary: fmt.Sprintf(
 			"LLM response schema validation failed on route %q (%s %s) — action: %s — %s",
 			params.Route, params.Method, params.URL, params.Action, violationSummary,
@@ -65,7 +67,6 @@ func NewLLMResponseInvalid(params LLMResponseInvalidParams) Event {
 			"content_type": params.ContentType,
 			"action":       params.Action,
 			"violations":   params.Violations,
-			"trace_id":     params.TraceID,
 		},
 	}
 }

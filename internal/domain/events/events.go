@@ -174,6 +174,12 @@ type Event struct {
 	// identifiers so an LLM can understand the event without reading the payload.
 	AISummary string
 
+	// Severity is the severity level for agent triage (info, low, medium, high, critical).
+	Severity Severity
+
+	// Category groups the event for filtering (auth, network, policy, resilience, secret, user, audit).
+	Category Category
+
 	// Payload contains event-specific structured data.
 	// Keys and value types are defined per event type in the JSON schema.
 	Payload map[string]any

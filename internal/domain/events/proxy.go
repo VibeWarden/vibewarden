@@ -35,6 +35,8 @@ func NewProxyStarted(params ProxyStartedParams) Event {
 		SchemaVersion: SchemaVersion,
 		EventType:     EventTypeProxyStarted,
 		Timestamp:     time.Now().UTC(),
+		Severity:      SeverityInfo,
+		Category:      CategoryNetwork,
 		AISummary: fmt.Sprintf(
 			"Reverse proxy listening on %s, forwarding to %s",
 			params.ListenAddr, params.UpstreamAddr,
@@ -67,6 +69,8 @@ func NewProxyKratosFlow(params ProxyKratosFlowParams) Event {
 		SchemaVersion: SchemaVersion,
 		EventType:     EventTypeProxyKratosFlow,
 		Timestamp:     time.Now().UTC(),
+		Severity:      SeverityInfo,
+		Category:      CategoryAuth,
 		AISummary:     "Request proxied to Kratos self-service API",
 		Payload: map[string]any{
 			"method": params.Method,

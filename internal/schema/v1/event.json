@@ -1,10 +1,11 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://vibewarden.dev/schema/v1/event.json",
+  "$comment": "Schema evolution policy: see docs/schema-evolution.md. v1 payloads are frozen; adding required fields to existing payloads requires schema_version v2.",
   "title": "VibeWarden Structured Event v1",
   "description": "Schema for all VibeWarden structured log events. Every security-relevant action emits an event conforming to this schema. Designed to be AI-readable: an LLM can understand each event from the ai_summary field alone, and can parse the payload for deeper analysis. STABILITY: v1 payloads are frozen; new fields require schema_version v2.",
   "type": "object",
-  "required": ["schema_version", "event_type", "timestamp", "ai_summary", "payload"],
+  "required": ["schema_version", "event_type", "timestamp", "severity", "category", "ai_summary", "payload"],
   "additionalProperties": false,
   "properties": {
     "schema_version": {
@@ -21,6 +22,16 @@
       "type": "string",
       "format": "date-time",
       "description": "RFC 3339 / ISO 8601 timestamp in UTC when the event occurred."
+    },
+    "severity": {
+      "type": "string",
+      "enum": ["info", "low", "medium", "high", "critical"],
+      "description": "Severity level for agent triage. Ranges from 'info' (routine operational events) to 'critical' (events requiring immediate response)."
+    },
+    "category": {
+      "type": "string",
+      "enum": ["auth", "network", "policy", "resilience", "secret", "user", "audit"],
+      "description": "Event category for grouping and filtering. Maps to the security domain the event belongs to."
     },
     "ai_summary": {
       "type": "string",

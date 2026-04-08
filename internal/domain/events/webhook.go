@@ -29,6 +29,8 @@ func NewWebhookSignatureValid(params WebhookSignatureValidParams) Event {
 		SchemaVersion: SchemaVersion,
 		EventType:     EventTypeWebhookSignatureValid,
 		Timestamp:     time.Now().UTC(),
+		Severity:      SeverityInfo,
+		Category:      CategoryAuth,
 		AISummary: fmt.Sprintf(
 			"Webhook signature valid for %s %s (provider: %s)",
 			params.Method, params.Path, params.Provider,
@@ -74,6 +76,8 @@ func NewWebhookSignatureInvalid(params WebhookSignatureInvalidParams) Event {
 		SchemaVersion: SchemaVersion,
 		EventType:     EventTypeWebhookSignatureInvalid,
 		Timestamp:     time.Now().UTC(),
+		Severity:      SeverityMedium,
+		Category:      CategoryAuth,
 		AISummary: fmt.Sprintf(
 			"Webhook signature invalid for %s %s (provider: %s): %s",
 			params.Method, params.Path, params.Provider, params.Reason,

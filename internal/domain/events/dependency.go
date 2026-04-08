@@ -28,6 +28,8 @@ func NewAuthProviderUnavailable(params AuthProviderUnavailableParams) Event {
 		SchemaVersion: SchemaVersion,
 		EventType:     EventTypeAuthProviderUnavailable,
 		Timestamp:     time.Now().UTC(),
+		Severity:      SeverityHigh,
+		Category:      CategoryAuth,
 		AISummary: fmt.Sprintf(
 			"Auth provider unavailable at %s: %s",
 			params.ProviderURL, params.Error,
@@ -55,6 +57,8 @@ func NewAuthProviderRecovered(params AuthProviderRecoveredParams) Event {
 		SchemaVersion: SchemaVersion,
 		EventType:     EventTypeAuthProviderRecovered,
 		Timestamp:     time.Now().UTC(),
+		Severity:      SeverityInfo,
+		Category:      CategoryAuth,
 		AISummary: fmt.Sprintf(
 			"Auth provider recovered at %s",
 			params.ProviderURL,
@@ -87,6 +91,8 @@ func NewAuditLogFailure(params AuditLogFailureParams) Event {
 		SchemaVersion: SchemaVersion,
 		EventType:     EventTypeAuditLogFailure,
 		Timestamp:     time.Now().UTC(),
+		Severity:      SeverityCritical,
+		Category:      CategoryAudit,
 		AISummary: fmt.Sprintf(
 			"Audit log write failed for action %q on user %s: %s",
 			params.Action, params.UserID, params.Error,

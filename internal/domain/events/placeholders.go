@@ -40,6 +40,8 @@ func NewRequestBlocked(params RequestBlockedParams) Event {
 		SchemaVersion: SchemaVersion,
 		EventType:     EventTypeRequestBlocked,
 		Timestamp:     time.Now().UTC(),
+		Severity:      SeverityMedium,
+		Category:      CategoryPolicy,
 		AISummary: fmt.Sprintf(
 			"Request blocked by %s: %s %s — %s",
 			params.BlockedBy, params.Method, params.Path, params.Reason,
@@ -81,6 +83,8 @@ func NewTLSCertificateIssued(params TLSCertificateIssuedParams) Event {
 		SchemaVersion: SchemaVersion,
 		EventType:     EventTypeTLSCertificateIssued,
 		Timestamp:     time.Now().UTC(),
+		Severity:      SeverityInfo,
+		Category:      CategoryNetwork,
 		AISummary: fmt.Sprintf(
 			"TLS certificate issued for %s via %s",
 			params.Domain, params.Provider,
@@ -114,6 +118,8 @@ func NewUserCreated(params UserCreatedParams) Event {
 		SchemaVersion: SchemaVersion,
 		EventType:     EventTypeUserCreated,
 		Timestamp:     time.Now().UTC(),
+		Severity:      SeverityInfo,
+		Category:      CategoryUser,
 		AISummary: fmt.Sprintf(
 			"New user created: %s (identity %s)",
 			params.Email, params.IdentityID,
@@ -150,6 +156,8 @@ func NewUserDeleted(params UserDeletedParams) Event {
 		SchemaVersion: SchemaVersion,
 		EventType:     EventTypeUserDeleted,
 		Timestamp:     time.Now().UTC(),
+		Severity:      SeverityInfo,
+		Category:      CategoryUser,
 		AISummary: fmt.Sprintf(
 			"User deleted: %s (identity %s)",
 			params.Email, params.IdentityID,
@@ -188,6 +196,8 @@ func NewUserDeactivated(params UserDeactivatedParams) Event {
 		SchemaVersion: SchemaVersion,
 		EventType:     EventTypeUserDeactivated,
 		Timestamp:     time.Now().UTC(),
+		Severity:      SeverityInfo,
+		Category:      CategoryUser,
 		AISummary: fmt.Sprintf(
 			"User deactivated: %s (identity %s)",
 			params.Email, params.IdentityID,

@@ -48,10 +48,17 @@ func NewUpstreamHealthChanged(params UpstreamHealthChangedParams) Event {
 		params.PreviousStatus, params.NewStatus, params.ConsecutiveCount, params.UpstreamURL,
 	)
 
+	sev := SeverityInfo
+	if params.NewStatus == "unhealthy" {
+		sev = SeverityHigh
+	}
+
 	return Event{
 		SchemaVersion: SchemaVersion,
 		EventType:     EventTypeUpstreamHealthChanged,
 		Timestamp:     time.Now().UTC(),
+		Severity:      sev,
+		Category:      CategoryNetwork,
 		AISummary:     summary,
 		Payload:       payload,
 	}

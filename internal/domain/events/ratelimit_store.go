@@ -20,6 +20,8 @@ func NewRateLimitStoreFallback(params RateLimitStoreFallbackParams) Event {
 		SchemaVersion: SchemaVersion,
 		EventType:     EventTypeRateLimitStoreFallback,
 		Timestamp:     time.Now().UTC(),
+		Severity:      SeverityHigh,
+		Category:      CategoryResilience,
 		AISummary: fmt.Sprintf(
 			"Rate limiter fell back to in-memory store: %s", params.Reason,
 		),
@@ -38,6 +40,8 @@ func NewRateLimitStoreRecovered() Event {
 		SchemaVersion: SchemaVersion,
 		EventType:     EventTypeRateLimitStoreRecovered,
 		Timestamp:     time.Now().UTC(),
+		Severity:      SeverityInfo,
+		Category:      CategoryResilience,
 		AISummary:     "Rate limiter recovered: switched back to Redis store",
 		Payload: map[string]any{
 			"store": "redis",

@@ -39,6 +39,8 @@ func NewCircuitBreakerOpened(params CircuitBreakerOpenedParams) Event {
 		SchemaVersion: SchemaVersion,
 		EventType:     EventTypeCircuitBreakerOpened,
 		Timestamp:     time.Now().UTC(),
+		Severity:      SeverityHigh,
+		Category:      CategoryResilience,
 		AISummary: fmt.Sprintf(
 			"Circuit breaker opened after %d consecutive failures; upstream blocked for %.0fs",
 			params.Threshold, params.TimeoutSeconds,
@@ -65,6 +67,8 @@ func NewCircuitBreakerHalfOpen(params CircuitBreakerHalfOpenParams) Event {
 		SchemaVersion: SchemaVersion,
 		EventType:     EventTypeCircuitBreakerHalfOpen,
 		Timestamp:     time.Now().UTC(),
+		Severity:      SeverityInfo,
+		Category:      CategoryResilience,
 		AISummary: fmt.Sprintf(
 			"Circuit breaker entered half-open state after %.0fs timeout; probe request allowed",
 			params.TimeoutSeconds,
@@ -83,6 +87,8 @@ func NewCircuitBreakerClosed() Event {
 		SchemaVersion: SchemaVersion,
 		EventType:     EventTypeCircuitBreakerClosed,
 		Timestamp:     time.Now().UTC(),
+		Severity:      SeverityInfo,
+		Category:      CategoryResilience,
 		AISummary:     "Circuit breaker closed; upstream recovered and traffic is flowing normally",
 		Payload:       map[string]any{},
 	}

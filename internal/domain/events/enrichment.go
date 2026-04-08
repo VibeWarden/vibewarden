@@ -91,6 +91,58 @@ const (
 // String returns the string representation of the Outcome.
 func (o Outcome) String() string { return string(o) }
 
+// Severity represents the severity level of an event for agent triage.
+type Severity string
+
+const (
+	// SeverityInfo indicates an informational event with no immediate concern.
+	SeverityInfo Severity = "info"
+
+	// SeverityLow indicates a low-severity event that may warrant attention.
+	SeverityLow Severity = "low"
+
+	// SeverityMedium indicates a medium-severity event requiring investigation.
+	SeverityMedium Severity = "medium"
+
+	// SeverityHigh indicates a high-severity event requiring prompt action.
+	SeverityHigh Severity = "high"
+
+	// SeverityCritical indicates a critical event requiring immediate response.
+	SeverityCritical Severity = "critical"
+)
+
+// String returns the string representation of the Severity.
+func (s Severity) String() string { return string(s) }
+
+// Category represents the event category for grouping and filtering.
+type Category string
+
+const (
+	// CategoryAuth covers authentication and authorisation events.
+	CategoryAuth Category = "auth"
+
+	// CategoryNetwork covers network-level events (proxy, upstream, egress).
+	CategoryNetwork Category = "network"
+
+	// CategoryPolicy covers security policy enforcement events.
+	CategoryPolicy Category = "policy"
+
+	// CategoryResilience covers circuit breaker, retry, and failover events.
+	CategoryResilience Category = "resilience"
+
+	// CategorySecret covers secret rotation and health check events.
+	CategorySecret Category = "secret"
+
+	// CategoryUser covers user lifecycle events (create, delete, deactivate).
+	CategoryUser Category = "user"
+
+	// CategoryAudit covers audit trail and configuration events.
+	CategoryAudit Category = "audit"
+)
+
+// String returns the string representation of the Category.
+func (c Category) String() string { return string(c) }
+
 // RiskSignal captures a single machine-detectable risk indicator associated with
 // a security event.
 type RiskSignal struct {

@@ -1,0 +1,26 @@
+{
+  "schema_version": "v1",
+  "event_type": "ip_filter.blocked",
+  "timestamp": "2026-03-28T14:40:15Z",
+  "severity": "medium",
+  "category": "policy",
+  "ai_summary": "IP filter blocked 192.168.1.100 (mode: allowlist) for GET /api/data",
+  "payload": {
+    "client_ip": "192.168.1.100",
+    "mode": "allowlist",
+    "method": "GET",
+    "path": "/api/data"
+  },
+  "actor": {
+    "type": "ip",
+    "id": "192.168.1.100",
+    "ip": "192.168.1.100"
+  },
+  "resource": {
+    "type": "http_endpoint",
+    "path": "/api/data",
+    "method": "GET"
+  },
+  "outcome": "blocked",
+  "triggered_by": "ip_filter_middleware"
+}
