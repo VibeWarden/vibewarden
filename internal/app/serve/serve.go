@@ -11,9 +11,12 @@ import (
 
 	caddyadapter "github.com/vibewarden/vibewarden/internal/adapters/caddy"
 	fsnotifyadapter "github.com/vibewarden/vibewarden/internal/adapters/fsnotify"
+	httpadapter "github.com/vibewarden/vibewarden/internal/adapters/http"
 	logadapter "github.com/vibewarden/vibewarden/internal/adapters/log"
 	pgadapter "github.com/vibewarden/vibewarden/internal/adapters/postgres"
+	proposaladapter "github.com/vibewarden/vibewarden/internal/adapters/proposal"
 	migratesvc "github.com/vibewarden/vibewarden/internal/app/migrate"
+	proposalapp "github.com/vibewarden/vibewarden/internal/app/proposal"
 	"github.com/vibewarden/vibewarden/internal/app/proxy"
 	reloadsvc "github.com/vibewarden/vibewarden/internal/app/reload"
 	"github.com/vibewarden/vibewarden/internal/config"
@@ -173,13 +176,22 @@ func RunServe(ctx context.Context, opts Options, extraPlugins ...plugins.PluginR
 		rebuildFn,
 	)
 
-	// Inject the reload service and ring buffer into the user-management
-	// plugin's admin handlers so that config and events endpoints are
-	// available via the admin API.
+	// Build the in-memory proposal store and application service.
+	// The applier needs the config path and the reload service, both of which
+	// are available at this point.
+	proposalStore := proposaladapter.NewStore()
+	proposalApplier := proposaladapter.NewApplier(opts.ConfigPath, reloadService)
+	proposalSvc := proposalapp.NewService(proposalStore, proposalApplier, eventLogger, logger)
+	proposalHandlers := httpadapter.NewProposalHandlers(proposalSvc, logger)
+
+	// Inject the reload service, ring buffer, and proposal handlers into the
+	// user-management plugin's admin handlers so that config, events, and
+	// proposal endpoints are available via the admin API.
 	for _, p := range registry.Plugins() {
 		if ump, ok := p.(*usermgmtplugin.Plugin); ok {
 			ump.InjectReloader(reloadService)
 			ump.InjectRingBuffer(ringBuf)
+			ump.InjectProposalHandlers(proposalHandlers)
 			break
 		}
 	}

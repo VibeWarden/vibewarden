@@ -25,10 +25,11 @@ const (
 // AdminHandlers holds the HTTP handler functions for the admin user management API.
 // All routes are registered under the /_vibewarden/admin/ prefix.
 type AdminHandlers struct {
-	svc      ports.AdminService
-	reloader ports.ConfigReloader
-	ringBuf  ports.EventRingBuffer
-	logger   *slog.Logger
+	svc       ports.AdminService
+	reloader  ports.ConfigReloader
+	ringBuf   ports.EventRingBuffer
+	proposals *ProposalHandlers
+	logger    *slog.Logger
 }
 
 // NewAdminHandlers creates a new AdminHandlers backed by the supplied service.
@@ -47,7 +48,14 @@ func NewAdminHandlers(svc ports.AdminService, logger *slog.Logger) *AdminHandler
 // WithReloader returns a copy of h with the ConfigReloader set. It is called
 // from serve.go after the reload service has been constructed.
 func (h *AdminHandlers) WithReloader(r ports.ConfigReloader) *AdminHandlers {
-	return &AdminHandlers{svc: h.svc, reloader: r, ringBuf: h.ringBuf, logger: h.logger}
+	return &AdminHandlers{svc: h.svc, reloader: r, ringBuf: h.ringBuf, proposals: h.proposals, logger: h.logger}
+}
+
+// WithProposalHandlers returns a copy of h with the ProposalHandlers set.
+// It must be called before Start so that proposal routes are registered on the
+// admin server mux.
+func (h *AdminHandlers) WithProposalHandlers(ph *ProposalHandlers) *AdminHandlers {
+	return &AdminHandlers{svc: h.svc, reloader: h.reloader, ringBuf: h.ringBuf, proposals: ph, logger: h.logger}
 }
 
 // RegisterRoutes registers all admin routes on mux using the Go 1.22+
@@ -68,6 +76,12 @@ func (h *AdminHandlers) RegisterRoutes(mux *http.ServeMux) {
 	// Config hot-reload endpoints.
 	mux.HandleFunc("POST /_vibewarden/config/reload", h.reloadConfig)
 	mux.HandleFunc("GET /_vibewarden/config", h.getConfig)
+
+	// Proposal lifecycle endpoints (always registered; proposal store is always
+	// available via the proposal plugin).
+	if h.proposals != nil {
+		h.proposals.RegisterRoutes(mux)
+	}
 }
 
 // ------------------------------------------------------------------
