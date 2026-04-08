@@ -40,10 +40,11 @@ type eventItem struct {
 // When ringBuf is nil, the events endpoint returns 503 Service Unavailable.
 func (h *AdminHandlers) WithEventRingBuffer(ringBuf ports.EventRingBuffer) *AdminHandlers {
 	return &AdminHandlers{
-		svc:      h.svc,
-		reloader: h.reloader,
-		ringBuf:  ringBuf,
-		logger:   h.logger,
+		svc:       h.svc,
+		reloader:  h.reloader,
+		ringBuf:   ringBuf,
+		proposals: h.proposals,
+		logger:    h.logger,
 	}
 }
 

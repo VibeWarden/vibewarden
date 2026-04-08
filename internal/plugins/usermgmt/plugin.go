@@ -183,6 +183,18 @@ func (p *Plugin) InjectRingBuffer(rb ports.EventRingBuffer) {
 	}
 }
 
+// InjectProposalHandlers sets the ProposalHandlers on the admin handlers so
+// that the /_vibewarden/admin/proposals/* endpoints are available. It must be
+// called after Init and before Start.
+//
+// When the plugin is disabled or handlers have not been initialised, this is a
+// no-op.
+func (p *Plugin) InjectProposalHandlers(ph *httpadapter.ProposalHandlers) {
+	if p.handlers != nil {
+		p.handlers = p.handlers.WithProposalHandlers(ph)
+	}
+}
+
 // Priority returns the plugin's initialisation priority.
 // User management is assigned priority 60 so it is initialised after TLS (10),
 // security-headers (20), rate-limiting (30), and auth (40).
