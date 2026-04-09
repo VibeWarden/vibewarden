@@ -16,4 +16,12 @@ type RemoteExecutor interface {
 	// true, files in remoteDir that are not present in localDir are removed
 	// (rsync --delete).
 	Transfer(ctx context.Context, localDir, remoteDir string, deleteExtra bool) error
+
+	// TransferFile copies a single local file to remotePath on the remote host
+	// using rsync. localFile must be the path to a regular file on the local
+	// filesystem. remotePath is the full destination path on the remote host
+	// (e.g. "~/vibewarden/myproject/vibewarden.yaml"). Unlike Transfer, no
+	// trailing slash is appended to the source, so rsync treats it as a single
+	// file rather than a directory.
+	TransferFile(ctx context.Context, localFile, remotePath string) error
 }

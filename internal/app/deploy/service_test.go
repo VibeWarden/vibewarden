@@ -20,10 +20,14 @@ type fakeExecutor struct {
 	runResponses map[string]runResponse
 	// transferErr is returned by every Transfer call if set.
 	transferErr error
+	// transferFileErr is returned by every TransferFile call if set.
+	transferFileErr error
 	// runCalls records every Run invocation for assertions.
 	runCalls []string
 	// transferCalls records every Transfer invocation for assertions.
 	transferCalls []transferCall
+	// transferFileCalls records every TransferFile invocation for assertions.
+	transferFileCalls []transferFileCall
 }
 
 type runResponse struct {
@@ -35,6 +39,11 @@ type transferCall struct {
 	localDir    string
 	remoteDir   string
 	deleteExtra bool
+}
+
+type transferFileCall struct {
+	localFile  string
+	remotePath string
 }
 
 func (f *fakeExecutor) Run(_ context.Context, cmd string) (string, error) {
@@ -49,6 +58,11 @@ func (f *fakeExecutor) Run(_ context.Context, cmd string) (string, error) {
 func (f *fakeExecutor) Transfer(_ context.Context, localDir, remoteDir string, deleteExtra bool) error {
 	f.transferCalls = append(f.transferCalls, transferCall{localDir: localDir, remoteDir: remoteDir, deleteExtra: deleteExtra})
 	return f.transferErr
+}
+
+func (f *fakeExecutor) TransferFile(_ context.Context, localFile, remotePath string) error {
+	f.transferFileCalls = append(f.transferFileCalls, transferFileCall{localFile: localFile, remotePath: remotePath})
+	return f.transferFileErr
 }
 
 // fakeGenerator is a test double for ports.ConfigGenerator.
@@ -485,8 +499,9 @@ func TestService_Deploy_ComposeUpFails(t *testing.T) {
 
 // mockRunExecutor is a flexible test double with a custom Run function.
 type mockRunExecutor struct {
-	runFn         func(cmd string) (string, error)
-	transferCalls []transferCall
+	runFn             func(cmd string) (string, error)
+	transferCalls     []transferCall
+	transferFileCalls []transferFileCall
 }
 
 func (m *mockRunExecutor) Run(_ context.Context, cmd string) (string, error) {
@@ -499,6 +514,75 @@ func (m *mockRunExecutor) Run(_ context.Context, cmd string) (string, error) {
 func (m *mockRunExecutor) Transfer(_ context.Context, localDir, remoteDir string, deleteExtra bool) error {
 	m.transferCalls = append(m.transferCalls, transferCall{localDir: localDir, remoteDir: remoteDir, deleteExtra: deleteExtra})
 	return nil
+}
+
+func (m *mockRunExecutor) TransferFile(_ context.Context, localFile, remotePath string) error {
+	m.transferFileCalls = append(m.transferFileCalls, transferFileCall{localFile: localFile, remotePath: remotePath})
+	return nil
+}
+
+// TestService_Deploy_TransferFileCalledForConfig verifies that Deploy uses
+// TransferFile (not Transfer) for the config file, passing the full local path
+// and the expected remote destination without a trailing slash.
+func TestService_Deploy_TransferFileCalledForConfig(t *testing.T) {
+	executor := &fakeExecutor{}
+	generator := &fakeGenerator{}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	healthURL := srv.URL + "/_vibewarden/health"
+	svc := deployapp.NewService(executor, generator, func(req *http.Request) (*http.Response, error) {
+		req2, _ := http.NewRequestWithContext(req.Context(), req.Method, healthURL, nil)
+		return http.DefaultClient.Do(req2) //nolint:gosec // test-only helper; URL is from httptest.NewServer
+	})
+
+	err := svc.Deploy(context.Background(), defaultConfig(), deployapp.RunOptions{
+		ConfigPath:  "/tmp/myproject/vibewarden.yaml",
+		ProjectName: "myproject",
+	})
+	if err != nil {
+		t.Fatalf("Deploy() unexpected error: %v", err)
+	}
+
+	if len(executor.transferFileCalls) == 0 {
+		t.Fatal("expected TransferFile to be called for the config file")
+	}
+
+	call := executor.transferFileCalls[0]
+	if call.localFile != "/tmp/myproject/vibewarden.yaml" {
+		t.Errorf("TransferFile localFile = %q, want %q", call.localFile, "/tmp/myproject/vibewarden.yaml")
+	}
+	wantRemote := "~/vibewarden/myproject/vibewarden.yaml"
+	if call.remotePath != wantRemote {
+		t.Errorf("TransferFile remotePath = %q, want %q", call.remotePath, wantRemote)
+	}
+	if strings.HasSuffix(call.localFile, "/") {
+		t.Errorf("TransferFile localFile must not end with '/', got %q", call.localFile)
+	}
+}
+
+// TestService_Deploy_TransferFileFails verifies that a TransferFile error is
+// surfaced with the expected context message.
+func TestService_Deploy_TransferFileFails(t *testing.T) {
+	executor := &fakeExecutor{
+		transferFileErr: errors.New("rsync: file not found"),
+	}
+	generator := &fakeGenerator{}
+
+	svc := deployapp.NewService(executor, generator, nil)
+
+	err := svc.Deploy(context.Background(), defaultConfig(), deployapp.RunOptions{
+		ConfigPath: "/tmp/proj/vibewarden.yaml",
+	})
+	if err == nil {
+		t.Fatal("expected error when TransferFile fails")
+	}
+	if !strings.Contains(err.Error(), "transferring") {
+		t.Errorf("error should mention 'transferring', got: %v", err)
+	}
 }
 
 // Ensure fmt is used (used in assertRunCalledContains via Errorf).

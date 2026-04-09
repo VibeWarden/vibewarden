@@ -127,12 +127,9 @@ func (s *Service) Deploy(ctx context.Context, cfg *config.Config, opts RunOption
 		return fmt.Errorf("transferring generated files: %w", err)
 	}
 
-	// rsync vibewarden.yaml (single file: wrap in a temp dir is not needed —
-	// use rsync with explicit source file).
-	configDir := filepath.Dir(opts.ConfigPath)
+	// Transfer vibewarden.yaml as a single file (no trailing slash on source).
 	configFile := filepath.Base(opts.ConfigPath)
-	configSrc := filepath.Join(configDir, configFile)
-	if err := s.executor.Transfer(ctx, configSrc, remoteDir+configFile, false); err != nil {
+	if err := s.executor.TransferFile(ctx, opts.ConfigPath, remoteDir+configFile); err != nil {
 		return fmt.Errorf("transferring %s: %w", configFile, err)
 	}
 
