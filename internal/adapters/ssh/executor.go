@@ -114,6 +114,26 @@ func (e *Executor) Transfer(ctx context.Context, localDir, remoteDir string, del
 	return nil
 }
 
+// TransferFile copies a single local file to remotePath on the remote host
+// using rsync over SSH. Unlike Transfer, the source path is used as-is (no
+// trailing slash) so rsync treats it as a file, not a directory.
+func (e *Executor) TransferFile(ctx context.Context, localFile, remotePath string) error {
+	args := e.rsyncFileArgs(localFile, remotePath)
+	//nolint:gosec // localFile is constructed internally from config paths; remotePath
+	// is a fixed pattern (~/vibewarden/<project>/vibewarden.yaml). Safe in this context.
+	c := exec.CommandContext(ctx, "rsync", args...)
+
+	var buf bytes.Buffer
+	c.Stdout = &buf
+	c.Stderr = &buf
+
+	if err := c.Run(); err != nil {
+		return fmt.Errorf("rsync %s → %s:%s: %w\noutput: %s",
+			localFile, e.target.Destination(), remotePath, err, strings.TrimSpace(buf.String()))
+	}
+	return nil
+}
+
 // sshArgs builds the ssh argument list for the given command.
 func (e *Executor) sshArgs(cmd string) []string {
 	args := []string{
@@ -127,7 +147,7 @@ func (e *Executor) sshArgs(cmd string) []string {
 	return args
 }
 
-// rsyncArgs builds the rsync argument list.
+// rsyncArgs builds the rsync argument list for a directory transfer.
 func (e *Executor) rsyncArgs(localDir, remoteDir string, deleteExtra bool) []string {
 	// Build the ssh command string used as rsync's transport.
 	sshCmd := "ssh -o StrictHostKeyChecking=accept-new -o BatchMode=yes"
@@ -149,4 +169,23 @@ func (e *Executor) rsyncArgs(localDir, remoteDir string, deleteExtra bool) []str
 	dst := e.target.Destination() + ":" + remoteDir
 	args = append(args, src, dst)
 	return args
+}
+
+// rsyncFileArgs builds the rsync argument list for a single-file transfer.
+// The source path is used as-is — no trailing slash — so rsync treats it as
+// a regular file rather than a directory.
+func (e *Executor) rsyncFileArgs(localFile, remotePath string) []string {
+	sshCmd := "ssh -o StrictHostKeyChecking=accept-new -o BatchMode=yes"
+	if e.target.Port != 0 {
+		sshCmd += " -p " + strconv.Itoa(e.target.Port)
+	}
+
+	dst := e.target.Destination() + ":" + remotePath
+	return []string{
+		"-az",
+		"--progress",
+		"-e", sshCmd,
+		localFile,
+		dst,
+	}
 }

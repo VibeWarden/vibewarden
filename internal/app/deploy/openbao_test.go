@@ -357,3 +357,7 @@ func (w *wildcardExecutor) Run(_ context.Context, cmd string) (string, error) {
 func (w *wildcardExecutor) Transfer(_ context.Context, _, _ string, _ bool) error {
 	return nil
 }
+
+func (w *wildcardExecutor) TransferFile(_ context.Context, _, _ string) error {
+	return nil
+}
