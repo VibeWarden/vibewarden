@@ -21,6 +21,13 @@ The sidecar handles:
 
 App code focuses on **business logic only**.
 
+## Required: /health endpoint
+
+Your app MUST expose `GET /health` returning HTTP 200. The sidecar waits for
+this endpoint to be healthy before starting. Without it, the sidecar container
+stays in "Created" state and never starts. If you used `vibew init`, this
+endpoint is already included.
+
 ## Sidecar-injected headers
 
 When auth is enabled, read user identity from these headers:
