@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
 	"path/filepath"
 	"strings"
 	"time"
@@ -334,11 +335,26 @@ func (s *Service) checkHealth(ctx context.Context, healthURL string) (bool, erro
 // It returns the base name of the directory containing the config file, which
 // is the project directory name by convention. It is exported so the CLI can
 // compute the remote directory before calling Deploy.
+//
+// When configPath is empty the current working directory name is used as the
+// project name. When configPath is relative (e.g. "vibewarden.prod.yaml") it is
+// resolved to an absolute path first so that filepath.Dir returns the real
+// directory rather than ".".
 func ProjectNameFromConfig(configPath string) string {
 	if configPath == "" {
+		wd, err := os.Getwd()
+		if err != nil {
+			return "vibewarden"
+		}
+		configPath = filepath.Join(wd, "vibewarden.yaml")
+	}
+
+	abs, err := filepath.Abs(configPath)
+	if err != nil {
 		return "vibewarden"
 	}
-	dir := filepath.Dir(filepath.Clean(configPath))
+
+	dir := filepath.Dir(abs)
 	name := filepath.Base(dir)
 	// Sanitise: replace spaces and dots with dashes.
 	name = strings.ReplaceAll(name, " ", "-")

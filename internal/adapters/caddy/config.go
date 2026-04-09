@@ -400,6 +400,17 @@ func buildTLSPolicy(cfg ports.TLSConfig) []map[string]any {
 		return []map[string]any{{"default_sni": domain}}
 	}
 
+	// For Let's Encrypt, include a match.sni entry for the domain.
+	// Without this, Caddy does not associate the TLS connection policy with the
+	// domain and will not trigger proactive ACME certificate issuance.
+	if cfg.Provider == ports.TLSProviderLetsEncrypt && cfg.Domain != "" {
+		return []map[string]any{{
+			"match": map[string]any{
+				"sni": []string{cfg.Domain},
+			},
+		}}
+	}
+
 	// Default policy — Caddy selects the certificate automatically.
 	return []map[string]any{{}}
 }
