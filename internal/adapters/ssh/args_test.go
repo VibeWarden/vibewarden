@@ -94,3 +94,75 @@ func TestRsyncFileArgs_WithPort(t *testing.T) {
 		t.Errorf("expected '-p 2222' in ssh command within rsync args, got: %v", args)
 	}
 }
+
+func TestSshArgs_WithKey(t *testing.T) {
+	e := NewExecutorWithKey(Target{User: "ubuntu", Host: "10.0.0.1"}, "/home/user/.ssh/deploy_key")
+
+	args := e.sshArgs("echo hello")
+
+	// Confirm -i <keyPath> appears in the argument list.
+	found := false
+	for i, a := range args {
+		if a == "-i" && i+1 < len(args) && args[i+1] == "/home/user/.ssh/deploy_key" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected '-i /home/user/.ssh/deploy_key' in ssh args, got: %v", args)
+	}
+}
+
+func TestSshArgs_WithoutKey(t *testing.T) {
+	e := NewExecutor(Target{User: "ubuntu", Host: "10.0.0.1"})
+
+	args := e.sshArgs("echo hello")
+
+	// Confirm -i does not appear when no key is set.
+	for _, a := range args {
+		if a == "-i" {
+			t.Errorf("did not expect '-i' flag in ssh args without key, got: %v", args)
+			break
+		}
+	}
+}
+
+func TestRsyncArgs_WithKey(t *testing.T) {
+	e := NewExecutorWithKey(Target{User: "ubuntu", Host: "10.0.0.1"}, "/home/user/.ssh/deploy_key")
+
+	args := e.rsyncArgs("/local/dir", "~/remote/dir/", false)
+
+	// The -e flag value must contain -i <keyPath>.
+	found := false
+	for i, a := range args {
+		if a == "-e" && i+1 < len(args) {
+			if strings.Contains(args[i+1], "-i /home/user/.ssh/deploy_key") {
+				found = true
+			}
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected '-i /home/user/.ssh/deploy_key' in rsync -e ssh command, got: %v", args)
+	}
+}
+
+func TestRsyncFileArgs_WithKey(t *testing.T) {
+	e := NewExecutorWithKey(Target{User: "ubuntu", Host: "10.0.0.1"}, "/home/user/.ssh/deploy_key")
+
+	args := e.rsyncFileArgs("/local/file.yaml", "~/remote/file.yaml")
+
+	// The -e flag value must contain -i <keyPath>.
+	found := false
+	for i, a := range args {
+		if a == "-e" && i+1 < len(args) {
+			if strings.Contains(args[i+1], "-i /home/user/.ssh/deploy_key") {
+				found = true
+			}
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected '-i /home/user/.ssh/deploy_key' in rsync file -e ssh command, got: %v", args)
+	}
+}

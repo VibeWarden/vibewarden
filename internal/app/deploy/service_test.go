@@ -585,5 +585,152 @@ func TestService_Deploy_TransferFileFails(t *testing.T) {
 	}
 }
 
+// TestService_Deploy_ImageMode verifies that when cfg.App.Build is empty the
+// deploy flow runs docker compose pull followed by docker compose up -d.
+func TestService_Deploy_ImageMode(t *testing.T) {
+	executor := &fakeExecutor{}
+	generator := &fakeGenerator{}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	healthURL := srv.URL + "/_vibewarden/health"
+	svc := deployapp.NewService(executor, generator, func(req *http.Request) (*http.Response, error) {
+		req2, _ := http.NewRequestWithContext(req.Context(), req.Method, healthURL, nil)
+		return http.DefaultClient.Do(req2) //nolint:gosec // test-only helper; URL is from httptest.NewServer
+	})
+
+	cfg := defaultConfig()
+	cfg.App.Image = "myapp:latest"
+
+	err := svc.Deploy(context.Background(), cfg, deployapp.RunOptions{
+		ConfigPath: "/tmp/proj/vibewarden.yaml",
+	})
+	if err != nil {
+		t.Fatalf("Deploy() unexpected error: %v", err)
+	}
+
+	// docker compose pull must be called.
+	assertRunCalledContains(t, executor.runCalls, "docker compose pull")
+	// docker compose up -d (without --build) must be called.
+	assertRunCalledContains(t, executor.runCalls, "docker compose up -d")
+
+	// docker compose up -d --build must NOT be called.
+	for _, c := range executor.runCalls {
+		if strings.Contains(c, "--build") {
+			t.Errorf("did not expect --build flag in image mode, but got run call: %q", c)
+		}
+	}
+
+	// App build context must NOT be transferred when app.build is empty.
+	// Only the generated dir transfer is expected (transferCalls has exactly one entry).
+	if len(executor.transferCalls) != 1 {
+		t.Errorf("expected exactly 1 Transfer call in image mode, got %d: %v", len(executor.transferCalls), executor.transferCalls)
+	}
+}
+
+// TestService_Deploy_BuildMode verifies that when cfg.App.Build is set the
+// deploy flow transfers the build context and runs docker compose up -d --build
+// instead of docker compose pull && docker compose up -d.
+func TestService_Deploy_BuildMode(t *testing.T) {
+	executor := &fakeExecutor{}
+	generator := &fakeGenerator{}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	healthURL := srv.URL + "/_vibewarden/health"
+	svc := deployapp.NewService(executor, generator, func(req *http.Request) (*http.Response, error) {
+		req2, _ := http.NewRequestWithContext(req.Context(), req.Method, healthURL, nil)
+		return http.DefaultClient.Do(req2) //nolint:gosec // test-only helper; URL is from httptest.NewServer
+	})
+
+	cfg := defaultConfig()
+	cfg.App.Build = "."
+
+	err := svc.Deploy(context.Background(), cfg, deployapp.RunOptions{
+		ConfigPath: "/tmp/proj/vibewarden.yaml",
+	})
+	if err != nil {
+		t.Fatalf("Deploy() unexpected error: %v", err)
+	}
+
+	// docker compose up -d --build must be called.
+	assertRunCalledContains(t, executor.runCalls, "docker compose up -d --build")
+
+	// docker compose pull must NOT be called.
+	for _, c := range executor.runCalls {
+		if strings.Contains(c, "docker compose pull") {
+			t.Errorf("did not expect 'docker compose pull' in build mode, got run call: %q", c)
+		}
+	}
+
+	// Two Transfer calls expected: generated dir + build context.
+	if len(executor.transferCalls) != 2 {
+		t.Errorf("expected 2 Transfer calls in build mode (generated + build context), got %d: %v",
+			len(executor.transferCalls), executor.transferCalls)
+	}
+}
+
+// TestService_Deploy_BuildMode_TransferContextFails verifies that a failure to
+// transfer the app build context is propagated correctly.
+func TestService_Deploy_BuildMode_TransferContextFails(t *testing.T) {
+	callCount := 0
+	executor := &mockRunExecutor{
+		runFn: func(_ string) (string, error) { return "", nil },
+	}
+	// Wrap in a custom executor that fails on the second Transfer call (build context).
+	failingTransfer := &buildContextFailExecutor{
+		mockRunExecutor: executor,
+		failOnTransfer:  2,
+		transferErr:     fmt.Errorf("rsync failed"),
+		callCount:       &callCount,
+	}
+
+	generator := &fakeGenerator{}
+	svc := deployapp.NewService(failingTransfer, generator, nil)
+
+	cfg := defaultConfig()
+	cfg.App.Build = "."
+
+	err := svc.Deploy(context.Background(), cfg, deployapp.RunOptions{
+		ConfigPath: "/tmp/proj/vibewarden.yaml",
+	})
+	if err == nil {
+		t.Fatal("expected error when build context transfer fails")
+	}
+	if !strings.Contains(err.Error(), "transferring app build context") {
+		t.Errorf("error should mention 'transferring app build context', got: %v", err)
+	}
+}
+
+// buildContextFailExecutor wraps mockRunExecutor and fails on the nth Transfer call.
+type buildContextFailExecutor struct {
+	*mockRunExecutor
+	failOnTransfer int
+	transferErr    error
+	callCount      *int
+}
+
+func (b *buildContextFailExecutor) Transfer(_ context.Context, localDir, remoteDir string, deleteExtra bool) error {
+	*b.callCount++
+	if *b.callCount == b.failOnTransfer {
+		return b.transferErr
+	}
+	b.transferCalls = append(b.transferCalls,
+		transferCall{localDir: localDir, remoteDir: remoteDir, deleteExtra: deleteExtra})
+	return nil
+}
+
+func (b *buildContextFailExecutor) TransferFile(_ context.Context, localFile, remotePath string) error {
+	b.transferFileCalls = append(b.transferFileCalls,
+		transferFileCall{localFile: localFile, remotePath: remotePath})
+	return nil
+}
+
 // Ensure fmt is used (used in assertRunCalledContains via Errorf).
 var _ = fmt.Sprintf
