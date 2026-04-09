@@ -69,7 +69,7 @@ services:
     volumes:
       - ../../vibewarden.yaml:/etc/vibewarden/vibewarden.yaml:ro
 {{- if .TLS.Enabled }}
-      - vibewarden-data:/var/lib/vibewarden
+      - vibewarden-data:/root/.local/share/caddy
 {{- end }}
 {{- if .Secrets.Enabled }}
     env_file:

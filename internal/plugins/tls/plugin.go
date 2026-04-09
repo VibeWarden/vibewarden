@@ -233,33 +233,49 @@ func buildTLSApp(cfg ports.TLSConfig) (map[string]any, error) {
 
 // buildLetsEncryptTLSApp returns a Caddy TLS app configuration that provisions
 // certificates automatically via ACME (Let's Encrypt).
+//
+// The ACME issuer is configured with explicit HTTP-01 challenge support. The
+// HTTP-01 challenge listener is bound to the same :80 port as the redirect
+// server — Caddy manages both from within the same embedded instance, so no
+// port conflict occurs.
+//
+// Note: storage is intentionally NOT set here. Caddy's storage backend is a
+// top-level field on the Config struct; placing it inside apps.tls causes Caddy
+// to reject the config with "unknown field: storage". Storage is set at the
+// top-level in BuildCaddyConfig when cfg.StoragePath is non-empty.
 func buildLetsEncryptTLSApp(cfg ports.TLSConfig) map[string]any {
 	policy := map[string]any{
 		"subjects": []string{cfg.Domain},
 		"issuers": []map[string]any{
-			{"module": "acme"},
+			{
+				"module": "acme",
+				// Configure HTTP-01 challenge explicitly. Caddy's embedded HTTP
+				// server on :80 serves the ACME challenge response automatically;
+				// specifying the port here makes the intent unambiguous and avoids
+				// relying on Caddy's automatic challenge port detection when running
+				// behind Docker networking.
+				"challenges": map[string]any{
+					"http": map[string]any{
+						"alternate_port": 80,
+					},
+				},
+			},
 		},
 	}
 
-	tlsApp := map[string]any{
+	return map[string]any{
 		"automation": map[string]any{
 			"policies": []map[string]any{policy},
 		},
 	}
-
-	if cfg.StoragePath != "" {
-		tlsApp["storage"] = map[string]any{
-			"module": "file_system",
-			"root":   cfg.StoragePath,
-		}
-	}
-
-	return tlsApp
 }
 
 // buildSelfSignedTLSApp returns a Caddy TLS app configuration that instructs
 // Caddy to generate an internal self-signed certificate.
 // This is intended for local development and testing only.
+//
+// Note: storage is intentionally NOT set here. See buildLetsEncryptTLSApp for
+// the explanation of why storage belongs at the top-level Caddy config.
 func buildSelfSignedTLSApp(cfg ports.TLSConfig) map[string]any {
 	policy := map[string]any{
 		"issuers": []map[string]any{
@@ -272,20 +288,11 @@ func buildSelfSignedTLSApp(cfg ports.TLSConfig) map[string]any {
 		policy["subjects"] = []string{cfg.Domain}
 	}
 
-	tlsApp := map[string]any{
+	return map[string]any{
 		"automation": map[string]any{
 			"policies": []map[string]any{policy},
 		},
 	}
-
-	if cfg.StoragePath != "" {
-		tlsApp["storage"] = map[string]any{
-			"module": "file_system",
-			"root":   cfg.StoragePath,
-		}
-	}
-
-	return tlsApp
 }
 
 // buildExternalTLSApp returns a Caddy TLS app configuration that loads

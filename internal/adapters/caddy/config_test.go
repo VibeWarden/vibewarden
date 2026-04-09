@@ -337,8 +337,21 @@ func TestBuildCaddyConfig_TLSProviders(t *testing.T) {
 			}
 
 			if tt.wantStorageBlock {
-				if _, ok := tlsApp["storage"]; !ok {
-					t.Error("expected storage block in tls app")
+				// Storage is a top-level Caddy config field, not inside apps.tls.
+				// Caddy's Config struct has `json:"storage"` at the root level;
+				// placing it inside apps.tls causes Caddy to reject it with
+				// "unknown field: storage".
+				storage, ok := result["storage"].(map[string]any)
+				if !ok {
+					t.Error("expected storage block at top-level Caddy config, not inside apps.tls")
+				} else {
+					if storage["module"] != "file_system" {
+						t.Errorf("storage.module = %q, want %q", storage["module"], "file_system")
+					}
+				}
+				// Confirm storage is NOT inside the tls app.
+				if _, ok := tlsApp["storage"]; ok {
+					t.Error("storage must NOT appear inside apps.tls — it causes an 'unknown field' error in Caddy")
 				}
 			}
 		})
@@ -401,6 +414,132 @@ func TestBuildCaddyConfig_LetsEncryptDomainInPolicy(t *testing.T) {
 	}
 	if subjects[0] != "myapp.example.com" {
 		t.Errorf("subjects[0] = %q, want %q", subjects[0], "myapp.example.com")
+	}
+}
+
+// TestBuildCaddyConfig_LetsEncryptACMEChallenges verifies that the ACME issuer
+// configuration includes an explicit HTTP-01 challenge with alternate_port 80.
+// Without this, Caddy may fail ACME challenges in Docker when port detection
+// is unreliable, preventing proactive certificate issuance.
+func TestBuildCaddyConfig_LetsEncryptACMEChallenges(t *testing.T) {
+	cfg := &ports.ProxyConfig{
+		ListenAddr:   "0.0.0.0:443",
+		UpstreamAddr: "127.0.0.1:3000",
+		TLS: ports.TLSConfig{
+			Enabled:  true,
+			Provider: ports.TLSProviderLetsEncrypt,
+			Domain:   "example.com",
+		},
+	}
+
+	result, err := BuildCaddyConfig(cfg)
+	if err != nil {
+		t.Fatalf("BuildCaddyConfig() unexpected error: %v", err)
+	}
+
+	apps := result["apps"].(map[string]any)
+	tlsApp := apps["tls"].(map[string]any)
+	automation := tlsApp["automation"].(map[string]any)
+	policies := automation["policies"].([]map[string]any)
+
+	if len(policies) == 0 {
+		t.Fatal("expected at least one automation policy")
+	}
+
+	issuers, ok := policies[0]["issuers"].([]map[string]any)
+	if !ok || len(issuers) == 0 {
+		t.Fatal("issuers not found in automation policy")
+	}
+
+	acmeIssuer := issuers[0]
+	if acmeIssuer["module"] != "acme" {
+		t.Fatalf("expected acme issuer module, got %q", acmeIssuer["module"])
+	}
+
+	challenges, ok := acmeIssuer["challenges"].(map[string]any)
+	if !ok {
+		t.Fatal("challenges not found in ACME issuer config — HTTP-01 challenge must be configured explicitly")
+	}
+
+	http01, ok := challenges["http"].(map[string]any)
+	if !ok {
+		t.Fatal("http challenge config not found")
+	}
+
+	alternatePort, ok := http01["alternate_port"].(int)
+	if !ok {
+		t.Fatal("alternate_port not found in http challenge config")
+	}
+	if alternatePort != 80 {
+		t.Errorf("alternate_port = %d, want 80", alternatePort)
+	}
+}
+
+// TestBuildCaddyConfig_StorageAtTopLevel verifies that when StoragePath is set,
+// the storage module appears at the top level of the Caddy config (not inside
+// apps.tls). Placing storage inside apps.tls causes Caddy to reject the config
+// with "unknown field: storage".
+func TestBuildCaddyConfig_StorageAtTopLevel(t *testing.T) {
+	cfg := &ports.ProxyConfig{
+		ListenAddr:   "0.0.0.0:443",
+		UpstreamAddr: "127.0.0.1:3000",
+		TLS: ports.TLSConfig{
+			Enabled:     true,
+			Provider:    ports.TLSProviderLetsEncrypt,
+			Domain:      "example.com",
+			StoragePath: "/data/caddy",
+		},
+	}
+
+	result, err := BuildCaddyConfig(cfg)
+	if err != nil {
+		t.Fatalf("BuildCaddyConfig() unexpected error: %v", err)
+	}
+
+	// Storage must be at the root of the Caddy config.
+	storage, ok := result["storage"].(map[string]any)
+	if !ok {
+		t.Fatal("storage not found at top-level Caddy config")
+	}
+	if storage["module"] != "file_system" {
+		t.Errorf("storage.module = %q, want %q", storage["module"], "file_system")
+	}
+	if storage["root"] != "/data/caddy" {
+		t.Errorf("storage.root = %q, want %q", storage["root"], "/data/caddy")
+	}
+
+	// Storage must NOT be inside apps.tls.
+	apps := result["apps"].(map[string]any)
+	tlsApp, ok := apps["tls"].(map[string]any)
+	if !ok {
+		t.Fatal("tls app not found")
+	}
+	if _, ok := tlsApp["storage"]; ok {
+		t.Error("storage must NOT appear inside apps.tls — it causes Caddy to reject the config")
+	}
+}
+
+// TestBuildCaddyConfig_StorageAbsentWhenNoPath verifies that no storage block
+// is emitted at the top level when StoragePath is empty.
+func TestBuildCaddyConfig_StorageAbsentWhenNoPath(t *testing.T) {
+	cfg := &ports.ProxyConfig{
+		ListenAddr:   "0.0.0.0:443",
+		UpstreamAddr: "127.0.0.1:3000",
+		TLS: ports.TLSConfig{
+			Enabled:  true,
+			Provider: ports.TLSProviderLetsEncrypt,
+			Domain:   "example.com",
+			// StoragePath intentionally empty — Caddy uses its default data dir.
+		},
+	}
+
+	result, err := BuildCaddyConfig(cfg)
+	if err != nil {
+		t.Fatalf("BuildCaddyConfig() unexpected error: %v", err)
+	}
+
+	if _, ok := result["storage"]; ok {
+		t.Error("storage must NOT appear in top-level Caddy config when StoragePath is empty")
 	}
 }
 

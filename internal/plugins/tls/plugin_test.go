@@ -384,6 +384,11 @@ func TestPlugin_TLSApp_LetsEncrypt_Domain(t *testing.T) {
 	}
 }
 
+// TestPlugin_TLSApp_LetsEncrypt_StoragePath verifies that TLSApp() does NOT include
+// a storage block even when StoragePath is set. Storage is a top-level Caddy Config
+// field; placing it inside apps.tls causes Caddy to reject the config with
+// "unknown field: storage". The Caddy adapter's BuildCaddyConfig is responsible
+// for emitting storage at the correct top level.
 func TestPlugin_TLSApp_LetsEncrypt_StoragePath(t *testing.T) {
 	cfg := ports.TLSConfig{
 		Enabled:     true,
@@ -397,15 +402,65 @@ func TestPlugin_TLSApp_LetsEncrypt_StoragePath(t *testing.T) {
 		t.Fatalf("TLSApp() unexpected error: %v", err)
 	}
 
-	storage, ok := got["storage"].(map[string]any)
+	// Storage must NOT appear inside the TLS app map.
+	if _, ok := got["storage"]; ok {
+		t.Error("TLSApp() must not include 'storage' key — storage belongs at the top-level Caddy config")
+	}
+
+	// The automation policies must still be present.
+	automation, ok := got["automation"].(map[string]any)
 	if !ok {
-		t.Fatal("expected storage key to be map[string]any")
+		t.Fatal("expected automation key in TLS app")
 	}
-	if storage["module"] != "file_system" {
-		t.Errorf("storage.module = %q, want %q", storage["module"], "file_system")
+	if _, ok := automation["policies"]; !ok {
+		t.Error("expected policies key in automation")
 	}
-	if storage["root"] != "/data/certs" {
-		t.Errorf("storage.root = %q, want %q", storage["root"], "/data/certs")
+}
+
+// TestPlugin_TLSApp_LetsEncrypt_ACMEChallenges verifies that the ACME issuer config
+// includes explicit HTTP-01 challenge settings with alternate_port 80.
+func TestPlugin_TLSApp_LetsEncrypt_ACMEChallenges(t *testing.T) {
+	cfg := ports.TLSConfig{
+		Enabled:  true,
+		Provider: ports.TLSProviderLetsEncrypt,
+		Domain:   "myapp.example.com",
+	}
+	p := newPlugin(cfg)
+	got, err := p.TLSApp()
+	if err != nil {
+		t.Fatalf("TLSApp() unexpected error: %v", err)
+	}
+
+	automation, ok := got["automation"].(map[string]any)
+	if !ok {
+		t.Fatal("expected automation key")
+	}
+	policies, ok := automation["policies"].([]map[string]any)
+	if !ok || len(policies) == 0 {
+		t.Fatal("expected at least one policy")
+	}
+	issuers, ok := policies[0]["issuers"].([]map[string]any)
+	if !ok || len(issuers) == 0 {
+		t.Fatal("expected at least one issuer")
+	}
+	acmeIssuer := issuers[0]
+	if acmeIssuer["module"] != "acme" {
+		t.Fatalf("expected acme module, got %q", acmeIssuer["module"])
+	}
+	challenges, ok := acmeIssuer["challenges"].(map[string]any)
+	if !ok {
+		t.Fatal("expected challenges key in ACME issuer")
+	}
+	http01, ok := challenges["http"].(map[string]any)
+	if !ok {
+		t.Fatal("expected http key in challenges")
+	}
+	alternatePort, ok := http01["alternate_port"].(int)
+	if !ok {
+		t.Fatal("expected alternate_port in http challenge config")
+	}
+	if alternatePort != 80 {
+		t.Errorf("alternate_port = %d, want 80", alternatePort)
 	}
 }
 
