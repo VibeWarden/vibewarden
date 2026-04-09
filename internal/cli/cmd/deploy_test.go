@@ -1,6 +1,8 @@
 package cmd_test
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -110,10 +112,28 @@ func TestDeployLogsCmd_MissingTarget(t *testing.T) {
 }
 
 func TestDeployCmd_InvalidTarget(t *testing.T) {
+	// This test must run from a directory that has AGENTS-VIBEWARDEN.md so that
+	// the scaffolding check passes and the --target validation can be reached.
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "AGENTS-VIBEWARDEN.md"), []byte("# ctx\n"), 0o644); err != nil {
+		t.Fatalf("writing scaffolding marker: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "vibewarden.yaml"), []byte("server:\n  port: 8080\nupstream:\n  port: 3000\n"), 0o644); err != nil {
+		t.Fatalf("writing config: %v", err)
+	}
+	origDir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(dir); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(origDir) })
+
 	root := cmd.NewRootCmd("test")
 	root.SetArgs([]string{"deploy", "--target", "http://user@host"})
 
-	err := root.Execute()
+	err = root.Execute()
 	if err == nil {
 		t.Fatal("expected error when --target has wrong scheme")
 	}

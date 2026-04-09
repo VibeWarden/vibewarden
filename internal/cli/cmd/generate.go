@@ -45,6 +45,13 @@ Examples:
   vibew generate --config ./my-vibewarden.yaml
   vibew generate --output-dir /tmp/vw-generated`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			if err := requireScaffolding(); err != nil {
+				return err
+			}
+			if err := requireConfig(configPath); err != nil {
+				return err
+			}
+
 			cfg, err := config.Load(configPath)
 			if err != nil {
 				return fmt.Errorf("loading config: %w", err)

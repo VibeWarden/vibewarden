@@ -101,9 +101,14 @@ func TestInitCmd_CreatesProjectDir(t *testing.T) {
 	root.SetOut(&out)
 	root.SetArgs([]string{"init", "--lang", "go", "testproject"})
 
+	origDir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
 	if err := os.Chdir(dir); err != nil {
 		t.Fatalf("chdir: %v", err)
 	}
+	t.Cleanup(func() { _ = os.Chdir(origDir) })
 
 	if err := root.Execute(); err != nil {
 		t.Fatalf("init command failed: %v", err)
@@ -119,9 +124,14 @@ func TestInitCmd_CreatesProjectDir(t *testing.T) {
 func TestInitCmd_GeneratesAllFiles(t *testing.T) {
 	dir := t.TempDir()
 
+	origDir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
 	if err := os.Chdir(dir); err != nil {
 		t.Fatalf("chdir: %v", err)
 	}
+	t.Cleanup(func() { _ = os.Chdir(origDir) })
 
 	root := cmd.NewRootCmd("test")
 	var out bytes.Buffer
@@ -162,9 +172,14 @@ func TestInitCmd_GeneratesAllFiles(t *testing.T) {
 func TestInitCmd_ErrorsOnNonEmptyDir(t *testing.T) {
 	dir := t.TempDir()
 
+	origDir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
 	if err := os.Chdir(dir); err != nil {
 		t.Fatalf("chdir: %v", err)
 	}
+	t.Cleanup(func() { _ = os.Chdir(origDir) })
 
 	// Pre-populate the directory.
 	projectDir := filepath.Join(dir, "occupied")
@@ -180,8 +195,7 @@ func TestInitCmd_ErrorsOnNonEmptyDir(t *testing.T) {
 	root.SetErr(&errOut)
 	root.SetArgs([]string{"init", "--lang", "go", "occupied"})
 
-	err := root.Execute()
-	if err == nil {
+	if err := root.Execute(); err == nil {
 		t.Fatal("expected error for non-empty directory, got nil")
 	}
 }
@@ -190,9 +204,14 @@ func TestInitCmd_ErrorsOnNonEmptyDir(t *testing.T) {
 func TestInitCmd_ForceOverwrites(t *testing.T) {
 	dir := t.TempDir()
 
+	origDir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
 	if err := os.Chdir(dir); err != nil {
 		t.Fatalf("chdir: %v", err)
 	}
+	t.Cleanup(func() { _ = os.Chdir(origDir) })
 
 	// Pre-populate the directory.
 	projectDir := filepath.Join(dir, "myapp")
@@ -222,9 +241,14 @@ func TestInitCmd_ForceOverwrites(t *testing.T) {
 func TestInitCmd_CustomModulePath(t *testing.T) {
 	dir := t.TempDir()
 
+	origDir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
 	if err := os.Chdir(dir); err != nil {
 		t.Fatalf("chdir: %v", err)
 	}
+	t.Cleanup(func() { _ = os.Chdir(origDir) })
 
 	root := cmd.NewRootCmd("test")
 	var out bytes.Buffer
@@ -253,9 +277,14 @@ func TestInitCmd_CustomModulePath(t *testing.T) {
 func TestInitCmd_CustomPort(t *testing.T) {
 	dir := t.TempDir()
 
+	origDir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
 	if err := os.Chdir(dir); err != nil {
 		t.Fatalf("chdir: %v", err)
 	}
+	t.Cleanup(func() { _ = os.Chdir(origDir) })
 
 	root := cmd.NewRootCmd("test")
 	var out bytes.Buffer
@@ -292,9 +321,14 @@ func TestInitCmd_AppBuildDefaultsToCurrentDir(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			dir := t.TempDir()
+			origDir, err := os.Getwd()
+			if err != nil {
+				t.Fatalf("getwd: %v", err)
+			}
 			if err := os.Chdir(dir); err != nil {
 				t.Fatalf("chdir: %v", err)
 			}
+			t.Cleanup(func() { _ = os.Chdir(origDir) })
 
 			root := cmd.NewRootCmd("test")
 			var out bytes.Buffer
@@ -331,9 +365,14 @@ func TestInitCmd_AppBuildDefaultsToCurrentDir(t *testing.T) {
 func TestInitCmd_KotlinCreatesProject(t *testing.T) {
 	dir := t.TempDir()
 
+	origDir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
 	if err := os.Chdir(dir); err != nil {
 		t.Fatalf("chdir: %v", err)
 	}
+	t.Cleanup(func() { _ = os.Chdir(origDir) })
 
 	root := cmd.NewRootCmd("test")
 	var out bytes.Buffer
@@ -371,9 +410,14 @@ func TestInitCmd_KotlinCreatesProject(t *testing.T) {
 func TestInitCmd_KotlinDoesNotCreateGoFiles(t *testing.T) {
 	dir := t.TempDir()
 
+	origDir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
 	if err := os.Chdir(dir); err != nil {
 		t.Fatalf("chdir: %v", err)
 	}
+	t.Cleanup(func() { _ = os.Chdir(origDir) })
 
 	root := cmd.NewRootCmd("test")
 	var out bytes.Buffer
@@ -400,9 +444,14 @@ func TestInitCmd_KotlinDoesNotCreateGoFiles(t *testing.T) {
 func TestInitCmd_KotlinPrintsSuccessMessage(t *testing.T) {
 	dir := t.TempDir()
 
+	origDir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
 	if err := os.Chdir(dir); err != nil {
 		t.Fatalf("chdir: %v", err)
 	}
+	t.Cleanup(func() { _ = os.Chdir(origDir) })
 
 	root := cmd.NewRootCmd("test")
 	var out bytes.Buffer
@@ -429,9 +478,14 @@ func TestInitCmd_KotlinPrintsSuccessMessage(t *testing.T) {
 func TestInitCmd_TypeScriptCreatesProject(t *testing.T) {
 	dir := t.TempDir()
 
+	origDir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
 	if err := os.Chdir(dir); err != nil {
 		t.Fatalf("chdir: %v", err)
 	}
+	t.Cleanup(func() { _ = os.Chdir(origDir) })
 
 	root := cmd.NewRootCmd("test")
 	var out bytes.Buffer
@@ -473,9 +527,14 @@ func TestInitCmd_TypeScriptCreatesProject(t *testing.T) {
 func TestInitCmd_TypeScriptDoesNotCreateGoFiles(t *testing.T) {
 	dir := t.TempDir()
 
+	origDir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
 	if err := os.Chdir(dir); err != nil {
 		t.Fatalf("chdir: %v", err)
 	}
+	t.Cleanup(func() { _ = os.Chdir(origDir) })
 
 	root := cmd.NewRootCmd("test")
 	var out bytes.Buffer
@@ -502,9 +561,14 @@ func TestInitCmd_TypeScriptDoesNotCreateGoFiles(t *testing.T) {
 func TestInitCmd_TypeScriptPrintsSuccessMessage(t *testing.T) {
 	dir := t.TempDir()
 
+	origDir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
 	if err := os.Chdir(dir); err != nil {
 		t.Fatalf("chdir: %v", err)
 	}
+	t.Cleanup(func() { _ = os.Chdir(origDir) })
 
 	root := cmd.NewRootCmd("test")
 	var out bytes.Buffer
@@ -531,9 +595,14 @@ func TestInitCmd_TypeScriptPrintsSuccessMessage(t *testing.T) {
 func TestInitCmd_PrintsSuccessMessage(t *testing.T) {
 	dir := t.TempDir()
 
+	origDir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
 	if err := os.Chdir(dir); err != nil {
 		t.Fatalf("chdir: %v", err)
 	}
+	t.Cleanup(func() { _ = os.Chdir(origDir) })
 
 	root := cmd.NewRootCmd("test")
 	var out bytes.Buffer

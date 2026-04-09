@@ -15,9 +15,14 @@ import (
 func TestInitCmd_DescribeFlag(t *testing.T) {
 	dir := t.TempDir()
 
+	origDir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
 	if err := os.Chdir(dir); err != nil {
 		t.Fatalf("chdir: %v", err)
 	}
+	t.Cleanup(func() { _ = os.Chdir(origDir) })
 
 	root := cmd.NewRootCmd("test")
 	var out bytes.Buffer
@@ -60,9 +65,14 @@ func TestInitCmd_DescribeFlag(t *testing.T) {
 func TestInitCmd_DescribeInjectsCLAUDEmd(t *testing.T) {
 	dir := t.TempDir()
 
+	origDir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
 	if err := os.Chdir(dir); err != nil {
 		t.Fatalf("chdir: %v", err)
 	}
+	t.Cleanup(func() { _ = os.Chdir(origDir) })
 
 	root := cmd.NewRootCmd("test")
 	root.SetOut(&bytes.Buffer{})
@@ -91,9 +101,14 @@ func TestInitCmd_DescribeInjectsCLAUDEmd(t *testing.T) {
 func TestInitCmd_DescribeInjectsAgentsVibewardenMD(t *testing.T) {
 	dir := t.TempDir()
 
+	origDir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
 	if err := os.Chdir(dir); err != nil {
 		t.Fatalf("chdir: %v", err)
 	}
+	t.Cleanup(func() { _ = os.Chdir(origDir) })
 
 	root := cmd.NewRootCmd("test")
 	root.SetOut(&bytes.Buffer{})
@@ -122,9 +137,14 @@ func TestInitCmd_DescribeInjectsAgentsVibewardenMD(t *testing.T) {
 func TestInitCmd_NoDescribeNoProjectMD(t *testing.T) {
 	dir := t.TempDir()
 
+	origDir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
 	if err := os.Chdir(dir); err != nil {
 		t.Fatalf("chdir: %v", err)
 	}
+	t.Cleanup(func() { _ = os.Chdir(origDir) })
 
 	root := cmd.NewRootCmd("test")
 	root.SetOut(&bytes.Buffer{})
@@ -144,9 +164,14 @@ func TestInitCmd_NoDescribeNoProjectMD(t *testing.T) {
 func TestInitCmd_NameFlag(t *testing.T) {
 	dir := t.TempDir()
 
+	origDir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
 	if err := os.Chdir(dir); err != nil {
 		t.Fatalf("chdir: %v", err)
 	}
+	t.Cleanup(func() { _ = os.Chdir(origDir) })
 
 	root := cmd.NewRootCmd("test")
 	root.SetOut(&bytes.Buffer{})
@@ -170,9 +195,14 @@ func TestInitCmd_NameFlag(t *testing.T) {
 func TestInitCmd_NameFlagOverriddenByPositionalArg(t *testing.T) {
 	dir := t.TempDir()
 
+	origDir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
 	if err := os.Chdir(dir); err != nil {
 		t.Fatalf("chdir: %v", err)
 	}
+	t.Cleanup(func() { _ = os.Chdir(origDir) })
 
 	root := cmd.NewRootCmd("test")
 	root.SetOut(&bytes.Buffer{})
@@ -198,9 +228,14 @@ func TestInitCmd_NameFlagOverriddenByPositionalArg(t *testing.T) {
 func TestInitCmd_Interactive(t *testing.T) {
 	dir := t.TempDir()
 
+	origDir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
 	if err := os.Chdir(dir); err != nil {
 		t.Fatalf("chdir: %v", err)
 	}
+	t.Cleanup(func() { _ = os.Chdir(origDir) })
 
 	// Create a pipe to simulate user input.
 	r, w, err := os.Pipe()
@@ -260,9 +295,14 @@ func TestInitCmd_Interactive(t *testing.T) {
 func TestInitCmd_InteractiveSkipsDescribeWhenEmpty(t *testing.T) {
 	dir := t.TempDir()
 
+	origDir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
 	if err := os.Chdir(dir); err != nil {
 		t.Fatalf("chdir: %v", err)
 	}
+	t.Cleanup(func() { _ = os.Chdir(origDir) })
 
 	r, w, err := os.Pipe()
 	if err != nil {
