@@ -195,6 +195,15 @@ func (s *Service) Deploy(ctx context.Context, cfg *config.Config, opts RunOption
 
 // StatusOptions holds parameters for the deploy status command.
 type StatusOptions struct {
+	// ConfigPath is the path to vibewarden.yaml on the local filesystem.
+	// It is used to derive the project name (and therefore the remote directory)
+	// in exactly the same way as RunOptions.ConfigPath in Deploy. When empty,
+	// the project name falls back to "vibewarden".
+	ConfigPath string
+
+	// ProjectName overrides the project name derived from ConfigPath.
+	ProjectName string
+
 	// Out is the writer used for status output. May be nil.
 	Out io.Writer
 }
@@ -206,7 +215,13 @@ func (s *Service) Status(ctx context.Context, opts StatusOptions) error {
 		out = io.Discard
 	}
 
-	output, err := s.executor.Run(ctx, "docker compose --project-directory ~/vibewarden/ ps")
+	projectName := opts.ProjectName
+	if projectName == "" {
+		projectName = ProjectNameFromConfig(opts.ConfigPath)
+	}
+	remoteDir := remoteBaseDir + "/" + projectName + "/"
+
+	output, err := s.executor.Run(ctx, "docker compose --project-directory "+remoteDir+" ps")
 	if err != nil {
 		return fmt.Errorf("fetching remote status: %w", err)
 	}
@@ -216,6 +231,15 @@ func (s *Service) Status(ctx context.Context, opts StatusOptions) error {
 
 // LogsOptions holds parameters for the deploy logs command.
 type LogsOptions struct {
+	// ConfigPath is the path to vibewarden.yaml on the local filesystem.
+	// It is used to derive the project name (and therefore the remote directory)
+	// in exactly the same way as RunOptions.ConfigPath in Deploy. When empty,
+	// the project name falls back to "vibewarden".
+	ConfigPath string
+
+	// ProjectName overrides the project name derived from ConfigPath.
+	ProjectName string
+
 	// Lines is the number of log lines to retrieve (0 = all).
 	Lines int
 	// Out is the writer used for log output. May be nil.
@@ -229,7 +253,13 @@ func (s *Service) Logs(ctx context.Context, opts LogsOptions) error {
 		out = io.Discard
 	}
 
-	cmd := "docker compose --project-directory ~/vibewarden/ logs"
+	projectName := opts.ProjectName
+	if projectName == "" {
+		projectName = ProjectNameFromConfig(opts.ConfigPath)
+	}
+	remoteDir := remoteBaseDir + "/" + projectName + "/"
+
+	cmd := "docker compose --project-directory " + remoteDir + " logs"
 	if opts.Lines > 0 {
 		cmd += fmt.Sprintf(" --tail=%d", opts.Lines)
 	}

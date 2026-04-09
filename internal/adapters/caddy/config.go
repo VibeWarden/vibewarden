@@ -16,7 +16,10 @@ import (
 //   - "self-signed"  — Caddy generates an internal self-signed certificate
 //   - "external"     — operator-supplied certificate and key files
 //
-// When TLS is enabled an HTTP-to-HTTPS redirect server is added automatically.
+// When TLS is enabled with self-signed or external provider, an HTTP-to-HTTPS
+// redirect server is added automatically. For the letsencrypt provider, no
+// manual redirect server is created — Caddy's built-in automatic HTTPS handles
+// ACME HTTP-01 challenges and HTTP→HTTPS redirects on port 80 natively.
 //
 // When auth is enabled (cfg.Auth.Enabled && cfg.Auth.KratosPublicURL != ""),
 // Kratos self-service flow routes are inserted between the health check route
@@ -257,11 +260,22 @@ func BuildCaddyConfig(cfg *ports.ProxyConfig) (map[string]any, error) {
 	}
 
 	if cfg.TLS.Enabled {
-		// When TLS is enabled, only disable Caddy's automatic HTTP→HTTPS
-		// redirects (we add our own redirect server). Certificate management
-		// via the TLS automation policies must remain active.
-		server["automatic_https"] = map[string]any{
-			"disable_redirects": true,
+		if cfg.TLS.Provider == ports.TLSProviderLetsEncrypt {
+			// For Let's Encrypt, do NOT disable redirects. Caddy's built-in
+			// automatic HTTPS will:
+			//   1. Serve ACME HTTP-01 challenges on port 80
+			//   2. Redirect all other HTTP traffic to HTTPS
+			// A manual redirect server on port 80 would intercept ACME challenge
+			// requests before Caddy's solver can handle them, causing cert issuance
+			// to fail. We let Caddy own port 80 entirely.
+		} else {
+			// For self-signed and external TLS, disable Caddy's automatic
+			// HTTP→HTTPS redirects and add our own redirect server instead.
+			// These providers do not perform ACME challenges, so port 80 is
+			// not needed for certificate management.
+			server["automatic_https"] = map[string]any{
+				"disable_redirects": true,
+			}
 		}
 	} else {
 		// No TLS — fully disable automatic HTTPS.
@@ -281,8 +295,13 @@ func BuildCaddyConfig(cfg *ports.ProxyConfig) (map[string]any, error) {
 		"vibewarden": server,
 	}
 
-	// When TLS is enabled, add an HTTP→HTTPS redirect server on :80.
-	if cfg.TLS.Enabled {
+	// When TLS is enabled and the provider is NOT Let's Encrypt, add a manual
+	// HTTP→HTTPS redirect server on :80.
+	// For Let's Encrypt, Caddy's automatic HTTPS handles both ACME challenges and
+	// HTTP→HTTPS redirects on port 80 natively. Adding a manual redirect server
+	// would intercept /.well-known/acme-challenge/* before Caddy's ACME solver,
+	// causing certificate issuance to fail.
+	if cfg.TLS.Enabled && cfg.TLS.Provider != ports.TLSProviderLetsEncrypt {
 		httpServers["vibewarden_redirect"] = buildHTTPRedirectServer()
 	}
 

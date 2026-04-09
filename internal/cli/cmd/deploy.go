@@ -172,8 +172,9 @@ Examples:
 // newDeployStatusCmd creates the "vibew deploy status" subcommand.
 func newDeployStatusCmd() *cobra.Command {
 	var (
-		target string
-		sshKey string
+		configPath string
+		target     string
+		sshKey     string
 	)
 
 	cmd := &cobra.Command{
@@ -181,8 +182,13 @@ func newDeployStatusCmd() *cobra.Command {
 		Short: "Show Docker Compose service status on the remote",
 		Long: `Show the Docker Compose service status on the remote server.
 
+The --config flag is used to derive the project name, which determines the
+remote directory (~/vibewarden/<project-name>/). It must match the value used
+when the project was deployed. When omitted the current directory name is used.
+
 Examples:
-  vibew deploy status --target ssh://ubuntu@203.0.113.10`,
+  vibew deploy status --target ssh://ubuntu@203.0.113.10
+  vibew deploy status --config vibewarden.prod.yaml --target ssh://ubuntu@203.0.113.10`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if target == "" {
 				return fmt.Errorf("--target is required (e.g. ssh://user@host)")
@@ -201,17 +207,29 @@ Examples:
 			}
 			svc := deployapp.NewService(executor, nil, nil)
 
+			absConfig, err := filepath.Abs(configPath)
+			if err != nil {
+				absConfig = configPath
+			}
+
 			return svc.Status(cmd.Context(), deployapp.StatusOptions{
-				Out: cmd.OutOrStdout(),
+				ConfigPath: absConfig,
+				Out:        cmd.OutOrStdout(),
 			})
 		},
 	}
 
+	cmd.Flags().StringVar(&configPath, "config", "", "path to vibewarden.yaml — used to derive the remote project directory (default: ./vibewarden.yaml)")
 	cmd.Flags().StringVar(&target, "target", "", "remote target in ssh://user@host[:port] format (required)")
 	cmd.Flags().StringVar(&sshKey, "ssh-key", "", "path to the SSH private key file (default: use SSH agent / ~/.ssh/config)")
 
 	if err := cmd.MarkFlagRequired("target"); err != nil {
 		fmt.Fprintln(os.Stderr, "warning: flag required registration failed:", err)
+	}
+	if err := cmd.RegisterFlagCompletionFunc("config", func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
+		return []string{"yaml", "yml"}, cobra.ShellCompDirectiveFilterFileExt
+	}); err != nil {
+		fmt.Fprintln(os.Stderr, "warning: flag completion registration failed:", err)
 	}
 
 	return cmd
@@ -220,9 +238,10 @@ Examples:
 // newDeployLogsCmd creates the "vibew deploy logs" subcommand.
 func newDeployLogsCmd() *cobra.Command {
 	var (
-		target string
-		sshKey string
-		lines  int
+		configPath string
+		target     string
+		sshKey     string
+		lines      int
 	)
 
 	cmd := &cobra.Command{
@@ -230,8 +249,13 @@ func newDeployLogsCmd() *cobra.Command {
 		Short: "Fetch Docker Compose logs from the remote",
 		Long: `Fetch Docker Compose logs from the remote server.
 
+The --config flag is used to derive the project name, which determines the
+remote directory (~/vibewarden/<project-name>/). It must match the value used
+when the project was deployed. When omitted the current directory name is used.
+
 Examples:
   vibew deploy logs --target ssh://ubuntu@203.0.113.10
+  vibew deploy logs --config vibewarden.prod.yaml --target ssh://ubuntu@203.0.113.10
   vibew deploy logs --target ssh://ubuntu@203.0.113.10 --lines 100`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if target == "" {
@@ -251,19 +275,31 @@ Examples:
 			}
 			svc := deployapp.NewService(executor, nil, nil)
 
+			absConfig, err := filepath.Abs(configPath)
+			if err != nil {
+				absConfig = configPath
+			}
+
 			return svc.Logs(cmd.Context(), deployapp.LogsOptions{
-				Lines: lines,
-				Out:   cmd.OutOrStdout(),
+				ConfigPath: absConfig,
+				Lines:      lines,
+				Out:        cmd.OutOrStdout(),
 			})
 		},
 	}
 
+	cmd.Flags().StringVar(&configPath, "config", "", "path to vibewarden.yaml — used to derive the remote project directory (default: ./vibewarden.yaml)")
 	cmd.Flags().StringVar(&target, "target", "", "remote target in ssh://user@host[:port] format (required)")
 	cmd.Flags().StringVar(&sshKey, "ssh-key", "", "path to the SSH private key file (default: use SSH agent / ~/.ssh/config)")
 	cmd.Flags().IntVar(&lines, "lines", 50, "number of log lines to fetch (0 = all)")
 
 	if err := cmd.MarkFlagRequired("target"); err != nil {
 		fmt.Fprintln(os.Stderr, "warning: flag required registration failed:", err)
+	}
+	if err := cmd.RegisterFlagCompletionFunc("config", func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
+		return []string{"yaml", "yml"}, cobra.ShellCompDirectiveFilterFileExt
+	}); err != nil {
+		fmt.Fprintln(os.Stderr, "warning: flag completion registration failed:", err)
 	}
 
 	return cmd
