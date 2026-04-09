@@ -12,7 +12,7 @@ import (
 // and restore it via t.Cleanup.
 func TestMain(m *testing.M) {
 	// In test runs stdin is never a real TTY; force non-interactive mode so that
-	// tests which omit --lang receive a proper error rather than a prompt read.
+	// tests run non-interactively without prompting for user input.
 	cmd.IsTTY = func(*os.File) bool { return false }
 	os.Exit(m.Run())
 }
