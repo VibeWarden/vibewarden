@@ -32,9 +32,9 @@ type AddFeatureOptions struct {
 	// FeatureOptions contains feature-specific parameters (e.g. TLS domain).
 	FeatureOptions domainscaffold.FeatureOptions
 
-	// AgentType controls which agent context files are regenerated.
-	// An empty value skips regeneration.
-	AgentType domainscaffold.AgentType
+	// RegenerateAgentContext controls whether agent context files are regenerated
+	// after the feature is enabled.
+	RegenerateAgentContext bool
 }
 
 // AddResult is the result of a successful AddFeature call.
@@ -58,7 +58,7 @@ func (s *AddFeatureService) AddFeature(ctx context.Context, dir string, opts Add
 	result := &AddResult{UpdatedConfig: configPath}
 
 	// Regenerate agent context files when requested.
-	if opts.AgentType != "" {
+	if opts.RegenerateAgentContext {
 		state, err := s.toggler.ReadFeatures(ctx, configPath)
 		if err != nil {
 			return nil, fmt.Errorf("reading updated config: %w", err)
@@ -73,7 +73,7 @@ func (s *AddFeatureService) AddFeature(ctx context.Context, dir string, opts Add
 			Force:            true, // always overwrite agent context on regeneration
 		}
 
-		written, err := agentSvc.GenerateAgentContext(ctx, dir, opts.AgentType, initOpts)
+		written, err := agentSvc.GenerateAgentContext(ctx, dir, initOpts)
 		if err != nil {
 			return nil, fmt.Errorf("regenerating agent context: %w", err)
 		}

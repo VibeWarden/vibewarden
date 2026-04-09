@@ -92,10 +92,10 @@ func TestAddFeatureService_AddFeature(t *testing.T) {
 			wantErr:          true,
 		},
 		{
-			name: "agent type set triggers context regeneration",
+			name: "regenerate agent context triggers context regeneration",
 			opts: scaffoldapp.AddFeatureOptions{
-				Feature:   domainscaffold.FeatureAdmin,
-				AgentType: domainscaffold.AgentTypeClaude,
+				Feature:                domainscaffold.FeatureAdmin,
+				RegenerateAgentContext: true,
 			},
 			togglerState:   baseState,
 			wantAgentFiles: true,
@@ -103,8 +103,8 @@ func TestAddFeatureService_AddFeature(t *testing.T) {
 		{
 			name: "read features error after enable is propagated",
 			opts: scaffoldapp.AddFeatureOptions{
-				Feature:   domainscaffold.FeatureMetrics,
-				AgentType: domainscaffold.AgentTypeClaude,
+				Feature:                domainscaffold.FeatureMetrics,
+				RegenerateAgentContext: true,
 			},
 			togglerReadErr: errors.New("read error"),
 			wantErr:        true,

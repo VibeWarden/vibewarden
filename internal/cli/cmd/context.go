@@ -2,7 +2,6 @@ package cmd
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -13,18 +12,12 @@ import (
 	scaffoldapp "github.com/vibewarden/vibewarden/internal/app/scaffold"
 	"github.com/vibewarden/vibewarden/internal/cli/templates"
 	"github.com/vibewarden/vibewarden/internal/config"
-	domainscaffold "github.com/vibewarden/vibewarden/internal/domain/scaffold"
 )
 
-// agentContextFiles returns the output paths for each agent type, relative to
-// the project root. These must stay in sync with the specs in
+// agentContextFile is the output path (relative to project root) for the
+// vibew-owned agent context file. It must stay in sync with the spec in
 // internal/app/scaffold/agent_context.go.
-// For AgentTypeGeneric the key file is AGENTS-VIBEWARDEN.md (vibew-owned);
-// AGENTS.md is also managed but its path is derived inside GenerateAgentContext.
-var agentContextFiles = map[domainscaffold.AgentType]string{
-	domainscaffold.AgentTypeClaude:  filepath.Join(".claude", "CLAUDE.md"),
-	domainscaffold.AgentTypeGeneric: "AGENTS-VIBEWARDEN.md",
-}
+const agentContextFile = "AGENTS-VIBEWARDEN.md"
 
 // NewContextCmd creates the `vibew context` subcommand group.
 //
@@ -53,8 +46,9 @@ vibewarden.yaml configuration.`,
 // newContextRefreshCmd creates the `vibew context refresh` subcommand.
 //
 // It reads vibewarden.yaml, derives the current feature state, and
-// regenerates each AI agent context file that already exists on disk.
-// Files that do not yet exist are skipped unless --force is supplied.
+// regenerates AGENTS-VIBEWARDEN.md (always) and updates AGENTS.md (if needed).
+// When --force is not supplied, the refresh is skipped if AGENTS-VIBEWARDEN.md
+// does not yet exist.
 func newContextRefreshCmd() *cobra.Command {
 	var (
 		configPath string
@@ -99,61 +93,35 @@ Examples:
 				Force:            force,
 			}
 
-			var updated []string
-			var skipped []string
+			absPath := filepath.Join(dir, agentContextFile)
 
-			for agentType, relPath := range agentContextFiles {
-				absPath := filepath.Join(dir, relPath)
-
-				// Skip files that don't exist unless --force is set.
-				if !force {
-					if _, statErr := os.Stat(absPath); os.IsNotExist(statErr) {
-						skipped = append(skipped, relPath)
-						continue
-					}
+			// Skip files that don't exist unless --force is set.
+			if !force {
+				if _, statErr := os.Stat(absPath); os.IsNotExist(statErr) {
+					w := cmd.OutOrStdout()
+					fmt.Fprintln(w, "No context files found to refresh.")
+					fmt.Fprintln(w, "")
+					fmt.Fprintf(w, "Skipped (file not found):\n  %s\n", agentContextFile)
+					fmt.Fprintln(w, "")
+					fmt.Fprintln(w, "Run 'vibew wrap' to create context files,")
+					fmt.Fprintln(w, "or use --force to create them during refresh.")
+					return nil
 				}
+			}
 
-				// Force=true here because we already did the existence guard above.
-				refreshOpts := opts
-				refreshOpts.Force = true
+			// Force=true here because we already did the existence guard above.
+			refreshOpts := opts
+			refreshOpts.Force = true
 
-				written, genErr := agentSvc.GenerateAgentContext(context.Background(), dir, agentType, refreshOpts)
-				if genErr != nil {
-					if errors.Is(genErr, os.ErrExist) {
-						skipped = append(skipped, relPath)
-						continue
-					}
-					return fmt.Errorf("refreshing context for %s: %w", agentType, genErr)
-				}
-				updated = append(updated, written...)
+			updated, genErr := agentSvc.GenerateAgentContext(context.Background(), dir, refreshOpts)
+			if genErr != nil {
+				return fmt.Errorf("refreshing context: %w", genErr)
 			}
 
 			w := cmd.OutOrStdout()
-
-			if len(updated) == 0 && len(skipped) > 0 {
-				fmt.Fprintln(w, "No context files found to refresh.")
-				fmt.Fprintln(w, "")
-				fmt.Fprintln(w, "Skipped (file not found):")
-				for _, s := range skipped {
-					fmt.Fprintf(w, "  %s\n", s)
-				}
-				fmt.Fprintln(w, "")
-				fmt.Fprintln(w, "Run 'vibew wrap --agent all' to create context files,")
-				fmt.Fprintln(w, "or use --force to create them during refresh.")
-				return nil
-			}
-
 			fmt.Fprintln(w, "Context files refreshed:")
 			for _, f := range updated {
 				fmt.Fprintf(w, "  %s\n", f)
-			}
-
-			if len(skipped) > 0 {
-				fmt.Fprintln(w, "")
-				fmt.Fprintln(w, "Skipped (file not found):")
-				for _, s := range skipped {
-					fmt.Fprintf(w, "  %s\n", s)
-				}
 			}
 
 			return nil

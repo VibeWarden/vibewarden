@@ -230,42 +230,6 @@ func TestTemplateData_ProjectName(t *testing.T) {
 	}
 }
 
-func TestAgentType_Constants(t *testing.T) {
-	tests := []struct {
-		name  string
-		value scaffold.AgentType
-		want  string
-	}{
-		{"claude", scaffold.AgentTypeClaude, "claude"},
-		{"cursor", scaffold.AgentTypeCursor, "cursor"},
-		{"generic", scaffold.AgentTypeGeneric, "generic"},
-		{"all", scaffold.AgentTypeAll, "all"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if string(tt.value) != tt.want {
-				t.Errorf("AgentType %q = %q, want %q", tt.name, string(tt.value), tt.want)
-			}
-		})
-	}
-}
-
-func TestAgentType_Distinctness(t *testing.T) {
-	agents := []scaffold.AgentType{
-		scaffold.AgentTypeClaude,
-		scaffold.AgentTypeCursor,
-		scaffold.AgentTypeGeneric,
-		scaffold.AgentTypeAll,
-	}
-	seen := make(map[scaffold.AgentType]bool)
-	for _, a := range agents {
-		if seen[a] {
-			t.Errorf("duplicate AgentType value: %q", a)
-		}
-		seen[a] = true
-	}
-}
-
 func TestAgentContextData_ZeroValue(t *testing.T) {
 	var acd scaffold.AgentContextData
 
@@ -289,37 +253,6 @@ func TestAgentContextData_ZeroValue(t *testing.T) {
 	}
 }
 
-func TestLanguage_Constants(t *testing.T) {
-	tests := []struct {
-		name  string
-		value scaffold.Language
-		want  string
-	}{
-		{"go", scaffold.LanguageGo, "go"},
-		{"kotlin", scaffold.LanguageKotlin, "kotlin"},
-		{"typescript", scaffold.LanguageTypeScript, "typescript"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			if string(tt.value) != tt.want {
-				t.Errorf("Language %q = %q, want %q", tt.name, string(tt.value), tt.want)
-			}
-		})
-	}
-}
-
-func TestLanguage_Distinctness(t *testing.T) {
-	if scaffold.LanguageGo == scaffold.LanguageKotlin {
-		t.Error("LanguageGo and LanguageKotlin must be distinct")
-	}
-	if scaffold.LanguageGo == scaffold.LanguageTypeScript {
-		t.Error("LanguageGo and LanguageTypeScript must be distinct")
-	}
-	if scaffold.LanguageKotlin == scaffold.LanguageTypeScript {
-		t.Error("LanguageKotlin and LanguageTypeScript must be distinct")
-	}
-}
-
 func TestInitProjectData_Description(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -334,9 +267,7 @@ func TestInitProjectData_Description(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			data := scaffold.InitProjectData{
 				ProjectName: "myproject",
-				ModulePath:  "github.com/org/myproject",
 				Port:        3000,
-				Language:    scaffold.LanguageGo,
 				Description: tt.description,
 			}
 

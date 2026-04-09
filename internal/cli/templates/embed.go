@@ -4,10 +4,8 @@ package templates
 
 import "embed"
 
-// FS holds all template files embedded at compile time, including language pack
-// subdirectories (e.g. go/) and shared agent templates (agents/).
-// The commands/ subdirectory holds static Markdown skill files for Claude Code
-// slash commands; they are plain .md files, not Go templates.
+// FS holds all template files embedded at compile time, including shared
+// wrap templates (*.tmpl) and agent templates (agents/).
 //
-//go:embed *.tmpl go/*.tmpl agents/*.tmpl kotlin/*.tmpl typescript/*.tmpl commands/shared/*.md commands/go/*.md commands/kotlin/*.md commands/typescript/*.md
+//go:embed *.tmpl agents/*.tmpl
 var FS embed.FS

@@ -9,7 +9,6 @@ import (
 	"testing"
 
 	scaffoldapp "github.com/vibewarden/vibewarden/internal/app/scaffold"
-	domainscaffold "github.com/vibewarden/vibewarden/internal/domain/scaffold"
 )
 
 // fakeAgentRenderer records calls so tests can assert which templates were used.
@@ -56,46 +55,19 @@ func TestAgentContextService_GenerateAgentContext(t *testing.T) {
 	}
 
 	tests := []struct {
-		name          string
-		agentType     domainscaffold.AgentType
-		opts          scaffoldapp.InitOptions
-		wantPaths     []string
-		wantTemplates []string
-		wantErr       bool
+		name      string
+		opts      scaffoldapp.InitOptions
+		wantPaths []string
 	}{
 		{
-			name:          "claude generates .claude/CLAUDE.md",
-			agentType:     domainscaffold.AgentTypeClaude,
-			opts:          baseOpts,
-			wantPaths:     []string{filepath.Join(".claude", "CLAUDE.md")},
-			wantTemplates: []string{"claude.md.tmpl"},
-		},
-		{
-			name:          "generic generates AGENTS-VIBEWARDEN.md and creates AGENTS.md",
-			agentType:     domainscaffold.AgentTypeGeneric,
-			opts:          baseOpts,
-			wantPaths:     []string{"AGENTS-VIBEWARDEN.md", "AGENTS.md"},
-			wantTemplates: []string{"agents.md.tmpl", "agents/agents.md.tmpl"},
-		},
-		{
-			name:      "all generates two agent type file sets",
-			agentType: domainscaffold.AgentTypeAll,
+			name:      "generates AGENTS-VIBEWARDEN.md and AGENTS.md",
 			opts:      baseOpts,
-			wantPaths: []string{
-				filepath.Join(".claude", "CLAUDE.md"),
-				"AGENTS-VIBEWARDEN.md",
-				"AGENTS.md",
-			},
-			wantTemplates: []string{"claude.md.tmpl", "agents.md.tmpl", "agents/agents.md.tmpl"},
+			wantPaths: []string{"AGENTS-VIBEWARDEN.md", "AGENTS.md"},
 		},
 		{
-			name:      "force false does not overwrite existing claude file",
-			agentType: domainscaffold.AgentTypeClaude,
-			opts: scaffoldapp.InitOptions{
-				UpstreamPort: 3000,
-				Force:        false,
-			},
-			wantErr: true,
+			name:      "minimal opts also generates both files",
+			opts:      scaffoldapp.InitOptions{UpstreamPort: 8080},
+			wantPaths: []string{"AGENTS-VIBEWARDEN.md", "AGENTS.md"},
 		},
 	}
 
@@ -104,25 +76,11 @@ func TestAgentContextService_GenerateAgentContext(t *testing.T) {
 			dir := t.TempDir()
 			renderer := newFakeAgentRenderer()
 
-			// Pre-create .claude/CLAUDE.md to trigger the overwrite-false error case.
-			if tt.name == "force false does not overwrite existing claude file" {
-				claudePath := filepath.Join(dir, ".claude", "CLAUDE.md")
-				if err := os.MkdirAll(filepath.Dir(claudePath), 0o755); err != nil {
-					t.Fatal(err)
-				}
-				if err := os.WriteFile(claudePath, []byte("existing"), 0o644); err != nil {
-					t.Fatal(err)
-				}
-			}
-
 			svc := scaffoldapp.NewAgentContextService(renderer)
-			written, err := svc.GenerateAgentContext(context.Background(), dir, tt.agentType, tt.opts)
+			written, err := svc.GenerateAgentContext(context.Background(), dir, tt.opts)
 
-			if (err != nil) != tt.wantErr {
-				t.Fatalf("GenerateAgentContext() error = %v, wantErr %v", err, tt.wantErr)
-			}
-			if tt.wantErr {
-				return
+			if err != nil {
+				t.Fatalf("GenerateAgentContext() unexpected error: %v", err)
 			}
 
 			if len(written) != len(tt.wantPaths) {
@@ -135,17 +93,11 @@ func TestAgentContextService_GenerateAgentContext(t *testing.T) {
 					t.Errorf("expected file %q to exist: %v", absPath, err)
 				}
 			}
-
-			for _, tmplName := range tt.wantTemplates {
-				if _, ok := renderer.calls[tmplName]; !ok {
-					t.Errorf("expected template %q to be rendered, but it was not", tmplName)
-				}
-			}
 		})
 	}
 }
 
-func TestAgentContextService_GenerateAgentContext_GenericAlwaysOverwrites(t *testing.T) {
+func TestAgentContextService_GenerateAgentContext_AlwaysOverwritesAgentsVibewarden(t *testing.T) {
 	dir := t.TempDir()
 
 	// Pre-create AGENTS-VIBEWARDEN.md with old content.
@@ -162,7 +114,7 @@ func TestAgentContextService_GenerateAgentContext_GenericAlwaysOverwrites(t *tes
 		Force:        false, // Force=false must NOT prevent AGENTS-VIBEWARDEN.md overwrite.
 	}
 
-	written, err := svc.GenerateAgentContext(context.Background(), dir, domainscaffold.AgentTypeGeneric, opts)
+	written, err := svc.GenerateAgentContext(context.Background(), dir, opts)
 	if err != nil {
 		t.Fatalf("GenerateAgentContext() unexpected error: %v", err)
 	}
@@ -195,7 +147,7 @@ func TestAgentContextService_GenerateAgentContext_ExistingAGENTSMDGetsReference(
 	svc := scaffoldapp.NewAgentContextService(renderer)
 
 	opts := scaffoldapp.InitOptions{UpstreamPort: 3000}
-	_, err := svc.GenerateAgentContext(context.Background(), dir, domainscaffold.AgentTypeGeneric, opts)
+	_, err := svc.GenerateAgentContext(context.Background(), dir, opts)
 	if err != nil {
 		t.Fatalf("GenerateAgentContext() unexpected error: %v", err)
 	}
@@ -230,7 +182,7 @@ func TestAgentContextService_GenerateAgentContext_ExistingAGENTSMDWithReferenceU
 	svc := scaffoldapp.NewAgentContextService(renderer)
 
 	opts := scaffoldapp.InitOptions{UpstreamPort: 3000}
-	_, err := svc.GenerateAgentContext(context.Background(), dir, domainscaffold.AgentTypeGeneric, opts)
+	_, err := svc.GenerateAgentContext(context.Background(), dir, opts)
 	if err != nil {
 		t.Fatalf("GenerateAgentContext() unexpected error: %v", err)
 	}
@@ -248,33 +200,13 @@ func TestAgentContextService_GenerateAgentContext_ExistingAGENTSMDWithReferenceU
 func TestAgentContextService_GenerateAgentContext_RenderError(t *testing.T) {
 	dir := t.TempDir()
 	renderer := newFakeAgentRenderer()
-	renderer.errOnTemplate = "claude.md.tmpl"
+	renderer.errOnTemplate = "agents/agents-vibewarden.md.tmpl"
 
 	svc := scaffoldapp.NewAgentContextService(renderer)
 
 	opts := scaffoldapp.InitOptions{UpstreamPort: 3000}
-	_, err := svc.GenerateAgentContext(context.Background(), dir, domainscaffold.AgentTypeClaude, opts)
+	_, err := svc.GenerateAgentContext(context.Background(), dir, opts)
 	if err == nil {
 		t.Fatal("expected error but got nil")
-	}
-}
-
-func TestResolveAgentTypes_AllExpands(t *testing.T) {
-	// Verify AgentTypeAll resolves to all individual types by calling
-	// GenerateAgentContext and checking all expected files are created.
-	dir := t.TempDir()
-	renderer := newFakeAgentRenderer()
-	svc := scaffoldapp.NewAgentContextService(renderer)
-
-	opts := scaffoldapp.InitOptions{UpstreamPort: 3000}
-	written, err := svc.GenerateAgentContext(context.Background(), dir, domainscaffold.AgentTypeAll, opts)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	// claude produces 1 file; generic produces 2 (AGENTS-VIBEWARDEN.md + AGENTS.md).
-	const wantCount = 3
-	if len(written) != wantCount {
-		t.Errorf("AgentTypeAll produced %d files, want %d", len(written), wantCount)
 	}
 }

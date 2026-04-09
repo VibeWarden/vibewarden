@@ -85,20 +85,8 @@ type TemplateData struct {
 	ProjectName string
 }
 
-// Language represents a supported programming language for project scaffolding.
-type Language string
-
-const (
-	// LanguageGo is the Go programming language.
-	LanguageGo Language = "go"
-	// LanguageKotlin is the Kotlin programming language.
-	LanguageKotlin Language = "kotlin"
-	// LanguageTypeScript is the TypeScript programming language.
-	LanguageTypeScript Language = "typescript"
-)
-
-// SanitizePackageName converts a project name into a valid JVM/TypeScript package
-// identifier by replacing hyphens and dots with underscores and lowercasing.
+// SanitizePackageName converts a project name into a valid identifier by
+// replacing hyphens and dots with underscores and lowercasing.
 func SanitizePackageName(name string) string {
 	var b []byte
 	for _, c := range []byte(name) {
@@ -118,45 +106,17 @@ func SanitizePackageName(name string) string {
 
 // InitProjectData is the data passed to project scaffold templates when rendering.
 type InitProjectData struct {
-	// ProjectName is the name of the project (directory name, used in go.mod).
+	// ProjectName is the name of the project (directory name).
 	ProjectName string
-
-	// ModulePath is the Go module path (e.g., "github.com/user/myproject").
-	ModulePath string
-
-	// PackageName is the sanitized project name safe for JVM/TypeScript package identifiers.
-	// Hyphens are replaced with underscores, everything is lowercased.
-	PackageName string
-
-	// GroupID is the JVM group identifier (e.g., "com.mycompany").
-	// Defaults to the sanitized project name when not specified.
-	GroupID string
 
 	// Port is the HTTP port the generated app listens on.
 	Port int
 
-	// Language is the target programming language.
-	Language Language
-
 	// Description is an optional one-line description of what the project builds.
-	// When set it is included in PROJECT.md, CLAUDE.md, and agent files so that
+	// When set it is included in PROJECT.md and injected into agent files so that
 	// AI coding assistants have context about the project's purpose from the start.
 	Description string
 }
-
-// AgentType identifies the target AI coding assistant for context generation.
-type AgentType string
-
-const (
-	// AgentTypeClaude targets Claude Code (.claude/CLAUDE.md).
-	AgentTypeClaude AgentType = "claude"
-	// AgentTypeCursor targets Cursor (.cursor/rules).
-	AgentTypeCursor AgentType = "cursor"
-	// AgentTypeGeneric targets generic AGENTS.md (OpenAI Codex, Gemini CLI, etc.).
-	AgentTypeGeneric AgentType = "generic"
-	// AgentTypeAll generates context files for all supported agent types.
-	AgentTypeAll AgentType = "all"
-)
 
 // AgentContextData is the data passed to agent context templates when rendering.
 // It is a superset of TemplateData enriched with agent-specific metadata.
@@ -179,4 +139,9 @@ type AgentContextData struct {
 
 	// AdminEnabled indicates whether the admin API is enabled.
 	AdminEnabled bool
+
+	// Description is an optional one-line description of what the project builds.
+	// When set it is included in AGENTS-VIBEWARDEN.md so that AI coding assistants
+	// have context about the project's purpose.
+	Description string
 }

@@ -32,9 +32,9 @@ func runAddFeature(
 	svc := scaffoldapp.NewAddFeatureService(toggler, renderer)
 
 	addOpts := scaffoldapp.AddFeatureOptions{
-		Feature:        feature,
-		FeatureOptions: opts,
-		AgentType:      domainscaffold.AgentTypeAll,
+		Feature:                feature,
+		FeatureOptions:         opts,
+		RegenerateAgentContext: true,
 	}
 
 	result, err := svc.AddFeature(context.Background(), dir, addOpts)

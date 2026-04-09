@@ -14,16 +14,11 @@ import (
 	templateadapter "github.com/vibewarden/vibewarden/internal/adapters/template"
 	scaffoldapp "github.com/vibewarden/vibewarden/internal/app/scaffold"
 	"github.com/vibewarden/vibewarden/internal/cli/templates"
-	domainscaffold "github.com/vibewarden/vibewarden/internal/domain/scaffold"
 )
-
-// supportedLanguages lists every language the init command accepts.
-// Add new entries here as new language templates are introduced.
-var supportedLanguages = []string{"go", "kotlin", "typescript"}
 
 // IsTTY reports whether fd is connected to a terminal.
 // It calls the os.File.Stat method and checks for ModeCharDevice, which is set
-// on UNIX ttys and on Windows console handles.  The function is a package-level
+// on UNIX ttys and on Windows console handles. The function is a package-level
 // variable so that tests can replace it without build-tag gymnastics.
 var IsTTY = func(fd *os.File) bool {
 	info, err := fd.Stat()
@@ -53,129 +48,72 @@ func promptString(w *os.File, r *bufio.Reader, prompt, defaultVal string) (strin
 	return line, nil
 }
 
-// promptLang prompts the user to choose a language from supportedLanguages.
-// It re-prompts on invalid input.
-func promptLang(w *os.File, r *bufio.Reader) (string, error) {
-	for {
-		fmt.Fprintf(w, "Language (%s): ", strings.Join(supportedLanguages, "/"))
-		line, err := r.ReadString('\n')
-		if err != nil {
-			return "", fmt.Errorf("reading language input: %w", err)
-		}
-		line = strings.TrimSpace(line)
-		for _, l := range supportedLanguages {
-			if strings.EqualFold(line, l) {
-				return l, nil
-			}
-		}
-		fmt.Fprintf(w, "Unknown language %q. Supported: %s\n", line, strings.Join(supportedLanguages, ", "))
-	}
-}
-
 // NewInitCmd creates the `vibew init` subcommand.
 //
-// The command scaffolds a complete new project from language-specific templates.
-// In interactive mode (TTY detected and --lang omitted) the user is prompted for
-// language, project name, and description. In non-interactive mode (pipe/CI) --lang
-// is required.
+// The command scaffolds a new project with VibeWarden pre-configured.
+// In interactive mode (TTY detected) the user is prompted for project name
+// and description. In non-interactive mode a project name is required via
+// positional argument or --name.
 //
 // When a project name is supplied as a positional argument or via --name, a
 // subdirectory with that name is created inside the current working directory.
-// The special name "." scaffolds into the current working directory itself, deriving
-// the project name from the current directory's base name.
-// When neither is given, the current directory name is used and files are written
-// into the current directory.
+// The special name "." scaffolds into the current working directory itself,
+// deriving the project name from the current directory's base name.
+// When neither is given, the current directory name is used.
 //
 // Usage:
 //
-//	vibew init --lang go myproject
-//	vibew init --lang go .              (scaffold in current directory)
-//	vibew init --lang go                (uses current directory name)
-//	vibew init --lang go --port 8080 myproject
-//	vibew init --lang go --module github.com/org/myproject myproject
-//	vibew init --lang go --describe "a task management API" myproject
+//	vibew init myproject
+//	vibew init .                   (scaffold in current directory)
+//	vibew init                     (uses current directory name)
+//	vibew init --port 8080 myproject
+//	vibew init --describe "a task management API" myproject
 //	vibew init --name myproject --describe "a task management API"
-//	vibew init --name . --lang go       (scaffold in current directory)
+//	vibew init --name .            (scaffold in current directory)
 func NewInitCmd() *cobra.Command {
 	var (
-		lang     string
-		module   string
 		port     int
 		force    bool
 		version  string
 		nameFlag string
 		describe string
-		group    string
 	)
 
 	cmd := &cobra.Command{
 		Use:   "init [project-name]",
 		Short: "Create a new project with VibeWarden pre-configured",
-		Long: `Scaffold a complete new project from language-specific templates.
+		Long: `Scaffold a new project with VibeWarden security pre-configured.
 
 The command creates a project directory containing:
-  - Minimal app source code that compiles and runs immediately
   - vibewarden.yaml (TLS self-signed, rate limiting enabled)
   - .vibewarden-version (pins the vibew version for this project)
   - AGENTS-VIBEWARDEN.md with all agent instructions (auto-generated, vibew-owned)
   - AGENTS.md with a reference to AGENTS-VIBEWARDEN.md (user-owned)
-  - CLAUDE.md with full vibew CLI reference
   - PROJECT.md with project description (when --describe is given)
-  - Dockerfile
+  - Dockerfile (generic placeholder with examples for common stacks)
   - .gitignore
 
-In interactive mode (terminal detected, --lang not set) you will be prompted for
-language, project name, and description.  In non-interactive mode (piped/CI) you
-must supply --lang.
+In interactive mode (terminal detected) you will be prompted for project name
+and description. In non-interactive mode (piped/CI) a project name is required.
 
 Use "." as the project name to scaffold into the current working directory.
 The project name is derived from the current directory's base name.
 
 Examples:
-  vibew init --lang go myproject
-  vibew init --lang go myproject --module github.com/org/myproject
-  vibew init --lang go myproject --port 8080
-  vibew init --lang go --describe "a task management API" myproject
-  vibew init --lang go --force myproject
+  vibew init myproject
+  vibew init myproject --port 8080
+  vibew init --describe "a task management API" myproject
+  vibew init --force myproject
   vibew init --name myproject --describe "a task management API"
-  vibew init --lang go .
-  vibew init --name . --lang go`,
+  vibew init .`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			interactive := lang == "" && IsTTY(os.Stdin)
+			interactive := IsTTY(os.Stdin)
 
 			// A single bufio.Reader wraps os.Stdin for the entire interactive
-			// session.  Using multiple readers over the same fd loses buffered
+			// session. Using multiple readers over the same fd loses buffered
 			// bytes; create one here and pass it to every prompt helper.
 			stdinReader := bufio.NewReader(os.Stdin)
-
-			// Resolve language.
-			if lang == "" {
-				if !interactive {
-					return fmt.Errorf(
-						"--lang is required in non-interactive mode\n\nSupported languages:\n  %s\n\nExample:\n  vibew init --lang go myproject",
-						strings.Join(supportedLanguages, ", "),
-					)
-				}
-				// Interactive: prompt for language.
-				chosen, err := promptLang(os.Stderr, stdinReader)
-				if err != nil {
-					return fmt.Errorf("prompting for language: %w", err)
-				}
-				lang = chosen
-			}
-
-			language := domainscaffold.Language(lang)
-			switch language {
-			case domainscaffold.LanguageGo, domainscaffold.LanguageKotlin, domainscaffold.LanguageTypeScript:
-				// supported
-			default:
-				return fmt.Errorf(
-					"unsupported language %q\n\nSupported languages:\n  %s\n\nExample:\n  vibew init --lang go myproject",
-					lang,
-					strings.Join(supportedLanguages, ", "),
-				)
-			}
 
 			// Determine project name: positional arg > --name flag > interactive prompt > cwd name.
 			var projectName string
@@ -233,17 +171,14 @@ Examples:
 			}
 
 			renderer := templateadapter.NewRenderer(templates.FS)
-			svc := scaffoldapp.NewInitProjectService(renderer, templates.FS)
+			svc := scaffoldapp.NewInitProjectService(renderer, nil)
 
 			opts := scaffoldapp.InitProjectOptions{
 				ProjectName: projectName,
-				ModulePath:  module,
 				Port:        port,
-				Language:    language,
 				Force:       force,
 				Version:     version,
 				Description: describe,
-				GroupID:     group,
 			}
 
 			if err := svc.InitProject(context.Background(), parentDir, opts); err != nil {
@@ -258,14 +193,11 @@ Examples:
 		},
 	}
 
-	cmd.Flags().StringVar(&lang, "lang", "", `programming language (required in non-interactive mode; supported: "go", "kotlin", "typescript")`)
-	cmd.Flags().StringVar(&module, "module", "", "Go module path (default: project name)")
-	cmd.Flags().IntVar(&port, "port", 3000, "HTTP port the generated app listens on")
+	cmd.Flags().IntVar(&port, "port", 3000, "HTTP port the app listens on")
 	cmd.Flags().BoolVar(&force, "force", false, "overwrite existing files")
 	cmd.Flags().StringVar(&version, "version", "", "VibeWarden version to pin in .vibewarden-version (default: latest)")
 	cmd.Flags().StringVar(&nameFlag, "name", "", "project name (alternative to positional argument)")
 	cmd.Flags().StringVar(&describe, "describe", "", "one-line description of what the project builds; written to PROJECT.md and injected into agent files")
-	cmd.Flags().StringVar(&group, "group", "", "JVM group identifier for Kotlin projects (e.g., com.mycompany); defaults to sanitized project name")
 
 	return cmd
 }
@@ -284,32 +216,13 @@ func printInitSuccessMessage(cmd *cobra.Command, projectName string, opts scaffo
 	fmt.Fprintln(w, "")
 	fmt.Fprintln(w, "Files created:")
 
-	switch opts.Language {
-	case domainscaffold.LanguageKotlin:
-		fmt.Fprintf(w, "  src/main/kotlin/.../Application.kt  App entry point (Ktor)\n")
-		fmt.Fprintf(w, "  build.gradle.kts                     Gradle build file\n")
-		fmt.Fprintf(w, "  settings.gradle.kts                  Gradle settings\n")
-	case domainscaffold.LanguageTypeScript:
-		fmt.Fprintf(w, "  src/index.ts             App entry point (Express)\n")
-		fmt.Fprintf(w, "  package.json             Node.js package manifest\n")
-		fmt.Fprintf(w, "  tsconfig.json            TypeScript compiler options\n")
-	default: // go
-		fmt.Fprintf(w, "  cmd/%s/main.go         App entry point\n", projectName)
-		modDisplay := opts.ModulePath
-		if modDisplay == "" {
-			modDisplay = projectName
-		}
-		fmt.Fprintf(w, "  go.mod                   Go module (path: %s)\n", modDisplay)
-	}
-
 	fmt.Fprintf(w, "  vibewarden.yaml          Security sidecar config\n")
-	fmt.Fprintf(w, "  CLAUDE.md                Project instructions for AI agents\n")
 	if opts.Description != "" {
 		fmt.Fprintf(w, "  PROJECT.md               Project description\n")
 	}
 	fmt.Fprintf(w, "  AGENTS-VIBEWARDEN.md     Agent instructions (vibew-owned, auto-generated)\n")
 	fmt.Fprintf(w, "  AGENTS.md                Agent instructions entry point (user-owned)\n")
-	fmt.Fprintf(w, "  Dockerfile               Container build file\n")
+	fmt.Fprintf(w, "  Dockerfile               Container build file (generic placeholder)\n")
 	fmt.Fprintf(w, "  .gitignore               Git ignore rules\n")
 	fmt.Fprintln(w, "")
 	fmt.Fprintln(w, "Next steps:")

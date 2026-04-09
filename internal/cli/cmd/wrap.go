@@ -12,14 +12,13 @@ import (
 	templateadapter "github.com/vibewarden/vibewarden/internal/adapters/template"
 	scaffoldapp "github.com/vibewarden/vibewarden/internal/app/scaffold"
 	"github.com/vibewarden/vibewarden/internal/cli/templates"
-	domainscaffold "github.com/vibewarden/vibewarden/internal/domain/scaffold"
 )
 
 // NewWrapCmd creates the `vibew wrap` subcommand.
 //
-// The command scaffolds vibewarden.yaml and the vibew wrapper scripts in the
-// current directory (or the directory supplied as the first positional argument).
-// When --agent is specified, AI agent context files are also generated.
+// The command scaffolds vibewarden.yaml, the vibew wrapper scripts, and AI
+// agent context files (AGENTS-VIBEWARDEN.md and AGENTS.md) in the current
+// directory (or the directory supplied as the first positional argument).
 // Docker Compose and Kratos config are generated at runtime by `vibew dev`.
 func NewWrapCmd() *cobra.Command {
 	var (
@@ -31,7 +30,6 @@ func NewWrapCmd() *cobra.Command {
 		force       bool
 		skipWrapper bool
 		version     string
-		agent       string
 	)
 
 	cmd := &cobra.Command{
@@ -50,8 +48,6 @@ Examples:
   vibew wrap --tls --domain example.com
   vibew wrap --version v0.2.0
   vibew wrap --skip-wrapper
-  vibew wrap --agent claude
-  vibew wrap --agent all
   vibew wrap --force`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -62,11 +58,6 @@ Examples:
 
 			if tls && domain == "" {
 				return fmt.Errorf("--domain is required when --tls is set")
-			}
-
-			agentType, err := parseAgentType(agent)
-			if err != nil {
-				return err
 			}
 
 			renderer := templateadapter.NewRenderer(templates.FS)
@@ -92,15 +83,12 @@ Examples:
 				return err
 			}
 
-			var agentFiles []string
-			if agentType != "" {
-				agentFiles, err = agentSvc.GenerateAgentContext(context.Background(), dir, agentType, opts)
-				if err != nil {
-					if errors.Is(err, os.ErrExist) {
-						return fmt.Errorf("%w\n\nRun with --force to overwrite existing files.", err) //nolint:revive,staticcheck // user-facing CLI hint: intentional newline and trailing period
-					}
-					return fmt.Errorf("generating agent context: %w", err)
+			agentFiles, err := agentSvc.GenerateAgentContext(context.Background(), dir, opts)
+			if err != nil {
+				if errors.Is(err, os.ErrExist) {
+					return fmt.Errorf("%w\n\nRun with --force to overwrite existing files.", err) //nolint:revive,staticcheck // user-facing CLI hint: intentional newline and trailing period
 				}
+				return fmt.Errorf("generating agent context: %w", err)
 			}
 
 			printWrapSuccessMessage(cmd, dir, opts, agentFiles)
@@ -116,27 +104,8 @@ Examples:
 	cmd.Flags().BoolVar(&force, "force", false, "overwrite existing files")
 	cmd.Flags().BoolVar(&skipWrapper, "skip-wrapper", false, "skip vibew wrapper script generation")
 	cmd.Flags().StringVar(&version, "version", "", "VibeWarden version to pin in .vibewarden-version (default: latest)")
-	cmd.Flags().StringVar(&agent, "agent", "all", `generate AI agent context files: "claude", "generic", "all", or "none"`)
 
 	return cmd
-}
-
-// parseAgentType converts the --agent flag string to a domainscaffold.AgentType.
-// Returns an empty AgentType (and no error) when value is "none".
-func parseAgentType(value string) (domainscaffold.AgentType, error) {
-	switch domainscaffold.AgentType(value) {
-	case domainscaffold.AgentTypeClaude,
-		domainscaffold.AgentTypeGeneric,
-		domainscaffold.AgentTypeAll:
-		return domainscaffold.AgentType(value), nil
-	case domainscaffold.AgentType("none"), domainscaffold.AgentType(""):
-		return "", nil
-	default:
-		return "", fmt.Errorf(
-			"unknown --agent value %q: must be one of claude, generic, all, none",
-			value,
-		)
-	}
 }
 
 // printWrapSuccessMessage writes next-steps guidance to cmd's output writer.

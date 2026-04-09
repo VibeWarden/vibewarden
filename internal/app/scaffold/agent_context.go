@@ -17,26 +17,6 @@ import (
 // per_ip.requests_per_second default in the vibewarden.yaml.tmpl template.
 const defaultRateLimitRPS = 10
 
-// agentSpec maps an AgentType to its template name and output path.
-type agentSpec struct {
-	templateName string
-	outputPath   string
-}
-
-// agentSpecs defines the template and output path for each supported agent type.
-// AgentTypeGeneric is handled separately: it generates AGENTS-VIBEWARDEN.md and
-// then calls ensureAgentsMD to create or update AGENTS.md with a reference.
-var agentSpecs = map[domainscaffold.AgentType]agentSpec{
-	domainscaffold.AgentTypeClaude:  {templateName: "claude.md.tmpl", outputPath: filepath.Join(".claude", "CLAUDE.md")},
-	domainscaffold.AgentTypeGeneric: {templateName: "agents.md.tmpl", outputPath: "AGENTS-VIBEWARDEN.md"},
-}
-
-// allAgentTypes is the ordered slice used when AgentTypeAll is requested.
-var allAgentTypes = []domainscaffold.AgentType{
-	domainscaffold.AgentTypeClaude,
-	domainscaffold.AgentTypeGeneric,
-}
-
 // AgentContextService generates AI agent context files for a project.
 type AgentContextService struct {
 	renderer ports.TemplateRenderer
@@ -47,22 +27,16 @@ func NewAgentContextService(renderer ports.TemplateRenderer) *AgentContextServic
 	return &AgentContextService{renderer: renderer}
 }
 
-// GenerateAgentContext generates AI agent context files in dir for the given
-// agent type and init options.
+// GenerateAgentContext generates AGENTS-VIBEWARDEN.md and AGENTS.md in dir.
 //
-// When agentType is AgentTypeAll, context files for all supported agent types
-// are generated. Returns the list of file paths written.
+// AGENTS-VIBEWARDEN.md is always overwritten (it is vibew-owned).
+// AGENTS.md is created from template when absent, or the reference line is
+// appended when it is missing from an existing file.
 //
-// For AgentTypeGeneric: AGENTS-VIBEWARDEN.md is always overwritten (it is
-// vibew-owned). AGENTS.md is then created from template when absent, or the
-// reference line is appended when it is missing from an existing file.
-//
-// Files other than AGENTS-VIBEWARDEN.md that already exist are skipped unless
-// opts.Force is true.
+// Returns the list of file paths written.
 func (s *AgentContextService) GenerateAgentContext(
 	_ context.Context,
 	dir string,
-	agentType domainscaffold.AgentType,
 	opts InitOptions,
 ) ([]string, error) {
 	data := domainscaffold.AgentContextData{
@@ -74,48 +48,20 @@ func (s *AgentContextService) GenerateAgentContext(
 		AdminEnabled:     false,
 	}
 
-	types := resolveAgentTypes(agentType)
-
-	var written []string
-	for _, at := range types {
-		spec, ok := agentSpecs[at]
-		if !ok {
-			return nil, fmt.Errorf("unknown agent type %q", at)
-		}
-
-		outPath := filepath.Join(dir, spec.outputPath)
-
-		if at == domainscaffold.AgentTypeGeneric {
-			// AGENTS-VIBEWARDEN.md is always overwritten (vibew-owned).
-			if err := s.renderer.RenderToFile(spec.templateName, data, outPath, true); err != nil {
-				return nil, fmt.Errorf("generating context for agent %q: %w", at, err)
-			}
-			written = append(written, outPath)
-
-			// Ensure AGENTS.md exists and contains a reference to AGENTS-VIBEWARDEN.md.
-			agentsMDPath := filepath.Join(dir, "AGENTS.md")
-			if err := ensureAgentsMD(s.renderer, agentsMDPath); err != nil {
-				return nil, fmt.Errorf("ensuring AGENTS.md: %w", err)
-			}
-			written = append(written, agentsMDPath)
-		} else {
-			if err := s.renderer.RenderToFile(spec.templateName, data, outPath, opts.Force); err != nil {
-				return nil, fmt.Errorf("generating context for agent %q: %w", at, err)
-			}
-			written = append(written, outPath)
-		}
+	// Render AGENTS-VIBEWARDEN.md from the agents/agents-vibewarden.md.tmpl
+	// template. This file is always overwritten — it is vibew-owned.
+	vibewardenPath := filepath.Join(dir, "AGENTS-VIBEWARDEN.md")
+	if err := s.renderer.RenderToFile("agents/agents-vibewarden.md.tmpl", data, vibewardenPath, true); err != nil {
+		return nil, fmt.Errorf("generating AGENTS-VIBEWARDEN.md: %w", err)
 	}
 
-	return written, nil
-}
-
-// resolveAgentTypes expands AgentTypeAll into the full list; otherwise returns
-// a single-element slice.
-func resolveAgentTypes(agentType domainscaffold.AgentType) []domainscaffold.AgentType {
-	if agentType == domainscaffold.AgentTypeAll {
-		return allAgentTypes
+	// Ensure AGENTS.md exists and contains a reference to AGENTS-VIBEWARDEN.md.
+	agentsMDPath := filepath.Join(dir, "AGENTS.md")
+	if err := ensureAgentsMD(s.renderer, agentsMDPath); err != nil {
+		return nil, fmt.Errorf("ensuring AGENTS.md: %w", err)
 	}
-	return []domainscaffold.AgentType{agentType}
+
+	return []string{vibewardenPath, agentsMDPath}, nil
 }
 
 // ensureAgentsMD ensures AGENTS.md at dest exists and contains a reference to
