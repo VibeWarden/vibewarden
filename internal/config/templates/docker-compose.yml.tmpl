@@ -38,7 +38,7 @@ services:
     restart: unless-stopped
 {{- if .App.Build }}
     build:
-      context: ../../{{ .App.Build }}
+      context: {{ .App.Build }}
 {{- else if .App.Image }}
     image: ${VIBEWARDEN_APP_IMAGE:-{{ .App.Image }}}
 {{- end }}
@@ -67,7 +67,7 @@ services:
     ports:
       - "{{ .Server.Port }}:{{ .Server.Port }}"
     volumes:
-      - ../../vibewarden.yaml:/etc/vibewarden/vibewarden.yaml:ro
+      - ./vibewarden.yaml:/etc/vibewarden/vibewarden.yaml:ro
 {{- if .TLS.Enabled }}
       - vibewarden-data:/root/.local/share/caddy
 {{- end }}

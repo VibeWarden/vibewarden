@@ -26,6 +26,7 @@ func NewDeployCmd() *cobra.Command {
 	var (
 		configPath    string
 		target        string
+		sshKey        string
 		secretsFrom   string
 		rotateSecrets bool
 		unsealKey     string
@@ -80,7 +81,12 @@ Examples:
 				return fmt.Errorf("loading config: %w", err)
 			}
 
-			executor := sshadapter.NewExecutor(t)
+			var executor *sshadapter.Executor
+			if sshKey != "" {
+				executor = sshadapter.NewExecutorWithKey(t, sshKey)
+			} else {
+				executor = sshadapter.NewExecutor(t)
+			}
 			renderer := templateadapter.NewRenderer(configtemplates.FS)
 			generator := generateapp.NewServiceWithCredentials(
 				renderer,
@@ -137,6 +143,7 @@ Examples:
 
 	cmd.Flags().StringVar(&configPath, "config", "", "path to vibewarden.yaml (default: ./vibewarden.yaml)")
 	cmd.Flags().StringVar(&target, "target", "", "remote target in ssh://user@host[:port] format (required)")
+	cmd.Flags().StringVar(&sshKey, "ssh-key", "", "path to the SSH private key file (default: use SSH agent / ~/.ssh/config)")
 	cmd.Flags().StringVar(&secretsFrom, "secrets-from", "", "path to a .env-format file whose KEY=VALUE pairs are seeded into OpenBao")
 	cmd.Flags().BoolVar(&rotateSecrets, "rotate-secrets", false, "re-seed secrets from --secrets-from on subsequent deploys")
 	cmd.Flags().StringVar(&unsealKey, "unseal-key", "", "OpenBao unseal key (required when redeploying a sealed instance); overrides stored key")
@@ -164,7 +171,10 @@ Examples:
 
 // newDeployStatusCmd creates the "vibew deploy status" subcommand.
 func newDeployStatusCmd() *cobra.Command {
-	var target string
+	var (
+		target string
+		sshKey string
+	)
 
 	cmd := &cobra.Command{
 		Use:   "status",
@@ -183,7 +193,12 @@ Examples:
 				return fmt.Errorf("invalid --target: %w", err)
 			}
 
-			executor := sshadapter.NewExecutor(t)
+			var executor *sshadapter.Executor
+			if sshKey != "" {
+				executor = sshadapter.NewExecutorWithKey(t, sshKey)
+			} else {
+				executor = sshadapter.NewExecutor(t)
+			}
 			svc := deployapp.NewService(executor, nil, nil)
 
 			return svc.Status(cmd.Context(), deployapp.StatusOptions{
@@ -193,6 +208,7 @@ Examples:
 	}
 
 	cmd.Flags().StringVar(&target, "target", "", "remote target in ssh://user@host[:port] format (required)")
+	cmd.Flags().StringVar(&sshKey, "ssh-key", "", "path to the SSH private key file (default: use SSH agent / ~/.ssh/config)")
 
 	if err := cmd.MarkFlagRequired("target"); err != nil {
 		fmt.Fprintln(os.Stderr, "warning: flag required registration failed:", err)
@@ -205,6 +221,7 @@ Examples:
 func newDeployLogsCmd() *cobra.Command {
 	var (
 		target string
+		sshKey string
 		lines  int
 	)
 
@@ -226,7 +243,12 @@ Examples:
 				return fmt.Errorf("invalid --target: %w", err)
 			}
 
-			executor := sshadapter.NewExecutor(t)
+			var executor *sshadapter.Executor
+			if sshKey != "" {
+				executor = sshadapter.NewExecutorWithKey(t, sshKey)
+			} else {
+				executor = sshadapter.NewExecutor(t)
+			}
 			svc := deployapp.NewService(executor, nil, nil)
 
 			return svc.Logs(cmd.Context(), deployapp.LogsOptions{
@@ -237,6 +259,7 @@ Examples:
 	}
 
 	cmd.Flags().StringVar(&target, "target", "", "remote target in ssh://user@host[:port] format (required)")
+	cmd.Flags().StringVar(&sshKey, "ssh-key", "", "path to the SSH private key file (default: use SSH agent / ~/.ssh/config)")
 	cmd.Flags().IntVar(&lines, "lines", 50, "number of log lines to fetch (0 = all)")
 
 	if err := cmd.MarkFlagRequired("target"); err != nil {

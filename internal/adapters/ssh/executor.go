@@ -68,11 +68,23 @@ func (t Target) Destination() string {
 // and rsync binaries.
 type Executor struct {
 	target Target
+	// keyPath is the optional path to a private key file. When non-empty it is
+	// passed as -i <keyPath> to ssh and rsync commands. When empty the system
+	// SSH agent and ~/.ssh/config are relied upon.
+	keyPath string
 }
 
 // NewExecutor creates an Executor for the given Target.
 func NewExecutor(target Target) *Executor {
 	return &Executor{target: target}
+}
+
+// NewExecutorWithKey creates an Executor that uses the specified private key
+// file for authentication. keyPath is passed as -i <keyPath> to ssh and rsync.
+// Use NewExecutor when you want to rely on the SSH agent / ~/.ssh/config
+// instead.
+func NewExecutorWithKey(target Target, keyPath string) *Executor {
+	return &Executor{target: target, keyPath: keyPath}
 }
 
 // Run executes cmd on the remote host via ssh and returns the combined
@@ -140,6 +152,9 @@ func (e *Executor) sshArgs(cmd string) []string {
 		"-o", "StrictHostKeyChecking=accept-new",
 		"-o", "BatchMode=yes",
 	}
+	if e.keyPath != "" {
+		args = append(args, "-i", e.keyPath)
+	}
 	if e.target.Port != 0 {
 		args = append(args, "-p", strconv.Itoa(e.target.Port))
 	}
@@ -151,6 +166,9 @@ func (e *Executor) sshArgs(cmd string) []string {
 func (e *Executor) rsyncArgs(localDir, remoteDir string, deleteExtra bool) []string {
 	// Build the ssh command string used as rsync's transport.
 	sshCmd := "ssh -o StrictHostKeyChecking=accept-new -o BatchMode=yes"
+	if e.keyPath != "" {
+		sshCmd += " -i " + e.keyPath
+	}
 	if e.target.Port != 0 {
 		sshCmd += " -p " + strconv.Itoa(e.target.Port)
 	}
@@ -176,6 +194,9 @@ func (e *Executor) rsyncArgs(localDir, remoteDir string, deleteExtra bool) []str
 // a regular file rather than a directory.
 func (e *Executor) rsyncFileArgs(localFile, remotePath string) []string {
 	sshCmd := "ssh -o StrictHostKeyChecking=accept-new -o BatchMode=yes"
+	if e.keyPath != "" {
+		sshCmd += " -i " + e.keyPath
+	}
 	if e.target.Port != 0 {
 		sshCmd += " -p " + strconv.Itoa(e.target.Port)
 	}

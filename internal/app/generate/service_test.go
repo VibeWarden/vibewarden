@@ -594,7 +594,7 @@ func TestGenerate_AppService_BothSet_BuildTakesPrecedence(t *testing.T) {
 	if !bytes.Contains(compose, []byte("build:")) {
 		t.Error("expected 'build:' directive when both build and image are set")
 	}
-	if !bytes.Contains(compose, []byte("context: ../.././src")) {
+	if !bytes.Contains(compose, []byte("context: ./src")) {
 		t.Error("expected 'context: ./src'")
 	}
 	// image: for the app service must not appear when build takes precedence.

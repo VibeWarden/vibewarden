@@ -84,7 +84,10 @@ type RunOptions struct {
 //  2. Generate runtime files
 //  3. Verify Docker + Docker Compose on the remote
 //  4. rsync generated files + vibewarden.yaml to the remote
-//  5. docker compose pull && docker compose up -d
+//     When app.build is set, the app source directory is also transferred so
+//     that Docker can build the image remotely.
+//  5. docker compose up -d --build  (build mode) or
+//     docker compose pull && docker compose up -d  (image mode)
 //  6. Health check
 func (s *Service) Deploy(ctx context.Context, cfg *config.Config, opts RunOptions) error {
 	out := opts.Out
@@ -133,17 +136,42 @@ func (s *Service) Deploy(ctx context.Context, cfg *config.Config, opts RunOption
 		return fmt.Errorf("transferring %s: %w", configFile, err)
 	}
 
-	// Step 4: start Docker Compose on the remote.
-	fmt.Fprintln(out, "Pulling Docker images on remote...")
-	pullCmd := fmt.Sprintf("cd %s && docker compose pull", remoteDir)
-	if _, err := s.executor.Run(ctx, pullCmd); err != nil {
-		return fmt.Errorf("docker compose pull: %w", err)
+	// When app.build is set the image must be built on the remote host.
+	// Transfer the app source (the build context directory) so that
+	// `docker compose up --build` can build the image remotely.
+	// The build context path in vibewarden.yaml is relative to the project
+	// root (the directory containing vibewarden.yaml). We transfer it into
+	// a sub-directory of remoteDir so the compose file can reference it.
+	if cfg.App.Build != "" {
+		projectRoot := filepath.Dir(filepath.Clean(opts.ConfigPath))
+		buildContextLocal := filepath.Join(projectRoot, cfg.App.Build)
+		buildContextRemote := remoteDir + strings.TrimPrefix(strings.TrimSuffix(cfg.App.Build, "/"), "./") + "/"
+		fmt.Fprintf(out, "Transferring app build context (%s) to remote...\n", cfg.App.Build)
+		if err := s.executor.Transfer(ctx, buildContextLocal, buildContextRemote, false); err != nil {
+			return fmt.Errorf("transferring app build context: %w", err)
+		}
 	}
 
-	fmt.Fprintln(out, "Starting services on remote...")
-	upCmd := fmt.Sprintf("cd %s && docker compose up -d", remoteDir)
-	if _, err := s.executor.Run(ctx, upCmd); err != nil {
-		return fmt.Errorf("docker compose up: %w", err)
+	// Step 4: start Docker Compose on the remote.
+	// When app.build is set, build the image remotely instead of pulling.
+	if cfg.App.Build != "" {
+		fmt.Fprintln(out, "Building and starting services on remote...")
+		upCmd := fmt.Sprintf("cd %s && docker compose up -d --build", remoteDir)
+		if _, err := s.executor.Run(ctx, upCmd); err != nil {
+			return fmt.Errorf("docker compose up: %w", err)
+		}
+	} else {
+		fmt.Fprintln(out, "Pulling Docker images on remote...")
+		pullCmd := fmt.Sprintf("cd %s && docker compose pull", remoteDir)
+		if _, err := s.executor.Run(ctx, pullCmd); err != nil {
+			return fmt.Errorf("docker compose pull: %w", err)
+		}
+
+		fmt.Fprintln(out, "Starting services on remote...")
+		upCmd := fmt.Sprintf("cd %s && docker compose up -d", remoteDir)
+		if _, err := s.executor.Run(ctx, upCmd); err != nil {
+			return fmt.Errorf("docker compose up: %w", err)
+		}
 	}
 
 	// Step 5: health check.
