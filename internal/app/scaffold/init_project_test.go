@@ -10,7 +10,6 @@ import (
 	"testing"
 
 	scaffoldapp "github.com/vibewarden/vibewarden/internal/app/scaffold"
-	domainscaffold "github.com/vibewarden/vibewarden/internal/domain/scaffold"
 )
 
 func TestInitProject_CreatesStructure(t *testing.T) {
@@ -20,7 +19,6 @@ func TestInitProject_CreatesStructure(t *testing.T) {
 	parent := t.TempDir()
 	opts := scaffoldapp.InitProjectOptions{
 		ProjectName: "myapp",
-		Language:    domainscaffold.LanguageGo,
 		Port:        3000,
 	}
 
@@ -28,27 +26,14 @@ func TestInitProject_CreatesStructure(t *testing.T) {
 		t.Fatalf("InitProject() unexpected error: %v", err)
 	}
 
-	// Verify top-level files.
-	mustExist(t, parent, "myapp", "go.mod")
-	mustExist(t, parent, "myapp", "Dockerfile")
-	mustExist(t, parent, "myapp", "vibewarden.yaml")
-	mustExist(t, parent, "myapp", ".gitignore")
-	mustExist(t, parent, "myapp", "CLAUDE.md")
-
-	// Verify main.go.
-	mustExist(t, parent, "myapp", "cmd", "myapp", "main.go")
-
 	// Verify agent files.
 	mustExist(t, parent, "myapp", "AGENTS-VIBEWARDEN.md")
 	mustExist(t, parent, "myapp", "AGENTS.md")
 
-	// Verify empty directories with .gitkeep.
-	mustExist(t, parent, "myapp", "internal", "domain", ".gitkeep")
-	mustExist(t, parent, "myapp", "internal", "ports", ".gitkeep")
-	mustExist(t, parent, "myapp", "internal", "adapters", ".gitkeep")
-	mustExist(t, parent, "myapp", "internal", "app", ".gitkeep")
-
-	// Verify wrapper scripts.
+	// Verify core files.
+	mustExist(t, parent, "myapp", "vibewarden.yaml")
+	mustExist(t, parent, "myapp", "Dockerfile")
+	mustExist(t, parent, "myapp", ".gitignore")
 	mustExist(t, parent, "myapp", ".vibewarden-version")
 }
 
@@ -59,7 +44,6 @@ func TestInitProject_DefaultsPort(t *testing.T) {
 	parent := t.TempDir()
 	opts := scaffoldapp.InitProjectOptions{
 		ProjectName: "noport",
-		Language:    domainscaffold.LanguageGo,
 		// Port deliberately zero — should default to 3000.
 	}
 
@@ -70,24 +54,6 @@ func TestInitProject_DefaultsPort(t *testing.T) {
 	mustExist(t, parent, "noport", "vibewarden.yaml")
 }
 
-func TestInitProject_DefaultsModulePath(t *testing.T) {
-	renderer := newFakeRenderer()
-	svc := scaffoldapp.NewInitProjectService(renderer, nil)
-
-	parent := t.TempDir()
-	opts := scaffoldapp.InitProjectOptions{
-		ProjectName: "mymodule",
-		Language:    domainscaffold.LanguageGo,
-		// ModulePath deliberately empty — should default to ProjectName.
-	}
-
-	if err := svc.InitProject(context.Background(), parent, opts); err != nil {
-		t.Fatalf("InitProject() unexpected error: %v", err)
-	}
-
-	mustExist(t, parent, "mymodule", "go.mod")
-}
-
 func TestInitProject_CreatesVersionFile(t *testing.T) {
 	renderer := newFakeRenderer()
 	svc := scaffoldapp.NewInitProjectService(renderer, nil)
@@ -95,7 +61,6 @@ func TestInitProject_CreatesVersionFile(t *testing.T) {
 	parent := t.TempDir()
 	opts := scaffoldapp.InitProjectOptions{
 		ProjectName: "vertest",
-		Language:    domainscaffold.LanguageGo,
 		Port:        3000,
 		Version:     "v0.2.1",
 	}
@@ -123,7 +88,6 @@ func TestInitProject_RejectsNonEmptyDir(t *testing.T) {
 
 	opts := scaffoldapp.InitProjectOptions{
 		ProjectName: "occupied",
-		Language:    domainscaffold.LanguageGo,
 		Port:        3000,
 	}
 
@@ -151,7 +115,6 @@ func TestInitProject_ForceOverwritesExistingDir(t *testing.T) {
 
 	opts := scaffoldapp.InitProjectOptions{
 		ProjectName: "forcetest",
-		Language:    domainscaffold.LanguageGo,
 		Port:        3000,
 		Force:       true,
 	}
@@ -163,23 +126,6 @@ func TestInitProject_ForceOverwritesExistingDir(t *testing.T) {
 	mustExist(t, parent, "forcetest", "vibewarden.yaml")
 }
 
-func TestInitProject_RejectsUnsupportedLanguage(t *testing.T) {
-	renderer := newFakeRenderer()
-	svc := scaffoldapp.NewInitProjectService(renderer, nil)
-
-	parent := t.TempDir()
-	opts := scaffoldapp.InitProjectOptions{
-		ProjectName: "badlang",
-		Language:    domainscaffold.Language("ruby"),
-		Port:        3000,
-	}
-
-	err := svc.InitProject(context.Background(), parent, opts)
-	if err == nil {
-		t.Fatal("expected error for unsupported language, got nil")
-	}
-}
-
 func TestInitProject_RejectsEmptyProjectName(t *testing.T) {
 	renderer := newFakeRenderer()
 	svc := scaffoldapp.NewInitProjectService(renderer, nil)
@@ -187,7 +133,6 @@ func TestInitProject_RejectsEmptyProjectName(t *testing.T) {
 	parent := t.TempDir()
 	opts := scaffoldapp.InitProjectOptions{
 		ProjectName: "",
-		Language:    domainscaffold.LanguageGo,
 		Port:        3000,
 	}
 
@@ -214,7 +159,6 @@ func TestInitProject_RejectsProjectNameWithSlash(t *testing.T) {
 			parent := t.TempDir()
 			opts := scaffoldapp.InitProjectOptions{
 				ProjectName: tt.projectName,
-				Language:    domainscaffold.LanguageGo,
 				Port:        3000,
 			}
 
@@ -223,177 +167,6 @@ func TestInitProject_RejectsProjectNameWithSlash(t *testing.T) {
 			}
 		})
 	}
-}
-
-func TestInitProject_Kotlin_CreatesStructure(t *testing.T) {
-	renderer := newFakeRenderer()
-	svc := scaffoldapp.NewInitProjectService(renderer, nil)
-
-	parent := t.TempDir()
-	opts := scaffoldapp.InitProjectOptions{
-		ProjectName: "myktapp",
-		Language:    domainscaffold.LanguageKotlin,
-		Port:        3000,
-	}
-
-	if err := svc.InitProject(context.Background(), parent, opts); err != nil {
-		t.Fatalf("InitProject() Kotlin unexpected error: %v", err)
-	}
-
-	// Verify top-level files.
-	mustExist(t, parent, "myktapp", "vibewarden.yaml")
-	mustExist(t, parent, "myktapp", "build.gradle.kts")
-	mustExist(t, parent, "myktapp", "settings.gradle.kts")
-	mustExist(t, parent, "myktapp", "Dockerfile")
-	mustExist(t, parent, "myktapp", ".gitignore")
-	mustExist(t, parent, "myktapp", "CLAUDE.md")
-
-	// Verify Application.kt at the Gradle source path.
-	// GroupID defaults to sanitized project name; package path is <groupID>/<packageName>/
-	mustExist(t, parent, "myktapp", "src", "main", "kotlin", "myktapp", "myktapp", "Application.kt")
-
-	// Verify agent files.
-	mustExist(t, parent, "myktapp", "AGENTS-VIBEWARDEN.md")
-	mustExist(t, parent, "myktapp", "AGENTS.md")
-
-	// Verify wrapper scripts.
-	mustExist(t, parent, "myktapp", ".vibewarden-version")
-}
-
-func TestInitProject_Kotlin_DoesNotCreateGoFiles(t *testing.T) {
-	renderer := newFakeRenderer()
-	svc := scaffoldapp.NewInitProjectService(renderer, nil)
-
-	parent := t.TempDir()
-	opts := scaffoldapp.InitProjectOptions{
-		ProjectName: "ktonly",
-		Language:    domainscaffold.LanguageKotlin,
-		Port:        3000,
-	}
-
-	if err := svc.InitProject(context.Background(), parent, opts); err != nil {
-		t.Fatalf("InitProject() Kotlin unexpected error: %v", err)
-	}
-
-	// Go-specific files must NOT be created.
-	goModPath := filepath.Join(parent, "ktonly", "go.mod")
-	if _, err := os.Stat(goModPath); err == nil {
-		t.Error("go.mod must not exist for a Kotlin project")
-	}
-
-	mainGoPath := filepath.Join(parent, "ktonly", "cmd", "ktonly", "main.go")
-	if _, err := os.Stat(mainGoPath); err == nil {
-		t.Error("cmd/ktonly/main.go must not exist for a Kotlin project")
-	}
-}
-
-func TestInitProject_Kotlin_DefaultsPort(t *testing.T) {
-	renderer := newFakeRenderer()
-	svc := scaffoldapp.NewInitProjectService(renderer, nil)
-
-	parent := t.TempDir()
-	opts := scaffoldapp.InitProjectOptions{
-		ProjectName: "ktnoport",
-		Language:    domainscaffold.LanguageKotlin,
-		// Port deliberately zero — should default to 3000.
-	}
-
-	if err := svc.InitProject(context.Background(), parent, opts); err != nil {
-		t.Fatalf("InitProject() Kotlin unexpected error: %v", err)
-	}
-
-	mustExist(t, parent, "ktnoport", "vibewarden.yaml")
-}
-
-func TestInitProject_TypeScript_CreatesStructure(t *testing.T) {
-	renderer := newFakeRenderer()
-	svc := scaffoldapp.NewInitProjectService(renderer, nil)
-
-	parent := t.TempDir()
-	opts := scaffoldapp.InitProjectOptions{
-		ProjectName: "mytsapp",
-		Language:    domainscaffold.LanguageTypeScript,
-		Port:        3000,
-	}
-
-	if err := svc.InitProject(context.Background(), parent, opts); err != nil {
-		t.Fatalf("InitProject() TypeScript unexpected error: %v", err)
-	}
-
-	// Verify top-level files.
-	mustExist(t, parent, "mytsapp", "vibewarden.yaml")
-	mustExist(t, parent, "mytsapp", "package.json")
-	mustExist(t, parent, "mytsapp", "tsconfig.json")
-	mustExist(t, parent, "mytsapp", "Dockerfile")
-	mustExist(t, parent, "mytsapp", ".gitignore")
-	mustExist(t, parent, "mytsapp", "CLAUDE.md")
-
-	// Verify entry point.
-	mustExist(t, parent, "mytsapp", "src", "index.ts")
-
-	// Verify hexagonal src layout with .gitkeep.
-	mustExist(t, parent, "mytsapp", "src", "domain", ".gitkeep")
-	mustExist(t, parent, "mytsapp", "src", "ports", ".gitkeep")
-	mustExist(t, parent, "mytsapp", "src", "adapters", ".gitkeep")
-	mustExist(t, parent, "mytsapp", "src", "app", ".gitkeep")
-
-	// Verify agent files.
-	mustExist(t, parent, "mytsapp", "AGENTS-VIBEWARDEN.md")
-	mustExist(t, parent, "mytsapp", "AGENTS.md")
-
-	// Verify wrapper scripts.
-	mustExist(t, parent, "mytsapp", ".vibewarden-version")
-}
-
-func TestInitProject_TypeScript_DoesNotCreateGoFiles(t *testing.T) {
-	renderer := newFakeRenderer()
-	svc := scaffoldapp.NewInitProjectService(renderer, nil)
-
-	parent := t.TempDir()
-	opts := scaffoldapp.InitProjectOptions{
-		ProjectName: "tsonly",
-		Language:    domainscaffold.LanguageTypeScript,
-		Port:        3000,
-	}
-
-	if err := svc.InitProject(context.Background(), parent, opts); err != nil {
-		t.Fatalf("InitProject() TypeScript unexpected error: %v", err)
-	}
-
-	// Go-specific files must NOT be created.
-	goModPath := filepath.Join(parent, "tsonly", "go.mod")
-	if _, err := os.Stat(goModPath); err == nil {
-		t.Error("go.mod must not exist for a TypeScript project")
-	}
-
-	mainGoPath := filepath.Join(parent, "tsonly", "cmd", "tsonly", "main.go")
-	if _, err := os.Stat(mainGoPath); err == nil {
-		t.Error("cmd/tsonly/main.go must not exist for a TypeScript project")
-	}
-
-	// Kotlin-specific files must NOT be created.
-	buildGradlePath := filepath.Join(parent, "tsonly", "build.gradle.kts")
-	if _, err := os.Stat(buildGradlePath); err == nil {
-		t.Error("build.gradle.kts must not exist for a TypeScript project")
-	}
-}
-
-func TestInitProject_TypeScript_DefaultsPort(t *testing.T) {
-	renderer := newFakeRenderer()
-	svc := scaffoldapp.NewInitProjectService(renderer, nil)
-
-	parent := t.TempDir()
-	opts := scaffoldapp.InitProjectOptions{
-		ProjectName: "tsnoport",
-		Language:    domainscaffold.LanguageTypeScript,
-		// Port deliberately zero — should default to 3000.
-	}
-
-	if err := svc.InitProject(context.Background(), parent, opts); err != nil {
-		t.Fatalf("InitProject() TypeScript unexpected error: %v", err)
-	}
-
-	mustExist(t, parent, "tsnoport", "vibewarden.yaml")
 }
 
 // TestInitProject_WritesProjectMD verifies that PROJECT.md is created when a
@@ -416,7 +189,6 @@ func TestInitProject_WritesProjectMD(t *testing.T) {
 			parent := t.TempDir()
 			opts := scaffoldapp.InitProjectOptions{
 				ProjectName: "myapp",
-				Language:    domainscaffold.LanguageGo,
 				Port:        3000,
 				Description: tt.description,
 			}
@@ -445,7 +217,6 @@ func TestInitProject_DescriptionInData(t *testing.T) {
 	parent := t.TempDir()
 	opts := scaffoldapp.InitProjectOptions{
 		ProjectName: "descapp",
-		Language:    domainscaffold.LanguageGo,
 		Port:        3000,
 		Description: "an e-commerce platform",
 	}
@@ -460,179 +231,6 @@ func TestInitProject_DescriptionInData(t *testing.T) {
 	}
 }
 
-// TestInitProject_WithRealFS_Description verifies that the real templates render
-// the description into PROJECT.md, CLAUDE.md, and architect.md.
-func TestInitProject_WithRealFS_Description(t *testing.T) {
-	r := mustBuildRealRenderer(t)
-	svc := scaffoldapp.NewInitProjectService(r, nil)
-
-	parent := t.TempDir()
-	opts := scaffoldapp.InitProjectOptions{
-		ProjectName: "realwithDesc",
-		Language:    domainscaffold.LanguageGo,
-		Port:        3000,
-		Description: "a payment processing service",
-	}
-
-	if err := svc.InitProject(context.Background(), parent, opts); err != nil {
-		t.Fatalf("InitProject() unexpected error: %v", err)
-	}
-
-	tests := []struct {
-		file        string
-		mustContain []string
-	}{
-		{
-			file:        filepath.Join(parent, "realwithDesc", "PROJECT.md"),
-			mustContain: []string{"a payment processing service", "realwithDesc"},
-		},
-		{
-			file:        filepath.Join(parent, "realwithDesc", "CLAUDE.md"),
-			mustContain: []string{"a payment processing service"},
-		},
-		{
-			file:        filepath.Join(parent, "realwithDesc", "AGENTS-VIBEWARDEN.md"),
-			mustContain: []string{"a payment processing service"},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.file, func(t *testing.T) {
-			raw, err := os.ReadFile(tt.file) //nolint:gosec // test path
-			if err != nil {
-				t.Fatalf("reading %s: %v", tt.file, err)
-			}
-			content := string(raw)
-			for _, want := range tt.mustContain {
-				if !strings.Contains(content, want) {
-					t.Errorf("file %s missing %q\nContent:\n%s", tt.file, want, content)
-				}
-			}
-		})
-	}
-}
-
-// selectiveErrorRenderer wraps fakeRenderer and returns a custom error when
-// a specific template name is passed to RenderToFile or Render.
-// All other calls succeed.
-type selectiveErrorRenderer struct {
-	*fakeRenderer
-	failOnTemplate  string
-	failErr         error
-	failOnRender    string
-	failOnRenderErr error
-}
-
-func newSelectiveErrorRenderer(failOnTemplate string, failErr error) *selectiveErrorRenderer {
-	return &selectiveErrorRenderer{
-		fakeRenderer:   newFakeRenderer(),
-		failOnTemplate: failOnTemplate,
-		failErr:        failErr,
-	}
-}
-
-func newSelectiveRenderErrorRenderer(failOnRender string, failErr error) *selectiveErrorRenderer {
-	return &selectiveErrorRenderer{
-		fakeRenderer:    newFakeRenderer(),
-		failOnRender:    failOnRender,
-		failOnRenderErr: failErr,
-	}
-}
-
-func (r *selectiveErrorRenderer) Render(templateName string, data any) ([]byte, error) {
-	if r.failOnRender != "" && templateName == r.failOnRender {
-		return nil, r.failOnRenderErr
-	}
-	return r.fakeRenderer.Render(templateName, data)
-}
-
-func (r *selectiveErrorRenderer) RenderToFile(templateName string, data any, path string, overwrite bool) error {
-	if templateName == r.failOnTemplate {
-		return r.failErr
-	}
-	return r.fakeRenderer.RenderToFile(templateName, data, path, overwrite)
-}
-
-// TestInitProject_Go_RenderError verifies that errors from renderGoFiles propagate.
-func TestInitProject_Go_RenderError(t *testing.T) {
-	renderer := newSelectiveErrorRenderer("go/vibewarden.yaml.tmpl", errors.New("disk full"))
-	svc := scaffoldapp.NewInitProjectService(renderer, nil)
-
-	parent := t.TempDir()
-	opts := scaffoldapp.InitProjectOptions{
-		ProjectName: "errapp",
-		Language:    domainscaffold.LanguageGo,
-		Port:        3000,
-	}
-
-	err := svc.InitProject(context.Background(), parent, opts)
-	if err == nil {
-		t.Fatal("expected error from renderGoFiles, got nil")
-	}
-}
-
-// TestInitProject_Go_RenderExistError verifies that an os.ErrExist error from
-// renderGoFiles propagates wrapped.
-func TestInitProject_Go_RenderExistError(t *testing.T) {
-	renderer := newSelectiveErrorRenderer("go/vibewarden.yaml.tmpl", fmt.Errorf("file exists: %w", os.ErrExist))
-	svc := scaffoldapp.NewInitProjectService(renderer, nil)
-
-	parent := t.TempDir()
-	opts := scaffoldapp.InitProjectOptions{
-		ProjectName: "existapp",
-		Language:    domainscaffold.LanguageGo,
-		Port:        3000,
-	}
-
-	err := svc.InitProject(context.Background(), parent, opts)
-	if err == nil {
-		t.Fatal("expected error from renderGoFiles with ErrExist, got nil")
-	}
-	if !errors.Is(err, os.ErrExist) {
-		t.Errorf("expected errors.Is(err, os.ErrExist), got: %v", err)
-	}
-}
-
-// TestInitProject_TypeScript_RenderError verifies that errors from renderTypeScriptFiles propagate.
-func TestInitProject_TypeScript_RenderError(t *testing.T) {
-	renderer := newSelectiveErrorRenderer("typescript/vibewarden.yaml.tmpl", errors.New("disk full"))
-	svc := scaffoldapp.NewInitProjectService(renderer, nil)
-
-	parent := t.TempDir()
-	opts := scaffoldapp.InitProjectOptions{
-		ProjectName: "tserrapp",
-		Language:    domainscaffold.LanguageTypeScript,
-		Port:        3000,
-	}
-
-	err := svc.InitProject(context.Background(), parent, opts)
-	if err == nil {
-		t.Fatal("expected error from renderTypeScriptFiles, got nil")
-	}
-}
-
-// TestInitProject_TypeScript_RenderExistError verifies that an os.ErrExist error
-// from renderTypeScriptFiles propagates wrapped.
-func TestInitProject_TypeScript_RenderExistError(t *testing.T) {
-	renderer := newSelectiveErrorRenderer("typescript/vibewarden.yaml.tmpl", fmt.Errorf("file exists: %w", os.ErrExist))
-	svc := scaffoldapp.NewInitProjectService(renderer, nil)
-
-	parent := t.TempDir()
-	opts := scaffoldapp.InitProjectOptions{
-		ProjectName: "tsexistapp",
-		Language:    domainscaffold.LanguageTypeScript,
-		Port:        3000,
-	}
-
-	err := svc.InitProject(context.Background(), parent, opts)
-	if err == nil {
-		t.Fatal("expected error from renderTypeScriptFiles with ErrExist, got nil")
-	}
-	if !errors.Is(err, os.ErrExist) {
-		t.Errorf("expected errors.Is(err, os.ErrExist), got: %v", err)
-	}
-}
-
 // TestInitProject_ProjectMD_RenderError verifies that a render error for
 // PROJECT.md propagates correctly.
 func TestInitProject_ProjectMD_RenderError(t *testing.T) {
@@ -642,7 +240,6 @@ func TestInitProject_ProjectMD_RenderError(t *testing.T) {
 	parent := t.TempDir()
 	opts := scaffoldapp.InitProjectOptions{
 		ProjectName: "projmderr",
-		Language:    domainscaffold.LanguageGo,
 		Port:        3000,
 		Description: "a project", // description triggers renderProjectMD
 	}
@@ -662,7 +259,6 @@ func TestInitProject_ProjectMD_RenderExistError(t *testing.T) {
 	parent := t.TempDir()
 	opts := scaffoldapp.InitProjectOptions{
 		ProjectName: "projmdexist",
-		Language:    domainscaffold.LanguageGo,
 		Port:        3000,
 		Description: "a project", // description triggers renderProjectMD
 	}
@@ -676,193 +272,39 @@ func TestInitProject_ProjectMD_RenderExistError(t *testing.T) {
 	}
 }
 
-// TestInitProject_Go_MainGoRenderError verifies that an error on the main.go
-// template render propagates from renderGoFiles.
-func TestInitProject_Go_MainGoRenderError(t *testing.T) {
-	renderer := newSelectiveErrorRenderer("go/main.go.tmpl", errors.New("disk full"))
+// TestInitProject_VibewaryenYAML_RenderError verifies that render errors for
+// vibewarden.yaml propagate correctly.
+func TestInitProject_VibewaryenYAML_RenderError(t *testing.T) {
+	renderer := newSelectiveErrorRenderer("init-vibewarden.yaml.tmpl", errors.New("disk full"))
 	svc := scaffoldapp.NewInitProjectService(renderer, nil)
 
 	parent := t.TempDir()
 	opts := scaffoldapp.InitProjectOptions{
-		ProjectName: "maingoerrapp",
-		Language:    domainscaffold.LanguageGo,
+		ProjectName: "vwyamlerr",
 		Port:        3000,
 	}
 
 	err := svc.InitProject(context.Background(), parent, opts)
 	if err == nil {
-		t.Fatal("expected error from renderGoFiles main.go, got nil")
+		t.Fatal("expected error from vibewarden.yaml render, got nil")
 	}
 }
 
-// TestInitProject_Go_MainGoExistError verifies that an os.ErrExist on main.go
-// propagates wrapped from renderGoFiles.
-func TestInitProject_Go_MainGoExistError(t *testing.T) {
-	renderer := newSelectiveErrorRenderer("go/main.go.tmpl", fmt.Errorf("file exists: %w", os.ErrExist))
+// TestInitProject_VibewaryenYAML_RenderExistError verifies that os.ErrExist
+// for vibewarden.yaml propagates wrapped.
+func TestInitProject_VibewaryenYAML_RenderExistError(t *testing.T) {
+	renderer := newSelectiveErrorRenderer("init-vibewarden.yaml.tmpl", fmt.Errorf("file exists: %w", os.ErrExist))
 	svc := scaffoldapp.NewInitProjectService(renderer, nil)
 
 	parent := t.TempDir()
 	opts := scaffoldapp.InitProjectOptions{
-		ProjectName: "maingoexist",
-		Language:    domainscaffold.LanguageGo,
+		ProjectName: "vwyamlexist",
 		Port:        3000,
 	}
 
 	err := svc.InitProject(context.Background(), parent, opts)
 	if err == nil {
-		t.Fatal("expected error from renderGoFiles main.go ErrExist, got nil")
-	}
-	if !errors.Is(err, os.ErrExist) {
-		t.Errorf("expected errors.Is(err, os.ErrExist), got: %v", err)
-	}
-}
-
-// TestInitProject_TypeScript_IndexTsRenderError verifies that an error on the
-// index.ts template render propagates from renderTypeScriptFiles.
-func TestInitProject_TypeScript_IndexTsRenderError(t *testing.T) {
-	renderer := newSelectiveErrorRenderer("typescript/index.ts.tmpl", errors.New("disk full"))
-	svc := scaffoldapp.NewInitProjectService(renderer, nil)
-
-	parent := t.TempDir()
-	opts := scaffoldapp.InitProjectOptions{
-		ProjectName: "indextserrapp",
-		Language:    domainscaffold.LanguageTypeScript,
-		Port:        3000,
-	}
-
-	err := svc.InitProject(context.Background(), parent, opts)
-	if err == nil {
-		t.Fatal("expected error from renderTypeScriptFiles index.ts, got nil")
-	}
-}
-
-// TestInitProject_TypeScript_IndexTsExistError verifies that an os.ErrExist on
-// index.ts propagates wrapped from renderTypeScriptFiles.
-func TestInitProject_TypeScript_IndexTsExistError(t *testing.T) {
-	renderer := newSelectiveErrorRenderer("typescript/index.ts.tmpl", fmt.Errorf("file exists: %w", os.ErrExist))
-	svc := scaffoldapp.NewInitProjectService(renderer, nil)
-
-	parent := t.TempDir()
-	opts := scaffoldapp.InitProjectOptions{
-		ProjectName: "indextsexist",
-		Language:    domainscaffold.LanguageTypeScript,
-		Port:        3000,
-	}
-
-	err := svc.InitProject(context.Background(), parent, opts)
-	if err == nil {
-		t.Fatal("expected error from renderTypeScriptFiles index.ts ErrExist, got nil")
-	}
-	if !errors.Is(err, os.ErrExist) {
-		t.Errorf("expected errors.Is(err, os.ErrExist), got: %v", err)
-	}
-}
-
-// TestInitProject_Kotlin_RenderError verifies that errors from renderKotlinFiles propagate.
-func TestInitProject_Kotlin_RenderError(t *testing.T) {
-	renderer := newSelectiveErrorRenderer("kotlin/vibewarden.yaml.tmpl", errors.New("disk full"))
-	svc := scaffoldapp.NewInitProjectService(renderer, nil)
-
-	parent := t.TempDir()
-	opts := scaffoldapp.InitProjectOptions{
-		ProjectName: "kterrapp",
-		Language:    domainscaffold.LanguageKotlin,
-		Port:        3000,
-	}
-
-	err := svc.InitProject(context.Background(), parent, opts)
-	if err == nil {
-		t.Fatal("expected error from renderKotlinFiles, got nil")
-	}
-}
-
-// TestInitProject_Kotlin_RenderExistError verifies that an os.ErrExist error
-// from renderKotlinFiles propagates wrapped.
-func TestInitProject_Kotlin_RenderExistError(t *testing.T) {
-	renderer := newSelectiveErrorRenderer("kotlin/vibewarden.yaml.tmpl", fmt.Errorf("file exists: %w", os.ErrExist))
-	svc := scaffoldapp.NewInitProjectService(renderer, nil)
-
-	parent := t.TempDir()
-	opts := scaffoldapp.InitProjectOptions{
-		ProjectName: "ktexistapp",
-		Language:    domainscaffold.LanguageKotlin,
-		Port:        3000,
-	}
-
-	err := svc.InitProject(context.Background(), parent, opts)
-	if err == nil {
-		t.Fatal("expected error from renderKotlinFiles with ErrExist, got nil")
-	}
-	if !errors.Is(err, os.ErrExist) {
-		t.Errorf("expected errors.Is(err, os.ErrExist), got: %v", err)
-	}
-}
-
-// TestInitProject_CLAUDEmd_SharedRenderError verifies that an error from
-// rendering the shared agents/claude.md.tmpl propagates from renderCombinedCLAUDEmd.
-func TestInitProject_CLAUDEmd_SharedRenderError(t *testing.T) {
-	renderer := newSelectiveRenderErrorRenderer("agents/claude.md.tmpl", errors.New("template missing"))
-	svc := scaffoldapp.NewInitProjectService(renderer, nil)
-
-	parent := t.TempDir()
-	opts := scaffoldapp.InitProjectOptions{
-		ProjectName: "claudeerr",
-		Language:    domainscaffold.LanguageGo,
-		Port:        3000,
-	}
-
-	err := svc.InitProject(context.Background(), parent, opts)
-	if err == nil {
-		t.Fatal("expected error from renderCombinedCLAUDEmd shared base, got nil")
-	}
-}
-
-// TestInitProject_CLAUDEmd_LangConventionsRenderError verifies that an error
-// from rendering the language-specific claude.md template propagates.
-func TestInitProject_CLAUDEmd_LangConventionsRenderError(t *testing.T) {
-	renderer := newSelectiveRenderErrorRenderer("go/claude.md.tmpl", errors.New("template missing"))
-	svc := scaffoldapp.NewInitProjectService(renderer, nil)
-
-	parent := t.TempDir()
-	opts := scaffoldapp.InitProjectOptions{
-		ProjectName: "goconventionserr",
-		Language:    domainscaffold.LanguageGo,
-		Port:        3000,
-	}
-
-	err := svc.InitProject(context.Background(), parent, opts)
-	if err == nil {
-		t.Fatal("expected error from renderCombinedCLAUDEmd lang conventions, got nil")
-	}
-}
-
-// TestInitProject_CLAUDEmd_ExistError verifies that an attempt to write CLAUDE.md
-// when it already exists (overwrite=false) returns os.ErrExist.
-func TestInitProject_CLAUDEmd_ExistError(t *testing.T) {
-	renderer := newFakeRenderer()
-	svc := scaffoldapp.NewInitProjectService(renderer, nil)
-
-	parent := t.TempDir()
-	projectDir := filepath.Join(parent, "claudeexist")
-	if err := os.MkdirAll(projectDir, 0o750); err != nil {
-		t.Fatalf("setup: %v", err)
-	}
-	// Pre-create CLAUDE.md to trigger the ErrExist branch.
-	claudePath := filepath.Join(projectDir, "CLAUDE.md")
-	if err := os.WriteFile(claudePath, []byte("existing"), 0o600); err != nil {
-		t.Fatalf("setup: %v", err)
-	}
-
-	opts := scaffoldapp.InitProjectOptions{
-		ProjectName: "claudeexist",
-		Language:    domainscaffold.LanguageGo,
-		Port:        3000,
-		Force:       false,
-	}
-
-	err := svc.InitProject(context.Background(), parent, opts)
-	if err == nil {
-		t.Fatal("expected error when CLAUDE.md exists without force, got nil")
+		t.Fatal("expected error from vibewarden.yaml ErrExist, got nil")
 	}
 	if !errors.Is(err, os.ErrExist) {
 		t.Errorf("expected errors.Is(err, os.ErrExist), got: %v", err)
@@ -870,8 +312,7 @@ func TestInitProject_CLAUDEmd_ExistError(t *testing.T) {
 }
 
 // TestInitProject_CreatesAgentsVibewardenMD verifies that AGENTS-VIBEWARDEN.md
-// is created and contains content from both the shared base template and the
-// language-specific code conventions template.
+// is created and contains content from the shared base template.
 func TestInitProject_CreatesAgentsVibewardenMD(t *testing.T) {
 	renderer := newTrackingRenderer()
 	svc := scaffoldapp.NewInitProjectService(renderer, nil)
@@ -879,7 +320,6 @@ func TestInitProject_CreatesAgentsVibewardenMD(t *testing.T) {
 	parent := t.TempDir()
 	opts := scaffoldapp.InitProjectOptions{
 		ProjectName: "agentsvw",
-		Language:    domainscaffold.LanguageGo,
 		Port:        3000,
 	}
 
@@ -889,16 +329,12 @@ func TestInitProject_CreatesAgentsVibewardenMD(t *testing.T) {
 
 	mustExist(t, parent, "agentsvw", "AGENTS-VIBEWARDEN.md")
 
-	// Both templates must be rendered via Render (not RenderToFile).
+	// The shared template must be rendered via Render (not RenderToFile).
 	if !containsTemplate(renderer.renderCalls, "agents/agents-vibewarden.md.tmpl") {
 		t.Errorf("expected agents/agents-vibewarden.md.tmpl to be rendered; Render calls: %v", renderer.renderCalls)
 	}
-	// Language-specific conventions are appended from the claude.md template.
-	if !containsTemplate(renderer.renderCalls, "go/claude.md.tmpl") {
-		t.Errorf("expected go/claude.md.tmpl to be rendered; Render calls: %v", renderer.renderCalls)
-	}
 
-	// AGENTS-VIBEWARDEN.md must contain output from both renders.
+	// AGENTS-VIBEWARDEN.md must contain output from the render.
 	data, err := os.ReadFile(filepath.Join(parent, "agentsvw", "AGENTS-VIBEWARDEN.md"))
 	if err != nil {
 		t.Fatalf("reading AGENTS-VIBEWARDEN.md: %v", err)
@@ -906,9 +342,6 @@ func TestInitProject_CreatesAgentsVibewardenMD(t *testing.T) {
 	content := string(data)
 	if !strings.Contains(content, "rendered:agents/agents-vibewarden.md.tmpl") {
 		t.Errorf("AGENTS-VIBEWARDEN.md missing shared base content; got:\n%s", content)
-	}
-	if !strings.Contains(content, "rendered:go/claude.md.tmpl") {
-		t.Errorf("AGENTS-VIBEWARDEN.md missing Go conventions content; got:\n%s", content)
 	}
 }
 
@@ -921,7 +354,6 @@ func TestInitProject_CreatesAgentsMD_WhenMissing(t *testing.T) {
 	parent := t.TempDir()
 	opts := scaffoldapp.InitProjectOptions{
 		ProjectName: "agentsmd",
-		Language:    domainscaffold.LanguageGo,
 		Port:        3000,
 	}
 
@@ -956,7 +388,6 @@ func TestInitProject_AppendsToAgentsMD_WhenMissingRef(t *testing.T) {
 
 	opts := scaffoldapp.InitProjectOptions{
 		ProjectName: "appendtest",
-		Language:    domainscaffold.LanguageGo,
 		Port:        3000,
 		Force:       true,
 	}
@@ -998,7 +429,6 @@ func TestInitProject_PreservesAgentsMD_WhenHasRef(t *testing.T) {
 
 	opts := scaffoldapp.InitProjectOptions{
 		ProjectName: "preservetest",
-		Language:    domainscaffold.LanguageGo,
 		Port:        3000,
 		Force:       true,
 	}
@@ -1018,8 +448,7 @@ func TestInitProject_PreservesAgentsMD_WhenHasRef(t *testing.T) {
 }
 
 // TestInitProject_OverwritesAgentsVibewardenMD verifies that AGENTS-VIBEWARDEN.md
-// is always overwritten because it is vibew-owned. Force is set to true here
-// because other files (CLAUDE.md, etc.) need it to avoid ErrExist errors.
+// is always overwritten because it is vibew-owned.
 func TestInitProject_OverwritesAgentsVibewardenMD(t *testing.T) {
 	renderer := newFakeRenderer()
 	svc := scaffoldapp.NewInitProjectService(renderer, nil)
@@ -1037,9 +466,8 @@ func TestInitProject_OverwritesAgentsVibewardenMD(t *testing.T) {
 
 	opts := scaffoldapp.InitProjectOptions{
 		ProjectName: "overwritevw",
-		Language:    domainscaffold.LanguageGo,
 		Port:        3000,
-		Force:       true, // force needed for CLAUDE.md and other files
+		Force:       true,
 	}
 
 	if err := svc.InitProject(context.Background(), parent, opts); err != nil {
@@ -1055,40 +483,46 @@ func TestInitProject_OverwritesAgentsVibewardenMD(t *testing.T) {
 	}
 }
 
-// TestInitProject_NoClaudeAgentsDir verifies that the .claude/agents/ directory
-// is NOT created for any language.
-func TestInitProject_NoClaudeAgentsDir(t *testing.T) {
-	tests := []struct {
-		name string
-		lang domainscaffold.Language
-		proj string
-	}{
-		{"go", domainscaffold.LanguageGo, "gonodir"},
-		{"kotlin", domainscaffold.LanguageKotlin, "ktnodir"},
-		{"typescript", domainscaffold.LanguageTypeScript, "tsnodir"},
+// TestInitProject_NoClaudeCommandsDir verifies that the .claude/commands/
+// directory is NOT created.
+func TestInitProject_NoClaudeCommandsDir(t *testing.T) {
+	renderer := newFakeRenderer()
+	svc := scaffoldapp.NewInitProjectService(renderer, nil)
+
+	parent := t.TempDir()
+	opts := scaffoldapp.InitProjectOptions{
+		ProjectName: "nocommands",
+		Port:        3000,
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			renderer := newFakeRenderer()
-			svc := scaffoldapp.NewInitProjectService(renderer, nil)
+	if err := svc.InitProject(context.Background(), parent, opts); err != nil {
+		t.Fatalf("InitProject() unexpected error: %v", err)
+	}
 
-			parent := t.TempDir()
-			opts := scaffoldapp.InitProjectOptions{
-				ProjectName: tt.proj,
-				Language:    tt.lang,
-				Port:        3000,
-			}
+	claudeCommandsDir := filepath.Join(parent, "nocommands", ".claude", "commands")
+	if _, err := os.Stat(claudeCommandsDir); err == nil {
+		t.Errorf(".claude/commands/ directory must not be created, but it exists at %s", claudeCommandsDir)
+	}
+}
 
-			if err := svc.InitProject(context.Background(), parent, opts); err != nil {
-				t.Fatalf("InitProject() unexpected error: %v", err)
-			}
+// TestInitProject_NoCLAUDEmd verifies that CLAUDE.md is NOT created.
+func TestInitProject_NoCLAUDEmd(t *testing.T) {
+	renderer := newFakeRenderer()
+	svc := scaffoldapp.NewInitProjectService(renderer, nil)
 
-			claudeAgentsDir := filepath.Join(parent, tt.proj, ".claude", "agents")
-			if _, err := os.Stat(claudeAgentsDir); err == nil {
-				t.Errorf(".claude/agents/ directory must not be created, but it exists at %s", claudeAgentsDir)
-			}
-		})
+	parent := t.TempDir()
+	opts := scaffoldapp.InitProjectOptions{
+		ProjectName: "noclaudemd",
+		Port:        3000,
+	}
+
+	if err := svc.InitProject(context.Background(), parent, opts); err != nil {
+		t.Fatalf("InitProject() unexpected error: %v", err)
+	}
+
+	claudeMDPath := filepath.Join(parent, "noclaudemd", "CLAUDE.md")
+	if _, err := os.Stat(claudeMDPath); err == nil {
+		t.Errorf("CLAUDE.md must not be created by vibew init, but it exists at %s", claudeMDPath)
 	}
 }
 
@@ -1099,4 +533,36 @@ func mustExist(t *testing.T, parts ...string) {
 	if _, err := os.Stat(path); err != nil {
 		t.Errorf("expected file %q to exist: %v", path, err)
 	}
+}
+
+// selectiveErrorRenderer wraps fakeRenderer and returns a custom error when
+// a specific template name is passed to RenderToFile or Render.
+type selectiveErrorRenderer struct {
+	*fakeRenderer
+	failOnTemplate  string
+	failErr         error
+	failOnRender    string
+	failOnRenderErr error
+}
+
+func newSelectiveErrorRenderer(failOnTemplate string, failErr error) *selectiveErrorRenderer {
+	return &selectiveErrorRenderer{
+		fakeRenderer:   newFakeRenderer(),
+		failOnTemplate: failOnTemplate,
+		failErr:        failErr,
+	}
+}
+
+func (r *selectiveErrorRenderer) Render(templateName string, data any) ([]byte, error) {
+	if r.failOnRender != "" && templateName == r.failOnRender {
+		return nil, r.failOnRenderErr
+	}
+	return r.fakeRenderer.Render(templateName, data)
+}
+
+func (r *selectiveErrorRenderer) RenderToFile(templateName string, data any, path string, overwrite bool) error {
+	if templateName == r.failOnTemplate {
+		return r.failErr
+	}
+	return r.fakeRenderer.RenderToFile(templateName, data, path, overwrite)
 }

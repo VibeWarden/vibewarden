@@ -100,9 +100,8 @@ tls:
 		t.Errorf("expected 'refreshed' in output, got: %q", out)
 	}
 
-	// Verify files were actually created.
+	// Verify agent context files were actually created.
 	expectedFiles := []string{
-		filepath.Join(".claude", "CLAUDE.md"),
 		"AGENTS-VIBEWARDEN.md",
 		"AGENTS.md",
 	}
@@ -112,9 +111,15 @@ tls:
 			t.Errorf("expected file %q to be created, but it does not exist", absPath)
 		}
 	}
+
+	// CLAUDE.md must NOT be created.
+	claudePath := filepath.Join(dir, ".claude", "CLAUDE.md")
+	if _, err := os.Stat(claudePath); err == nil {
+		t.Errorf(".claude/CLAUDE.md must not be created by context refresh")
+	}
 }
 
-func TestContextRefresh_ExistingFiles_RefreshedWithoutForce(t *testing.T) {
+func TestContextRefresh_ExistingAgentsVibewarden_RefreshedWithoutForce(t *testing.T) {
 	dir := t.TempDir()
 
 	cfgContent := `
@@ -128,14 +133,10 @@ upstream:
 		t.Fatalf("writing config: %v", err)
 	}
 
-	// Pre-create one of the context files.
-	claudeDir := filepath.Join(dir, ".claude")
-	if err := os.MkdirAll(claudeDir, 0755); err != nil {
-		t.Fatalf("mkdirall: %v", err)
-	}
-	claudeFile := filepath.Join(claudeDir, "CLAUDE.md")
-	if err := os.WriteFile(claudeFile, []byte("old content"), 0600); err != nil {
-		t.Fatalf("writing CLAUDE.md: %v", err)
+	// Pre-create AGENTS-VIBEWARDEN.md.
+	vibewardenFile := filepath.Join(dir, "AGENTS-VIBEWARDEN.md")
+	if err := os.WriteFile(vibewardenFile, []byte("old content"), 0600); err != nil {
+		t.Fatalf("writing AGENTS-VIBEWARDEN.md: %v", err)
 	}
 
 	origDir, _ := os.Getwd()
@@ -154,13 +155,13 @@ upstream:
 		t.Fatalf("Execute() unexpected error: %v\nstderr: %s", err, errBuf.String())
 	}
 
-	// CLAUDE.md existed, so it should be refreshed (new content != "old content").
-	content, err := os.ReadFile(claudeFile)
+	// AGENTS-VIBEWARDEN.md existed, so it should be refreshed (new content != "old content").
+	content, err := os.ReadFile(vibewardenFile)
 	if err != nil {
-		t.Fatalf("reading CLAUDE.md: %v", err)
+		t.Fatalf("reading AGENTS-VIBEWARDEN.md: %v", err)
 	}
 	if string(content) == "old content" {
-		t.Errorf("CLAUDE.md was not refreshed: content still %q", content)
+		t.Errorf("AGENTS-VIBEWARDEN.md was not refreshed: content still %q", content)
 	}
 }
 
