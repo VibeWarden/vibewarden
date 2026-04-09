@@ -22,7 +22,7 @@ and explains what happens under the hood.
 
 | Scenario | Command |
 |----------|---------|
-| Starting a new project | `vibew init --lang go myapp` |
+| Starting a new project | `vibew init myapp` |
 | Adding the sidecar to an existing app | `vibew wrap` |
 | Adding a feature to an existing config | `vibew add <feature>` |
 
