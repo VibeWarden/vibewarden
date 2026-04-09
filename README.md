@@ -27,7 +27,7 @@ all in a single binary that sits next to your app.
 curl -sS https://vibewarden.dev/install.sh | sh
 
 # Create a new project — multi-stage Dockerfile builds everything automatically
-vibew init --lang go myapp
+vibew init myapp
 cd myapp
 vibew dev
 ```
@@ -214,7 +214,7 @@ If you need a general-purpose load balancer or a CDN edge, use the right tool fo
 
 | Scenario | Command |
 |----------|---------|
-| Starting a new project | `vibew init --lang go myapp` |
+| Starting a new project | `vibew init myapp` |
 | Adding the sidecar to an existing app | `vibew wrap` |
 | Adding a feature to an existing config | `vibew add <feature>` |
 
@@ -228,7 +228,7 @@ add VibeWarden. Use `vibew add` to enable individual features after the initial 
 
 | Command | Description |
 |---------|-------------|
-| `vibew init --lang <lang> <name>` | Scaffold a new project with VibeWarden |
+| `vibew init <name>` | Scaffold a new project with VibeWarden |
 | `vibew wrap` | Add VibeWarden sidecar to an existing project |
 | `vibew add auth` | Enable authentication |
 | `vibew add rate-limiting` | Enable rate limiting |

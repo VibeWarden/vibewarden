@@ -27,7 +27,7 @@ func requireConfig(configPath string) error {
 	}
 
 	if _, err := os.Stat(path); os.IsNotExist(err) {
-		return fmt.Errorf("vibewarden.yaml not found\n\nRun one of:\n  vibew init --name myapp --lang go    # new project\n  vibew wrap --upstream 3000           # existing project\n\nThese commands generate the required config, Dockerfile, and agent context files")
+		return fmt.Errorf("vibewarden.yaml not found\n\nRun one of:\n  vibew init myapp                     # new project\n  vibew wrap --upstream 3000           # existing project\n\nThese commands generate the required config, Dockerfile, and agent context files")
 	}
 
 	return nil
@@ -46,7 +46,7 @@ func requireConfig(configPath string) error {
 func RequireScaffolding(dir string) error {
 	path := filepath.Join(dir, scaffoldingMarker)
 	if _, err := os.Stat(path); os.IsNotExist(err) {
-		return fmt.Errorf("vibewarden not initialized in this directory\n\nRun one of:\n  vibew init --name myapp --lang go    # new project\n  vibew wrap --upstream 3000           # existing project\n\nThese commands generate the required config, Dockerfile, and agent context files")
+		return fmt.Errorf("vibewarden not initialized in this directory\n\nRun one of:\n  vibew init myapp                     # new project\n  vibew wrap --upstream 3000           # existing project\n\nThese commands generate the required config, Dockerfile, and agent context files")
 	}
 	return nil
 }
