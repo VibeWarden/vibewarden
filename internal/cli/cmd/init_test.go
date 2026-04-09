@@ -591,6 +591,225 @@ func TestInitCmd_TypeScriptPrintsSuccessMessage(t *testing.T) {
 	}
 }
 
+// TestInitCmd_DotScaffoldsInCurrentDir verifies that "." as project name scaffolds
+// files into the current working directory using the directory's base name.
+func TestInitCmd_DotScaffoldsInCurrentDir(t *testing.T) {
+	tests := []struct {
+		name    string
+		args    []string // arguments after "init --lang go"
+		dirName string   // name of the temp subdirectory to cd into
+	}{
+		{
+			name:    "positional dot",
+			args:    []string{"init", "--lang", "go", "."},
+			dirName: "myapp",
+		},
+		{
+			name:    "flag dot",
+			args:    []string{"init", "--lang", "go", "--name", "."},
+			dirName: "flagdot",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Create a named subdirectory so we have a meaningful base name.
+			parent := t.TempDir()
+			projectDir := filepath.Join(parent, tt.dirName)
+			if err := os.MkdirAll(projectDir, 0o750); err != nil {
+				t.Fatalf("mkdir: %v", err)
+			}
+
+			origDir, err := os.Getwd()
+			if err != nil {
+				t.Fatalf("getwd: %v", err)
+			}
+			if err := os.Chdir(projectDir); err != nil {
+				t.Fatalf("chdir: %v", err)
+			}
+			t.Cleanup(func() { _ = os.Chdir(origDir) })
+
+			root := cmd.NewRootCmd("test")
+			var out bytes.Buffer
+			root.SetOut(&out)
+			root.SetArgs(tt.args)
+
+			if err := root.Execute(); err != nil {
+				t.Fatalf("init command failed: %v", err)
+			}
+
+			// Files must be written directly into the project dir, not a subdir.
+			expectedFiles := []string{
+				"vibewarden.yaml",
+				"go.mod",
+				"Dockerfile",
+				".gitignore",
+				"CLAUDE.md",
+				filepath.Join("cmd", tt.dirName, "main.go"),
+				"AGENTS-VIBEWARDEN.md",
+				"AGENTS.md",
+				".vibewarden-version",
+				filepath.Join("internal", "domain", ".gitkeep"),
+				filepath.Join("internal", "ports", ".gitkeep"),
+				filepath.Join("internal", "adapters", ".gitkeep"),
+				filepath.Join("internal", "app", ".gitkeep"),
+			}
+			for _, rel := range expectedFiles {
+				full := filepath.Join(projectDir, rel)
+				if _, err := os.Stat(full); err != nil {
+					t.Errorf("expected file %q to exist in current dir: %v", rel, err)
+				}
+			}
+
+			// No subdirectory named after the dir should have been created.
+			unwanted := filepath.Join(parent, tt.dirName, tt.dirName)
+			if _, err := os.Stat(unwanted); err == nil {
+				t.Errorf("unexpected subdirectory %q was created; files should be in cwd", unwanted)
+			}
+		})
+	}
+}
+
+// TestInitCmd_DotUsesBaseName verifies that when "." is supplied the project name
+// in the success message is the current directory's base name, not ".".
+func TestInitCmd_DotUsesBaseName(t *testing.T) {
+	parent := t.TempDir()
+	projectDir := filepath.Join(parent, "basenamedir")
+	if err := os.MkdirAll(projectDir, 0o750); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+
+	origDir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(projectDir); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(origDir) })
+
+	root := cmd.NewRootCmd("test")
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetArgs([]string{"init", "--lang", "go", "."})
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("init command failed: %v", err)
+	}
+
+	output := out.String()
+	if !strings.Contains(output, "basenamedir") {
+		t.Errorf("success message should contain directory base name %q, got:\n%s", "basenamedir", output)
+	}
+	// The success message must NOT show "cd basenamedir" because the user is already there.
+	if strings.Contains(output, "cd basenamedir") {
+		t.Errorf("success message must not show 'cd basenamedir' when scaffolding in current dir, got:\n%s", output)
+	}
+}
+
+// TestInitCmd_DotErrorsOnNonEmptyDirWithoutForce verifies that scaffolding with "."
+// into a non-empty directory fails unless --force is passed.
+func TestInitCmd_DotErrorsOnNonEmptyDirWithoutForce(t *testing.T) {
+	parent := t.TempDir()
+	projectDir := filepath.Join(parent, "occupied")
+	if err := os.MkdirAll(projectDir, 0o750); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	// Pre-populate with an existing file.
+	if err := os.WriteFile(filepath.Join(projectDir, "existing.txt"), []byte("data"), 0o600); err != nil {
+		t.Fatalf("writefile: %v", err)
+	}
+
+	origDir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(projectDir); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(origDir) })
+
+	root := cmd.NewRootCmd("test")
+	var errOut bytes.Buffer
+	root.SetErr(&errOut)
+	root.SetArgs([]string{"init", "--lang", "go", "."})
+
+	if err := root.Execute(); err == nil {
+		t.Fatal("expected error when scaffolding with '.' into non-empty directory, got nil")
+	}
+}
+
+// TestInitCmd_DotForceOverwritesCurrentDir verifies that --force allows scaffolding
+// into an existing non-empty current directory when "." is used.
+func TestInitCmd_DotForceOverwritesCurrentDir(t *testing.T) {
+	parent := t.TempDir()
+	projectDir := filepath.Join(parent, "forceapp")
+	if err := os.MkdirAll(projectDir, 0o750); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(projectDir, "old.txt"), []byte("old"), 0o600); err != nil {
+		t.Fatalf("writefile: %v", err)
+	}
+
+	origDir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(projectDir); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(origDir) })
+
+	root := cmd.NewRootCmd("test")
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetArgs([]string{"init", "--lang", "go", "--force", "."})
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("init --force . failed: %v", err)
+	}
+
+	if _, err := os.Stat(filepath.Join(projectDir, "vibewarden.yaml")); err != nil {
+		t.Errorf("expected vibewarden.yaml to exist after --force .: %v", err)
+	}
+}
+
+// TestInitCmd_DotLangGoWorks verifies vibew init --lang go . works end-to-end.
+func TestInitCmd_DotLangGoWorks(t *testing.T) {
+	parent := t.TempDir()
+	projectDir := filepath.Join(parent, "goproject")
+	if err := os.MkdirAll(projectDir, 0o750); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+
+	origDir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(projectDir); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(origDir) })
+
+	root := cmd.NewRootCmd("test")
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetArgs([]string{"init", "--lang", "go", "."})
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("init --lang go . failed: %v", err)
+	}
+
+	goModPath := filepath.Join(projectDir, "go.mod")
+	data, err := os.ReadFile(goModPath) //nolint:gosec // test path
+	if err != nil {
+		t.Fatalf("reading go.mod: %v", err)
+	}
+	if !strings.Contains(string(data), "goproject") {
+		t.Errorf("go.mod should contain derived project name %q:\n%s", "goproject", string(data))
+	}
+}
+
 // TestInitCmd_PrintsSuccessMessage verifies a success message is printed.
 func TestInitCmd_PrintsSuccessMessage(t *testing.T) {
 	dir := t.TempDir()

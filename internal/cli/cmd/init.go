@@ -81,17 +81,21 @@ func promptLang(w *os.File, r *bufio.Reader) (string, error) {
 //
 // When a project name is supplied as a positional argument or via --name, a
 // subdirectory with that name is created inside the current working directory.
+// The special name "." scaffolds into the current working directory itself, deriving
+// the project name from the current directory's base name.
 // When neither is given, the current directory name is used and files are written
 // into the current directory.
 //
 // Usage:
 //
 //	vibew init --lang go myproject
+//	vibew init --lang go .              (scaffold in current directory)
 //	vibew init --lang go                (uses current directory name)
 //	vibew init --lang go --port 8080 myproject
 //	vibew init --lang go --module github.com/org/myproject myproject
 //	vibew init --lang go --describe "a task management API" myproject
 //	vibew init --name myproject --describe "a task management API"
+//	vibew init --name . --lang go       (scaffold in current directory)
 func NewInitCmd() *cobra.Command {
 	var (
 		lang     string
@@ -124,13 +128,18 @@ In interactive mode (terminal detected, --lang not set) you will be prompted for
 language, project name, and description.  In non-interactive mode (piped/CI) you
 must supply --lang.
 
+Use "." as the project name to scaffold into the current working directory.
+The project name is derived from the current directory's base name.
+
 Examples:
   vibew init --lang go myproject
   vibew init --lang go myproject --module github.com/org/myproject
   vibew init --lang go myproject --port 8080
   vibew init --lang go --describe "a task management API" myproject
   vibew init --lang go --force myproject
-  vibew init --name myproject --describe "a task management API"`,
+  vibew init --name myproject --describe "a task management API"
+  vibew init --lang go .
+  vibew init --name . --lang go`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			interactive := lang == "" && IsTTY(os.Stdin)
@@ -171,6 +180,10 @@ Examples:
 			// Determine project name: positional arg > --name flag > interactive prompt > cwd name.
 			var projectName string
 			parentDir := "."
+			// inCurrentDir tracks whether we are scaffolding into the existing cwd
+			// rather than creating a new subdirectory. Used to suppress the "cd"
+			// step in the success message.
+			inCurrentDir := false
 
 			if len(args) > 0 {
 				projectName = args[0]
@@ -195,6 +208,19 @@ Examples:
 				}
 				projectName = filepath.Base(cwd)
 				parentDir = filepath.Dir(cwd)
+			}
+
+			// When the user passes "." as the project name (via positional arg or
+			// --name), scaffold into the current working directory and derive the
+			// project name from the directory's base name.
+			if projectName == "." {
+				cwd, err := os.Getwd()
+				if err != nil {
+					return fmt.Errorf("getting current directory: %w", err)
+				}
+				projectName = filepath.Base(cwd)
+				parentDir = filepath.Dir(cwd)
+				inCurrentDir = true
 			}
 
 			// Resolve description: --describe flag > interactive prompt > empty.
@@ -227,7 +253,7 @@ Examples:
 				return err
 			}
 
-			printInitSuccessMessage(cmd, projectName, opts)
+			printInitSuccessMessage(cmd, projectName, opts, inCurrentDir)
 			return nil
 		},
 	}
@@ -245,7 +271,9 @@ Examples:
 }
 
 // printInitSuccessMessage writes next-steps guidance to cmd's output writer.
-func printInitSuccessMessage(cmd *cobra.Command, projectName string, opts scaffoldapp.InitProjectOptions) {
+// inCurrentDir indicates that files were scaffolded into the working directory
+// rather than a new subdirectory; when true the "cd <project>" step is omitted.
+func printInitSuccessMessage(cmd *cobra.Command, projectName string, opts scaffoldapp.InitProjectOptions, inCurrentDir bool) {
 	w := cmd.OutOrStdout()
 
 	fmt.Fprintln(w, "")
@@ -285,7 +313,9 @@ func printInitSuccessMessage(cmd *cobra.Command, projectName string, opts scaffo
 	fmt.Fprintf(w, "  .gitignore               Git ignore rules\n")
 	fmt.Fprintln(w, "")
 	fmt.Fprintln(w, "Next steps:")
-	fmt.Fprintf(w, "  cd %s\n", projectName)
+	if !inCurrentDir {
+		fmt.Fprintf(w, "  cd %s\n", projectName)
+	}
 	fmt.Fprintln(w, "  vibew dev                Start dev environment (app + sidecar)")
 	fmt.Fprintln(w, "  vibew status             Check component health")
 	fmt.Fprintln(w, "  vibew doctor             Diagnose common issues")
