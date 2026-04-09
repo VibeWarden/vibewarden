@@ -2334,3 +2334,147 @@ func extractRoutes(t *testing.T, cfg map[string]any) []map[string]any {
 	}
 	return rawRoutes
 }
+
+// TestBuildTLSPolicy_LetsEncryptSNI verifies that buildTLSPolicy returns a
+// connection policy with match.sni set to the domain for the letsencrypt
+// provider. Without this Caddy does not trigger proactive ACME cert issuance.
+func TestBuildTLSPolicy_LetsEncryptSNI(t *testing.T) {
+	tests := []struct {
+		name       string
+		cfg        ports.TLSConfig
+		wantSNI    []string
+		wantNilSNI bool
+	}{
+		{
+			name: "letsencrypt with domain sets sni",
+			cfg: ports.TLSConfig{
+				Provider: ports.TLSProviderLetsEncrypt,
+				Domain:   "example.com",
+			},
+			wantSNI: []string{"example.com"},
+		},
+		{
+			name: "letsencrypt without domain falls back to empty policy",
+			cfg: ports.TLSConfig{
+				Provider: ports.TLSProviderLetsEncrypt,
+				Domain:   "",
+			},
+			wantNilSNI: true,
+		},
+		{
+			name: "self-signed uses default_sni, not match.sni",
+			cfg: ports.TLSConfig{
+				Provider: ports.TLSProviderSelfSigned,
+				Domain:   "myapp.local",
+			},
+			wantNilSNI: true,
+		},
+		{
+			name: "external uses certificate_selection, not match.sni",
+			cfg: ports.TLSConfig{
+				Provider: ports.TLSProviderExternal,
+				CertPath: "/certs/cert.pem",
+				KeyPath:  "/certs/key.pem",
+			},
+			wantNilSNI: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			policies := buildTLSPolicy(tt.cfg)
+			if len(policies) == 0 {
+				t.Fatal("buildTLSPolicy returned empty slice")
+			}
+			policy := policies[0]
+
+			if tt.wantNilSNI {
+				match, hasMatch := policy["match"]
+				if hasMatch {
+					t.Errorf("expected no match key, got: %v", match)
+				}
+				return
+			}
+
+			matchRaw, ok := policy["match"]
+			if !ok {
+				t.Fatal("expected policy to have a 'match' key, but it was absent")
+			}
+			matchMap, ok := matchRaw.(map[string]any)
+			if !ok {
+				t.Fatalf("match is not map[string]any: %T", matchRaw)
+			}
+			sniRaw, ok := matchMap["sni"]
+			if !ok {
+				t.Fatal("expected match to have 'sni' key, but it was absent")
+			}
+			sni, ok := sniRaw.([]string)
+			if !ok {
+				t.Fatalf("sni is not []string: %T", sniRaw)
+			}
+			if len(sni) != len(tt.wantSNI) {
+				t.Fatalf("sni length = %d, want %d", len(sni), len(tt.wantSNI))
+			}
+			for i, v := range tt.wantSNI {
+				if sni[i] != v {
+					t.Errorf("sni[%d] = %q, want %q", i, sni[i], v)
+				}
+			}
+		})
+	}
+}
+
+// TestBuildCaddyConfig_LetsEncryptSNIPolicy verifies that the full Caddy config
+// produced for the letsencrypt provider includes tls_connection_policies with a
+// match.sni entry for the configured domain.
+func TestBuildCaddyConfig_LetsEncryptSNIPolicy(t *testing.T) {
+	cfg := &ports.ProxyConfig{
+		ListenAddr:   "0.0.0.0:443",
+		UpstreamAddr: "127.0.0.1:3000",
+		TLS: ports.TLSConfig{
+			Enabled:  true,
+			Provider: ports.TLSProviderLetsEncrypt,
+			Domain:   "app.example.com",
+		},
+	}
+
+	result, err := BuildCaddyConfig(cfg)
+	if err != nil {
+		t.Fatalf("BuildCaddyConfig() unexpected error: %v", err)
+	}
+
+	server := extractServer(t, result)
+
+	policiesRaw, ok := server["tls_connection_policies"]
+	if !ok {
+		t.Fatal("tls_connection_policies not found in server config")
+	}
+	policies, ok := policiesRaw.([]map[string]any)
+	if !ok {
+		t.Fatalf("tls_connection_policies is not []map[string]any: %T", policiesRaw)
+	}
+	if len(policies) == 0 {
+		t.Fatal("tls_connection_policies is empty")
+	}
+
+	policy := policies[0]
+	matchRaw, ok := policy["match"]
+	if !ok {
+		t.Fatal("tls_connection_policies[0] has no 'match' key — SNI fix not applied")
+	}
+	matchMap, ok := matchRaw.(map[string]any)
+	if !ok {
+		t.Fatalf("match is not map[string]any: %T", matchRaw)
+	}
+	sniRaw, ok := matchMap["sni"]
+	if !ok {
+		t.Fatal("match has no 'sni' key")
+	}
+	sni, ok := sniRaw.([]string)
+	if !ok {
+		t.Fatalf("sni is not []string: %T", sniRaw)
+	}
+	if len(sni) != 1 || sni[0] != "app.example.com" {
+		t.Errorf("sni = %v, want [app.example.com]", sni)
+	}
+}
