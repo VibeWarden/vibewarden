@@ -162,7 +162,7 @@ func TestBuildCaddyConfig_AutomaticHTTPS(t *testing.T) {
 		}
 	})
 
-	t.Run("TLS enabled — redirects disabled but cert management active", func(t *testing.T) {
+	t.Run("TLS self-signed — redirects disabled but cert management active", func(t *testing.T) {
 		cfg := &ports.ProxyConfig{
 			ListenAddr:   "127.0.0.1:8443",
 			UpstreamAddr: "127.0.0.1:3000",
@@ -184,7 +184,33 @@ func TestBuildCaddyConfig_AutomaticHTTPS(t *testing.T) {
 			t.Error("automatic_https.disable must NOT be true when TLS is enabled")
 		}
 		if redirectsDisabled, _ := autoHTTPS["disable_redirects"].(bool); !redirectsDisabled {
-			t.Error("automatic_https.disable_redirects must be true")
+			t.Error("automatic_https.disable_redirects must be true for self-signed provider")
+		}
+	})
+
+	t.Run("TLS letsencrypt — automatic_https not overridden (Caddy owns port 80)", func(t *testing.T) {
+		// For the letsencrypt provider, Caddy's built-in automatic HTTPS handles
+		// both ACME HTTP-01 challenges and HTTP→HTTPS redirects on port 80. We
+		// must NOT set disable_redirects, which would prevent redirects from
+		// working after ACME cert issuance.
+		cfg := &ports.ProxyConfig{
+			ListenAddr:   "0.0.0.0:443",
+			UpstreamAddr: "127.0.0.1:3000",
+			TLS: ports.TLSConfig{
+				Enabled:  true,
+				Provider: ports.TLSProviderLetsEncrypt,
+				Domain:   "example.com",
+			},
+		}
+		result, err := BuildCaddyConfig(cfg)
+		if err != nil {
+			t.Fatalf("BuildCaddyConfig() unexpected error: %v", err)
+		}
+		server := extractServer(t, result)
+		// automatic_https must be absent — we do not set it for letsencrypt so
+		// Caddy's default automatic HTTPS behaviour (ACME + redirects) is active.
+		if autoHTTPS, ok := server["automatic_https"]; ok {
+			t.Errorf("automatic_https must not be set for letsencrypt provider, got: %v", autoHTTPS)
 		}
 	})
 }
@@ -213,7 +239,7 @@ func TestBuildCaddyConfig_TLSProviders(t *testing.T) {
 			},
 			wantTLSApp:      true,
 			wantACMEModule:  true,
-			wantRedirectSvr: true,
+			wantRedirectSvr: false, // Caddy handles port 80 natively for ACME + redirects
 		},
 		{
 			name: "letsencrypt with storage path",
@@ -229,7 +255,7 @@ func TestBuildCaddyConfig_TLSProviders(t *testing.T) {
 			},
 			wantTLSApp:       true,
 			wantACMEModule:   true,
-			wantRedirectSvr:  true,
+			wantRedirectSvr:  false, // Caddy handles port 80 natively for ACME + redirects
 			wantStorageBlock: true,
 		},
 		{

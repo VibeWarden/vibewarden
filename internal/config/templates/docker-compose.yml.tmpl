@@ -52,7 +52,7 @@ services:
 {{- end }}
 {{- if ne .App.Healthcheck "none" }}
     healthcheck:
-      test: ["CMD-SHELL", "{{ if .App.Healthcheck }}{{ .App.Healthcheck }}{{ else }}wget -q --spider http://localhost:{{ .Upstream.Port }}/health || exit 1{{ end }}"]
+      test: ["CMD-SHELL", "{{ if .App.Healthcheck }}{{ .App.Healthcheck }}{{ else }}wget -q --spider http://127.0.0.1:{{ .Upstream.Port }}/health || exit 1{{ end }}"]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -66,6 +66,9 @@ services:
     command: ["serve", "--config", "/etc/vibewarden/vibewarden.yaml"]
     ports:
       - "{{ .Server.Port }}:{{ .Server.Port }}"
+{{- if eq .TLS.Provider "letsencrypt" }}
+      - "80:80"
+{{- end }}
     volumes:
       - ./vibewarden.yaml:/etc/vibewarden/vibewarden.yaml:ro
 {{- if .TLS.Enabled }}

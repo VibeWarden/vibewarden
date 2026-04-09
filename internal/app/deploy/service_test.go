@@ -214,14 +214,17 @@ func TestService_Deploy_HealthCheckTimeout(t *testing.T) {
 func TestService_Status(t *testing.T) {
 	executor := &fakeExecutor{
 		runResponses: map[string]runResponse{
-			"docker compose --project-directory ~/vibewarden/ ps": {output: "NAME   SERVICE   STATUS\nvw    vibewarden   running"},
+			"docker compose --project-directory ~/vibewarden/myproject/ ps": {output: "NAME   SERVICE   STATUS\nvw    vibewarden   running"},
 		},
 	}
 
 	svc := deployapp.NewService(executor, nil, nil)
 
 	var buf bytes.Buffer
-	err := svc.Status(context.Background(), deployapp.StatusOptions{Out: &buf})
+	err := svc.Status(context.Background(), deployapp.StatusOptions{
+		ProjectName: "myproject",
+		Out:         &buf,
+	})
 	if err != nil {
 		t.Fatalf("Status() unexpected error: %v", err)
 	}
@@ -231,10 +234,32 @@ func TestService_Status(t *testing.T) {
 	}
 }
 
+func TestService_Status_DerivedFromConfigPath(t *testing.T) {
+	executor := &fakeExecutor{
+		runResponses: map[string]runResponse{
+			"docker compose --project-directory ~/vibewarden/myapp/ ps": {output: "NAME   SERVICE   STATUS\nvw    vibewarden   running"},
+		},
+	}
+
+	svc := deployapp.NewService(executor, nil, nil)
+
+	var buf bytes.Buffer
+	err := svc.Status(context.Background(), deployapp.StatusOptions{
+		ConfigPath: "/home/user/myapp/vibewarden.yaml",
+		Out:        &buf,
+	})
+	if err != nil {
+		t.Fatalf("Status() unexpected error: %v", err)
+	}
+	if !strings.Contains(buf.String(), "running") {
+		t.Errorf("expected status output to contain 'running', got:\n%s", buf.String())
+	}
+}
+
 func TestService_Status_Error(t *testing.T) {
 	executor := &fakeExecutor{
 		runResponses: map[string]runResponse{
-			"docker compose --project-directory ~/vibewarden/ ps": {err: errors.New("connection refused")},
+			"docker compose --project-directory ~/vibewarden/vibewarden/ ps": {err: errors.New("connection refused")},
 		},
 	}
 
@@ -252,14 +277,18 @@ func TestService_Status_Error(t *testing.T) {
 func TestService_Logs(t *testing.T) {
 	executor := &fakeExecutor{
 		runResponses: map[string]runResponse{
-			"docker compose --project-directory ~/vibewarden/ logs --tail=50": {output: "log line 1\nlog line 2"},
+			"docker compose --project-directory ~/vibewarden/myproject/ logs --tail=50": {output: "log line 1\nlog line 2"},
 		},
 	}
 
 	svc := deployapp.NewService(executor, nil, nil)
 
 	var buf bytes.Buffer
-	err := svc.Logs(context.Background(), deployapp.LogsOptions{Lines: 50, Out: &buf})
+	err := svc.Logs(context.Background(), deployapp.LogsOptions{
+		ProjectName: "myproject",
+		Lines:       50,
+		Out:         &buf,
+	})
 	if err != nil {
 		t.Fatalf("Logs() unexpected error: %v", err)
 	}
@@ -269,17 +298,44 @@ func TestService_Logs(t *testing.T) {
 	}
 }
 
-func TestService_Logs_AllLines(t *testing.T) {
+func TestService_Logs_DerivedFromConfigPath(t *testing.T) {
 	executor := &fakeExecutor{
 		runResponses: map[string]runResponse{
-			"docker compose --project-directory ~/vibewarden/ logs": {output: "all logs"},
+			"docker compose --project-directory ~/vibewarden/myapp/ logs --tail=20": {output: "log entry"},
 		},
 	}
 
 	svc := deployapp.NewService(executor, nil, nil)
 
 	var buf bytes.Buffer
-	err := svc.Logs(context.Background(), deployapp.LogsOptions{Lines: 0, Out: &buf})
+	err := svc.Logs(context.Background(), deployapp.LogsOptions{
+		ConfigPath: "/home/user/myapp/vibewarden.yaml",
+		Lines:      20,
+		Out:        &buf,
+	})
+	if err != nil {
+		t.Fatalf("Logs() unexpected error: %v", err)
+	}
+	if !strings.Contains(buf.String(), "log entry") {
+		t.Errorf("expected 'log entry' in output, got:\n%s", buf.String())
+	}
+}
+
+func TestService_Logs_AllLines(t *testing.T) {
+	executor := &fakeExecutor{
+		runResponses: map[string]runResponse{
+			"docker compose --project-directory ~/vibewarden/myproject/ logs": {output: "all logs"},
+		},
+	}
+
+	svc := deployapp.NewService(executor, nil, nil)
+
+	var buf bytes.Buffer
+	err := svc.Logs(context.Background(), deployapp.LogsOptions{
+		ProjectName: "myproject",
+		Lines:       0,
+		Out:         &buf,
+	})
 	if err != nil {
 		t.Fatalf("Logs() unexpected error: %v", err)
 	}
@@ -291,13 +347,16 @@ func TestService_Logs_AllLines(t *testing.T) {
 func TestService_Logs_Error(t *testing.T) {
 	executor := &fakeExecutor{
 		runResponses: map[string]runResponse{
-			"docker compose --project-directory ~/vibewarden/ logs --tail=50": {err: errors.New("remote error")},
+			"docker compose --project-directory ~/vibewarden/myproject/ logs --tail=50": {err: errors.New("remote error")},
 		},
 	}
 
 	svc := deployapp.NewService(executor, nil, nil)
 
-	err := svc.Logs(context.Background(), deployapp.LogsOptions{Lines: 50})
+	err := svc.Logs(context.Background(), deployapp.LogsOptions{
+		ProjectName: "myproject",
+		Lines:       50,
+	})
 	if err == nil {
 		t.Fatal("expected error when executor fails")
 	}
