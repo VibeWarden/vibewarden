@@ -62,6 +62,10 @@ Examples:
   vibew deploy --config vibewarden.prod.yaml --target ssh://ubuntu@203.0.113.10 --secrets-from .env.prod
   vibew deploy --config vibewarden.prod.yaml --target ssh://ubuntu@203.0.113.10 --rotate-secrets --secrets-from .env.prod`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			if err := requireScaffolding(); err != nil {
+				return err
+			}
+
 			if target == "" {
 				return fmt.Errorf("--target is required (e.g. ssh://user@host)")
 			}
