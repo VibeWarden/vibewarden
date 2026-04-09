@@ -131,10 +131,13 @@ func (s *Service) Deploy(ctx context.Context, cfg *config.Config, opts RunOption
 		return fmt.Errorf("transferring generated files: %w", err)
 	}
 
-	// Transfer vibewarden.yaml as a single file (no trailing slash on source).
-	configFile := filepath.Base(opts.ConfigPath)
-	if err := s.executor.TransferFile(ctx, opts.ConfigPath, remoteDir+configFile); err != nil {
-		return fmt.Errorf("transferring %s: %w", configFile, err)
+	// Transfer the config file as vibewarden.yaml on the remote regardless of
+	// the source filename. The docker-compose.yml always mounts ./vibewarden.yaml
+	// so the sidecar must find it under that name even when the user deployed
+	// with --config vibewarden.prod.yaml.
+	const remoteConfigName = "vibewarden.yaml"
+	if err := s.executor.TransferFile(ctx, opts.ConfigPath, remoteDir+remoteConfigName); err != nil {
+		return fmt.Errorf("transferring %s: %w", remoteConfigName, err)
 	}
 
 	// When app.build is set the image must be built on the remote host.

@@ -625,6 +625,72 @@ func TestService_Deploy_TransferFileCalledForConfig(t *testing.T) {
 	}
 }
 
+// TestService_Deploy_ConfigAlwaysTransferredAsVibewardenYAML verifies that the
+// config file is always written as vibewarden.yaml on the remote, regardless of
+// the source filename. This covers the case where --config vibewarden.prod.yaml
+// is used but the docker-compose.yml still mounts ./vibewarden.yaml.
+func TestService_Deploy_ConfigAlwaysTransferredAsVibewardenYAML(t *testing.T) {
+	tests := []struct {
+		name       string
+		configPath string
+		wantRemote string
+	}{
+		{
+			name:       "default name passes through unchanged",
+			configPath: "/tmp/myproject/vibewarden.yaml",
+			wantRemote: "~/vibewarden/myproject/vibewarden.yaml",
+		},
+		{
+			name:       "non-default name is normalised to vibewarden.yaml on remote",
+			configPath: "/tmp/myproject/vibewarden.prod.yaml",
+			wantRemote: "~/vibewarden/myproject/vibewarden.yaml",
+		},
+		{
+			name:       "staging config is normalised to vibewarden.yaml on remote",
+			configPath: "/tmp/myproject/vibewarden.staging.yaml",
+			wantRemote: "~/vibewarden/myproject/vibewarden.yaml",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			executor := &fakeExecutor{}
+			generator := &fakeGenerator{}
+
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(http.StatusOK)
+			}))
+			defer srv.Close()
+
+			healthURL := srv.URL + "/_vibewarden/health"
+			svc := deployapp.NewService(executor, generator, func(req *http.Request) (*http.Response, error) {
+				req2, _ := http.NewRequestWithContext(req.Context(), req.Method, healthURL, nil)
+				return http.DefaultClient.Do(req2) //nolint:gosec // test-only helper; URL is from httptest.NewServer
+			})
+
+			err := svc.Deploy(context.Background(), defaultConfig(), deployapp.RunOptions{
+				ConfigPath:  tt.configPath,
+				ProjectName: "myproject",
+			})
+			if err != nil {
+				t.Fatalf("Deploy() unexpected error: %v", err)
+			}
+
+			if len(executor.transferFileCalls) == 0 {
+				t.Fatal("expected TransferFile to be called for the config file")
+			}
+
+			call := executor.transferFileCalls[0]
+			if call.localFile != tt.configPath {
+				t.Errorf("TransferFile localFile = %q, want %q", call.localFile, tt.configPath)
+			}
+			if call.remotePath != tt.wantRemote {
+				t.Errorf("TransferFile remotePath = %q, want %q", call.remotePath, tt.wantRemote)
+			}
+		})
+	}
+}
+
 // TestService_Deploy_TransferFileFails verifies that a TransferFile error is
 // surfaced with the expected context message.
 func TestService_Deploy_TransferFileFails(t *testing.T) {
