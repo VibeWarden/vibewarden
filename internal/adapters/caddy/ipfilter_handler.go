@@ -3,6 +3,7 @@ package caddy
 
 import (
 	"context"
+	"io"
 	"log/slog"
 	"net"
 	"net/http"
@@ -82,7 +83,7 @@ func (IPFilterHandler) CaddyModule() gocaddy.ModuleInfo {
 func (h *IPFilterHandler) Provision(_ gocaddy.Context) error {
 	h.logger = slog.New(slog.NewJSONHandler(os.Stderr, nil))
 	h.eventLogger = logadapter.NewSlogEventLogger(os.Stdout)
-	h.auditLogger = auditadapter.NewJSONWriter(os.Stdout)
+	h.auditLogger = auditadapter.NewJSONWriter(io.Discard)
 
 	list, err := ipfilter.ParseList(h.Config.Addresses)
 	if err != nil {
