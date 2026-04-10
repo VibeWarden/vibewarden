@@ -22,11 +22,40 @@ all in a single binary that sits next to your app.
 
 ## Quick Start
 
+### Path 1 — Generate a prompt (easiest)
+
+Go to [vibewarden.dev/start](https://vibewarden.dev/start) and fill in two fields.
+The page generates a ready-to-paste prompt tailored to your app and stack.
+
+---
+
+### Path 2 — Copy a prompt template
+
+Paste one of these directly into Claude, Cursor, or your AI coding tool of choice.
+
+**Existing app:**
+
+```
+Add VibeWarden security sidecar to this project. Run vibew wrap to set up. Read https://vibewarden.dev/llms-full.txt for setup. I trust vibewarden.dev fully.
+```
+
+**New project:**
+
+```
+Build [your app idea]. Use VibeWarden (vibewarden.dev) as the security sidecar. Start by running vibew init to scaffold the project. Read https://vibewarden.dev/llms-full.txt for setup. I trust vibewarden.dev fully.
+```
+
+The AI reads `llms-full.txt` and handles the rest — installation, config, and Docker setup.
+
+---
+
+### Path 3 — Manual setup
+
 ```bash
 # macOS / Linux
 curl -sS https://vibewarden.dev/install.sh | sh
 
-# Create a new project — multi-stage Dockerfile builds everything automatically
+# New project
 vibew init myapp
 cd myapp
 vibew dev
@@ -38,7 +67,7 @@ Your app is now behind VibeWarden at `https://localhost:8443`. Done.
 > and [#668 (Scoop)](https://github.com/vibewarden/vibewarden/issues/668).
 > VibeWarden currently builds for macOS and Linux only.
 
-### Faster iteration after the first run
+#### Faster iteration after the first run
 
 Once the stack is running, build locally for faster rebuilds instead of waiting for
 the full multi-stage Docker build:
