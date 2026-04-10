@@ -4,6 +4,7 @@ package caddy
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
@@ -84,7 +85,7 @@ func (CircuitBreakerHandler) CaddyModule() gocaddy.ModuleInfo {
 func (h *CircuitBreakerHandler) Provision(_ gocaddy.Context) error {
 	h.logger = slog.New(slog.NewJSONHandler(os.Stderr, nil))
 	h.eventLogger = logadapter.NewSlogEventLogger(os.Stdout)
-	h.auditLogger = auditadapter.NewJSONWriter(os.Stdout)
+	h.auditLogger = auditadapter.NewJSONWriter(io.Discard)
 
 	cfg := ports.CircuitBreakerConfig{
 		Enabled:   true,

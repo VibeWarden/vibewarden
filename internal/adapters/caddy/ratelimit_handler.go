@@ -4,6 +4,7 @@ package caddy
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"log/slog"
 	"net/http"
 	"os"
@@ -118,7 +119,7 @@ func (h *RateLimitHandler) Provision(_ gocaddy.Context) error {
 	}
 
 	eventLogger := logadapter.NewSlogEventLogger(os.Stdout)
-	auditLogger := auditadapter.NewJSONWriter(os.Stdout)
+	auditLogger := auditadapter.NewJSONWriter(io.Discard)
 
 	h.handler = middleware.RateLimitMiddleware(h.ipLimiter, h.userLimiter, cfg, logger, eventLogger, auditLogger)
 
