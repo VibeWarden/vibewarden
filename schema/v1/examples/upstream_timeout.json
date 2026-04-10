@@ -1,0 +1,26 @@
+{
+  "schema_version": "v1",
+  "event_type": "upstream.timeout",
+  "timestamp": "2026-03-28T14:36:30Z",
+  "severity": "medium",
+  "category": "network",
+  "ai_summary": "Upstream timeout after 30s: GET /slow from 10.0.0.1",
+  "payload": {
+    "method": "GET",
+    "path": "/slow",
+    "timeout_seconds": 30,
+    "client_ip": "10.0.0.1"
+  },
+  "actor": {
+    "type": "ip",
+    "id": "10.0.0.1",
+    "ip": "10.0.0.1"
+  },
+  "resource": {
+    "type": "http_endpoint",
+    "path": "/slow",
+    "method": "GET"
+  },
+  "outcome": "failed",
+  "triggered_by": "upstream_timeout_middleware"
+}

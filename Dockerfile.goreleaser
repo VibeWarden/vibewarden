@@ -1,0 +1,21 @@
+# VibeWarden — runtime-only Dockerfile for goreleaser.
+#
+# goreleaser builds the binary outside Docker (cross-compiled, CGO_ENABLED=0)
+# and copies it in here. This keeps the image lean and avoids a redundant
+# Go toolchain layer in the published image.
+#
+# The original Dockerfile (multi-stage, builds from source) is kept for the
+# local Docker Compose dev environment.
+
+FROM alpine:3.21
+
+RUN apk add --no-cache ca-certificates wget
+
+# goreleaser injects the binary into the Docker build context at this path.
+COPY vibew /vibew
+
+# VibeWarden listens on 8443 by default (HTTPS with self-signed cert).
+EXPOSE 8443
+
+ENTRYPOINT ["/vibew"]
+CMD ["serve"]

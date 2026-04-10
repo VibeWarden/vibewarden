@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Clickjacking — VibeWarden Vulnerability Lab</title>
+  <link rel="stylesheet" href="/static/water.css">
+  <style>
+    nav a { margin-right: 1em; }
+
+    .warning-banner {
+      padding: 1em 1.2em;
+      background: #fef2f2;
+      border: 2px solid #dc2626;
+      border-radius: 6px;
+      color: #991b1b;
+      font-weight: bold;
+      font-size: 1em;
+      margin-bottom: 1.5em;
+    }
+
+    .hero {
+      margin: 1.5em 0 2em;
+      padding: 2em;
+      border-left: 4px solid #7C3AED;
+      background: rgba(124, 58, 237, 0.04);
+      border-radius: 0 6px 6px 0;
+    }
+    .hero h1 { margin-top: 0; }
+    .hero .tagline { font-size: 1.1em; color: #555; margin-bottom: 0; }
+
+    .badge {
+      display: inline-block;
+      padding: 0.2em 0.6em;
+      border-radius: 4px;
+      font-size: 0.8em;
+      font-weight: bold;
+    }
+    .badge-medium    { background: #d97706; color: #fff; }
+    .badge-mitigated { background: #16a34a; color: #fff; }
+
+    .section { margin: 2em 0; }
+
+    .try-it-box {
+      padding: 1.2em;
+      border: 1px solid #d1d5db;
+      border-radius: 6px;
+      background: #fafafa;
+    }
+    .try-it-box h3 { margin-top: 0; }
+
+    .iframe-container {
+      margin-top: 1em;
+      border: 2px solid #e5e7eb;
+      border-radius: 6px;
+      overflow: hidden;
+      background: #f3f4f6;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 120px;
+    }
+
+    .iframe-container iframe {
+      width: 100%;
+      height: 200px;
+      border: none;
+    }
+
+    .iframe-blocked-note {
+      padding: 1em;
+      color: #374151;
+      font-size: 0.9em;
+      text-align: center;
+    }
+
+    .attack-simulation {
+      position: relative;
+      width: 320px;
+      height: 160px;
+      border: 2px solid #dc2626;
+      border-radius: 6px;
+      overflow: hidden;
+      margin: 1em 0;
+    }
+    .attack-overlay {
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+      z-index: 2;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(220, 38, 38, 0.08);
+    }
+    .attack-overlay button {
+      font-size: 1em;
+      padding: 0.6em 1.4em;
+      background: #dc2626;
+      color: #fff;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    .attack-iframe {
+      position: absolute;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      opacity: 0.1;
+      z-index: 1;
+      border: none;
+    }
+
+    .protection-box {
+      padding: 1.2em;
+      border: 2px solid #16a34a;
+      border-radius: 6px;
+      background: rgba(22, 163, 74, 0.04);
+    }
+    .protection-box h3 { margin-top: 0; color: #15803d; }
+
+    .code-block {
+      font-family: monospace;
+      background: #1e1e2e;
+      color: #cdd6f4;
+      padding: 1em;
+      border-radius: 6px;
+      overflow-x: auto;
+      font-size: 0.9em;
+      line-height: 1.5;
+    }
+
+    .step { margin: 0.5em 0; }
+    .step code { background: #f3f4f6; padding: 0.1em 0.4em; border-radius: 3px; }
+
+    .vw-footer {
+      margin-top: 3em;
+      padding: 1em 1.2em;
+      background: #f9fafb;
+      border: 1px solid #e5e7eb;
+      border-radius: 6px;
+      font-size: 0.9em;
+      color: #374151;
+      text-align: center;
+    }
+    .vw-footer strong { color: #7C3AED; }
+  </style>
+</head>
+<body>
+  <nav>
+    <strong>VibeWarden Demo</strong> &nbsp;|&nbsp;
+    <a href="/">Home</a>
+    <a href="/static/me.html">My Profile</a>
+    <a href="/static/headers.html">Headers Inspector</a>
+    <a href="/static/ratelimit.html">Rate Limit Test</a>
+    <a href="/static/vulnlab.html">Vulnerability Lab</a>
+  </nav>
+
+  <div class="warning-banner">
+    &#9888;&#65039; This page demonstrates a clickjacking attack.
+    The iframe below attempts to embed this app; VibeWarden blocks the embedding
+    via <code>X-Frame-Options: DENY</code>.
+  </div>
+
+  <div class="hero">
+    <h1>Clickjacking &nbsp;<span class="badge badge-medium">Medium</span>&nbsp;<span class="badge badge-mitigated">Mitigated by VibeWarden</span></h1>
+    <p class="tagline">
+      An attacker embeds your page in a transparent iframe over a fake button.
+      Users think they are clicking the attacker's UI, but they are actually clicking
+      your protected page — triggering actions they never intended.
+    </p>
+  </div>
+
+  <div class="section">
+    <h2>What is Clickjacking?</h2>
+    <p>
+      Clickjacking (UI Redress Attack) tricks users into clicking on something different
+      from what they perceive.  The attacker loads the target site in a transparent or
+      semi-transparent iframe, then overlays a decoy interface on top.  When the victim
+      clicks the visible button (e.g. "Click to win a prize!"), they are actually clicking
+      a button on the hidden page underneath.
+    </p>
+    <p>
+      Common targets include: payment confirmation pages, account deletion flows,
+      "Like" buttons on social networks, and any action that requires a single click.
+    </p>
+    <h3>Attack steps</h3>
+    <ol>
+      <li class="step">Attacker creates a malicious page with an iframe pointing to the target site.</li>
+      <li class="step">The iframe is styled with <code>opacity: 0.01</code> and positioned to overlap a decoy button.</li>
+      <li class="step">Victim visits the attacker's page and clicks what looks like an innocuous button.</li>
+      <li class="step">The click lands on the hidden iframe — triggering a real action on the target site.</li>
+    </ol>
+  </div>
+
+  <div class="section">
+    <h2>Live Iframe Test</h2>
+    <div class="try-it-box">
+      <h3>Can this page embed itself?</h3>
+      <p>
+        The iframe below attempts to load <code>/public</code> from this same app.
+        Because VibeWarden sets <code>X-Frame-Options: DENY</code> and
+        <code>Content-Security-Policy: frame-ancestors 'none'</code>, the browser
+        will refuse to render the page inside the iframe.
+      </p>
+      <div class="iframe-container">
+        <iframe src="/public" title="Framing test — should be blocked"></iframe>
+      </div>
+      <p class="iframe-blocked-note">
+        If the iframe above is blank or shows an error, <code>X-Frame-Options: DENY</code>
+        is working. Open the browser developer console to see the error message.
+      </p>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>What the Attack Would Look Like</h2>
+    <p>
+      The box below simulates what an attacker page looks like.  The visible red button
+      says "Click to claim your reward!"  Underneath it (at near-zero opacity) is the
+      iframe pointing at the target app.  A real click would land on whatever is
+      positioned under the overlay.
+    </p>
+    <div class="attack-simulation">
+      <div class="attack-overlay">
+        <button onclick="alert('In a real attack this click would have hit the hidden iframe.')">
+          Click to claim your reward!
+        </button>
+      </div>
+      <iframe class="attack-iframe" src="/public" title="Hidden attack iframe" tabindex="-1"></iframe>
+    </div>
+    <p>
+      <strong>Note:</strong> because <code>X-Frame-Options: DENY</code> is set, the iframe
+      content is blocked even in this simulation.  Without the header, the hidden frame would
+      load the real page at near-zero opacity.
+    </p>
+  </div>
+
+  <div class="section">
+    <h2>VibeWarden Protection</h2>
+    <div class="protection-box">
+      <h3>X-Frame-Options: DENY and CSP frame-ancestors</h3>
+      <p>
+        VibeWarden adds two complementary headers to every response:
+      </p>
+      <div class="code-block">X-Frame-Options: DENY<br>Content-Security-Policy: ...; frame-ancestors 'none'</div>
+      <p>
+        <code>X-Frame-Options: DENY</code> is the legacy header supported by all browsers.
+        It instructs the browser to never render the response inside a frame, regardless of
+        which site is trying to embed it.
+      </p>
+      <p>
+        <code>frame-ancestors 'none'</code> is the modern CSP equivalent.  When both are
+        present, all browsers are covered.  You can verify the headers are set by checking
+        the <a href="/static/headers.html">Headers Inspector</a>.
+      </p>
+      <p>
+        Zero configuration required — VibeWarden applies these headers automatically.
+      </p>
+    </div>
+  </div>
+
+  <!-- Footer banner -->
+  <div class="vw-footer">
+    <strong>VibeWarden</strong> — security sidecar for vibe-coded apps.
+    X-Frame-Options and CSP frame-ancestors are applied automatically to every response.
+    &mdash; <a href="/static/vulnlab.html">Back to Vulnerability Lab</a> &mdash;
+    <a href="https://github.com/vibewarden/vibewarden" target="_blank" rel="noopener">GitHub</a>
+  </div>
+</body>
+</html>

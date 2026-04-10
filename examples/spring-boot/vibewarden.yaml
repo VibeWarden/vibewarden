@@ -1,0 +1,38 @@
+# VibeWarden + Spring Boot example
+# Start: vibew dev
+
+server:
+  host: "0.0.0.0"
+  port: 8443
+
+upstream:
+  host: "app"
+  port: 3000
+
+app:
+  build: .
+
+tls:
+  enabled: true
+  provider: self-signed
+
+auth:
+  enabled: false
+  mode: "none"
+
+rate_limit:
+  enabled: true
+  store: memory
+  per_ip:
+    requests_per_second: 10
+    burst: 20
+
+security_headers:
+  enabled: true
+  frame_option: "DENY"
+  content_type_nosniff: true
+  referrer_policy: "strict-origin-when-cross-origin"
+
+log:
+  level: "info"
+  format: "json"

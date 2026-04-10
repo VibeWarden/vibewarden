@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Recover Account</title>
+  <style>
+    :root {
+      --vw-primary: {{.PrimaryColor}};
+      --vw-bg: {{.BackgroundColor}};
+      --vw-text: {{.TextColor}};
+      --vw-error: {{.ErrorColor}};
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: var(--vw-bg);
+      color: var(--vw-text);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 1rem;
+    }
+    .card {
+      background: #fff;
+      border-radius: 0.75rem;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.10);
+      padding: 2.5rem 2rem;
+      width: 100%;
+      max-width: 400px;
+    }
+    h1 {
+      font-size: 1.5rem;
+      font-weight: 700;
+      margin-bottom: 0.5rem;
+      color: var(--vw-text);
+    }
+    .subtitle {
+      font-size: 0.9375rem;
+      color: #6b7280;
+      margin-bottom: 1.5rem;
+    }
+    .field { margin-bottom: 1rem; }
+    label {
+      display: block;
+      font-size: 0.875rem;
+      font-weight: 500;
+      margin-bottom: 0.375rem;
+      color: var(--vw-text);
+    }
+    input[type="email"],
+    input[type="password"],
+    input[type="text"] {
+      width: 100%;
+      padding: 0.625rem 0.875rem;
+      border: 1px solid #d1d5db;
+      border-radius: 0.5rem;
+      font-size: 1rem;
+      color: var(--vw-text);
+      background: #f9fafb;
+      transition: border-color 0.15s;
+    }
+    input:focus {
+      outline: none;
+      border-color: var(--vw-primary);
+      background: #fff;
+    }
+    .btn-primary {
+      display: block;
+      width: 100%;
+      padding: 0.75rem;
+      background: var(--vw-primary);
+      color: #fff;
+      border: none;
+      border-radius: 0.5rem;
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      margin-top: 1.25rem;
+      transition: opacity 0.15s;
+    }
+    .btn-primary:hover { opacity: 0.9; }
+    .error-box {
+      background: #fef2f2;
+      border: 1px solid #fecaca;
+      border-radius: 0.5rem;
+      padding: 0.75rem 1rem;
+      margin-bottom: 1rem;
+      color: var(--vw-error);
+      font-size: 0.875rem;
+    }
+    .success-box {
+      background: #f0fdf4;
+      border: 1px solid #bbf7d0;
+      border-radius: 0.5rem;
+      padding: 0.75rem 1rem;
+      margin-bottom: 1rem;
+      color: #15803d;
+      font-size: 0.875rem;
+    }
+    .links {
+      margin-top: 1.25rem;
+      text-align: center;
+      font-size: 0.875rem;
+      color: #6b7280;
+    }
+    .links a {
+      color: var(--vw-primary);
+      text-decoration: none;
+      font-weight: 500;
+    }
+    .links a:hover { text-decoration: underline; }
+    @media (max-width: 480px) { .card { padding: 2rem 1.25rem; } }
+  </style>
+</head>
+<body>
+<div class="card">
+  <h1>Recover account</h1>
+  <p class="subtitle">Enter your email and we'll send you a recovery link.</p>
+
+  <div id="error-box" class="error-box" style="display:none"></div>
+  <div id="success-box" class="success-box" style="display:none">
+    If an account exists for that email, a recovery link has been sent.
+  </div>
+
+  <!-- Email request form (state: choose_method) -->
+  <form id="recovery-form">
+    <input type="hidden" id="csrf-token" name="csrf_token" value="">
+    <input type="hidden" id="flow-id" name="flow_id" value="">
+    <div class="field">
+      <label for="email">Email address</label>
+      <input type="email" id="email" name="email" autocomplete="email" required placeholder="you@example.com">
+    </div>
+    <button type="submit" class="btn-primary">Send recovery link</button>
+  </form>
+
+  <!-- Password reset form (state: sent_email with token) -->
+  <form id="reset-form" style="display:none">
+    <input type="hidden" id="reset-csrf-token" name="csrf_token" value="">
+    <input type="hidden" id="reset-flow-id" name="flow_id" value="">
+    <div class="field">
+      <label for="new-password">New password</label>
+      <input type="password" id="new-password" name="password" autocomplete="new-password" required placeholder="••••••••">
+    </div>
+    <div class="field">
+      <label for="confirm-password">Confirm new password</label>
+      <input type="password" id="confirm-password" name="password_confirm" autocomplete="new-password" required placeholder="••••••••">
+    </div>
+    <button type="submit" class="btn-primary">Reset password</button>
+  </form>
+
+  <div class="links">
+    <a href="/_vibewarden/login">Back to login</a>
+  </div>
+</div>
+
+<script>
+(function () {
+  const kratosBase = '';
+  const params = new URLSearchParams(window.location.search);
+
+  function showError(msg) {
+    const box = document.getElementById('error-box');
+    box.textContent = msg;
+    box.style.display = 'block';
+  }
+
+  function hideError() {
+    document.getElementById('error-box').style.display = 'none';
+  }
+
+  function showSuccess() {
+    document.getElementById('success-box').style.display = 'block';
+    document.getElementById('recovery-form').style.display = 'none';
+  }
+
+  async function initFlow() {
+    const flowId = params.get('flow');
+    if (!flowId) return; // No flow — fresh page, nothing to pre-load.
+
+    try {
+      const res = await fetch(kratosBase + '/self-service/recovery/flows?id=' + encodeURIComponent(flowId), {
+        headers: { Accept: 'application/json' },
+        credentials: 'include',
+      });
+      if (!res.ok) throw new Error('flow_not_found');
+      const flow = await res.json();
+      applyFlow(flow);
+    } catch (_) {
+      showError('Recovery session expired or invalid. Please request a new link.');
+    }
+  }
+
+  function applyFlow(flow) {
+    const nodes = (flow.ui && flow.ui.nodes) || [];
+    const state = flow.state || 'choose_method';
+
+    // Set CSRF token and flow ID for whichever form is active.
+    const csrfNode = nodes.find(n => n.attributes && n.attributes.name === 'csrf_token');
+    const csrfVal = csrfNode ? (csrfNode.attributes.value || '') : '';
+
+    const messages = (flow.ui && flow.ui.messages) || [];
+    if (messages.length > 0) {
+      showError(messages.map(m => m.text).join(' '));
+    }
+
+    if (state === 'sent_email') {
+      // Show the password reset form if the token has been validated
+      // and Kratos now expects a new password. Otherwise show sent message.
+      const pwNode = nodes.find(n => n.attributes && n.attributes.name === 'password');
+      if (pwNode) {
+        document.getElementById('recovery-form').style.display = 'none';
+        const resetForm = document.getElementById('reset-form');
+        resetForm.style.display = 'block';
+        document.getElementById('reset-csrf-token').value = csrfVal;
+        document.getElementById('reset-flow-id').value = flow.id || '';
+
+        // Store the action URL for submit.
+        resetForm.dataset.action = (flow.ui && flow.ui.action) || '';
+        resetForm.dataset.method = (flow.ui && flow.ui.method) || 'POST';
+      } else {
+        // Email sent state — show success.
+        document.getElementById('csrf-token').value = csrfVal;
+        document.getElementById('flow-id').value = flow.id || '';
+        showSuccess();
+      }
+    } else {
+      // choose_method state.
+      document.getElementById('csrf-token').value = csrfVal;
+      document.getElementById('flow-id').value = flow.id || '';
+
+      // Store action URL.
+      const recovForm = document.getElementById('recovery-form');
+      recovForm.dataset.action = (flow.ui && flow.ui.action) || '';
+      recovForm.dataset.method = (flow.ui && flow.ui.method) || 'POST';
+    }
+  }
+
+  document.getElementById('recovery-form').addEventListener('submit', async function (e) {
+    e.preventDefault();
+    hideError();
+
+    let flowId = document.getElementById('flow-id').value;
+    let action = e.target.dataset.action;
+    let method = e.target.dataset.method || 'POST';
+
+    // If no flow yet, initiate one.
+    if (!flowId || !action) {
+      try {
+        const initRes = await fetch(kratosBase + '/self-service/recovery/browser', {
+          redirect: 'manual', credentials: 'include'
+        });
+        const location = initRes.headers.get('location') || '';
+        const m = location.match(/[?&]flow=([^&]+)/);
+        if (!m) throw new Error('no_flow');
+        flowId = m[1];
+
+        const res = await fetch(kratosBase + '/self-service/recovery/flows?id=' + encodeURIComponent(flowId), {
+          headers: { Accept: 'application/json' },
+          credentials: 'include',
+        });
+        const flow = await res.json();
+        action = (flow.ui && flow.ui.action) || '';
+        method = (flow.ui && flow.ui.method) || 'POST';
+        const csrfNode = (flow.ui && flow.ui.nodes || []).find(n => n.attributes && n.attributes.name === 'csrf_token');
+        document.getElementById('csrf-token').value = csrfNode ? (csrfNode.attributes.value || '') : '';
+        document.getElementById('flow-id').value = flowId;
+      } catch (_) {
+        showError('Could not start recovery session. Please try again.');
+        return;
+      }
+    }
+
+    const payload = {
+      csrf_token: document.getElementById('csrf-token').value,
+      method: 'link',
+      email: document.getElementById('email').value,
+    };
+
+    try {
+      const res = await fetch(action, {
+        method: method,
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(payload),
+      });
+      // Always show the same generic success message regardless of whether
+      // the email exists (security: don't reveal account existence).
+      showSuccess();
+    } catch (_) {
+      showError('Network error. Please check your connection and try again.');
+    }
+  });
+
+  document.getElementById('reset-form').addEventListener('submit', async function (e) {
+    e.preventDefault();
+    hideError();
+
+    const pw = document.getElementById('new-password').value;
+    const pwc = document.getElementById('confirm-password').value;
+    if (pw !== pwc) {
+      showError('Passwords do not match.');
+      return;
+    }
+
+    const action = e.target.dataset.action;
+    const method = e.target.dataset.method || 'POST';
+
+    const payload = {
+      csrf_token: document.getElementById('reset-csrf-token').value,
+      method: 'password',
+      password: pw,
+    };
+
+    try {
+      const res = await fetch(action, {
+        method: method,
+        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify(payload),
+      });
+      if (res.status === 422 || res.status === 400) {
+        const body = await res.json();
+        applyFlow(body);
+        return;
+      }
+      // Redirect to login with success hint.
+      window.location.href = '/_vibewarden/login?message=password_reset';
+    } catch (_) {
+      showError('Network error. Please check your connection and try again.');
+    }
+  });
+
+  initFlow();
+}());
+</script>
+</body>
+</html>

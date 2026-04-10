@@ -1,0 +1,276 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Register — VibeWarden Demo</title>
+  <link rel="stylesheet" href="/static/water.css">
+  <style>
+    .badge {
+      display: inline-block;
+      padding: 0.2em 0.6em;
+      border-radius: 4px;
+      font-size: 0.85em;
+      font-weight: bold;
+    }
+    .badge-error { background: #dc2626; color: #fff; }
+    nav a { margin-right: 1em; }
+
+    .auth-box {
+      max-width: 420px;
+      margin: 2em auto;
+      padding: 2em;
+      border: 1px solid #d1d5db;
+      border-radius: 8px;
+    }
+    .auth-box h1 {
+      margin-top: 0;
+      font-size: 1.5em;
+    }
+
+    .form-group {
+      margin-bottom: 1em;
+    }
+    .form-group label {
+      display: block;
+      margin-bottom: 0.3em;
+      font-weight: bold;
+      font-size: 0.95em;
+    }
+    .form-group input {
+      width: 100%;
+      box-sizing: border-box;
+    }
+
+    .btn-primary {
+      width: 100%;
+      padding: 0.6em 1em;
+      background: #7C3AED;
+      color: #fff;
+      border: none;
+      border-radius: 4px;
+      font-size: 1em;
+      cursor: pointer;
+    }
+    .btn-primary:hover {
+      background: #6d28d9;
+    }
+
+    .divider {
+      display: flex;
+      align-items: center;
+      gap: 0.75em;
+      margin: 1.25em 0;
+      color: #9ca3af;
+      font-size: 0.9em;
+    }
+    .divider::before,
+    .divider::after {
+      content: "";
+      flex: 1;
+      border-top: 1px solid #e5e7eb;
+    }
+
+    .social-btn {
+      display: block;
+      width: 100%;
+      box-sizing: border-box;
+      padding: 0.55em 1em;
+      margin-bottom: 0.6em;
+      border: 1px solid #d1d5db;
+      border-radius: 4px;
+      background: #fff;
+      font-size: 0.95em;
+      cursor: pointer;
+      text-align: center;
+    }
+    .social-btn:hover {
+      background: #f9fafb;
+    }
+    /* Provider accent colours (left border) */
+    .social-btn[data-provider="google"]  { border-left: 4px solid #4285F4; }
+    .social-btn[data-provider="github"]  { border-left: 4px solid #24292e; }
+    .social-btn[data-provider="gitlab"]  { border-left: 4px solid #FC6D26; }
+    .social-btn[data-provider="discord"] { border-left: 4px solid #5865F2; }
+
+    .login-link {
+      text-align: center;
+      margin-top: 1.25em;
+      font-size: 0.9em;
+    }
+    #error-msg {
+      margin-bottom: 1em;
+    }
+    .vw-footer {
+      margin-top: 3em;
+      padding: 1em 1.2em;
+      background: #f9fafb;
+      border: 1px solid #e5e7eb;
+      border-radius: 6px;
+      font-size: 0.9em;
+      color: #374151;
+      text-align: center;
+    }
+    .vw-footer strong { color: #7C3AED; }
+  </style>
+</head>
+<body>
+  <nav>
+    <strong>VibeWarden Demo</strong> &nbsp;|&nbsp;
+    <a href="/">Home</a>
+    <a href="/static/me.html">My Profile</a>
+    <a href="/static/headers.html">Headers Inspector</a>
+    <a href="/static/ratelimit.html">Rate Limit Test</a>
+  </nav>
+
+  <div class="auth-box">
+    <h1>Create account</h1>
+    <div id="error-msg"></div>
+    <div id="form-container">Loading flow...</div>
+    <div class="login-link">
+      Already have an account? <a href="/auth/login">Log in</a>
+    </div>
+  </div>
+
+  <div class="vw-footer">
+    <strong>This app has zero custom security code.</strong>
+    Auth is handled by <strong>VibeWarden</strong> + Ory Kratos.
+    &mdash; <a href="/">Back to Home</a>
+  </div>
+
+  <script>
+    // Label overrides per provider slug.
+    var PROVIDER_LABELS = {
+      google:  'Sign up with Google',
+      github:  'Sign up with GitHub',
+      gitlab:  'Sign up with GitLab',
+      discord: 'Sign up with Discord',
+    };
+
+    function escapeHtml(str) {
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    function showError(msg) {
+      var el = document.getElementById('error-msg');
+      el.innerHTML = '<p><span class="badge badge-error">Error</span> ' + escapeHtml(msg) + '</p>';
+    }
+
+    (async function () {
+      var container = document.getElementById('form-container');
+
+      var params = new URLSearchParams(window.location.search);
+      var flowId = params.get('flow');
+
+      try {
+        var flowUrl = flowId
+          ? '/self-service/registration/flows?id=' + encodeURIComponent(flowId)
+          : '/self-service/registration/browser';
+
+        var resp = await fetch(flowUrl, {
+          credentials: 'include',
+          headers: { 'Accept': 'application/json' },
+          redirect: 'follow',
+        });
+
+        var contentType = resp.headers.get('Content-Type') || '';
+        if (!contentType.includes('application/json')) {
+          window.location.reload();
+          return;
+        }
+
+        if (!resp.ok) {
+          var errData = await resp.json().catch(function () { return {}; });
+          showError((errData.error && errData.error.message) || 'Failed to load registration flow (HTTP ' + resp.status + ').');
+          container.innerHTML = '';
+          return;
+        }
+
+        var flow = await resp.json();
+        renderFlow(flow);
+      } catch (err) {
+        showError('Network error: ' + String(err));
+        container.innerHTML = '';
+      }
+    })();
+
+    function renderFlow(flow) {
+      var container = document.getElementById('form-container');
+      var nodes = (flow.ui && flow.ui.nodes) || [];
+      var action = (flow.ui && flow.ui.action) || '';
+
+      // Display any flow-level messages.
+      var messages = (flow.ui && flow.ui.messages) || [];
+      if (messages.length > 0) {
+        var errorEl = document.getElementById('error-msg');
+        errorEl.innerHTML = messages.map(function (m) {
+          var cls = m.type === 'error' ? 'badge-error' : 'badge badge-info';
+          return '<p><span class="badge ' + cls + '">' + escapeHtml(m.type) + '</span> ' + escapeHtml(m.text) + '</p>';
+        }).join('');
+      }
+
+      var oidcNodes = nodes.filter(function (n) { return n.group === 'oidc'; });
+      var passwordNodes = nodes.filter(function (n) { return n.group !== 'oidc'; });
+
+      var html = '';
+
+      // --- Password / email form ---
+      html += '<form method="POST" action="' + escapeHtml(action) + '">';
+      passwordNodes.forEach(function (node) {
+        html += renderNode(node);
+      });
+      html += '</form>';
+
+      // --- Social sign-up buttons ---
+      if (oidcNodes.length > 0) {
+        html += '<div class="divider">or sign up with</div>';
+        oidcNodes.forEach(function (node) {
+          if (node.type !== 'input' || !node.attributes) return;
+          var attrs = node.attributes;
+          var provider = (attrs.value || '').toLowerCase();
+          var label = PROVIDER_LABELS[provider] || escapeHtml(attrs.value || provider);
+          html += '<form method="POST" action="' + escapeHtml(action) + '">';
+          // Include hidden fields (csrf_token etc.) from the main form.
+          passwordNodes.forEach(function (n) {
+            if (n.type === 'input' && n.attributes && n.attributes.type === 'hidden') {
+              html += '<input type="hidden" name="' + escapeHtml(n.attributes.name) + '" value="' + escapeHtml(n.attributes.value || '') + '">';
+            }
+          });
+          html += '<button type="submit" class="social-btn" data-provider="' + escapeHtml(provider) + '" name="' + escapeHtml(attrs.name || 'provider') + '" value="' + escapeHtml(attrs.value || '') + '">' + label + '</button>';
+          html += '</form>';
+        });
+      }
+
+      container.innerHTML = html;
+    }
+
+    function renderNode(node) {
+      if (!node.attributes) return '';
+      var attrs = node.attributes;
+
+      if (attrs.type === 'hidden') {
+        return '<input type="hidden" name="' + escapeHtml(attrs.name) + '" value="' + escapeHtml(attrs.value || '') + '">';
+      }
+
+      if (attrs.type === 'submit') {
+        return '<button type="submit" class="btn-primary">' + escapeHtml((node.meta && node.meta.label && node.meta.label.text) || 'Submit') + '</button>';
+      }
+
+      var labelText = (node.meta && node.meta.label && node.meta.label.text) || attrs.name;
+      var messages = (node.messages || []).map(function (m) {
+        return '<small style="color:#dc2626">' + escapeHtml(m.text) + '</small>';
+      }).join(' ');
+
+      return '<div class="form-group">'
+        + '<label for="node-' + escapeHtml(attrs.name) + '">' + escapeHtml(labelText) + '</label>'
+        + '<input id="node-' + escapeHtml(attrs.name) + '" type="' + escapeHtml(attrs.type || 'text') + '" name="' + escapeHtml(attrs.name) + '" value="' + escapeHtml(attrs.value || '') + '" ' + (attrs.required ? 'required' : '') + ' ' + (attrs.disabled ? 'disabled' : '') + '>'
+        + messages
+        + '</div>';
+    }
+  </script>
+</body>
+</html>

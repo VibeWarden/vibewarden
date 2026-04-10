@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>MIME Sniffing — VibeWarden Vulnerability Lab</title>
+  <link rel="stylesheet" href="/static/water.css">
+  <style>
+    nav a { margin-right: 1em; }
+
+    .warning-banner {
+      padding: 1em 1.2em;
+      background: #fef2f2;
+      border: 2px solid #dc2626;
+      border-radius: 6px;
+      color: #991b1b;
+      font-weight: bold;
+      font-size: 1em;
+      margin-bottom: 1.5em;
+    }
+
+    .hero {
+      margin: 1.5em 0 2em;
+      padding: 2em;
+      border-left: 4px solid #7C3AED;
+      background: rgba(124, 58, 237, 0.04);
+      border-radius: 0 6px 6px 0;
+    }
+    .hero h1 { margin-top: 0; }
+    .hero .tagline { font-size: 1.1em; color: #555; margin-bottom: 0; }
+
+    .badge {
+      display: inline-block;
+      padding: 0.2em 0.6em;
+      border-radius: 4px;
+      font-size: 0.8em;
+      font-weight: bold;
+    }
+    .badge-low       { background: #2563eb; color: #fff; }
+    .badge-mitigated { background: #16a34a; color: #fff; }
+
+    .section { margin: 2em 0; }
+
+    .try-it-box {
+      padding: 1.2em;
+      border: 1px solid #d1d5db;
+      border-radius: 6px;
+      background: #fafafa;
+    }
+    .try-it-box h3 { margin-top: 0; }
+
+    .result-panel {
+      margin-top: 1em;
+      padding: 1em;
+      border: 1px solid #e5e7eb;
+      border-radius: 4px;
+      background: #fff;
+      min-height: 3em;
+      font-family: monospace;
+      font-size: 0.9em;
+      color: #374151;
+      white-space: pre-wrap;
+    }
+
+    .protection-box {
+      padding: 1.2em;
+      border: 2px solid #16a34a;
+      border-radius: 6px;
+      background: rgba(22, 163, 74, 0.04);
+    }
+    .protection-box h3 { margin-top: 0; color: #15803d; }
+
+    .code-block {
+      font-family: monospace;
+      background: #1e1e2e;
+      color: #cdd6f4;
+      padding: 1em;
+      border-radius: 6px;
+      overflow-x: auto;
+      font-size: 0.9em;
+      line-height: 1.5;
+    }
+
+    .vuln-code {
+      font-family: monospace;
+      background: #fff5f5;
+      color: #9b2335;
+      padding: 1em;
+      border-radius: 6px;
+      border-left: 4px solid #dc2626;
+      overflow-x: auto;
+      font-size: 0.9em;
+      line-height: 1.5;
+    }
+
+    .vw-footer {
+      margin-top: 3em;
+      padding: 1em 1.2em;
+      background: #f9fafb;
+      border: 1px solid #e5e7eb;
+      border-radius: 6px;
+      font-size: 0.9em;
+      color: #374151;
+      text-align: center;
+    }
+    .vw-footer strong { color: #7C3AED; }
+  </style>
+</head>
+<body>
+  <nav>
+    <strong>VibeWarden Demo</strong> &nbsp;|&nbsp;
+    <a href="/">Home</a>
+    <a href="/static/me.html">My Profile</a>
+    <a href="/static/headers.html">Headers Inspector</a>
+    <a href="/static/ratelimit.html">Rate Limit Test</a>
+    <a href="/static/vulnlab.html">Vulnerability Lab</a>
+  </nav>
+
+  <div class="warning-banner">
+    &#9888;&#65039; The endpoint <code>GET /vuln/mime-sniff</code> intentionally serves
+    JavaScript content with <code>Content-Type: text/plain</code>.
+    VibeWarden's <code>X-Content-Type-Options: nosniff</code> prevents browsers from
+    executing it.
+  </div>
+
+  <div class="hero">
+    <h1>MIME Sniffing &nbsp;<span class="badge badge-low">Low</span>&nbsp;<span class="badge badge-mitigated">Mitigated by VibeWarden</span></h1>
+    <p class="tagline">
+      Browsers that ignore the declared <code>Content-Type</code> and infer the type from
+      the content body can be tricked into executing a malicious payload as a script.
+      <code>X-Content-Type-Options: nosniff</code> tells the browser to trust the declared type.
+    </p>
+  </div>
+
+  <div class="section">
+    <h2>What is MIME Type Sniffing?</h2>
+    <p>
+      Early browsers tried to be helpful: if a server sent a file with a wrong or missing
+      <code>Content-Type</code>, the browser would "sniff" the content and guess the real
+      type.  A text file containing <code>&lt;script&gt;</code> tags might be executed as
+      HTML.  A file served as <code>text/plain</code> but beginning with a valid MIME
+      signature might be executed as an image or application.
+    </p>
+    <p>
+      This is a problem when users can upload files.  A user uploads a file named
+      <code>profile.jpg</code> that actually contains JavaScript.  If the server serves
+      it as <code>text/plain</code> without <code>nosniff</code>, older browsers execute
+      it as a script in the origin's context.
+    </p>
+    <p>
+      Modern browsers respect <code>X-Content-Type-Options: nosniff</code> and refuse to
+      sniff.  Without this header, the attack surface remains even in 2025 for some
+      browser/extension combinations.
+    </p>
+  </div>
+
+  <div class="section">
+    <h2>The Vulnerable Endpoint</h2>
+    <p>
+      <code>GET /vuln/mime-sniff</code> serves JavaScript content but declares
+      <code>Content-Type: text/plain</code>:
+    </p>
+    <div class="vuln-code">// INTENTIONALLY VULNERABLE — wrong Content-Type for JS content<br>
+func handleMIMESniff(w http.ResponseWriter, r *http.Request) &#123;<br>
+&nbsp;&nbsp;w.Header().Set("Content-Type", "text/plain")<br>
+&nbsp;&nbsp;fmt.Fprint(w, "alert('MIME sniffing attack')")<br>
+&#125;</div>
+    <p>
+      Without <code>nosniff</code>, a browser that sniffs the content might recognise it
+      as JavaScript and execute it when loaded via a <code>&lt;script src="..."&gt;</code> tag.
+    </p>
+  </div>
+
+  <div class="section">
+    <h2>Try It</h2>
+    <div class="try-it-box">
+      <h3>Fetch the endpoint and inspect headers</h3>
+      <p>
+        The button below fetches <code>/vuln/mime-sniff</code> and shows the response
+        headers and body.  Notice:
+      </p>
+      <ul>
+        <li><code>Content-Type: text/plain</code> — server declares plain text.</li>
+        <li><code>X-Content-Type-Options: nosniff</code> — VibeWarden prevents sniffing.</li>
+        <li>Body contains JavaScript — but it is displayed as text, not executed.</li>
+      </ul>
+      <button id="fetch-btn">Fetch /vuln/mime-sniff</button>
+      <div class="result-panel" id="result-panel">
+        <em>Click the button to fetch the endpoint.</em>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>Script Tag Test</h2>
+    <div class="try-it-box">
+      <h3>Load as a script — should be blocked</h3>
+      <p>
+        The button below dynamically inserts
+        <code>&lt;script src="/vuln/mime-sniff"&gt;&lt;/script&gt;</code> into the page.
+        Because VibeWarden sets <code>X-Content-Type-Options: nosniff</code>, the browser
+        refuses to execute the script when the <code>Content-Type</code> is not a
+        JavaScript MIME type.
+      </p>
+      <p>
+        Check the browser console — you should see a MIME type mismatch error rather than
+        an <code>alert()</code> dialog.
+      </p>
+      <button id="script-tag-btn">Inject Script Tag</button>
+      <p id="script-status" style="font-weight:bold; color:#16a34a; display:none;">
+        Script tag injected. Check the browser console for the blocked-by-nosniff error.
+      </p>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>VibeWarden Protection</h2>
+    <div class="protection-box">
+      <h3>X-Content-Type-Options: nosniff</h3>
+      <p>
+        VibeWarden adds this header to every response from your app:
+      </p>
+      <div class="code-block">X-Content-Type-Options: nosniff</div>
+      <p>
+        This single header instructs all modern browsers to:
+      </p>
+      <ul>
+        <li>Never execute a response as a script unless its <code>Content-Type</code> is a valid JavaScript MIME type (<code>text/javascript</code>, <code>application/javascript</code>, etc.).</li>
+        <li>Never interpret a response as a stylesheet unless its <code>Content-Type</code> is <code>text/css</code>.</li>
+        <li>Trust the declared MIME type and never sniff the content.</li>
+      </ul>
+      <p>
+        Zero configuration required.  VibeWarden applies this header automatically
+        to every response regardless of what the application sets.
+      </p>
+    </div>
+  </div>
+
+  <!-- Footer banner -->
+  <div class="vw-footer">
+    <strong>VibeWarden</strong> — security sidecar for vibe-coded apps.
+    X-Content-Type-Options: nosniff is applied automatically to every response.
+    &mdash; <a href="/static/vulnlab.html">Back to Vulnerability Lab</a> &mdash;
+    <a href="https://github.com/vibewarden/vibewarden" target="_blank" rel="noopener">GitHub</a>
+  </div>
+
+  <script>
+    document.getElementById('fetch-btn').addEventListener('click', async function () {
+      const panel = document.getElementById('result-panel');
+      panel.textContent = 'Fetching...';
+
+      try {
+        const resp = await fetch('/vuln/mime-sniff');
+        const body = await resp.text();
+        const ct   = resp.headers.get('Content-Type') || '(not present)';
+        const nosniff = resp.headers.get('X-Content-Type-Options') || '(not present)';
+
+        panel.textContent =
+          'HTTP ' + resp.status + '\n' +
+          'Content-Type: ' + ct + '\n' +
+          'X-Content-Type-Options: ' + nosniff + '\n\n' +
+          'Body:\n' + body;
+      } catch (err) {
+        panel.textContent = 'Error: ' + String(err);
+      }
+    });
+
+    document.getElementById('script-tag-btn').addEventListener('click', function () {
+      const s = document.createElement('script');
+      s.src = '/vuln/mime-sniff';
+      s.onerror = function () {
+        document.getElementById('script-status').textContent =
+          'Script blocked by nosniff. Check the browser console for the MIME type error.';
+        document.getElementById('script-status').style.display = 'block';
+      };
+      document.body.appendChild(s);
+      document.getElementById('script-status').style.display = 'block';
+    });
+  </script>
+</body>
+</html>

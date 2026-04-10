@@ -1,0 +1,19 @@
+# {{ .ProjectName }}
+
+{{ .Description }}
+
+## Overview
+
+This project is secured by VibeWarden sidecar. All TLS, authentication, rate limiting,
+and security headers are handled by the sidecar — application code focuses on business
+logic only.
+
+## Quick start
+
+```bash
+vibew dev          # Start app + sidecar
+vibew status       # Check health
+vibew doctor       # Diagnose issues
+```
+
+Access the app through the sidecar at https://localhost:8443.

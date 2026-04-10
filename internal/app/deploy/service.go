@@ -1,0 +1,411 @@
+// Package deploy provides the application service that deploys a VibeWarden
+// project to a remote server over SSH.
+package deploy
+
+import (
+	"context"
+	"crypto/tls"
+	"fmt"
+	"io"
+	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
+	"time"
+
+	"github.com/vibewarden/vibewarden/internal/config"
+	"github.com/vibewarden/vibewarden/internal/ports"
+)
+
+const (
+	// remoteBaseDir is the root directory on the remote host where all
+	// VibeWarden projects are deployed.
+	remoteBaseDir = "~/vibewarden"
+
+	// healthCheckTimeout is the maximum time to wait for the sidecar to become
+	// healthy after starting Docker Compose.
+	healthCheckTimeout = 60 * time.Second
+
+	// healthCheckInterval is the delay between successive health check attempts.
+	healthCheckInterval = 3 * time.Second
+
+	// defaultHealthPort is the port used when cfg.Server.Port is zero.
+	defaultHealthPort = 8443
+)
+
+// Service orchestrates the "vibew deploy" use case.
+// It generates runtime config, transfers files to the remote, starts Docker
+// Compose, and verifies the sidecar health endpoint.
+type Service struct {
+	executor  ports.RemoteExecutor
+	generator ports.ConfigGenerator
+	httpDo    func(req *http.Request) (*http.Response, error)
+}
+
+// NewService creates a Service.
+// executor handles SSH commands and rsync transfers.
+// generator is used to produce the .vibewarden/generated/ files before transfer.
+// httpDo is the HTTP function used for all outbound HTTP calls, including the
+// deploy health check. Pass nil to use an insecure HTTP client that tolerates
+// self-signed and not-yet-issued TLS certificates (the default for deployment,
+// where the ACME cert may not have been issued yet).
+func NewService(
+	executor ports.RemoteExecutor,
+	generator ports.ConfigGenerator,
+	httpDo func(req *http.Request) (*http.Response, error),
+) *Service {
+	if httpDo == nil {
+		//nolint:gosec // G402: intentional — cert may not be issued yet during deploy
+		httpDo = (&http.Client{
+			Transport: &http.Transport{
+				TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec
+			},
+			Timeout: 5 * time.Second,
+		}).Do
+	}
+	return &Service{
+		executor:  executor,
+		generator: generator,
+		httpDo:    httpDo,
+	}
+}
+
+// RunOptions holds parameters for a deploy run.
+type RunOptions struct {
+	// ConfigPath is the path to vibewarden.yaml on the local filesystem.
+	ConfigPath string
+
+	// ProjectName is used as the remote sub-directory name under remoteBaseDir.
+	// When empty it is derived from the basename of the directory containing
+	// ConfigPath.
+	ProjectName string
+
+	// GeneratedDir is the local directory where generated files are written
+	// before transfer. Defaults to ".vibewarden/generated" when empty.
+	GeneratedDir string
+
+	// Out is the writer used for progress messages. May be nil (output is
+	// discarded).
+	Out io.Writer
+}
+
+// Deploy runs the full deployment flow:
+//  1. Load and validate config
+//  2. Generate runtime files
+//  3. Verify Docker + Docker Compose on the remote
+//  4. rsync generated files + vibewarden.yaml to the remote
+//     When app.build is set, the app source directory is also transferred so
+//     that Docker can build the image remotely.
+//  5. docker compose up -d --build  (build mode) or
+//     docker compose pull && docker compose up -d  (image mode)
+//  6. Health check
+func (s *Service) Deploy(ctx context.Context, cfg *config.Config, opts RunOptions) error {
+	out := opts.Out
+	if out == nil {
+		out = io.Discard
+	}
+
+	projectName := opts.ProjectName
+	if projectName == "" {
+		projectName = ProjectNameFromConfig(opts.ConfigPath)
+	}
+	remoteDir := remoteBaseDir + "/" + projectName + "/"
+
+	// Step 1: generate runtime configuration files.
+	fmt.Fprintln(out, "Generating runtime configuration files...")
+	generatedDir := opts.GeneratedDir
+	if generatedDir == "" {
+		generatedDir = ".vibewarden/generated"
+	}
+	if err := s.generator.Generate(ctx, cfg, generatedDir); err != nil {
+		return fmt.Errorf("generating config files: %w", err)
+	}
+
+	// Step 2: verify prerequisites on the remote.
+	fmt.Fprintln(out, "Verifying remote prerequisites...")
+	if err := s.checkRemotePrerequisites(ctx); err != nil {
+		return fmt.Errorf("remote prerequisites check failed: %w", err)
+	}
+
+	// Step 3: transfer files.
+	fmt.Fprintf(out, "Transferring files to remote %s...\n", remoteDir)
+
+	// Ensure the remote directory exists.
+	if _, err := s.executor.Run(ctx, "mkdir -p "+remoteDir); err != nil {
+		return fmt.Errorf("creating remote directory: %w", err)
+	}
+
+	// rsync generated files.
+	if err := s.executor.Transfer(ctx, generatedDir, remoteDir, true); err != nil {
+		return fmt.Errorf("transferring generated files: %w", err)
+	}
+
+	// When app.build is set the image must be built on the remote host.
+	// Transfer the app source (the build context directory) so that
+	// `docker compose up --build` can build the image remotely.
+	// This must happen BEFORE the config file transfer, because the build
+	// context may include a dev vibewarden.yaml that would overwrite the
+	// prod config.
+	if cfg.App.Build != "" {
+		projectRoot := filepath.Dir(filepath.Clean(opts.ConfigPath))
+		buildContextLocal := filepath.Join(projectRoot, cfg.App.Build)
+		buildContextRemote := remoteDir + strings.TrimPrefix(strings.TrimSuffix(cfg.App.Build, "/"), "./") + "/"
+		fmt.Fprintf(out, "Transferring app build context (%s) to remote...\n", cfg.App.Build)
+		if err := s.executor.Transfer(ctx, buildContextLocal, buildContextRemote, false); err != nil {
+			return fmt.Errorf("transferring app build context: %w", err)
+		}
+	}
+
+	// Transfer the config file as vibewarden.yaml on the remote regardless of
+	// the source filename. The docker-compose.yml always mounts ./vibewarden.yaml
+	// so the sidecar must find it under that name even when the user deployed
+	// with --config vibewarden.prod.yaml.
+	// This MUST happen AFTER the build context transfer because the build
+	// context (app source dir) may contain a dev vibewarden.yaml that would
+	// otherwise overwrite the prod config.
+	const remoteConfigName = "vibewarden.yaml"
+	if err := s.executor.TransferFile(ctx, opts.ConfigPath, remoteDir+remoteConfigName); err != nil {
+		return fmt.Errorf("transferring %s: %w", remoteConfigName, err)
+	}
+
+	// Step 4: start Docker Compose on the remote.
+	// Always pull the latest sidecar image before starting, regardless of mode.
+	// In build mode the app image is built locally, but the sidecar image may be
+	// cached from an older version, so we explicitly pull it first.
+	fmt.Fprintln(out, "Pulling latest sidecar image on remote...")
+	pullSidecarCmd := fmt.Sprintf("cd %s && docker compose pull vibewarden", remoteDir)
+	if _, err := s.executor.Run(ctx, pullSidecarCmd); err != nil {
+		return fmt.Errorf("docker compose pull vibewarden: %w", err)
+	}
+
+	// When app.build is set, build the image remotely instead of pulling the app image.
+	if cfg.App.Build != "" {
+		fmt.Fprintln(out, "Building and starting services on remote...")
+		upCmd := fmt.Sprintf("cd %s && docker compose up -d --build --force-recreate", remoteDir)
+		if _, err := s.executor.Run(ctx, upCmd); err != nil {
+			return fmt.Errorf("docker compose up: %w", err)
+		}
+	} else {
+		fmt.Fprintln(out, "Pulling Docker images on remote...")
+		pullCmd := fmt.Sprintf("cd %s && docker compose pull", remoteDir)
+		if _, err := s.executor.Run(ctx, pullCmd); err != nil {
+			return fmt.Errorf("docker compose pull: %w", err)
+		}
+
+		fmt.Fprintln(out, "Starting services on remote...")
+		upCmd := fmt.Sprintf("cd %s && docker compose up -d --force-recreate", remoteDir)
+		if _, err := s.executor.Run(ctx, upCmd); err != nil {
+			return fmt.Errorf("docker compose up: %w", err)
+		}
+	}
+
+	// Step 5: health check.
+	port := cfg.Server.Port
+	if port == 0 {
+		port = defaultHealthPort
+	}
+	scheme := "http"
+	host := "localhost"
+	if cfg.TLS.Enabled {
+		scheme = "https"
+		// When TLS is enabled with a domain (e.g. letsencrypt), the server's
+		// TLS connection policies match only the configured domain via SNI.
+		// Using "localhost" as the host would cause the TLS handshake to fail
+		// because the certificate (once issued) is scoped to the domain, not
+		// localhost. Use the configured domain for the health check host.
+		if cfg.TLS.Domain != "" {
+			host = cfg.TLS.Domain
+		}
+	}
+	healthURL := fmt.Sprintf("%s://%s:%d/_vibewarden/health", scheme, host, port)
+	fmt.Fprintf(out, "Waiting for sidecar health check at %s...\n", healthURL)
+	s.waitHealthy(ctx, healthURL, out)
+
+	fmt.Fprintln(out, "Deploy complete.")
+	return nil
+}
+
+// StatusOptions holds parameters for the deploy status command.
+type StatusOptions struct {
+	// ConfigPath is the path to vibewarden.yaml on the local filesystem.
+	// It is used to derive the project name (and therefore the remote directory)
+	// in exactly the same way as RunOptions.ConfigPath in Deploy. When empty,
+	// the project name falls back to "vibewarden".
+	ConfigPath string
+
+	// ProjectName overrides the project name derived from ConfigPath.
+	ProjectName string
+
+	// Out is the writer used for status output. May be nil.
+	Out io.Writer
+}
+
+// Status fetches Docker Compose service state from the remote.
+func (s *Service) Status(ctx context.Context, opts StatusOptions) error {
+	out := opts.Out
+	if out == nil {
+		out = io.Discard
+	}
+
+	projectName := opts.ProjectName
+	if projectName == "" {
+		projectName = ProjectNameFromConfig(opts.ConfigPath)
+	}
+	remoteDir := remoteBaseDir + "/" + projectName + "/"
+
+	output, err := s.executor.Run(ctx, "docker compose --project-directory "+remoteDir+" ps")
+	if err != nil {
+		return fmt.Errorf("fetching remote status: %w", err)
+	}
+	fmt.Fprintln(out, output)
+	return nil
+}
+
+// LogsOptions holds parameters for the deploy logs command.
+type LogsOptions struct {
+	// ConfigPath is the path to vibewarden.yaml on the local filesystem.
+	// It is used to derive the project name (and therefore the remote directory)
+	// in exactly the same way as RunOptions.ConfigPath in Deploy. When empty,
+	// the project name falls back to "vibewarden".
+	ConfigPath string
+
+	// ProjectName overrides the project name derived from ConfigPath.
+	ProjectName string
+
+	// Lines is the number of log lines to retrieve (0 = all).
+	Lines int
+	// Out is the writer used for log output. May be nil.
+	Out io.Writer
+}
+
+// Logs retrieves Docker Compose logs from the remote.
+func (s *Service) Logs(ctx context.Context, opts LogsOptions) error {
+	out := opts.Out
+	if out == nil {
+		out = io.Discard
+	}
+
+	projectName := opts.ProjectName
+	if projectName == "" {
+		projectName = ProjectNameFromConfig(opts.ConfigPath)
+	}
+	remoteDir := remoteBaseDir + "/" + projectName + "/"
+
+	cmd := "docker compose --project-directory " + remoteDir + " logs"
+	if opts.Lines > 0 {
+		cmd += fmt.Sprintf(" --tail=%d", opts.Lines)
+	}
+
+	output, err := s.executor.Run(ctx, cmd)
+	if err != nil {
+		return fmt.Errorf("fetching remote logs: %w", err)
+	}
+	fmt.Fprintln(out, output)
+	return nil
+}
+
+// checkRemotePrerequisites verifies that docker and docker compose are available
+// on the remote host.
+func (s *Service) checkRemotePrerequisites(ctx context.Context) error {
+	if _, err := s.executor.Run(ctx, "which docker"); err != nil {
+		return fmt.Errorf("docker not found on remote: %w", err)
+	}
+	if _, err := s.executor.Run(ctx, "docker compose version"); err != nil {
+		return fmt.Errorf("docker compose not found on remote: %w", err)
+	}
+	return nil
+}
+
+// waitHealthy polls healthURL until the sidecar responds with a 2xx status or
+// the context deadline / healthCheckTimeout expires.
+// It uses s.httpDo, which defaults to an insecure client because the ACME cert
+// may not be issued yet when this runs immediately after compose up.
+//
+// On timeout or context cancellation the function prints a warning and returns
+// without error — the deploy is considered successful because services may still
+// be starting up. The operator can run "vibew deploy status" to check manually.
+func (s *Service) waitHealthy(ctx context.Context, healthURL string, out io.Writer) {
+	deadline := time.Now().Add(healthCheckTimeout)
+	attempt := 0
+	var lastErr error
+
+	for {
+		attempt++
+		ok, err := s.checkHealthWith(ctx, healthURL, s.httpDo)
+		if ok {
+			fmt.Fprintln(out, "Sidecar is healthy.")
+			return
+		}
+		if err != nil {
+			lastErr = err
+			fmt.Fprintf(out, "  attempt %d: %v\n", attempt, err)
+		} else {
+			fmt.Fprintf(out, "  attempt %d: not yet healthy\n", attempt)
+		}
+
+		if time.Now().After(deadline) {
+			if lastErr != nil {
+				fmt.Fprintf(out, "Warning: health check timed out (last error: %v). Services may still be starting. Run: vibew deploy status --target ... to check.\n", lastErr)
+			} else {
+				fmt.Fprintln(out, "Warning: health check timed out. Services may still be starting. Run: vibew deploy status --target ... to check.")
+			}
+			return
+		}
+
+		select {
+		case <-ctx.Done():
+			fmt.Fprintf(out, "Warning: health check cancelled (%v). Services may still be starting. Run: vibew deploy status --target ... to check.\n", ctx.Err())
+			return
+		case <-time.After(healthCheckInterval):
+		}
+	}
+}
+
+// checkHealthWith performs a single GET request to healthURL using the provided
+// httpDo function and returns true when the response status is 2xx.
+func (s *Service) checkHealthWith(ctx context.Context, healthURL string, httpDo func(*http.Request) (*http.Response, error)) (bool, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, healthURL, nil)
+	if err != nil {
+		return false, fmt.Errorf("creating health request: %w", err)
+	}
+	resp, err := httpDo(req)
+	if err != nil {
+		return false, err
+	}
+	defer resp.Body.Close() //nolint:errcheck
+	return resp.StatusCode >= 200 && resp.StatusCode < 300, nil
+}
+
+// ProjectNameFromConfig derives a project name from the config file path.
+// It returns the base name of the directory containing the config file, which
+// is the project directory name by convention. It is exported so the CLI can
+// compute the remote directory before calling Deploy.
+//
+// When configPath is empty the current working directory name is used as the
+// project name. When configPath is relative (e.g. "vibewarden.prod.yaml") it is
+// resolved to an absolute path first so that filepath.Dir returns the real
+// directory rather than ".".
+func ProjectNameFromConfig(configPath string) string {
+	if configPath == "" {
+		wd, err := os.Getwd()
+		if err != nil {
+			return "vibewarden"
+		}
+		configPath = filepath.Join(wd, "vibewarden.yaml")
+	}
+
+	abs, err := filepath.Abs(configPath)
+	if err != nil {
+		return "vibewarden"
+	}
+
+	dir := filepath.Dir(abs)
+	name := filepath.Base(dir)
+	// Sanitise: replace spaces and dots with dashes.
+	name = strings.ReplaceAll(name, " ", "-")
+	name = strings.ReplaceAll(name, ".", "-")
+	if name == "" || name == "." {
+		return "vibewarden"
+	}
+	return name
+}

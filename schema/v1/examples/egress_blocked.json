@@ -1,0 +1,24 @@
+{
+  "schema_version": "v1",
+  "event_type": "egress.blocked",
+  "timestamp": "2026-03-28T14:43:00Z",
+  "severity": "medium",
+  "category": "network",
+  "ai_summary": "Egress request blocked: GET http://internal.corp/secrets via route \"\" -- no route matched default deny policy",
+  "payload": {
+    "route": "",
+    "method": "GET",
+    "url": "http://internal.corp/secrets",
+    "reason": "no route matched default deny policy"
+  },
+  "actor": {
+    "type": "system",
+    "id": ""
+  },
+  "resource": {
+    "type": "egress_route",
+    "path": ""
+  },
+  "outcome": "blocked",
+  "triggered_by": "egress_proxy"
+}

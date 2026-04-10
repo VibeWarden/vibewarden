@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>My Profile — VibeWarden Demo</title>
+  <link rel="stylesheet" href="/static/water.css">
+  <style>
+    .badge {
+      display: inline-block;
+      padding: 0.2em 0.6em;
+      border-radius: 4px;
+      font-size: 0.85em;
+      font-weight: bold;
+    }
+    .badge-ok    { background: #16a34a; color: #fff; }
+    .badge-error { background: #dc2626; color: #fff; }
+    .badge-warn  { background: #d97706; color: #fff; }
+    nav a { margin-right: 1em; }
+    table { width: 100%; }
+    td:first-child { font-weight: bold; width: 40%; }
+    .vw-footer {
+      margin-top: 3em;
+      padding: 1em 1.2em;
+      background: #f9fafb;
+      border: 1px solid #e5e7eb;
+      border-radius: 6px;
+      font-size: 0.9em;
+      color: #374151;
+      text-align: center;
+    }
+    .vw-footer strong { color: #7C3AED; }
+  </style>
+</head>
+<body>
+  <nav>
+    <strong>VibeWarden Demo</strong> &nbsp;|&nbsp;
+    <a href="/">Home</a>
+    <a href="/static/me.html">My Profile</a>
+    <a href="/static/headers.html">Headers Inspector</a>
+    <a href="/static/ratelimit.html">Rate Limit Test</a>
+  </nav>
+
+  <h1>My Profile</h1>
+  <p>
+    This page calls <code>GET /me</code>, a protected endpoint.
+    VibeWarden injects <code>X-User-Id</code>, <code>X-User-Email</code>, and
+    <code>X-User-Verified</code> headers from the validated Kratos session.
+    The demo app returns them as JSON — no auth logic in the app itself.
+  </p>
+
+  <div id="profile-container">Loading...</div>
+
+  <div class="vw-footer">
+    <strong>This app has zero custom security code.</strong>
+    All protection is provided by <strong>VibeWarden</strong>.
+    &mdash; <a href="/">Back to Home</a> &mdash;
+    <a href="https://github.com/vibewarden/vibewarden" target="_blank" rel="noopener">GitHub</a>
+  </div>
+
+  <script>
+    (async function () {
+      const container = document.getElementById('profile-container');
+
+      try {
+        const resp = await fetch('/me');
+
+        if (resp.status === 401) {
+          container.innerHTML =
+            '<p><span class="badge badge-warn">Not authenticated</span></p>' +
+            '<p>You need to log in to view your profile.</p>' +
+            '<p><a href="/auth/login"><button>Log In</button></a> ' +
+            '<a href="/auth/registration"><button>Register</button></a></p>';
+          return;
+        }
+
+        if (!resp.ok) {
+          throw new Error('Unexpected HTTP ' + resp.status);
+        }
+
+        const data = await resp.json();
+
+        const verified = data.verified === 'true';
+        const verifiedBadge = verified
+          ? '<span class="badge badge-ok">Verified</span>'
+          : '<span class="badge badge-warn">Unverified</span>';
+
+        container.innerHTML =
+          '<table>' +
+            '<tr><td>User ID</td><td><code>' + escapeHtml(data.user_id || '—') + '</code></td></tr>' +
+            '<tr><td>Email</td><td>' + escapeHtml(data.email || '—') + '</td></tr>' +
+            '<tr><td>Email Verified</td><td>' + verifiedBadge + '</td></tr>' +
+          '</table>' +
+          '<p><small>These values come from headers injected by VibeWarden, not from any cookie or token parsed by the app.</small></p>';
+      } catch (err) {
+        container.innerHTML =
+          '<p><span class="badge badge-error">Error</span> ' + escapeHtml(String(err)) + '</p>';
+      }
+    })();
+
+    function escapeHtml(str) {
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+  </script>
+</body>
+</html>
