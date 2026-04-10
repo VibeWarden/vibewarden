@@ -7,6 +7,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"io"
 	"net/url"
 	"os/exec"
 	"strconv"
@@ -105,6 +106,31 @@ func (e *Executor) Run(ctx context.Context, cmd string) (string, error) {
 		return buf.String(), fmt.Errorf("ssh %s: %w\noutput: %s", cmd, err, strings.TrimSpace(buf.String()))
 	}
 	return strings.TrimSpace(buf.String()), nil
+}
+
+// RunStream executes cmd on the remote host via ssh, writing stdout and stderr
+// directly to the provided writers without buffering. It is intended for
+// long-running commands (e.g. "docker compose logs -f") where output must be
+// streamed to the caller in real-time. Cancel ctx to terminate the remote
+// process.
+func (e *Executor) RunStream(ctx context.Context, cmd string, stdout, stderr io.Writer) error {
+	args := e.sshArgs(cmd)
+	//nolint:gosec // cmd is caller-supplied; see the Run method for the same
+	// rationale.
+	c := exec.CommandContext(ctx, "ssh", args...)
+	c.Stdout = stdout
+	c.Stderr = stderr
+
+	if err := c.Run(); err != nil {
+		// When the context is cancelled (user pressed Ctrl-C) the ssh process is
+		// killed and Run returns a non-nil error. Treat context cancellation as a
+		// clean exit so the caller does not print a spurious error message.
+		if ctx.Err() != nil {
+			return nil
+		}
+		return fmt.Errorf("ssh %s: %w", cmd, err)
+	}
+	return nil
 }
 
 // Transfer syncs localDir to remoteDir on the remote host using rsync over SSH.

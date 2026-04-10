@@ -1,6 +1,9 @@
 package ports
 
-import "context"
+import (
+	"context"
+	"io"
+)
 
 // RemoteExecutor runs commands and transfers files on a remote server reachable
 // via SSH. Implementations shell out to the system ssh and rsync binaries so
@@ -9,6 +12,13 @@ type RemoteExecutor interface {
 	// Run executes cmd on the remote host and returns the combined stdout+stderr
 	// output. A non-zero exit code is returned as an error.
 	Run(ctx context.Context, cmd string) (output string, err error)
+
+	// RunStream executes cmd on the remote host, writing stdout and stderr
+	// directly to the provided writers in real-time. Unlike Run, output is not
+	// buffered — it is streamed as the remote process produces it. This is used
+	// for long-running commands such as "docker compose logs -f" where the caller
+	// needs to receive output continuously until the context is cancelled.
+	RunStream(ctx context.Context, cmd string, stdout, stderr io.Writer) error
 
 	// Transfer syncs localDir to remoteDir on the remote host using rsync.
 	// localDir must be a path on the local filesystem. remoteDir is a path on

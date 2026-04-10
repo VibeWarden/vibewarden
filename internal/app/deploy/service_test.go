@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -53,6 +54,17 @@ func (f *fakeExecutor) Run(_ context.Context, cmd string) (string, error) {
 	}
 	// Default: success with empty output.
 	return "", nil
+}
+
+func (f *fakeExecutor) RunStream(_ context.Context, cmd string, stdout, _ io.Writer) error {
+	f.runCalls = append(f.runCalls, cmd)
+	if r, ok := f.runResponses[cmd]; ok {
+		if r.output != "" {
+			fmt.Fprint(stdout, r.output)
+		}
+		return r.err
+	}
+	return nil
 }
 
 func (f *fakeExecutor) Transfer(_ context.Context, localDir, remoteDir string, deleteExtra bool) error {
@@ -381,6 +393,83 @@ func TestService_Logs_Error(t *testing.T) {
 	}
 }
 
+func TestService_Logs_Follow(t *testing.T) {
+	executor := &fakeExecutor{
+		runResponses: map[string]runResponse{
+			"docker compose --project-directory ~/vibewarden/myproject/ logs --tail=20 -f": {output: "streamed line 1\nstreamed line 2"},
+		},
+	}
+
+	svc := deployapp.NewService(executor, nil, nil)
+
+	var buf bytes.Buffer
+	err := svc.Logs(context.Background(), deployapp.LogsOptions{
+		ProjectName: "myproject",
+		Lines:       20,
+		Follow:      true,
+		Out:         &buf,
+	})
+	if err != nil {
+		t.Fatalf("Logs(Follow=true) unexpected error: %v", err)
+	}
+
+	if !strings.Contains(buf.String(), "streamed line 1") {
+		t.Errorf("expected streamed output in buf, got:\n%s", buf.String())
+	}
+	// Verify RunStream was called (not Run) by checking the recorded command.
+	if len(executor.runCalls) != 1 {
+		t.Fatalf("expected exactly 1 run call, got: %v", executor.runCalls)
+	}
+	if !strings.Contains(executor.runCalls[0], "-f") {
+		t.Errorf("expected '-f' in the run call command, got: %q", executor.runCalls[0])
+	}
+}
+
+func TestService_Logs_Follow_NoLines(t *testing.T) {
+	executor := &fakeExecutor{
+		runResponses: map[string]runResponse{
+			"docker compose --project-directory ~/vibewarden/myproject/ logs -f": {output: "all streamed"},
+		},
+	}
+
+	svc := deployapp.NewService(executor, nil, nil)
+
+	var buf bytes.Buffer
+	err := svc.Logs(context.Background(), deployapp.LogsOptions{
+		ProjectName: "myproject",
+		Lines:       0,
+		Follow:      true,
+		Out:         &buf,
+	})
+	if err != nil {
+		t.Fatalf("Logs(Follow=true, Lines=0) unexpected error: %v", err)
+	}
+	if !strings.Contains(buf.String(), "all streamed") {
+		t.Errorf("expected 'all streamed' in output, got:\n%s", buf.String())
+	}
+}
+
+func TestService_Logs_Follow_Error(t *testing.T) {
+	executor := &fakeExecutor{
+		runResponses: map[string]runResponse{
+			"docker compose --project-directory ~/vibewarden/myproject/ logs -f": {err: errors.New("stream broken")},
+		},
+	}
+
+	svc := deployapp.NewService(executor, nil, nil)
+
+	err := svc.Logs(context.Background(), deployapp.LogsOptions{
+		ProjectName: "myproject",
+		Follow:      true,
+	})
+	if err == nil {
+		t.Fatal("expected error when RunStream fails")
+	}
+	if !strings.Contains(err.Error(), "streaming remote logs") {
+		t.Errorf("error should mention 'streaming remote logs', got: %v", err)
+	}
+}
+
 func TestService_Deploy_RemoteDir(t *testing.T) {
 	executor := &fakeExecutor{}
 	generator := &fakeGenerator{}
@@ -584,6 +673,10 @@ func (m *mockRunExecutor) Run(_ context.Context, cmd string) (string, error) {
 		return m.runFn(cmd)
 	}
 	return "", nil
+}
+
+func (m *mockRunExecutor) RunStream(_ context.Context, _ string, _ io.Writer, _ io.Writer) error {
+	return nil
 }
 
 func (m *mockRunExecutor) Transfer(_ context.Context, localDir, remoteDir string, deleteExtra bool) error {
