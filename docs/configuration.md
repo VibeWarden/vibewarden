@@ -100,7 +100,7 @@ app:
 |-------|------|---------|-------------|
 | `tls.enabled` | bool | `true` | Enable TLS |
 | `tls.domain` | string | `""` | Domain for the TLS certificate. Required when `provider` is `letsencrypt` |
-| `tls.provider` | string | `""` | Certificate provider: `letsencrypt`, `self-signed`, or `external` |
+| `tls.provider` | string | `""` | Certificate provider: `letsencrypt` (or `acme`), `self-signed`, or `external` |
 | `tls.cert_path` | string | `""` | Path to PEM certificate. Required when `provider` is `external` |
 | `tls.key_path` | string | `""` | Path to PEM private key. Required when `provider` is `external` |
 | `tls.storage_path` | string | `""` | Directory for ACME certificate storage. Applies to `letsencrypt` only |
@@ -269,7 +269,7 @@ Only read when `store` is `redis`.
 | `security_headers.hsts_preload` | bool | `false` | Add `preload` to HSTS |
 | `security_headers.content_type_nosniff` | bool | `true` | Set `X-Content-Type-Options: nosniff` |
 | `security_headers.frame_option` | string | `DENY` | `X-Frame-Options`: `DENY`, `SAMEORIGIN`, or `""` to disable |
-| `security_headers.content_security_policy` | string | `""` (disabled) | `Content-Security-Policy` value — empty by default; set explicitly to opt in |
+| `security_headers.content_security_policy` | string | `default-src 'self'; style-src 'self' 'unsafe-inline'` | `Content-Security-Policy` value |
 | `security_headers.referrer_policy` | string | `strict-origin-when-cross-origin` | `Referrer-Policy` value |
 | `security_headers.permissions_policy` | string | `""` | `Permissions-Policy` value |
 | `security_headers.cross_origin_opener_policy` | string | `same-origin` | `Cross-Origin-Opener-Policy` value |
@@ -302,8 +302,8 @@ for common attack patterns in-process, with no external dependencies.
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `waf.enabled` | bool | `false` | Enable the WAF middleware |
-| `waf.mode` | string | `block` | Detection mode: `block` (reject with 400) or `detect` (pass through and log) |
+| `waf.enabled` | bool | `true` | Enable the WAF middleware |
+| `waf.mode` | string | `detect` | Detection mode: `block` (reject with 400) or `detect` (pass through and log) |
 
 ### `waf.rules`
 

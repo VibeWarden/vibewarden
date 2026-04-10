@@ -257,17 +257,23 @@ myapp-vibewarden        Up (healthy)
 myapp-app               Up (healthy)
 ```
 
-Hit the health endpoint:
+Hit the health endpoint via SSH (the deploy command probes `localhost` on the remote, not the external domain):
 
 ```bash
-curl -I https://demo.yourdomain.com/_vibewarden/healthz
-# HTTP/2 200
+ssh root@<server-ip> 'curl -sf http://localhost/_vibewarden/healthz && echo OK'
+# OK
 ```
 
 Open your browser and navigate to `https://demo.yourdomain.com`. You should see
 your app served over HTTPS with a valid Let's Encrypt certificate.
 
-Check logs if anything looks wrong:
+Stream logs in real-time with `--follow`:
+
+```bash
+vibew deploy logs --target ssh://root@<server-ip> --follow
+```
+
+Or check logs directly on the server:
 
 ```bash
 ssh root@<server-ip> 'cd /opt/myapp && docker compose logs -f --tail 50'
