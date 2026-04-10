@@ -2514,7 +2514,7 @@ func TestValidate_TLSProvider(t *testing.T) {
 			name:        "unknown provider cloudflare is rejected with actionable message",
 			cfg:         config.Config{TLS: config.TLSConfig{Provider: "cloudflare"}},
 			wantErr:     true,
-			wantContain: "accepted values: \"self-signed\", \"letsencrypt\", \"external\"",
+			wantContain: "accepted values: \"self-signed\", \"letsencrypt\" (or alias \"acme\"), \"external\"",
 		},
 		{
 			name:        "error message suggests fix",

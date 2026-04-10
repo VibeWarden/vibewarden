@@ -230,10 +230,10 @@ func TestWAFEngineHandler_CleanRequest_Passes(t *testing.T) {
 	}
 }
 
-func TestWAFEngineHandler_EmptyMode_DefaultsToBlock(t *testing.T) {
+func TestWAFEngineHandler_EmptyMode_DefaultsToDetect(t *testing.T) {
 	h := &WAFEngineHandler{
 		Config: WAFEngineHandlerConfig{
-			Mode: "", // empty — should default to block
+			Mode: "", // empty — should default to detect (pass-through)
 			Rules: WAFEngineHandlerRulesConfig{
 				SQLInjection: true,
 			},
@@ -252,7 +252,7 @@ func TestWAFEngineHandler_EmptyMode_DefaultsToBlock(t *testing.T) {
 	})
 	_ = h.ServeHTTP(rr, req, next)
 
-	if rr.Code != http.StatusForbidden {
-		t.Errorf("empty mode defaults to block: status = %d, want 403", rr.Code)
+	if rr.Code != http.StatusOK {
+		t.Errorf("empty mode defaults to detect (pass-through): status = %d, want 200", rr.Code)
 	}
 }

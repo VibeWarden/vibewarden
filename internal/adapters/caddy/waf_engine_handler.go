@@ -37,7 +37,7 @@ type WAFEngineHandlerRulesConfig struct {
 // WAFEngineHandler Caddy module. It is embedded in the Caddy JSON config under
 // the "config" key of the "vibewarden_waf_engine" handler entry.
 type WAFEngineHandlerConfig struct {
-	// Mode is "block" or "detect". Empty defaults to "block".
+	// Mode is "block" or "detect". Empty defaults to "detect".
 	Mode string `json:"mode"`
 
 	// Rules toggles individual attack categories.
@@ -91,7 +91,7 @@ func (h *WAFEngineHandler) Provision(_ gocaddy.Context) error {
 
 	mode := middleware.WAFMode(h.Config.Mode)
 	if mode == "" {
-		mode = middleware.WAFModeBlock
+		mode = middleware.WAFModeDetect
 	}
 
 	cfg := middleware.WAFConfig{
