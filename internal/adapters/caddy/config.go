@@ -227,10 +227,11 @@ func BuildCaddyConfig(cfg *ports.ProxyConfig) (map[string]any, error) {
 	catchAllRoute := map[string]any{
 		"handle": handlers,
 	}
-	// For self-signed TLS, add a host matcher so Caddy's auto-HTTPS knows
-	// which domain to issue a certificate for. Without this, Caddy won't
-	// generate any server certificate.
-	if cfg.TLS.Enabled && cfg.TLS.Provider == ports.TLSProviderSelfSigned {
+	// Add a host matcher so Caddy's auto-HTTPS knows which domain to manage
+	// certificates for. Without this, Caddy won't proactively obtain or generate
+	// any server certificate. This is critical for letsencrypt (ACME) and
+	// self-signed (internal CA) providers.
+	if cfg.TLS.Enabled && (cfg.TLS.Provider == ports.TLSProviderSelfSigned || cfg.TLS.Provider == ports.TLSProviderLetsEncrypt) {
 		domain := cfg.TLS.Domain
 		if domain == "" {
 			domain = "localhost"
@@ -446,10 +447,6 @@ func buildTLSApp(cfg ports.TLSConfig) (map[string]any, error) {
 func buildLetsEncryptTLSApp(cfg ports.TLSConfig) map[string]any {
 	policy := map[string]any{
 		"subjects": []string{cfg.Domain},
-		// on_demand triggers certificate acquisition on the first TLS handshake
-		// that matches this policy's subjects. Without it, Caddy stores the
-		// automation policy but never proactively obtains the certificate.
-		"on_demand": true,
 		"issuers": []map[string]any{
 			{
 				"module": "acme",
@@ -460,10 +457,6 @@ func buildLetsEncryptTLSApp(cfg ports.TLSConfig) map[string]any {
 	return map[string]any{
 		"automation": map[string]any{
 			"policies": []map[string]any{policy},
-			// on_demand config at the automation level enables on-demand TLS.
-			// The subjects field in the policy restricts which domains are
-			// allowed, preventing abuse.
-			"on_demand": map[string]any{},
 		},
 	}
 }

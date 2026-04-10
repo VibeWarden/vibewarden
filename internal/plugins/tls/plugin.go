@@ -246,7 +246,6 @@ func buildTLSApp(cfg ports.TLSConfig) (map[string]any, error) {
 func buildLetsEncryptTLSApp(cfg ports.TLSConfig) map[string]any {
 	policy := map[string]any{
 		"subjects": []string{cfg.Domain},
-		"on_demand": true,
 		"issuers": []map[string]any{
 			{
 				"module": "acme",
@@ -256,8 +255,7 @@ func buildLetsEncryptTLSApp(cfg ports.TLSConfig) map[string]any {
 
 	return map[string]any{
 		"automation": map[string]any{
-			"policies":  []map[string]any{policy},
-			"on_demand": map[string]any{},
+			"policies": []map[string]any{policy},
 		},
 	}
 }
