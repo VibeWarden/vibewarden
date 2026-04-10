@@ -4,7 +4,7 @@
 #   FROM golang:1.24-alpine AS build
 #   WORKDIR /app
 #   COPY . .
-#   RUN go build -o app ./cmd/flagdot
+#   RUN go build -o app ./cmd/basenamedir
 #   FROM alpine:3.21
 #   COPY --from=build /app/app /app
 #   EXPOSE 3000
