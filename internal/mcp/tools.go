@@ -26,6 +26,7 @@ func RegisterDefaultTools(s *Server) {
 	s.RegisterTool(verifyDeployToolDef(), handleVerifyDeploy)
 	s.RegisterTool(getDeployLogsToolDef(), handleGetDeployLogs)
 	s.RegisterTool(watchEventsToolDef(), handleWatchEvents)
+	s.RegisterTool(streamLogsToolDef(), handleStreamLogs)
 	s.RegisterTool(schemaDescribeToolDef(), handleSchemaDescribe)
 	RegisterProposalTools(s)
 }
