@@ -270,6 +270,7 @@ func TestRegisterDefaultTools(t *testing.T) {
 		"vibewarden_verify_deploy",
 		"vibewarden_get_deploy_logs",
 		"vibewarden_watch_events",
+		"vibewarden_stream_logs",
 		"vibewarden_schema_describe",
 		"vibewarden_propose_action",
 		"vibewarden_list_proposals",
