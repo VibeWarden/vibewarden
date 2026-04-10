@@ -115,8 +115,6 @@ Common flags:
 | `--rate-limit` | Enable rate limiting |
 | `--tls --domain example.com` | Enable TLS (requires `--domain`) |
 | `--force` | Overwrite existing files |
-| `--skip-wrapper` | Skip vibew wrapper script generation |
-| `--agent <type>` | Generate AI context files: `claude`, `cursor`, `generic`, `all`, or `none` |
 
 ### What `wrap` generates
 

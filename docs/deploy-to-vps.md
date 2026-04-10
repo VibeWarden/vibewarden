@@ -109,7 +109,9 @@ curl -fsSL https://vibewarden.dev/vibew > vibew && chmod +x vibew
 
 ```bash
 mkdir myapp && cd myapp
-./vibew init myapp --upstream 3000 --auth --rate-limit
+vibew init myapp
+vibew add auth
+vibew add tls --domain myapp.example.com
 ```
 
 **Existing app:**
