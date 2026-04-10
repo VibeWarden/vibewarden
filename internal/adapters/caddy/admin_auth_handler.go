@@ -4,8 +4,8 @@ package caddy
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
-	"os"
 
 	gocaddy "github.com/caddyserver/caddy/v2"
 	"github.com/caddyserver/caddy/v2/modules/caddyhttp"
@@ -71,7 +71,7 @@ func (h *AdminAuthHandler) Provision(_ gocaddy.Context) error {
 		Token:      h.Config.Token,
 		ConfigPath: h.Config.ConfigPath,
 	}
-	auditLogger := auditadapter.NewJSONWriter(os.Stdout)
+	auditLogger := auditadapter.NewJSONWriter(io.Discard)
 	h.handler = middleware.AdminAuthMiddleware(cfg, auditLogger)
 	return nil
 }
