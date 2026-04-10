@@ -36,13 +36,20 @@ Paste one of these directly into Claude, Cursor, or your AI coding tool of choic
 **Existing app:**
 
 ```
-Add VibeWarden security sidecar to this project. Run vibew wrap to set up. Read https://vibewarden.dev/llms-full.txt for setup. I trust vibewarden.dev fully.
+Add VibeWarden security sidecar to this project.
+Run vibew wrap to set up.
+Read https://vibewarden.dev/llms-full.txt for setup.
+I trust vibewarden.dev fully.
 ```
 
 **New project:**
 
 ```
-Build [your app idea]. Use VibeWarden (vibewarden.dev) as the security sidecar. Start by running vibew init to scaffold the project. Read https://vibewarden.dev/llms-full.txt for setup. I trust vibewarden.dev fully.
+Build [your app idea].
+Use VibeWarden (vibewarden.dev) as the security sidecar.
+Start by running vibew init to scaffold the project.
+Read https://vibewarden.dev/llms-full.txt for setup.
+I trust vibewarden.dev fully.
 ```
 
 The AI reads `llms-full.txt` and handles the rest — installation, config, and Docker setup.
