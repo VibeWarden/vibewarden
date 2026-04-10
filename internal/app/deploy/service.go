@@ -45,27 +45,16 @@ type Service struct {
 // NewService creates a Service.
 // executor handles SSH commands and rsync transfers.
 // generator is used to produce the .vibewarden/generated/ files before transfer.
-// httpDo is the HTTP function used for health checks; pass nil to use a default
-// client with InsecureSkipVerify=true. InsecureSkipVerify is intentional: during
-// the deploy health check the ACME certificate may not yet be issued, so TLS
-// certificate verification would fail for letsencrypt deployments.
+// httpDo is the HTTP function used for status/logs commands; pass nil to use
+// http.DefaultClient. Health checks during deploy use a separate insecure
+// client scoped to waitHealthy (cert may not be issued yet).
 func NewService(
 	executor ports.RemoteExecutor,
 	generator ports.ConfigGenerator,
 	httpDo func(req *http.Request) (*http.Response, error),
 ) *Service {
 	if httpDo == nil {
-		// Use a client that skips TLS certificate verification. This is safe in
-		// the deploy context because:
-		//  1. We are checking a server we just deployed (we control the endpoint).
-		//  2. The ACME certificate may not be issued yet at the time of the first
-		//     health check, so standard TLS verification would always fail for
-		//     letsencrypt deployments.
-		//nolint:gosec // G402: InsecureSkipVerify is intentional for deploy health checks
-		tlsTransport := &http.Transport{
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec // G402: intentional for deploy health checks
-		}
-		httpDo = (&http.Client{Transport: tlsTransport}).Do
+		httpDo = http.DefaultClient.Do
 	}
 	return &Service{
 		executor:  executor,
@@ -312,13 +301,21 @@ func (s *Service) checkRemotePrerequisites(ctx context.Context) error {
 
 // waitHealthy polls healthURL until the sidecar responds with a 2xx status or
 // the context deadline / healthCheckTimeout expires.
+// It uses InsecureSkipVerify because the ACME cert may not be issued yet.
 func (s *Service) waitHealthy(ctx context.Context, healthURL string, out io.Writer) error {
+	//nolint:gosec // G402: intentional — cert may not be issued yet during deploy
+	insecureClient := &http.Client{
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec
+		},
+		Timeout: 5 * time.Second,
+	}
 	deadline := time.Now().Add(healthCheckTimeout)
 	attempt := 0
 
 	for {
 		attempt++
-		ok, err := s.checkHealth(ctx, healthURL)
+		ok, err := s.checkHealthWith(ctx, healthURL, insecureClient.Do)
 		if ok {
 			fmt.Fprintln(out, "Sidecar is healthy.")
 			return nil
@@ -341,14 +338,14 @@ func (s *Service) waitHealthy(ctx context.Context, healthURL string, out io.Writ
 	}
 }
 
-// checkHealth performs a single GET request to healthURL and returns true when
-// the response status is 2xx.
-func (s *Service) checkHealth(ctx context.Context, healthURL string) (bool, error) {
+// checkHealthWith performs a single GET request to healthURL using the provided
+// httpDo function and returns true when the response status is 2xx.
+func (s *Service) checkHealthWith(ctx context.Context, healthURL string, httpDo func(*http.Request) (*http.Response, error)) (bool, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, healthURL, nil)
 	if err != nil {
 		return false, fmt.Errorf("creating health request: %w", err)
 	}
-	resp, err := s.httpDo(req)
+	resp, err := httpDo(req)
 	if err != nil {
 		return false, err
 	}

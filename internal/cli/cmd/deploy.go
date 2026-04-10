@@ -92,7 +92,7 @@ Examples:
 				renderer,
 				credentialsadapter.NewGenerator(),
 				credentialsadapter.NewStore(),
-			)
+			).WithConfigSourcePath(configPath)
 			svc := deployapp.NewService(executor, generator, nil)
 
 			absConfig, err := filepath.Abs(configPath)
