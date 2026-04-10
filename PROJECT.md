@@ -1,6 +1,6 @@
-# describeapp
+# chatapp
 
-a task management API
+a real-time chat service
 
 ## Overview
 

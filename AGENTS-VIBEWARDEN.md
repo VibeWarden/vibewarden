@@ -5,7 +5,7 @@
 
 ## Project description
 
-a task management API
+a real-time chat service
 
 ## Security boundary rule
 
