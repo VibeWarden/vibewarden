@@ -16,7 +16,7 @@ upstream:
 # Remove this section if you manage your app service manually.
 app:
   build: "."
-  # image: "namedproject:latest"  # use in production instead of build
+  # image: "positional:latest"  # use in production instead of build
 
 log:
   level: "info"
