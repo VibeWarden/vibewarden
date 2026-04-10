@@ -93,7 +93,7 @@ Examples:
 				credentialsadapter.NewGenerator(),
 				credentialsadapter.NewStore(),
 			).WithConfigSourcePath(configPath)
-			svc := deployapp.NewService(executor, generator, nil)
+			svc := deployapp.NewService(executor, generator)
 
 			absConfig, err := filepath.Abs(configPath)
 			if err != nil {
@@ -205,7 +205,7 @@ Examples:
 			} else {
 				executor = sshadapter.NewExecutor(t)
 			}
-			svc := deployapp.NewService(executor, nil, nil)
+			svc := deployapp.NewService(executor, nil)
 
 			absConfig, err := filepath.Abs(configPath)
 			if err != nil {
@@ -275,7 +275,7 @@ Examples:
 			} else {
 				executor = sshadapter.NewExecutor(t)
 			}
-			svc := deployapp.NewService(executor, nil, nil)
+			svc := deployapp.NewService(executor, nil)
 
 			absConfig, err := filepath.Abs(configPath)
 			if err != nil {

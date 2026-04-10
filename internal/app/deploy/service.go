@@ -4,10 +4,8 @@ package deploy
 
 import (
 	"context"
-	"crypto/tls"
 	"fmt"
 	"io"
-	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -39,34 +37,18 @@ const (
 type Service struct {
 	executor  ports.RemoteExecutor
 	generator ports.ConfigGenerator
-	httpDo    func(req *http.Request) (*http.Response, error)
 }
 
 // NewService creates a Service.
 // executor handles SSH commands and rsync transfers.
 // generator is used to produce the .vibewarden/generated/ files before transfer.
-// httpDo is the HTTP function used for all outbound HTTP calls, including the
-// deploy health check. Pass nil to use an insecure HTTP client that tolerates
-// self-signed and not-yet-issued TLS certificates (the default for deployment,
-// where the ACME cert may not have been issued yet).
 func NewService(
 	executor ports.RemoteExecutor,
 	generator ports.ConfigGenerator,
-	httpDo func(req *http.Request) (*http.Response, error),
 ) *Service {
-	if httpDo == nil {
-		//nolint:gosec // G402: intentional — cert may not be issued yet during deploy
-		httpDo = (&http.Client{
-			Transport: &http.Transport{
-				TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec
-			},
-			Timeout: 5 * time.Second,
-		}).Do
-	}
 	return &Service{
 		executor:  executor,
 		generator: generator,
-		httpDo:    httpDo,
 	}
 }
 
@@ -199,27 +181,15 @@ func (s *Service) Deploy(ctx context.Context, cfg *config.Config, opts RunOption
 		}
 	}
 
-	// Step 5: health check.
+	// Step 5: health check — run curl on the remote so the probe is independent
+	// of DNS propagation, external port availability, and TLS certificate issuance.
 	port := cfg.Server.Port
 	if port == 0 {
 		port = defaultHealthPort
 	}
-	scheme := "http"
-	host := "localhost"
-	if cfg.TLS.Enabled {
-		scheme = "https"
-		// When TLS is enabled with a domain (e.g. letsencrypt), the server's
-		// TLS connection policies match only the configured domain via SNI.
-		// Using "localhost" as the host would cause the TLS handshake to fail
-		// because the certificate (once issued) is scoped to the domain, not
-		// localhost. Use the configured domain for the health check host.
-		if cfg.TLS.Domain != "" {
-			host = cfg.TLS.Domain
-		}
-	}
-	healthURL := fmt.Sprintf("%s://%s:%d/_vibewarden/health", scheme, host, port)
-	fmt.Fprintf(out, "Waiting for sidecar health check at %s...\n", healthURL)
-	s.waitHealthy(ctx, healthURL, out)
+	healthURL := fmt.Sprintf("http://localhost:%d/_vibewarden/health", port)
+	fmt.Fprintf(out, "Waiting for sidecar health check at %s (via SSH)...\n", healthURL)
+	s.waitHealthy(ctx, port, out)
 
 	fmt.Fprintln(out, "Deploy complete.")
 	return nil
@@ -332,39 +302,35 @@ func (s *Service) checkRemotePrerequisites(ctx context.Context) error {
 	return nil
 }
 
-// waitHealthy polls healthURL until the sidecar responds with a 2xx status or
-// the context deadline / healthCheckTimeout expires.
-// It uses s.httpDo, which defaults to an insecure client because the ACME cert
-// may not be issued yet when this runs immediately after compose up.
+// waitHealthy polls the sidecar health endpoint on the remote host via SSH
+// until curl reports success (exit code 0) or the context deadline /
+// healthCheckTimeout expires.
+//
+// Running the probe over SSH avoids all DNS propagation, firewall, and TLS
+// certificate issuance dependencies — the request is made from inside the
+// server to its own localhost interface.
 //
 // On timeout or context cancellation the function prints a warning and returns
 // without error — the deploy is considered successful because services may still
 // be starting up. The operator can run "vibew deploy status" to check manually.
-func (s *Service) waitHealthy(ctx context.Context, healthURL string, out io.Writer) {
+func (s *Service) waitHealthy(ctx context.Context, port int, out io.Writer) {
+	cmd := fmt.Sprintf("curl -sf http://localhost:%d/_vibewarden/health", port)
 	deadline := time.Now().Add(healthCheckTimeout)
 	attempt := 0
 	var lastErr error
 
 	for {
 		attempt++
-		ok, err := s.checkHealthWith(ctx, healthURL, s.httpDo)
-		if ok {
+		_, err := s.executor.Run(ctx, cmd)
+		if err == nil {
 			fmt.Fprintln(out, "Sidecar is healthy.")
 			return
 		}
-		if err != nil {
-			lastErr = err
-			fmt.Fprintf(out, "  attempt %d: %v\n", attempt, err)
-		} else {
-			fmt.Fprintf(out, "  attempt %d: not yet healthy\n", attempt)
-		}
+		lastErr = err
+		fmt.Fprintf(out, "  attempt %d: %v\n", attempt, err)
 
 		if time.Now().After(deadline) {
-			if lastErr != nil {
-				fmt.Fprintf(out, "Warning: health check timed out (last error: %v). Services may still be starting. Run: vibew deploy status --target ... to check.\n", lastErr)
-			} else {
-				fmt.Fprintln(out, "Warning: health check timed out. Services may still be starting. Run: vibew deploy status --target ... to check.")
-			}
+			fmt.Fprintf(out, "Warning: health check timed out (last error: %v). Services may still be starting. Run: vibew deploy status --target ... to check.\n", lastErr)
 			return
 		}
 
@@ -375,21 +341,6 @@ func (s *Service) waitHealthy(ctx context.Context, healthURL string, out io.Writ
 		case <-time.After(healthCheckInterval):
 		}
 	}
-}
-
-// checkHealthWith performs a single GET request to healthURL using the provided
-// httpDo function and returns true when the response status is 2xx.
-func (s *Service) checkHealthWith(ctx context.Context, healthURL string, httpDo func(*http.Request) (*http.Response, error)) (bool, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, healthURL, nil)
-	if err != nil {
-		return false, fmt.Errorf("creating health request: %w", err)
-	}
-	resp, err := httpDo(req)
-	if err != nil {
-		return false, err
-	}
-	defer resp.Body.Close() //nolint:errcheck
-	return resp.StatusCode >= 200 && resp.StatusCode < 300, nil
 }
 
 // ProjectNameFromConfig derives a project name from the config file path.
