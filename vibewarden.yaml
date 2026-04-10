@@ -9,14 +9,14 @@ server:
 
 upstream:
   host: "0.0.0.0"
-  port: 3000
+  port: 8080
 
 # app configures how your application is included in the generated docker-compose.yml.
 # Set app.build to build from source (default), or app.image to pull a pre-built image (production).
 # Remove this section if you manage your app service manually.
 app:
   build: "."
-  # image: "myapp:latest"  # use in production instead of build
+  # image: "portapp:latest"  # use in production instead of build
 
 log:
   level: "info"

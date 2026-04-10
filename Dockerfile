@@ -4,10 +4,10 @@
 #   FROM golang:1.24-alpine AS build
 #   WORKDIR /app
 #   COPY . .
-#   RUN go build -o app ./cmd/myapp
+#   RUN go build -o app ./cmd/portapp
 #   FROM alpine:3.21
 #   COPY --from=build /app/app /app
-#   EXPOSE 3000
+#   EXPOSE 8080
 #   CMD ["/app"]
 #
 # Example for a Node.js app:
@@ -16,7 +16,7 @@
 #   COPY package*.json ./
 #   RUN npm ci
 #   COPY . .
-#   EXPOSE 3000
+#   EXPOSE 8080
 #   CMD ["node", "index.js"]
 #
 # Example for a Python app:
@@ -25,7 +25,7 @@
 #   COPY requirements.txt .
 #   RUN pip install --no-cache-dir -r requirements.txt
 #   COPY . .
-#   EXPOSE 3000
+#   EXPOSE 8080
 #   CMD ["python", "app.py"]
 
 # Replace this with your actual Dockerfile
