@@ -6,8 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"net/http"
-	"net/http/httptest"
 	"strings"
 	"testing"
 
@@ -97,19 +95,9 @@ func TestService_Deploy_HappyPath(t *testing.T) {
 	executor := &fakeExecutor{}
 	generator := &fakeGenerator{}
 
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer srv.Close()
-
-	// Patch the health URL to point at our test server.
-	healthURL := srv.URL + "/_vibewarden/health"
-
-	svc := deployapp.NewService(executor, generator, func(req *http.Request) (*http.Response, error) {
-		// Redirect health check to our test server.
-		req2, _ := http.NewRequestWithContext(req.Context(), req.Method, healthURL, nil)
-		return http.DefaultClient.Do(req2) //nolint:gosec // G704: test-only helper; URL is from httptest.NewServer
-	})
+	// fakeExecutor returns success (nil error) for any unrecognised command,
+	// including the curl health-check probe.
+	svc := deployapp.NewService(executor, generator)
 
 	var buf bytes.Buffer
 	err := svc.Deploy(context.Background(), defaultConfig(), deployapp.RunOptions{
@@ -142,7 +130,7 @@ func TestService_Deploy_GenerateFails(t *testing.T) {
 	executor := &fakeExecutor{}
 	generator := &fakeGenerator{err: errors.New("template error")}
 
-	svc := deployapp.NewService(executor, generator, nil)
+	svc := deployapp.NewService(executor, generator)
 
 	err := svc.Deploy(context.Background(), defaultConfig(), deployapp.RunOptions{
 		ConfigPath: "/tmp/proj/vibewarden.yaml",
@@ -163,7 +151,7 @@ func TestService_Deploy_MissingDocker(t *testing.T) {
 	}
 	generator := &fakeGenerator{}
 
-	svc := deployapp.NewService(executor, generator, nil)
+	svc := deployapp.NewService(executor, generator)
 
 	err := svc.Deploy(context.Background(), defaultConfig(), deployapp.RunOptions{
 		ConfigPath: "/tmp/proj/vibewarden.yaml",
@@ -182,7 +170,7 @@ func TestService_Deploy_TransferFails(t *testing.T) {
 	}
 	generator := &fakeGenerator{}
 
-	svc := deployapp.NewService(executor, generator, nil)
+	svc := deployapp.NewService(executor, generator)
 
 	err := svc.Deploy(context.Background(), defaultConfig(), deployapp.RunOptions{
 		ConfigPath: "/tmp/proj/vibewarden.yaml",
@@ -199,16 +187,15 @@ func TestService_Deploy_TransferFails(t *testing.T) {
 // does NOT fail the deploy — it prints a warning and returns nil so that
 // "Deploy complete." is still printed. The operator can check status manually.
 func TestService_Deploy_HealthCheckTimeout(t *testing.T) {
-	executor := &fakeExecutor{}
+	executor := &fakeExecutor{
+		runResponses: map[string]runResponse{
+			// curl exits non-zero → sidecar not yet healthy.
+			"curl -sf http://localhost:8443/_vibewarden/health": {err: errors.New("exit status 7")},
+		},
+	}
 	generator := &fakeGenerator{}
 
-	// Health check always returns 503.
-	svc := deployapp.NewService(executor, generator, func(req *http.Request) (*http.Response, error) {
-		return &http.Response{
-			StatusCode: http.StatusServiceUnavailable,
-			Body:       http.NoBody,
-		}, nil
-	})
+	svc := deployapp.NewService(executor, generator)
 
 	// Use a cancelled context to avoid the full 60 s timeout.
 	ctx, cancel := context.WithCancel(context.Background())
@@ -244,7 +231,7 @@ func TestService_Status(t *testing.T) {
 		},
 	}
 
-	svc := deployapp.NewService(executor, nil, nil)
+	svc := deployapp.NewService(executor, nil)
 
 	var buf bytes.Buffer
 	err := svc.Status(context.Background(), deployapp.StatusOptions{
@@ -267,7 +254,7 @@ func TestService_Status_DerivedFromConfigPath(t *testing.T) {
 		},
 	}
 
-	svc := deployapp.NewService(executor, nil, nil)
+	svc := deployapp.NewService(executor, nil)
 
 	var buf bytes.Buffer
 	err := svc.Status(context.Background(), deployapp.StatusOptions{
@@ -289,7 +276,7 @@ func TestService_Status_Error(t *testing.T) {
 		},
 	}
 
-	svc := deployapp.NewService(executor, nil, nil)
+	svc := deployapp.NewService(executor, nil)
 
 	// Use an explicit ProjectName so the test is not affected by the cwd used
 	// when resolving an empty ConfigPath.
@@ -309,7 +296,7 @@ func TestService_Logs(t *testing.T) {
 		},
 	}
 
-	svc := deployapp.NewService(executor, nil, nil)
+	svc := deployapp.NewService(executor, nil)
 
 	var buf bytes.Buffer
 	err := svc.Logs(context.Background(), deployapp.LogsOptions{
@@ -333,7 +320,7 @@ func TestService_Logs_DerivedFromConfigPath(t *testing.T) {
 		},
 	}
 
-	svc := deployapp.NewService(executor, nil, nil)
+	svc := deployapp.NewService(executor, nil)
 
 	var buf bytes.Buffer
 	err := svc.Logs(context.Background(), deployapp.LogsOptions{
@@ -356,7 +343,7 @@ func TestService_Logs_AllLines(t *testing.T) {
 		},
 	}
 
-	svc := deployapp.NewService(executor, nil, nil)
+	svc := deployapp.NewService(executor, nil)
 
 	var buf bytes.Buffer
 	err := svc.Logs(context.Background(), deployapp.LogsOptions{
@@ -379,7 +366,7 @@ func TestService_Logs_Error(t *testing.T) {
 		},
 	}
 
-	svc := deployapp.NewService(executor, nil, nil)
+	svc := deployapp.NewService(executor, nil)
 
 	err := svc.Logs(context.Background(), deployapp.LogsOptions{
 		ProjectName: "myproject",
@@ -400,7 +387,7 @@ func TestService_Logs_Follow(t *testing.T) {
 		},
 	}
 
-	svc := deployapp.NewService(executor, nil, nil)
+	svc := deployapp.NewService(executor, nil)
 
 	var buf bytes.Buffer
 	err := svc.Logs(context.Background(), deployapp.LogsOptions{
@@ -432,7 +419,7 @@ func TestService_Logs_Follow_NoLines(t *testing.T) {
 		},
 	}
 
-	svc := deployapp.NewService(executor, nil, nil)
+	svc := deployapp.NewService(executor, nil)
 
 	var buf bytes.Buffer
 	err := svc.Logs(context.Background(), deployapp.LogsOptions{
@@ -456,7 +443,7 @@ func TestService_Logs_Follow_Error(t *testing.T) {
 		},
 	}
 
-	svc := deployapp.NewService(executor, nil, nil)
+	svc := deployapp.NewService(executor, nil)
 
 	err := svc.Logs(context.Background(), deployapp.LogsOptions{
 		ProjectName: "myproject",
@@ -474,17 +461,7 @@ func TestService_Deploy_RemoteDir(t *testing.T) {
 	executor := &fakeExecutor{}
 	generator := &fakeGenerator{}
 
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer srv.Close()
-
-	healthURL := srv.URL + "/_vibewarden/health"
-
-	svc := deployapp.NewService(executor, generator, func(req *http.Request) (*http.Response, error) {
-		req2, _ := http.NewRequestWithContext(req.Context(), req.Method, healthURL, nil)
-		return http.DefaultClient.Do(req2) //nolint:gosec // G704: test-only helper; URL is from httptest.NewServer
-	})
+	svc := deployapp.NewService(executor, generator)
 
 	err := svc.Deploy(context.Background(), defaultConfig(), deployapp.RunOptions{
 		ConfigPath:  "/home/user/myproject/vibewarden.prod.yaml",
@@ -516,7 +493,7 @@ func TestService_Deploy_DockerComposeMissing(t *testing.T) {
 	}
 	generator := &fakeGenerator{}
 
-	svc := deployapp.NewService(executor, generator, nil)
+	svc := deployapp.NewService(executor, generator)
 
 	err := svc.Deploy(context.Background(), defaultConfig(), deployapp.RunOptions{
 		ConfigPath: "/tmp/proj/vibewarden.yaml",
@@ -577,17 +554,7 @@ func TestProjectNameFromConfig(t *testing.T) {
 			executor := &fakeExecutor{}
 			generator := &fakeGenerator{}
 
-			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-				w.WriteHeader(http.StatusOK)
-			}))
-			defer srv.Close()
-
-			healthURL := srv.URL + "/_vibewarden/health"
-
-			svc := deployapp.NewService(executor, generator, func(req *http.Request) (*http.Response, error) {
-				req2, _ := http.NewRequestWithContext(req.Context(), req.Method, healthURL, nil)
-				return http.DefaultClient.Do(req2) //nolint:gosec // G704: test-only helper; URL is from httptest.NewServer
-			})
+			svc := deployapp.NewService(executor, generator)
 
 			_ = svc.Deploy(context.Background(), defaultConfig(), deployapp.RunOptions{
 				ConfigPath:  tt.configPath,
@@ -613,7 +580,7 @@ func TestService_Deploy_NilOut(t *testing.T) {
 	executor := &fakeExecutor{}
 	generator := &fakeGenerator{err: errors.New("stop early")}
 
-	svc := deployapp.NewService(executor, generator, nil)
+	svc := deployapp.NewService(executor, generator)
 
 	// Should not panic even with nil Out.
 	err := svc.Deploy(context.Background(), defaultConfig(), deployapp.RunOptions{
@@ -647,7 +614,7 @@ func TestService_Deploy_ComposeUpFails(t *testing.T) {
 
 	generator := &fakeGenerator{}
 
-	svc := deployapp.NewService(executor2, generator, nil)
+	svc := deployapp.NewService(executor2, generator)
 	_ = calls
 
 	err := svc.Deploy(context.Background(), defaultConfig(), deployapp.RunOptions{
@@ -696,16 +663,7 @@ func TestService_Deploy_TransferFileCalledForConfig(t *testing.T) {
 	executor := &fakeExecutor{}
 	generator := &fakeGenerator{}
 
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer srv.Close()
-
-	healthURL := srv.URL + "/_vibewarden/health"
-	svc := deployapp.NewService(executor, generator, func(req *http.Request) (*http.Response, error) {
-		req2, _ := http.NewRequestWithContext(req.Context(), req.Method, healthURL, nil)
-		return http.DefaultClient.Do(req2) //nolint:gosec // test-only helper; URL is from httptest.NewServer
-	})
+	svc := deployapp.NewService(executor, generator)
 
 	err := svc.Deploy(context.Background(), defaultConfig(), deployapp.RunOptions{
 		ConfigPath:  "/tmp/myproject/vibewarden.yaml",
@@ -764,16 +722,7 @@ func TestService_Deploy_ConfigAlwaysTransferredAsVibewardenYAML(t *testing.T) {
 			executor := &fakeExecutor{}
 			generator := &fakeGenerator{}
 
-			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-				w.WriteHeader(http.StatusOK)
-			}))
-			defer srv.Close()
-
-			healthURL := srv.URL + "/_vibewarden/health"
-			svc := deployapp.NewService(executor, generator, func(req *http.Request) (*http.Response, error) {
-				req2, _ := http.NewRequestWithContext(req.Context(), req.Method, healthURL, nil)
-				return http.DefaultClient.Do(req2) //nolint:gosec // test-only helper; URL is from httptest.NewServer
-			})
+			svc := deployapp.NewService(executor, generator)
 
 			err := svc.Deploy(context.Background(), defaultConfig(), deployapp.RunOptions{
 				ConfigPath:  tt.configPath,
@@ -806,7 +755,7 @@ func TestService_Deploy_TransferFileFails(t *testing.T) {
 	}
 	generator := &fakeGenerator{}
 
-	svc := deployapp.NewService(executor, generator, nil)
+	svc := deployapp.NewService(executor, generator)
 
 	err := svc.Deploy(context.Background(), defaultConfig(), deployapp.RunOptions{
 		ConfigPath: "/tmp/proj/vibewarden.yaml",
@@ -825,16 +774,7 @@ func TestService_Deploy_ImageMode(t *testing.T) {
 	executor := &fakeExecutor{}
 	generator := &fakeGenerator{}
 
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer srv.Close()
-
-	healthURL := srv.URL + "/_vibewarden/health"
-	svc := deployapp.NewService(executor, generator, func(req *http.Request) (*http.Response, error) {
-		req2, _ := http.NewRequestWithContext(req.Context(), req.Method, healthURL, nil)
-		return http.DefaultClient.Do(req2) //nolint:gosec // test-only helper; URL is from httptest.NewServer
-	})
+	svc := deployapp.NewService(executor, generator)
 
 	cfg := defaultConfig()
 	cfg.App.Image = "myapp:latest"
@@ -872,16 +812,7 @@ func TestService_Deploy_BuildMode(t *testing.T) {
 	executor := &fakeExecutor{}
 	generator := &fakeGenerator{}
 
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer srv.Close()
-
-	healthURL := srv.URL + "/_vibewarden/health"
-	svc := deployapp.NewService(executor, generator, func(req *http.Request) (*http.Response, error) {
-		req2, _ := http.NewRequestWithContext(req.Context(), req.Method, healthURL, nil)
-		return http.DefaultClient.Do(req2) //nolint:gosec // test-only helper; URL is from httptest.NewServer
-	})
+	svc := deployapp.NewService(executor, generator)
 
 	cfg := defaultConfig()
 	cfg.App.Build = "."
@@ -931,7 +862,7 @@ func TestService_Deploy_BuildMode_TransferContextFails(t *testing.T) {
 	}
 
 	generator := &fakeGenerator{}
-	svc := deployapp.NewService(failingTransfer, generator, nil)
+	svc := deployapp.NewService(failingTransfer, generator)
 
 	cfg := defaultConfig()
 	cfg.App.Build = "."
@@ -1053,16 +984,7 @@ func TestService_Deploy_PullsSidecarBeforeBuild(t *testing.T) {
 	executor := &fakeExecutor{}
 	generator := &fakeGenerator{}
 
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer srv.Close()
-
-	healthURL := srv.URL + "/_vibewarden/health"
-	svc := deployapp.NewService(executor, generator, func(req *http.Request) (*http.Response, error) {
-		req2, _ := http.NewRequestWithContext(req.Context(), req.Method, healthURL, nil)
-		return http.DefaultClient.Do(req2) //nolint:gosec // test-only helper; URL is from httptest.NewServer
-	})
+	svc := deployapp.NewService(executor, generator)
 
 	cfg := defaultConfig()
 	cfg.App.Build = "."
@@ -1104,16 +1026,7 @@ func TestService_Deploy_PullsSidecarInImageMode(t *testing.T) {
 	executor := &fakeExecutor{}
 	generator := &fakeGenerator{}
 
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
-		w.WriteHeader(http.StatusOK)
-	}))
-	defer srv.Close()
-
-	healthURL := srv.URL + "/_vibewarden/health"
-	svc := deployapp.NewService(executor, generator, func(req *http.Request) (*http.Response, error) {
-		req2, _ := http.NewRequestWithContext(req.Context(), req.Method, healthURL, nil)
-		return http.DefaultClient.Do(req2) //nolint:gosec // test-only helper; URL is from httptest.NewServer
-	})
+	svc := deployapp.NewService(executor, generator)
 
 	cfg := defaultConfig()
 	cfg.App.Image = "myapp:latest"
@@ -1133,13 +1046,15 @@ func TestService_Deploy_PullsSidecarInImageMode(t *testing.T) {
 // TestService_Deploy_HealthCheckWarnOnTimeout verifies the exact warning message
 // format when the health check times out.
 func TestService_Deploy_HealthCheckWarnOnTimeout(t *testing.T) {
-	executor := &fakeExecutor{}
+	executor := &fakeExecutor{
+		runResponses: map[string]runResponse{
+			// curl exits non-zero → sidecar not yet healthy.
+			"curl -sf http://localhost:8443/_vibewarden/health": {err: errors.New("exit status 7")},
+		},
+	}
 	generator := &fakeGenerator{}
 
-	// Health check always errors.
-	svc := deployapp.NewService(executor, generator, func(_ *http.Request) (*http.Response, error) {
-		return nil, errors.New("connection refused")
-	})
+	svc := deployapp.NewService(executor, generator)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() { cancel() }()
@@ -1163,33 +1078,33 @@ func TestService_Deploy_HealthCheckWarnOnTimeout(t *testing.T) {
 	}
 }
 
-// TestService_Deploy_HealthCheckURLUsesDomain verifies that when TLS is enabled
-// with a domain the health check URL targets the configured domain rather than
-// "localhost". Using "localhost" with SNI-locked TLS would cause TLS handshake
-// failures because the server certificate (once issued) is scoped to the domain.
-func TestService_Deploy_HealthCheckURLUsesDomain(t *testing.T) {
+// TestService_Deploy_HealthCheckAlwaysUsesLocalhost verifies that the health
+// check always probes http://localhost:<port> via SSH, regardless of TLS
+// configuration or domain. This avoids DNS propagation, firewall, and TLS
+// certificate issuance dependencies.
+func TestService_Deploy_HealthCheckAlwaysUsesLocalhost(t *testing.T) {
 	tests := []struct {
-		name            string
-		cfg             *config.Config
-		wantURLContains string
+		name        string
+		cfg         *config.Config
+		wantCurlCmd string
 	}{
 		{
 			name: "TLS disabled uses localhost",
 			cfg: &config.Config{
 				Server: config.ServerConfig{Port: 8080},
 			},
-			wantURLContains: "localhost",
+			wantCurlCmd: "curl -sf http://localhost:8080/_vibewarden/health",
 		},
 		{
-			name: "TLS enabled without domain uses localhost",
+			name: "TLS enabled without domain still uses localhost",
 			cfg: &config.Config{
 				Server: config.ServerConfig{Port: 8443},
 				TLS:    config.TLSConfig{Enabled: true},
 			},
-			wantURLContains: "localhost",
+			wantCurlCmd: "curl -sf http://localhost:8443/_vibewarden/health",
 		},
 		{
-			name: "TLS enabled with domain uses domain",
+			name: "TLS enabled with domain still uses localhost",
 			cfg: &config.Config{
 				Server: config.ServerConfig{Port: 443},
 				TLS: config.TLSConfig{
@@ -1198,7 +1113,7 @@ func TestService_Deploy_HealthCheckURLUsesDomain(t *testing.T) {
 					Domain:   "app.example.com",
 				},
 			},
-			wantURLContains: "app.example.com",
+			wantCurlCmd: "curl -sf http://localhost:443/_vibewarden/health",
 		},
 	}
 
@@ -1207,14 +1122,7 @@ func TestService_Deploy_HealthCheckURLUsesDomain(t *testing.T) {
 			executor := &fakeExecutor{}
 			generator := &fakeGenerator{}
 
-			var capturedURL string
-			svc := deployapp.NewService(executor, generator, func(req *http.Request) (*http.Response, error) {
-				capturedURL = req.URL.String()
-				return &http.Response{
-					StatusCode: http.StatusOK,
-					Body:       http.NoBody,
-				}, nil
-			})
+			svc := deployapp.NewService(executor, generator)
 
 			var buf bytes.Buffer
 			err := svc.Deploy(context.Background(), tt.cfg, deployapp.RunOptions{
@@ -1225,9 +1133,7 @@ func TestService_Deploy_HealthCheckURLUsesDomain(t *testing.T) {
 				t.Fatalf("Deploy() unexpected error: %v", err)
 			}
 
-			if !strings.Contains(capturedURL, tt.wantURLContains) {
-				t.Errorf("health check URL = %q, want it to contain %q", capturedURL, tt.wantURLContains)
-			}
+			assertRunCalled(t, executor.runCalls, tt.wantCurlCmd)
 		})
 	}
 }
