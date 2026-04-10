@@ -183,6 +183,9 @@ func TestService_Deploy_TransferFails(t *testing.T) {
 	}
 }
 
+// TestService_Deploy_HealthCheckTimeout verifies that a health-check timeout
+// does NOT fail the deploy — it prints a warning and returns nil so that
+// "Deploy complete." is still printed. The operator can check status manually.
 func TestService_Deploy_HealthCheckTimeout(t *testing.T) {
 	executor := &fakeExecutor{}
 	generator := &fakeGenerator{}
@@ -203,11 +206,22 @@ func TestService_Deploy_HealthCheckTimeout(t *testing.T) {
 		cancel()
 	}()
 
+	var buf bytes.Buffer
 	err := svc.Deploy(ctx, defaultConfig(), deployapp.RunOptions{
 		ConfigPath: "/tmp/proj/vibewarden.yaml",
+		Out:        &buf,
 	})
-	if err == nil {
-		t.Fatal("expected error when health check fails")
+	// Health check timeout must NOT fail the deploy.
+	if err != nil {
+		t.Fatalf("Deploy() should succeed even when health check times out, got error: %v", err)
+	}
+
+	out := buf.String()
+	if !strings.Contains(out, "Deploy complete") {
+		t.Errorf("expected 'Deploy complete' in output even after health-check timeout, got:\n%s", out)
+	}
+	if !strings.Contains(out, "Warning") {
+		t.Errorf("expected a warning message in output after health-check timeout, got:\n%s", out)
 	}
 }
 
@@ -789,10 +803,15 @@ func TestService_Deploy_BuildMode(t *testing.T) {
 	// docker compose up -d --build must be called.
 	assertRunCalledContains(t, executor.runCalls, "docker compose up -d --build")
 
-	// docker compose pull must NOT be called.
+	// docker compose pull vibewarden (sidecar image refresh) must be called even
+	// in build mode, to ensure the sidecar is not running a stale cached image.
+	assertRunCalledContains(t, executor.runCalls, "docker compose pull vibewarden")
+
+	// But a full docker compose pull (all services) must NOT be called —
+	// only the targeted vibewarden pull should occur.
 	for _, c := range executor.runCalls {
-		if strings.Contains(c, "docker compose pull") {
-			t.Errorf("did not expect 'docker compose pull' in build mode, got run call: %q", c)
+		if c != "" && strings.Contains(c, "docker compose pull") && !strings.Contains(c, "pull vibewarden") {
+			t.Errorf("unexpected broad 'docker compose pull' in build mode, got run call: %q", c)
 		}
 	}
 
@@ -933,6 +952,123 @@ func TestProjectNameFromConfig_RelativeDoesNotReturnDot(t *testing.T) {
 
 // Ensure fmt is used (used in assertRunCalledContains via Errorf).
 var _ = fmt.Sprintf
+
+// TestService_Deploy_PullsSidecarBeforeBuild verifies that "docker compose pull
+// vibewarden" is always executed before starting services in build mode, so that
+// the sidecar image is never served from a stale Docker layer cache.
+func TestService_Deploy_PullsSidecarBeforeBuild(t *testing.T) {
+	executor := &fakeExecutor{}
+	generator := &fakeGenerator{}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	healthURL := srv.URL + "/_vibewarden/health"
+	svc := deployapp.NewService(executor, generator, func(req *http.Request) (*http.Response, error) {
+		req2, _ := http.NewRequestWithContext(req.Context(), req.Method, healthURL, nil)
+		return http.DefaultClient.Do(req2) //nolint:gosec // test-only helper; URL is from httptest.NewServer
+	})
+
+	cfg := defaultConfig()
+	cfg.App.Build = "."
+
+	err := svc.Deploy(context.Background(), cfg, deployapp.RunOptions{
+		ConfigPath: "/tmp/proj/vibewarden.yaml",
+	})
+	if err != nil {
+		t.Fatalf("Deploy() unexpected error: %v", err)
+	}
+
+	// "docker compose pull vibewarden" must appear in run calls.
+	assertRunCalledContains(t, executor.runCalls, "docker compose pull vibewarden")
+
+	// Verify ordering: pull vibewarden must come before compose up --build.
+	pullIdx, upIdx := -1, -1
+	for i, c := range executor.runCalls {
+		if strings.Contains(c, "docker compose pull vibewarden") && pullIdx == -1 {
+			pullIdx = i
+		}
+		if strings.Contains(c, "docker compose up -d --build") && upIdx == -1 {
+			upIdx = i
+		}
+	}
+	if pullIdx == -1 {
+		t.Error("'docker compose pull vibewarden' was not found in run calls")
+	}
+	if upIdx == -1 {
+		t.Error("'docker compose up -d --build' was not found in run calls")
+	}
+	if pullIdx != -1 && upIdx != -1 && pullIdx >= upIdx {
+		t.Errorf("expected 'docker compose pull vibewarden' (call %d) before 'docker compose up -d --build' (call %d)", pullIdx, upIdx)
+	}
+}
+
+// TestService_Deploy_PullsSidecarInImageMode verifies that "docker compose pull
+// vibewarden" is executed in image mode as well, before the full pull.
+func TestService_Deploy_PullsSidecarInImageMode(t *testing.T) {
+	executor := &fakeExecutor{}
+	generator := &fakeGenerator{}
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	healthURL := srv.URL + "/_vibewarden/health"
+	svc := deployapp.NewService(executor, generator, func(req *http.Request) (*http.Response, error) {
+		req2, _ := http.NewRequestWithContext(req.Context(), req.Method, healthURL, nil)
+		return http.DefaultClient.Do(req2) //nolint:gosec // test-only helper; URL is from httptest.NewServer
+	})
+
+	cfg := defaultConfig()
+	cfg.App.Image = "myapp:latest"
+
+	err := svc.Deploy(context.Background(), cfg, deployapp.RunOptions{
+		ConfigPath: "/tmp/proj/vibewarden.yaml",
+	})
+	if err != nil {
+		t.Fatalf("Deploy() unexpected error: %v", err)
+	}
+
+	// Both the targeted sidecar pull and the full pull must be present.
+	assertRunCalledContains(t, executor.runCalls, "docker compose pull vibewarden")
+	assertRunCalledContains(t, executor.runCalls, "docker compose pull")
+}
+
+// TestService_Deploy_HealthCheckWarnOnTimeout verifies the exact warning message
+// format when the health check times out.
+func TestService_Deploy_HealthCheckWarnOnTimeout(t *testing.T) {
+	executor := &fakeExecutor{}
+	generator := &fakeGenerator{}
+
+	// Health check always errors.
+	svc := deployapp.NewService(executor, generator, func(_ *http.Request) (*http.Response, error) {
+		return nil, errors.New("connection refused")
+	})
+
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() { cancel() }()
+
+	var buf bytes.Buffer
+	err := svc.Deploy(ctx, defaultConfig(), deployapp.RunOptions{
+		ConfigPath: "/tmp/proj/vibewarden.yaml",
+		Out:        &buf,
+	})
+
+	if err != nil {
+		t.Fatalf("Deploy() should return nil on health-check timeout, got: %v", err)
+	}
+
+	out := buf.String()
+	if !strings.Contains(out, "Warning") {
+		t.Errorf("expected warning in output, got:\n%s", out)
+	}
+	if !strings.Contains(out, "Deploy complete") {
+		t.Errorf("expected 'Deploy complete' in output, got:\n%s", out)
+	}
+}
 
 // TestService_Deploy_HealthCheckURLUsesDomain verifies that when TLS is enabled
 // with a domain the health check URL targets the configured domain rather than
