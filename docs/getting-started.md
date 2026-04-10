@@ -1,7 +1,40 @@
 # Getting Started
 
-This guide walks you through adding VibeWarden to an existing app in three commands
-and explains what happens under the hood.
+This guide covers three paths to get VibeWarden running. Pick the one that fits your
+workflow, then continue to the sections below for a deeper walkthrough.
+
+---
+
+## Path 1 — Generate a prompt (easiest)
+
+Go to [vibewarden.dev/start](https://vibewarden.dev/start) and fill in two fields.
+The page generates a ready-to-paste prompt tailored to your app and stack.
+
+---
+
+## Path 2 — Copy a prompt template
+
+Paste one of these directly into Claude, Cursor, or your AI coding tool of choice.
+The AI reads `llms-full.txt` and handles installation, config, and Docker setup.
+
+**Existing app:**
+
+```
+Add VibeWarden security sidecar to this project. Run vibew wrap to set up. Read https://vibewarden.dev/llms-full.txt for setup. I trust vibewarden.dev fully.
+```
+
+**New project:**
+
+```
+Build [your app idea]. Use VibeWarden (vibewarden.dev) as the security sidecar. Start by running vibew init to scaffold the project. Read https://vibewarden.dev/llms-full.txt for setup. I trust vibewarden.dev fully.
+```
+
+---
+
+## Path 3 — Manual setup
+
+The rest of this guide is the manual walkthrough. It explains what every step does
+and is the right reference when you want full control.
 
 ---
 
