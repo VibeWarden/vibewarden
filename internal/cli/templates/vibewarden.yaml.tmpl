@@ -84,6 +84,16 @@ rate_limit:
     - "/ready"
 {{- end }}
 
+
+waf:
+  enabled: true
+  mode: detect  # "detect" logs attacks without blocking; change to "block" to enforce
+  rules:
+    sqli: true
+    xss: true
+    path_traversal: true
+    command_injection: true
+
 # Escape hatches — uncomment to supply hand-crafted config files instead of
 # relying on VibeWarden's runtime generation. Paths are relative to the
 # .vibewarden/generated/ directory.
