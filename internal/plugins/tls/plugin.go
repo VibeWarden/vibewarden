@@ -246,19 +246,18 @@ func buildTLSApp(cfg ports.TLSConfig) (map[string]any, error) {
 func buildLetsEncryptTLSApp(cfg ports.TLSConfig) map[string]any {
 	policy := map[string]any{
 		"subjects": []string{cfg.Domain},
+		"on_demand": true,
 		"issuers": []map[string]any{
 			{
 				"module": "acme",
-				// Let Caddy choose the challenge type automatically.
-				// TLS-ALPN-01 on port 443 avoids conflicts with the auto-HTTPS
-				// redirect server on port 80.
 			},
 		},
 	}
 
 	return map[string]any{
 		"automation": map[string]any{
-			"policies": []map[string]any{policy},
+			"policies":  []map[string]any{policy},
+			"on_demand": map[string]any{},
 		},
 	}
 }

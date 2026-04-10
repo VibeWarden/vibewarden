@@ -446,15 +446,13 @@ func buildTLSApp(cfg ports.TLSConfig) (map[string]any, error) {
 func buildLetsEncryptTLSApp(cfg ports.TLSConfig) map[string]any {
 	policy := map[string]any{
 		"subjects": []string{cfg.Domain},
+		// on_demand triggers certificate acquisition on the first TLS handshake
+		// that matches this policy's subjects. Without it, Caddy stores the
+		// automation policy but never proactively obtains the certificate.
+		"on_demand": true,
 		"issuers": []map[string]any{
 			{
 				"module": "acme",
-				// Let Caddy choose the challenge type automatically.
-				// Previously we specified HTTP-01 with alternate_port: 80,
-				// but this conflicted with Caddy's auto-HTTPS redirect server
-				// on port 80 which intercepted /.well-known/acme-challenge/*
-				// requests. Without explicit challenge config, Caddy uses
-				// TLS-ALPN-01 on port 443 which works on the same server port.
 			},
 		},
 	}
@@ -462,6 +460,10 @@ func buildLetsEncryptTLSApp(cfg ports.TLSConfig) map[string]any {
 	return map[string]any{
 		"automation": map[string]any{
 			"policies": []map[string]any{policy},
+			// on_demand config at the automation level enables on-demand TLS.
+			// The subjects field in the policy restricts which domains are
+			// allowed, preventing abuse.
+			"on_demand": map[string]any{},
 		},
 	}
 }
