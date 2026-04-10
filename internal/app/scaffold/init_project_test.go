@@ -33,6 +33,7 @@ func TestInitProject_CreatesStructure(t *testing.T) {
 	// Verify core files.
 	mustExist(t, parent, "myapp", "vibewarden.yaml")
 	mustExist(t, parent, "myapp", "Dockerfile")
+	mustExist(t, parent, "myapp", ".dockerignore")
 	mustExist(t, parent, "myapp", ".gitignore")
 	mustExist(t, parent, "myapp", ".vibewarden-version")
 }
@@ -502,6 +503,45 @@ func TestInitProject_NoClaudeCommandsDir(t *testing.T) {
 	claudeCommandsDir := filepath.Join(parent, "nocommands", ".claude", "commands")
 	if _, err := os.Stat(claudeCommandsDir); err == nil {
 		t.Errorf(".claude/commands/ directory must not be created, but it exists at %s", claudeCommandsDir)
+	}
+}
+
+// TestInitProject_DockerIgnore_RenderError verifies that a render error for
+// .dockerignore propagates correctly.
+func TestInitProject_DockerIgnore_RenderError(t *testing.T) {
+	renderer := newSelectiveErrorRenderer("init-dockerignore.tmpl", errors.New("disk full"))
+	svc := scaffoldapp.NewInitProjectService(renderer, nil)
+
+	parent := t.TempDir()
+	opts := scaffoldapp.InitProjectOptions{
+		ProjectName: "dierr",
+		Port:        3000,
+	}
+
+	err := svc.InitProject(context.Background(), parent, opts)
+	if err == nil {
+		t.Fatal("expected error from .dockerignore render, got nil")
+	}
+}
+
+// TestInitProject_DockerIgnore_RenderExistError verifies that an os.ErrExist error
+// from .dockerignore render propagates wrapped.
+func TestInitProject_DockerIgnore_RenderExistError(t *testing.T) {
+	renderer := newSelectiveErrorRenderer("init-dockerignore.tmpl", fmt.Errorf("file exists: %w", os.ErrExist))
+	svc := scaffoldapp.NewInitProjectService(renderer, nil)
+
+	parent := t.TempDir()
+	opts := scaffoldapp.InitProjectOptions{
+		ProjectName: "diexist",
+		Port:        3000,
+	}
+
+	err := svc.InitProject(context.Background(), parent, opts)
+	if err == nil {
+		t.Fatal("expected error from .dockerignore ErrExist, got nil")
+	}
+	if !errors.Is(err, os.ErrExist) {
+		t.Errorf("expected errors.Is(err, os.ErrExist), got: %v", err)
 	}
 }
 
