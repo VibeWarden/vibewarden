@@ -274,11 +274,20 @@ type LogsOptions struct {
 
 	// Lines is the number of log lines to retrieve (0 = all).
 	Lines int
+
+	// Follow streams new log lines continuously, like "docker compose logs -f".
+	// When true the command runs until the context is cancelled (e.g. Ctrl-C).
+	// Output is written directly to Out in real-time without buffering.
+	Follow bool
+
 	// Out is the writer used for log output. May be nil.
 	Out io.Writer
 }
 
 // Logs retrieves Docker Compose logs from the remote.
+// When opts.Follow is true the command streams log output in real-time by
+// using RunStream; the call blocks until the context is cancelled. When false
+// the output is fetched in a single buffered Run call and written to opts.Out.
 func (s *Service) Logs(ctx context.Context, opts LogsOptions) error {
 	out := opts.Out
 	if out == nil {
@@ -294,6 +303,13 @@ func (s *Service) Logs(ctx context.Context, opts LogsOptions) error {
 	cmd := "docker compose --project-directory " + remoteDir + " logs"
 	if opts.Lines > 0 {
 		cmd += fmt.Sprintf(" --tail=%d", opts.Lines)
+	}
+	if opts.Follow {
+		cmd += " -f"
+		if err := s.executor.RunStream(ctx, cmd, out, out); err != nil {
+			return fmt.Errorf("streaming remote logs: %w", err)
+		}
+		return nil
 	}
 
 	output, err := s.executor.Run(ctx, cmd)

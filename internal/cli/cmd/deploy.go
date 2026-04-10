@@ -242,6 +242,7 @@ func newDeployLogsCmd() *cobra.Command {
 		target     string
 		sshKey     string
 		lines      int
+		follow     bool
 	)
 
 	cmd := &cobra.Command{
@@ -256,7 +257,8 @@ when the project was deployed. When omitted the current directory name is used.
 Examples:
   vibew deploy logs --target ssh://ubuntu@203.0.113.10
   vibew deploy logs --config vibewarden.prod.yaml --target ssh://ubuntu@203.0.113.10
-  vibew deploy logs --target ssh://ubuntu@203.0.113.10 --lines 100`,
+  vibew deploy logs --target ssh://ubuntu@203.0.113.10 --lines 100
+  vibew deploy logs --target ssh://ubuntu@203.0.113.10 --follow`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if target == "" {
 				return fmt.Errorf("--target is required (e.g. ssh://user@host)")
@@ -283,6 +285,7 @@ Examples:
 			return svc.Logs(cmd.Context(), deployapp.LogsOptions{
 				ConfigPath: absConfig,
 				Lines:      lines,
+				Follow:     follow,
 				Out:        cmd.OutOrStdout(),
 			})
 		},
@@ -292,6 +295,7 @@ Examples:
 	cmd.Flags().StringVar(&target, "target", "", "remote target in ssh://user@host[:port] format (required)")
 	cmd.Flags().StringVar(&sshKey, "ssh-key", "", "path to the SSH private key file (default: use SSH agent / ~/.ssh/config)")
 	cmd.Flags().IntVar(&lines, "lines", 50, "number of log lines to fetch (0 = all)")
+	cmd.Flags().BoolVarP(&follow, "follow", "f", false, "stream log output continuously until cancelled (Ctrl-C)")
 
 	if err := cmd.MarkFlagRequired("target"); err != nil {
 		fmt.Fprintln(os.Stderr, "warning: flag required registration failed:", err)

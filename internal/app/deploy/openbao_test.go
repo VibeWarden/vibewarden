@@ -3,6 +3,7 @@ package deploy_test
 import (
 	"context"
 	"errors"
+	"io"
 	"strings"
 	"testing"
 
@@ -352,6 +353,10 @@ func (w *wildcardExecutor) Run(_ context.Context, cmd string) (string, error) {
 		}
 	}
 	return "", nil
+}
+
+func (w *wildcardExecutor) RunStream(_ context.Context, _ string, _ io.Writer, _ io.Writer) error {
+	return nil
 }
 
 func (w *wildcardExecutor) Transfer(_ context.Context, _, _ string, _ bool) error {
