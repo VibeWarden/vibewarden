@@ -1,6 +1,0 @@
-  {
-    "permissions": {
-      "allow": ["Edit", "Write", "Bash", "Read", "Glob", "Grep"]
-    }
-  }
-  
