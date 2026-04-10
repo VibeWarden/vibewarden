@@ -59,6 +59,7 @@ func NewInitProjectService(renderer ports.TemplateRenderer, _ any) *InitProjectS
 //	├── AGENTS-VIBEWARDEN.md       (vibew-owned, regenerated on updates)
 //	├── vibewarden.yaml
 //	├── Dockerfile                 (generic placeholder)
+//	├── .dockerignore
 //	├── .gitignore
 //	└── .vibewarden-version
 //
@@ -120,6 +121,14 @@ func (s *InitProjectService) InitProject(ctx context.Context, parentDir string, 
 			return fmt.Errorf("rendering Dockerfile: %w", err)
 		}
 		return fmt.Errorf("dockerfile already exists; use --force to overwrite: %w", err)
+	}
+
+	// Render .dockerignore.
+	if err := s.renderer.RenderToFile("init-dockerignore.tmpl", data, filepath.Join(projectDir, ".dockerignore"), opts.Force); err != nil {
+		if !errors.Is(err, os.ErrExist) {
+			return fmt.Errorf("rendering .dockerignore: %w", err)
+		}
+		return fmt.Errorf(".dockerignore already exists; use --force to overwrite: %w", err)
 	}
 
 	// Render .gitignore.

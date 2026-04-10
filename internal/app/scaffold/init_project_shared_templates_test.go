@@ -180,6 +180,51 @@ func TestInitProject_SharedTemplatesWithRealFS(t *testing.T) {
 	}
 }
 
+// TestInitProject_DockerIgnore_WithRealFS verifies that the real embedded template
+// renders a .dockerignore containing all required exclusion patterns.
+func TestInitProject_DockerIgnore_WithRealFS(t *testing.T) {
+	r := mustBuildRealRenderer(t)
+	svc := scaffoldapp.NewInitProjectService(r, nil)
+
+	parent := t.TempDir()
+	opts := scaffoldapp.InitProjectOptions{
+		ProjectName: "dockerignoreapp",
+		Port:        3000,
+	}
+
+	if err := svc.InitProject(context.Background(), parent, opts); err != nil {
+		t.Fatalf("InitProject() unexpected error: %v", err)
+	}
+
+	dockerignorePath := filepath.Join(parent, "dockerignoreapp", ".dockerignore")
+	data, err := os.ReadFile(dockerignorePath)
+	if err != nil {
+		t.Fatalf("reading .dockerignore: %v", err)
+	}
+	content := string(data)
+
+	mustContain := []string{
+		".git",
+		".vibewarden",
+		"node_modules",
+		"__pycache__",
+		"*.pyc",
+		".env",
+		".env.*",
+		"vendor",
+		"target",
+		"dist",
+		"build",
+		".idea",
+		".vscode",
+	}
+	for _, want := range mustContain {
+		if !strings.Contains(content, want) {
+			t.Errorf(".dockerignore missing %q\nContent:\n%s", want, content)
+		}
+	}
+}
+
 // TestInitProject_WithRealFS_Description verifies that the real templates render
 // the description into PROJECT.md and AGENTS-VIBEWARDEN.md.
 func TestInitProject_WithRealFS_Description(t *testing.T) {
