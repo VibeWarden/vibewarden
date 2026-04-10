@@ -4,6 +4,7 @@ package deploy
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"io"
 	"net/http"
@@ -44,8 +45,9 @@ type Service struct {
 // NewService creates a Service.
 // executor handles SSH commands and rsync transfers.
 // generator is used to produce the .vibewarden/generated/ files before transfer.
-// httpDo is the HTTP function used for health checks; pass nil to use the default
-// http.DefaultClient.Do.
+// httpDo is the HTTP function used for status/logs commands; pass nil to use
+// http.DefaultClient. Health checks during deploy use a separate insecure
+// client scoped to waitHealthy (cert may not be issued yet).
 func NewService(
 	executor ports.RemoteExecutor,
 	generator ports.ConfigGenerator,
@@ -184,10 +186,19 @@ func (s *Service) Deploy(ctx context.Context, cfg *config.Config, opts RunOption
 		port = defaultHealthPort
 	}
 	scheme := "http"
+	host := "localhost"
 	if cfg.TLS.Enabled {
 		scheme = "https"
+		// When TLS is enabled with a domain (e.g. letsencrypt), the server's
+		// TLS connection policies match only the configured domain via SNI.
+		// Using "localhost" as the host would cause the TLS handshake to fail
+		// because the certificate (once issued) is scoped to the domain, not
+		// localhost. Use the configured domain for the health check host.
+		if cfg.TLS.Domain != "" {
+			host = cfg.TLS.Domain
+		}
 	}
-	healthURL := fmt.Sprintf("%s://localhost:%d/_vibewarden/health", scheme, port)
+	healthURL := fmt.Sprintf("%s://%s:%d/_vibewarden/health", scheme, host, port)
 	fmt.Fprintf(out, "Waiting for sidecar health check at %s...\n", healthURL)
 	if err := s.waitHealthy(ctx, healthURL, out); err != nil {
 		return fmt.Errorf("health check failed: %w", err)
@@ -290,13 +301,21 @@ func (s *Service) checkRemotePrerequisites(ctx context.Context) error {
 
 // waitHealthy polls healthURL until the sidecar responds with a 2xx status or
 // the context deadline / healthCheckTimeout expires.
+// It uses InsecureSkipVerify because the ACME cert may not be issued yet.
 func (s *Service) waitHealthy(ctx context.Context, healthURL string, out io.Writer) error {
+	//nolint:gosec // G402: intentional — cert may not be issued yet during deploy
+	insecureClient := &http.Client{
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec
+		},
+		Timeout: 5 * time.Second,
+	}
 	deadline := time.Now().Add(healthCheckTimeout)
 	attempt := 0
 
 	for {
 		attempt++
-		ok, err := s.checkHealth(ctx, healthURL)
+		ok, err := s.checkHealthWith(ctx, healthURL, insecureClient.Do)
 		if ok {
 			fmt.Fprintln(out, "Sidecar is healthy.")
 			return nil
@@ -319,14 +338,14 @@ func (s *Service) waitHealthy(ctx context.Context, healthURL string, out io.Writ
 	}
 }
 
-// checkHealth performs a single GET request to healthURL and returns true when
-// the response status is 2xx.
-func (s *Service) checkHealth(ctx context.Context, healthURL string) (bool, error) {
+// checkHealthWith performs a single GET request to healthURL using the provided
+// httpDo function and returns true when the response status is 2xx.
+func (s *Service) checkHealthWith(ctx context.Context, healthURL string, httpDo func(*http.Request) (*http.Response, error)) (bool, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, healthURL, nil)
 	if err != nil {
 		return false, fmt.Errorf("creating health request: %w", err)
 	}
-	resp, err := s.httpDo(req)
+	resp, err := httpDo(req)
 	if err != nil {
 		return false, err
 	}

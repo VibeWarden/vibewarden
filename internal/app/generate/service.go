@@ -30,9 +30,10 @@ const (
 
 // Service implements ports.ConfigGenerator using a ports.TemplateRenderer.
 type Service struct {
-	renderer  ports.TemplateRenderer
-	credGen   ports.CredentialGenerator
-	credStore ports.CredentialStore
+	renderer         ports.TemplateRenderer
+	credGen          ports.CredentialGenerator
+	credStore        ports.CredentialStore
+	configSourcePath string // optional: path to the source vibewarden.yaml
 }
 
 // NewService creates a generate Service that uses renderer to execute the
@@ -54,6 +55,18 @@ func NewServiceWithCredentials(
 		credGen:   credGen,
 		credStore: credStore,
 	}
+}
+
+// WithConfigSourcePath sets the path to the source vibewarden.yaml on the
+// local filesystem. When set, Generate copies the file into the output directory
+// as vibewarden.yaml so that the relative ./vibewarden.yaml volume mount in the
+// generated docker-compose.yml resolves correctly when Docker Compose is run
+// from that directory.
+//
+// Call this method before Generate. It returns the receiver for chaining.
+func (s *Service) WithConfigSourcePath(path string) *Service {
+	s.configSourcePath = path
+	return s
 }
 
 // Generate implements ports.ConfigGenerator.
@@ -196,6 +209,19 @@ func (s *Service) Generate(ctx context.Context, cfg *config.Config, outputDir st
 		if err := s.renderer.RenderToFile("docker-compose.yml.tmpl", cfg, composePath, true); err != nil {
 			return fmt.Errorf("rendering docker-compose.yml: %w", err)
 		}
+	}
+
+	// Copy vibewarden.yaml into the generated directory so that the relative
+	// ./vibewarden.yaml volume mount in docker-compose.yml works correctly when
+	// Docker Compose is run from the generated directory.
+	//
+	// The docker-compose.yml template mounts:
+	//   - ./vibewarden.yaml:/etc/vibewarden/vibewarden.yaml:ro
+	// The compose file lives in outputDir, so "./" is relative to outputDir.
+	// vibewarden.yaml normally lives in the project root (two levels up from the
+	// default .vibewarden/generated/), so we write a copy here.
+	if err := s.copyVibewardenYAML(cfg, outputDir); err != nil {
+		return fmt.Errorf("copying vibewarden.yaml to generated dir: %w", err)
 	}
 
 	// Generate openbao/config.hcl when the secrets plugin is enabled and the
@@ -422,4 +448,48 @@ func resolveIdentitySchema(cfg *config.Config) ([]byte, error) {
 		return nil, fmt.Errorf("resolving preset %q: %w", schemaName, err)
 	}
 	return data, nil
+}
+
+// copyVibewardenYAML writes a copy of vibewarden.yaml into outputDir so that
+// Docker Compose can resolve the relative ./vibewarden.yaml volume mount when
+// run from that directory.
+//
+// The source is determined as follows (highest to lowest precedence):
+//  1. s.configSourcePath when set explicitly via WithConfigSourcePath.
+//  2. The config source path derived from cfg.Overrides.ConfigFile when set.
+//  3. A best-effort relative fallback: "vibewarden.yaml" in the current working
+//     directory. If the file does not exist the copy is silently skipped — the
+//     caller (deploy service) already transfers the config via TransferFile,
+//     so the copy is optional for the standalone generate command.
+func (s *Service) copyVibewardenYAML(_ *config.Config, outputDir string) error {
+	src := s.configSourcePath
+	if src == "" {
+		// Best-effort fallback: look for vibewarden.yaml next to the cwd.
+		src = "vibewarden.yaml"
+	}
+
+	// Sanitise the source path.
+	src = filepath.Clean(src)
+
+	data, err := os.ReadFile(src)
+	if err != nil {
+		if os.IsNotExist(err) {
+			// Source file not found — skip silently. The standalone generate
+			// command may be called from a directory where vibewarden.yaml is
+			// not present (e.g. in unit tests); the deploy service fills the
+			// gap via its own TransferFile call.
+			return nil
+		}
+		return fmt.Errorf("reading %q: %w", src, err)
+	}
+
+	dst := filepath.Join(outputDir, "vibewarden.yaml")
+	// dst is constructed from the already-cleaned outputDir and a constant
+	// filename — the destination is safe. The G703 taint tracks content bytes
+	// read from a user-supplied source path, which is a false positive for the
+	// write destination.
+	if err := os.WriteFile(dst, data, permConfig); err != nil { //#nosec G703 -- destination is filepath.Join(cleanOutputDir, "vibewarden.yaml")
+		return fmt.Errorf("writing %q: %w", dst, err)
+	}
+	return nil
 }

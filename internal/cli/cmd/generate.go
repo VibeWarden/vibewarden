@@ -62,7 +62,7 @@ Examples:
 				renderer,
 				credentialsadapter.NewGenerator(),
 				credentialsadapter.NewStore(),
-			)
+			).WithConfigSourcePath(configPath)
 
 			if err := generator.Generate(cmd.Context(), cfg, outputDir); err != nil {
 				return fmt.Errorf("generating config files: %w", err)
