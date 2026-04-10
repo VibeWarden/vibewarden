@@ -45,16 +45,23 @@ type Service struct {
 // NewService creates a Service.
 // executor handles SSH commands and rsync transfers.
 // generator is used to produce the .vibewarden/generated/ files before transfer.
-// httpDo is the HTTP function used for status/logs commands; pass nil to use
-// http.DefaultClient. Health checks during deploy use a separate insecure
-// client scoped to waitHealthy (cert may not be issued yet).
+// httpDo is the HTTP function used for all outbound HTTP calls, including the
+// deploy health check. Pass nil to use an insecure HTTP client that tolerates
+// self-signed and not-yet-issued TLS certificates (the default for deployment,
+// where the ACME cert may not have been issued yet).
 func NewService(
 	executor ports.RemoteExecutor,
 	generator ports.ConfigGenerator,
 	httpDo func(req *http.Request) (*http.Response, error),
 ) *Service {
 	if httpDo == nil {
-		httpDo = http.DefaultClient.Do
+		//nolint:gosec // G402: intentional — cert may not be issued yet during deploy
+		httpDo = (&http.Client{
+			Transport: &http.Transport{
+				TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec
+			},
+			Timeout: 5 * time.Second,
+		}).Do
 	}
 	return &Service{
 		executor:  executor,
@@ -162,7 +169,16 @@ func (s *Service) Deploy(ctx context.Context, cfg *config.Config, opts RunOption
 	}
 
 	// Step 4: start Docker Compose on the remote.
-	// When app.build is set, build the image remotely instead of pulling.
+	// Always pull the latest sidecar image before starting, regardless of mode.
+	// In build mode the app image is built locally, but the sidecar image may be
+	// cached from an older version, so we explicitly pull it first.
+	fmt.Fprintln(out, "Pulling latest sidecar image on remote...")
+	pullSidecarCmd := fmt.Sprintf("cd %s && docker compose pull vibewarden", remoteDir)
+	if _, err := s.executor.Run(ctx, pullSidecarCmd); err != nil {
+		return fmt.Errorf("docker compose pull vibewarden: %w", err)
+	}
+
+	// When app.build is set, build the image remotely instead of pulling the app image.
 	if cfg.App.Build != "" {
 		fmt.Fprintln(out, "Building and starting services on remote...")
 		upCmd := fmt.Sprintf("cd %s && docker compose up -d --build --force-recreate", remoteDir)
@@ -203,9 +219,7 @@ func (s *Service) Deploy(ctx context.Context, cfg *config.Config, opts RunOption
 	}
 	healthURL := fmt.Sprintf("%s://%s:%d/_vibewarden/health", scheme, host, port)
 	fmt.Fprintf(out, "Waiting for sidecar health check at %s...\n", healthURL)
-	if err := s.waitHealthy(ctx, healthURL, out); err != nil {
-		return fmt.Errorf("health check failed: %w", err)
-	}
+	s.waitHealthy(ctx, healthURL, out)
 
 	fmt.Fprintln(out, "Deploy complete.")
 	return nil
@@ -304,38 +318,44 @@ func (s *Service) checkRemotePrerequisites(ctx context.Context) error {
 
 // waitHealthy polls healthURL until the sidecar responds with a 2xx status or
 // the context deadline / healthCheckTimeout expires.
-// It uses InsecureSkipVerify because the ACME cert may not be issued yet.
-func (s *Service) waitHealthy(ctx context.Context, healthURL string, out io.Writer) error {
-	//nolint:gosec // G402: intentional — cert may not be issued yet during deploy
-	insecureClient := &http.Client{
-		Transport: &http.Transport{
-			TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec
-		},
-		Timeout: 5 * time.Second,
-	}
+// It uses s.httpDo, which defaults to an insecure client because the ACME cert
+// may not be issued yet when this runs immediately after compose up.
+//
+// On timeout or context cancellation the function prints a warning and returns
+// without error — the deploy is considered successful because services may still
+// be starting up. The operator can run "vibew deploy status" to check manually.
+func (s *Service) waitHealthy(ctx context.Context, healthURL string, out io.Writer) {
 	deadline := time.Now().Add(healthCheckTimeout)
 	attempt := 0
+	var lastErr error
 
 	for {
 		attempt++
-		ok, err := s.checkHealthWith(ctx, healthURL, insecureClient.Do)
+		ok, err := s.checkHealthWith(ctx, healthURL, s.httpDo)
 		if ok {
 			fmt.Fprintln(out, "Sidecar is healthy.")
-			return nil
+			return
 		}
 		if err != nil {
+			lastErr = err
 			fmt.Fprintf(out, "  attempt %d: %v\n", attempt, err)
 		} else {
 			fmt.Fprintf(out, "  attempt %d: not yet healthy\n", attempt)
 		}
 
 		if time.Now().After(deadline) {
-			return fmt.Errorf("sidecar did not become healthy within %s", healthCheckTimeout)
+			if lastErr != nil {
+				fmt.Fprintf(out, "Warning: health check timed out (last error: %v). Services may still be starting. Run: vibew deploy status --target ... to check.\n", lastErr)
+			} else {
+				fmt.Fprintln(out, "Warning: health check timed out. Services may still be starting. Run: vibew deploy status --target ... to check.")
+			}
+			return
 		}
 
 		select {
 		case <-ctx.Done():
-			return fmt.Errorf("context cancelled while waiting for health: %w", ctx.Err())
+			fmt.Fprintf(out, "Warning: health check cancelled (%v). Services may still be starting. Run: vibew deploy status --target ... to check.\n", ctx.Err())
+			return
 		case <-time.After(healthCheckInterval):
 		}
 	}

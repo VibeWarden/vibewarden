@@ -2322,6 +2322,19 @@ func Load(configPath string) (*Config, error) {
 		return nil, fmt.Errorf("unmarshaling config: %w", err)
 	}
 
+	// Apply conditional defaults that depend on the values of other fields.
+	// These cannot be expressed via viper.SetDefault because they depend on
+	// the final resolved value of another key.
+	//
+	// When the TLS provider is letsencrypt and storage_path is not set by the
+	// user, default to Caddy's standard storage path when running as root
+	// inside Docker (/root/.local/share/caddy). This suppresses the
+	// "storage_path is required for certificate monitoring" warning for the
+	// common deployment case.
+	if cfg.TLS.Provider == "letsencrypt" && cfg.TLS.StoragePath == "" {
+		cfg.TLS.StoragePath = "/root/.local/share/caddy"
+	}
+
 	if err := cfg.Validate(); err != nil {
 		return nil, fmt.Errorf("invalid config: %w", err)
 	}

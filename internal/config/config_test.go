@@ -2768,3 +2768,65 @@ func TestIsProdProfile(t *testing.T) {
 		})
 	}
 }
+
+// TestLoad_LetsEncryptDefaultStoragePath verifies that when tls.provider is
+// letsencrypt and the user has not set tls.storage_path, Load sets it to
+// Caddy's default Docker root storage path. This prevents the cert monitor
+// from emitting a "storage_path is required" warning on first boot.
+func TestLoad_LetsEncryptDefaultStoragePath(t *testing.T) {
+	tests := []struct {
+		name            string
+		yaml            string
+		wantStoragePath string
+	}{
+		{
+			name: "letsencrypt without storage_path gets default",
+			yaml: `
+tls:
+  enabled: true
+  provider: letsencrypt
+  domain: example.com
+`,
+			wantStoragePath: "/root/.local/share/caddy",
+		},
+		{
+			name: "letsencrypt with explicit storage_path keeps it",
+			yaml: `
+tls:
+  enabled: true
+  provider: letsencrypt
+  domain: example.com
+  storage_path: /data/caddy
+`,
+			wantStoragePath: "/data/caddy",
+		},
+		{
+			name: "self-signed without storage_path stays empty",
+			yaml: `
+tls:
+  enabled: true
+  provider: self-signed
+`,
+			wantStoragePath: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			cfgFile := filepath.Join(dir, "vibewarden.yaml")
+			if err := os.WriteFile(cfgFile, []byte(tt.yaml), 0600); err != nil {
+				t.Fatalf("writing temp config file: %v", err)
+			}
+
+			cfg, err := config.Load(cfgFile)
+			if err != nil {
+				t.Fatalf("Load() unexpected error: %v", err)
+			}
+
+			if cfg.TLS.StoragePath != tt.wantStoragePath {
+				t.Errorf("TLS.StoragePath = %q, want %q", cfg.TLS.StoragePath, tt.wantStoragePath)
+			}
+		})
+	}
+}
