@@ -133,21 +133,12 @@ func (s *Service) Deploy(ctx context.Context, cfg *config.Config, opts RunOption
 		return fmt.Errorf("transferring generated files: %w", err)
 	}
 
-	// Transfer the config file as vibewarden.yaml on the remote regardless of
-	// the source filename. The docker-compose.yml always mounts ./vibewarden.yaml
-	// so the sidecar must find it under that name even when the user deployed
-	// with --config vibewarden.prod.yaml.
-	const remoteConfigName = "vibewarden.yaml"
-	if err := s.executor.TransferFile(ctx, opts.ConfigPath, remoteDir+remoteConfigName); err != nil {
-		return fmt.Errorf("transferring %s: %w", remoteConfigName, err)
-	}
-
 	// When app.build is set the image must be built on the remote host.
 	// Transfer the app source (the build context directory) so that
 	// `docker compose up --build` can build the image remotely.
-	// The build context path in vibewarden.yaml is relative to the project
-	// root (the directory containing vibewarden.yaml). We transfer it into
-	// a sub-directory of remoteDir so the compose file can reference it.
+	// This must happen BEFORE the config file transfer, because the build
+	// context may include a dev vibewarden.yaml that would overwrite the
+	// prod config.
 	if cfg.App.Build != "" {
 		projectRoot := filepath.Dir(filepath.Clean(opts.ConfigPath))
 		buildContextLocal := filepath.Join(projectRoot, cfg.App.Build)
@@ -158,11 +149,23 @@ func (s *Service) Deploy(ctx context.Context, cfg *config.Config, opts RunOption
 		}
 	}
 
+	// Transfer the config file as vibewarden.yaml on the remote regardless of
+	// the source filename. The docker-compose.yml always mounts ./vibewarden.yaml
+	// so the sidecar must find it under that name even when the user deployed
+	// with --config vibewarden.prod.yaml.
+	// This MUST happen AFTER the build context transfer because the build
+	// context (app source dir) may contain a dev vibewarden.yaml that would
+	// otherwise overwrite the prod config.
+	const remoteConfigName = "vibewarden.yaml"
+	if err := s.executor.TransferFile(ctx, opts.ConfigPath, remoteDir+remoteConfigName); err != nil {
+		return fmt.Errorf("transferring %s: %w", remoteConfigName, err)
+	}
+
 	// Step 4: start Docker Compose on the remote.
 	// When app.build is set, build the image remotely instead of pulling.
 	if cfg.App.Build != "" {
 		fmt.Fprintln(out, "Building and starting services on remote...")
-		upCmd := fmt.Sprintf("cd %s && docker compose up -d --build", remoteDir)
+		upCmd := fmt.Sprintf("cd %s && docker compose up -d --build --force-recreate", remoteDir)
 		if _, err := s.executor.Run(ctx, upCmd); err != nil {
 			return fmt.Errorf("docker compose up: %w", err)
 		}
@@ -174,7 +177,7 @@ func (s *Service) Deploy(ctx context.Context, cfg *config.Config, opts RunOption
 		}
 
 		fmt.Fprintln(out, "Starting services on remote...")
-		upCmd := fmt.Sprintf("cd %s && docker compose up -d", remoteDir)
+		upCmd := fmt.Sprintf("cd %s && docker compose up -d --force-recreate", remoteDir)
 		if _, err := s.executor.Run(ctx, upCmd); err != nil {
 			return fmt.Errorf("docker compose up: %w", err)
 		}
