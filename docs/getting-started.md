@@ -122,6 +122,7 @@ Common flags:
 vibewarden.yaml          # Main config — commit this
 vibew                    # Wrapper script (macOS/Linux)
 .vibewarden-version      # Pinned version
+.dockerignore            # Prevents secrets and build artifacts from entering the image
 .claude/CLAUDE.md        # AI agent context (Claude Code)
 .cursor/rules            # AI agent context (Cursor)
 AGENTS.md                # AI agent context (generic)
@@ -273,7 +274,7 @@ Request
  Body size limit
    │
    ▼
- WAF — SQLi / XSS / path traversal detection
+ WAF — SQLi / XSS / path traversal detection (enabled by default in `detect` mode)
    │
    ▼
  Authentication — JWT / Kratos / API key

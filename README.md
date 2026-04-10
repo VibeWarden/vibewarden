@@ -165,7 +165,7 @@ It never holds external secrets or connects directly to third-party APIs.
 | TLS | Let's Encrypt (prod), self-signed (dev), or external (Cloudflare, ACM, …) |
 | Authentication | `none`, `jwt` (any OIDC provider), `kratos` (self-hosted), `api-key` |
 | Rate limiting | Token-bucket, per-IP and per-user; in-memory or Redis-backed |
-| WAF | Pattern detection for SQLi, XSS, path traversal; `block` or `detect` mode |
+| WAF | Pattern detection for SQLi, XSS, path traversal; `block` or `detect` mode — enabled by default in `detect` mode |
 | Security headers | HSTS, CSP, X-Frame-Options, Referrer-Policy, Permissions-Policy, CORS |
 | Secrets management | OpenBao (Apache 2.0 Vault fork) — inject secrets as headers or env vars |
 | Egress proxy | Outbound HTTP with mTLS, circuit breaker, retry, SSRF protection, PII redaction |
@@ -183,7 +183,7 @@ It never holds external secrets or connects directly to third-party APIs.
 | Response headers | Modify upstream response headers before forwarding |
 | Webhook verification | Signature verification for Stripe, GitHub, Slack, Twilio |
 | Hot reload | File watcher + admin API — no restart required |
-| MCP server | `vibew mcp` — AI agent integration via Model Context Protocol |
+| MCP server | `vibew mcp` — AI agent integration via Model Context Protocol; `vibewarden_stream_logs` tool for filtered real-time event streaming |
 | Config schema | JSON schema for `vibewarden.yaml` — editor autocomplete |
 | Agent context | `AGENTS-VIBEWARDEN.md` generated for AI coding tools |
 | Eject | `vibew eject` — export raw proxy config to graduate past VibeWarden |
@@ -278,6 +278,7 @@ add VibeWarden. Use `vibew add` to enable individual features after the initial 
 | `vibew status` | Show health of all components |
 | `vibew doctor` | Diagnose common issues |
 | `vibew logs` | Pretty-print structured logs |
+| `vibew deploy logs --follow` | Stream remote logs in real-time |
 | `vibew secret get <alias-or-path>` | Read a secret from OpenBao |
 | `vibew secret list` | List all managed secret paths |
 | `vibew token` | Generate a signed dev JWT for local testing |

@@ -17,7 +17,7 @@ The sidecar handles:
 - Authentication (Ory Kratos) — identity injected via headers
 - Rate limiting — configured in vibewarden.yaml
 - Security headers (HSTS, CSP, X-Frame-Options, etc.)
-- WAF and egress security
+- WAF and egress security (enabled by default in `detect` mode; set `waf.mode: block` for production)
 
 App code focuses on **business logic only**.
 

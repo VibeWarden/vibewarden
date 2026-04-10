@@ -9,6 +9,10 @@ Changes to the schema are treated with the same care as a public API:
 backwards-incompatible changes increment the schema version and are documented
 in [Schema Evolution](schema-evolution.md).
 
+Each action produces exactly one structured event — there are no duplicate audit
+lines for the same request. Every middleware decision (auth, rate limiting, WAF,
+etc.) is captured in a single event per action with the relevant fields in `payload`.
+
 ---
 
 ## Why "AI-readable"?
@@ -175,6 +179,10 @@ These envelope fields let agents and observability tools link related events:
 This section lists every event type. Use the MCP tool
 `vibewarden_schema_describe` with `event_type=<type>` for full field listings,
 or with no arguments to see a condensed version of this table.
+
+To stream events in real-time from a running sidecar, use the MCP tool
+`vibewarden_stream_logs`. Supports filtering by `severity`, `event_type`, and
+`since` (ISO 8601 timestamp).
 
 ### Proxy
 
