@@ -1560,6 +1560,12 @@ func (c *Config) Validate() error {
 		))
 	}
 
+	// TLS letsencrypt provider requires domain.
+	if c.TLS.Enabled && c.TLS.Provider == "letsencrypt" && c.TLS.Domain == "" {
+		errs = append(errs, "tls.domain is required when tls.provider is \"letsencrypt\" — "+
+			"set tls.domain to your domain name (e.g., myapp.example.com)")
+	}
+
 	// TLS external provider requires cert_path and key_path.
 	if c.TLS.Enabled && c.TLS.Provider == "external" {
 		if c.TLS.CertPath == "" {
