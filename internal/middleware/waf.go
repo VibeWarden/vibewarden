@@ -24,7 +24,7 @@ const (
 
 // WAFConfig holds the complete configuration for WAFMiddleware.
 type WAFConfig struct {
-	// Mode controls whether detections block or only log. Default: WAFModeBlock.
+	// Mode controls whether detections block or only log. Default: WAFModeDetect.
 	Mode WAFMode
 
 	// EnabledCategories maps a waf.Category to a toggle. Categories absent from
@@ -63,7 +63,7 @@ func WAFMiddleware(
 ) func(http.Handler) http.Handler {
 	mode := cfg.Mode
 	if mode != WAFModeBlock && mode != WAFModeDetect {
-		mode = WAFModeBlock
+		mode = WAFModeDetect
 	}
 
 	matcher, err := NewExemptPathMatcher(cfg.ExemptPaths)

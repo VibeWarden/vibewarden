@@ -388,7 +388,7 @@ type TLSConfig struct {
 	Enabled bool `mapstructure:"enabled"`
 	// Domain for TLS certificate (required if enabled with provider "letsencrypt")
 	Domain string `mapstructure:"domain"`
-	// Provider: "letsencrypt", "self-signed", or "external"
+	// Provider: "letsencrypt" (or its alias "acme"), "self-signed", or "external"
 	Provider string `mapstructure:"provider"`
 	// CertPath is the path to a PEM-encoded certificate file.
 	// Required when Provider is "external".
@@ -1557,7 +1557,7 @@ func (c *Config) Validate() error {
 		// valid — empty string is accepted (defaults to "self-signed" via Load)
 	default:
 		errs = append(errs, fmt.Sprintf(
-			"tls.provider %q is invalid; accepted values: \"self-signed\", \"letsencrypt\", \"external\" — "+
+			"tls.provider %q is invalid; accepted values: \"self-signed\", \"letsencrypt\" (or alias \"acme\"), \"external\" — "+
 				"set tls.provider to one of those values",
 			c.TLS.Provider,
 		))
