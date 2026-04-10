@@ -402,10 +402,10 @@ func TestWAFMiddleware_NilCollectorAndAuditLogger_NoPanic(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Invalid mode falls back to block
+// Invalid mode falls back to detect (pass-through)
 // ---------------------------------------------------------------------------
 
-func TestWAFMiddleware_InvalidMode_FallsBackToBlock(t *testing.T) {
+func TestWAFMiddleware_InvalidMode_FallsBackToDetect(t *testing.T) {
 	mc := &fakeWAFCollector{}
 	al := &fakeWAFAuditLogger{}
 	cfg := WAFConfig{Mode: WAFMode("invalid")}
@@ -415,8 +415,8 @@ func TestWAFMiddleware_InvalidMode_FallsBackToBlock(t *testing.T) {
 	rr := httptest.NewRecorder()
 	h.ServeHTTP(rr, req)
 
-	if rr.Code != http.StatusForbidden {
-		t.Errorf("invalid mode should fall back to block: status = %d, want 403", rr.Code)
+	if rr.Code != http.StatusOK {
+		t.Errorf("invalid mode should fall back to detect (pass-through): status = %d, want 200", rr.Code)
 	}
 }
 

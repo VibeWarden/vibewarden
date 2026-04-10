@@ -81,7 +81,7 @@ security_headers:
   hsts_max_age: 0
   content_type_nosniff: true
   frame_option: "DENY"
-  content_security_policy: "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'"
+  content_security_policy: "default-src 'self'; style-src 'self' 'unsafe-inline'"
   referrer_policy: "strict-origin-when-cross-origin"
 
 telemetry:
@@ -330,7 +330,7 @@ func testSecurityHeaders(t *testing.T, s *stack) {
 	}{
 		{"X-Content-Type-Options", "nosniff"},
 		{"X-Frame-Options", "DENY"},
-		{"Content-Security-Policy", "default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'"},
+		{"Content-Security-Policy", "default-src 'self'; style-src 'self' 'unsafe-inline'"},
 		{"Referrer-Policy", "strict-origin-when-cross-origin"},
 	}
 
