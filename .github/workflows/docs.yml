@@ -1,0 +1,49 @@
+name: Deploy docs to vibewarden.dev
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "docs/**"
+      - "mkdocs.yml"
+      - ".github/workflows/docs.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install MkDocs Material and dependencies
+        run: |
+          pip install \
+            mkdocs-material==9.5.* \
+            mkdocs-minify-plugin \
+            pymdown-extensions
+
+      - name: Build docs
+        run: mkdocs build --strict --site-dir _site/docs
+
+      - name: Deploy to vibewarden.dev repo
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          deploy_key: ${{ secrets.DOCS_DEPLOY_KEY }}
+          external_repository: vibewarden/vibewarden.dev
+          publish_branch: main
+          publish_dir: ./_site/docs
+          destination_dir: docs/vibewarden
+          keep_files: true
+          commit_message: "docs: sync from vibewarden/vibewarden@${{ github.sha }}"

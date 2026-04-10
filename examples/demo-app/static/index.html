@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>VibeWarden Challenge — Can You Break Through?</title>
+  <link rel="stylesheet" href="/static/water.css">
+  <style>
+    .badge {
+      display: inline-block;
+      padding: 0.2em 0.6em;
+      border-radius: 4px;
+      font-size: 0.85em;
+      font-weight: bold;
+    }
+    .badge-ok    { background: #16a34a; color: #fff; }
+    .badge-error { background: #dc2626; color: #fff; }
+    .badge-warn  { background: #d97706; color: #fff; }
+    .badge-info  { background: #2563eb; color: #fff; }
+    nav a { margin-right: 1em; }
+
+    .hero {
+      margin: 2em 0 2.5em;
+      padding: 2em;
+      border-left: 4px solid #7C3AED;
+      background: rgba(124, 58, 237, 0.04);
+      border-radius: 0 6px 6px 0;
+    }
+    .hero h1 { margin-top: 0; }
+    .hero .tagline {
+      font-size: 1.1em;
+      color: #555;
+      margin-bottom: 0;
+    }
+
+    .protection-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 1em;
+      margin: 1em 0;
+    }
+    .protection-card {
+      padding: 1em;
+      border: 1px solid #d1d5db;
+      border-radius: 6px;
+    }
+    .protection-card h3 { margin-top: 0; font-size: 1em; }
+    .protection-card p  { margin-bottom: 0; font-size: 0.9em; color: #555; }
+
+    .auth-card {
+      padding: 1em;
+      border: 1px solid #ccc;
+      border-radius: 6px;
+      margin-top: 0.5em;
+    }
+    .demo-creds {
+      font-family: monospace;
+      background: #f3f4f6;
+      padding: 0.8em 1em;
+      border-radius: 4px;
+      margin-top: 0.5em;
+    }
+    .demo-creds span { color: #7C3AED; }
+
+    .profile-banner {
+      margin: 0 0 1.5em;
+      padding: 0.7em 1em;
+      border: 1px solid #e5e7eb;
+      border-radius: 6px;
+      background: #f9fafb;
+      font-size: 0.9em;
+    }
+    .profile-banner code { color: #7C3AED; font-weight: bold; }
+
+    .vw-footer {
+      margin-top: 3em;
+      padding: 1em 1.2em;
+      background: #f9fafb;
+      border: 1px solid #e5e7eb;
+      border-radius: 6px;
+      font-size: 0.9em;
+      color: #374151;
+      text-align: center;
+    }
+    .vw-footer strong { color: #7C3AED; }
+  </style>
+</head>
+<body>
+  <nav>
+    <strong>VibeWarden Demo</strong> &nbsp;|&nbsp;
+    <a href="/">Home</a>
+    <a href="/static/me.html">My Profile</a>
+    <a href="/static/headers.html">Headers Inspector</a>
+    <a href="/static/ratelimit.html">Rate Limit Test</a>
+    <a href="/static/vulnlab.html">Vulnerability Lab</a>
+  </nav>
+
+  <!-- Active profile banner (filled in by JS) -->
+  <div id="profile-banner" class="profile-banner" style="display:none"></div>
+
+  <!-- Hero -->
+  <div class="hero">
+    <h1>This app is protected by VibeWarden.</h1>
+    <p class="tagline">
+      No custom security code. Zero hand-rolled auth. Zero hand-rolled rate limiting.
+      Zero hand-rolled security headers.<br>
+      <strong>See for yourself.</strong>
+    </p>
+  </div>
+
+  <!-- Auth status -->
+  <h2>Auth Status</h2>
+  <div id="auth-status" class="auth-card">Checking...</div>
+
+  <p>
+    <a href="/auth/login"><button>Log In</button></a>
+    &nbsp;
+    <a href="/auth/registration"><button>Register</button></a>
+    &nbsp;
+    <button id="btn-logout" style="display:none">Log Out</button>
+  </p>
+
+  <details>
+    <summary>Demo credentials</summary>
+    <div class="demo-creds">
+      Email: <span>demo@vibewarden.dev</span><br>
+      Password: <span>demo1234</span>
+    </div>
+    <p><small>This account is reset periodically. Do not store sensitive data in it.</small></p>
+  </details>
+
+  <!-- What protects this app -->
+  <h2>What protects this app</h2>
+  <p>
+    VibeWarden is a security sidecar — a single binary that sits in front of your app
+    and handles every layer of protection. The app behind it has
+    <strong>zero security code</strong>.
+  </p>
+
+  <div class="protection-grid">
+    <div class="protection-card" id="card-tls">
+      <h3>TLS — <span id="tls-label">disabled</span></h3>
+      <p id="tls-desc">
+        HTTP mode. Start with <code>VIBEWARDEN_PROFILE=tls</code> for self-signed
+        HTTPS or <code>VIBEWARDEN_PROFILE=prod</code> for Let's Encrypt.
+      </p>
+    </div>
+    <div class="protection-card">
+      <h3>Auth — Ory Kratos</h3>
+      <p>
+        Session management, login flows, and registration are handled by
+        Ory Kratos. The app only sees injected <code>X-User-*</code> headers.
+      </p>
+    </div>
+    <div class="protection-card">
+      <h3>Social Login</h3>
+      <p>
+        When social providers (Google, GitHub, GitLab, Discord) are configured in
+        <code>vibewarden.yaml</code>, sign-in buttons appear automatically on the
+        <a href="/auth/login">login</a> and <a href="/auth/registration">registration</a>
+        pages — no code changes required.
+      </p>
+    </div>
+    <div class="protection-card">
+      <h3>Rate Limiting — 5 req/s per IP</h3>
+      <p>
+        Requests over the threshold receive <code>429 Too Many Requests</code>
+        with a <code>Retry-After</code> header. Try the
+        <a href="/static/ratelimit.html">Rate Limit Test</a> page.
+      </p>
+    </div>
+    <div class="protection-card">
+      <h3>Security Headers</h3>
+      <p>
+        Every response carries: HSTS, CSP, <code>X-Frame-Options</code>,
+        <code>X-Content-Type-Options</code>, and <code>Referrer-Policy</code>.
+        Inspect them on the <a href="/static/headers.html">Headers Inspector</a>.
+      </p>
+    </div>
+    <div class="protection-card">
+      <h3>AI-Structured Logs</h3>
+      <p>
+        Every event is logged with <code>schema_version</code>,
+        <code>event_type</code>, <code>ai_summary</code>, and <code>payload</code>.
+        Machine-readable by design.
+      </p>
+    </div>
+    <div class="protection-card">
+      <h3>VibeWarden Health</h3>
+      <p>
+        Sidecar status: <span id="vw-health">checking...</span>
+      </p>
+    </div>
+  </div>
+
+  <!-- Explore -->
+  <h2>Explore the demo</h2>
+  <ul>
+    <li>
+      <a href="/static/me.html">My Profile</a> —
+      authenticated endpoint that shows identity headers injected by VibeWarden.
+    </li>
+    <li>
+      <a href="/static/headers.html">Headers Inspector</a> —
+      see every security header VibeWarden adds to responses.
+    </li>
+    <li>
+      <a href="/static/ratelimit.html">Rate Limit Test</a> —
+      fire 20 rapid requests and watch the 429s appear.
+    </li>
+    <li>
+      <a href="/static/vulnlab.html">Vulnerability Lab</a> —
+      intentional vulnerabilities with VibeWarden mitigation status for each.
+    </li>
+    <!-- Observability links — shown only when observability profile is active -->
+    <li id="observability-links" style="display:none">
+      <a id="grafana-link" href="http://localhost:3001" target="_blank" rel="noopener">Grafana Dashboard</a> —
+      live metrics and structured logs from this sidecar instance.
+      Also: <a href="http://localhost:9090" target="_blank" rel="noopener">Prometheus</a>
+      and <a href="http://localhost:3100/ready" target="_blank" rel="noopener">Loki</a>.
+    </li>
+  </ul>
+
+  <!-- Found something -->
+  <h2>Found something?</h2>
+  <p>
+    If you find a real vulnerability in VibeWarden, please disclose it responsibly.
+    We read every report and credit researchers publicly (with your permission).
+  </p>
+  <p>
+    <a href="https://github.com/vibewarden/vibewarden/blob/main/SECURITY.md" target="_blank" rel="noopener">
+      Read our responsible disclosure policy (SECURITY.md)
+    </a>
+    &nbsp;&mdash;&nbsp;
+    <a href="mailto:security@vibewarden.dev">security@vibewarden.dev</a>
+  </p>
+
+  <!-- Links -->
+  <h2>Open source</h2>
+  <p>
+    VibeWarden is Apache 2.0.
+    <a href="https://github.com/vibewarden/vibewarden" target="_blank" rel="noopener">View on GitHub</a>.
+    Issues, PRs, and feedback are welcome.
+  </p>
+
+  <!-- Footer banner -->
+  <div class="vw-footer">
+    <strong>This app has zero custom security code.</strong>
+    All protection is provided by <strong>VibeWarden</strong>.
+  </div>
+
+  <script>
+    (async function () {
+      // Fetch active profile first so we can adapt the rest of the page.
+      let profileData = { profile: 'dev', tls_enabled: false, observability_enabled: false };
+      try {
+        const resp = await fetch('/profile');
+        if (resp.ok) {
+          profileData = await resp.json();
+        }
+      } catch (_) {
+        // profile endpoint unavailable — use defaults
+      }
+
+      // Profile banner
+      const profileBanner = document.getElementById('profile-banner');
+      const profileLabels = {
+        dev:  'dev — HTTP, relaxed limits',
+        tls:  'tls — HTTPS with self-signed certificate',
+        prod: 'prod — HTTPS with Let\'s Encrypt',
+        full: 'full — HTTPS + observability stack',
+        observability: 'observability — HTTP + Prometheus / Grafana / Loki',
+      };
+      const label = profileLabels[profileData.profile] || profileData.profile;
+      profileBanner.innerHTML =
+        'Active profile: <code>' + escapeHtml(label) + '</code> &nbsp;' +
+        '(<a href="https://github.com/vibewarden/vibewarden/tree/main/examples/demo-app#profiles" ' +
+        'target="_blank" rel="noopener">how to switch</a>)';
+      profileBanner.style.display = '';
+
+      // TLS card
+      const tlsLabel = document.getElementById('tls-label');
+      const tlsDesc  = document.getElementById('tls-desc');
+      if (profileData.tls_enabled) {
+        tlsLabel.textContent = 'Let\'s Encrypt';
+        if (profileData.profile === 'tls') {
+          tlsLabel.textContent = 'self-signed';
+          tlsDesc.textContent =
+            'VibeWarden terminates HTTPS using a Caddy-generated self-signed certificate. ' +
+            'Browsers show a security warning — accept it to proceed.';
+        } else {
+          tlsDesc.textContent =
+            'HTTPS is automatic. VibeWarden obtains and renews certificates via ACME. ' +
+            'No configuration needed.';
+        }
+      }
+
+      // Observability links
+      if (profileData.observability_enabled) {
+        document.getElementById('observability-links').style.display = '';
+      }
+
+      // Auth status
+      const authDiv = document.getElementById('auth-status');
+      try {
+        const resp = await fetch('/');
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        const data = await resp.json();
+
+        if (data.authenticated) {
+          authDiv.innerHTML =
+            '<span class="badge badge-ok">Authenticated</span>' +
+            ' <strong>' + escapeHtml(data.message) + '</strong>';
+          document.getElementById('btn-logout').style.display = 'inline';
+        } else {
+          authDiv.innerHTML =
+            '<span class="badge badge-warn">Not logged in</span>' +
+            ' ' + escapeHtml(data.message);
+        }
+      } catch (err) {
+        authDiv.innerHTML = '<span class="badge badge-error">Error</span> ' + escapeHtml(String(err));
+      }
+
+      // VibeWarden health badge
+      const vwSpan = document.getElementById('vw-health');
+      try {
+        const resp = await fetch('/_vibewarden/health');
+        if (resp.ok) {
+          vwSpan.innerHTML = '<span class="badge badge-ok">Healthy</span>';
+        } else {
+          vwSpan.innerHTML = '<span class="badge badge-error">Unhealthy (HTTP ' + resp.status + ')</span>';
+        }
+      } catch (_) {
+        vwSpan.innerHTML = '<span class="badge badge-error">Unreachable</span>';
+      }
+
+      // Logout
+      document.getElementById('btn-logout').addEventListener('click', function () {
+        window.location.href = '/self-service/logout/browser';
+      });
+    })();
+
+    function escapeHtml(str) {
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+  </script>
+</body>
+</html>

@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Information Disclosure — VibeWarden Vulnerability Lab</title>
+  <link rel="stylesheet" href="/static/water.css">
+  <style>
+    nav a { margin-right: 1em; }
+
+    .warning-banner {
+      padding: 1em 1.2em;
+      background: #fef2f2;
+      border: 2px solid #dc2626;
+      border-radius: 6px;
+      color: #991b1b;
+      font-weight: bold;
+      font-size: 1em;
+      margin-bottom: 1.5em;
+    }
+
+    .hero {
+      margin: 1.5em 0 2em;
+      padding: 2em;
+      border-left: 4px solid #7C3AED;
+      background: rgba(124, 58, 237, 0.04);
+      border-radius: 0 6px 6px 0;
+    }
+    .hero h1 { margin-top: 0; }
+    .hero .tagline { font-size: 1.1em; color: #555; margin-bottom: 0; }
+
+    .badge {
+      display: inline-block;
+      padding: 0.2em 0.6em;
+      border-radius: 4px;
+      font-size: 0.8em;
+      font-weight: bold;
+    }
+    .badge-low       { background: #2563eb; color: #fff; }
+    .badge-mitigated { background: #16a34a; color: #fff; }
+
+    .section { margin: 2em 0; }
+
+    .try-it-box {
+      padding: 1.2em;
+      border: 1px solid #d1d5db;
+      border-radius: 6px;
+      background: #fafafa;
+    }
+    .try-it-box h3 { margin-top: 0; }
+
+    .result-panel {
+      margin-top: 1em;
+      padding: 1em;
+      border: 1px solid #e5e7eb;
+      border-radius: 4px;
+      background: #fff;
+      min-height: 3em;
+      font-family: monospace;
+      font-size: 0.85em;
+      color: #374151;
+      white-space: pre-wrap;
+      max-height: 300px;
+      overflow-y: auto;
+    }
+
+    .protection-box {
+      padding: 1.2em;
+      border: 2px solid #16a34a;
+      border-radius: 6px;
+      background: rgba(22, 163, 74, 0.04);
+    }
+    .protection-box h3 { margin-top: 0; color: #15803d; }
+
+    .code-block {
+      font-family: monospace;
+      background: #1e1e2e;
+      color: #cdd6f4;
+      padding: 1em;
+      border-radius: 6px;
+      overflow-x: auto;
+      font-size: 0.9em;
+      line-height: 1.5;
+    }
+
+    .endpoint-row {
+      display: flex;
+      align-items: center;
+      gap: 0.8em;
+      margin-bottom: 0.8em;
+      flex-wrap: wrap;
+    }
+    .endpoint-row code { flex: 1; min-width: 200px; }
+
+    .status-401 { color: #dc2626; font-weight: bold; }
+    .status-200 { color: #16a34a; font-weight: bold; }
+
+    .vw-footer {
+      margin-top: 3em;
+      padding: 1em 1.2em;
+      background: #f9fafb;
+      border: 1px solid #e5e7eb;
+      border-radius: 6px;
+      font-size: 0.9em;
+      color: #374151;
+      text-align: center;
+    }
+    .vw-footer strong { color: #7C3AED; }
+  </style>
+</head>
+<body>
+  <nav>
+    <strong>VibeWarden Demo</strong> &nbsp;|&nbsp;
+    <a href="/">Home</a>
+    <a href="/static/me.html">My Profile</a>
+    <a href="/static/headers.html">Headers Inspector</a>
+    <a href="/static/ratelimit.html">Rate Limit Test</a>
+    <a href="/static/vulnlab.html">Vulnerability Lab</a>
+  </nav>
+
+  <div class="warning-banner">
+    &#9888;&#65039; The endpoints <code>GET /vuln/debug/vars</code> and
+    <code>GET /vuln/debug/config</code> expose application internals.
+    They are protected by VibeWarden's auth-on-all-paths default.
+    Credentials shown are FAKE and for demonstration only.
+  </div>
+
+  <div class="hero">
+    <h1>Information Disclosure &nbsp;<span class="badge badge-low">Low</span>&nbsp;<span class="badge badge-mitigated">Mitigated by VibeWarden</span></h1>
+    <p class="tagline">
+      Debug endpoints left exposed without authentication reveal Go internals,
+      environment variables, and configuration secrets.
+      VibeWarden's auth-on-all-paths default blocks unauthenticated access automatically.
+    </p>
+  </div>
+
+  <div class="section">
+    <h2>What is Information Disclosure?</h2>
+    <p>
+      Information disclosure occurs when an application reveals data that should be kept
+      private — stack traces, debug variables, database connection strings, API keys,
+      internal service URLs.  Even "low-severity" disclosures can give an attacker
+      everything they need to escalate an attack.
+    </p>
+    <p>
+      A common scenario: a developer adds a <code>/debug/vars</code> endpoint to
+      troubleshoot a production issue, commits it without thinking, ships it, and
+      forgets to remove it.  The endpoint is never intentionally exposed, but it is
+      reachable because there is no auth check.
+    </p>
+  </div>
+
+  <div class="section">
+    <h2>The Vulnerable Endpoints</h2>
+    <p>
+      This demo app has two intentionally vulnerable debug endpoints.
+      The developer forgot to secure them, but VibeWarden catches the mistake:
+    </p>
+    <div class="endpoint-row">
+      <code>GET /vuln/debug/vars</code>
+      <span>Go version, goroutines, memory stats, env vars, uptime</span>
+    </div>
+    <div class="endpoint-row">
+      <code>GET /vuln/debug/config</code>
+      <span>Fake DB URL with password, fake API keys, internal service URLs</span>
+    </div>
+    <p>
+      Neither endpoint is listed in <code>public_paths</code> in
+      <code>vibewarden.yaml</code>, so VibeWarden requires authentication for both.
+    </p>
+  </div>
+
+  <div class="section">
+    <h2>Try It — Unauthenticated Access</h2>
+    <div class="try-it-box">
+      <h3>Access the debug endpoints without authentication</h3>
+      <p>
+        The buttons below call the debug endpoints directly.  Because you are not
+        authenticated (or VibeWarden's auth layer is protecting the endpoints),
+        you should receive a <span class="status-401">401 Unauthorized</span> response.
+      </p>
+      <div class="endpoint-row">
+        <button onclick="fetchEndpoint('/vuln/debug/vars', 'vars-result')">Try /vuln/debug/vars</button>
+        <span id="vars-status"></span>
+      </div>
+      <div class="result-panel" id="vars-result">
+        <em>Click the button to attempt access.</em>
+      </div>
+      <br>
+      <div class="endpoint-row">
+        <button onclick="fetchEndpoint('/vuln/debug/config', 'config-result')">Try /vuln/debug/config</button>
+        <span id="config-status"></span>
+      </div>
+      <div class="result-panel" id="config-result">
+        <em>Click the button to attempt access.</em>
+      </div>
+    </div>
+  </div>
+
+  <div class="section">
+    <h2>What Would Be Exposed Without VibeWarden</h2>
+    <p>
+      If VibeWarden were not protecting these endpoints, an unauthenticated attacker
+      would receive responses like these:
+    </p>
+    <div class="code-block">{
+  "go_version": "go1.23.4",
+  "goroutines": 7,
+  "uptime": "2h34m12s",
+  "alloc_bytes": 1048576,
+  "env_vars": [
+    "PORT=3000",
+    "DATABASE_URL=postgres://admin:realpassword@prod-db:5432/app",
+    "STRIPE_KEY=sk_live_REAL_KEY",
+    ...
+  ]
+}</div>
+    <div class="code-block">{
+  "database_url": "postgres://admin:password123@internal-db:5432/production",
+  "stripe_secret_key": "sk_live_FAKE_KEY_FOR_DEMO_PURPOSES_ONLY",
+  "internal_api_url": "http://internal-payments-service:8080",
+  "smtp_password": "smtp_FAKE_PASSWORD_DEMO"
+}</div>
+  </div>
+
+  <div class="section">
+    <h2>VibeWarden Protection</h2>
+    <div class="protection-box">
+      <h3>Auth on all paths by default</h3>
+      <p>
+        VibeWarden requires authentication for every path that is not explicitly listed
+        in <code>public_paths</code>.  The debug endpoints are not listed, so every
+        unauthenticated request is rejected before it reaches the app handler.
+      </p>
+      <div class="code-block"># vibewarden.yaml — only explicitly public paths bypass auth
+public_paths:
+  - /health
+  - /public
+  - /static/*
+  - /vuln/*   # vuln lab paths are public for demo purposes</div>
+      <p>
+        VibeWarden also sets <code>X-Content-Type-Options: nosniff</code> on every
+        response, preventing browsers from misinterpreting JSON as a different MIME type
+        that could be exploited via MIME sniffing.
+      </p>
+      <p>
+        <strong>Defence in depth:</strong> even if auth is bypassed (e.g. by an insider),
+        sensitive data should never appear in debug endpoints.  VibeWarden provides a
+        safety net for the mistake; the correct fix is to remove debug endpoints before
+        shipping or gate them behind a separate secure channel.
+      </p>
+    </div>
+  </div>
+
+  <!-- Footer banner -->
+  <div class="vw-footer">
+    <strong>VibeWarden</strong> — security sidecar for vibe-coded apps.
+    Auth-on-all-paths protects debug endpoints even when developers forget.
+    &mdash; <a href="/static/vulnlab.html">Back to Vulnerability Lab</a> &mdash;
+    <a href="https://github.com/vibewarden/vibewarden" target="_blank" rel="noopener">GitHub</a>
+  </div>
+
+  <script>
+    async function fetchEndpoint(path, panelId) {
+      const panel = document.getElementById(panelId);
+      panel.textContent = 'Fetching...';
+
+      try {
+        const resp = await fetch(path);
+        const text = await resp.text();
+        let body;
+        try { body = JSON.stringify(JSON.parse(text), null, 2); } catch { body = text; }
+
+        if (resp.status === 401) {
+          panel.textContent = 'HTTP 401 Unauthorized\n\nVibeWarden blocked the request:\n' + body;
+        } else if (resp.status === 200) {
+          panel.textContent = 'HTTP 200 OK — data returned (you are authenticated):\n' + body;
+        } else {
+          panel.textContent = 'HTTP ' + resp.status + ':\n' + body;
+        }
+      } catch (err) {
+        panel.textContent = 'Error: ' + String(err);
+      }
+    }
+  </script>
+</body>
+</html>

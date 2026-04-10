@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Vulnerability Lab — VibeWarden Demo</title>
+  <link rel="stylesheet" href="/static/water.css">
+  <style>
+    nav a { margin-right: 1em; }
+
+    .hero {
+      margin: 2em 0 2.5em;
+      padding: 2em;
+      border-left: 4px solid #7C3AED;
+      background: rgba(124, 58, 237, 0.04);
+      border-radius: 0 6px 6px 0;
+    }
+    .hero h1 { margin-top: 0; }
+    .hero .tagline {
+      font-size: 1.1em;
+      color: #555;
+      margin-bottom: 0;
+    }
+
+    .badge {
+      display: inline-block;
+      padding: 0.2em 0.6em;
+      border-radius: 4px;
+      font-size: 0.8em;
+      font-weight: bold;
+    }
+    .badge-high   { background: #dc2626; color: #fff; }
+    .badge-medium { background: #d97706; color: #fff; }
+    .badge-low    { background: #2563eb; color: #fff; }
+
+    .vuln-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 1.2em;
+      margin: 1.5em 0;
+    }
+
+    .vuln-card {
+      padding: 1.2em;
+      border: 1px solid #d1d5db;
+      border-radius: 6px;
+      text-decoration: none;
+      color: inherit;
+      display: block;
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    .vuln-card:hover {
+      border-color: #7C3AED;
+      box-shadow: 0 2px 8px rgba(124, 58, 237, 0.12);
+      text-decoration: none;
+    }
+
+    .vuln-card-header {
+      display: flex;
+      align-items: center;
+      gap: 0.6em;
+      margin-bottom: 0.5em;
+    }
+    .vuln-card-header h3 {
+      margin: 0;
+      font-size: 1em;
+      flex: 1;
+    }
+
+    .vuln-card p {
+      margin: 0.4em 0 0.8em;
+      font-size: 0.9em;
+      color: #555;
+    }
+
+    .mitigation {
+      font-size: 0.85em;
+      font-weight: bold;
+      display: flex;
+      align-items: center;
+      gap: 0.3em;
+    }
+    .mitigation-yes { color: #16a34a; }
+    .mitigation-no  { color: #dc2626; }
+
+    .vw-footer {
+      margin-top: 3em;
+      padding: 1em 1.2em;
+      background: #f9fafb;
+      border: 1px solid #e5e7eb;
+      border-radius: 6px;
+      font-size: 0.9em;
+      color: #374151;
+      text-align: center;
+    }
+    .vw-footer strong { color: #7C3AED; }
+  </style>
+</head>
+<body>
+  <nav>
+    <strong>VibeWarden Demo</strong> &nbsp;|&nbsp;
+    <a href="/">Home</a>
+    <a href="/static/me.html">My Profile</a>
+    <a href="/static/headers.html">Headers Inspector</a>
+    <a href="/static/ratelimit.html">Rate Limit Test</a>
+    <a href="/static/vulnlab.html">Vulnerability Lab</a>
+  </nav>
+
+  <!-- Hero -->
+  <div class="hero">
+    <h1>Vulnerability Lab</h1>
+    <p class="tagline">
+      This app has intentional security vulnerabilities. VibeWarden mitigates most of them.
+      Try to exploit them.
+    </p>
+  </div>
+
+  <p>
+    Each page below demonstrates a real vulnerability class. Where VibeWarden provides
+    mitigation, the protection is applied automatically — no code changes needed in the app.
+    Where it does not, the demo shows what can still go wrong and what you should fix at the
+    application layer.
+  </p>
+
+  <div class="vuln-grid">
+
+    <a class="vuln-card" href="/static/xss-reflected.html">
+      <div class="vuln-card-header">
+        <h3>Reflected XSS</h3>
+        <span class="badge badge-high">High</span>
+      </div>
+      <p>User-supplied input is reflected directly into the page without escaping, allowing arbitrary script execution in the victim's browser.</p>
+      <div class="mitigation mitigation-yes">
+        <span>&#10003;</span> Mitigated by VibeWarden (CSP blocks inline scripts from untrusted sources)
+      </div>
+    </a>
+
+    <a class="vuln-card" href="/static/xss-stored.html">
+      <div class="vuln-card-header">
+        <h3>Stored XSS</h3>
+        <span class="badge badge-high">High</span>
+      </div>
+      <p>Malicious scripts are persisted in the database and executed whenever the affected page is loaded by any user.</p>
+      <div class="mitigation mitigation-yes">
+        <span>&#10003;</span> Partially mitigated by VibeWarden (CSP reduces impact; app must sanitise input)
+      </div>
+    </a>
+
+    <a class="vuln-card" href="/static/sqli.html">
+      <div class="vuln-card-header">
+        <h3>SQL Injection</h3>
+        <span class="badge badge-high">High</span>
+      </div>
+      <p>Unsanitised query parameters are interpolated directly into SQL statements, allowing data exfiltration and database manipulation.</p>
+      <div class="mitigation mitigation-no">
+        <span>&#10007;</span> Not mitigated by VibeWarden (fix at the application layer: use parameterised queries)
+      </div>
+    </a>
+
+    <a class="vuln-card" href="/static/clickjacking.html">
+      <div class="vuln-card-header">
+        <h3>Clickjacking</h3>
+        <span class="badge badge-medium">Medium</span>
+      </div>
+      <p>The page can be embedded in a hidden iframe, tricking users into clicking UI elements they cannot see.</p>
+      <div class="mitigation mitigation-yes">
+        <span>&#10003;</span> Mitigated by VibeWarden (<code>X-Frame-Options: DENY</code> and CSP <code>frame-ancestors</code>)
+      </div>
+    </a>
+
+    <a class="vuln-card" href="/static/csrf.html">
+      <div class="vuln-card-header">
+        <h3>CSRF</h3>
+        <span class="badge badge-medium">Medium</span>
+      </div>
+      <p>A forged cross-origin request can trigger state-changing actions on behalf of an authenticated user without their knowledge.</p>
+      <div class="mitigation mitigation-yes">
+        <span>&#10003;</span> Mitigated by VibeWarden (Kratos session cookies carry <code>SameSite=Strict</code>)
+      </div>
+    </a>
+
+    <a class="vuln-card" href="/static/open-redirect.html">
+      <div class="vuln-card-header">
+        <h3>Open Redirect</h3>
+        <span class="badge badge-medium">Medium</span>
+      </div>
+      <p>An unvalidated redirect parameter allows attackers to redirect users to malicious sites using a trusted domain as a stepping stone.</p>
+      <div class="mitigation mitigation-no">
+        <span>&#10007;</span> Not mitigated by VibeWarden (validate redirect targets at the application layer)
+      </div>
+    </a>
+
+    <a class="vuln-card" href="/static/info-leak.html">
+      <div class="vuln-card-header">
+        <h3>Information Disclosure</h3>
+        <span class="badge badge-low">Low</span>
+      </div>
+      <p>Verbose error messages, stack traces, or misconfigured headers expose internal details that aid further attacks.</p>
+      <div class="mitigation mitigation-yes">
+        <span>&#10003;</span> Partially mitigated by VibeWarden (security headers strip server banners; app must suppress stack traces)
+      </div>
+    </a>
+
+    <a class="vuln-card" href="/static/mime-sniff.html">
+      <div class="vuln-card-header">
+        <h3>MIME Sniffing</h3>
+        <span class="badge badge-low">Low</span>
+      </div>
+      <p>Browsers that ignore declared Content-Type and infer the type from content can be tricked into executing a malicious payload as a script.</p>
+      <div class="mitigation mitigation-yes">
+        <span>&#10003;</span> Mitigated by VibeWarden (<code>X-Content-Type-Options: nosniff</code> on every response)
+      </div>
+    </a>
+
+  </div>
+
+  <!-- Footer banner -->
+  <div class="vw-footer">
+    <strong>VibeWarden</strong> — security sidecar for vibe-coded apps.
+    Protections are applied automatically; no custom security code needed in the app.
+  </div>
+</body>
+</html>

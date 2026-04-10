@@ -1,0 +1,38 @@
+# VibeWarden — Minimal Configuration
+# Copy this file to vibewarden.yaml and customize as needed.
+# For all available options see vibewarden.reference.yaml.
+
+server:
+  host: "127.0.0.1"
+  port: 8443
+
+upstream:
+  host: "127.0.0.1"
+  port: 3000
+
+tls:
+  enabled: true
+  provider: "self-signed"
+
+auth:
+  mode: "none"
+  public_paths: []
+
+rate_limit:
+  enabled: true
+  store: memory
+  per_ip:
+    requests_per_second: 10
+    burst: 20
+
+security_headers:
+  enabled: true
+
+telemetry:
+  enabled: true
+  prometheus:
+    enabled: true
+
+log:
+  level: "info"
+  format: "json"

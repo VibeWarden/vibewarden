@@ -1,0 +1,404 @@
+# VibeWarden — Docker Compose dev environment
+#
+# Brings up the full local stack:
+#   postgres          — Kratos session/identity storage
+#   kratos-migrate    — runs Kratos DB migrations once, then exits
+#   kratos            — Ory Kratos identity server (public :4433, admin :4434)
+#   mailslurper       — catches outbound Kratos emails (SMTP :4436, web UI :4437)
+#   openbao           — OpenBao secret store (dev mode, internal only)
+#   openbao-bootstrap — one-shot init container: enables engines, creates AppRole
+#   vibewarden        — the security sidecar (proxies your upstream app on :8080)
+#
+# Optional profiles:
+#   observability  — prometheus, grafana, loki, promtail
+#   redis          — Redis server for distributed rate limiting
+#
+# Usage:
+#   docker compose up -d                           # start baseline stack
+#   docker compose --profile observability up -d   # start with observability stack
+#   docker compose --profile redis up -d           # start with Redis rate limiting
+#   docker compose logs -f                         # tail logs
+#   docker compose down                            # stop and remove containers
+#   docker compose down -v                         # also remove named volumes
+#
+# Secrets:
+#   Postgres password and DSN are hard-coded to simple dev values — never use
+#   these credentials outside of a local dev environment.
+
+services:
+  # --------------------------------------------------------------------------
+  # Postgres — persistent storage for Ory Kratos
+  # --------------------------------------------------------------------------
+  postgres:
+    image: postgres:17-alpine
+    container_name: vibewarden-postgres
+    environment:
+      POSTGRES_USER: vibewarden
+      POSTGRES_PASSWORD: vibewarden
+      POSTGRES_DB: vibewarden
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - vibewarden
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U vibewarden -d vibewarden"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # --------------------------------------------------------------------------
+  # Kratos migrate — runs DB migrations once, then exits (service_completed_successfully)
+  # --------------------------------------------------------------------------
+  kratos-migrate:
+    image: oryd/kratos:v1.3.1
+    container_name: vibewarden-kratos-migrate
+    environment:
+      DSN: postgres://vibewarden:vibewarden@postgres:5432/vibewarden?sslmode=disable
+    volumes:
+      - ./dev/kratos:/etc/config/kratos:ro
+    command: migrate sql -e --yes
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - vibewarden
+
+  # --------------------------------------------------------------------------
+  # Kratos — identity / session management
+  #
+  # Public API  (user-facing flows):  http://localhost:4433
+  # Admin API   (internal use only):  http://localhost:4434
+  #
+  # Kratos self-service flow UI URLs point to VibeWarden (vibewarden:8080) so
+  # that the browser redirects go through the sidecar as the proxy.
+  # --------------------------------------------------------------------------
+  kratos:
+    image: oryd/kratos:v1.3.1
+    container_name: vibewarden-kratos
+    environment:
+      # DSN is overridden here; the kratos.yml carries a fallback of "memory"
+      # which is only used for unit tests outside Docker.
+      DSN: postgres://vibewarden:vibewarden@postgres:5432/vibewarden?sslmode=disable
+      # Tell Kratos what public base URL browsers will use to reach it.
+      # VibeWarden proxies /.ory/kratos/public/* → Kratos public API, so the
+      # browser-visible base URL is the VibeWarden address.
+      SERVE_PUBLIC_BASE_URL: http://localhost:4433/
+      SERVE_ADMIN_BASE_URL: http://kratos:4434/
+    ports:
+      - "4433:4433"
+      - "4434:4434"
+    volumes:
+      - ./dev/kratos:/etc/config/kratos:ro
+    command: serve --config /etc/config/kratos/kratos.yml --dev --watch-courier
+    depends_on:
+      kratos-migrate:
+        condition: service_completed_successfully
+    networks:
+      - vibewarden
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://kratos:4434/admin/health/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+
+  # --------------------------------------------------------------------------
+  # Mailslurper — local SMTP sink for Kratos verification / recovery emails
+  #
+  # SMTP endpoint (used by Kratos): localhost:4436
+  # Web UI to read captured emails:  http://localhost:4437
+  # --------------------------------------------------------------------------
+  mailslurper:
+    image: oryd/mailslurper:latest-smtps
+    container_name: vibewarden-mailslurper
+    ports:
+      - "4436:4436"  # SMTP
+      - "4437:4437"  # Web UI
+    networks:
+      - vibewarden
+
+  # --------------------------------------------------------------------------
+  # VibeWarden — the security sidecar
+  #
+  # Builds from the local Dockerfile (multi-stage Go build).
+  # Listens on :8080 and proxies to the upstream app on host.docker.internal:3000.
+  #
+  # Kratos public URL inside the container network: http://kratos:4433
+  # Kratos admin URL inside the container network:  http://kratos:4434
+  # --------------------------------------------------------------------------
+  vibewarden:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        VERSION: dev
+    container_name: vibewarden-sidecar
+    ports:
+      - "8080:8080"
+    volumes:
+      # Mount the example config as vibewarden.yaml.  Override with your own
+      # config file by replacing this volume mount.
+      - ./vibewarden.reference.yaml:/vibewarden.yaml:ro
+    environment:
+      # Point Kratos URLs at the kratos container on the internal network.
+      VIBEWARDEN_KRATOS_PUBLIC_URL: http://kratos:4433
+      VIBEWARDEN_KRATOS_ADMIN_URL: http://kratos:4434
+      # Proxy upstream app running on the Docker host.
+      VIBEWARDEN_UPSTREAM_HOST: host.docker.internal
+      VIBEWARDEN_UPSTREAM_PORT: "3000"
+      # Bind on all interfaces inside the container.
+      VIBEWARDEN_SERVER_HOST: "0.0.0.0"
+    depends_on:
+      kratos:
+        condition: service_healthy
+      openbao-bootstrap:
+        condition: service_completed_successfully
+    networks:
+      - vibewarden
+    healthcheck:
+      test: ["CMD", "/vibewarden", "--version"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 5s
+
+  # --------------------------------------------------------------------------
+  # OpenBao — open-source Vault fork for secret management
+  #
+  # Dev mode: in-memory storage, auto-unsealed, root token from env var.
+  # IMPORTANT: dev mode is for local development only — never use in production.
+  # Data is lost on restart.
+  #
+  # The OpenBao port is NOT exposed to the host — it is accessible only from
+  # services on the internal "vibewarden" Docker network.
+  #
+  # Production mode: set BAO_DEV_ROOT_TOKEN_ID="" and configure a Postgres
+  # storage backend and Shamir unseal keys (see docs/secret-management.md).
+  # --------------------------------------------------------------------------
+  openbao:
+    image: quay.io/openbao/openbao:latest
+    container_name: vibewarden-openbao
+    cap_add:
+      - IPC_LOCK
+    environment:
+      BAO_DEV_ROOT_TOKEN_ID: ${OPENBAO_DEV_TOKEN:-vibewarden-dev}
+      BAO_DEV_LISTEN_ADDRESS: 0.0.0.0:8200
+    # No host port mapping — internal network only.
+    # Accessible as http://openbao:8200 from other containers.
+    command: server -dev
+    networks:
+      - vibewarden
+    healthcheck:
+      test: ["CMD", "sh", "-c", "wget -qO- http://127.0.0.1:8200/v1/sys/health | grep -q '\"sealed\":false'"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+
+  # --------------------------------------------------------------------------
+  # OpenBao bootstrap — one-shot init container
+  #
+  # Runs after OpenBao is healthy. Enables KV v2 and database secret engines,
+  # creates the VibeWarden policy and AppRole, then exits.
+  # Prints the generated role_id and secret_id to stdout (visible via
+  # "docker compose logs openbao-bootstrap").
+  #
+  # Re-run after "docker compose down -v" to regenerate credentials.
+  # --------------------------------------------------------------------------
+  openbao-bootstrap:
+    image: curlimages/curl:latest
+    container_name: vibewarden-openbao-bootstrap
+    environment:
+      BAO_ADDR: http://openbao:8200
+      BAO_TOKEN: ${OPENBAO_DEV_TOKEN:-vibewarden-dev}
+      SKIP_DATABASE: "true"
+    volumes:
+      - ./scripts/bootstrap-openbao.sh:/bootstrap-openbao.sh:ro
+    command: sh /bootstrap-openbao.sh
+    depends_on:
+      openbao:
+        condition: service_healthy
+    networks:
+      - vibewarden
+    restart: "no"
+
+  # --------------------------------------------------------------------------
+  # Redis — optional distributed rate limiting store
+  #
+  # Only starts when the "redis" profile is active:
+  #   docker compose --profile redis up -d
+  #
+  # To use Redis for rate limiting, set in vibewarden.yaml:
+  #   rate_limit:
+  #     store: redis
+  #     redis:
+  #       address: redis:6379
+  # --------------------------------------------------------------------------
+  redis:
+    image: redis:7-alpine
+    container_name: vibewarden-redis
+    profiles:
+      - redis
+    ports:
+      - "6379:6379"
+    networks:
+      - vibewarden
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # --------------------------------------------------------------------------
+  # Prometheus — metrics collection and storage
+  #
+  # Web UI: http://localhost:9090
+  # Scrapes VibeWarden metrics at vibewarden:8080/_vibewarden/metrics
+  #
+  # Only starts when the "observability" profile is active:
+  #   docker compose --profile observability up -d
+  # --------------------------------------------------------------------------
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: vibewarden-prometheus
+    profiles:
+      - observability
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./observability/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.enable-lifecycle'
+    networks:
+      - vibewarden
+    depends_on:
+      vibewarden:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:9090/-/healthy"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # --------------------------------------------------------------------------
+  # Grafana — metrics visualization and dashboards
+  #
+  # Web UI: http://localhost:3000
+  # Anonymous auth enabled (admin role) for frictionless local dev
+  #
+  # Only starts when the "observability" profile is active:
+  #   docker compose --profile observability up -d
+  # --------------------------------------------------------------------------
+  grafana:
+    image: grafana/grafana-oss:latest
+    container_name: vibewarden-grafana
+    profiles:
+      - observability
+    ports:
+      - "3000:3000"
+    environment:
+      # Anonymous auth for frictionless local dev
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Admin
+      GF_AUTH_DISABLE_LOGIN_FORM: "true"
+      # Disable telemetry
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    networks:
+      - vibewarden
+    depends_on:
+      prometheus:
+        condition: service_healthy
+      loki:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3000/api/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # --------------------------------------------------------------------------
+  # Loki — log aggregation backend
+  #
+  # API: http://localhost:3100
+  # Single-node, filesystem storage, 7-day retention.
+  #
+  # Only starts when the "observability" profile is active:
+  #   docker compose --profile observability up -d
+  # --------------------------------------------------------------------------
+  loki:
+    image: grafana/loki:latest
+    container_name: vibewarden-loki
+    profiles:
+      - observability
+    ports:
+      - "3100:3100"
+    volumes:
+      - ./observability/loki/loki-config.yml:/etc/loki/local-config.yaml:ro
+      - loki_data:/loki
+    command: -config.file=/etc/loki/local-config.yaml
+    networks:
+      - vibewarden
+    healthcheck:
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:3100/ready"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  # --------------------------------------------------------------------------
+  # Promtail — log shipper
+  #
+  # Discovers all running Docker containers via the Docker socket, tails their
+  # log files, and ships structured JSON log entries to Loki.
+  #
+  # Only starts when the "observability" profile is active:
+  #   docker compose --profile observability up -d
+  # --------------------------------------------------------------------------
+  promtail:
+    image: grafana/promtail:latest
+    container_name: vibewarden-promtail
+    profiles:
+      - observability
+    volumes:
+      - ./observability/promtail/promtail-config.yml:/etc/promtail/config.yml:ro
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /var/lib/docker/containers:/var/lib/docker/containers:ro
+    command: -config.file=/etc/promtail/config.yml
+    networks:
+      - vibewarden
+    depends_on:
+      loki:
+        condition: service_healthy
+
+# --------------------------------------------------------------------------
+# Named volumes
+# --------------------------------------------------------------------------
+volumes:
+  postgres_data:
+    driver: local
+  prometheus_data:
+    driver: local
+  grafana_data:
+    driver: local
+  loki_data:
+    driver: local
+
+# --------------------------------------------------------------------------
+# Networks — all services share a single bridge network so they can resolve
+# each other by container name (e.g. "kratos", "postgres").
+# --------------------------------------------------------------------------
+networks:
+  vibewarden:
+    driver: bridge

@@ -1,0 +1,51 @@
+# VibeWarden config for egress proxy testing
+# Routes point to the local httpbin container, not the internet.
+
+server:
+  host: "0.0.0.0"
+  port: 8443
+
+upstream:
+  host: "app"
+  port: 3000
+
+tls:
+  enabled: false
+
+auth:
+  enabled: false
+  mode: "none"
+
+egress:
+  enabled: true
+  listen: "0.0.0.0:8081"
+  default_policy: deny
+  default_timeout: "10s"
+  allow_insecure: true      # httpbin runs plain HTTP on Docker network
+  dns:
+    block_private: false    # httpbin is on a private Docker network
+  routes:
+    - name: httpbin-headers
+      pattern: "http://httpbin/headers"
+      methods: [GET]
+      headers:
+        add:
+          X-Injected-By: "vibewarden-egress"
+        remove_request:
+          - Cookie
+          - X-Secret-Internal
+
+    - name: httpbin-get
+      pattern: "http://httpbin/**"
+      methods: [GET]
+      timeout: "5s"
+      rate_limit: "10/s"
+
+    - name: httpbin-post
+      pattern: "http://httpbin/**"
+      methods: [POST, PUT]
+      timeout: "5s"
+
+log:
+  level: "info"
+  format: "json"
