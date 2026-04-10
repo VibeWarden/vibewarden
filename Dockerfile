@@ -4,7 +4,7 @@
 #   FROM golang:1.24-alpine AS build
 #   WORKDIR /app
 #   COPY . .
-#   RUN go build -o app ./cmd/interactiveapp
+#   RUN go build -o app ./cmd/nodescapp2
 #   FROM alpine:3.21
 #   COPY --from=build /app/app /app
 #   EXPOSE 3000
