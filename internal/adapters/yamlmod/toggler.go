@@ -324,7 +324,8 @@ func upsertTLSBlock(root *yaml.Node, domain, provider string) {
 		if provider != "" {
 			upsertField(existing, "provider", provider, "!!str")
 		}
-		upsertField(existing, "storage_path", "./data/caddy", "!!str")
+		// storage_path defaults to /root/.local/share/caddy in config.Load
+		// (matches the Docker volume mount). No need to set explicitly.
 		return
 	}
 

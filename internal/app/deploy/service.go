@@ -345,9 +345,10 @@ func (s *Service) waitHealthy(ctx context.Context, healthURL string, out io.Writ
 
 		if time.Now().After(deadline) {
 			if lastErr != nil {
-				fmt.Fprintf(out, "Warning: health check timed out (last error: %v).\n", lastErr)
+				fmt.Fprintf(out, "Warning: health check timed out (last error: %v). Services may still be starting. Run: vibew deploy status --target ... to check.\n", lastErr)
+			} else {
+				fmt.Fprintln(out, "Warning: health check timed out. Services may still be starting. Run: vibew deploy status --target ... to check.")
 			}
-			fmt.Fprintln(out, "Warning: health check timed out. Services may still be starting. Run: vibew deploy status --target ... to check.")
 			return
 		}
 
