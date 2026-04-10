@@ -923,10 +923,10 @@ type CSPConfig struct {
 
 // WAFConfig holds Web Application Firewall settings.
 type WAFConfig struct {
-	// Enabled toggles the WAF rule engine (default: false).
+	// Enabled toggles the WAF rule engine (default: true).
 	Enabled bool `mapstructure:"enabled"`
 
-	// Mode controls WAF response to detections: "block" or "detect" (default: "block").
+	// Mode controls WAF response to detections: "block" or "detect" (default: "detect").
 	Mode string `mapstructure:"mode"`
 
 	// Rules toggles individual rule categories.
@@ -1549,8 +1549,11 @@ func (c *Config) Validate() error {
 	}
 
 	// tls.provider validation: must be one of the accepted values.
+	// "acme" is accepted as an alias for "letsencrypt"; Load() normalises it
+	// before Validate() runs, but direct callers of Validate() may still pass
+	// it, so we permit it here as well.
 	switch c.TLS.Provider {
-	case "", "self-signed", "letsencrypt", "external":
+	case "", "self-signed", "letsencrypt", "acme", "external":
 		// valid — empty string is accepted (defaults to "self-signed" via Load)
 	default:
 		errs = append(errs, fmt.Sprintf(
@@ -1561,7 +1564,9 @@ func (c *Config) Validate() error {
 	}
 
 	// TLS letsencrypt provider requires domain.
-	if c.TLS.Enabled && c.TLS.Provider == "letsencrypt" && c.TLS.Domain == "" {
+	// Also checked for "acme" — the alias — in case Validate() is called
+	// before Load() has had a chance to normalise the value.
+	if c.TLS.Enabled && (c.TLS.Provider == "letsencrypt" || c.TLS.Provider == "acme") && c.TLS.Domain == "" {
 		errs = append(errs, "tls.domain is required when tls.provider is \"letsencrypt\" — "+
 			"set tls.domain to your domain name (e.g., myapp.example.com)")
 	}
@@ -2275,8 +2280,8 @@ func Load(configPath string) (*Config, error) {
 		"application/x-www-form-urlencoded",
 		"multipart/form-data",
 	})
-	v.SetDefault("waf.enabled", false)
-	v.SetDefault("waf.mode", "block")
+	v.SetDefault("waf.enabled", true)
+	v.SetDefault("waf.mode", "detect")
 	v.SetDefault("waf.rules.sqli", true)
 	v.SetDefault("waf.rules.xss", true)
 	v.SetDefault("waf.rules.path_traversal", true)
@@ -2325,7 +2330,15 @@ func Load(configPath string) (*Config, error) {
 	// Apply conditional defaults that depend on the values of other fields.
 	// These cannot be expressed via viper.SetDefault because they depend on
 	// the final resolved value of another key.
-	//
+
+	// Normalise "acme" to "letsencrypt". "acme" is a user-friendly alias that
+	// matches the underlying protocol name; both refer to the same behaviour.
+	// Normalising here means all downstream code (Caddy adapter, cert monitor,
+	// etc.) only needs to handle the canonical value "letsencrypt".
+	if cfg.TLS.Provider == "acme" {
+		cfg.TLS.Provider = "letsencrypt"
+	}
+
 	// When the TLS provider is letsencrypt and storage_path is not set by the
 	// user, default to Caddy's standard storage path when running as root
 	// inside Docker (/root/.local/share/caddy). This suppresses the

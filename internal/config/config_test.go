@@ -2487,10 +2487,28 @@ func TestValidate_TLSProvider(t *testing.T) {
 			wantErr: false,
 		},
 		{
-			name:        "unknown provider acme is rejected",
-			cfg:         config.Config{TLS: config.TLSConfig{Provider: "acme"}},
+			name:    "acme is accepted as alias for letsencrypt",
+			cfg:     config.Config{TLS: config.TLSConfig{Provider: "acme"}},
+			wantErr: false,
+		},
+		{
+			name: "acme with domain is valid",
+			cfg: config.Config{TLS: config.TLSConfig{
+				Enabled:  true,
+				Provider: "acme",
+				Domain:   "example.com",
+			}},
+			wantErr: false,
+		},
+		{
+			name: "acme enabled without domain is invalid",
+			cfg: config.Config{TLS: config.TLSConfig{
+				Enabled:  true,
+				Provider: "acme",
+				Domain:   "",
+			}},
 			wantErr:     true,
-			wantContain: "tls.provider \"acme\" is invalid",
+			wantContain: "tls.domain is required",
 		},
 		{
 			name:        "unknown provider cloudflare is rejected with actionable message",
@@ -2826,6 +2844,172 @@ tls:
 
 			if cfg.TLS.StoragePath != tt.wantStoragePath {
 				t.Errorf("TLS.StoragePath = %q, want %q", cfg.TLS.StoragePath, tt.wantStoragePath)
+			}
+		})
+	}
+}
+
+// TestLoad_AcmeAliasNormalization verifies that Load() normalises tls.provider
+// "acme" to "letsencrypt" so that all downstream code only sees the canonical
+// value.
+func TestLoad_AcmeAliasNormalization(t *testing.T) {
+	tests := []struct {
+		name         string
+		yaml         string
+		wantProvider string
+		wantErr      bool
+	}{
+		{
+			name: "acme normalises to letsencrypt",
+			yaml: `
+tls:
+  enabled: true
+  provider: acme
+  domain: example.com
+`,
+			wantProvider: "letsencrypt",
+			wantErr:      false,
+		},
+		{
+			name: "acme inherits default storage_path like letsencrypt",
+			yaml: `
+tls:
+  enabled: true
+  provider: acme
+  domain: example.com
+`,
+			wantProvider: "letsencrypt",
+			wantErr:      false,
+		},
+		{
+			name: "letsencrypt value unchanged after load",
+			yaml: `
+tls:
+  enabled: true
+  provider: letsencrypt
+  domain: example.com
+`,
+			wantProvider: "letsencrypt",
+			wantErr:      false,
+		},
+		{
+			name: "acme enabled without domain fails validation",
+			yaml: `
+tls:
+  enabled: true
+  provider: acme
+  domain: ""
+`,
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			cfgFile := filepath.Join(dir, "vibewarden.yaml")
+			if err := os.WriteFile(cfgFile, []byte(tt.yaml), 0600); err != nil {
+				t.Fatalf("writing temp config file: %v", err)
+			}
+
+			cfg, err := config.Load(cfgFile)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("Load() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if tt.wantErr {
+				return
+			}
+			if cfg.TLS.Provider != tt.wantProvider {
+				t.Errorf("TLS.Provider = %q, want %q", cfg.TLS.Provider, tt.wantProvider)
+			}
+		})
+	}
+}
+
+// TestLoad_WAFDefaults verifies that WAF defaults to enabled=true and mode=detect
+// so that attack patterns are logged but not blocked out of the box (#784).
+func TestLoad_WAFDefaults(t *testing.T) {
+	cfg, err := config.Load("")
+	if err != nil {
+		t.Fatalf("Load() unexpected error: %v", err)
+	}
+
+	tests := []struct {
+		name string
+		got  interface{}
+		want interface{}
+	}{
+		{"waf.enabled", cfg.WAF.Enabled, true},
+		{"waf.mode", cfg.WAF.Mode, "detect"},
+		{"waf.rules.sqli", cfg.WAF.Rules.SQLInjection, true},
+		{"waf.rules.xss", cfg.WAF.Rules.XSS, true},
+		{"waf.rules.path_traversal", cfg.WAF.Rules.PathTraversal, true},
+		{"waf.rules.command_injection", cfg.WAF.Rules.CommandInjection, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.got != tt.want {
+				t.Errorf("default %s = %v, want %v", tt.name, tt.got, tt.want)
+			}
+		})
+	}
+}
+
+// TestLoad_WAFModeOverride verifies that setting waf.mode=block in a config file
+// overrides the detect default, and that waf.enabled=false disables the WAF entirely.
+func TestLoad_WAFModeOverride(t *testing.T) {
+	tests := []struct {
+		name        string
+		yaml        string
+		wantEnabled bool
+		wantMode    string
+	}{
+		{
+			name: "explicit block mode",
+			yaml: `
+waf:
+  enabled: true
+  mode: block
+`,
+			wantEnabled: true,
+			wantMode:    "block",
+		},
+		{
+			name: "opt-out via enabled=false",
+			yaml: `
+waf:
+  enabled: false
+`,
+			wantEnabled: false,
+			wantMode:    "detect",
+		},
+		{
+			name:        "no waf section uses defaults",
+			yaml:        "server:\n  port: 8443\n",
+			wantEnabled: true,
+			wantMode:    "detect",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			cfgFile := filepath.Join(dir, "vibewarden.yaml")
+			if err := os.WriteFile(cfgFile, []byte(tt.yaml), 0600); err != nil {
+				t.Fatalf("writing temp config file: %v", err)
+			}
+
+			cfg, err := config.Load(cfgFile)
+			if err != nil {
+				t.Fatalf("Load() unexpected error: %v", err)
+			}
+
+			if cfg.WAF.Enabled != tt.wantEnabled {
+				t.Errorf("WAF.Enabled = %v, want %v", cfg.WAF.Enabled, tt.wantEnabled)
+			}
+			if cfg.WAF.Mode != tt.wantMode {
+				t.Errorf("WAF.Mode = %q, want %q", cfg.WAF.Mode, tt.wantMode)
 			}
 		})
 	}
