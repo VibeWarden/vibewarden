@@ -933,3 +933,72 @@ func TestProjectNameFromConfig_RelativeDoesNotReturnDot(t *testing.T) {
 
 // Ensure fmt is used (used in assertRunCalledContains via Errorf).
 var _ = fmt.Sprintf
+
+// TestService_Deploy_HealthCheckURLUsesDomain verifies that when TLS is enabled
+// with a domain the health check URL targets the configured domain rather than
+// "localhost". Using "localhost" with SNI-locked TLS would cause TLS handshake
+// failures because the server certificate (once issued) is scoped to the domain.
+func TestService_Deploy_HealthCheckURLUsesDomain(t *testing.T) {
+	tests := []struct {
+		name            string
+		cfg             *config.Config
+		wantURLContains string
+	}{
+		{
+			name: "TLS disabled uses localhost",
+			cfg: &config.Config{
+				Server: config.ServerConfig{Port: 8080},
+			},
+			wantURLContains: "localhost",
+		},
+		{
+			name: "TLS enabled without domain uses localhost",
+			cfg: &config.Config{
+				Server: config.ServerConfig{Port: 8443},
+				TLS:    config.TLSConfig{Enabled: true},
+			},
+			wantURLContains: "localhost",
+		},
+		{
+			name: "TLS enabled with domain uses domain",
+			cfg: &config.Config{
+				Server: config.ServerConfig{Port: 443},
+				TLS: config.TLSConfig{
+					Enabled:  true,
+					Provider: "letsencrypt",
+					Domain:   "app.example.com",
+				},
+			},
+			wantURLContains: "app.example.com",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			executor := &fakeExecutor{}
+			generator := &fakeGenerator{}
+
+			var capturedURL string
+			svc := deployapp.NewService(executor, generator, func(req *http.Request) (*http.Response, error) {
+				capturedURL = req.URL.String()
+				return &http.Response{
+					StatusCode: http.StatusOK,
+					Body:       http.NoBody,
+				}, nil
+			})
+
+			var buf bytes.Buffer
+			err := svc.Deploy(context.Background(), tt.cfg, deployapp.RunOptions{
+				ConfigPath: "/tmp/proj/vibewarden.yaml",
+				Out:        &buf,
+			})
+			if err != nil {
+				t.Fatalf("Deploy() unexpected error: %v", err)
+			}
+
+			if !strings.Contains(capturedURL, tt.wantURLContains) {
+				t.Errorf("health check URL = %q, want it to contain %q", capturedURL, tt.wantURLContains)
+			}
+		})
+	}
+}

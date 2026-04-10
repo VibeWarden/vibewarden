@@ -4,6 +4,7 @@ package deploy
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"io"
 	"net/http"
@@ -44,15 +45,27 @@ type Service struct {
 // NewService creates a Service.
 // executor handles SSH commands and rsync transfers.
 // generator is used to produce the .vibewarden/generated/ files before transfer.
-// httpDo is the HTTP function used for health checks; pass nil to use the default
-// http.DefaultClient.Do.
+// httpDo is the HTTP function used for health checks; pass nil to use a default
+// client with InsecureSkipVerify=true. InsecureSkipVerify is intentional: during
+// the deploy health check the ACME certificate may not yet be issued, so TLS
+// certificate verification would fail for letsencrypt deployments.
 func NewService(
 	executor ports.RemoteExecutor,
 	generator ports.ConfigGenerator,
 	httpDo func(req *http.Request) (*http.Response, error),
 ) *Service {
 	if httpDo == nil {
-		httpDo = http.DefaultClient.Do
+		// Use a client that skips TLS certificate verification. This is safe in
+		// the deploy context because:
+		//  1. We are checking a server we just deployed (we control the endpoint).
+		//  2. The ACME certificate may not be issued yet at the time of the first
+		//     health check, so standard TLS verification would always fail for
+		//     letsencrypt deployments.
+		//nolint:gosec // G402: InsecureSkipVerify is intentional for deploy health checks
+		tlsTransport := &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec // G402: intentional for deploy health checks
+		}
+		httpDo = (&http.Client{Transport: tlsTransport}).Do
 	}
 	return &Service{
 		executor:  executor,
@@ -184,10 +197,19 @@ func (s *Service) Deploy(ctx context.Context, cfg *config.Config, opts RunOption
 		port = defaultHealthPort
 	}
 	scheme := "http"
+	host := "localhost"
 	if cfg.TLS.Enabled {
 		scheme = "https"
+		// When TLS is enabled with a domain (e.g. letsencrypt), the server's
+		// TLS connection policies match only the configured domain via SNI.
+		// Using "localhost" as the host would cause the TLS handshake to fail
+		// because the certificate (once issued) is scoped to the domain, not
+		// localhost. Use the configured domain for the health check host.
+		if cfg.TLS.Domain != "" {
+			host = cfg.TLS.Domain
+		}
 	}
-	healthURL := fmt.Sprintf("%s://localhost:%d/_vibewarden/health", scheme, port)
+	healthURL := fmt.Sprintf("%s://%s:%d/_vibewarden/health", scheme, host, port)
 	fmt.Fprintf(out, "Waiting for sidecar health check at %s...\n", healthURL)
 	if err := s.waitHealthy(ctx, healthURL, out); err != nil {
 		return fmt.Errorf("health check failed: %w", err)

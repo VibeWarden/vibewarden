@@ -1,6 +1,8 @@
 package caddy
 
 import (
+	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -2477,4 +2479,124 @@ func TestBuildCaddyConfig_LetsEncryptSNIPolicy(t *testing.T) {
 	if len(sni) != 1 || sni[0] != "app.example.com" {
 		t.Errorf("sni = %v, want [app.example.com]", sni)
 	}
+}
+
+// TestBuildCaddyConfig_LetsEncryptFullJSON serialises the complete Caddy config
+// for a letsencrypt deployment to JSON and performs a set of assertions that cover
+// the properties required for ACME HTTP-01 challenges to succeed:
+//
+//  1. No "vibewarden_redirect" server — a manual redirect server would intercept
+//     /.well-known/acme-challenge/* before Caddy's built-in ACME solver.
+//  2. No "automatic_https" key on the main server — Caddy's built-in automatic
+//     HTTPS must remain active so it can listen on port 80 for challenges and
+//     issue HTTP→HTTPS redirects after the cert is provisioned.
+//  3. TLS connection policy has match.sni for the domain — required for Caddy to
+//     associate the TLS connection with the correct automation policy.
+//  4. TLS automation policy has subjects with the domain and the "acme" issuer —
+//     required for proactive certificate issuance.
+//
+// The test serialises to JSON (not just inspects the map) to catch any encoding
+// issue that would produce a different structure at runtime when Caddy loads the
+// config via its Admin API.
+func TestBuildCaddyConfig_LetsEncryptFullJSON(t *testing.T) {
+	const domain = "deploy.example.com"
+
+	cfg := &ports.ProxyConfig{
+		ListenAddr:   "0.0.0.0:443",
+		UpstreamAddr: "127.0.0.1:3000",
+		TLS: ports.TLSConfig{
+			Enabled:  true,
+			Provider: ports.TLSProviderLetsEncrypt,
+			Domain:   domain,
+		},
+	}
+
+	result, err := BuildCaddyConfig(cfg)
+	if err != nil {
+		t.Fatalf("BuildCaddyConfig() unexpected error: %v", err)
+	}
+
+	// Serialise to JSON — this verifies the structure is JSON-marshallable and
+	// catches type mismatches that only manifest at encoding time.
+	raw, err := json.MarshalIndent(result, "", "  ")
+	if err != nil {
+		t.Fatalf("json.Marshal(caddyConfig) unexpected error: %v", err)
+	}
+	jsonStr := string(raw)
+
+	// 1. No vibewarden_redirect server in the JSON output.
+	if strings.Contains(jsonStr, "vibewarden_redirect") {
+		t.Errorf("letsencrypt config must NOT contain a vibewarden_redirect server\n"+
+			"A redirect server on :80 intercepts ACME HTTP-01 challenge paths.\n"+
+			"Caddy handles port 80 (ACME challenges + HTTP→HTTPS) natively.\n\nFull JSON:\n%s", jsonStr)
+	}
+
+	// 2. The main vibewarden server must NOT have an automatic_https key.
+	//    Verify via the parsed map (not the JSON string, to avoid false positives
+	//    from nested keys).
+	apps := result["apps"].(map[string]any)
+	httpApp := apps["http"].(map[string]any)
+	servers := httpApp["servers"].(map[string]any)
+
+	mainServer, ok := servers["vibewarden"].(map[string]any)
+	if !ok {
+		t.Fatal("vibewarden server not found in parsed config")
+	}
+	if autoHTTPS, exists := mainServer["automatic_https"]; exists {
+		t.Errorf("letsencrypt server config must NOT set automatic_https; "+
+			"Caddy's built-in automatic HTTPS must remain fully active.\n"+
+			"Got automatic_https = %v", autoHTTPS)
+	}
+
+	// 3. TLS connection policy must have match.sni for the domain.
+	tlsPolicies, ok := mainServer["tls_connection_policies"].([]map[string]any)
+	if !ok || len(tlsPolicies) == 0 {
+		t.Fatal("tls_connection_policies not found or empty in letsencrypt server config")
+	}
+	firstPolicy := tlsPolicies[0]
+	matchMap, ok := firstPolicy["match"].(map[string]any)
+	if !ok {
+		t.Fatal("tls_connection_policies[0] has no 'match' key — SNI matching is required for letsencrypt")
+	}
+	sni, ok := matchMap["sni"].([]string)
+	if !ok || len(sni) == 0 {
+		t.Fatal("tls_connection_policies[0].match has no 'sni' key or empty list")
+	}
+	if sni[0] != domain {
+		t.Errorf("tls_connection_policies[0].match.sni[0] = %q, want %q", sni[0], domain)
+	}
+
+	// 4. TLS automation policy must include the domain as a subject and the acme issuer.
+	tlsApp, ok := apps["tls"].(map[string]any)
+	if !ok {
+		t.Fatal("tls app not found in parsed config")
+	}
+	automation, ok := tlsApp["automation"].(map[string]any)
+	if !ok {
+		t.Fatal("tls.automation not found")
+	}
+	policies, ok := automation["policies"].([]map[string]any)
+	if !ok || len(policies) == 0 {
+		t.Fatal("tls.automation.policies not found or empty")
+	}
+	policy := policies[0]
+
+	subjects, ok := policy["subjects"].([]string)
+	if !ok || len(subjects) == 0 {
+		t.Fatal("tls.automation.policies[0].subjects not found or empty")
+	}
+	if subjects[0] != domain {
+		t.Errorf("tls.automation.policies[0].subjects[0] = %q, want %q", subjects[0], domain)
+	}
+
+	issuers, ok := policy["issuers"].([]map[string]any)
+	if !ok || len(issuers) == 0 {
+		t.Fatal("tls.automation.policies[0].issuers not found or empty")
+	}
+	if issuers[0]["module"] != "acme" {
+		t.Errorf("tls.automation.policies[0].issuers[0].module = %q, want %q", issuers[0]["module"], "acme")
+	}
+
+	// Log the full JSON for debugging if any assertions fail.
+	t.Logf("full letsencrypt Caddy JSON:\n%s", jsonStr)
 }
