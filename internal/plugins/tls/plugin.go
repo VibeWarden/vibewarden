@@ -249,16 +249,9 @@ func buildLetsEncryptTLSApp(cfg ports.TLSConfig) map[string]any {
 		"issuers": []map[string]any{
 			{
 				"module": "acme",
-				// Configure HTTP-01 challenge explicitly. Caddy's embedded HTTP
-				// server on :80 serves the ACME challenge response automatically;
-				// specifying the port here makes the intent unambiguous and avoids
-				// relying on Caddy's automatic challenge port detection when running
-				// behind Docker networking.
-				"challenges": map[string]any{
-					"http": map[string]any{
-						"alternate_port": 80,
-					},
-				},
+				// Let Caddy choose the challenge type automatically.
+				// TLS-ALPN-01 on port 443 avoids conflicts with the auto-HTTPS
+				// redirect server on port 80.
 			},
 		},
 	}

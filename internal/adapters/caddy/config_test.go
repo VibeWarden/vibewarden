@@ -445,11 +445,9 @@ func TestBuildCaddyConfig_LetsEncryptDomainInPolicy(t *testing.T) {
 	}
 }
 
-// TestBuildCaddyConfig_LetsEncryptACMEChallenges verifies that the ACME issuer
-// configuration includes an explicit HTTP-01 challenge with alternate_port 80.
-// Without this, Caddy may fail ACME challenges in Docker when port detection
-// is unreliable, preventing proactive certificate issuance.
-func TestBuildCaddyConfig_LetsEncryptACMEChallenges(t *testing.T) {
+// TestBuildCaddyConfig_LetsEncryptACMEIssuer verifies the ACME issuer is configured
+// without explicit challenge settings so Caddy uses TLS-ALPN-01 automatically.
+func TestBuildCaddyConfig_LetsEncryptACMEIssuer(t *testing.T) {
 	cfg := &ports.ProxyConfig{
 		ListenAddr:   "0.0.0.0:443",
 		UpstreamAddr: "127.0.0.1:3000",
@@ -483,23 +481,9 @@ func TestBuildCaddyConfig_LetsEncryptACMEChallenges(t *testing.T) {
 	if acmeIssuer["module"] != "acme" {
 		t.Fatalf("expected acme issuer module, got %q", acmeIssuer["module"])
 	}
-
-	challenges, ok := acmeIssuer["challenges"].(map[string]any)
-	if !ok {
-		t.Fatal("challenges not found in ACME issuer config — HTTP-01 challenge must be configured explicitly")
-	}
-
-	http01, ok := challenges["http"].(map[string]any)
-	if !ok {
-		t.Fatal("http challenge config not found")
-	}
-
-	alternatePort, ok := http01["alternate_port"].(int)
-	if !ok {
-		t.Fatal("alternate_port not found in http challenge config")
-	}
-	if alternatePort != 80 {
-		t.Errorf("alternate_port = %d, want 80", alternatePort)
+	// No explicit challenges — Caddy uses TLS-ALPN-01 automatically.
+	if _, hasChallenge := acmeIssuer["challenges"]; hasChallenge {
+		t.Error("ACME issuer should not have explicit challenges config")
 	}
 }
 

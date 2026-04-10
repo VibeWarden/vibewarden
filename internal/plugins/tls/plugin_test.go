@@ -417,9 +417,9 @@ func TestPlugin_TLSApp_LetsEncrypt_StoragePath(t *testing.T) {
 	}
 }
 
-// TestPlugin_TLSApp_LetsEncrypt_ACMEChallenges verifies that the ACME issuer config
-// includes explicit HTTP-01 challenge settings with alternate_port 80.
-func TestPlugin_TLSApp_LetsEncrypt_ACMEChallenges(t *testing.T) {
+// TestPlugin_TLSApp_LetsEncrypt_ACMEIssuer verifies the ACME issuer is configured
+// without explicit challenge settings (Caddy selects TLS-ALPN-01 automatically).
+func TestPlugin_TLSApp_LetsEncrypt_ACMEIssuer(t *testing.T) {
 	cfg := ports.TLSConfig{
 		Enabled:  true,
 		Provider: ports.TLSProviderLetsEncrypt,
@@ -447,20 +447,9 @@ func TestPlugin_TLSApp_LetsEncrypt_ACMEChallenges(t *testing.T) {
 	if acmeIssuer["module"] != "acme" {
 		t.Fatalf("expected acme module, got %q", acmeIssuer["module"])
 	}
-	challenges, ok := acmeIssuer["challenges"].(map[string]any)
-	if !ok {
-		t.Fatal("expected challenges key in ACME issuer")
-	}
-	http01, ok := challenges["http"].(map[string]any)
-	if !ok {
-		t.Fatal("expected http key in challenges")
-	}
-	alternatePort, ok := http01["alternate_port"].(int)
-	if !ok {
-		t.Fatal("expected alternate_port in http challenge config")
-	}
-	if alternatePort != 80 {
-		t.Errorf("alternate_port = %d, want 80", alternatePort)
+	// No explicit challenges — Caddy uses TLS-ALPN-01 automatically.
+	if _, hasChallenge := acmeIssuer["challenges"]; hasChallenge {
+		t.Error("ACME issuer should not have explicit challenges config")
 	}
 }
 
