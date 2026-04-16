@@ -230,3 +230,31 @@ func TestServer_MultipleRequests(t *testing.T) {
 		t.Errorf("expected 2 response lines, got %d: %q", len(lines), out.String())
 	}
 }
+
+// TestServer_Tools_ReturnsRegisteredToolsInOrder covers the public getter
+// used by external callers (e.g. cmd/vibewarden's mcp help generator).
+// Registration order must be preserved and the returned slice must be a
+// copy so callers can't mutate the server's state.
+func TestServer_Tools_ReturnsRegisteredToolsInOrder(t *testing.T) {
+	srv := newTestServer()
+	srv.RegisterTool(ToolDefinition{Name: "alpha", Description: "first"}, nil)
+	srv.RegisterTool(ToolDefinition{Name: "beta", Description: "second"}, nil)
+	srv.RegisterTool(ToolDefinition{Name: "gamma", Description: "third"}, nil)
+
+	got := srv.Tools()
+	want := []string{"alpha", "beta", "gamma"}
+	if len(got) != len(want) {
+		t.Fatalf("Tools() returned %d items, want %d", len(got), len(want))
+	}
+	for i, td := range got {
+		if td.Name != want[i] {
+			t.Errorf("Tools()[%d].Name = %q, want %q", i, td.Name, want[i])
+		}
+	}
+
+	// Mutating the returned slice must not affect the server's internal state.
+	got[0].Name = "MUTATED"
+	if srv.Tools()[0].Name != "alpha" {
+		t.Error("Tools() returned a mutable reference to internal state; should be a copy")
+	}
+}

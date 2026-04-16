@@ -66,6 +66,7 @@ to inspect and manage a local sidecar. Tools:
 | `vibewarden_verify_deploy` | Verify a deployed sidecar is reachable and healthy |
 | `vibewarden_get_deploy_logs` | Instructions for retrieving sidecar logs |
 | `vibewarden_watch_events` | Stream live structured log events from the sidecar |
+| `vibewarden_stream_logs` | Stream raw container logs with client-side filtering (level, since, search) |
 | `vibewarden_schema_describe` | Describe the AI-readable log schema (pure metadata, no sidecar needed) |
 | `vibewarden_propose_action` | Create a configuration-change proposal for human review |
 | `vibewarden_list_proposals` | List pending configuration-change proposals |
