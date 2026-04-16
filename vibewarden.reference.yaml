@@ -1,7 +1,19 @@
-# VibeWarden Configuration
-# Copy this file to vibewarden.yaml and customize as needed.
-# Environment variables can override any setting using VIBEWARDEN_ prefix.
-# Example: VIBEWARDEN_SERVER_PORT=9090 overrides server.port
+# VibeWarden — full configuration reference.
+#
+# If you are getting started, open `vibewarden.example.yaml` instead. It
+# is a short, curated starter config that covers the common cases. Copy
+# that to `vibewarden.yaml` and add sections from this file only when you
+# need them.
+#
+# This file documents EVERY supported option. Use it as a lookup, not as
+# a template. Scroll down from here at your own risk — most projects
+# don't need most of this.
+#
+# All settings can be overridden by environment variables using the
+# VIBEWARDEN_ prefix. Example: VIBEWARDEN_SERVER_PORT=9090 overrides
+# server.port.
+#
+# Full reference docs: https://vibewarden.dev/docs/vibewarden/configuration/
 
 # Database configuration
 #
