@@ -13,16 +13,7 @@ import (
 // TestInitCmd_DescribeFlag verifies that --describe writes PROJECT.md and
 // mentions the description in the success message.
 func TestInitCmd_DescribeFlag(t *testing.T) {
-	dir := t.TempDir()
-
-	origDir, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("getwd: %v", err)
-	}
-	if err := os.Chdir(dir); err != nil {
-		t.Fatalf("chdir: %v", err)
-	}
-	t.Cleanup(func() { _ = os.Chdir(origDir) })
+	dir := scaffoldTestDir(t, true)
 
 	root := cmd.NewRootCmd("test")
 	var out bytes.Buffer
@@ -63,16 +54,7 @@ func TestInitCmd_DescribeFlag(t *testing.T) {
 // TestInitCmd_DescribeInjectsAgentsVibewardenMD verifies that --describe injects
 // the description into AGENTS-VIBEWARDEN.md.
 func TestInitCmd_DescribeInjectsAgentsVibewardenMD(t *testing.T) {
-	dir := t.TempDir()
-
-	origDir, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("getwd: %v", err)
-	}
-	if err := os.Chdir(dir); err != nil {
-		t.Fatalf("chdir: %v", err)
-	}
-	t.Cleanup(func() { _ = os.Chdir(origDir) })
+	dir := scaffoldTestDir(t, true)
 
 	root := cmd.NewRootCmd("test")
 	root.SetOut(&bytes.Buffer{})
@@ -98,16 +80,7 @@ func TestInitCmd_DescribeInjectsAgentsVibewardenMD(t *testing.T) {
 
 // TestInitCmd_NoCLAUDEmdGenerated verifies that CLAUDE.md is NOT generated.
 func TestInitCmd_NoCLAUDEmdGenerated(t *testing.T) {
-	dir := t.TempDir()
-
-	origDir, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("getwd: %v", err)
-	}
-	if err := os.Chdir(dir); err != nil {
-		t.Fatalf("chdir: %v", err)
-	}
-	t.Cleanup(func() { _ = os.Chdir(origDir) })
+	dir := scaffoldTestDir(t, true)
 
 	root := cmd.NewRootCmd("test")
 	root.SetOut(&bytes.Buffer{})
@@ -131,16 +104,7 @@ func TestInitCmd_NoCLAUDEmdGenerated(t *testing.T) {
 // TestInitCmd_NoDescribeNoProjectMD verifies that when --describe is omitted,
 // PROJECT.md is not written.
 func TestInitCmd_NoDescribeNoProjectMD(t *testing.T) {
-	dir := t.TempDir()
-
-	origDir, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("getwd: %v", err)
-	}
-	if err := os.Chdir(dir); err != nil {
-		t.Fatalf("chdir: %v", err)
-	}
-	t.Cleanup(func() { _ = os.Chdir(origDir) })
+	dir := scaffoldTestDir(t, true)
 
 	root := cmd.NewRootCmd("test")
 	root.SetOut(&bytes.Buffer{})
@@ -154,20 +118,13 @@ func TestInitCmd_NoDescribeNoProjectMD(t *testing.T) {
 	if _, err := os.Stat(projectMDPath); err == nil {
 		t.Error("PROJECT.md must not exist when --describe is not given")
 	}
+
+	_ = dir // used by scaffoldTestDir
 }
 
 // TestInitCmd_NameFlag verifies that --name sets the project name.
 func TestInitCmd_NameFlag(t *testing.T) {
-	dir := t.TempDir()
-
-	origDir, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("getwd: %v", err)
-	}
-	if err := os.Chdir(dir); err != nil {
-		t.Fatalf("chdir: %v", err)
-	}
-	t.Cleanup(func() { _ = os.Chdir(origDir) })
+	dir := scaffoldTestDir(t, true)
 
 	root := cmd.NewRootCmd("test")
 	root.SetOut(&bytes.Buffer{})
@@ -189,16 +146,7 @@ func TestInitCmd_NameFlag(t *testing.T) {
 // TestInitCmd_NameFlagOverriddenByPositionalArg verifies that a positional
 // argument takes priority over --name when both are given.
 func TestInitCmd_NameFlagOverriddenByPositionalArg(t *testing.T) {
-	dir := t.TempDir()
-
-	origDir, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("getwd: %v", err)
-	}
-	if err := os.Chdir(dir); err != nil {
-		t.Fatalf("chdir: %v", err)
-	}
-	t.Cleanup(func() { _ = os.Chdir(origDir) })
+	dir := scaffoldTestDir(t, true)
 
 	root := cmd.NewRootCmd("test")
 	root.SetOut(&bytes.Buffer{})
@@ -222,16 +170,7 @@ func TestInitCmd_NameFlagOverriddenByPositionalArg(t *testing.T) {
 // TestInitCmd_Interactive simulates an interactive session by temporarily
 // overriding cmd.IsTTY to return true and feeding stdin via a pipe.
 func TestInitCmd_Interactive(t *testing.T) {
-	dir := t.TempDir()
-
-	origDir, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("getwd: %v", err)
-	}
-	if err := os.Chdir(dir); err != nil {
-		t.Fatalf("chdir: %v", err)
-	}
-	t.Cleanup(func() { _ = os.Chdir(origDir) })
+	dir := scaffoldTestDir(t, true)
 
 	// Create a pipe to simulate user input.
 	r, w, err := os.Pipe()
@@ -289,16 +228,7 @@ func TestInitCmd_Interactive(t *testing.T) {
 // TestInitCmd_InteractiveSkipsDescribeWhenEmpty verifies that when the user
 // provides no description (empty line), PROJECT.md is not written.
 func TestInitCmd_InteractiveSkipsDescribeWhenEmpty(t *testing.T) {
-	dir := t.TempDir()
-
-	origDir, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("getwd: %v", err)
-	}
-	if err := os.Chdir(dir); err != nil {
-		t.Fatalf("chdir: %v", err)
-	}
-	t.Cleanup(func() { _ = os.Chdir(origDir) })
+	dir := scaffoldTestDir(t, true)
 
 	r, w, err := os.Pipe()
 	if err != nil {

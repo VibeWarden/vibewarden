@@ -12,21 +12,12 @@ import (
 
 // TestInitCmd_CreatesProjectDir verifies that the named project directory is created.
 func TestInitCmd_CreatesProjectDir(t *testing.T) {
-	dir := t.TempDir()
+	dir := scaffoldTestDir(t, true)
 
 	root := cmd.NewRootCmd("test")
 	var out bytes.Buffer
 	root.SetOut(&out)
 	root.SetArgs([]string{"init", "testproject"})
-
-	origDir, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("getwd: %v", err)
-	}
-	if err := os.Chdir(dir); err != nil {
-		t.Fatalf("chdir: %v", err)
-	}
-	t.Cleanup(func() { _ = os.Chdir(origDir) })
 
 	if err := root.Execute(); err != nil {
 		t.Fatalf("init command failed: %v", err)
@@ -40,16 +31,7 @@ func TestInitCmd_CreatesProjectDir(t *testing.T) {
 
 // TestInitCmd_GeneratesAllFiles verifies all expected files are created.
 func TestInitCmd_GeneratesAllFiles(t *testing.T) {
-	dir := t.TempDir()
-
-	origDir, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("getwd: %v", err)
-	}
-	if err := os.Chdir(dir); err != nil {
-		t.Fatalf("chdir: %v", err)
-	}
-	t.Cleanup(func() { _ = os.Chdir(origDir) })
+	dir := scaffoldTestDir(t, true)
 
 	root := cmd.NewRootCmd("test")
 	var out bytes.Buffer
@@ -92,16 +74,7 @@ func TestInitCmd_GeneratesAllFiles(t *testing.T) {
 // TestInitCmd_ErrorsOnNonEmptyDir verifies an error is returned when the target
 // directory already exists and contains files.
 func TestInitCmd_ErrorsOnNonEmptyDir(t *testing.T) {
-	dir := t.TempDir()
-
-	origDir, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("getwd: %v", err)
-	}
-	if err := os.Chdir(dir); err != nil {
-		t.Fatalf("chdir: %v", err)
-	}
-	t.Cleanup(func() { _ = os.Chdir(origDir) })
+	dir := scaffoldTestDir(t, true)
 
 	// Pre-populate the directory.
 	projectDir := filepath.Join(dir, "occupied")
@@ -124,16 +97,7 @@ func TestInitCmd_ErrorsOnNonEmptyDir(t *testing.T) {
 
 // TestInitCmd_ForceOverwrites verifies --force allows overwriting existing dirs.
 func TestInitCmd_ForceOverwrites(t *testing.T) {
-	dir := t.TempDir()
-
-	origDir, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("getwd: %v", err)
-	}
-	if err := os.Chdir(dir); err != nil {
-		t.Fatalf("chdir: %v", err)
-	}
-	t.Cleanup(func() { _ = os.Chdir(origDir) })
+	dir := scaffoldTestDir(t, true)
 
 	// Pre-populate the directory.
 	projectDir := filepath.Join(dir, "myapp")
@@ -161,16 +125,7 @@ func TestInitCmd_ForceOverwrites(t *testing.T) {
 
 // TestInitCmd_CustomPort verifies --port is reflected in generated files.
 func TestInitCmd_CustomPort(t *testing.T) {
-	dir := t.TempDir()
-
-	origDir, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("getwd: %v", err)
-	}
-	if err := os.Chdir(dir); err != nil {
-		t.Fatalf("chdir: %v", err)
-	}
-	t.Cleanup(func() { _ = os.Chdir(origDir) })
+	dir := scaffoldTestDir(t, true)
 
 	root := cmd.NewRootCmd("test")
 	var out bytes.Buffer
@@ -194,15 +149,7 @@ func TestInitCmd_CustomPort(t *testing.T) {
 // TestInitCmd_AppBuildDefaultsToCurrentDir verifies that the generated
 // vibewarden.yaml uses app.build = "." by default rather than app.image.
 func TestInitCmd_AppBuildDefaultsToCurrentDir(t *testing.T) {
-	dir := t.TempDir()
-	origDir, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("getwd: %v", err)
-	}
-	if err := os.Chdir(dir); err != nil {
-		t.Fatalf("chdir: %v", err)
-	}
-	t.Cleanup(func() { _ = os.Chdir(origDir) })
+	dir := scaffoldTestDir(t, true)
 
 	root := cmd.NewRootCmd("test")
 	var out bytes.Buffer
@@ -256,7 +203,7 @@ func TestInitCmd_DotScaffoldsInCurrentDir(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Create a named subdirectory so we have a meaningful base name.
-			parent := t.TempDir()
+			parent := scaffoldTestDir(t, false)
 			projectDir := filepath.Join(parent, tt.dirName)
 			if err := os.MkdirAll(projectDir, 0o750); err != nil {
 				t.Fatalf("mkdir: %v", err)
@@ -308,7 +255,7 @@ func TestInitCmd_DotScaffoldsInCurrentDir(t *testing.T) {
 // TestInitCmd_DotUsesBaseName verifies that when "." is supplied the project name
 // in the success message is the current directory's base name, not ".".
 func TestInitCmd_DotUsesBaseName(t *testing.T) {
-	parent := t.TempDir()
+	parent := scaffoldTestDir(t, false)
 	projectDir := filepath.Join(parent, "basenamedir")
 	if err := os.MkdirAll(projectDir, 0o750); err != nil {
 		t.Fatalf("mkdir: %v", err)
@@ -345,7 +292,7 @@ func TestInitCmd_DotUsesBaseName(t *testing.T) {
 // TestInitCmd_DotErrorsOnNonEmptyDirWithoutForce verifies that scaffolding with "."
 // into a non-empty directory fails unless --force is passed.
 func TestInitCmd_DotErrorsOnNonEmptyDirWithoutForce(t *testing.T) {
-	parent := t.TempDir()
+	parent := scaffoldTestDir(t, false)
 	projectDir := filepath.Join(parent, "occupied")
 	if err := os.MkdirAll(projectDir, 0o750); err != nil {
 		t.Fatalf("mkdir: %v", err)
@@ -377,7 +324,7 @@ func TestInitCmd_DotErrorsOnNonEmptyDirWithoutForce(t *testing.T) {
 // TestInitCmd_DotForceOverwritesCurrentDir verifies that --force allows scaffolding
 // into an existing non-empty current directory when "." is used.
 func TestInitCmd_DotForceOverwritesCurrentDir(t *testing.T) {
-	parent := t.TempDir()
+	parent := scaffoldTestDir(t, false)
 	projectDir := filepath.Join(parent, "forceapp")
 	if err := os.MkdirAll(projectDir, 0o750); err != nil {
 		t.Fatalf("mkdir: %v", err)
@@ -411,7 +358,7 @@ func TestInitCmd_DotForceOverwritesCurrentDir(t *testing.T) {
 
 // TestInitCmd_DotWorks verifies vibew init . works end-to-end.
 func TestInitCmd_DotWorks(t *testing.T) {
-	parent := t.TempDir()
+	parent := scaffoldTestDir(t, false)
 	projectDir := filepath.Join(parent, "dotproject")
 	if err := os.MkdirAll(projectDir, 0o750); err != nil {
 		t.Fatalf("mkdir: %v", err)
@@ -442,16 +389,7 @@ func TestInitCmd_DotWorks(t *testing.T) {
 
 // TestInitCmd_PrintsSuccessMessage verifies a success message is printed.
 func TestInitCmd_PrintsSuccessMessage(t *testing.T) {
-	dir := t.TempDir()
-
-	origDir, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("getwd: %v", err)
-	}
-	if err := os.Chdir(dir); err != nil {
-		t.Fatalf("chdir: %v", err)
-	}
-	t.Cleanup(func() { _ = os.Chdir(origDir) })
+	dir := scaffoldTestDir(t, true)
 
 	root := cmd.NewRootCmd("test")
 	var out bytes.Buffer
@@ -462,6 +400,7 @@ func TestInitCmd_PrintsSuccessMessage(t *testing.T) {
 		t.Fatalf("init failed: %v", err)
 	}
 
+	_ = dir // used by scaffoldTestDir for chdir
 	output := out.String()
 	if !strings.Contains(output, "successapp") {
 		t.Errorf("success message does not mention project name, got:\n%s", output)

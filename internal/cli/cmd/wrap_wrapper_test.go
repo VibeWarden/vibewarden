@@ -43,7 +43,7 @@ func TestNewWrapCmd_WrapperScripts(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			dir := t.TempDir()
+			dir := scaffoldTestDir(t, false)
 
 			root := cmd.NewRootCmd("test")
 			allArgs := append([]string{"wrap", dir}, tt.args...)
@@ -76,7 +76,7 @@ func TestNewWrapCmd_WrapperScripts(t *testing.T) {
 }
 
 func TestNewWrapCmd_VibewIsExecutable(t *testing.T) {
-	dir := t.TempDir()
+	dir := scaffoldTestDir(t, false)
 
 	root := cmd.NewRootCmd("test")
 	root.SetArgs([]string{"wrap", dir})
@@ -96,7 +96,7 @@ func TestNewWrapCmd_VibewIsExecutable(t *testing.T) {
 }
 
 func TestNewWrapCmd_VersionFilePinnedContent(t *testing.T) {
-	dir := t.TempDir()
+	dir := scaffoldTestDir(t, false)
 
 	root := cmd.NewRootCmd("test")
 	root.SetArgs([]string{"wrap", dir, "--version", "v0.5.0"})
@@ -152,7 +152,7 @@ func TestNewWrapCmd_VibewScriptContainsKeyPatterns(t *testing.T) {
 		},
 	}
 
-	dir := t.TempDir()
+	dir := scaffoldTestDir(t, false)
 	root := cmd.NewRootCmd("test")
 	root.SetArgs([]string{"wrap", dir})
 	if err := root.Execute(); err != nil {
@@ -175,7 +175,7 @@ func TestNewWrapCmd_VibewScriptContainsKeyPatterns(t *testing.T) {
 }
 
 func TestNewWrapCmd_SuccessMessageListsWrapperFiles(t *testing.T) {
-	dir := t.TempDir()
+	dir := scaffoldTestDir(t, false)
 
 	root := cmd.NewRootCmd("test")
 	var outBuf strings.Builder

@@ -169,6 +169,11 @@ func (s *InitProjectService) InitProject(ctx context.Context, parentDir string, 
 
 // initGitRepo runs `git init` and creates an initial commit in projectDir.
 // Requires git to be installed. Returns an error if git is not available.
+//
+// GIT_CEILING_DIRECTORIES is set to dir on every exec.Cmd to prevent git
+// from discovering any parent repository. GIT_DIR and GIT_WORK_TREE are
+// cleared from the inherited environment for the same reason. This is the
+// root-cause fix for issue #844 (scaffold tests polluting the host repo).
 func (s *InitProjectService) initGitRepo(dir string) error {
 	cmds := []struct {
 		args []string
@@ -177,9 +182,14 @@ func (s *InitProjectService) initGitRepo(dir string) error {
 		{[]string{"git", "add", "."}},
 		{[]string{"git", "commit", "-m", "Initial commit — scaffolded with vibew init"}},
 	}
+	// Build a clean environment: inherit os.Environ() but strip GIT_DIR and
+	// GIT_WORK_TREE, then add GIT_CEILING_DIRECTORIES to prevent upward
+	// traversal.
+	env := cleanGitEnv(dir)
 	for _, c := range cmds {
 		cmd := exec.CommandContext(context.Background(), c.args[0], c.args[1:]...) //nolint:gosec // args are static strings
 		cmd.Dir = dir
+		cmd.Env = env
 		cmd.Stdout = io.Discard
 		cmd.Stderr = io.Discard
 		if err := cmd.Run(); err != nil {
@@ -187,6 +197,28 @@ func (s *InitProjectService) initGitRepo(dir string) error {
 		}
 	}
 	return nil
+}
+
+// cleanGitEnv returns a copy of the current process environment with
+// GIT_DIR and GIT_WORK_TREE removed and GIT_CEILING_DIRECTORIES set to dir.
+// This prevents git commands from discovering or mutating any repository
+// above dir.
+func cleanGitEnv(dir string) []string {
+	var env []string
+	for _, e := range os.Environ() {
+		key := e
+		if idx := strings.IndexByte(e, '='); idx >= 0 {
+			key = e[:idx]
+		}
+		switch key {
+		case "GIT_DIR", "GIT_WORK_TREE", "GIT_CEILING_DIRECTORIES":
+			continue // strip these; we set our own ceiling below
+		default:
+			env = append(env, e)
+		}
+	}
+	env = append(env, "GIT_CEILING_DIRECTORIES="+dir)
+	return env
 }
 
 // renderAgentsVibewardenMD renders AGENTS-VIBEWARDEN.md from the shared
