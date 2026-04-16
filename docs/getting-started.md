@@ -123,9 +123,7 @@ vibewarden.yaml          # Main config — commit this
 vibew                    # Wrapper script (macOS/Linux)
 .vibewarden-version      # Pinned version
 .dockerignore            # Prevents secrets and build artifacts from entering the image
-.claude/CLAUDE.md        # AI agent context (Claude Code)
-.cursor/rules            # AI agent context (Cursor)
-AGENTS.md                # AI agent context (generic)
+AGENTS.md                # AI agent context (generic — Claude Code, Cursor, etc.)
 AGENTS-VIBEWARDEN.md     # Tool-agnostic AI agent context (all agents)
 ```
 
