@@ -138,7 +138,7 @@ Your app receives authenticated user info via headers:
 |---------|-------------|
 | `vibew wrap` | Add VibeWarden sidecar to an existing project |
 | `vibew add auth` | Enable authentication |
-| `vibew add rate-limit` | Enable rate limiting |
+| `vibew add rate-limiting` | Enable rate limiting |
 | `vibew add tls --domain example.com` | Enable TLS |
 | `vibew add metrics` | Enable Prometheus metrics |
 | `vibew generate` | Regenerate `docker-compose.yml` from config |
