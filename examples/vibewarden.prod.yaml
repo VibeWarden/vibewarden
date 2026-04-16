@@ -75,7 +75,6 @@ tls:
 # (Auth0, Keycloak, Firebase, Cognito, Okta, Supabase, etc.).
 # For Kratos-managed users use auth.mode: kratos instead.
 auth:
-  enabled: true
   mode: jwt
 
   jwt:

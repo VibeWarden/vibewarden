@@ -89,7 +89,7 @@ func buildProxyConfig(cfg *config.Config, registry *plugins.Registry, version st
 			SuppressViaHeader:            cfg.SecurityHeaders.SuppressViaHeader,
 		},
 		Auth: ports.AuthConfig{
-			Enabled:             cfg.Auth.Enabled,
+			Enabled:             cfg.Auth.Active(),
 			KratosPublicURL:     cfg.Kratos.PublicURL,
 			KratosAdminURL:      cfg.Kratos.AdminURL,
 			PublicPaths:         cfg.Auth.PublicPaths,

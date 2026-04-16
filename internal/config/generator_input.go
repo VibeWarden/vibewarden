@@ -19,7 +19,7 @@ func (c *Config) ToGeneratorInput() ports.GeneratorInput {
 	}
 	return ports.GeneratorInput{
 		Profile:              c.Profile,
-		AuthEnabled:          c.Auth.Enabled,
+		AuthEnabled:          c.Auth.Active(),
 		AuthMode:             string(c.Auth.Mode),
 		KratosExternal:       c.Kratos.External,
 		SecretsEnabled:       c.Secrets.Enabled,

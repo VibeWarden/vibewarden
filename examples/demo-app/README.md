@@ -101,7 +101,7 @@ docker compose -f .vibewarden/generated/docker-compose.yml down -v
 
 | Feature | Config key | What you see |
 |---|---|---|
-| Auth (Ory Kratos) | `auth.enabled: true` | Login redirect, session cookie, `X-User-*` headers |
+| Auth (Ory Kratos) | `auth.mode: kratos` | Login redirect, session cookie, `X-User-*` headers |
 | Rate limiting | `rate_limit.enabled: true` | 429 after 10 requests burst |
 | Security headers | `security_headers.enabled: true` | HSTS, CSP, X-Frame-Options on every response |
 | Secrets injection | `secrets.enabled: true` | `X-Demo-Api-Key` header injected from OpenBao |

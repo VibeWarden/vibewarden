@@ -115,12 +115,10 @@ func (s *Service) Generate(ctx context.Context, input ports.GeneratorInput, outp
 		slog.Warn("Network isolation is enabled but app.build and app.image are both empty: host-mode app bypasses Docker network isolation")
 	}
 
-	// kratosMode is true only when auth is enabled and mode is "kratos" and
+	// kratosMode is true only when auth is active and mode is "kratos" and
 	// the Kratos instance is not managed externally.
-	// An empty mode string is also treated as Kratos for defensive backwards
-	// compatibility with code that constructs config.Config structs directly.
 	// When kratosMode is false, Kratos-specific files are not generated.
-	kratosMode := cfg.Auth.Enabled && cfg.Auth.Mode == config.AuthModeKratos && !cfg.Kratos.External
+	kratosMode := cfg.Auth.Active() && cfg.Auth.Mode == config.AuthModeKratos && !cfg.Kratos.External
 
 	if kratosMode {
 		if err := os.MkdirAll(filepath.Join(outputDir, "kratos"), permDir); err != nil {

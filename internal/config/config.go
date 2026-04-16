@@ -160,7 +160,7 @@ func (c *Config) IsProdProfile() bool {
 func (c *Config) EgressNoProxy() string {
 	parts := []string{"localhost", "127.0.0.1", "vibewarden"}
 
-	kratosMode := c.Auth.Enabled && c.Auth.Mode == AuthModeKratos && !c.Kratos.External
+	kratosMode := c.Auth.Active() && c.Auth.Mode == AuthModeKratos && !c.Kratos.External
 	if kratosMode {
 		parts = append(parts, "kratos")
 		if c.Database.ExternalURL == "" {
@@ -654,13 +654,15 @@ type APIKeyEntry struct {
 }
 
 // AuthConfig holds auth middleware settings.
-// Authentication is enabled automatically when Kratos.PublicURL is non-empty.
+//
+// Mode is the single source of truth for whether authentication is on.
+// Set Mode to "none" (or leave it empty) to disable authentication entirely;
+// set it to "kratos", "jwt", or "api-key" to enable the matching strategy.
+// Use the Active method to derive the on/off state at call sites.
+//
+// The legacy auth.enabled field was removed in v0.11.0 per ADR-065. The
+// config loader explicitly rejects any YAML that still sets it.
 type AuthConfig struct {
-	// Enabled toggles the authentication middleware (default: false).
-	// When true, all requests must present a valid Kratos session cookie unless
-	// the path matches one of the PublicPaths patterns.
-	Enabled bool `mapstructure:"enabled"`
-
 	// Mode selects the authentication strategy.
 	// Accepted values: "none" (default), "kratos", "jwt", "api-key".
 	// "none" disables all authentication — use only in trusted environments.
@@ -707,6 +709,19 @@ type AuthConfig struct {
 
 	// UI holds theme and URL settings for the built-in or custom auth pages.
 	UI AuthUIConfig `mapstructure:"ui"`
+}
+
+// Active reports whether the authentication middleware should be active.
+//
+// Auth is active when Mode is a non-empty, non-"none" value. An empty Mode
+// (which viper normalises to AuthModeNone via SetDefault) and AuthModeNone
+// both mean "auth disabled".
+//
+// This helper is the single derivation for "is auth on" and every consumer
+// that needs that signal should call it rather than testing Mode directly.
+// See ADR-065.
+func (a AuthConfig) Active() bool {
+	return a.Mode != "" && a.Mode != AuthModeNone
 }
 
 // RateLimitConfig holds rate limiting settings.
@@ -1627,14 +1642,6 @@ func (c *Config) Validate() error {
 		))
 	}
 
-	// auth.enabled with mode "none" is almost certainly a misconfiguration: the
-	// user enabled auth but left the mode at its default ("none"), which means no
-	// authentication will actually be enforced.
-	if c.Auth.Enabled && (c.Auth.Mode == AuthModeNone || c.Auth.Mode == "") {
-		errs = append(errs, "auth.enabled is true but auth.mode is \"none\", which means no authentication will be enforced — "+
-			"set auth.mode to \"kratos\", \"jwt\", or \"api-key\" to enable authentication, or set auth.enabled to false")
-	}
-
 	// auth.jwt validation (only when mode is "jwt").
 	if c.Auth.Mode == AuthModeJWT {
 		jwt := c.Auth.JWT
@@ -2152,7 +2159,6 @@ func Load(configPath string) (*Config, error) {
 	v.SetDefault("kratos.smtp.from", "no-reply@vibewarden.local")
 	v.SetDefault("auth.api_key.openbao_path", "")
 	v.SetDefault("auth.api_key.cache_ttl", "5m")
-	v.SetDefault("auth.enabled", false)
 	v.SetDefault("auth.mode", "none")
 	v.SetDefault("auth.identity_schema", "email_password")
 	v.SetDefault("auth.public_paths", []string{})
@@ -2322,6 +2328,16 @@ func Load(configPath string) (*Config, error) {
 		}
 	}
 
+	// Reject removed keys before unmarshal. auth.enabled was removed in
+	// v0.11.0 per ADR-065; any presence of the key — even auth.enabled:
+	// false — must fail loading with a message that names the replacement
+	// inline. The raw YAML map is inspected here rather than on the
+	// unmarshalled struct because once AuthConfig.Enabled is gone the
+	// struct cannot distinguish "user set false" from "user omitted".
+	if err := rejectRemovedAuthEnabled(v); err != nil {
+		return nil, err
+	}
+
 	var cfg Config
 	if err := v.Unmarshal(&cfg); err != nil {
 		return nil, fmt.Errorf("unmarshaling config: %w", err)
@@ -2354,3 +2370,33 @@ func Load(configPath string) (*Config, error) {
 
 	return &cfg, nil
 }
+
+// rejectRemovedAuthEnabled returns a load-time error when the user's YAML
+// carries the removed auth.enabled key. The check walks viper.AllSettings()
+// (the raw unmarshalled YAML map) so it can detect key presence
+// independently of whether the caller wrote true or false. The error
+// message names the replacement inline — see ADR-065.
+func rejectRemovedAuthEnabled(v *viper.Viper) error {
+	auth, ok := v.AllSettings()["auth"].(map[string]any)
+	if !ok {
+		return nil
+	}
+	if _, present := auth["enabled"]; !present {
+		return nil
+	}
+	return fmt.Errorf("invalid config: %s", authEnabledRemovedMessage)
+}
+
+// authEnabledRemovedMessage is the exact text returned when auth.enabled is
+// present in a loaded config. The wording is load-bearing — it is the only
+// hint a user sees to migrate off the removed key — and is pinned by
+// TestLoad_RejectsAuthEnabled.
+const authEnabledRemovedMessage = `auth.enabled is no longer a recognised config key (removed in v0.11.0; see ADR-065). Use auth.mode as the single source of truth: set auth.mode: "none" to disable auth, or auth.mode: "kratos" | "jwt" | "api-key" to enable a strategy.
+
+Canonical form:
+
+  auth:
+    mode: "none"          # disable auth
+    # mode: "kratos"      # enable Ory Kratos session auth
+    # mode: "jwt"         # enable JWT / OIDC bearer auth
+    # mode: "api-key"     # enable API key header auth`

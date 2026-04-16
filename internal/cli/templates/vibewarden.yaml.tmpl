@@ -59,6 +59,9 @@ kratos:
     from: "no-reply@vibewarden.local"
 
 auth:
+  # Authentication strategy: "kratos" | "jwt" | "api-key" | "none".
+  # See ADR-065 — auth.mode is the single source of truth for whether auth is on.
+  mode: "kratos"
   # Identity schema preset: "email_password" (default), "email_only", or "username_password".
   # You can also point to a custom JSON schema file path.
   identity_schema: "email_password"

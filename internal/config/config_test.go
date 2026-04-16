@@ -418,7 +418,8 @@ func TestLoad_NewFieldDefaults(t *testing.T) {
 		got  interface{}
 		want interface{}
 	}{
-		{"auth.enabled", cfg.Auth.Enabled, false},
+		{"auth.mode", string(cfg.Auth.Mode), "none"},
+		{"auth.active", cfg.Auth.Active(), false},
 		{"auth.identity_schema", cfg.Auth.IdentitySchema, "email_password"},
 		{"auth.session_cookie_name", cfg.Auth.SessionCookieName, "ory_kratos_session"},
 		{"auth.login_url", cfg.Auth.LoginURL, ""},
@@ -444,7 +445,6 @@ func TestLoad_NewFieldDefaults(t *testing.T) {
 func TestLoad_NewFieldsFromFile(t *testing.T) {
 	content := `
 auth:
-  enabled: true
   mode: kratos
   identity_schema: email_only
   session_cookie_name: my_session
@@ -483,7 +483,8 @@ overrides:
 		got  interface{}
 		want interface{}
 	}{
-		{"auth.enabled", cfg.Auth.Enabled, true},
+		{"auth.mode", string(cfg.Auth.Mode), "kratos"},
+		{"auth.active", cfg.Auth.Active(), true},
 		{"auth.identity_schema", cfg.Auth.IdentitySchema, "email_only"},
 		{"auth.session_cookie_name", cfg.Auth.SessionCookieName, "my_session"},
 		{"auth.login_url", cfg.Auth.LoginURL, "/login"},
@@ -1047,9 +1048,12 @@ log:
 		t.Errorf("auth.public_paths = %v, want [\"/health\"]", cfg.Auth.PublicPaths)
 	}
 
-	// New fields must have their defaults.
-	if cfg.Auth.Enabled {
-		t.Errorf("auth.enabled = true, want false (backward compat default)")
+	// New fields must have their defaults (ADR-065: auth.mode is the source of truth).
+	if cfg.Auth.Mode != config.AuthModeNone {
+		t.Errorf("auth.mode = %q, want %q (backward compat default)", cfg.Auth.Mode, config.AuthModeNone)
+	}
+	if cfg.Auth.Active() {
+		t.Errorf("auth.Active() = true, want false (backward compat default)")
 	}
 	if cfg.Auth.IdentitySchema != "email_password" {
 		t.Errorf("auth.identity_schema = %q, want %q", cfg.Auth.IdentitySchema, "email_password")
@@ -2540,85 +2544,6 @@ func TestValidate_TLSProvider(t *testing.T) {
 	}
 }
 
-// TestValidate_AuthEnabledModeNone verifies that enabling auth with mode "none" produces
-// an actionable error.
-func TestValidate_AuthEnabledModeNone(t *testing.T) {
-	tests := []struct {
-		name        string
-		cfg         config.Config
-		wantErr     bool
-		wantContain string
-	}{
-		{
-			name: "auth.enabled false with mode none is valid",
-			cfg: config.Config{
-				Auth: config.AuthConfig{Enabled: false, Mode: "none"},
-			},
-			wantErr: false,
-		},
-		{
-			name: "auth.enabled true with mode kratos is valid",
-			cfg: config.Config{
-				Auth: config.AuthConfig{Enabled: true, Mode: "kratos"},
-			},
-			wantErr: false,
-		},
-		{
-			name: "auth.enabled true with mode jwt is valid",
-			cfg: config.Config{
-				Auth: config.AuthConfig{Enabled: true, Mode: "jwt"},
-			},
-			wantErr: false,
-		},
-		{
-			name: "auth.enabled true with mode api-key is valid",
-			cfg: config.Config{
-				Auth: config.AuthConfig{Enabled: true, Mode: "api-key"},
-			},
-			wantErr: false,
-		},
-		{
-			name: "auth.enabled true with mode none is a misconfiguration",
-			cfg: config.Config{
-				Auth: config.AuthConfig{Enabled: true, Mode: "none"},
-			},
-			wantErr:     true,
-			wantContain: "auth.enabled is true but auth.mode is \"none\"",
-		},
-		{
-			name: "auth.enabled true with empty mode is a misconfiguration",
-			cfg: config.Config{
-				Auth: config.AuthConfig{Enabled: true, Mode: ""},
-			},
-			wantErr:     true,
-			wantContain: "auth.enabled is true but auth.mode is \"none\"",
-		},
-		{
-			name: "error message suggests fix by listing accepted modes",
-			cfg: config.Config{
-				Auth: config.AuthConfig{Enabled: true, Mode: "none"},
-			},
-			wantErr:     true,
-			wantContain: "set auth.mode to \"kratos\", \"jwt\", or \"api-key\"",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			err := tt.cfg.Validate()
-			if (err != nil) != tt.wantErr {
-				t.Errorf("Validate() error = %v, wantErr %v", err, tt.wantErr)
-				return
-			}
-			if tt.wantErr && tt.wantContain != "" && err != nil {
-				if !strings.Contains(err.Error(), tt.wantContain) {
-					t.Errorf("Validate() error = %q, want it to contain %q", err.Error(), tt.wantContain)
-				}
-			}
-		})
-	}
-}
-
 // TestValidate_AuthModeActionable verifies that an invalid auth.mode produces a message
 // that names the accepted values and suggests the fix.
 func TestValidate_AuthModeActionable(t *testing.T) {
@@ -3012,5 +2937,208 @@ waf:
 				t.Errorf("WAF.Mode = %q, want %q", cfg.WAF.Mode, tt.wantMode)
 			}
 		})
+	}
+}
+
+// TestLoad_RejectsAuthEnabled verifies the ADR-065 hard-break: any presence
+// of the removed auth.enabled key — whether true, false, or alongside a valid
+// auth.mode — must be rejected at Load time with the exact, actionable error
+// message documented in ADR-065 and constant authEnabledRemovedMessage.
+//
+// The raw-key check runs before mapstructure unmarshaling, so the error must
+// fire even though the struct has no corresponding field to decode into.
+func TestLoad_RejectsAuthEnabled(t *testing.T) {
+	const wantSnippet1 = "auth.enabled is no longer a recognised config key"
+	const wantSnippet2 = "Use auth.mode as the single source of truth"
+	const wantSnippet3 = `set auth.mode: "none" to disable auth, or auth.mode: "kratos" | "jwt" | "api-key"`
+
+	tests := []struct {
+		name string
+		yaml string
+	}{
+		{
+			name: "auth.enabled: true alone",
+			yaml: `
+auth:
+  enabled: true
+`,
+		},
+		{
+			name: "auth.enabled: false alone",
+			yaml: `
+auth:
+  enabled: false
+`,
+		},
+		{
+			name: "auth.enabled: true with valid auth.mode: kratos",
+			yaml: `
+auth:
+  enabled: true
+  mode: kratos
+`,
+		},
+		{
+			name: "auth.enabled: false with valid auth.mode: none",
+			yaml: `
+auth:
+  enabled: false
+  mode: none
+`,
+		},
+		{
+			name: "auth.enabled: true with valid auth.mode: jwt",
+			yaml: `
+auth:
+  enabled: true
+  mode: jwt
+  jwt:
+    jwks_url: "https://idp.example.com/.well-known/jwks.json"
+    issuer: "https://idp.example.com/"
+    audience: "api"
+`,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			cfgFile := filepath.Join(dir, "vibewarden.yaml")
+			if err := os.WriteFile(cfgFile, []byte(tt.yaml), 0600); err != nil {
+				t.Fatalf("writing temp config file: %v", err)
+			}
+
+			_, err := config.Load(cfgFile)
+			if err == nil {
+				t.Fatalf("Load() returned nil error; want hard-break rejection of auth.enabled")
+			}
+
+			msg := err.Error()
+			for _, want := range []string{wantSnippet1, wantSnippet2, wantSnippet3} {
+				if !strings.Contains(msg, want) {
+					t.Errorf("Load() error = %q,\nwant it to contain %q", msg, want)
+				}
+			}
+		})
+	}
+}
+
+// TestLoad_AuthModeOnly_BehavioralEquivalence verifies ADR-065's behavioural
+// equivalence contract: the canonical mode-only forms load without error and
+// produce the expected Auth.Mode and Auth.Active() values. This locks in the
+// "zero behavioural change for canonical configs" guarantee.
+func TestLoad_AuthModeOnly_BehavioralEquivalence(t *testing.T) {
+	tests := []struct {
+		name       string
+		yaml       string
+		wantMode   config.AuthMode
+		wantActive bool
+	}{
+		{
+			name: "mode: none disables auth",
+			yaml: `
+auth:
+  mode: none
+`,
+			wantMode:   config.AuthModeNone,
+			wantActive: false,
+		},
+		{
+			name: "no auth section at all defaults to none",
+			yaml: `
+server:
+  port: 8080
+`,
+			wantMode:   config.AuthModeNone,
+			wantActive: false,
+		},
+		{
+			name: "mode: kratos enables auth",
+			yaml: `
+auth:
+  mode: kratos
+`,
+			wantMode:   config.AuthModeKratos,
+			wantActive: true,
+		},
+		{
+			name: "mode: jwt enables auth",
+			yaml: `
+auth:
+  mode: jwt
+  jwt:
+    jwks_url: "https://idp.example.com/.well-known/jwks.json"
+    issuer: "https://idp.example.com/"
+    audience: "api"
+`,
+			wantMode:   config.AuthModeJWT,
+			wantActive: true,
+		},
+		{
+			name: "mode: api-key enables auth",
+			yaml: `
+auth:
+  mode: api-key
+  api_key:
+    header: "X-Api-Key"
+    openbao_path: "secret/data/api-keys"
+`,
+			wantMode:   config.AuthModeAPIKey,
+			wantActive: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			cfgFile := filepath.Join(dir, "vibewarden.yaml")
+			if err := os.WriteFile(cfgFile, []byte(tt.yaml), 0600); err != nil {
+				t.Fatalf("writing temp config file: %v", err)
+			}
+
+			cfg, err := config.Load(cfgFile)
+			if err != nil {
+				t.Fatalf("Load() unexpected error: %v", err)
+			}
+
+			if cfg.Auth.Mode != tt.wantMode {
+				t.Errorf("Auth.Mode = %q, want %q", cfg.Auth.Mode, tt.wantMode)
+			}
+			if got := cfg.Auth.Active(); got != tt.wantActive {
+				t.Errorf("Auth.Active() = %v, want %v", got, tt.wantActive)
+			}
+		})
+	}
+}
+
+// TestLoad_ErrorUnusedStaysFalse is a documentary test pinning ADR-065's
+// decision to keep viper/mapstructure ErrorUnused disabled. Unknown top-level
+// keys must continue to be silently accepted so forward-compat config files
+// that include pre-release keys still load on older binaries.
+//
+// If a future change flips ErrorUnused to true, this test will fail and force
+// the author to revisit ADR-065.
+func TestLoad_ErrorUnusedStaysFalse(t *testing.T) {
+	yaml := `
+server:
+  port: 8080
+
+# A completely fabricated key that does not map to any struct field.
+# Under ErrorUnused=true this would fail to load. ADR-065 keeps it false.
+this_key_does_not_exist:
+  nor_does_this: "ignored"
+`
+	dir := t.TempDir()
+	cfgFile := filepath.Join(dir, "vibewarden.yaml")
+	if err := os.WriteFile(cfgFile, []byte(yaml), 0600); err != nil {
+		t.Fatalf("writing temp config file: %v", err)
+	}
+
+	cfg, err := config.Load(cfgFile)
+	if err != nil {
+		t.Fatalf("Load() rejected an unknown top-level key; ErrorUnused must stay false per ADR-065. err = %v", err)
+	}
+	if cfg.Server.Port != 8080 {
+		t.Errorf("server.port = %d, want 8080 (config loaded but value wrong)", cfg.Server.Port)
 	}
 }

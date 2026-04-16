@@ -74,7 +74,7 @@ Examples:
 			}
 			fmt.Fprintf(cmd.OutOrStdout(), "Generated runtime configuration files in %s\n", dir)
 			fmt.Fprintf(cmd.OutOrStdout(), "  %s/docker-compose.yml\n", dir)
-			if cfg.Auth.Enabled && cfg.Auth.Mode == config.AuthModeKratos && !cfg.Kratos.External {
+			if cfg.Auth.Active() && cfg.Auth.Mode == config.AuthModeKratos && !cfg.Kratos.External {
 				fmt.Fprintf(cmd.OutOrStdout(), "  %s/kratos/kratos.yml\n", dir)
 				fmt.Fprintf(cmd.OutOrStdout(), "  %s/kratos/identity.schema.json\n", dir)
 			}

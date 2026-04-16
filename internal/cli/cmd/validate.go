@@ -199,8 +199,8 @@ func validateConfig(cfg *config.Config) []string {
 	}
 
 	// Plugin inter-dependency: user-management requires auth.
-	if cfg.Admin.Enabled && !cfg.Auth.Enabled {
-		errs = append(errs, "user-management plugin requires auth to be enabled (set auth.enabled: true)")
+	if cfg.Admin.Enabled && !cfg.Auth.Active() {
+		errs = append(errs, "user-management plugin requires auth to be enabled (set auth.mode to \"kratos\", \"jwt\", or \"api-key\")")
 	}
 
 	return errs

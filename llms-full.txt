@@ -81,7 +81,7 @@ VibeWarden is configured via `vibewarden.yaml`. Key sections:
 - `server.port` — port the sidecar listens on (default 8443)
 - `upstream.port` — port the upstream application listens on
 - `tls.enabled`, `tls.provider` — TLS termination (letsencrypt, self-signed, external)
-- `auth.enabled` — Ory Kratos session authentication
+- `auth.mode` — authentication strategy: `none`, `kratos`, `jwt`, or `api-key` (single source of truth; see ADR-065)
 - `rate_limit.enabled`, `rate_limit.per_ip` — per-IP rate limiting
 - `security_headers.enabled` — HSTS, X-Frame-Options, X-Content-Type-Options, etc.
 - `egress` — outbound proxy rules with route-level controls

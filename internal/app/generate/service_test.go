@@ -67,7 +67,6 @@ func minimalConfig() *config.Config {
 			SMTP:      config.KratosSMTPConfig{Host: "localhost", Port: 1025, From: "no-reply@vibewarden.local"},
 		},
 		Auth: config.AuthConfig{
-			Enabled:        true,
 			Mode:           config.AuthModeKratos,
 			IdentitySchema: "email_password",
 		},
@@ -1694,8 +1693,7 @@ func TestGenerate_NonKratosMode_NoKratosFiles(t *testing.T) {
 				Server:   config.ServerConfig{Host: "127.0.0.1", Port: 8080},
 				Upstream: config.UpstreamConfig{Host: "127.0.0.1", Port: 3000},
 				Auth: config.AuthConfig{
-					Enabled: true,
-					Mode:    mode,
+					Mode: mode,
 				},
 			}
 
@@ -1739,7 +1737,6 @@ func TestGenerate_KratosMode_CreatesKratosFiles(t *testing.T) {
 			SMTP:      config.KratosSMTPConfig{Host: "localhost", Port: 1025, From: "no-reply@vibewarden.local"},
 		},
 		Auth: config.AuthConfig{
-			Enabled:        true,
 			Mode:           config.AuthModeKratos,
 			IdentitySchema: "email_password",
 		},
@@ -1772,7 +1769,6 @@ func TestGenerate_Compose_KratosServicesPresent(t *testing.T) {
 			SMTP:      config.KratosSMTPConfig{Host: "localhost", Port: 1025, From: "no-reply@vibewarden.local"},
 		},
 		Auth: config.AuthConfig{
-			Enabled:        true,
 			Mode:           config.AuthModeKratos,
 			IdentitySchema: "email_password",
 		},
@@ -1802,8 +1798,7 @@ func TestGenerate_Compose_KratosServicesAbsent(t *testing.T) {
 				Server:   config.ServerConfig{Host: "127.0.0.1", Port: 8080},
 				Upstream: config.UpstreamConfig{Host: "127.0.0.1", Port: 3000},
 				Auth: config.AuthConfig{
-					Enabled: true,
-					Mode:    mode,
+					Mode: mode,
 				},
 			}
 
@@ -1832,7 +1827,6 @@ func TestGenerate_Compose_ExternalKratosOmitsLocalContainers(t *testing.T) {
 			AdminURL:  "https://kratos-admin.example.com",
 		},
 		Auth: config.AuthConfig{
-			Enabled:        true,
 			Mode:           config.AuthModeKratos,
 			IdentitySchema: "email_password",
 		},
@@ -1874,7 +1868,6 @@ func TestGenerate_Compose_ExternalKratosSkipsKratosFiles(t *testing.T) {
 			AdminURL:  "https://kratos-admin.example.com",
 		},
 		Auth: config.AuthConfig{
-			Enabled:        true,
 			Mode:           config.AuthModeKratos,
 			IdentitySchema: "email_password",
 		},

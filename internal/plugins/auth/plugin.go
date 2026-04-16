@@ -119,8 +119,10 @@ func (p *Plugin) Init(_ context.Context) error {
 		mode = ModeNone
 	}
 
-	// If a mode is explicitly set (not "none"), treat as enabled even if
-	// auth.enabled is false. Setting mode: jwt implies enabled: true.
+	// Enabled is populated from config.AuthConfig.Active() at the boundary,
+	// so "Enabled && mode != ModeNone" and "Enabled" are equivalent. The
+	// belt-and-braces check below also covers callers that construct the
+	// plugin config directly without going through Active(). See ADR-065.
 	if !p.cfg.Enabled && mode == ModeNone {
 		p.healthy = true
 		p.healthMsg = "auth disabled"

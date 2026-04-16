@@ -34,7 +34,6 @@ kratos:
   admin_url: "http://kratos:4434"
 
 auth:
-  enabled: true
   mode: "kratos"
   public_paths:
     - "/"

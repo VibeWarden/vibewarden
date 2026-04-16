@@ -306,7 +306,7 @@ func explainConfig(cfg *config.Config, path string) string {
 
 	// Authentication
 	fmt.Fprintf(&sb, "Authentication:\n")
-	if cfg.Auth.Enabled {
+	if cfg.Auth.Active() {
 		kratosURL := cfg.Kratos.PublicURL
 		if kratosURL == "" {
 			kratosURL = "http://localhost:4433 (default)"
@@ -783,8 +783,8 @@ func validateConfig(cfg *config.Config) []string {
 			errs = append(errs, "rate_limit.per_ip.burst must be greater than zero")
 		}
 	}
-	if cfg.Admin.Enabled && !cfg.Auth.Enabled {
-		errs = append(errs, "user-management plugin requires auth to be enabled (set auth.enabled: true)")
+	if cfg.Admin.Enabled && !cfg.Auth.Active() {
+		errs = append(errs, "user-management plugin requires auth to be enabled (set auth.mode to \"kratos\", \"jwt\", or \"api-key\")")
 	}
 
 	return errs

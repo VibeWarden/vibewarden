@@ -372,7 +372,7 @@ admin:
   enabled: true
   token: supersecret
 auth:
-  enabled: false
+  mode: none
 `)
 
 	root := cmd.NewRootCmd("test")
@@ -405,7 +405,7 @@ admin:
   enabled: true
   token: supersecret
 auth:
-  enabled: true
+  mode: kratos
   session_cookie_name: ory_kratos_session
 `)
 
