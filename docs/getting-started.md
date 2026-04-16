@@ -60,15 +60,15 @@ and is the right reference when you want full control.
 
 ## Which command do I need?
 
-| Scenario | Command |
-|----------|---------|
-| Starting a new project | `vibew init myapp` |
-| Adding the sidecar to an existing app | `vibew wrap` |
-| Adding a feature to an existing config | `vibew add <feature>` |
+| Scenario | Command | See |
+|----------|---------|-----|
+| Adding the sidecar to an existing app | `vibew wrap --upstream <port>` | [Step 2](#step-2-vibew-wrap) |
+| Starting a brand-new project | `vibew init <name>` | [Step 2 alt](#step-2-alt-vibew-init-for-a-brand-new-project) |
+| Adding a feature to an existing config | `vibew add <feature>` | after either of the above |
 
-This guide covers the `vibew wrap` workflow for existing apps. If you are
-starting from scratch, run `vibew init` instead -- it scaffolds both the app
-and the sidecar config in one step, then follow from **Step 3** below.
+The two setup commands are parallel paths. `wrap` adapts an existing
+source tree; `init` scaffolds a fresh project directory. Both end up in
+the same place: a `vibewarden.yaml` you can iterate on from **Step 3**.
 
 ---
 
@@ -132,6 +132,66 @@ AGENTS-VIBEWARDEN.md     # Tool-agnostic AI agent context (all agents)
     ask Claude or Cursor to "add a login page," the AI knows to use Kratos flows
     instead of building auth from scratch. Regenerate after config changes with
     `./vibew context refresh`.
+
+---
+
+## Step 2 alt — `vibew init` (for a brand-new project)
+
+Use `vibew init` when you are starting from an empty directory and want
+VibeWarden wired up before you write any app code. The typical flow:
+
+```bash
+vibew init myapp
+cd myapp
+# ...your AI agent reads AGENTS-VIBEWARDEN.md and writes app code that
+#    fits the pre-configured security layer.
+```
+
+Or scaffold directly into a directory you already `cd`'d into:
+
+```bash
+mkdir myapp && cd myapp
+vibew init .
+```
+
+Common flags:
+
+| Flag | Description |
+|------|-------------|
+| `--port <port>` | Port your app will listen on (default: `3000`) |
+| `--describe "<text>"` | One-line project description; written to `PROJECT.md` and injected into agent files |
+| `--name <name>` | Project name (alternative to the positional argument) |
+| `--version <vN.N.N>` | Pin a specific VibeWarden version in `.vibewarden-version` |
+| `--force` | Overwrite existing files |
+
+### What `init` generates
+
+```
+myapp/
+  vibewarden.yaml          # Main config — TLS self-signed, rate limit enabled
+  .vibewarden-version      # Pinned VibeWarden version
+  Dockerfile               # Placeholder with examples for common stacks
+  .gitignore
+  PROJECT.md               # Project description (only when --describe is given)
+  AGENTS.md                # AI agent context (tool-agnostic)
+  AGENTS-VIBEWARDEN.md     # VibeWarden-specific instructions for agents
+```
+
+`init` does **not** generate app source code. It sets up the sidecar
+and the agent context files so that your AI assistant can write the app
+code inside a project that already has TLS, rate limiting, and the
+security posture nailed down.
+
+!!! tip "init vs. wrap"
+    - `vibew init` — empty directory, no app code yet.
+    - `vibew wrap` — existing source tree. Leaves your code alone and
+      adds only the sidecar config.
+
+    If you prefer a browser-driven flow, the prompt generator at
+    [vibewarden.dev/start](https://vibewarden.dev/start) produces a
+    ready-to-paste prompt that uses `vibew init` under the hood.
+
+After `vibew init`, continue from **Step 3** below.
 
 ---
 
