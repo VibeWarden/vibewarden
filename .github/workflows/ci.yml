@@ -81,7 +81,13 @@ jobs:
           cache: true
 
       - name: Run coverage
-        run: go test -coverprofile=coverage.out -covermode=atomic ./internal/domain/... ./internal/app/...
+        # internal/app/serve is the composition root (wires adapters directly).
+        # Tracked for relocation to cmd/ in #809; excluded from unit coverage
+        # until that refactor lands, since wiring code is inherently exercised
+        # by integration tests and binary start-up, not unit tests.
+        run: |
+          PKGS=$(go list ./internal/domain/... ./internal/app/... | grep -v 'internal/app/serve$')
+          go test -coverprofile=coverage.out -covermode=atomic $PKGS
 
       - name: Check coverage threshold
         run: |
