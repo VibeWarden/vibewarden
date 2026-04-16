@@ -5,11 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	scaffoldapp "github.com/vibewarden/vibewarden/internal/app/scaffold"
+	domainscaffold "github.com/vibewarden/vibewarden/internal/domain/scaffold"
 )
 
 func TestInitProject_CreatesStructure(t *testing.T) {
@@ -564,6 +566,152 @@ func TestInitProject_NoCLAUDEmd(t *testing.T) {
 	if _, err := os.Stat(claudeMDPath); err == nil {
 		t.Errorf("CLAUDE.md must not be created by vibew init, but it exists at %s", claudeMDPath)
 	}
+}
+
+// TestInitProject_RejectsExistingGitRepo verifies that InitProject returns
+// ErrInsideExistingGitRepo when the parent directory is inside an existing
+// populated git repository and --force is not set.
+func TestInitProject_RejectsExistingGitRepo(t *testing.T) {
+	dir := scaffoldAppTestDir(t)
+
+	// Create a git repo with a commit inside the temp dir.
+	repoDir := filepath.Join(dir, "existingrepo")
+	if err := os.MkdirAll(repoDir, 0o750); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	initGitRepoWithCommit(t, repoDir)
+
+	renderer := newFakeRenderer()
+	svc := scaffoldapp.NewInitProjectService(renderer, nil)
+
+	opts := scaffoldapp.InitProjectOptions{
+		ProjectName: "myapp",
+		Port:        3000,
+		Force:       false,
+	}
+
+	err := svc.InitProject(context.Background(), repoDir, opts)
+	if err == nil {
+		t.Fatal("expected error when scaffolding inside existing git repo, got nil")
+	}
+	if !errors.Is(err, domainscaffold.ErrInsideExistingGitRepo) {
+		t.Errorf("expected ErrInsideExistingGitRepo, got: %v", err)
+	}
+}
+
+// TestInitProject_ForceBypassesGitRepoCheck verifies that --force skips the
+// git repo safety check.
+func TestInitProject_ForceBypassesGitRepoCheck(t *testing.T) {
+	dir := scaffoldAppTestDir(t)
+
+	repoDir := filepath.Join(dir, "forcerepo")
+	if err := os.MkdirAll(repoDir, 0o750); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	initGitRepoWithCommit(t, repoDir)
+
+	renderer := newFakeRenderer()
+	svc := scaffoldapp.NewInitProjectService(renderer, nil)
+
+	opts := scaffoldapp.InitProjectOptions{
+		ProjectName: "myapp",
+		Port:        3000,
+		Force:       true,
+	}
+
+	if err := svc.InitProject(context.Background(), repoDir, opts); err != nil {
+		t.Fatalf("InitProject with --force should succeed in existing git repo, got: %v", err)
+	}
+}
+
+// TestInitProject_AllowsEmptyGitRepo verifies that a freshly git-init'd repo
+// with no commits is safe to scaffold into (without --force).
+func TestInitProject_AllowsEmptyGitRepo(t *testing.T) {
+	dir := scaffoldAppTestDir(t)
+
+	repoDir := filepath.Join(dir, "emptyrepo")
+	if err := os.MkdirAll(repoDir, 0o750); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	// git init only, no commits.
+	gitInit := exec.CommandContext(context.Background(), "git", "init")
+	gitInit.Dir = repoDir
+	gitInit.Env = cleanTestGitEnv(dir)
+	if err := gitInit.Run(); err != nil {
+		t.Fatalf("git init: %v", err)
+	}
+
+	renderer := newFakeRenderer()
+	svc := scaffoldapp.NewInitProjectService(renderer, nil)
+
+	opts := scaffoldapp.InitProjectOptions{
+		ProjectName: "myapp",
+		Port:        3000,
+		Force:       false,
+	}
+
+	if err := svc.InitProject(context.Background(), repoDir, opts); err != nil {
+		t.Fatalf("InitProject should succeed in empty git repo, got: %v", err)
+	}
+}
+
+// TestInitProject_AllowsNonGitDir verifies that scaffolding in a directory
+// that is not inside any git repo works without --force.
+func TestInitProject_AllowsNonGitDir(t *testing.T) {
+	dir := scaffoldAppTestDir(t)
+
+	renderer := newFakeRenderer()
+	svc := scaffoldapp.NewInitProjectService(renderer, nil)
+
+	opts := scaffoldapp.InitProjectOptions{
+		ProjectName: "myapp",
+		Port:        3000,
+		Force:       false,
+	}
+
+	if err := svc.InitProject(context.Background(), dir, opts); err != nil {
+		t.Fatalf("InitProject should succeed in non-git dir, got: %v", err)
+	}
+}
+
+// initGitRepoWithCommit creates a git repo with one commit inside dir.
+func initGitRepoWithCommit(t *testing.T, dir string) {
+	t.Helper()
+	env := cleanTestGitEnv(dir)
+	cmds := [][]string{
+		{"git", "init"},
+		{"git", "config", "user.email", "test@example.com"},
+		{"git", "config", "user.name", "Test"},
+		{"git", "commit", "--allow-empty", "-m", "initial"},
+	}
+	for _, args := range cmds {
+		cmd := exec.CommandContext(context.Background(), args[0], args[1:]...)
+		cmd.Dir = dir
+		cmd.Env = env
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("%v: %v\n%s", args, err, out)
+		}
+	}
+}
+
+// cleanTestGitEnv returns an environment for git commands in tests that
+// sets GIT_CEILING_DIRECTORIES and clears GIT_DIR/GIT_WORK_TREE.
+func cleanTestGitEnv(dir string) []string {
+	var env []string
+	for _, e := range os.Environ() {
+		key := e
+		if idx := strings.IndexByte(e, '='); idx >= 0 {
+			key = e[:idx]
+		}
+		switch key {
+		case "GIT_DIR", "GIT_WORK_TREE", "GIT_CEILING_DIRECTORIES":
+			continue
+		default:
+			env = append(env, e)
+		}
+	}
+	env = append(env, "GIT_CEILING_DIRECTORIES="+filepath.Dir(dir))
+	return env
 }
 
 // mustExist is a test helper that fails if the file at path does not exist.

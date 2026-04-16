@@ -81,6 +81,13 @@ func (s *InitProjectService) InitProject(ctx context.Context, parentDir string, 
 
 	projectDir := filepath.Join(filepath.Clean(parentDir), opts.ProjectName)
 
+	// Safety check: refuse to scaffold inside an existing populated git repo
+	// unless --force is passed. This prevents accidental corruption of the
+	// host repository (issue #844).
+	if err := checkNotInsideGitRepo(parentDir, opts.Force); err != nil {
+		return err
+	}
+
 	if !opts.Force {
 		if err := assertEmptyOrAbsent(projectDir); err != nil {
 			return err
@@ -281,4 +288,59 @@ func assertEmptyOrAbsent(projectDir string) error {
 		)
 	}
 	return nil
+}
+
+// checkNotInsideGitRepo returns ErrInsideExistingGitRepo when dir is
+// inside a git repository that has at least one commit. The check
+// walks upward from dir looking for a .git directory (or file, for
+// worktrees). When found, it verifies the repo has commits by
+// running `git rev-parse HEAD` in the repo root.
+//
+// The check is skipped when force is true.
+func checkNotInsideGitRepo(dir string, force bool) error {
+	if force {
+		return nil
+	}
+
+	// Walk upward looking for .git.
+	current := filepath.Clean(dir)
+	for {
+		gitPath := filepath.Join(current, ".git")
+		if _, err := os.Stat(gitPath); err == nil {
+			// .git exists -- could be a directory (normal repo) or a
+			// file (worktree). Either way, we are inside a git repo.
+
+			// Verify the repo has commits. An empty repo (just
+			// git-init'd with no commits) is safe to scaffold into.
+			//
+			// Use cleanGitEnv to strip GIT_DIR and GIT_WORK_TREE from
+			// the inherited environment. Setting GIT_DIR="" (as tests
+			// do) causes git to fail with "not a git repository" which
+			// would incorrectly allow scaffolding.
+			cmd := exec.CommandContext(
+				context.Background(),
+				"git", "rev-parse", "HEAD",
+			)
+			cmd.Dir = current
+			cmd.Env = cleanGitEnv(current)
+			cmd.Stdout = io.Discard
+			cmd.Stderr = io.Discard
+			if err := cmd.Run(); err != nil {
+				// No commits yet -- repo is effectively empty. Allow.
+				return nil
+			}
+
+			return fmt.Errorf(
+				"directory %q is inside git repository rooted at %q: %w",
+				dir, current, domainscaffold.ErrInsideExistingGitRepo,
+			)
+		}
+
+		parent := filepath.Dir(current)
+		if parent == current {
+			// Reached filesystem root without finding .git.
+			return nil
+		}
+		current = parent
+	}
 }

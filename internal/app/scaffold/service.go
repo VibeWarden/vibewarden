@@ -87,6 +87,13 @@ func (s *Service) Init(_ context.Context, dir string, opts InitOptions) error {
 	// Sanitise the caller-supplied directory to prevent path traversal.
 	dir = filepath.Clean(dir)
 
+	// Safety check: refuse to scaffold inside an existing populated git repo
+	// unless --force is passed. This prevents accidental corruption of the
+	// host repository (issue #844).
+	if err := checkNotInsideGitRepo(dir, opts.Force); err != nil {
+		return err
+	}
+
 	// Detect project to pick up port suggestions etc.
 	project, err := s.detector.Detect(dir)
 	if err != nil {

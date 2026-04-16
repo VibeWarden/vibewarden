@@ -14,6 +14,7 @@ import (
 	templateadapter "github.com/vibewarden/vibewarden/internal/adapters/template"
 	scaffoldapp "github.com/vibewarden/vibewarden/internal/app/scaffold"
 	"github.com/vibewarden/vibewarden/internal/cli/templates"
+	domainscaffold "github.com/vibewarden/vibewarden/internal/domain/scaffold"
 )
 
 // IsTTY reports whether fd is connected to a terminal.
@@ -182,6 +183,9 @@ Examples:
 			}
 
 			if err := svc.InitProject(context.Background(), parentDir, opts); err != nil {
+				if errors.Is(err, domainscaffold.ErrInsideExistingGitRepo) {
+					return fmt.Errorf("%w\n\nUse --force to scaffold inside this git repository.", err) //nolint:revive,staticcheck // user-facing CLI hint: intentional newline and trailing period
+				}
 				if errors.Is(err, os.ErrExist) {
 					return fmt.Errorf("%w\n\nRun with --force to overwrite existing files.", err) //nolint:revive,staticcheck // user-facing CLI hint: intentional newline and trailing period
 				}
