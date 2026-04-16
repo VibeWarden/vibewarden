@@ -723,7 +723,6 @@ upstream:
   port: 3000
 
 auth:
-  enabled: true
   mode: jwt
   jwt:
     jwks_url: "https://dev-abc123.us.auth0.com/.well-known/jwks.json"

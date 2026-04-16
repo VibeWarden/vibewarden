@@ -13,7 +13,6 @@ tls:
   enabled: false
 
 auth:
-  enabled: false
   mode: "none"
 
 egress:

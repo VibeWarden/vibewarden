@@ -61,7 +61,7 @@ kratos:
   admin_url: ""
 
 auth:
-  enabled: false
+  mode: none
 
 rate_limit:
   enabled: true

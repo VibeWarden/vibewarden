@@ -84,7 +84,6 @@ upstream:
   port: 3000
 
 auth:
-  enabled: true
   mode: jwt
 
 rate_limit:

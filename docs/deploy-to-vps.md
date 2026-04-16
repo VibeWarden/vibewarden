@@ -153,7 +153,6 @@ tls:
   domain: "demo.yourdomain.com"           # must match your DNS A record
 
 auth:
-  enabled: true
   mode: jwt
   jwt:
     jwks_url: "https://your-idp/.well-known/jwks.json"
