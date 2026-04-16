@@ -16,6 +16,12 @@ import (
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
 
+// Compile-time assertion that *Service satisfies ports.ProposalService.
+// Any change to ports.ProposalService that is not matched here will fail the
+// build — this is how we keep the inbound-port contract and its sole
+// implementation in sync.
+var _ ports.ProposalService = (*Service)(nil)
+
 // Service orchestrates the proposal lifecycle.
 type Service struct {
 	store    ports.ProposalStore
@@ -44,23 +50,11 @@ func NewService(
 	}
 }
 
-// CreateParams holds the inputs required to create a new proposal.
-type CreateParams struct {
-	// Type is the action type (block_ip, adjust_rate_limit, update_config).
-	Type proposal.ActionType
-
-	// Params holds action-specific parameters.
-	Params map[string]any
-
-	// Reason is the agent's justification for the proposal.
-	Reason string
-
-	// Source identifies the creating component (typically "mcp_agent").
-	Source string
-
-	// TTL overrides the default proposal TTL. Zero means DefaultTTL (1 hour).
-	TTL time.Duration
-}
+// CreateParams is an alias for ports.ProposalCreateParams so that existing
+// callers (HTTP handler, integration tests, service unit tests) that
+// reference proposalapp.CreateParams keep compiling unchanged. The port-owned
+// type is the source of truth; this alias is load-bearing public API.
+type CreateParams = ports.ProposalCreateParams
 
 // Create creates a new pending proposal, persists it, and emits an audit event.
 func (s *Service) Create(ctx context.Context, p CreateParams) (proposal.Proposal, error) {

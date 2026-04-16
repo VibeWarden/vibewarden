@@ -14,17 +14,6 @@ import (
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
 
-// KeyStore is the outbound dependency used by OpenBaoValidator to fetch
-// key data from a secret store. The map returned by Get must contain entries
-// where each key is the API key name and each value is its SHA-256 hex hash.
-//
-// This interface is satisfied by *openbao.Adapter.Get but is defined locally
-// so the adapter package does not import the openbao package directly.
-type KeyStore interface {
-	// Get returns all fields stored at the given KV path.
-	Get(ctx context.Context, path string) (map[string]string, error)
-}
-
 // OpenBaoValidator is an implementation of ports.APIKeyValidator that reads
 // API key hashes from an OpenBao KV path. Results are cached in memory and
 // refreshed after the configured TTL expires.
@@ -40,7 +29,7 @@ type KeyStore interface {
 //	  "mobile-app": "9b1c..."
 //	}
 type OpenBaoValidator struct {
-	store    KeyStore
+	store    ports.SecretKVReader
 	path     string
 	cacheTTL time.Duration
 	logger   *slog.Logger
@@ -53,7 +42,11 @@ type OpenBaoValidator struct {
 // NewOpenBaoValidator creates an OpenBaoValidator that reads API key hashes
 // from the given OpenBao KV path and caches them for cacheTTL.
 // A zero cacheTTL defaults to 5 minutes.
-func NewOpenBaoValidator(store KeyStore, path string, cacheTTL time.Duration, logger *slog.Logger) (*OpenBaoValidator, error) {
+//
+// store is the narrow ports.SecretKVReader port; any ports.SecretStore
+// implementation (including *openbao.Adapter) satisfies it because
+// SecretStore embeds SecretKVReader.
+func NewOpenBaoValidator(store ports.SecretKVReader, path string, cacheTTL time.Duration, logger *slog.Logger) (*OpenBaoValidator, error) {
 	if store == nil {
 		return nil, fmt.Errorf("openbao api key validator: store cannot be nil")
 	}

@@ -11,6 +11,7 @@ import (
 
 	deployapp "github.com/vibewarden/vibewarden/internal/app/deploy"
 	"github.com/vibewarden/vibewarden/internal/config"
+	"github.com/vibewarden/vibewarden/internal/ports"
 )
 
 // fakeExecutor is a test double for ports.RemoteExecutor.
@@ -80,7 +81,7 @@ type fakeGenerator struct {
 	err error
 }
 
-func (f *fakeGenerator) Generate(_ context.Context, _ *config.Config, _ string) error {
+func (f *fakeGenerator) Generate(_ context.Context, _ ports.GeneratorInput, _ string) error {
 	return f.err
 }
 

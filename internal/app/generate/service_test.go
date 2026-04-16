@@ -81,7 +81,7 @@ func TestGenerate_CreatesExpectedFiles(t *testing.T) {
 	svc := generate.NewService(&fakeRenderer{})
 	cfg := minimalConfig()
 
-	if err := svc.Generate(context.Background(), cfg, outputDir); err != nil {
+	if err := svc.Generate(context.Background(), cfg.ToGeneratorInput(), outputDir); err != nil {
 		t.Fatalf("Generate() unexpected error: %v", err)
 	}
 
@@ -115,7 +115,7 @@ func TestGenerate_DefaultOutputDir(t *testing.T) {
 	svc := generate.NewService(&fakeRenderer{})
 	cfg := minimalConfig()
 
-	if err := svc.Generate(context.Background(), cfg, ""); err != nil {
+	if err := svc.Generate(context.Background(), cfg.ToGeneratorInput(), ""); err != nil {
 		t.Fatalf("Generate() unexpected error: %v", err)
 	}
 
@@ -162,7 +162,7 @@ func TestGenerate_IdentitySchemaPresets(t *testing.T) {
 			cfg := minimalConfig()
 			cfg.Auth.IdentitySchema = tt.identitySchema
 
-			if err := svc.Generate(context.Background(), cfg, outputDir); err != nil {
+			if err := svc.Generate(context.Background(), cfg.ToGeneratorInput(), outputDir); err != nil {
 				t.Fatalf("Generate() unexpected error: %v", err)
 			}
 
@@ -191,7 +191,7 @@ func TestGenerate_OverrideIdentitySchema(t *testing.T) {
 	cfg := minimalConfig()
 	cfg.Overrides.IdentitySchema = customSchemaPath
 
-	if err := svc.Generate(context.Background(), cfg, outputDir); err != nil {
+	if err := svc.Generate(context.Background(), cfg.ToGeneratorInput(), outputDir); err != nil {
 		t.Fatalf("Generate() unexpected error: %v", err)
 	}
 
@@ -217,7 +217,7 @@ func TestGenerate_OverrideKratosConfig(t *testing.T) {
 	cfg := minimalConfig()
 	cfg.Overrides.KratosConfig = customKratosPath
 
-	if err := svc.Generate(context.Background(), cfg, outputDir); err != nil {
+	if err := svc.Generate(context.Background(), cfg.ToGeneratorInput(), outputDir); err != nil {
 		t.Fatalf("Generate() unexpected error: %v", err)
 	}
 
@@ -243,7 +243,7 @@ func TestGenerate_OverrideComposeFile(t *testing.T) {
 	cfg := minimalConfig()
 	cfg.Overrides.ComposeFile = customComposePath
 
-	if err := svc.Generate(context.Background(), cfg, outputDir); err != nil {
+	if err := svc.Generate(context.Background(), cfg.ToGeneratorInput(), outputDir); err != nil {
 		t.Fatalf("Generate() unexpected error: %v", err)
 	}
 
@@ -265,7 +265,7 @@ func TestGenerate_RendererError_PropagatesError(t *testing.T) {
 	})
 	cfg := minimalConfig()
 
-	err := svc.Generate(context.Background(), cfg, outputDir)
+	err := svc.Generate(context.Background(), cfg.ToGeneratorInput(), outputDir)
 	if err == nil {
 		t.Error("Generate() expected error when renderer fails, got nil")
 	}
@@ -277,7 +277,7 @@ func TestGenerate_UnknownPreset_ReturnsError(t *testing.T) {
 	cfg := minimalConfig()
 	cfg.Auth.IdentitySchema = "no_such_preset_or_path_xyz"
 
-	err := svc.Generate(context.Background(), cfg, outputDir)
+	err := svc.Generate(context.Background(), cfg.ToGeneratorInput(), outputDir)
 	if err == nil {
 		t.Error("Generate() expected error for unknown preset, got nil")
 	}
@@ -333,7 +333,7 @@ func TestGenerate_WithSocialProviders_GeneratesMapperFiles(t *testing.T) {
 			cfg := minimalConfig()
 			cfg.Auth.SocialProviders = tt.providers
 
-			if err := svc.Generate(context.Background(), cfg, outputDir); err != nil {
+			if err := svc.Generate(context.Background(), cfg.ToGeneratorInput(), outputDir); err != nil {
 				t.Fatalf("Generate() unexpected error: %v", err)
 			}
 
@@ -368,7 +368,7 @@ func TestGenerate_MapperFilesContainValidJsonnet(t *testing.T) {
 		{Provider: "oidc", ID: "custom", ClientID: "oid", ClientSecret: "osecret", IssuerURL: "https://issuer.example"},
 	}
 
-	if err := svc.Generate(context.Background(), cfg, outputDir); err != nil {
+	if err := svc.Generate(context.Background(), cfg.ToGeneratorInput(), outputDir); err != nil {
 		t.Fatalf("Generate() unexpected error: %v", err)
 	}
 
@@ -396,7 +396,7 @@ func TestGenerate_WithoutSocialProviders_NoMappersDir(t *testing.T) {
 	cfg := minimalConfig()
 	// No social providers configured.
 
-	if err := svc.Generate(context.Background(), cfg, outputDir); err != nil {
+	if err := svc.Generate(context.Background(), cfg.ToGeneratorInput(), outputDir); err != nil {
 		t.Fatalf("Generate() unexpected error: %v", err)
 	}
 
@@ -467,7 +467,7 @@ func TestGenerate_SocialProviders_AutoSelectsSocialSchema(t *testing.T) {
 			cfg.Auth.IdentitySchema = tt.identitySchema
 			cfg.Auth.SocialProviders = tt.socialProviders
 
-			if err := svc.Generate(context.Background(), cfg, outputDir); err != nil {
+			if err := svc.Generate(context.Background(), cfg.ToGeneratorInput(), outputDir); err != nil {
 				t.Fatalf("Generate() unexpected error: %v", err)
 			}
 
@@ -506,7 +506,7 @@ func TestGenerate_WithSocialProviders_KratosTemplatePassesConfig(t *testing.T) {
 		{Provider: "google", ClientID: "my-client-id", ClientSecret: "my-secret"},
 	}
 
-	if err := svc.Generate(context.Background(), cfg, outputDir); err != nil {
+	if err := svc.Generate(context.Background(), cfg.ToGeneratorInput(), outputDir); err != nil {
 		t.Fatalf("Generate() unexpected error: %v", err)
 	}
 
@@ -544,7 +544,7 @@ func renderCompose(t *testing.T, cfg *config.Config) []byte {
 	t.Helper()
 	outputDir := t.TempDir()
 	svc := generate.NewService(realRenderer())
-	if err := svc.Generate(context.Background(), cfg, outputDir); err != nil {
+	if err := svc.Generate(context.Background(), cfg.ToGeneratorInput(), outputDir); err != nil {
 		t.Fatalf("Generate() unexpected error: %v", err)
 	}
 	data, err := os.ReadFile(filepath.Join(outputDir, "docker-compose.yml"))
@@ -858,7 +858,7 @@ func TestGenerate_SeedSecretsFile_GeneratedWhenNeeded(t *testing.T) {
 
 	outputDir := t.TempDir()
 	svc := generate.NewService(realRenderer())
-	if err := svc.Generate(context.Background(), cfg, outputDir); err != nil {
+	if err := svc.Generate(context.Background(), cfg.ToGeneratorInput(), outputDir); err != nil {
 		t.Fatalf("Generate() unexpected error: %v", err)
 	}
 
@@ -887,7 +887,7 @@ func TestGenerate_SeedSecretsFile_NotGeneratedWhenNotNeeded(t *testing.T) {
 
 	outputDir := t.TempDir()
 	svc := generate.NewService(realRenderer())
-	if err := svc.Generate(context.Background(), cfg, outputDir); err != nil {
+	if err := svc.Generate(context.Background(), cfg.ToGeneratorInput(), outputDir); err != nil {
 		t.Fatalf("Generate() unexpected error: %v", err)
 	}
 
@@ -905,7 +905,7 @@ func TestGenerate_SeedSecretsFile_NotGeneratedWhenSecretsDisabled(t *testing.T) 
 
 	outputDir := t.TempDir()
 	svc := generate.NewService(realRenderer())
-	if err := svc.Generate(context.Background(), cfg, outputDir); err != nil {
+	if err := svc.Generate(context.Background(), cfg.ToGeneratorInput(), outputDir); err != nil {
 		t.Fatalf("Generate() unexpected error: %v", err)
 	}
 
@@ -926,7 +926,7 @@ func TestGenerate_SeedSecretsFile_ContainsBothHeadersAndEnv(t *testing.T) {
 
 	outputDir := t.TempDir()
 	svc := generate.NewService(realRenderer())
-	if err := svc.Generate(context.Background(), cfg, outputDir); err != nil {
+	if err := svc.Generate(context.Background(), cfg.ToGeneratorInput(), outputDir); err != nil {
 		t.Fatalf("Generate() unexpected error: %v", err)
 	}
 
@@ -970,7 +970,7 @@ func TestGenerate_Observability_WhenEnabled(t *testing.T) {
 	outputDir := t.TempDir()
 	svc := generate.NewService(realRenderer())
 
-	if err := svc.Generate(context.Background(), cfg, outputDir); err != nil {
+	if err := svc.Generate(context.Background(), cfg.ToGeneratorInput(), outputDir); err != nil {
 		t.Fatalf("Generate() unexpected error: %v", err)
 	}
 
@@ -1002,7 +1002,7 @@ func TestGenerate_Observability_WhenDisabled(t *testing.T) {
 	outputDir := t.TempDir()
 	svc := generate.NewService(realRenderer())
 
-	if err := svc.Generate(context.Background(), cfg, outputDir); err != nil {
+	if err := svc.Generate(context.Background(), cfg.ToGeneratorInput(), outputDir); err != nil {
 		t.Fatalf("Generate() unexpected error: %v", err)
 	}
 
@@ -1017,7 +1017,7 @@ func TestGenerate_Observability_PrometheusConfig(t *testing.T) {
 	outputDir := t.TempDir()
 	svc := generate.NewService(realRenderer())
 
-	if err := svc.Generate(context.Background(), cfg, outputDir); err != nil {
+	if err := svc.Generate(context.Background(), cfg.ToGeneratorInput(), outputDir); err != nil {
 		t.Fatalf("Generate() unexpected error: %v", err)
 	}
 
@@ -1043,7 +1043,7 @@ func TestGenerate_Observability_LokiRetention(t *testing.T) {
 	outputDir := t.TempDir()
 	svc := generate.NewService(realRenderer())
 
-	if err := svc.Generate(context.Background(), cfg, outputDir); err != nil {
+	if err := svc.Generate(context.Background(), cfg.ToGeneratorInput(), outputDir); err != nil {
 		t.Fatalf("Generate() unexpected error: %v", err)
 	}
 
@@ -1063,7 +1063,7 @@ func TestGenerate_Observability_GrafanaDatasources(t *testing.T) {
 	outputDir := t.TempDir()
 	svc := generate.NewService(realRenderer())
 
-	if err := svc.Generate(context.Background(), cfg, outputDir); err != nil {
+	if err := svc.Generate(context.Background(), cfg.ToGeneratorInput(), outputDir); err != nil {
 		t.Fatalf("Generate() unexpected error: %v", err)
 	}
 
@@ -1088,7 +1088,7 @@ func TestGenerate_Observability_Dashboard(t *testing.T) {
 	outputDir := t.TempDir()
 	svc := generate.NewService(realRenderer())
 
-	if err := svc.Generate(context.Background(), cfg, outputDir); err != nil {
+	if err := svc.Generate(context.Background(), cfg.ToGeneratorInput(), outputDir); err != nil {
 		t.Fatalf("Generate() unexpected error: %v", err)
 	}
 
@@ -1195,7 +1195,7 @@ func TestGenerate_OtelCollector_ConfigFileCreated(t *testing.T) {
 	outputDir := t.TempDir()
 	svc := generate.NewService(realRenderer())
 
-	if err := svc.Generate(context.Background(), cfg, outputDir); err != nil {
+	if err := svc.Generate(context.Background(), cfg.ToGeneratorInput(), outputDir); err != nil {
 		t.Fatalf("Generate() unexpected error: %v", err)
 	}
 
@@ -1210,7 +1210,7 @@ func TestGenerate_OtelCollector_ConfigContainsReceivers(t *testing.T) {
 	outputDir := t.TempDir()
 	svc := generate.NewService(realRenderer())
 
-	if err := svc.Generate(context.Background(), cfg, outputDir); err != nil {
+	if err := svc.Generate(context.Background(), cfg.ToGeneratorInput(), outputDir); err != nil {
 		t.Fatalf("Generate() unexpected error: %v", err)
 	}
 
@@ -1306,7 +1306,7 @@ func TestGenerate_OtelCollector_NotPresent_WhenDisabled(t *testing.T) {
 	outputDir := t.TempDir()
 	svc := generate.NewService(realRenderer())
 
-	if err := svc.Generate(context.Background(), cfg, outputDir); err != nil {
+	if err := svc.Generate(context.Background(), cfg.ToGeneratorInput(), outputDir); err != nil {
 		t.Fatalf("Generate() unexpected error: %v", err)
 	}
 
@@ -1345,7 +1345,7 @@ func TestGenerate_Jaeger_OtelCollector_TracesPipeline(t *testing.T) {
 	outputDir := t.TempDir()
 	svc := generate.NewService(realRenderer())
 
-	if err := svc.Generate(context.Background(), cfg, outputDir); err != nil {
+	if err := svc.Generate(context.Background(), cfg.ToGeneratorInput(), outputDir); err != nil {
 		t.Fatalf("Generate() unexpected error: %v", err)
 	}
 
@@ -1436,7 +1436,7 @@ func TestGenerate_ProdProfile_SecretsDisabled_Succeeds(t *testing.T) {
 	cfg.Profile = "prod"
 	cfg.Secrets.Enabled = false
 
-	if err := svc.Generate(context.Background(), cfg, outputDir); err != nil {
+	if err := svc.Generate(context.Background(), cfg.ToGeneratorInput(), outputDir); err != nil {
 		t.Errorf("Generate() unexpected error for prod profile without secrets.enabled: %v", err)
 	}
 }
@@ -1469,7 +1469,7 @@ func TestGenerate_DevProfile_AllowsNoSecrets(t *testing.T) {
 	cfg.Profile = "dev"
 	cfg.Secrets.Enabled = false
 
-	if err := svc.Generate(context.Background(), cfg, outputDir); err != nil {
+	if err := svc.Generate(context.Background(), cfg.ToGeneratorInput(), outputDir); err != nil {
 		t.Errorf("Generate() unexpected error for dev profile without secrets: %v", err)
 	}
 }
@@ -1485,7 +1485,7 @@ func TestGenerate_TLSProfile_AllowsNoSecrets(t *testing.T) {
 	cfg.Profile = "tls"
 	cfg.Secrets.Enabled = false
 
-	if err := svc.Generate(context.Background(), cfg, outputDir); err != nil {
+	if err := svc.Generate(context.Background(), cfg.ToGeneratorInput(), outputDir); err != nil {
 		t.Errorf("Generate() unexpected error for tls profile without secrets: %v", err)
 	}
 }
@@ -1501,7 +1501,7 @@ func TestGenerate_ProdProfile_WithSecretsEnabled_Succeeds(t *testing.T) {
 	cfg.Profile = "prod"
 	cfg.Secrets.Enabled = true
 
-	if err := svc.Generate(context.Background(), cfg, outputDir); err != nil {
+	if err := svc.Generate(context.Background(), cfg.ToGeneratorInput(), outputDir); err != nil {
 		t.Errorf("Generate() unexpected error for prod profile with secrets.enabled: %v", err)
 	}
 }
@@ -1515,7 +1515,7 @@ func TestGenerate_CredentialsWritten(t *testing.T) {
 		store,
 	)
 
-	if err := svc.Generate(context.Background(), minimalConfig(), outputDir); err != nil {
+	if err := svc.Generate(context.Background(), minimalConfig().ToGeneratorInput(), outputDir); err != nil {
 		t.Fatalf("Generate() unexpected error: %v", err)
 	}
 
@@ -1535,7 +1535,7 @@ func TestGenerate_CredentialGeneratorError_ReturnsError(t *testing.T) {
 		&fakeCredentialStore{},
 	)
 
-	err := svc.Generate(context.Background(), minimalConfig(), outputDir)
+	err := svc.Generate(context.Background(), minimalConfig().ToGeneratorInput(), outputDir)
 	if err == nil {
 		t.Fatal("Generate() expected error when credential generator fails, got nil")
 	}
@@ -1552,7 +1552,7 @@ func TestGenerate_CredentialStoreError_ReturnsError(t *testing.T) {
 		&fakeCredentialStore{writeErr: fmt.Errorf("disk full")},
 	)
 
-	err := svc.Generate(context.Background(), minimalConfig(), outputDir)
+	err := svc.Generate(context.Background(), minimalConfig().ToGeneratorInput(), outputDir)
 	if err == nil {
 		t.Fatal("Generate() expected error when credential store fails, got nil")
 	}
@@ -1566,7 +1566,7 @@ func TestGenerate_EnvTemplateWritten(t *testing.T) {
 	svc := generate.NewService(realRenderer())
 	cfg := minimalConfig()
 
-	if err := svc.Generate(context.Background(), cfg, outputDir); err != nil {
+	if err := svc.Generate(context.Background(), cfg.ToGeneratorInput(), outputDir); err != nil {
 		t.Fatalf("Generate() unexpected error: %v", err)
 	}
 
@@ -1582,7 +1582,7 @@ func TestGenerate_EnvTemplateNoSecrets(t *testing.T) {
 	cfg := minimalConfig()
 	cfg.Profile = "dev"
 
-	if err := svc.Generate(context.Background(), cfg, outputDir); err != nil {
+	if err := svc.Generate(context.Background(), cfg.ToGeneratorInput(), outputDir); err != nil {
 		t.Fatalf("Generate() unexpected error: %v", err)
 	}
 
@@ -1612,7 +1612,7 @@ func TestGenerate_EnvTemplateContainsProfile(t *testing.T) {
 	cfg := minimalConfig()
 	cfg.Profile = "tls"
 
-	if err := svc.Generate(context.Background(), cfg, outputDir); err != nil {
+	if err := svc.Generate(context.Background(), cfg.ToGeneratorInput(), outputDir); err != nil {
 		t.Fatalf("Generate() unexpected error: %v", err)
 	}
 
@@ -1634,7 +1634,7 @@ func TestGenerate_SeedSecretsSourcesCredentials(t *testing.T) {
 
 	outputDir := t.TempDir()
 	svc := generate.NewService(realRenderer())
-	if err := svc.Generate(context.Background(), cfg, outputDir); err != nil {
+	if err := svc.Generate(context.Background(), cfg.ToGeneratorInput(), outputDir); err != nil {
 		t.Fatalf("Generate() unexpected error: %v", err)
 	}
 
@@ -1659,7 +1659,7 @@ func TestGenerate_NoCredentialAdapters_SkipsCredentials(t *testing.T) {
 	svc := generate.NewService(&fakeRenderer{})
 	cfg := minimalConfig()
 
-	if err := svc.Generate(context.Background(), cfg, outputDir); err != nil {
+	if err := svc.Generate(context.Background(), cfg.ToGeneratorInput(), outputDir); err != nil {
 		t.Fatalf("Generate() unexpected error: %v", err)
 	}
 
@@ -1699,7 +1699,7 @@ func TestGenerate_NonKratosMode_NoKratosFiles(t *testing.T) {
 				},
 			}
 
-			if err := svc.Generate(context.Background(), cfg, outputDir); err != nil {
+			if err := svc.Generate(context.Background(), cfg.ToGeneratorInput(), outputDir); err != nil {
 				t.Fatalf("Generate() error = %v", err)
 			}
 
@@ -1745,7 +1745,7 @@ func TestGenerate_KratosMode_CreatesKratosFiles(t *testing.T) {
 		},
 	}
 
-	if err := svc.Generate(context.Background(), cfg, outputDir); err != nil {
+	if err := svc.Generate(context.Background(), cfg.ToGeneratorInput(), outputDir); err != nil {
 		t.Fatalf("Generate() error = %v", err)
 	}
 
@@ -1881,7 +1881,7 @@ func TestGenerate_Compose_ExternalKratosSkipsKratosFiles(t *testing.T) {
 	}
 
 	svc := generate.NewService(realRenderer())
-	if err := svc.Generate(context.Background(), cfg, outputDir); err != nil {
+	if err := svc.Generate(context.Background(), cfg.ToGeneratorInput(), outputDir); err != nil {
 		t.Fatalf("Generate() unexpected error: %v", err)
 	}
 
@@ -2016,7 +2016,7 @@ func renderComposeAndDir(t *testing.T, cfg *config.Config) ([]byte, string) {
 	t.Helper()
 	outputDir := t.TempDir()
 	svc := generate.NewService(realRenderer())
-	if err := svc.Generate(context.Background(), cfg, outputDir); err != nil {
+	if err := svc.Generate(context.Background(), cfg.ToGeneratorInput(), outputDir); err != nil {
 		t.Fatalf("Generate() unexpected error: %v", err)
 	}
 	data, err := os.ReadFile(filepath.Join(outputDir, "docker-compose.yml"))

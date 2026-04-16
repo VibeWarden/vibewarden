@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"strings"
 
-	proposalapp "github.com/vibewarden/vibewarden/internal/app/proposal"
 	"github.com/vibewarden/vibewarden/internal/domain/proposal"
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
@@ -15,13 +14,15 @@ import (
 // ProposalHandlers provides HTTP handler functions for the proposal lifecycle API.
 // All routes are registered under /_vibewarden/admin/proposals.
 type ProposalHandlers struct {
-	svc    *proposalapp.Service
+	svc    ports.ProposalService
 	logger *slog.Logger
 }
 
 // NewProposalHandlers creates a new ProposalHandlers backed by the supplied service.
+// svc is the inbound port — the handler does not depend on the concrete
+// application service type.
 // logger may be nil; slog.Default() is used when nil.
-func NewProposalHandlers(svc *proposalapp.Service, logger *slog.Logger) *ProposalHandlers {
+func NewProposalHandlers(svc ports.ProposalService, logger *slog.Logger) *ProposalHandlers {
 	if logger == nil {
 		logger = slog.Default()
 	}
@@ -94,7 +95,7 @@ func (h *ProposalHandlers) create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	p, err := h.svc.Create(r.Context(), proposalapp.CreateParams{
+	p, err := h.svc.Create(r.Context(), ports.ProposalCreateParams{
 		Type:   actionType,
 		Params: req.Params,
 		Reason: req.Reason,
