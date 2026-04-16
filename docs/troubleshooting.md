@@ -264,7 +264,7 @@ colons, or misaligned indentation.
 **Symptom**
 
 ```
-[WARN]  Generated files  .vibewarden/generated/docker-compose.yml not found — run 'vibewarden generate' first
+[WARN]  Generated files  .vibewarden/generated/docker-compose.yml not found — run 'vibew generate' first
 ```
 
 **Cause**

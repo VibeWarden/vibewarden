@@ -75,6 +75,7 @@ tls:
   # Provider selects how TLS certificates are obtained. Valid values:
   #
   #   letsencrypt  — Automatic ACME certificate via Let's Encrypt.
+  #                  (Alias: "acme". Both values select the same behaviour.)
   #                  Requires a public domain and open port 443.
   #                  Also requires the "domain" field to be set.
   #
