@@ -685,7 +685,7 @@ func initGitRepoWithCommit(t *testing.T, dir string) {
 		{"git", "commit", "--allow-empty", "-m", "initial"},
 	}
 	for _, args := range cmds {
-		cmd := exec.CommandContext(context.Background(), args[0], args[1:]...)
+		cmd := exec.CommandContext(context.Background(), args[0], args[1:]...) //nolint:gosec // args are static test strings
 		cmd.Dir = dir
 		cmd.Env = env
 		if out, err := cmd.CombinedOutput(); err != nil {

@@ -14,26 +14,26 @@ import (
 // will fail loudly if any scaffold test ever touches the outer repo.
 func TestScaffoldTests_DoNotPolluteHostRepo(t *testing.T) {
 	// Find the repo root.
-	repoRoot, err := exec.Command("git", "rev-parse", "--show-toplevel").Output()
+	repoRoot, err := exec.Command("git", "rev-parse", "--show-toplevel").Output() //nolint:gosec // static args
 	if err != nil {
 		t.Skip("not inside a git repository; skipping pollution check")
 	}
 	root := strings.TrimSpace(string(repoRoot))
 
 	// Snapshot: HEAD commit hash.
-	headBefore, err := exec.Command("git", "-C", root, "rev-parse", "HEAD").Output()
+	headBefore, err := exec.Command("git", "-C", root, "rev-parse", "HEAD").Output() //nolint:gosec // root from git, args static
 	if err != nil {
 		t.Fatalf("git rev-parse HEAD: %v", err)
 	}
 
 	// Snapshot: git status (should be empty on a clean checkout).
-	statusBefore, err := exec.Command("git", "-C", root, "status", "--porcelain").Output()
+	statusBefore, err := exec.Command("git", "-C", root, "status", "--porcelain").Output() //nolint:gosec // root from git, args static
 	if err != nil {
 		t.Fatalf("git status: %v", err)
 	}
 
 	// Snapshot: core.bare setting.
-	bareBefore, err := exec.Command("git", "-C", root, "config", "--get", "core.bare").Output()
+	bareBefore, err := exec.Command("git", "-C", root, "config", "--get", "core.bare").Output() //nolint:gosec // root from git, args static
 	if err != nil {
 		// core.bare may not be explicitly set -- default is false.
 		bareBefore = []byte("false\n")
@@ -48,7 +48,7 @@ func TestScaffoldTests_DoNotPolluteHostRepo(t *testing.T) {
 	// and we will detect it here. ---
 
 	// Assert: HEAD has not moved.
-	headAfter, err := exec.Command("git", "-C", root, "rev-parse", "HEAD").Output()
+	headAfter, err := exec.Command("git", "-C", root, "rev-parse", "HEAD").Output() //nolint:gosec // root from git, args static
 	if err != nil {
 		t.Fatalf("git rev-parse HEAD (after): %v", err)
 	}
@@ -58,7 +58,7 @@ func TestScaffoldTests_DoNotPolluteHostRepo(t *testing.T) {
 	}
 
 	// Assert: git status is unchanged.
-	statusAfter, err := exec.Command("git", "-C", root, "status", "--porcelain").Output()
+	statusAfter, err := exec.Command("git", "-C", root, "status", "--porcelain").Output() //nolint:gosec // root from git, args static
 	if err != nil {
 		t.Fatalf("git status (after): %v", err)
 	}
@@ -68,7 +68,7 @@ func TestScaffoldTests_DoNotPolluteHostRepo(t *testing.T) {
 	}
 
 	// Assert: core.bare is still false.
-	bareAfter, err := exec.Command("git", "-C", root, "config", "--get", "core.bare").Output()
+	bareAfter, err := exec.Command("git", "-C", root, "config", "--get", "core.bare").Output() //nolint:gosec // root from git, args static
 	if err != nil {
 		bareAfter = []byte("false\n")
 	}
