@@ -19,7 +19,7 @@ import (
 type fakeSecretStore struct {
 	healthErr error
 	getErr    error                        // when set, every Get returns this error
-	getErrAt  map[string]error             // when set, Get at a specific path returns that error (takes precedence over data)
+	getErrAt  map[string]error             // when set, Get at a specific path returns that error (takes precedence over data, but not over getErr)
 	data      map[string]map[string]string // path -> key/values
 }
 
