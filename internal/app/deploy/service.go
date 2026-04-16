@@ -99,7 +99,7 @@ func (s *Service) Deploy(ctx context.Context, cfg *config.Config, opts RunOption
 	if generatedDir == "" {
 		generatedDir = ".vibewarden/generated"
 	}
-	if err := s.generator.Generate(ctx, cfg, generatedDir); err != nil {
+	if err := s.generator.Generate(ctx, cfg.ToGeneratorInput(), generatedDir); err != nil {
 		return fmt.Errorf("generating config files: %w", err)
 	}
 

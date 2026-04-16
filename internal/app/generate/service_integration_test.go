@@ -69,7 +69,7 @@ func TestGenerate_Integration_ExternalPostgres(t *testing.T) {
 			cfg := minimalConfig()
 			cfg.Database.ExternalURL = tt.externalURL
 
-			if err := svc.Generate(context.Background(), cfg, outputDir); err != nil {
+			if err := svc.Generate(context.Background(), cfg.ToGeneratorInput(), outputDir); err != nil {
 				t.Fatalf("Generate() unexpected error: %v", err)
 			}
 
@@ -145,7 +145,7 @@ func TestGenerate_Integration_ExternalRedis(t *testing.T) {
 			cfg.RateLimit.Redis.Address = "localhost:6379" // required when URL is empty
 			cfg.RateLimit.Redis.URL = tt.redisURL
 
-			if err := svc.Generate(context.Background(), cfg, outputDir); err != nil {
+			if err := svc.Generate(context.Background(), cfg.ToGeneratorInput(), outputDir); err != nil {
 				t.Fatalf("Generate() unexpected error: %v", err)
 			}
 
@@ -266,7 +266,7 @@ func TestGenerate_Integration_KratosOIDCRendering(t *testing.T) {
 			cfg := minimalConfig()
 			cfg.Auth.SocialProviders = tt.providers
 
-			if err := svc.Generate(context.Background(), cfg, outputDir); err != nil {
+			if err := svc.Generate(context.Background(), cfg.ToGeneratorInput(), outputDir); err != nil {
 				t.Fatalf("Generate() unexpected error: %v", err)
 			}
 

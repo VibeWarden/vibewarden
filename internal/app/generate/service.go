@@ -78,7 +78,18 @@ func (s *Service) WithConfigSourcePath(path string) *Service {
 //	kratos/identity.schema.json
 //	kratos/mappers/<provider>.jsonnet  (one per configured social provider)
 //	docker-compose.yml
-func (s *Service) Generate(ctx context.Context, cfg *config.Config, outputDir string) error {
+//
+// The typed decision fields on input are intentionally not read in v1 — the
+// service body continues to operate on the concrete *config.Config recovered
+// from input.TemplateData so that template output stays byte-identical to the
+// pre-ADR-064 behaviour. Future work will migrate the body to branch on
+// input's typed fields and narrow TemplateData to a named template model.
+func (s *Service) Generate(ctx context.Context, input ports.GeneratorInput, outputDir string) error {
+	cfg, ok := input.TemplateData.(*config.Config)
+	if !ok || cfg == nil {
+		return fmt.Errorf("generate: TemplateData must be *config.Config (got %T)", input.TemplateData)
+	}
+
 	if outputDir == "" {
 		outputDir = defaultOutputDir
 	}

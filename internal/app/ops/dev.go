@@ -154,7 +154,7 @@ func (s *DevService) watchLoop(ctx context.Context, cfg *config.Config, opts Dev
 			fmt.Fprintln(out, "config changed, regenerating...")
 
 			if s.generator != nil {
-				if err := s.generator.Generate(ctx, cfg, generatedOutputDir); err != nil {
+				if err := s.generator.Generate(ctx, cfg.ToGeneratorInput(), generatedOutputDir); err != nil {
 					slog.Error("regeneration failed", "error", err)
 					fmt.Fprintf(out, "regeneration failed: %v\n", err)
 					continue
@@ -180,7 +180,7 @@ func (s *DevService) watchLoop(ctx context.Context, cfg *config.Config, opts Dev
 func (s *DevService) resolveComposeFile(ctx context.Context, cfg *config.Config, out io.Writer) (string, error) {
 	if s.generator != nil {
 		fmt.Fprintln(out, "Generating runtime configuration files...")
-		if err := s.generator.Generate(ctx, cfg, generatedOutputDir); err != nil {
+		if err := s.generator.Generate(ctx, cfg.ToGeneratorInput(), generatedOutputDir); err != nil {
 			return "", fmt.Errorf("generating config: %w", err)
 		}
 		composePath := filepath.Join(generatedOutputDir, "docker-compose.yml")

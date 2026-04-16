@@ -58,7 +58,7 @@ type fakeGenerator struct {
 	generateCallCount int
 }
 
-func (f *fakeGenerator) Generate(_ context.Context, _ *config.Config, outputDir string) error {
+func (f *fakeGenerator) Generate(_ context.Context, _ ports.GeneratorInput, outputDir string) error {
 	f.generateCalled = true
 	f.generateCallCount++
 	f.capturedOutputDir = outputDir
