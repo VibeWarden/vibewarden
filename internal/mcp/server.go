@@ -106,6 +106,15 @@ func (s *Server) RegisterTool(def ToolDefinition, handler ToolHandler) {
 	s.handlers[def.Name] = handler
 }
 
+// Tools returns a copy of the registered tool definitions in registration order.
+// Callers can enumerate them for discovery (e.g. generating CLI help text or
+// documentation from the live registry instead of hard-coding a list).
+func (s *Server) Tools() []ToolDefinition {
+	out := make([]ToolDefinition, len(s.tools))
+	copy(out, s.tools)
+	return out
+}
+
 // Serve reads JSON-RPC messages from in and writes responses to out.
 // It blocks until in is closed or ctx is cancelled.
 func (s *Server) Serve(ctx context.Context, in io.Reader, out io.Writer) error {
