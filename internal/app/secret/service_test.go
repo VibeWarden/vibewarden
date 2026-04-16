@@ -18,13 +18,17 @@ import (
 // fakeSecretStore is a fake ports.SecretStore for testing.
 type fakeSecretStore struct {
 	healthErr error
-	getErr    error                        // when set, Get returns this error regardless of path
+	getErr    error                        // when set, every Get returns this error
+	getErrAt  map[string]error             // when set, Get at a specific path returns that error (takes precedence over data)
 	data      map[string]map[string]string // path -> key/values
 }
 
 func (f *fakeSecretStore) Get(_ context.Context, path string) (map[string]string, error) {
 	if f.getErr != nil {
 		return nil, f.getErr
+	}
+	if err, ok := f.getErrAt[path]; ok {
+		return nil, err
 	}
 	if d, ok := f.data[path]; ok {
 		return d, nil
@@ -344,5 +348,69 @@ func TestService_Get_NotFoundFallsBackToCredentials(t *testing.T) {
 	}
 	if got.Source != domainsecret.SourceCredentialsFile {
 		t.Errorf("Source = %q, want %q", got.Source, domainsecret.SourceCredentialsFile)
+	}
+}
+
+// TestService_Get_DynamicTransportErrorPropagates is the regression test for
+// the silent-masking bug in tryDynamicCredentials (#832). The fix to #812
+// addressed tryOpenBao but left the sibling function's same anti-pattern in
+// place. Before the fix, a transport/auth error during dynamic-role retrieval
+// silently fell through to the static path and onward to credentials — an
+// operator with a revoked database role or a broken dynamic-creds backend
+// would see the sidecar quietly use stale credentials and never learn that
+// dynamic generation was failing.
+func TestService_Get_DynamicTransportErrorPropagates(t *testing.T) {
+	transportErr := errors.New("connection refused")
+	store := &fakeSecretStore{
+		// Dynamic path for postgres (database/creds/app-readwrite) fails hard.
+		getErrAt: map[string]error{
+			"database/creds/app-readwrite": transportErr,
+		},
+		// Static path would succeed if we fell through — the test asserts we do NOT.
+		data: map[string]map[string]string{
+			"infra/postgres": {"password": "static-should-not-be-used"},
+		},
+	}
+	credStore := &fakeCredentialStore{}
+	svc := appsecret.NewService(store, credStore, "/tmp")
+
+	_, err := svc.Get(context.Background(), "postgres")
+	if err == nil {
+		t.Fatal("Get() returned nil error; want the dynamic transport error propagated")
+	}
+	if !errors.Is(err, transportErr) {
+		t.Errorf("Get() error = %v; want errors.Is(err, transportErr) == true", err)
+	}
+	if errors.Is(err, appsecret.ErrSecretNotFound) {
+		t.Error("Get() returned ErrSecretNotFound for a dynamic transport failure — masking regression")
+	}
+}
+
+// TestService_Get_DynamicNotFoundFallsThroughToStatic pins the happy-path
+// fallback contract: a wrapped ErrSecretNotFound on the dynamic role path
+// should still fall through to the static path (which then succeeds).
+func TestService_Get_DynamicNotFoundFallsThroughToStatic(t *testing.T) {
+	store := &fakeSecretStore{
+		// Dynamic path is empty -> fake returns wrapped ErrSecretNotFound.
+		// Static path has data -> should be returned.
+		data: map[string]map[string]string{
+			"infra/postgres": {"password": "static-password"},
+		},
+	}
+	credStore := &fakeCredentialStore{}
+	svc := appsecret.NewService(store, credStore, "/tmp")
+
+	got, err := svc.Get(context.Background(), "postgres")
+	if err != nil {
+		t.Fatalf("Get() unexpected error: %v", err)
+	}
+	if got == nil {
+		t.Fatal("Get() returned nil; want the static-path secret")
+	}
+	if got.Source != domainsecret.SourceOpenBao {
+		t.Errorf("Source = %q, want %q (static OpenBao path)", got.Source, domainsecret.SourceOpenBao)
+	}
+	if got.Data["password"] != "static-password" {
+		t.Errorf("Data[password] = %q, want %q", got.Data["password"], "static-password")
 	}
 }
