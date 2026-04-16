@@ -21,10 +21,12 @@ import (
 // manual redirect server is created — Caddy's built-in automatic HTTPS handles
 // ACME HTTP-01 challenges and HTTP→HTTPS redirects on port 80 natively.
 //
-// When auth is enabled (cfg.Auth.Enabled && cfg.Auth.KratosPublicURL != ""),
+// When auth is active (cfg.Auth.Enabled && cfg.Auth.KratosPublicURL != ""),
 // Kratos self-service flow routes are inserted between the health check route
 // and the catch-all proxy route. Requests to those paths are forwarded to the
 // Kratos public API transparently so browsers can complete self-service flows.
+// cfg.Auth.Enabled is the ports-layer DTO flag populated from
+// config.AuthConfig.Active() at the app/serve boundary — see ADR-065.
 func BuildCaddyConfig(cfg *ports.ProxyConfig) (map[string]any, error) {
 	if cfg == nil {
 		return nil, fmt.Errorf("proxy config is required")

@@ -17,7 +17,6 @@ tls:
   provider: self-signed
 
 auth:
-  enabled: false
   mode: "none"
 
 rate_limit:

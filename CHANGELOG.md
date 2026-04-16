@@ -10,6 +10,19 @@ This initial entry was written by hand to summarise the work leading up to v0.1.
 
 ---
 
+## [Unreleased]
+
+### Breaking changes
+
+- **`auth.enabled` removed from `vibewarden.yaml`** (ADR-065). `auth.mode` is
+  now the single source of truth for whether authentication is enabled. Set
+  `auth.mode: "none"` to disable auth, or `auth.mode: "kratos" | "jwt" | "api-key"`
+  to enable a strategy. Any presence of `auth.enabled` — even `false` — is
+  rejected at config load with an actionable error pointing at ADR-065.
+  Migration: delete the `auth.enabled` line; keep or set `auth.mode`.
+
+---
+
 ## [v0.1.0] — 2026-03-28
 
 First public release of the VibeWarden OSS core.

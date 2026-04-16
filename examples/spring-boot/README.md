@@ -34,7 +34,6 @@ Internet → VibeWarden :8443 (HTTPS) → Spring Boot :3000 (HTTP)
 
 ```yaml
 auth:
-  enabled: true
   mode: jwt
   jwt:
     jwks_url: https://your-idp.com/.well-known/jwks.json

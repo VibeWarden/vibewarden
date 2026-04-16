@@ -78,7 +78,7 @@ func enabledPlugins(cfg *config.Config) map[string]bool {
 		"tls":              cfg.TLS.Enabled,
 		"security-headers": cfg.SecurityHeaders.Enabled,
 		"rate-limiting":    cfg.RateLimit.Enabled,
-		"auth":             cfg.Auth.Enabled,
+		"auth":             cfg.Auth.Active(),
 		"metrics":          cfg.Metrics.Enabled,
 		"user-management":  cfg.Admin.Enabled,
 	}

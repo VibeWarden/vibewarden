@@ -279,8 +279,9 @@ func appendAuthBlock(root *yaml.Node) {
 	appendNode(kratosVal, keyNode("admin_url"), scalarNode("http://localhost:4434", "!!str"))
 	appendNode(root, headComment(keyNode("kratos"), "# Ory Kratos identity server"), kratosVal)
 
-	// auth section
+	// auth section — mode is the single source of truth (ADR-065).
 	authVal := mappingNode()
+	appendNode(authVal, keyNode("mode"), scalarNode("kratos", "!!str"))
 	appendNode(authVal, keyNode("session_cookie_name"), scalarNode("ory_kratos_session", "!!str"))
 	appendNode(authVal, keyNode("login_url"), scalarNode("http://localhost:4433/self-service/login/browser", "!!str"))
 	publicPaths := sequenceNode("/health", "/ready")

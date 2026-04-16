@@ -744,14 +744,14 @@ func TestEgressNoProxy(t *testing.T) {
 		{
 			name: "with kratos (local db)",
 			cfg: config.Config{
-				Auth: config.AuthConfig{Enabled: true, Mode: config.AuthModeKratos},
+				Auth: config.AuthConfig{Mode: config.AuthModeKratos},
 			},
 			want: "localhost,127.0.0.1,vibewarden,kratos,kratos-db",
 		},
 		{
 			name: "with kratos (external db)",
 			cfg: config.Config{
-				Auth:     config.AuthConfig{Enabled: true, Mode: config.AuthModeKratos},
+				Auth:     config.AuthConfig{Mode: config.AuthModeKratos},
 				Database: config.DatabaseConfig{ExternalURL: "postgres://ext:5432/kratos"},
 			},
 			want: "localhost,127.0.0.1,vibewarden,kratos",
@@ -780,7 +780,7 @@ func TestEgressNoProxy(t *testing.T) {
 		{
 			name: "all services enabled",
 			cfg: config.Config{
-				Auth:          config.AuthConfig{Enabled: true, Mode: config.AuthModeKratos},
+				Auth:          config.AuthConfig{Mode: config.AuthModeKratos},
 				Secrets:       config.SecretsConfig{Enabled: true},
 				RateLimit:     config.RateLimitConfig{Store: "redis"},
 				Observability: config.ObservabilityConfig{Enabled: true},

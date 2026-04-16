@@ -39,7 +39,7 @@ func TestGenerate_ByteIdentical_AfterDTOMigration(t *testing.T) {
 	svc2 := generate.NewService(realRenderer())
 	handBuilt := ports.GeneratorInput{
 		Profile:              cfg.Profile,
-		AuthEnabled:          cfg.Auth.Enabled,
+		AuthEnabled:          cfg.Auth.Active(),
 		AuthMode:             string(cfg.Auth.Mode),
 		KratosExternal:       cfg.Kratos.External,
 		SecretsEnabled:       cfg.Secrets.Enabled,

@@ -232,7 +232,7 @@ func RegisterBuiltinPlugins(
 		}
 	}
 	registry.Register(authplugin.New(authplugin.Config{
-		Enabled:           cfg.Auth.Enabled,
+		Enabled:           cfg.Auth.Active(),
 		Mode:              authplugin.Mode(cfg.Auth.Mode),
 		KratosPublicURL:   cfg.Kratos.PublicURL,
 		KratosAdminURL:    cfg.Kratos.AdminURL,

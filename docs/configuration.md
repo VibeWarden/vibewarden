@@ -120,8 +120,7 @@ tls:
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `auth.enabled` | bool | `false` | Enable the authentication middleware |
-| `auth.mode` | string | `none` | Auth strategy: `none`, `kratos`, `jwt`, or `api-key` |
+| `auth.mode` | string | `none` | Auth strategy and single source of truth for whether auth is on. Set to `none` to disable, or `kratos`, `jwt`, or `api-key` to enable. See ADR-065 |
 | `auth.public_paths` | list | `[]` | Glob patterns that bypass auth. `/_vibewarden/*` is always public |
 | `auth.session_cookie_name` | string | `ory_kratos_session` | Kratos session cookie name |
 | `auth.login_url` | string | `/self-service/login/browser` | Redirect for unauthenticated users |
@@ -724,7 +723,6 @@ upstream:
   port: 3000
 
 auth:
-  enabled: true
   mode: jwt
   jwt:
     jwks_url: "https://dev-abc123.us.auth0.com/.well-known/jwks.json"

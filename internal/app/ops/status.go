@@ -142,11 +142,12 @@ func gatherPluginStatuses(cfg *config.Config) []PluginStatus {
 	ps = append(ps, PluginStatus{Name: "rate-limiting", Enabled: cfg.RateLimit.Enabled, Detail: rlDetail})
 
 	// Auth
+	authActive := cfg.Auth.Active()
 	authDetail := ""
-	if cfg.Auth.Enabled {
+	if authActive {
 		authDetail = fmt.Sprintf("kratos: %s", cfg.Kratos.PublicURL)
 	}
-	ps = append(ps, PluginStatus{Name: "auth", Enabled: cfg.Auth.Enabled, Detail: authDetail})
+	ps = append(ps, PluginStatus{Name: "auth", Enabled: authActive, Detail: authDetail})
 
 	// Metrics
 	ps = append(ps, PluginStatus{Name: "metrics", Enabled: cfg.Metrics.Enabled})

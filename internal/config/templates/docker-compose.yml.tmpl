@@ -7,7 +7,7 @@
 #   app         — Your application
 {{- end }}
 #   vibewarden  — Security sidecar (listens on :{{ .Server.Port }}, forwards to app on :{{ .Upstream.Port }})
-{{- if and .Auth.Enabled (eq (printf "%s" .Auth.Mode) "kratos") (not .Kratos.External) }}
+{{- if and (eq (printf "%s" .Auth.Mode) "kratos") (not .Kratos.External) }}
 #   kratos      — Ory Kratos identity server
 {{- if eq .Database.ExternalURL "" }}
 #   kratos-db   — PostgreSQL for Kratos (local container; set database.external_url to use an external instance)
@@ -113,13 +113,13 @@ services:
 {{- if .Egress.IsNetworkIsolationEnabled }}
       - vibewarden-external
 {{- end }}
-{{- if or (and .Auth.Enabled (eq (printf "%s" .Auth.Mode) "kratos") (not .Kratos.External)) .App.Build .App.Image .Secrets.Enabled (and (eq .RateLimit.Store "redis") (not (.RateLimit.Redis.HasExternalURL))) }}
+{{- if or (and (eq (printf "%s" .Auth.Mode) "kratos") (not .Kratos.External)) .App.Build .App.Image .Secrets.Enabled (and (eq .RateLimit.Store "redis") (not (.RateLimit.Redis.HasExternalURL))) }}
     depends_on:
 {{- if or .App.Build .App.Image }}
       app:
         condition: service_healthy
 {{- end }}
-{{- if and .Auth.Enabled (eq (printf "%s" .Auth.Mode) "kratos") (not .Kratos.External) }}
+{{- if and (eq (printf "%s" .Auth.Mode) "kratos") (not .Kratos.External) }}
       kratos:
         condition: service_healthy
 {{- end }}
@@ -135,7 +135,7 @@ services:
         condition: service_healthy
 {{- end }}
 {{- end }}
-{{- if and .Auth.Enabled (eq (printf "%s" .Auth.Mode) "kratos") (not .Kratos.External) }}
+{{- if and (eq (printf "%s" .Auth.Mode) "kratos") (not .Kratos.External) }}
 {{- if eq .Database.ExternalURL "" }}
 
   kratos-db:
@@ -258,7 +258,7 @@ services:
       - {{ .InternalNetworkName }}
     restart: "no"
 {{- end }}
-{{- if and .Auth.Enabled (eq (printf "%s" .Auth.Mode) "kratos") (not .Kratos.External) }}
+{{- if and (eq (printf "%s" .Auth.Mode) "kratos") (not .Kratos.External) }}
 
   seed-users:
     image: curlimages/curl:8.12.1
@@ -432,10 +432,10 @@ networks:
   vibewarden:
     driver: bridge
 {{- end }}
-{{- if or (and .Auth.Enabled (eq (printf "%s" .Auth.Mode) "kratos") (not .Kratos.External) (eq .Database.ExternalURL "")) .TLS.Enabled (and (eq .RateLimit.Store "redis") (not (.RateLimit.Redis.HasExternalURL))) .Observability.Enabled (and .Secrets.Enabled .IsProdProfile) }}
+{{- if or (and (eq (printf "%s" .Auth.Mode) "kratos") (not .Kratos.External) (eq .Database.ExternalURL "")) .TLS.Enabled (and (eq .RateLimit.Store "redis") (not (.RateLimit.Redis.HasExternalURL))) .Observability.Enabled (and .Secrets.Enabled .IsProdProfile) }}
 
 volumes:
-{{- if and .Auth.Enabled (eq (printf "%s" .Auth.Mode) "kratos") (not .Kratos.External) (eq .Database.ExternalURL "") }}
+{{- if and (eq (printf "%s" .Auth.Mode) "kratos") (not .Kratos.External) (eq .Database.ExternalURL "") }}
   kratos-db-data:
 {{- end }}
 {{- if .TLS.Enabled }}

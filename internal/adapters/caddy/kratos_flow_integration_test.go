@@ -22,7 +22,7 @@ import (
 // application upstream.
 //
 // A mock "Kratos" HTTP server and a mock "upstream app" HTTP server are used.
-// The Caddy proxy is configured with auth.enabled and auth.kratos_public_url
+// The Caddy proxy is configured with ports.AuthConfig.Enabled and auth.kratos_public_url
 // pointing to the mock Kratos server.
 func TestAdapter_Integration_KratosFlowProxied(t *testing.T) {
 	// Mock Kratos public API — responds to self-service flow paths.
