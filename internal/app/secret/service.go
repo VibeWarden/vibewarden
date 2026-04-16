@@ -147,9 +147,16 @@ func (s *Service) List(ctx context.Context) ([]string, error) {
 }
 
 // tryOpenBao attempts to retrieve a secret from OpenBao.
-// Returns nil, nil when OpenBao is not configured, not available, or the path
-// is empty (e.g. the "openbao" alias has no OpenBao path).
-// Returns nil, nil on health-check failure (triggering the fallback).
+//
+// Returns (nil, nil) — triggering the .credentials fallback — when:
+//   - OpenBao is not configured (secretStore is nil)
+//   - the path is empty (e.g. the "openbao" alias has no OpenBao path)
+//   - the health check fails (store unreachable)
+//   - the underlying Get returns ErrSecretNotFound
+//
+// Any other error from dynamic-credentials retrieval or static Get
+// (transport, auth, permission denied) is propagated so an operator
+// sees a broken OpenBao configuration instead of a silent fallback.
 func (s *Service) tryOpenBao(ctx context.Context, alias *domainsecret.WellKnownAlias, path string) (map[string]string, error) {
 	if s.secretStore == nil {
 		return nil, nil
@@ -166,10 +173,16 @@ func (s *Service) tryOpenBao(ctx context.Context, alias *domainsecret.WellKnownA
 	// For aliases with a dynamic role, try dynamic credentials first.
 	if alias != nil && alias.DynamicRole != "" {
 		data, err := s.tryDynamicCredentials(ctx, alias.DynamicRole)
-		if err == nil && data != nil {
+		if err != nil {
+			// Transport, auth, or any other failure during dynamic retrieval
+			// is propagated so an operator sees a broken dynamic-role setup
+			// instead of silently using stale static credentials.
+			return nil, fmt.Errorf("dynamic credentials for role %q: %w", alias.DynamicRole, err)
+		}
+		if data != nil {
 			return data, nil
 		}
-		// Dynamic failed — fall through to static path.
+		// No dynamic creds at this path (NotFound) — fall through to static.
 	}
 
 	data, err := s.secretStore.Get(ctx, path)
@@ -187,12 +200,18 @@ func (s *Service) tryOpenBao(ctx context.Context, alias *domainsecret.WellKnownA
 }
 
 // tryDynamicCredentials requests dynamic database credentials from OpenBao.
-// Returns nil, nil when the request fails (allows fallback to static path).
+// Returns nil, nil when no dynamic credentials exist at the role path (NotFound) —
+// the caller falls through to the static path. Any other error (transport,
+// auth, permission denied) is propagated so a broken dynamic-role setup
+// surfaces instead of silently masquerading as "no dynamic creds available."
 func (s *Service) tryDynamicCredentials(ctx context.Context, role string) (map[string]string, error) {
 	dynPath := "database/creds/" + role
 	data, err := s.secretStore.Get(ctx, dynPath)
 	if err != nil {
-		return nil, nil
+		if errors.Is(err, ports.ErrSecretNotFound) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("secretstore get %q: %w", dynPath, err)
 	}
 	return data, nil
 }
