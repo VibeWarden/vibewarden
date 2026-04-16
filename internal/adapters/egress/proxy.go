@@ -268,7 +268,7 @@ func (p *Proxy) Start() error {
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 	go func() {
-		if err := p.server.Serve(ln); err != nil && err != http.ErrServerClosed {
+		if err := p.server.Serve(ln); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			p.logger.Error("egress proxy stopped unexpectedly", "err", err)
 		}
 	}()

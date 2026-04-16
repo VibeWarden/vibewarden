@@ -2,6 +2,7 @@ package http
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net"
@@ -55,7 +56,7 @@ func (s *AdminServer) Start() error {
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 	go func() {
-		if serveErr := s.server.Serve(ln); serveErr != nil && serveErr != http.ErrServerClosed {
+		if serveErr := s.server.Serve(ln); serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
 			s.logger.Error("admin server stopped unexpectedly", "err", serveErr)
 		}
 	}()

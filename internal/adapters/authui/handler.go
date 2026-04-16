@@ -18,6 +18,7 @@ import (
 	"bytes"
 	"context"
 	"embed"
+	"errors"
 	"fmt"
 	"html/template"
 	"log/slog"
@@ -122,7 +123,7 @@ func (h *Handler) Start() error {
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 	go func() {
-		if serveErr := h.server.Serve(ln); serveErr != nil && serveErr != http.ErrServerClosed {
+		if serveErr := h.server.Serve(ln); serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
 			h.logger.Error("authui server stopped unexpectedly", "err", serveErr)
 		}
 	}()

@@ -3,6 +3,7 @@ package jwt
 import (
 	"context"
 	"crypto/rsa"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net"
@@ -63,7 +64,7 @@ func (s *DevServer) Start() error {
 	}
 
 	go func() {
-		if serveErr := s.server.Serve(ln); serveErr != nil && serveErr != http.ErrServerClosed {
+		if serveErr := s.server.Serve(ln); serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
 			s.logger.Error("dev jwks server stopped unexpectedly", slog.String("error", serveErr.Error()))
 		}
 	}()
