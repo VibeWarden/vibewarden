@@ -15,7 +15,9 @@ import (
 )
 
 // ErrSecretNotFound is returned when a secret cannot be found in any source.
-var ErrSecretNotFound = errors.New("secret not found")
+// Aliased to ports.ErrSecretNotFound — adapters wrap the port-level sentinel
+// so errors.Is works across the adapter-to-service boundary.
+var ErrSecretNotFound = ports.ErrSecretNotFound
 
 // ErrNoSourceAvailable is returned when neither OpenBao nor the credentials
 // file is available.
@@ -172,8 +174,14 @@ func (s *Service) tryOpenBao(ctx context.Context, alias *domainsecret.WellKnownA
 
 	data, err := s.secretStore.Get(ctx, path)
 	if err != nil {
-		// Path not found in OpenBao is not an error — return nil to trigger fallback.
-		return nil, nil
+		// Path not found is not an error — return nil to trigger the
+		// .credentials fallback. Transport, auth, or any other failure
+		// is propagated so an operator sees a misconfigured OpenBao
+		// instead of silently using local credentials.
+		if errors.Is(err, ports.ErrSecretNotFound) {
+			return nil, nil
+		}
+		return nil, fmt.Errorf("secretstore get %q: %w", path, err)
 	}
 	return data, nil
 }

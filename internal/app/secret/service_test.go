@@ -3,12 +3,14 @@ package secret_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"testing"
 
 	appsecret "github.com/vibewarden/vibewarden/internal/app/secret"
 	"github.com/vibewarden/vibewarden/internal/domain/generate"
 	domainsecret "github.com/vibewarden/vibewarden/internal/domain/secret"
+	"github.com/vibewarden/vibewarden/internal/ports"
 )
 
 // --- Fakes ---
@@ -16,14 +18,18 @@ import (
 // fakeSecretStore is a fake ports.SecretStore for testing.
 type fakeSecretStore struct {
 	healthErr error
+	getErr    error                        // when set, Get returns this error regardless of path
 	data      map[string]map[string]string // path -> key/values
 }
 
 func (f *fakeSecretStore) Get(_ context.Context, path string) (map[string]string, error) {
+	if f.getErr != nil {
+		return nil, f.getErr
+	}
 	if d, ok := f.data[path]; ok {
 		return d, nil
 	}
-	return nil, errors.New("not found")
+	return nil, fmt.Errorf("fake: %q: %w", path, ports.ErrSecretNotFound)
 }
 
 func (f *fakeSecretStore) Put(_ context.Context, _ string, _ map[string]string) error {
@@ -275,5 +281,68 @@ func TestService_List_Sorted(t *testing.T) {
 		if paths[i] < paths[i-1] {
 			t.Errorf("List() not sorted at index %d: %q > %q", i, paths[i-1], paths[i])
 		}
+	}
+}
+
+// TestService_Get_OpenBaoTransportErrorPropagates is the regression test for
+// the silent-masking bug (#812). Before the fix, tryOpenBao converted every
+// SecretStore.Get error into nil,nil — an operator running against a
+// misconfigured OpenBao (wrong token, network blip, auth expired) would see
+// the Service silently fall back to .credentials and never learn the primary
+// store was broken. After the fix, only wrapped ErrSecretNotFound triggers
+// fallback; any other error propagates up.
+func TestService_Get_OpenBaoTransportErrorPropagates(t *testing.T) {
+	transportErr := errors.New("connection refused")
+	store := &fakeSecretStore{
+		getErr: transportErr, // Health() is still healthy (nil); Get() fails hard.
+	}
+	credStore := &fakeCredentialStore{
+		creds: &generate.GeneratedCredentials{
+			PostgresPassword: "fallback-should-not-be-used",
+		},
+	}
+	svc := appsecret.NewService(store, credStore, "/tmp")
+
+	_, err := svc.Get(context.Background(), "postgres")
+	if err == nil {
+		t.Fatal("Get() returned nil error; want the transport error propagated")
+	}
+	if !errors.Is(err, transportErr) {
+		t.Errorf("Get() error = %v; want errors.Is(err, transportErr) == true", err)
+	}
+	if errors.Is(err, appsecret.ErrSecretNotFound) {
+		t.Error("Get() returned ErrSecretNotFound for a transport failure — masking regression")
+	}
+}
+
+// TestService_Get_NotFoundFallsBackToCredentials confirms the happy path: a
+// wrapped ErrSecretNotFound still triggers the fallback chain.
+func TestService_Get_NotFoundFallsBackToCredentials(t *testing.T) {
+	store := &fakeSecretStore{
+		// no data for "infra/postgres" — fake returns wrapped ErrSecretNotFound.
+	}
+	credStore := &fakeCredentialStore{
+		creds: &generate.GeneratedCredentials{
+			PostgresPassword: "cred-file-password",
+		},
+	}
+
+	// Write a .credentials file so fallback has something to read.
+	tmp := t.TempDir()
+	credPath := tmp + "/.credentials"
+	if err := os.WriteFile(credPath, []byte(`{"postgres_password":"cred-file-password"}`), 0o600); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+	svc := appsecret.NewService(store, credStore, tmp)
+
+	got, err := svc.Get(context.Background(), "postgres")
+	if err != nil {
+		t.Fatalf("Get() unexpected error: %v", err)
+	}
+	if got == nil {
+		t.Fatal("Get() returned nil; want a RetrievedSecret from credentials fallback")
+	}
+	if got.Source != domainsecret.SourceCredentialsFile {
+		t.Errorf("Source = %q, want %q", got.Source, domainsecret.SourceCredentialsFile)
 	}
 }

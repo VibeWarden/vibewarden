@@ -3,9 +3,16 @@ package ports
 
 import (
 	"context"
+	"errors"
 
 	domainsecret "github.com/vibewarden/vibewarden/internal/domain/secret"
 )
+
+// ErrSecretNotFound is the sentinel returned by SecretStore implementations
+// (and by SecretRetriever) when the requested path or alias does not exist.
+// Adapters must wrap this sentinel so callers can distinguish NotFound from
+// transport, auth, or other failures via errors.Is.
+var ErrSecretNotFound = errors.New("secret not found")
 
 // SecretStore is the outbound port for reading and writing secrets in an
 // external secret store (e.g. OpenBao / HashiCorp Vault KV v2).

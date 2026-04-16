@@ -20,6 +20,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/vibewarden/vibewarden/internal/ports"
 )
 
 // AuthMethod selects how the adapter authenticates to OpenBao.
@@ -240,7 +242,7 @@ func (a *Adapter) Get(ctx context.Context, path string) (map[string]string, erro
 	defer resp.Body.Close() //nolint:errcheck
 
 	if resp.StatusCode == http.StatusNotFound {
-		return nil, fmt.Errorf("openbao: secret not found at %q", path)
+		return nil, fmt.Errorf("openbao: secret not found at %q: %w", path, ports.ErrSecretNotFound)
 	}
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("openbao: get %q returned %d", path, resp.StatusCode)
