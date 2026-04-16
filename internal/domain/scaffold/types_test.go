@@ -1,10 +1,40 @@
 package scaffold_test
 
 import (
+	"errors"
+	"fmt"
 	"testing"
 
 	"github.com/vibewarden/vibewarden/internal/domain/scaffold"
 )
+
+func TestErrInsideExistingGitRepo(t *testing.T) {
+	t.Run("sentinel identity", func(t *testing.T) {
+		if scaffold.ErrInsideExistingGitRepo == nil {
+			t.Fatal("ErrInsideExistingGitRepo must not be nil")
+		}
+	})
+
+	t.Run("errors.Is matches directly", func(t *testing.T) {
+		if !errors.Is(scaffold.ErrInsideExistingGitRepo, scaffold.ErrInsideExistingGitRepo) {
+			t.Error("errors.Is must match the sentinel directly")
+		}
+	})
+
+	t.Run("errors.Is matches when wrapped", func(t *testing.T) {
+		wrapped := fmt.Errorf("context: %w", scaffold.ErrInsideExistingGitRepo)
+		if !errors.Is(wrapped, scaffold.ErrInsideExistingGitRepo) {
+			t.Error("errors.Is must match when the sentinel is wrapped")
+		}
+	})
+
+	t.Run("error message contains useful text", func(t *testing.T) {
+		msg := scaffold.ErrInsideExistingGitRepo.Error()
+		if msg == "" {
+			t.Error("error message must not be empty")
+		}
+	})
+}
 
 func TestProjectType_Constants(t *testing.T) {
 	tests := []struct {

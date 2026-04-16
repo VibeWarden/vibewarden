@@ -29,7 +29,7 @@ func TestNewContextCmd_HelpWhenNoSubcommand(t *testing.T) {
 func TestContextRefresh_NoExistingFiles_NoForce(t *testing.T) {
 	// When no context files exist and --force is not set, the command should
 	// report that nothing was found but not error.
-	dir := t.TempDir()
+	dir := scaffoldTestDir(t, false)
 
 	// Write a minimal vibewarden.yaml so config.Load succeeds.
 	cfgContent := `
@@ -60,7 +60,7 @@ upstream:
 }
 
 func TestContextRefresh_WithForce_CreatesFiles(t *testing.T) {
-	dir := t.TempDir()
+	dir := scaffoldTestDir(t, true)
 
 	cfgContent := `
 server:
@@ -77,13 +77,6 @@ tls:
 	if err := os.WriteFile(cfgPath, []byte(cfgContent), 0600); err != nil {
 		t.Fatalf("writing config: %v", err)
 	}
-
-	// Change to the temp dir so relative paths used by AgentContextService work.
-	origDir, _ := os.Getwd()
-	if err := os.Chdir(dir); err != nil {
-		t.Fatalf("chdir: %v", err)
-	}
-	t.Cleanup(func() { _ = os.Chdir(origDir) })
 
 	root := cmd.NewRootCmd("test")
 	var outBuf, errBuf bytes.Buffer
@@ -120,7 +113,7 @@ tls:
 }
 
 func TestContextRefresh_ExistingAgentsVibewarden_RefreshedWithoutForce(t *testing.T) {
-	dir := t.TempDir()
+	dir := scaffoldTestDir(t, true)
 
 	cfgContent := `
 server:
@@ -138,12 +131,6 @@ upstream:
 	if err := os.WriteFile(vibewardenFile, []byte("old content"), 0600); err != nil {
 		t.Fatalf("writing AGENTS-VIBEWARDEN.md: %v", err)
 	}
-
-	origDir, _ := os.Getwd()
-	if err := os.Chdir(dir); err != nil {
-		t.Fatalf("chdir: %v", err)
-	}
-	t.Cleanup(func() { _ = os.Chdir(origDir) })
 
 	root := cmd.NewRootCmd("test")
 	var outBuf, errBuf bytes.Buffer

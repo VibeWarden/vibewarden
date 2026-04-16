@@ -59,7 +59,7 @@ func TestInitProject_UsesAgentsVibewardenTemplate(t *testing.T) {
 	renderer := newTrackingRenderer()
 	svc := scaffoldapp.NewInitProjectService(renderer, nil)
 
-	parent := t.TempDir()
+	parent := scaffoldAppTestDir(t)
 	opts := scaffoldapp.InitProjectOptions{
 		ProjectName: "myapp",
 		Port:        3000,
@@ -80,7 +80,7 @@ func TestInitProject_UsesAgentsMDTemplate(t *testing.T) {
 	renderer := newTrackingRenderer()
 	svc := scaffoldapp.NewInitProjectService(renderer, nil)
 
-	parent := t.TempDir()
+	parent := scaffoldAppTestDir(t)
 	opts := scaffoldapp.InitProjectOptions{
 		ProjectName: "myapp",
 		Port:        3000,
@@ -100,7 +100,7 @@ func TestInitProject_NoCLAUDEmdTemplate(t *testing.T) {
 	renderer := newTrackingRenderer()
 	svc := scaffoldapp.NewInitProjectService(renderer, nil)
 
-	parent := t.TempDir()
+	parent := scaffoldAppTestDir(t)
 	opts := scaffoldapp.InitProjectOptions{
 		ProjectName: "myapp",
 		Port:        3000,
@@ -128,7 +128,7 @@ func TestInitProject_SharedTemplatesWithRealFS(t *testing.T) {
 	templateadapter := mustBuildRealRenderer(t)
 	svc := scaffoldapp.NewInitProjectService(templateadapter, nil)
 
-	parent := t.TempDir()
+	parent := scaffoldAppTestDir(t)
 	opts := scaffoldapp.InitProjectOptions{
 		ProjectName: "realapp",
 		Port:        3000,
@@ -186,7 +186,7 @@ func TestInitProject_DockerIgnore_WithRealFS(t *testing.T) {
 	r := mustBuildRealRenderer(t)
 	svc := scaffoldapp.NewInitProjectService(r, nil)
 
-	parent := t.TempDir()
+	parent := scaffoldAppTestDir(t)
 	opts := scaffoldapp.InitProjectOptions{
 		ProjectName: "dockerignoreapp",
 		Port:        3000,
@@ -231,7 +231,7 @@ func TestInitProject_WithRealFS_Description(t *testing.T) {
 	r := mustBuildRealRenderer(t)
 	svc := scaffoldapp.NewInitProjectService(r, nil)
 
-	parent := t.TempDir()
+	parent := scaffoldAppTestDir(t)
 	opts := scaffoldapp.InitProjectOptions{
 		ProjectName: "realwithDesc",
 		Port:        3000,

@@ -73,7 +73,7 @@ func TestAddAuthCmd(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			dir := t.TempDir()
+			dir := scaffoldTestDir(t, false)
 			if tt.initial != "" {
 				if err := os.WriteFile(filepath.Join(dir, "vibewarden.yaml"), []byte(tt.initial), 0o644); err != nil {
 					t.Fatalf("setup: %v", err)
@@ -134,7 +134,7 @@ func TestAddRateLimitCmd(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			dir := t.TempDir()
+			dir := scaffoldTestDir(t, false)
 			if err := os.WriteFile(filepath.Join(dir, "vibewarden.yaml"), []byte(tt.initial), 0o644); err != nil {
 				t.Fatalf("setup: %v", err)
 			}
@@ -202,7 +202,7 @@ func TestAddTLSCmd(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			dir := t.TempDir()
+			dir := scaffoldTestDir(t, false)
 			if tt.initial != "" {
 				if err := os.WriteFile(filepath.Join(dir, "vibewarden.yaml"), []byte(tt.initial), 0o644); err != nil {
 					t.Fatalf("setup: %v", err)
@@ -256,7 +256,7 @@ func TestAddAdminCmd(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			dir := t.TempDir()
+			dir := scaffoldTestDir(t, false)
 			if err := os.WriteFile(filepath.Join(dir, "vibewarden.yaml"), []byte(tt.initial), 0o644); err != nil {
 				t.Fatalf("setup: %v", err)
 			}
@@ -308,7 +308,7 @@ func TestAddMetricsCmd(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			dir := t.TempDir()
+			dir := scaffoldTestDir(t, false)
 			if err := os.WriteFile(filepath.Join(dir, "vibewarden.yaml"), []byte(tt.initial), 0o644); err != nil {
 				t.Fatalf("setup: %v", err)
 			}
@@ -339,7 +339,7 @@ func TestAddMetricsCmd(t *testing.T) {
 
 func TestAddCmd_AgentContextRegenerated(t *testing.T) {
 	// When add succeeds, existing agent context files should be regenerated.
-	dir := t.TempDir()
+	dir := scaffoldTestDir(t, false)
 
 	if err := os.WriteFile(filepath.Join(dir, "vibewarden.yaml"), []byte(minimalVibeWardenYAML), 0o644); err != nil {
 		t.Fatalf("setup: %v", err)

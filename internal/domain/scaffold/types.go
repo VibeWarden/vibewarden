@@ -3,6 +3,15 @@
 // and is safe to import from any layer.
 package scaffold
 
+import "errors"
+
+// ErrInsideExistingGitRepo is returned when a scaffold command is
+// invoked inside an existing populated git repository without --force.
+var ErrInsideExistingGitRepo = errors.New(
+	"refusing to scaffold inside an existing git repository; " +
+		"use --force to override",
+)
+
 // ProjectType represents the detected project type.
 type ProjectType string
 

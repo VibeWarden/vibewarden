@@ -96,7 +96,7 @@ func TestNewWrapCmd_FlagCombinations(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			dir := t.TempDir()
+			dir := scaffoldTestDir(t, false)
 
 			if tt.setup != nil {
 				tt.setup(dir)
@@ -142,7 +142,7 @@ func TestNewWrapCmd_FlagCombinations(t *testing.T) {
 
 func TestNewWrapCmd_AlwaysGeneratesAgentContextFiles(t *testing.T) {
 	// vibew wrap always generates AGENTS-VIBEWARDEN.md and AGENTS.md.
-	dir := t.TempDir()
+	dir := scaffoldTestDir(t, false)
 
 	root := cmd.NewRootCmd("test")
 	var outBuf bytes.Buffer
@@ -169,7 +169,7 @@ func TestNewWrapCmd_AlwaysGeneratesAgentContextFiles(t *testing.T) {
 
 func TestNewWrapCmd_NoCLAUDEmdGenerated(t *testing.T) {
 	// vibew wrap must NOT generate .claude/CLAUDE.md.
-	dir := t.TempDir()
+	dir := scaffoldTestDir(t, false)
 
 	root := cmd.NewRootCmd("test")
 	root.SetOut(&bytes.Buffer{})
@@ -251,7 +251,7 @@ func TestNewWrapCmd_RenderedYAMLValid(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			dir := t.TempDir()
+			dir := scaffoldTestDir(t, false)
 
 			root := cmd.NewRootCmd("test")
 			allArgs := append([]string{"wrap", dir}, tt.args...)
@@ -279,7 +279,7 @@ func TestNewWrapCmd_RenderedYAMLValid(t *testing.T) {
 // TestNewWrapCmd_AppBuildDefaultsToDot verifies that the generated
 // vibewarden.yaml defaults to app.build = "." rather than app.image.
 func TestNewWrapCmd_AppBuildDefaultsToDot(t *testing.T) {
-	parent := t.TempDir()
+	parent := scaffoldTestDir(t, false)
 	projectDir := filepath.Join(parent, "mywebapp")
 	if err := os.MkdirAll(projectDir, 0o750); err != nil {
 		t.Fatalf("mkdir: %v", err)
@@ -312,7 +312,7 @@ func TestNewWrapCmd_AppBuildDefaultsToDot(t *testing.T) {
 
 func TestNewWrapCmd_SuccessMessage(t *testing.T) {
 	t.Run("success message mentions vibew dev", func(t *testing.T) {
-		dir := t.TempDir()
+		dir := scaffoldTestDir(t, false)
 		root := cmd.NewRootCmd("test")
 		var outBuf strings.Builder
 		root.SetOut(&outBuf)
@@ -332,7 +332,7 @@ func TestNewWrapCmd_SuccessMessage(t *testing.T) {
 	})
 
 	t.Run("success message does not mention docker compose up", func(t *testing.T) {
-		dir := t.TempDir()
+		dir := scaffoldTestDir(t, false)
 		root := cmd.NewRootCmd("test")
 		var outBuf strings.Builder
 		root.SetOut(&outBuf)

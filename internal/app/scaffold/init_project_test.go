@@ -5,18 +5,20 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
 
 	scaffoldapp "github.com/vibewarden/vibewarden/internal/app/scaffold"
+	domainscaffold "github.com/vibewarden/vibewarden/internal/domain/scaffold"
 )
 
 func TestInitProject_CreatesStructure(t *testing.T) {
 	renderer := newFakeRenderer()
 	svc := scaffoldapp.NewInitProjectService(renderer, nil)
 
-	parent := t.TempDir()
+	parent := scaffoldAppTestDir(t)
 	opts := scaffoldapp.InitProjectOptions{
 		ProjectName: "myapp",
 		Port:        3000,
@@ -42,7 +44,7 @@ func TestInitProject_DefaultsPort(t *testing.T) {
 	renderer := newFakeRenderer()
 	svc := scaffoldapp.NewInitProjectService(renderer, nil)
 
-	parent := t.TempDir()
+	parent := scaffoldAppTestDir(t)
 	opts := scaffoldapp.InitProjectOptions{
 		ProjectName: "noport",
 		// Port deliberately zero — should default to 3000.
@@ -59,7 +61,7 @@ func TestInitProject_CreatesVersionFile(t *testing.T) {
 	renderer := newFakeRenderer()
 	svc := scaffoldapp.NewInitProjectService(renderer, nil)
 
-	parent := t.TempDir()
+	parent := scaffoldAppTestDir(t)
 	opts := scaffoldapp.InitProjectOptions{
 		ProjectName: "vertest",
 		Port:        3000,
@@ -77,7 +79,7 @@ func TestInitProject_RejectsNonEmptyDir(t *testing.T) {
 	renderer := newFakeRenderer()
 	svc := scaffoldapp.NewInitProjectService(renderer, nil)
 
-	parent := t.TempDir()
+	parent := scaffoldAppTestDir(t)
 	// Pre-create the directory with a file.
 	projectDir := filepath.Join(parent, "occupied")
 	if err := os.MkdirAll(projectDir, 0o750); err != nil {
@@ -105,7 +107,7 @@ func TestInitProject_ForceOverwritesExistingDir(t *testing.T) {
 	renderer := newFakeRenderer()
 	svc := scaffoldapp.NewInitProjectService(renderer, nil)
 
-	parent := t.TempDir()
+	parent := scaffoldAppTestDir(t)
 	projectDir := filepath.Join(parent, "forcetest")
 	if err := os.MkdirAll(projectDir, 0o750); err != nil {
 		t.Fatalf("setup: %v", err)
@@ -131,7 +133,7 @@ func TestInitProject_RejectsEmptyProjectName(t *testing.T) {
 	renderer := newFakeRenderer()
 	svc := scaffoldapp.NewInitProjectService(renderer, nil)
 
-	parent := t.TempDir()
+	parent := scaffoldAppTestDir(t)
 	opts := scaffoldapp.InitProjectOptions{
 		ProjectName: "",
 		Port:        3000,
@@ -157,7 +159,7 @@ func TestInitProject_RejectsProjectNameWithSlash(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			parent := t.TempDir()
+			parent := scaffoldAppTestDir(t)
 			opts := scaffoldapp.InitProjectOptions{
 				ProjectName: tt.projectName,
 				Port:        3000,
@@ -187,7 +189,7 @@ func TestInitProject_WritesProjectMD(t *testing.T) {
 			renderer := newFakeRenderer()
 			svc := scaffoldapp.NewInitProjectService(renderer, nil)
 
-			parent := t.TempDir()
+			parent := scaffoldAppTestDir(t)
 			opts := scaffoldapp.InitProjectOptions{
 				ProjectName: "myapp",
 				Port:        3000,
@@ -215,7 +217,7 @@ func TestInitProject_DescriptionInData(t *testing.T) {
 	tracker := newTrackingRenderer()
 	svc := scaffoldapp.NewInitProjectService(tracker, nil)
 
-	parent := t.TempDir()
+	parent := scaffoldAppTestDir(t)
 	opts := scaffoldapp.InitProjectOptions{
 		ProjectName: "descapp",
 		Port:        3000,
@@ -238,7 +240,7 @@ func TestInitProject_ProjectMD_RenderError(t *testing.T) {
 	renderer := newSelectiveErrorRenderer("agents/project.md.tmpl", errors.New("disk full"))
 	svc := scaffoldapp.NewInitProjectService(renderer, nil)
 
-	parent := t.TempDir()
+	parent := scaffoldAppTestDir(t)
 	opts := scaffoldapp.InitProjectOptions{
 		ProjectName: "projmderr",
 		Port:        3000,
@@ -257,7 +259,7 @@ func TestInitProject_ProjectMD_RenderExistError(t *testing.T) {
 	renderer := newSelectiveErrorRenderer("agents/project.md.tmpl", fmt.Errorf("file exists: %w", os.ErrExist))
 	svc := scaffoldapp.NewInitProjectService(renderer, nil)
 
-	parent := t.TempDir()
+	parent := scaffoldAppTestDir(t)
 	opts := scaffoldapp.InitProjectOptions{
 		ProjectName: "projmdexist",
 		Port:        3000,
@@ -279,7 +281,7 @@ func TestInitProject_VibewaryenYAML_RenderError(t *testing.T) {
 	renderer := newSelectiveErrorRenderer("init-vibewarden.yaml.tmpl", errors.New("disk full"))
 	svc := scaffoldapp.NewInitProjectService(renderer, nil)
 
-	parent := t.TempDir()
+	parent := scaffoldAppTestDir(t)
 	opts := scaffoldapp.InitProjectOptions{
 		ProjectName: "vwyamlerr",
 		Port:        3000,
@@ -297,7 +299,7 @@ func TestInitProject_VibewaryenYAML_RenderExistError(t *testing.T) {
 	renderer := newSelectiveErrorRenderer("init-vibewarden.yaml.tmpl", fmt.Errorf("file exists: %w", os.ErrExist))
 	svc := scaffoldapp.NewInitProjectService(renderer, nil)
 
-	parent := t.TempDir()
+	parent := scaffoldAppTestDir(t)
 	opts := scaffoldapp.InitProjectOptions{
 		ProjectName: "vwyamlexist",
 		Port:        3000,
@@ -318,7 +320,7 @@ func TestInitProject_CreatesAgentsVibewardenMD(t *testing.T) {
 	renderer := newTrackingRenderer()
 	svc := scaffoldapp.NewInitProjectService(renderer, nil)
 
-	parent := t.TempDir()
+	parent := scaffoldAppTestDir(t)
 	opts := scaffoldapp.InitProjectOptions{
 		ProjectName: "agentsvw",
 		Port:        3000,
@@ -352,7 +354,7 @@ func TestInitProject_CreatesAgentsMD_WhenMissing(t *testing.T) {
 	renderer := newTrackingRenderer()
 	svc := scaffoldapp.NewInitProjectService(renderer, nil)
 
-	parent := t.TempDir()
+	parent := scaffoldAppTestDir(t)
 	opts := scaffoldapp.InitProjectOptions{
 		ProjectName: "agentsmd",
 		Port:        3000,
@@ -376,7 +378,7 @@ func TestInitProject_AppendsToAgentsMD_WhenMissingRef(t *testing.T) {
 	renderer := newFakeRenderer()
 	svc := scaffoldapp.NewInitProjectService(renderer, nil)
 
-	parent := t.TempDir()
+	parent := scaffoldAppTestDir(t)
 	projectDir := filepath.Join(parent, "appendtest")
 	if err := os.MkdirAll(projectDir, 0o750); err != nil {
 		t.Fatalf("setup: %v", err)
@@ -417,7 +419,7 @@ func TestInitProject_PreservesAgentsMD_WhenHasRef(t *testing.T) {
 	renderer := newFakeRenderer()
 	svc := scaffoldapp.NewInitProjectService(renderer, nil)
 
-	parent := t.TempDir()
+	parent := scaffoldAppTestDir(t)
 	projectDir := filepath.Join(parent, "preservetest")
 	if err := os.MkdirAll(projectDir, 0o750); err != nil {
 		t.Fatalf("setup: %v", err)
@@ -454,7 +456,7 @@ func TestInitProject_OverwritesAgentsVibewardenMD(t *testing.T) {
 	renderer := newFakeRenderer()
 	svc := scaffoldapp.NewInitProjectService(renderer, nil)
 
-	parent := t.TempDir()
+	parent := scaffoldAppTestDir(t)
 	projectDir := filepath.Join(parent, "overwritevw")
 	if err := os.MkdirAll(projectDir, 0o750); err != nil {
 		t.Fatalf("setup: %v", err)
@@ -490,7 +492,7 @@ func TestInitProject_NoClaudeCommandsDir(t *testing.T) {
 	renderer := newFakeRenderer()
 	svc := scaffoldapp.NewInitProjectService(renderer, nil)
 
-	parent := t.TempDir()
+	parent := scaffoldAppTestDir(t)
 	opts := scaffoldapp.InitProjectOptions{
 		ProjectName: "nocommands",
 		Port:        3000,
@@ -512,7 +514,7 @@ func TestInitProject_DockerIgnore_RenderError(t *testing.T) {
 	renderer := newSelectiveErrorRenderer("init-dockerignore.tmpl", errors.New("disk full"))
 	svc := scaffoldapp.NewInitProjectService(renderer, nil)
 
-	parent := t.TempDir()
+	parent := scaffoldAppTestDir(t)
 	opts := scaffoldapp.InitProjectOptions{
 		ProjectName: "dierr",
 		Port:        3000,
@@ -530,7 +532,7 @@ func TestInitProject_DockerIgnore_RenderExistError(t *testing.T) {
 	renderer := newSelectiveErrorRenderer("init-dockerignore.tmpl", fmt.Errorf("file exists: %w", os.ErrExist))
 	svc := scaffoldapp.NewInitProjectService(renderer, nil)
 
-	parent := t.TempDir()
+	parent := scaffoldAppTestDir(t)
 	opts := scaffoldapp.InitProjectOptions{
 		ProjectName: "diexist",
 		Port:        3000,
@@ -550,7 +552,7 @@ func TestInitProject_NoCLAUDEmd(t *testing.T) {
 	renderer := newFakeRenderer()
 	svc := scaffoldapp.NewInitProjectService(renderer, nil)
 
-	parent := t.TempDir()
+	parent := scaffoldAppTestDir(t)
 	opts := scaffoldapp.InitProjectOptions{
 		ProjectName: "noclaudemd",
 		Port:        3000,
@@ -564,6 +566,152 @@ func TestInitProject_NoCLAUDEmd(t *testing.T) {
 	if _, err := os.Stat(claudeMDPath); err == nil {
 		t.Errorf("CLAUDE.md must not be created by vibew init, but it exists at %s", claudeMDPath)
 	}
+}
+
+// TestInitProject_RejectsExistingGitRepo verifies that InitProject returns
+// ErrInsideExistingGitRepo when the parent directory is inside an existing
+// populated git repository and --force is not set.
+func TestInitProject_RejectsExistingGitRepo(t *testing.T) {
+	dir := scaffoldAppTestDir(t)
+
+	// Create a git repo with a commit inside the temp dir.
+	repoDir := filepath.Join(dir, "existingrepo")
+	if err := os.MkdirAll(repoDir, 0o750); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	initGitRepoWithCommit(t, repoDir)
+
+	renderer := newFakeRenderer()
+	svc := scaffoldapp.NewInitProjectService(renderer, nil)
+
+	opts := scaffoldapp.InitProjectOptions{
+		ProjectName: "myapp",
+		Port:        3000,
+		Force:       false,
+	}
+
+	err := svc.InitProject(context.Background(), repoDir, opts)
+	if err == nil {
+		t.Fatal("expected error when scaffolding inside existing git repo, got nil")
+	}
+	if !errors.Is(err, domainscaffold.ErrInsideExistingGitRepo) {
+		t.Errorf("expected ErrInsideExistingGitRepo, got: %v", err)
+	}
+}
+
+// TestInitProject_ForceBypassesGitRepoCheck verifies that --force skips the
+// git repo safety check.
+func TestInitProject_ForceBypassesGitRepoCheck(t *testing.T) {
+	dir := scaffoldAppTestDir(t)
+
+	repoDir := filepath.Join(dir, "forcerepo")
+	if err := os.MkdirAll(repoDir, 0o750); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	initGitRepoWithCommit(t, repoDir)
+
+	renderer := newFakeRenderer()
+	svc := scaffoldapp.NewInitProjectService(renderer, nil)
+
+	opts := scaffoldapp.InitProjectOptions{
+		ProjectName: "myapp",
+		Port:        3000,
+		Force:       true,
+	}
+
+	if err := svc.InitProject(context.Background(), repoDir, opts); err != nil {
+		t.Fatalf("InitProject with --force should succeed in existing git repo, got: %v", err)
+	}
+}
+
+// TestInitProject_AllowsEmptyGitRepo verifies that a freshly git-init'd repo
+// with no commits is safe to scaffold into (without --force).
+func TestInitProject_AllowsEmptyGitRepo(t *testing.T) {
+	dir := scaffoldAppTestDir(t)
+
+	repoDir := filepath.Join(dir, "emptyrepo")
+	if err := os.MkdirAll(repoDir, 0o750); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	// git init only, no commits.
+	gitInit := exec.CommandContext(context.Background(), "git", "init")
+	gitInit.Dir = repoDir
+	gitInit.Env = cleanTestGitEnv(dir)
+	if err := gitInit.Run(); err != nil {
+		t.Fatalf("git init: %v", err)
+	}
+
+	renderer := newFakeRenderer()
+	svc := scaffoldapp.NewInitProjectService(renderer, nil)
+
+	opts := scaffoldapp.InitProjectOptions{
+		ProjectName: "myapp",
+		Port:        3000,
+		Force:       false,
+	}
+
+	if err := svc.InitProject(context.Background(), repoDir, opts); err != nil {
+		t.Fatalf("InitProject should succeed in empty git repo, got: %v", err)
+	}
+}
+
+// TestInitProject_AllowsNonGitDir verifies that scaffolding in a directory
+// that is not inside any git repo works without --force.
+func TestInitProject_AllowsNonGitDir(t *testing.T) {
+	dir := scaffoldAppTestDir(t)
+
+	renderer := newFakeRenderer()
+	svc := scaffoldapp.NewInitProjectService(renderer, nil)
+
+	opts := scaffoldapp.InitProjectOptions{
+		ProjectName: "myapp",
+		Port:        3000,
+		Force:       false,
+	}
+
+	if err := svc.InitProject(context.Background(), dir, opts); err != nil {
+		t.Fatalf("InitProject should succeed in non-git dir, got: %v", err)
+	}
+}
+
+// initGitRepoWithCommit creates a git repo with one commit inside dir.
+func initGitRepoWithCommit(t *testing.T, dir string) {
+	t.Helper()
+	env := cleanTestGitEnv(dir)
+	cmds := [][]string{
+		{"git", "init"},
+		{"git", "config", "user.email", "test@example.com"},
+		{"git", "config", "user.name", "Test"},
+		{"git", "commit", "--allow-empty", "-m", "initial"},
+	}
+	for _, args := range cmds {
+		cmd := exec.CommandContext(context.Background(), args[0], args[1:]...) //nolint:gosec // args are static test strings
+		cmd.Dir = dir
+		cmd.Env = env
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("%v: %v\n%s", args, err, out)
+		}
+	}
+}
+
+// cleanTestGitEnv returns an environment for git commands in tests that
+// sets GIT_CEILING_DIRECTORIES and clears GIT_DIR/GIT_WORK_TREE.
+func cleanTestGitEnv(dir string) []string {
+	var env []string
+	for _, e := range os.Environ() {
+		key := e
+		if idx := strings.IndexByte(e, '='); idx >= 0 {
+			key = e[:idx]
+		}
+		switch key {
+		case "GIT_DIR", "GIT_WORK_TREE", "GIT_CEILING_DIRECTORIES":
+			continue
+		default:
+			env = append(env, e)
+		}
+	}
+	env = append(env, "GIT_CEILING_DIRECTORIES="+filepath.Dir(dir))
+	return env
 }
 
 // mustExist is a test helper that fails if the file at path does not exist.

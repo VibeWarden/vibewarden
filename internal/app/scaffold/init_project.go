@@ -81,6 +81,13 @@ func (s *InitProjectService) InitProject(ctx context.Context, parentDir string, 
 
 	projectDir := filepath.Join(filepath.Clean(parentDir), opts.ProjectName)
 
+	// Safety check: refuse to scaffold inside an existing populated git repo
+	// unless --force is passed. This prevents accidental corruption of the
+	// host repository (issue #844).
+	if err := checkNotInsideGitRepo(parentDir, opts.Force); err != nil {
+		return err
+	}
+
 	if !opts.Force {
 		if err := assertEmptyOrAbsent(projectDir); err != nil {
 			return err
@@ -169,6 +176,11 @@ func (s *InitProjectService) InitProject(ctx context.Context, parentDir string, 
 
 // initGitRepo runs `git init` and creates an initial commit in projectDir.
 // Requires git to be installed. Returns an error if git is not available.
+//
+// GIT_CEILING_DIRECTORIES is set to dir on every exec.Cmd to prevent git
+// from discovering any parent repository. GIT_DIR and GIT_WORK_TREE are
+// cleared from the inherited environment for the same reason. This is the
+// root-cause fix for issue #844 (scaffold tests polluting the host repo).
 func (s *InitProjectService) initGitRepo(dir string) error {
 	cmds := []struct {
 		args []string
@@ -177,9 +189,14 @@ func (s *InitProjectService) initGitRepo(dir string) error {
 		{[]string{"git", "add", "."}},
 		{[]string{"git", "commit", "-m", "Initial commit — scaffolded with vibew init"}},
 	}
+	// Build a clean environment: inherit os.Environ() but strip GIT_DIR and
+	// GIT_WORK_TREE, then add GIT_CEILING_DIRECTORIES to prevent upward
+	// traversal.
+	env := cleanGitEnv(dir)
 	for _, c := range cmds {
 		cmd := exec.CommandContext(context.Background(), c.args[0], c.args[1:]...) //nolint:gosec // args are static strings
 		cmd.Dir = dir
+		cmd.Env = env
 		cmd.Stdout = io.Discard
 		cmd.Stderr = io.Discard
 		if err := cmd.Run(); err != nil {
@@ -187,6 +204,28 @@ func (s *InitProjectService) initGitRepo(dir string) error {
 		}
 	}
 	return nil
+}
+
+// cleanGitEnv returns a copy of the current process environment with
+// GIT_DIR and GIT_WORK_TREE removed and GIT_CEILING_DIRECTORIES set to dir.
+// This prevents git commands from discovering or mutating any repository
+// above dir.
+func cleanGitEnv(dir string) []string {
+	var env []string
+	for _, e := range os.Environ() {
+		key := e
+		if idx := strings.IndexByte(e, '='); idx >= 0 {
+			key = e[:idx]
+		}
+		switch key {
+		case "GIT_DIR", "GIT_WORK_TREE", "GIT_CEILING_DIRECTORIES":
+			continue // strip these; we set our own ceiling below
+		default:
+			env = append(env, e)
+		}
+	}
+	env = append(env, "GIT_CEILING_DIRECTORIES="+dir)
+	return env
 }
 
 // renderAgentsVibewardenMD renders AGENTS-VIBEWARDEN.md from the shared
@@ -249,4 +288,59 @@ func assertEmptyOrAbsent(projectDir string) error {
 		)
 	}
 	return nil
+}
+
+// checkNotInsideGitRepo returns ErrInsideExistingGitRepo when dir is
+// inside a git repository that has at least one commit. The check
+// walks upward from dir looking for a .git directory (or file, for
+// worktrees). When found, it verifies the repo has commits by
+// running `git rev-parse HEAD` in the repo root.
+//
+// The check is skipped when force is true.
+func checkNotInsideGitRepo(dir string, force bool) error {
+	if force {
+		return nil
+	}
+
+	// Walk upward looking for .git.
+	current := filepath.Clean(dir)
+	for {
+		gitPath := filepath.Join(current, ".git")
+		if _, err := os.Stat(gitPath); err == nil {
+			// .git exists -- could be a directory (normal repo) or a
+			// file (worktree). Either way, we are inside a git repo.
+
+			// Verify the repo has commits. An empty repo (just
+			// git-init'd with no commits) is safe to scaffold into.
+			//
+			// Use cleanGitEnv to strip GIT_DIR and GIT_WORK_TREE from
+			// the inherited environment. Setting GIT_DIR="" (as tests
+			// do) causes git to fail with "not a git repository" which
+			// would incorrectly allow scaffolding.
+			cmd := exec.CommandContext(
+				context.Background(),
+				"git", "rev-parse", "HEAD",
+			)
+			cmd.Dir = current
+			cmd.Env = cleanGitEnv(current)
+			cmd.Stdout = io.Discard
+			cmd.Stderr = io.Discard
+			if err := cmd.Run(); err != nil {
+				// No commits yet -- repo is effectively empty. Allow.
+				return nil
+			}
+
+			return fmt.Errorf(
+				"directory %q is inside git repository rooted at %q: %w",
+				dir, current, domainscaffold.ErrInsideExistingGitRepo,
+			)
+		}
+
+		parent := filepath.Dir(current)
+		if parent == current {
+			// Reached filesystem root without finding .git.
+			return nil
+		}
+		current = parent
+	}
 }

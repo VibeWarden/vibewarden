@@ -6,12 +6,29 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	scaffoldapp "github.com/vibewarden/vibewarden/internal/app/scaffold"
 	"github.com/vibewarden/vibewarden/internal/domain/scaffold"
 )
+
+// scaffoldAppTestDir creates an isolated temporary directory for scaffold
+// app-layer tests. It sets GIT_CEILING_DIRECTORIES to prevent git from
+// discovering the host repo, and clears GIT_DIR and GIT_WORK_TREE.
+// The environment is restored automatically when the test completes.
+func scaffoldAppTestDir(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+
+	// Prevent git from walking above the temp dir.
+	t.Setenv("GIT_CEILING_DIRECTORIES", filepath.Dir(dir))
+	t.Setenv("GIT_DIR", "")
+	t.Setenv("GIT_WORK_TREE", "")
+
+	return dir
+}
 
 // fakeRenderer is a test double for ports.TemplateRenderer.
 // It records calls and returns canned output.
