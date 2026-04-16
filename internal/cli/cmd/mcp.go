@@ -19,9 +19,9 @@ import (
 // All diagnostic output goes to stderr so it does not pollute the MCP stream.
 //
 // The tool list in --help is generated at command-construction time from the
-// live registry (see buildLongHelp / mcpToolSummary). Adding a new tool in
-// internal/mcp/ automatically shows up in "vibew mcp --help" — the list
-// cannot drift out of sync with the registered handlers.
+// live registry (see buildMCPLongHelp and mcpFirstSentence). Adding a new
+// tool in internal/mcp/ automatically shows up in "vibew mcp --help" — the
+// list cannot drift out of sync with the registered handlers.
 //
 // Intended usage in an AI agent / IDE MCP configuration:
 //
