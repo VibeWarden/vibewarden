@@ -12,7 +12,7 @@ import (
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
 
-// fakeKeyStore is a test double for KeyStore.
+// fakeKeyStore is a test double for ports.SecretKVReader.
 type fakeKeyStore struct {
 	data      map[string]string
 	err       error
@@ -35,7 +35,7 @@ func (f *fakeKeyStore) Get(_ context.Context, _ string) (map[string]string, erro
 func TestNewOpenBaoValidator_Errors(t *testing.T) {
 	tests := []struct {
 		name     string
-		store    KeyStore
+		store    ports.SecretKVReader
 		path     string
 		cacheTTL time.Duration
 		wantErr  bool
