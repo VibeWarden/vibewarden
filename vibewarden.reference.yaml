@@ -549,19 +549,19 @@ cors:
 #   path_traversal   — Directory traversal sequences (e.g. "../..")
 #   command_injection — Shell metacharacters and command-chaining patterns
 #
-# When a request matches an active rule, VibeWarden responds immediately with:
-#   HTTP 400 Bad Request   (mode: block, default)
-#   HTTP 200 forwarded     (mode: detect  — request passes through, attack is logged)
+# When a request matches an active rule, VibeWarden responds with:
+#   HTTP 200 forwarded     (mode: detect, default — request passes through, attack is logged)
+#   HTTP 400 Bad Request   (mode: block            — request is rejected)
 #
 waf:
-  # Enable the WAF middleware (default: false).
-  enabled: false
+  # Enable the WAF middleware (default: true — enabled in detect mode).
+  enabled: true
 
   # Detection mode controls what happens when a rule fires.
+  # "detect" — pass the request through but emit a structured log event (default).
+  #            Use detect mode to audit traffic before switching to block.
   # "block"  — reject the request with 400 Bad Request (recommended for production).
-  # "detect" — pass the request through but emit a structured log event.
-  #            Use detect mode to audit traffic before switching to block mode.
-  mode: block
+  mode: detect
 
   # Content-Type validation — rejects requests whose Content-Type is not in the
   # allowed list with 415 Unsupported Media Type.
