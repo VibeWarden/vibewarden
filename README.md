@@ -102,9 +102,7 @@ Both `vibew init` and `vibew wrap` produce the same project scaffolding:
 vibewarden.yaml          # Main config — commit this
 vibew                    # CLI binary (installed via install script)
 .vibewarden-version      # Pinned version
-.claude/CLAUDE.md        # AI agent context (Claude Code)
-.cursor/rules            # AI agent context (Cursor)
-AGENTS.md                # AI agent context (generic)
+AGENTS.md                # AI agent context (generic — Claude Code, Cursor, etc.)
 AGENTS-VIBEWARDEN.md     # Tool-agnostic AI agent context (all agents)
 ```
 
@@ -295,8 +293,9 @@ add VibeWarden. Use `vibew add` to enable individual features after the initial 
 `vibew wrap` generates context files for your AI coding assistant. When you say
 "add a login page," the AI knows to use Kratos flows instead of building auth from scratch.
 
-Supported agents: **Claude Code** (`.claude/CLAUDE.md`), **Cursor** (`.cursor/rules`),
-**generic** (`AGENTS.md`).
+VibeWarden writes two files that any modern AI coding agent (Claude Code, Cursor,
+Aider, Continue, etc.) will read: **`AGENTS.md`** (conventional, tool-agnostic)
+and **`AGENTS-VIBEWARDEN.md`** (VibeWarden-specific context).
 
 Regenerate after config changes:
 
