@@ -2,6 +2,7 @@ package metrics
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net"
@@ -50,7 +51,7 @@ func (s *Server) Start() error {
 	}
 	go func() {
 		// Serve until stopped; ErrServerClosed is the expected shutdown signal.
-		if serveErr := s.server.Serve(ln); serveErr != nil && serveErr != http.ErrServerClosed {
+		if serveErr := s.server.Serve(ln); serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
 			s.logger.Error("metrics server stopped unexpectedly", "err", serveErr)
 		}
 	}()
