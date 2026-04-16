@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net"
 	"testing"
+	"time"
 
 	egressadapter "github.com/vibewarden/vibewarden/internal/adapters/egress"
 )
@@ -242,4 +243,45 @@ func contains(s, substr string) bool {
 			}
 			return false
 		}())
+}
+
+// TestSSRFGuard_GuardsAreIndependent pins the no-global-state invariant.
+// Two guards constructed from different configs must not share mutable
+// state — the built-in private ranges were previously a package-level
+// slice populated in init(); #815 moved them onto the guard. A regression
+// that reintroduced the global would cause allowed-private exemptions on
+// one guard to leak into another.
+func TestSSRFGuard_GuardsAreIndependent(t *testing.T) {
+	// Guard A: allows 10.0.0.0/8 as an exemption.
+	guardA, err := egressadapter.NewSSRFGuard(egressadapter.SSRFGuardConfig{
+		BlockPrivate:   true,
+		AllowedPrivate: []string{"10.0.0.0/8"},
+	})
+	if err != nil {
+		t.Fatalf("guardA construction: %v", err)
+	}
+
+	// Guard B: no exemptions — 10.0.0.1 must still be blocked here.
+	guardB, err := egressadapter.NewSSRFGuard(egressadapter.SSRFGuardConfig{
+		BlockPrivate: true,
+	})
+	if err != nil {
+		t.Fatalf("guardB construction: %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
+	defer cancel()
+
+	// Guard A: 10.0.0.1 is exempted -> should NOT be blocked.
+	_, errA := guardA.DialContext(ctx, "tcp", "10.0.0.1:1")
+	var blockedA *egressadapter.SSRFBlockedError
+	if errors.As(errA, &blockedA) {
+		t.Errorf("guardA blocked 10.0.0.1 despite AllowedPrivate exemption")
+	}
+	// Guard B: no exemption -> must be blocked.
+	_, errB := guardB.DialContext(ctx, "tcp", "10.0.0.1:1")
+	var blockedB *egressadapter.SSRFBlockedError
+	if !errors.As(errB, &blockedB) {
+		t.Errorf("guardB did NOT block 10.0.0.1; got %v (expected SSRFBlockedError)", errB)
+	}
 }
