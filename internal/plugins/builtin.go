@@ -24,8 +24,8 @@ import (
 // based on the provided configuration. Plugin registration order matches plugin
 // priority (low number → runs first in the request chain).
 //
-// This function is called automatically by internal/app/serve.RunServe and should
-// not be called directly unless composing a custom startup sequence.
+// This function is called automatically by the composition root in cmd/vibewarden/
+// and should not be called directly unless composing a custom startup sequence.
 func RegisterBuiltinPlugins(
 	registry *Registry,
 	cfg *config.Config,

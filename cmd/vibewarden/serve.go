@@ -4,8 +4,6 @@ import (
 	"context"
 
 	"github.com/spf13/cobra"
-
-	appserve "github.com/vibewarden/vibewarden/internal/app/serve"
 )
 
 // newServeCmd creates the serve subcommand.
@@ -20,9 +18,9 @@ func newServeCmd() *cobra.Command {
 Reads configuration from vibewarden.yaml (or the path specified with --config).
 Listens for SIGINT/SIGTERM and performs a graceful shutdown.`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return appserve.RunServe(context.Background(), appserve.Options{
-				ConfigPath: configPath,
-				Version:    version,
+			return runServe(context.Background(), serveOptions{
+				configPath: configPath,
+				version:    version,
 			})
 		},
 	}
