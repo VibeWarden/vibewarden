@@ -37,7 +37,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build \
 # Stage 2: runtime
 # ---------------------------------------------------------------------------
 # Alpine provides wget for Docker healthchecks while remaining lightweight.
-FROM alpine:3.21
+FROM alpine:3.23
 
 # `apk upgrade` pulls the latest patch versions of the base packages so the
 # shipped image picks up CVE fixes released after the alpine:3.21 tag was
