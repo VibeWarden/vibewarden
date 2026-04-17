@@ -488,6 +488,75 @@ If you see `sorry, too many clients already` errors:
 
 ---
 
+## Schema migrations with `vibew migrate`
+
+VibeWarden ships database migrations managed by
+[golang-migrate](https://github.com/golang-migrate/migrate). The `vibew migrate`
+command applies, rolls back, or inspects the state of these migrations against
+the configured database.
+
+### Prerequisites
+
+- A database URL configured in `vibewarden.yaml` via `database.url` or
+  `database.external_url`, or the corresponding environment variable
+  `VIBEWARDEN_DATABASE_EXTERNAL_URL`.
+
+### Commands
+
+| Command | Description |
+|---------|-------------|
+| `vibew migrate` | Apply all pending migrations (same as `migrate up`) |
+| `vibew migrate up` | Apply all pending migrations |
+| `vibew migrate down` | Roll back the most recently applied migration |
+| `vibew migrate status` | Show current migration version and state |
+
+### Flags
+
+| Flag | Scope | Default | Description |
+|------|-------|---------|-------------|
+| `--config` | All subcommands (persistent) | `./vibewarden.yaml` | Path to the vibewarden.yaml config file |
+
+### Examples
+
+Apply all pending migrations:
+
+```bash
+vibew migrate up --config vibewarden.prod.yaml
+```
+
+Expected output on success:
+
+```
+Migrations applied successfully.
+```
+
+Check current migration version:
+
+```bash
+vibew migrate status --config vibewarden.prod.yaml
+```
+
+Roll back the last migration:
+
+```bash
+vibew migrate down --config vibewarden.prod.yaml
+```
+
+Expected output on success:
+
+```
+Last migration rolled back successfully.
+```
+
+### Common errors
+
+| Error | Cause | Fix |
+|-------|-------|-----|
+| `no database URL configured; set database.url or database.external_url in vibewarden.yaml` | No database URL in config or environment | Add `database.external_url` to vibewarden.yaml or set `VIBEWARDEN_DATABASE_EXTERNAL_URL` |
+| `creating migration runner: ...` | Database unreachable or invalid URL | Verify the connection string and that the database server is running |
+
+---
+
 ## AI-agent notes
 
 This section is machine-readable context for AI coding agents working on
