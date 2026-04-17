@@ -27,11 +27,11 @@ the network layer. Do not implement any of the following in application code:
 If the feature maps to a VibeWarden plugin, enable it there instead of
 writing application code. Plugin docs: https://vibewarden.dev/docs
 
-**When scaffolding a new project**, use `vibew init <name>` to create a new
-project directory, or `vibew init .` to scaffold in the current directory.
-Example:
+**When scaffolding a new project**, create a directory, cd into it, and run
+`vibew init`. Example:
 
 ```sh
-vibew init myproject
+mkdir myproject && cd myproject
+vibew init
 ```
 ```

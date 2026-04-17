@@ -63,7 +63,7 @@ and is the right reference when you want full control.
 | Scenario | Command | See |
 |----------|---------|-----|
 | Adding the sidecar to an existing app | `vibew wrap --upstream <port>` | [Step 2](#step-2-vibew-wrap) |
-| Starting a brand-new project | `vibew init <name>` | [Step 2 alt](#step-2-alt-vibew-init-for-a-brand-new-project) |
+| Starting a brand-new project | `vibew init` | [Step 2 alt](#step-2-alt-vibew-init-for-a-brand-new-project) |
 | Adding a feature to an existing config | `vibew add <feature>` | after either of the above |
 
 The two setup commands are parallel paths. `wrap` adapts an existing
@@ -141,17 +141,10 @@ Use `vibew init` when you are starting from an empty directory and want
 VibeWarden wired up before you write any app code. The typical flow:
 
 ```bash
-vibew init myapp
-cd myapp
+mkdir myapp && cd myapp
+vibew init
 # ...your AI agent reads AGENTS-VIBEWARDEN.md and writes app code that
 #    fits the pre-configured security layer.
-```
-
-Or scaffold directly into a directory you already `cd`'d into:
-
-```bash
-mkdir myapp && cd myapp
-vibew init .
 ```
 
 Common flags:
@@ -160,21 +153,20 @@ Common flags:
 |------|-------------|
 | `--port <port>` | Port your app will listen on (default: `3000`) |
 | `--describe "<text>"` | One-line project description; written to `PROJECT.md` and injected into agent files |
-| `--name <name>` | Project name (alternative to the positional argument) |
 | `--version <vN.N.N>` | Pin a specific VibeWarden version in `.vibewarden-version` |
 | `--force` | Overwrite existing files |
 
 ### What `init` generates
 
 ```
-myapp/
-  vibewarden.yaml          # Main config — TLS self-signed, rate limit enabled
-  .vibewarden-version      # Pinned VibeWarden version
-  Dockerfile               # Placeholder with examples for common stacks
+./                           # current directory (you mkdir + cd first)
+  vibewarden.yaml            # Main config — TLS self-signed, rate limit enabled
+  .vibewarden-version        # Pinned VibeWarden version
+  Dockerfile                 # Placeholder with examples for common stacks
   .gitignore
-  PROJECT.md               # Project description (only when --describe is given)
-  AGENTS.md                # AI agent context (tool-agnostic)
-  AGENTS-VIBEWARDEN.md     # VibeWarden-specific instructions for agents
+  PROJECT.md                 # Project description (only when --describe is given)
+  AGENTS.md                  # AI agent context (tool-agnostic)
+  AGENTS-VIBEWARDEN.md       # VibeWarden-specific instructions for agents
 ```
 
 `init` does **not** generate app source code. It sets up the sidecar

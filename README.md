@@ -63,8 +63,8 @@ The AI reads `llms-full.txt` and handles the rest — installation, config, and 
 curl -sS https://vibewarden.dev/install.sh | sh
 
 # New project
-vibew init myapp
-cd myapp
+mkdir myapp && cd myapp
+vibew init
 vibew dev
 ```
 
@@ -248,7 +248,7 @@ If you need a general-purpose load balancer or a CDN edge, use the right tool fo
 
 | Scenario | Command |
 |----------|---------|
-| Starting a new project | `vibew init myapp` |
+| Starting a new project | `vibew init` |
 | Adding the sidecar to an existing app | `vibew wrap` |
 | Adding a feature to an existing config | `vibew add <feature>` |
 
@@ -262,7 +262,7 @@ add VibeWarden. Use `vibew add` to enable individual features after the initial 
 
 | Command | Description |
 |---------|-------------|
-| `vibew init <name>` | Scaffold a new project with VibeWarden |
+| `vibew init` | Scaffold a new project with VibeWarden (in current directory) |
 | `vibew wrap` | Add VibeWarden sidecar to an existing project |
 | `vibew add auth` | Enable authentication |
 | `vibew add rate-limiting` | Enable rate limiting |
