@@ -29,9 +29,9 @@ The enabled/disabled status is read from vibewarden.yaml (or the path
 supplied with --config). When no config file is found the defaults apply.
 
 Examples:
-  vibewarden plugins
-  vibewarden plugins --config ./my-vibewarden.yaml
-  vibewarden plugins show tls`,
+  vibew plugins
+  vibew plugins --config ./my-vibewarden.yaml
+  vibew plugins show tls`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			cfg, err := config.Load(configPath)
 			if err != nil {
@@ -56,8 +56,8 @@ func newPluginsShowCmd() *cobra.Command {
 		Long: `Show the full configuration schema and an example for a single plugin.
 
 Examples:
-  vibewarden plugins show tls
-  vibewarden plugins show rate-limiting`,
+  vibew plugins show tls
+  vibew plugins show rate-limiting`,
 		Args: cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			name := args[0]
