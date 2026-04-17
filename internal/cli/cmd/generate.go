@@ -45,9 +45,9 @@ Examples:
   vibew generate --config ./my-vibewarden.yaml
   vibew generate --output-dir /tmp/vw-generated`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			if err := requireScaffolding(); err != nil {
-				return err
-			}
+			// generate only needs vibewarden.yaml — not full scaffolding.
+			// Users who wrote vibewarden.yaml manually (without vibew init/wrap)
+			// should still be able to generate docker-compose files.
 			if err := requireConfig(configPath); err != nil {
 				return err
 			}

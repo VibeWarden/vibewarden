@@ -38,7 +38,7 @@ services:
     restart: unless-stopped
 {{- if .App.Build }}
     build:
-      context: {{ .App.Build }}
+      context: ../../{{ .App.Build }}
 {{- else if .App.Image }}
     image: ${VIBEWARDEN_APP_IMAGE:-{{ .App.Image }}}
 {{- end }}
