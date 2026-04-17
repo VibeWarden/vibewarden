@@ -67,3 +67,23 @@ func Detect(ctx context.Context, executor ports.RemoteExecutor) (Mode, error) {
 
 	return 0, fmt.Errorf("detecting deploy mode via SSH: %w", err)
 }
+
+// IsMultiApp checks whether the remote host has a multi-app sidecar layout
+// by testing for the existence of the sites/ directory under ~/vibewarden/.
+// Returns true when at least one site subdirectory exists, false otherwise.
+//
+// Any SSH error that is not a "directory not found" condition is propagated
+// to the caller.
+func IsMultiApp(ctx context.Context, executor ports.RemoteExecutor) (bool, error) {
+	cmd := fmt.Sprintf("test -d %s", sitesDir)
+	_, err := executor.Run(ctx, cmd)
+	if err == nil {
+		return true, nil
+	}
+
+	if strings.Contains(err.Error(), "exit status 1") {
+		return false, nil
+	}
+
+	return false, fmt.Errorf("checking multi-app layout via SSH: %w", err)
+}

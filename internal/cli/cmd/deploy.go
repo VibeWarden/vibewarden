@@ -137,7 +137,33 @@ Examples:
 				}
 			}
 
-			return svc.Deploy(cmd.Context(), cfg, opts)
+			// Detect deploy mode: fresh install or add-site.
+			hasDomain := cfg.TLS.Domain != ""
+
+			mode, err := deployapp.Detect(cmd.Context(), executor)
+			if err != nil {
+				return fmt.Errorf("detecting deploy mode: %w", err)
+			}
+
+			switch mode {
+			case deployapp.ModeFreshInstall:
+				if hasDomain {
+					// Multi-app bootstrap: create sidecar + first site.
+					return svc.BootstrapSidecar(cmd.Context(), cfg, opts)
+				}
+				// Legacy single-app deploy (backward compatible).
+				return svc.Deploy(cmd.Context(), cfg, opts)
+
+			case deployapp.ModeAddSite:
+				if hasDomain {
+					// Add a new site to existing sidecar.
+					return svc.DeployMultiApp(cmd.Context(), cfg, opts)
+				}
+				return fmt.Errorf("cannot add a site without a TLS domain; set tls.domain in %s", absConfig)
+
+			default:
+				return fmt.Errorf("unexpected deploy mode: %v", mode)
+			}
 		},
 	}
 
@@ -175,6 +201,7 @@ func newDeployStatusCmd() *cobra.Command {
 		configPath string
 		target     string
 		sshKey     string
+		app        string
 	)
 
 	cmd := &cobra.Command{
@@ -186,9 +213,13 @@ The --config flag is used to derive the project name, which determines the
 remote directory (~/vibewarden/<project-name>/). It must match the value used
 when the project was deployed. When omitted the current directory name is used.
 
+In multi-app mode, use --app to target a specific site. Without --app, all
+sites and the sidecar status are shown.
+
 Examples:
   vibew deploy status --target ssh://ubuntu@203.0.113.10
-  vibew deploy status --config vibewarden.prod.yaml --target ssh://ubuntu@203.0.113.10`,
+  vibew deploy status --config vibewarden.prod.yaml --target ssh://ubuntu@203.0.113.10
+  vibew deploy status --target ssh://ubuntu@203.0.113.10 --app blog`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if target == "" {
 				return fmt.Errorf("--target is required (e.g. ssh://user@host)")
@@ -207,6 +238,16 @@ Examples:
 			}
 			svc := deployapp.NewService(executor, nil)
 
+			// Check if remote is multi-app.
+			isMulti, err := deployapp.IsMultiApp(cmd.Context(), executor)
+			if err != nil {
+				return fmt.Errorf("detecting multi-app mode: %w", err)
+			}
+
+			if isMulti || app != "" {
+				return svc.StatusMultiApp(cmd.Context(), app, cmd.OutOrStdout())
+			}
+
 			absConfig, err := filepath.Abs(configPath)
 			if err != nil {
 				absConfig = configPath
@@ -222,6 +263,7 @@ Examples:
 	cmd.Flags().StringVar(&configPath, "config", "", "path to vibewarden.yaml — used to derive the remote project directory (default: ./vibewarden.yaml)")
 	cmd.Flags().StringVar(&target, "target", "", "remote target in ssh://user@host[:port] format (required)")
 	cmd.Flags().StringVar(&sshKey, "ssh-key", "", "path to the SSH private key file (default: use SSH agent / ~/.ssh/config)")
+	cmd.Flags().StringVar(&app, "app", "", "target a specific site in multi-app mode (e.g. --app blog)")
 
 	if err := cmd.MarkFlagRequired("target"); err != nil {
 		fmt.Fprintln(os.Stderr, "warning: flag required registration failed:", err)
@@ -243,6 +285,7 @@ func newDeployLogsCmd() *cobra.Command {
 		sshKey     string
 		lines      int
 		follow     bool
+		app        string
 	)
 
 	cmd := &cobra.Command{
@@ -254,11 +297,15 @@ The --config flag is used to derive the project name, which determines the
 remote directory (~/vibewarden/<project-name>/). It must match the value used
 when the project was deployed. When omitted the current directory name is used.
 
+In multi-app mode, use --app to target a specific site's logs. Without --app,
+the sidecar logs are shown.
+
 Examples:
   vibew deploy logs --target ssh://ubuntu@203.0.113.10
   vibew deploy logs --config vibewarden.prod.yaml --target ssh://ubuntu@203.0.113.10
   vibew deploy logs --target ssh://ubuntu@203.0.113.10 --lines 100
-  vibew deploy logs --target ssh://ubuntu@203.0.113.10 --follow`,
+  vibew deploy logs --target ssh://ubuntu@203.0.113.10 --follow
+  vibew deploy logs --target ssh://ubuntu@203.0.113.10 --app blog --follow`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if target == "" {
 				return fmt.Errorf("--target is required (e.g. ssh://user@host)")
@@ -276,6 +323,20 @@ Examples:
 				executor = sshadapter.NewExecutor(t)
 			}
 			svc := deployapp.NewService(executor, nil)
+
+			// Check if remote is multi-app.
+			isMulti, err := deployapp.IsMultiApp(cmd.Context(), executor)
+			if err != nil {
+				return fmt.Errorf("detecting multi-app mode: %w", err)
+			}
+
+			if isMulti || app != "" {
+				return svc.LogsMultiApp(cmd.Context(), app, deployapp.LogsOptions{
+					Lines:  lines,
+					Follow: follow,
+					Out:    cmd.OutOrStdout(),
+				})
+			}
 
 			absConfig, err := filepath.Abs(configPath)
 			if err != nil {
@@ -296,6 +357,7 @@ Examples:
 	cmd.Flags().StringVar(&sshKey, "ssh-key", "", "path to the SSH private key file (default: use SSH agent / ~/.ssh/config)")
 	cmd.Flags().IntVar(&lines, "lines", 50, "number of log lines to fetch (0 = all)")
 	cmd.Flags().BoolVarP(&follow, "follow", "f", false, "stream log output continuously until cancelled (Ctrl-C)")
+	cmd.Flags().StringVar(&app, "app", "", "target a specific site in multi-app mode (e.g. --app blog)")
 
 	if err := cmd.MarkFlagRequired("target"); err != nil {
 		fmt.Fprintln(os.Stderr, "warning: flag required registration failed:", err)
