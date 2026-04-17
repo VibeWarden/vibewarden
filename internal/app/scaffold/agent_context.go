@@ -97,11 +97,14 @@ func ensureAgentsMD(renderer ports.TemplateRenderer, dest string) error {
 	if err != nil {
 		return fmt.Errorf("opening AGENTS.md for append: %w", err)
 	}
-	defer f.Close() //nolint:errcheck // best-effort close on read path
 
 	const referenceBlock = "\n\nSee [AGENTS-VIBEWARDEN.md](./AGENTS-VIBEWARDEN.md) for VibeWarden sidecar instructions.\n"
 	if _, writeErr := f.WriteString(referenceBlock); writeErr != nil {
+		_ = f.Close()
 		return fmt.Errorf("appending reference to AGENTS.md: %w", writeErr)
+	}
+	if closeErr := f.Close(); closeErr != nil {
+		return fmt.Errorf("closing AGENTS.md after write: %w", closeErr)
 	}
 	return nil
 }

@@ -93,6 +93,13 @@ func (w *Watcher) Watch(ctx context.Context, path string) (<-chan struct{}, erro
 					if timer != nil {
 						timer.Stop()
 					}
+					// AfterFunc fires in a separate goroutine after the debounce
+					// window. The select races with the outer loop closing `done`:
+					//   - <-done wins if the watcher shuts down before the timer fires.
+					//   - ch <- wins if the watcher is still alive and ch has capacity.
+					//   - default wins if ch is already full (duplicate signal dropped).
+					// All three outcomes are safe; the only risk is a late send on ch
+					// after done is closed, which the <-done case handles.
 					timer = time.AfterFunc(w.debounce, func() {
 						select {
 						case <-done:
