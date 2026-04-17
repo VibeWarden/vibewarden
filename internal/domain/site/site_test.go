@@ -73,7 +73,7 @@ func TestNewSite(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			s, err := NewSite(tt.siteName, tt.cfg)
+			s, err := NewSite(tt.siteName, "", tt.cfg)
 			if (err != nil) != tt.wantErr {
 				t.Errorf("NewSite(%q, cfg) error = %v, wantErr %v", tt.siteName, err, tt.wantErr)
 				return
@@ -118,7 +118,7 @@ func TestNewErrorSite(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			s, constructErr := NewErrorSite(tt.siteName, tt.err)
+			s, constructErr := NewErrorSite(tt.siteName, "", tt.err)
 			if (constructErr != nil) != tt.wantErr {
 				t.Errorf("NewErrorSite(%q, err) error = %v, wantErr %v", tt.siteName, constructErr, tt.wantErr)
 				return
@@ -147,7 +147,7 @@ func TestNewErrorSite(t *testing.T) {
 func TestSite_SetStatus(t *testing.T) {
 	t.Parallel()
 
-	s, err := NewSite("my-app", &config.Config{})
+	s, err := NewSite("my-app", "", &config.Config{})
 	if err != nil {
 		t.Fatalf("NewSite() error = %v", err)
 	}
@@ -161,7 +161,7 @@ func TestSite_SetStatus(t *testing.T) {
 func TestSite_SetErr(t *testing.T) {
 	t.Parallel()
 
-	s, err := NewSite("my-app", &config.Config{})
+	s, err := NewSite("my-app", "", &config.Config{})
 	if err != nil {
 		t.Fatalf("NewSite() error = %v", err)
 	}

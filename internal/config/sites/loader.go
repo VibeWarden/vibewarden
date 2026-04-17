@@ -22,7 +22,7 @@ import (
 // If basePath does not exist, LoadSites returns (nil, nil) — this is
 // the backward-compatible single-app mode where no sites/ directory
 // is present.
-func LoadSites(basePath string) ([]site.Site, []error) {
+func LoadSites(basePath string) ([]*site.Site, []error) {
 	entries, err := os.ReadDir(basePath)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -33,7 +33,7 @@ func LoadSites(basePath string) ([]site.Site, []error) {
 	}
 
 	var (
-		sites []site.Site
+		sites []*site.Site
 		errs  []error
 	)
 
@@ -53,7 +53,7 @@ func LoadSites(basePath string) ([]site.Site, []error) {
 			}
 			loadErr := fmt.Errorf("checking site %q config: %w", name, statErr)
 			errs = append(errs, loadErr)
-			errSite, siteErr := site.NewErrorSite(name, loadErr)
+			errSite, siteErr := site.NewErrorSite(name, configPath, loadErr)
 			if siteErr != nil {
 				// Name itself is invalid — record the error but skip the site.
 				errs = append(errs, fmt.Errorf("invalid site directory name %q: %w", name, siteErr))
@@ -67,7 +67,7 @@ func LoadSites(basePath string) ([]site.Site, []error) {
 		if loadErr != nil {
 			wrappedErr := fmt.Errorf("loading site %q config: %w", name, loadErr)
 			errs = append(errs, wrappedErr)
-			errSite, siteErr := site.NewErrorSite(name, wrappedErr)
+			errSite, siteErr := site.NewErrorSite(name, configPath, wrappedErr)
 			if siteErr != nil {
 				// Name is not DNS-safe — record error but skip the site entity.
 				errs = append(errs, fmt.Errorf("invalid site directory name %q: %w", name, siteErr))
@@ -77,7 +77,7 @@ func LoadSites(basePath string) ([]site.Site, []error) {
 			continue
 		}
 
-		s, siteErr := site.NewSite(name, cfg)
+		s, siteErr := site.NewSite(name, configPath, cfg)
 		if siteErr != nil {
 			wrappedErr := fmt.Errorf("creating site %q: %w", name, siteErr)
 			errs = append(errs, wrappedErr)

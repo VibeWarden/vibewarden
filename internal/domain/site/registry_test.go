@@ -14,7 +14,7 @@ func TestRegistry_AddAndGet(t *testing.T) {
 
 	r := NewRegistry()
 
-	s, err := NewSite("app1", &config.Config{})
+	s, err := NewSite("app1", "", &config.Config{})
 	if err != nil {
 		t.Fatalf("NewSite() error = %v", err)
 	}
@@ -46,11 +46,11 @@ func TestRegistry_AddReplaces(t *testing.T) {
 	r := NewRegistry()
 
 	cfg1 := &config.Config{Profile: "dev"}
-	s1, _ := NewSite("app1", cfg1)
+	s1, _ := NewSite("app1", "", cfg1)
 	r.Add(s1)
 
 	cfg2 := &config.Config{Profile: "prod"}
-	s2, _ := NewSite("app1", cfg2)
+	s2, _ := NewSite("app1", "", cfg2)
 	r.Add(s2)
 
 	if r.Len() != 1 {
@@ -67,7 +67,7 @@ func TestRegistry_Remove(t *testing.T) {
 	t.Parallel()
 
 	r := NewRegistry()
-	s, _ := NewSite("app1", &config.Config{})
+	s, _ := NewSite("app1", "", &config.Config{})
 	r.Add(s)
 
 	if !r.Remove("app1") {
@@ -91,8 +91,8 @@ func TestRegistry_All(t *testing.T) {
 	t.Parallel()
 
 	r := NewRegistry()
-	s1, _ := NewSite("app1", &config.Config{})
-	s2, _ := NewSite("app2", &config.Config{})
+	s1, _ := NewSite("app1", "", &config.Config{})
+	s2, _ := NewSite("app2", "", &config.Config{})
 	r.Add(s1)
 	r.Add(s2)
 
@@ -114,8 +114,8 @@ func TestRegistry_HealthySitesAndErrorSites(t *testing.T) {
 	t.Parallel()
 
 	r := NewRegistry()
-	healthy, _ := NewSite("good-app", &config.Config{})
-	errSite, _ := NewErrorSite("bad-app", fmt.Errorf("broken"))
+	healthy, _ := NewSite("good-app", "", &config.Config{})
+	errSite, _ := NewErrorSite("bad-app", "", fmt.Errorf("broken"))
 	r.Add(healthy)
 	r.Add(errSite)
 
@@ -176,8 +176,8 @@ func TestRegistry_ValidateDomains(t *testing.T) {
 		{
 			name: "unique domains",
 			setup: func(r *Registry) {
-				s1, _ := NewSite("app1", &config.Config{TLS: config.TLSConfig{Domain: "app1.example.com"}})
-				s2, _ := NewSite("app2", &config.Config{TLS: config.TLSConfig{Domain: "app2.example.com"}})
+				s1, _ := NewSite("app1", "", &config.Config{TLS: config.TLSConfig{Domain: "app1.example.com"}})
+				s2, _ := NewSite("app2", "", &config.Config{TLS: config.TLSConfig{Domain: "app2.example.com"}})
 				r.Add(s1)
 				r.Add(s2)
 			},
@@ -186,8 +186,8 @@ func TestRegistry_ValidateDomains(t *testing.T) {
 		{
 			name: "duplicate domains",
 			setup: func(r *Registry) {
-				s1, _ := NewSite("app1", &config.Config{TLS: config.TLSConfig{Domain: "same.example.com"}})
-				s2, _ := NewSite("app2", &config.Config{TLS: config.TLSConfig{Domain: "same.example.com"}})
+				s1, _ := NewSite("app1", "", &config.Config{TLS: config.TLSConfig{Domain: "same.example.com"}})
+				s2, _ := NewSite("app2", "", &config.Config{TLS: config.TLSConfig{Domain: "same.example.com"}})
 				r.Add(s1)
 				r.Add(s2)
 			},
@@ -196,8 +196,8 @@ func TestRegistry_ValidateDomains(t *testing.T) {
 		{
 			name: "error sites are ignored",
 			setup: func(r *Registry) {
-				s1, _ := NewSite("app1", &config.Config{TLS: config.TLSConfig{Domain: "same.example.com"}})
-				s2, _ := NewErrorSite("app2", fmt.Errorf("broken"))
+				s1, _ := NewSite("app1", "", &config.Config{TLS: config.TLSConfig{Domain: "same.example.com"}})
+				s2, _ := NewErrorSite("app2", "", fmt.Errorf("broken"))
 				r.Add(s1)
 				r.Add(s2)
 			},
@@ -206,8 +206,8 @@ func TestRegistry_ValidateDomains(t *testing.T) {
 		{
 			name: "empty domains are ignored",
 			setup: func(r *Registry) {
-				s1, _ := NewSite("app1", &config.Config{})
-				s2, _ := NewSite("app2", &config.Config{})
+				s1, _ := NewSite("app1", "", &config.Config{})
+				s2, _ := NewSite("app2", "", &config.Config{})
 				r.Add(s1)
 				r.Add(s2)
 			},
@@ -231,8 +231,8 @@ func TestRegistry_DuplicateDomainError(t *testing.T) {
 	t.Parallel()
 
 	r := NewRegistry()
-	s1, _ := NewSite("aaa", &config.Config{TLS: config.TLSConfig{Domain: "dup.example.com"}})
-	s2, _ := NewSite("bbb", &config.Config{TLS: config.TLSConfig{Domain: "dup.example.com"}})
+	s1, _ := NewSite("aaa", "", &config.Config{TLS: config.TLSConfig{Domain: "dup.example.com"}})
+	s2, _ := NewSite("bbb", "", &config.Config{TLS: config.TLSConfig{Domain: "dup.example.com"}})
 	r.Add(s1)
 	r.Add(s2)
 
@@ -269,7 +269,7 @@ func TestRegistry_ConcurrentAccess(t *testing.T) {
 			defer wg.Done()
 			for j := range numOps {
 				name := fmt.Sprintf("app-%d-%d", id, j)
-				s, err := NewSite(name, &config.Config{})
+				s, err := NewSite(name, "", &config.Config{})
 				if err != nil {
 					t.Errorf("NewSite(%q) error = %v", name, err)
 					return
@@ -324,7 +324,7 @@ func TestRegistry_ConcurrentAccess(t *testing.T) {
 	wg.Wait()
 }
 
-func siteNames(sites []Site) []string {
+func siteNames(sites []*Site) []string {
 	names := make([]string, len(sites))
 	for i, s := range sites {
 		names[i] = s.Name()

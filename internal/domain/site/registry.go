@@ -2,6 +2,7 @@ package site
 
 import (
 	"fmt"
+	"sort"
 	"sync"
 )
 
@@ -10,14 +11,14 @@ import (
 // are unique within the registry.
 type Registry struct {
 	mu     sync.RWMutex
-	sites  map[string]Site
+	sites  map[string]*Site
 	global *GlobalConfig
 }
 
 // NewRegistry creates an empty Registry.
 func NewRegistry() *Registry {
 	return &Registry{
-		sites: make(map[string]Site),
+		sites: make(map[string]*Site),
 	}
 }
 
@@ -42,7 +43,7 @@ func (r *Registry) Global() *GlobalConfig {
 
 // Add inserts a site into the registry. If a site with the same name already
 // exists, it is replaced (upsert semantics, useful for hot-reload).
-func (r *Registry) Add(s Site) {
+func (r *Registry) Add(s *Site) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.sites[s.Name()] = s
@@ -58,23 +59,26 @@ func (r *Registry) Remove(name string) bool {
 }
 
 // Get retrieves a site by name. Returns the site and true if found,
-// or a zero-value Site and false if not.
-func (r *Registry) Get(name string) (Site, bool) {
+// or nil and false if not.
+func (r *Registry) Get(name string) (*Site, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	s, ok := r.sites[name]
 	return s, ok
 }
 
-// All returns a snapshot of all sites in the registry. The returned slice
-// is safe to iterate without holding any lock.
-func (r *Registry) All() []Site {
+// All returns a snapshot of all sites in the registry, sorted alphabetically
+// by name. The returned slice is safe to iterate without holding any lock.
+func (r *Registry) All() []*Site {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	result := make([]Site, 0, len(r.sites))
+	result := make([]*Site, 0, len(r.sites))
 	for _, s := range r.sites {
 		result = append(result, s)
 	}
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].Name() < result[j].Name()
+	})
 	return result
 }
 
@@ -85,29 +89,35 @@ func (r *Registry) Len() int {
 	return len(r.sites)
 }
 
-// HealthySites returns all sites with StatusHealthy.
-func (r *Registry) HealthySites() []Site {
+// HealthySites returns all sites with StatusHealthy, sorted alphabetically.
+func (r *Registry) HealthySites() []*Site {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	var result []Site
+	var result []*Site
 	for _, s := range r.sites {
 		if s.Status() == StatusHealthy {
 			result = append(result, s)
 		}
 	}
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].Name() < result[j].Name()
+	})
 	return result
 }
 
-// ErrorSites returns all sites with StatusError.
-func (r *Registry) ErrorSites() []Site {
+// ErrorSites returns all sites with StatusError, sorted alphabetically.
+func (r *Registry) ErrorSites() []*Site {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
-	var result []Site
+	var result []*Site
 	for _, s := range r.sites {
 		if s.Status() == StatusError {
 			result = append(result, s)
 		}
 	}
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].Name() < result[j].Name()
+	})
 	return result
 }
 
