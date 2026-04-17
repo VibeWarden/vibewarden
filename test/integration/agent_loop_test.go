@@ -645,7 +645,7 @@ func newTestMCPServer() *mcp.Server {
 	// inside the MCP server do not panic from a nil logger.
 	logger := slog.New(slog.NewTextHandler(io.Discard, &slog.HandlerOptions{Level: slog.LevelError}))
 	srv := mcp.NewServer("vibewarden-test", "0.0.0-test", logger)
-	mcp.RegisterDefaultTools(srv)
+	mcp.RegisterDefaultTools(srv, mcp.ToolDeps{})
 	return srv
 }
 

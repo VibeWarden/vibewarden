@@ -3,6 +3,7 @@ package mcp
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -209,7 +210,7 @@ log:
 func TestHandleValidate_MissingFile(t *testing.T) {
 	args, _ := json.Marshal(map[string]string{"path": "/nonexistent/path/vibewarden.yaml"})
 	items, err := handleValidate(context.Background(), args)
-	// A missing file is not a tool error — it returns a message item.
+	// A missing file is not a tool error -- it returns a message item.
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -229,17 +230,52 @@ func TestHandleExplain_MissingFile(t *testing.T) {
 	}
 }
 
-func TestHandleStatus_InvalidArgs(t *testing.T) {
-	_, err := handleStatus(context.Background(), json.RawMessage(`{invalid`))
+func TestMakeStatusHandler_NilDeps(t *testing.T) {
+	handler := makeStatusHandler(ToolDeps{})
+	_, err := handler(context.Background(), nil)
+	if err == nil {
+		t.Error("expected an error when HealthChecker is nil")
+	}
+	if !strings.Contains(err.Error(), "not available") {
+		t.Errorf("expected 'not available' in error, got: %v", err)
+	}
+}
+
+func TestMakeStatusHandler_InvalidArgs(t *testing.T) {
+	handler := makeStatusHandler(ToolDeps{HealthChecker: &stubHealthChecker{}})
+	_, err := handler(context.Background(), json.RawMessage(`{invalid`))
 	if err == nil {
 		t.Error("expected an error for invalid JSON arguments")
 	}
 }
 
-func TestHandleDoctor_InvalidArgs(t *testing.T) {
-	_, err := handleDoctor(context.Background(), json.RawMessage(`{invalid`))
+func TestMakeDoctorHandler_NilDeps(t *testing.T) {
+	handler := makeDoctorHandler(ToolDeps{})
+	_, err := handler(context.Background(), nil)
+	if err == nil {
+		t.Error("expected an error when DoctorRunner is nil")
+	}
+	if !strings.Contains(err.Error(), "not available") {
+		t.Errorf("expected 'not available' in error, got: %v", err)
+	}
+}
+
+func TestMakeDoctorHandler_InvalidArgs(t *testing.T) {
+	handler := makeDoctorHandler(ToolDeps{DoctorRunner: &stubDoctorRunner{}})
+	_, err := handler(context.Background(), json.RawMessage(`{invalid`))
 	if err == nil {
 		t.Error("expected an error for invalid JSON arguments")
+	}
+}
+
+func TestMakeVerifyDeployHandler_NilDeps(t *testing.T) {
+	handler := makeVerifyDeployHandler(ToolDeps{})
+	_, err := handler(context.Background(), json.RawMessage(`{"url":"http://example.com"}`))
+	if err == nil {
+		t.Error("expected an error when HealthChecker is nil")
+	}
+	if !strings.Contains(err.Error(), "not available") {
+		t.Errorf("expected 'not available' in error, got: %v", err)
 	}
 }
 
@@ -259,7 +295,7 @@ func TestHandleExplain_InvalidArgs(t *testing.T) {
 
 func TestRegisterDefaultTools(t *testing.T) {
 	srv := newTestServer()
-	RegisterDefaultTools(srv)
+	RegisterDefaultTools(srv, ToolDeps{})
 
 	expectedTools := []string{
 		"vibewarden_status",
@@ -384,4 +420,24 @@ func TestValidateConfig(t *testing.T) {
 			}
 		})
 	}
+}
+
+// ---------------------------------------------------------------------------
+// Test stubs
+// ---------------------------------------------------------------------------
+
+// stubHealthChecker is a minimal ports.HealthChecker for tests that need
+// the handler to pass the nil-check but never actually perform HTTP requests.
+type stubHealthChecker struct{}
+
+func (s *stubHealthChecker) CheckHealth(_ context.Context, _ string) (bool, int, error) {
+	return true, 200, nil
+}
+
+// stubDoctorRunner is a minimal DoctorRunner for tests that need the handler
+// to pass the nil-check but never actually run diagnostics.
+type stubDoctorRunner struct{}
+
+func (s *stubDoctorRunner) Run(_ context.Context, _ *config.Config, _, _ string, _ bool, _ io.Writer) (bool, error) {
+	return true, nil
 }

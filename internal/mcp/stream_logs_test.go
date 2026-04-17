@@ -518,7 +518,7 @@ func TestHandleStreamLogs_SeverityCaseInsensitive(t *testing.T) {
 // TestRegisterDefaultTools_IncludesStreamLogs ensures the tool is registered.
 func TestRegisterDefaultTools_IncludesStreamLogs(t *testing.T) {
 	srv := newTestServer()
-	RegisterDefaultTools(srv)
+	RegisterDefaultTools(srv, ToolDeps{})
 
 	if _, ok := srv.handlers["vibewarden_stream_logs"]; !ok {
 		t.Error("vibewarden_stream_logs not registered in RegisterDefaultTools")

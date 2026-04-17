@@ -1,14 +1,20 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"log/slog"
+	"net/http"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 
+	opsadapter "github.com/vibewarden/vibewarden/internal/adapters/ops"
+	opsapp "github.com/vibewarden/vibewarden/internal/app/ops"
+	"github.com/vibewarden/vibewarden/internal/config"
 	"github.com/vibewarden/vibewarden/internal/mcp"
 )
 
@@ -20,7 +26,7 @@ import (
 //
 // The tool list in --help is generated at command-construction time from the
 // live registry (see buildMCPLongHelp and mcpFirstSentence). Adding a new
-// tool in internal/mcp/ automatically shows up in "vibew mcp --help" — the
+// tool in internal/mcp/ automatically shows up in "vibew mcp --help" -- the
 // list cannot drift out of sync with the registered handlers.
 //
 // Intended usage in an AI agent / IDE MCP configuration:
@@ -39,7 +45,7 @@ func NewMCPCmd() *cobra.Command {
 		Short: "Start the VibeWarden MCP server (stdio JSON-RPC 2.0)",
 		Long:  buildMCPLongHelp(),
 		// SilenceUsage prevents cobra from printing usage on errors produced
-		// inside the MCP loop — those go to stderr as slog messages.
+		// inside the MCP loop -- those go to stderr as slog messages.
 		SilenceUsage: true,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			logger := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{
@@ -52,7 +58,7 @@ func NewMCPCmd() *cobra.Command {
 			}
 
 			srv := mcp.NewServer("vibewarden", version, logger)
-			mcp.RegisterDefaultTools(srv)
+			mcp.RegisterDefaultTools(srv, buildMCPToolDeps())
 
 			logger.Info("vibewarden MCP server starting", "version", version)
 			return srv.Serve(cmd.Context(), os.Stdin, os.Stdout)
@@ -62,6 +68,37 @@ func NewMCPCmd() *cobra.Command {
 	return cmd
 }
 
+// buildMCPToolDeps constructs the real adapter dependencies for MCP tool handlers.
+// This is the composition root for MCP tools -- adapter packages are imported
+// here and nowhere else in the CLI package.
+func buildMCPToolDeps() mcp.ToolDeps {
+	httpClient := &http.Client{Timeout: 5 * time.Second}
+	healthChecker := opsadapter.NewHTTPHealthChecker(httpClient)
+
+	compose := opsadapter.NewComposeAdapter()
+	portChecker := opsadapter.NewNetPortChecker()
+	doctorSvc := opsapp.NewDoctorService(compose, portChecker, healthChecker)
+
+	return mcp.ToolDeps{
+		HealthChecker: healthChecker,
+		DoctorRunner:  &doctorRunnerAdapter{svc: doctorSvc},
+	}
+}
+
+// doctorRunnerAdapter adapts ops.DoctorService to the mcp.DoctorRunner interface.
+type doctorRunnerAdapter struct {
+	svc *opsapp.DoctorService
+}
+
+// Run implements mcp.DoctorRunner by delegating to the underlying DoctorService.
+func (a *doctorRunnerAdapter) Run(ctx context.Context, cfg *config.Config, configPath, workDir string, jsonOutput bool, out io.Writer) (bool, error) {
+	return a.svc.Run(ctx, cfg, opsapp.DoctorOptions{
+		ConfigPath: configPath,
+		WorkDir:    workDir,
+		JSON:       jsonOutput,
+	}, out)
+}
+
 // buildMCPLongHelp constructs the "vibew mcp --help" text from the live
 // default-tools registry, so the list stays in sync with whatever
 // RegisterDefaultTools registers. The throwaway server is only used to
@@ -69,7 +106,7 @@ func NewMCPCmd() *cobra.Command {
 func buildMCPLongHelp() string {
 	discardLogger := slog.New(slog.NewTextHandler(io.Discard, nil))
 	tmp := mcp.NewServer("vibewarden", "help", discardLogger)
-	mcp.RegisterDefaultTools(tmp)
+	mcp.RegisterDefaultTools(tmp, mcp.ToolDeps{})
 
 	var tools strings.Builder
 	for _, t := range tmp.Tools() {

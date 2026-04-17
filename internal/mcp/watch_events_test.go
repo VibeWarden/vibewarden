@@ -368,7 +368,7 @@ func TestHandleWatchEvents_TrailingSlashURL(t *testing.T) {
 // TestRegisterDefaultTools_IncludesWatchEvents ensures the tool is registered.
 func TestRegisterDefaultTools_IncludesWatchEvents(t *testing.T) {
 	srv := newTestServer()
-	RegisterDefaultTools(srv)
+	RegisterDefaultTools(srv, ToolDeps{})
 
 	if _, ok := srv.handlers["vibewarden_watch_events"]; !ok {
 		t.Error("vibewarden_watch_events not registered in RegisterDefaultTools")

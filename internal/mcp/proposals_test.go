@@ -18,7 +18,7 @@ func startFakeAdminServer(t *testing.T, handler http.HandlerFunc) *httptest.Serv
 
 func TestMCPProposalTools_RegisteredInDefaultTools(t *testing.T) {
 	s := newTestServer()
-	RegisterDefaultTools(s)
+	RegisterDefaultTools(s, ToolDeps{})
 
 	req := `{"jsonrpc":"2.0","id":1,"method":"tools/list"}`
 	resp := sendLine(t, s, req)
@@ -55,7 +55,7 @@ func TestMCPProposalTools_RegisteredInDefaultTools(t *testing.T) {
 
 func TestMCPProposeAction_MissingURL(t *testing.T) {
 	s := newTestServer()
-	RegisterDefaultTools(s)
+	RegisterDefaultTools(s, ToolDeps{})
 
 	req := `{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"vibewarden_propose_action","arguments":{"admin_token":"tok","action_type":"block_ip","params":{"ip":"1.2.3.4"},"reason":"test"}}}`
 	resp := sendLine(t, s, req)
@@ -68,7 +68,7 @@ func TestMCPProposeAction_MissingURL(t *testing.T) {
 
 func TestMCPProposeAction_MissingAdminToken(t *testing.T) {
 	s := newTestServer()
-	RegisterDefaultTools(s)
+	RegisterDefaultTools(s, ToolDeps{})
 
 	req := `{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"vibewarden_propose_action","arguments":{"url":"http://localhost:8443","action_type":"block_ip","params":{"ip":"1.2.3.4"},"reason":"test"}}}`
 	resp := sendLine(t, s, req)
@@ -81,7 +81,7 @@ func TestMCPProposeAction_MissingAdminToken(t *testing.T) {
 
 func TestMCPProposeAction_UnreachableSidecar(t *testing.T) {
 	s := newTestServer()
-	RegisterDefaultTools(s)
+	RegisterDefaultTools(s, ToolDeps{})
 
 	req := `{"jsonrpc":"2.0","id":4,"method":"tools/call","params":{"name":"vibewarden_propose_action","arguments":{"url":"http://127.0.0.1:1","admin_token":"tok","action_type":"block_ip","params":{"ip":"1.2.3.4"},"reason":"test"}}}`
 	resp := sendLine(t, s, req)
@@ -101,7 +101,7 @@ func TestMCPProposeAction_UnreachableSidecar(t *testing.T) {
 
 func TestMCPListProposals_MissingURL(t *testing.T) {
 	s := newTestServer()
-	RegisterDefaultTools(s)
+	RegisterDefaultTools(s, ToolDeps{})
 
 	req := `{"jsonrpc":"2.0","id":5,"method":"tools/call","params":{"name":"vibewarden_list_proposals","arguments":{"admin_token":"tok"}}}`
 	resp := sendLine(t, s, req)
@@ -114,7 +114,7 @@ func TestMCPListProposals_MissingURL(t *testing.T) {
 
 func TestMCPGetProposal_MissingProposalID(t *testing.T) {
 	s := newTestServer()
-	RegisterDefaultTools(s)
+	RegisterDefaultTools(s, ToolDeps{})
 
 	req := `{"jsonrpc":"2.0","id":6,"method":"tools/call","params":{"name":"vibewarden_get_proposal","arguments":{"url":"http://localhost:8443","admin_token":"tok"}}}`
 	resp := sendLine(t, s, req)
@@ -149,7 +149,7 @@ func TestMCPProposeAction_WithFakeServer(t *testing.T) {
 	})
 
 	s := newTestServer()
-	RegisterDefaultTools(s)
+	RegisterDefaultTools(s, ToolDeps{})
 
 	args := map[string]any{
 		"url":         srv.URL,
@@ -207,7 +207,7 @@ func TestMCPListProposals_WithFakeServer(t *testing.T) {
 	})
 
 	s := newTestServer()
-	RegisterDefaultTools(s)
+	RegisterDefaultTools(s, ToolDeps{})
 
 	args := map[string]any{
 		"url":         srv.URL,
@@ -257,7 +257,7 @@ func TestMCPGetProposal_WithFakeServer(t *testing.T) {
 	})
 
 	s := newTestServer()
-	RegisterDefaultTools(s)
+	RegisterDefaultTools(s, ToolDeps{})
 
 	args := map[string]any{
 		"url":         srv.URL,

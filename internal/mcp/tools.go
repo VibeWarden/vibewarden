@@ -5,25 +5,54 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net/http"
+	"io"
 	"os"
 	"strings"
 	"time"
 
-	opsadapter "github.com/vibewarden/vibewarden/internal/adapters/ops"
-	opsapp "github.com/vibewarden/vibewarden/internal/app/ops"
 	"github.com/vibewarden/vibewarden/internal/config"
+	"github.com/vibewarden/vibewarden/internal/ports"
 )
 
+// DoctorRunner is the interface consumed by the vibewarden_doctor MCP tool.
+// It is satisfied by ops.DoctorService.Run but defined locally so that
+// internal/mcp/ does not import internal/app/ops.
+type DoctorRunner interface {
+	// Run executes all diagnostics and writes the report to out.
+	// cfg is the loaded config (may be zero-value on load error).
+	// configPath is used for the report label. workDir resolves relative
+	// paths. When jsonOutput is true the report is JSON, otherwise human-readable.
+	Run(ctx context.Context, cfg *config.Config, configPath, workDir string, jsonOutput bool, out io.Writer) (allOK bool, err error)
+}
+
+// ToolDeps holds the pre-constructed dependencies that MCP tool handlers need.
+// Callers (the CLI mcp command, the composition root) build the concrete adapters
+// and inject them here so that internal/mcp/ has zero adapter imports.
+//
+// When ToolDeps is zero-valued (all nil fields), tools that require dependencies
+// return an informative error to the MCP client. This is safe for help-text
+// generation and other non-execution contexts.
+type ToolDeps struct {
+	// HealthChecker performs HTTP health checks against VibeWarden endpoints.
+	// Used by vibewarden_status and vibewarden_verify_deploy.
+	HealthChecker ports.HealthChecker
+
+	// DoctorRunner runs the full VibeWarden doctor health-check suite.
+	// Used by vibewarden_doctor.
+	DoctorRunner DoctorRunner
+}
+
 // RegisterDefaultTools registers all standard VibeWarden MCP tools onto s.
-// It is a convenience function that wires the tool definitions and handlers together.
-func RegisterDefaultTools(s *Server) {
-	s.RegisterTool(statusToolDef(), handleStatus)
-	s.RegisterTool(doctorToolDef(), handleDoctor)
+// deps provides the pre-constructed adapter implementations that some tool
+// handlers need. When deps fields are nil, the affected tools return an
+// informative error to the MCP client instead of panicking.
+func RegisterDefaultTools(s *Server, deps ToolDeps) {
+	s.RegisterTool(statusToolDef(), makeStatusHandler(deps))
+	s.RegisterTool(doctorToolDef(), makeDoctorHandler(deps))
 	s.RegisterTool(validateToolDef(), handleValidate)
 	s.RegisterTool(explainToolDef(), handleExplain)
 	s.RegisterTool(prepareDeployToolDef(), handlePrepareDeploy)
-	s.RegisterTool(verifyDeployToolDef(), handleVerifyDeploy)
+	s.RegisterTool(verifyDeployToolDef(), makeVerifyDeployHandler(deps))
 	s.RegisterTool(getDeployLogsToolDef(), handleGetDeployLogs)
 	s.RegisterTool(watchEventsToolDef(), handleWatchEvents)
 	s.RegisterTool(streamLogsToolDef(), handleStreamLogs)
@@ -56,45 +85,51 @@ type statusArgs struct {
 	Config string `json:"config"`
 }
 
-func handleStatus(ctx context.Context, params json.RawMessage) ([]ContentItem, error) {
-	var args statusArgs
-	if len(params) > 0 {
-		if err := json.Unmarshal(params, &args); err != nil {
-			return nil, fmt.Errorf("invalid arguments: %w", err)
+// makeStatusHandler returns a ToolHandler that checks sidecar health using the
+// injected HealthChecker. When the checker is nil (zero-value ToolDeps), the
+// handler returns an informative error instead of panicking.
+func makeStatusHandler(deps ToolDeps) ToolHandler {
+	return func(ctx context.Context, params json.RawMessage) ([]ContentItem, error) {
+		if deps.HealthChecker == nil {
+			return nil, fmt.Errorf("vibewarden_status: health checker not available (tool dependencies not injected)")
 		}
+
+		var args statusArgs
+		if len(params) > 0 {
+			if err := json.Unmarshal(params, &args); err != nil {
+				return nil, fmt.Errorf("invalid arguments: %w", err)
+			}
+		}
+
+		cfg, err := config.Load(args.Config)
+		if err != nil {
+			return nil, fmt.Errorf("loading config: %w", err)
+		}
+
+		scheme := "http"
+		if cfg.TLS.Enabled {
+			scheme = "https"
+		}
+		port := cfg.Server.Port
+		if port == 0 {
+			port = 8443
+		}
+		healthURL := fmt.Sprintf("%s://localhost:%d/_vibewarden/health", scheme, port)
+
+		checkCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		defer cancel()
+
+		ok, code, err := deps.HealthChecker.CheckHealth(checkCtx, healthURL)
+		if err != nil {
+			return text(fmt.Sprintf("sidecar unreachable at %s: %v", healthURL, err)), nil
+		}
+
+		if !ok {
+			return text(fmt.Sprintf("sidecar returned HTTP %d at %s — not healthy", code, healthURL)), nil
+		}
+
+		return text(fmt.Sprintf("sidecar is running and healthy at %s (HTTP %d)", healthURL, code)), nil
 	}
-
-	cfg, err := config.Load(args.Config)
-	if err != nil {
-		return nil, fmt.Errorf("loading config: %w", err)
-	}
-
-	scheme := "http"
-	if cfg.TLS.Enabled {
-		scheme = "https"
-	}
-	port := cfg.Server.Port
-	if port == 0 {
-		port = 8443
-	}
-	healthURL := fmt.Sprintf("%s://localhost:%d/_vibewarden/health", scheme, port)
-
-	client := &http.Client{Timeout: 5 * time.Second}
-	checker := opsadapter.NewHTTPHealthChecker(client)
-
-	checkCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
-
-	ok, code, err := checker.CheckHealth(checkCtx, healthURL)
-	if err != nil {
-		return text(fmt.Sprintf("sidecar unreachable at %s: %v", healthURL, err)), nil
-	}
-
-	if !ok {
-		return text(fmt.Sprintf("sidecar returned HTTP %d at %s — not healthy", code, healthURL)), nil
-	}
-
-	return text(fmt.Sprintf("sidecar is running and healthy at %s (HTTP %d)", healthURL, code)), nil
 }
 
 // ---------------------------------------------------------------------------
@@ -122,53 +157,50 @@ type doctorArgs struct {
 	Config string `json:"config"`
 }
 
-func handleDoctor(ctx context.Context, params json.RawMessage) ([]ContentItem, error) {
-	var args doctorArgs
-	if len(params) > 0 {
-		if err := json.Unmarshal(params, &args); err != nil {
-			return nil, fmt.Errorf("invalid arguments: %w", err)
+// makeDoctorHandler returns a ToolHandler that runs the full VibeWarden
+// health-check suite using the injected DoctorRunner. When the runner is nil,
+// the handler returns an informative error.
+func makeDoctorHandler(deps ToolDeps) ToolHandler {
+	return func(ctx context.Context, params json.RawMessage) ([]ContentItem, error) {
+		if deps.DoctorRunner == nil {
+			return nil, fmt.Errorf("vibewarden_doctor: doctor runner not available (tool dependencies not injected)")
 		}
+
+		var args doctorArgs
+		if len(params) > 0 {
+			if err := json.Unmarshal(params, &args); err != nil {
+				return nil, fmt.Errorf("invalid arguments: %w", err)
+			}
+		}
+
+		cfg, loadErr := config.Load(args.Config)
+		if loadErr != nil {
+			cfg = &config.Config{}
+		}
+
+		workDir, err := os.Getwd()
+		if err != nil {
+			workDir = "."
+		}
+
+		label := args.Config
+		if label == "" {
+			label = "vibewarden.yaml"
+		}
+
+		var buf bytes.Buffer
+		_, runErr := deps.DoctorRunner.Run(ctx, cfg, label, workDir, true, &buf)
+		if runErr != nil {
+			return nil, fmt.Errorf("running doctor: %w", runErr)
+		}
+
+		out := buf.String()
+		if loadErr != nil {
+			out = fmt.Sprintf("warning: could not load config (%v)\n\n%s", loadErr, out)
+		}
+
+		return text(out), nil
 	}
-
-	cfg, loadErr := config.Load(args.Config)
-	if loadErr != nil {
-		cfg = &config.Config{}
-	}
-
-	workDir, err := os.Getwd()
-	if err != nil {
-		workDir = "."
-	}
-
-	compose := opsadapter.NewComposeAdapter()
-	portChecker := opsadapter.NewNetPortChecker()
-	httpClient := &http.Client{Timeout: 5 * time.Second}
-	healthChecker := opsadapter.NewHTTPHealthChecker(httpClient)
-	svc := opsapp.NewDoctorService(compose, portChecker, healthChecker)
-
-	label := args.Config
-	if label == "" {
-		label = "vibewarden.yaml"
-	}
-
-	opts := opsapp.DoctorOptions{
-		ConfigPath: label,
-		WorkDir:    workDir,
-		JSON:       true,
-	}
-
-	var buf bytes.Buffer
-	_, runErr := svc.Run(ctx, cfg, opts, &buf)
-	if runErr != nil {
-		return nil, fmt.Errorf("running doctor: %w", runErr)
-	}
-
-	out := buf.String()
-	if loadErr != nil {
-		out = fmt.Sprintf("warning: could not load config (%v)\n\n%s", loadErr, out)
-	}
-
-	return text(out), nil
 }
 
 // ---------------------------------------------------------------------------
@@ -505,34 +537,40 @@ type verifyDeployArgs struct {
 	URL string `json:"url"`
 }
 
-func handleVerifyDeploy(ctx context.Context, params json.RawMessage) ([]ContentItem, error) {
-	var args verifyDeployArgs
-	if len(params) > 0 {
-		if err := json.Unmarshal(params, &args); err != nil {
-			return nil, fmt.Errorf("invalid arguments: %w", err)
+// makeVerifyDeployHandler returns a ToolHandler that verifies a deployed sidecar
+// is healthy. When the HealthChecker is nil (zero-value ToolDeps), the handler
+// returns an informative error.
+func makeVerifyDeployHandler(deps ToolDeps) ToolHandler {
+	return func(ctx context.Context, params json.RawMessage) ([]ContentItem, error) {
+		if deps.HealthChecker == nil {
+			return nil, fmt.Errorf("vibewarden_verify_deploy: health checker not available (tool dependencies not injected)")
 		}
+
+		var args verifyDeployArgs
+		if len(params) > 0 {
+			if err := json.Unmarshal(params, &args); err != nil {
+				return nil, fmt.Errorf("invalid arguments: %w", err)
+			}
+		}
+		if args.URL == "" {
+			return nil, fmt.Errorf("url is required")
+		}
+
+		healthURL := strings.TrimRight(args.URL, "/") + "/_vibewarden/health"
+
+		checkCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		defer cancel()
+
+		ok, code, err := deps.HealthChecker.CheckHealth(checkCtx, healthURL)
+		if err != nil {
+			return text(fmt.Sprintf("sidecar unreachable at %s: %v\nWarning: ensure the sidecar is running and the URL is correct.", healthURL, err)), nil
+		}
+		if !ok {
+			return text(fmt.Sprintf("sidecar returned HTTP %d at %s — not healthy.\nWarning: check the sidecar logs with: vibew deploy logs", code, healthURL)), nil
+		}
+
+		return text(fmt.Sprintf("sidecar is healthy at %s (HTTP %d)", healthURL, code)), nil
 	}
-	if args.URL == "" {
-		return nil, fmt.Errorf("url is required")
-	}
-
-	healthURL := strings.TrimRight(args.URL, "/") + "/_vibewarden/health"
-
-	client := &http.Client{Timeout: 10 * time.Second}
-	checker := opsadapter.NewHTTPHealthChecker(client)
-
-	checkCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
-
-	ok, code, err := checker.CheckHealth(checkCtx, healthURL)
-	if err != nil {
-		return text(fmt.Sprintf("sidecar unreachable at %s: %v\nWarning: ensure the sidecar is running and the URL is correct.", healthURL, err)), nil
-	}
-	if !ok {
-		return text(fmt.Sprintf("sidecar returned HTTP %d at %s — not healthy.\nWarning: check the sidecar logs with: vibew deploy logs", code, healthURL)), nil
-	}
-
-	return text(fmt.Sprintf("sidecar is healthy at %s (HTTP %d)", healthURL, code)), nil
 }
 
 // ---------------------------------------------------------------------------

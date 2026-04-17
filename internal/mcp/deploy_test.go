@@ -3,11 +3,40 @@ package mcp
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 )
+
+// testHTTPHealthChecker is a ports.HealthChecker for use in tests.
+// It performs real HTTP GET requests using the provided client.
+type testHTTPHealthChecker struct {
+	client *http.Client
+}
+
+func (h *testHTTPHealthChecker) CheckHealth(ctx context.Context, url string) (bool, int, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return false, 0, fmt.Errorf("building request: %w", err)
+	}
+	resp, err := h.client.Do(req)
+	if err != nil {
+		return false, 0, fmt.Errorf("performing request: %w", err)
+	}
+	defer resp.Body.Close() //nolint:errcheck
+	ok := resp.StatusCode >= 200 && resp.StatusCode < 300
+	return ok, resp.StatusCode, nil
+}
+
+// testVerifyDeployDeps returns ToolDeps with a real HTTP health checker
+// for verify-deploy integration tests.
+func testVerifyDeployDeps() ToolDeps {
+	return ToolDeps{
+		HealthChecker: &testHTTPHealthChecker{client: &http.Client{}},
+	}
+}
 
 // ---------------------------------------------------------------------------
 // Deploy spec generators
@@ -252,7 +281,7 @@ func TestHandleVerifyDeploy_Healthy(t *testing.T) {
 	defer srv.Close()
 
 	params, _ := json.Marshal(map[string]string{"url": srv.URL})
-	items, err := handleVerifyDeploy(context.Background(), params)
+	items, err := makeVerifyDeployHandler(testVerifyDeployDeps())(context.Background(), params)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -271,7 +300,7 @@ func TestHandleVerifyDeploy_Unhealthy(t *testing.T) {
 	defer srv.Close()
 
 	params, _ := json.Marshal(map[string]string{"url": srv.URL})
-	items, err := handleVerifyDeploy(context.Background(), params)
+	items, err := makeVerifyDeployHandler(testVerifyDeployDeps())(context.Background(), params)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -286,7 +315,7 @@ func TestHandleVerifyDeploy_Unhealthy(t *testing.T) {
 func TestHandleVerifyDeploy_Unreachable(t *testing.T) {
 	// Use an address that is guaranteed to be unreachable.
 	params, _ := json.Marshal(map[string]string{"url": "http://127.0.0.1:19999"})
-	items, err := handleVerifyDeploy(context.Background(), params)
+	items, err := makeVerifyDeployHandler(testVerifyDeployDeps())(context.Background(), params)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -300,14 +329,14 @@ func TestHandleVerifyDeploy_Unreachable(t *testing.T) {
 
 func TestHandleVerifyDeploy_MissingURL(t *testing.T) {
 	params, _ := json.Marshal(map[string]string{})
-	_, err := handleVerifyDeploy(context.Background(), params)
+	_, err := makeVerifyDeployHandler(testVerifyDeployDeps())(context.Background(), params)
 	if err == nil {
 		t.Error("expected an error when url is missing")
 	}
 }
 
 func TestHandleVerifyDeploy_InvalidArgs(t *testing.T) {
-	_, err := handleVerifyDeploy(context.Background(), json.RawMessage(`{invalid`))
+	_, err := makeVerifyDeployHandler(testVerifyDeployDeps())(context.Background(), json.RawMessage(`{invalid`))
 	if err == nil {
 		t.Error("expected an error for invalid JSON arguments")
 	}
@@ -325,7 +354,7 @@ func TestHandleVerifyDeploy_TrailingSlash(t *testing.T) {
 
 	// Trailing slash in URL should be stripped before appending health path.
 	params, _ := json.Marshal(map[string]string{"url": srv.URL + "/"})
-	items, err := handleVerifyDeploy(context.Background(), params)
+	items, err := makeVerifyDeployHandler(testVerifyDeployDeps())(context.Background(), params)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -409,7 +438,7 @@ func TestHandleGetDeployLogs_InvalidArgs(t *testing.T) {
 
 func TestRegisterDefaultTools_IncludesDeployTools(t *testing.T) {
 	srv := newTestServer()
-	RegisterDefaultTools(srv)
+	RegisterDefaultTools(srv, ToolDeps{})
 
 	deployTools := []string{
 		"vibewarden_prepare_deploy",
