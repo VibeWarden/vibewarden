@@ -158,8 +158,9 @@ type CertMonitor struct {
 	degraded    bool
 	degradedMsg string
 
-	stopCh chan struct{}
-	wg     sync.WaitGroup
+	stopCh   chan struct{}
+	stopOnce sync.Once // guards close(stopCh) to prevent panic on double Stop
+	wg       sync.WaitGroup
 }
 
 // NewCertMonitor creates a CertMonitor for the given TLS configuration.
@@ -207,8 +208,10 @@ func (m *CertMonitor) Start(ctx context.Context) {
 }
 
 // Stop signals the monitor to stop and waits for the goroutine to finish.
+// It is safe to call Stop multiple times; only the first call closes the
+// stop channel (guarded by sync.Once to prevent a panic on double-close).
 func (m *CertMonitor) Stop() {
-	close(m.stopCh)
+	m.stopOnce.Do(func() { close(m.stopCh) })
 	m.wg.Wait()
 }
 
