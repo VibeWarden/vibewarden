@@ -212,6 +212,27 @@ This command:
 Your app is protected at `https://localhost:8443`. Nothing else is required for the
 first run.
 
+!!! warning "If your app image hasn't been built yet"
+    `vibew dev` checks for the app Docker image before starting. If the image
+    is missing you'll see an error like:
+
+    ```
+    app image "myapp:latest" not found in the local Docker daemon.
+    Build the image first, then run `vibew dev` again.
+
+    Build steps:
+      1. Build your application binary / artifact.
+      2. Run `vibew build` to build the Docker image.
+    ```
+
+    Run `vibew build` first, then retry `vibew dev`. If something else is
+    wrong, `vibew doctor` gives a full diagnostic:
+
+    ```bash
+    vibew doctor       # human-readable
+    vibew doctor --json  # machine-readable (for AI agents)
+    ```
+
 ---
 
 ### Mode 2 — Iterative development (faster rebuilds)

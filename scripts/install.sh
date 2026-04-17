@@ -170,6 +170,16 @@ main() {
     fi
 
     ok "Installed to ${DEST}"
+
+    # When installed to the current directory (not on PATH), tell the user
+    # to add it so the hints below work after cd-ing into a project dir.
+    if [ "$INSTALL_DIR" = "." ]; then
+        echo ""
+        warn "vibew was installed to the current directory."
+        warn "Add it to your PATH so it works after cd:"
+        warn "  export PATH=\"\$PWD:\$PATH\""
+    fi
+
     echo ""
     ok "Get started:"
     echo ""
