@@ -111,7 +111,7 @@ services:
   # Web UI to read captured emails:  http://localhost:4437
   # --------------------------------------------------------------------------
   mailslurper:
-    image: oryd/mailslurper:latest-smtps
+    image: oryd/mailslurper:latest-smtps  # no semver tags available; latest-smtps is the only SMTPS-enabled tag
     container_name: vibewarden-mailslurper
     ports:
       - "4436:4436"  # SMTP
@@ -178,7 +178,7 @@ services:
   # storage backend and Shamir unseal keys (see docs/secret-management.md).
   # --------------------------------------------------------------------------
   openbao:
-    image: quay.io/openbao/openbao:latest
+    image: quay.io/openbao/openbao:2.5.2
     container_name: vibewarden-openbao
     cap_add:
       - IPC_LOCK
@@ -208,7 +208,7 @@ services:
   # Re-run after "docker compose down -v" to regenerate credentials.
   # --------------------------------------------------------------------------
   openbao-bootstrap:
-    image: curlimages/curl:latest
+    image: curlimages/curl:8.19.0
     container_name: vibewarden-openbao-bootstrap
     environment:
       BAO_ADDR: http://openbao:8200
@@ -261,7 +261,7 @@ services:
   #   docker compose --profile observability up -d
   # --------------------------------------------------------------------------
   prometheus:
-    image: prom/prometheus:latest
+    image: prom/prometheus:v3.11.2
     container_name: vibewarden-prometheus
     profiles:
       - observability
@@ -296,7 +296,7 @@ services:
   #   docker compose --profile observability up -d
   # --------------------------------------------------------------------------
   grafana:
-    image: grafana/grafana-oss:latest
+    image: grafana/grafana-oss:13.0.1
     container_name: vibewarden-grafana
     profiles:
       - observability
@@ -338,7 +338,7 @@ services:
   #   docker compose --profile observability up -d
   # --------------------------------------------------------------------------
   loki:
-    image: grafana/loki:latest
+    image: grafana/loki:3.6.10
     container_name: vibewarden-loki
     profiles:
       - observability
@@ -367,7 +367,7 @@ services:
   #   docker compose --profile observability up -d
   # --------------------------------------------------------------------------
   promtail:
-    image: grafana/promtail:latest
+    image: grafana/promtail:3.6.10
     container_name: vibewarden-promtail
     profiles:
       - observability
