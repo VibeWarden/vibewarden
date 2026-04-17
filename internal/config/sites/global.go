@@ -7,6 +7,7 @@ package sites
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/vibewarden/vibewarden/internal/domain/site"
 
@@ -27,7 +28,8 @@ type globalConfigYAML struct {
 // validated GlobalConfig. If the file does not exist, it returns
 // DefaultGlobalConfig with no error (global.yaml is optional).
 func LoadGlobal(path string) (*site.GlobalConfig, error) {
-	data, err := os.ReadFile(path)
+	cleanPath := filepath.Clean(path)
+	data, err := os.ReadFile(cleanPath) //nolint:gosec // path comes from the operator's config directory, not user input
 	if err != nil {
 		if os.IsNotExist(err) {
 			g := site.DefaultGlobalConfig()

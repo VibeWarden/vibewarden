@@ -6,13 +6,13 @@
 // violation documented in ADR-068, to avoid ~500 lines of type duplication.
 package site
 
-// SiteStatus represents the operational state of a managed site.
-type SiteStatus int
+// Status represents the operational state of a managed site.
+type Status int
 
 const (
 	// StatusHealthy indicates the site's configuration loaded successfully
 	// and the site is ready to serve traffic.
-	StatusHealthy SiteStatus = iota
+	StatusHealthy Status = iota
 
 	// StatusError indicates the site's configuration failed to load or
 	// validate. The site cannot serve traffic.
@@ -24,7 +24,7 @@ const (
 )
 
 // String returns a human-readable name for the status.
-func (s SiteStatus) String() string {
+func (s Status) String() string {
 	switch s {
 	case StatusHealthy:
 		return "healthy"

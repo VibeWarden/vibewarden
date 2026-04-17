@@ -60,10 +60,10 @@ func TestNewSite(t *testing.T) {
 	cfg := &config.Config{}
 
 	tests := []struct {
-		name    string
+		name     string
 		siteName string
-		cfg     *config.Config
-		wantErr bool
+		cfg      *config.Config
+		wantErr  bool
 	}{
 		{"valid site", "my-app", cfg, false},
 		{"nil config", "my-app", nil, true},

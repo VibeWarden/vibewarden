@@ -9,10 +9,10 @@ import (
 	"github.com/vibewarden/vibewarden/internal/config"
 )
 
-func TestSiteRegistry_AddAndGet(t *testing.T) {
+func TestRegistry_AddAndGet(t *testing.T) {
 	t.Parallel()
 
-	r := NewSiteRegistry()
+	r := NewRegistry()
 
 	s, err := NewSite("app1", &config.Config{})
 	if err != nil {
@@ -30,20 +30,20 @@ func TestSiteRegistry_AddAndGet(t *testing.T) {
 	}
 }
 
-func TestSiteRegistry_GetMissing(t *testing.T) {
+func TestRegistry_GetMissing(t *testing.T) {
 	t.Parallel()
 
-	r := NewSiteRegistry()
+	r := NewRegistry()
 	_, ok := r.Get("nonexistent")
 	if ok {
 		t.Error("Get(nonexistent) returned true, want false")
 	}
 }
 
-func TestSiteRegistry_AddReplaces(t *testing.T) {
+func TestRegistry_AddReplaces(t *testing.T) {
 	t.Parallel()
 
-	r := NewSiteRegistry()
+	r := NewRegistry()
 
 	cfg1 := &config.Config{Profile: "dev"}
 	s1, _ := NewSite("app1", cfg1)
@@ -63,10 +63,10 @@ func TestSiteRegistry_AddReplaces(t *testing.T) {
 	}
 }
 
-func TestSiteRegistry_Remove(t *testing.T) {
+func TestRegistry_Remove(t *testing.T) {
 	t.Parallel()
 
-	r := NewSiteRegistry()
+	r := NewRegistry()
 	s, _ := NewSite("app1", &config.Config{})
 	r.Add(s)
 
@@ -78,19 +78,19 @@ func TestSiteRegistry_Remove(t *testing.T) {
 	}
 }
 
-func TestSiteRegistry_RemoveMissing(t *testing.T) {
+func TestRegistry_RemoveMissing(t *testing.T) {
 	t.Parallel()
 
-	r := NewSiteRegistry()
+	r := NewRegistry()
 	if r.Remove("nonexistent") {
 		t.Error("Remove(nonexistent) returned true, want false")
 	}
 }
 
-func TestSiteRegistry_All(t *testing.T) {
+func TestRegistry_All(t *testing.T) {
 	t.Parallel()
 
-	r := NewSiteRegistry()
+	r := NewRegistry()
 	s1, _ := NewSite("app1", &config.Config{})
 	s2, _ := NewSite("app2", &config.Config{})
 	r.Add(s1)
@@ -110,10 +110,10 @@ func TestSiteRegistry_All(t *testing.T) {
 	}
 }
 
-func TestSiteRegistry_HealthySitesAndErrorSites(t *testing.T) {
+func TestRegistry_HealthySitesAndErrorSites(t *testing.T) {
 	t.Parallel()
 
-	r := NewSiteRegistry()
+	r := NewRegistry()
 	healthy, _ := NewSite("good-app", &config.Config{})
 	errSite, _ := NewErrorSite("bad-app", fmt.Errorf("broken"))
 	r.Add(healthy)
@@ -130,10 +130,10 @@ func TestSiteRegistry_HealthySitesAndErrorSites(t *testing.T) {
 	}
 }
 
-func TestSiteRegistry_GlobalConfig(t *testing.T) {
+func TestRegistry_GlobalConfig(t *testing.T) {
 	t.Parallel()
 
-	r := NewSiteRegistry()
+	r := NewRegistry()
 
 	// Initially nil.
 	if g := r.Global(); g != nil {
@@ -160,22 +160,22 @@ func TestSiteRegistry_GlobalConfig(t *testing.T) {
 	}
 }
 
-func TestSiteRegistry_ValidateDomains(t *testing.T) {
+func TestRegistry_ValidateDomains(t *testing.T) {
 	t.Parallel()
 
 	tests := []struct {
 		name    string
-		setup   func(*SiteRegistry)
+		setup   func(*Registry)
 		wantErr bool
 	}{
 		{
 			name:    "empty registry",
-			setup:   func(_ *SiteRegistry) {},
+			setup:   func(_ *Registry) {},
 			wantErr: false,
 		},
 		{
 			name: "unique domains",
-			setup: func(r *SiteRegistry) {
+			setup: func(r *Registry) {
 				s1, _ := NewSite("app1", &config.Config{TLS: config.TLSConfig{Domain: "app1.example.com"}})
 				s2, _ := NewSite("app2", &config.Config{TLS: config.TLSConfig{Domain: "app2.example.com"}})
 				r.Add(s1)
@@ -185,7 +185,7 @@ func TestSiteRegistry_ValidateDomains(t *testing.T) {
 		},
 		{
 			name: "duplicate domains",
-			setup: func(r *SiteRegistry) {
+			setup: func(r *Registry) {
 				s1, _ := NewSite("app1", &config.Config{TLS: config.TLSConfig{Domain: "same.example.com"}})
 				s2, _ := NewSite("app2", &config.Config{TLS: config.TLSConfig{Domain: "same.example.com"}})
 				r.Add(s1)
@@ -195,7 +195,7 @@ func TestSiteRegistry_ValidateDomains(t *testing.T) {
 		},
 		{
 			name: "error sites are ignored",
-			setup: func(r *SiteRegistry) {
+			setup: func(r *Registry) {
 				s1, _ := NewSite("app1", &config.Config{TLS: config.TLSConfig{Domain: "same.example.com"}})
 				s2, _ := NewErrorSite("app2", fmt.Errorf("broken"))
 				r.Add(s1)
@@ -205,7 +205,7 @@ func TestSiteRegistry_ValidateDomains(t *testing.T) {
 		},
 		{
 			name: "empty domains are ignored",
-			setup: func(r *SiteRegistry) {
+			setup: func(r *Registry) {
 				s1, _ := NewSite("app1", &config.Config{})
 				s2, _ := NewSite("app2", &config.Config{})
 				r.Add(s1)
@@ -217,7 +217,7 @@ func TestSiteRegistry_ValidateDomains(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
-			r := NewSiteRegistry()
+			r := NewRegistry()
 			tt.setup(r)
 			err := r.ValidateDomains()
 			if (err != nil) != tt.wantErr {
@@ -227,10 +227,10 @@ func TestSiteRegistry_ValidateDomains(t *testing.T) {
 	}
 }
 
-func TestSiteRegistry_DuplicateDomainError(t *testing.T) {
+func TestRegistry_DuplicateDomainError(t *testing.T) {
 	t.Parallel()
 
-	r := NewSiteRegistry()
+	r := NewRegistry()
 	s1, _ := NewSite("aaa", &config.Config{TLS: config.TLSConfig{Domain: "dup.example.com"}})
 	s2, _ := NewSite("bbb", &config.Config{TLS: config.TLSConfig{Domain: "dup.example.com"}})
 	r.Add(s1)
@@ -250,13 +250,13 @@ func TestSiteRegistry_DuplicateDomainError(t *testing.T) {
 	}
 }
 
-// TestSiteRegistry_ConcurrentAccess verifies that the registry is safe for
+// TestRegistry_ConcurrentAccess verifies that the registry is safe for
 // concurrent reads and writes. This test uses multiple goroutines hammering
 // Add, Remove, Get, All, and Len simultaneously.
-func TestSiteRegistry_ConcurrentAccess(t *testing.T) {
+func TestRegistry_ConcurrentAccess(t *testing.T) {
 	t.Parallel()
 
-	r := NewSiteRegistry()
+	r := NewRegistry()
 	const numGoroutines = 50
 	const numOps = 100
 

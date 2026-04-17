@@ -5,31 +5,31 @@ import (
 	"sync"
 )
 
-// SiteRegistry is a thread-safe aggregate that manages a collection of Sites
+// Registry is a thread-safe aggregate that manages a collection of Sites
 // and an optional GlobalConfig. It enforces the invariant that site names
 // are unique within the registry.
-type SiteRegistry struct {
+type Registry struct {
 	mu     sync.RWMutex
 	sites  map[string]Site
 	global *GlobalConfig
 }
 
-// NewSiteRegistry creates an empty SiteRegistry.
-func NewSiteRegistry() *SiteRegistry {
-	return &SiteRegistry{
+// NewRegistry creates an empty Registry.
+func NewRegistry() *Registry {
+	return &Registry{
 		sites: make(map[string]Site),
 	}
 }
 
 // SetGlobal stores the global configuration in the registry.
-func (r *SiteRegistry) SetGlobal(g GlobalConfig) {
+func (r *Registry) SetGlobal(g GlobalConfig) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.global = &g
 }
 
 // Global returns the stored global configuration, or nil if none has been set.
-func (r *SiteRegistry) Global() *GlobalConfig {
+func (r *Registry) Global() *GlobalConfig {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	if r.global == nil {
@@ -42,14 +42,14 @@ func (r *SiteRegistry) Global() *GlobalConfig {
 
 // Add inserts a site into the registry. If a site with the same name already
 // exists, it is replaced (upsert semantics, useful for hot-reload).
-func (r *SiteRegistry) Add(s Site) {
+func (r *Registry) Add(s Site) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.sites[s.Name()] = s
 }
 
 // Remove deletes a site by name. Returns true if the site existed.
-func (r *SiteRegistry) Remove(name string) bool {
+func (r *Registry) Remove(name string) bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	_, existed := r.sites[name]
@@ -59,7 +59,7 @@ func (r *SiteRegistry) Remove(name string) bool {
 
 // Get retrieves a site by name. Returns the site and true if found,
 // or a zero-value Site and false if not.
-func (r *SiteRegistry) Get(name string) (Site, bool) {
+func (r *Registry) Get(name string) (Site, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	s, ok := r.sites[name]
@@ -68,7 +68,7 @@ func (r *SiteRegistry) Get(name string) (Site, bool) {
 
 // All returns a snapshot of all sites in the registry. The returned slice
 // is safe to iterate without holding any lock.
-func (r *SiteRegistry) All() []Site {
+func (r *Registry) All() []Site {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	result := make([]Site, 0, len(r.sites))
@@ -79,14 +79,14 @@ func (r *SiteRegistry) All() []Site {
 }
 
 // Len returns the number of sites in the registry.
-func (r *SiteRegistry) Len() int {
+func (r *Registry) Len() int {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	return len(r.sites)
 }
 
 // HealthySites returns all sites with StatusHealthy.
-func (r *SiteRegistry) HealthySites() []Site {
+func (r *Registry) HealthySites() []Site {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	var result []Site
@@ -99,7 +99,7 @@ func (r *SiteRegistry) HealthySites() []Site {
 }
 
 // ErrorSites returns all sites with StatusError.
-func (r *SiteRegistry) ErrorSites() []Site {
+func (r *Registry) ErrorSites() []Site {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	var result []Site
@@ -125,7 +125,7 @@ func (e *DuplicateDomainError) Error() string {
 
 // ValidateDomains checks that no two healthy sites in the registry claim the
 // same TLS domain. Returns nil when all domains are unique.
-func (r *SiteRegistry) ValidateDomains() error {
+func (r *Registry) ValidateDomains() error {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 

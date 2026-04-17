@@ -10,7 +10,7 @@ import (
 
 // TestIntegration_RealisticDirectoryTree loads a realistic multi-site
 // directory layout: global.yaml + 3 site directories (2 valid, 1 broken),
-// then populates a SiteRegistry and validates invariants.
+// then populates a Registry and validates invariants.
 func TestIntegration_RealisticDirectoryTree(t *testing.T) {
 	t.Parallel()
 
@@ -108,7 +108,7 @@ tls:
 	}
 
 	// --- Populate registry ---
-	registry := site.NewSiteRegistry()
+	registry := site.NewRegistry()
 	registry.SetGlobal(*gc)
 
 	for _, s := range sites {
@@ -203,7 +203,7 @@ tls:
 		t.Fatalf("len(sites) = %d, want 2", len(sites))
 	}
 
-	registry := site.NewSiteRegistry()
+	registry := site.NewRegistry()
 	for _, s := range sites {
 		registry.Add(s)
 	}

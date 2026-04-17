@@ -23,7 +23,7 @@ var ValidNamePattern = regexp.MustCompile(`^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$`
 type Site struct {
 	name   string
 	cfg    *config.Config
-	status SiteStatus
+	status Status
 	err    error
 }
 
@@ -75,7 +75,7 @@ func (s Site) Config() *config.Config {
 }
 
 // Status returns the site's current operational status.
-func (s Site) Status() SiteStatus {
+func (s Site) Status() Status {
 	return s.status
 }
 
@@ -91,7 +91,7 @@ func (s Site) IsHealthy() bool {
 
 // SetStatus updates the site's operational status. When setting StatusError,
 // the caller should also call SetErr with the underlying error.
-func (s *Site) SetStatus(status SiteStatus) {
+func (s *Site) SetStatus(status Status) {
 	s.status = status
 }
 
