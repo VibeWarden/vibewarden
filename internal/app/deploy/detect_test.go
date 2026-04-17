@@ -69,6 +69,58 @@ func TestDetect(t *testing.T) {
 	}
 }
 
+func TestIsMultiApp(t *testing.T) {
+	tests := []struct {
+		name     string
+		executor *fakeExecutor
+		want     bool
+		wantErr  bool
+	}{
+		{
+			name: "sites dir exists returns true",
+			executor: &fakeExecutor{
+				runResponses: map[string]runResponse{
+					"test -d ~/vibewarden/sites/": {output: "", err: nil},
+				},
+			},
+			want: true,
+		},
+		{
+			name: "sites dir missing returns false",
+			executor: &fakeExecutor{
+				runResponses: map[string]runResponse{
+					"test -d ~/vibewarden/sites/": {err: errors.New("exit status 1")},
+				},
+			},
+			want: false,
+		},
+		{
+			name: "SSH error is propagated",
+			executor: &fakeExecutor{
+				runResponses: map[string]runResponse{
+					"test -d ~/vibewarden/sites/": {err: errors.New("ssh: connection refused")},
+				},
+			},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := deployapp.IsMultiApp(context.Background(), tt.executor)
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("IsMultiApp() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if tt.wantErr {
+				return
+			}
+			if got != tt.want {
+				t.Errorf("IsMultiApp() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestMode_String(t *testing.T) {
 	tests := []struct {
 		mode deployapp.Mode

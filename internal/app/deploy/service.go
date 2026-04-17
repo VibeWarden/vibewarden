@@ -290,6 +290,102 @@ func (s *Service) Logs(ctx context.Context, opts LogsOptions) error {
 	return nil
 }
 
+// ListSites returns the names of all site subdirectories under
+// ~/vibewarden/sites/ on the remote host. An empty slice is returned
+// when no sites exist or the directory is missing.
+func (s *Service) ListSites(ctx context.Context) ([]string, error) {
+	output, err := s.executor.Run(ctx, "ls -1 "+sitesDir+" 2>/dev/null || true")
+	if err != nil {
+		return nil, fmt.Errorf("listing remote sites: %w", err)
+	}
+	output = strings.TrimSpace(output)
+	if output == "" {
+		return nil, nil
+	}
+	return strings.Split(output, "\n"), nil
+}
+
+// StatusMultiApp fetches Docker Compose service state for multi-app deployments.
+// When app is non-empty, it targets that specific site. When app is empty, it
+// shows the sidecar status plus all site statuses.
+func (s *Service) StatusMultiApp(ctx context.Context, app string, out io.Writer) error {
+	if out == nil {
+		out = io.Discard
+	}
+
+	if app != "" {
+		siteDir := sitesDir + app + "/"
+		output, err := s.executor.Run(ctx, "docker compose --project-directory "+siteDir+" ps")
+		if err != nil {
+			return fmt.Errorf("fetching status for site %q: %w", app, err)
+		}
+		fmt.Fprintf(out, "=== Site: %s ===\n", app)
+		fmt.Fprintln(out, output)
+		return nil
+	}
+
+	// Show sidecar status.
+	sidecarOutput, err := s.executor.Run(ctx, "docker compose --project-directory "+sidecarDir+" ps")
+	if err != nil {
+		return fmt.Errorf("fetching sidecar status: %w", err)
+	}
+	fmt.Fprintln(out, "=== Sidecar ===")
+	fmt.Fprintln(out, sidecarOutput)
+
+	// Enumerate and show each site.
+	sites, err := s.ListSites(ctx)
+	if err != nil {
+		return err
+	}
+	for _, name := range sites {
+		siteDir := sitesDir + name + "/"
+		output, siteErr := s.executor.Run(ctx, "docker compose --project-directory "+siteDir+" ps")
+		fmt.Fprintf(out, "=== Site: %s ===\n", name)
+		if siteErr != nil {
+			fmt.Fprintf(out, "  error: %v\n", siteErr)
+			continue
+		}
+		fmt.Fprintln(out, output)
+	}
+	return nil
+}
+
+// LogsMultiApp fetches Docker Compose logs for multi-app deployments.
+// When app is non-empty, it targets that specific site. When app is empty, it
+// shows logs from the sidecar container.
+func (s *Service) LogsMultiApp(ctx context.Context, app string, opts LogsOptions) error {
+	out := opts.Out
+	if out == nil {
+		out = io.Discard
+	}
+
+	var dir string
+	if app != "" {
+		dir = sitesDir + app + "/"
+	} else {
+		dir = sidecarDir
+	}
+
+	cmd := "docker compose --project-directory " + dir + " logs"
+	if opts.Lines > 0 {
+		cmd += fmt.Sprintf(" --tail=%d", opts.Lines)
+	}
+	if opts.Follow {
+		cmd += " -f"
+		if err := s.executor.RunStream(ctx, cmd, out, out); err != nil {
+			return fmt.Errorf("streaming remote logs: %w", err)
+		}
+		return nil
+	}
+
+	output, err := s.executor.Run(ctx, cmd)
+	if err != nil {
+		return fmt.Errorf("fetching remote logs: %w", err)
+	}
+	fmt.Fprintln(out, output)
+	return nil
+}
+
 // checkRemotePrerequisites verifies that docker and docker compose are available
 // on the remote host.
 func (s *Service) checkRemotePrerequisites(ctx context.Context) error {

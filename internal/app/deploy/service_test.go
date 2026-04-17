@@ -975,6 +975,218 @@ func TestProjectNameFromConfig_RelativeDoesNotReturnDot(t *testing.T) {
 	}
 }
 
+func TestService_ListSites(t *testing.T) {
+	tests := []struct {
+		name     string
+		executor *fakeExecutor
+		want     []string
+		wantErr  bool
+	}{
+		{
+			name: "lists multiple sites",
+			executor: &fakeExecutor{
+				runResponses: map[string]runResponse{
+					"ls -1 ~/vibewarden/sites/ 2>/dev/null || true": {output: "blog\napi\nshop"},
+				},
+			},
+			want: []string{"blog", "api", "shop"},
+		},
+		{
+			name: "empty directory returns nil",
+			executor: &fakeExecutor{
+				runResponses: map[string]runResponse{
+					"ls -1 ~/vibewarden/sites/ 2>/dev/null || true": {output: ""},
+				},
+			},
+			want: nil,
+		},
+		{
+			name: "missing directory returns nil via || true",
+			executor: &fakeExecutor{
+				runResponses: map[string]runResponse{
+					"ls -1 ~/vibewarden/sites/ 2>/dev/null || true": {output: ""},
+				},
+			},
+			want: nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			svc := deployapp.NewService(tt.executor, nil)
+			got, err := svc.ListSites(context.Background())
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("ListSites() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if len(got) != len(tt.want) {
+				t.Fatalf("ListSites() returned %d sites, want %d", len(got), len(tt.want))
+			}
+			for i, name := range got {
+				if name != tt.want[i] {
+					t.Errorf("ListSites()[%d] = %q, want %q", i, name, tt.want[i])
+				}
+			}
+		})
+	}
+}
+
+func TestService_StatusMultiApp_SpecificApp(t *testing.T) {
+	executor := &fakeExecutor{
+		runResponses: map[string]runResponse{
+			"docker compose --project-directory ~/vibewarden/sites/blog/ ps": {output: "blog container running"},
+		},
+	}
+
+	svc := deployapp.NewService(executor, nil)
+
+	var buf bytes.Buffer
+	err := svc.StatusMultiApp(context.Background(), "blog", &buf)
+	if err != nil {
+		t.Fatalf("StatusMultiApp() unexpected error: %v", err)
+	}
+	if !strings.Contains(buf.String(), "=== Site: blog ===") {
+		t.Errorf("expected site header in output, got:\n%s", buf.String())
+	}
+	if !strings.Contains(buf.String(), "blog container running") {
+		t.Errorf("expected site status in output, got:\n%s", buf.String())
+	}
+}
+
+func TestService_StatusMultiApp_AllSites(t *testing.T) {
+	executor := &fakeExecutor{
+		runResponses: map[string]runResponse{
+			"docker compose --project-directory ~/vibewarden/.sidecar/ ps":   {output: "sidecar running"},
+			"ls -1 ~/vibewarden/sites/ 2>/dev/null || true":                  {output: "app1\napp2"},
+			"docker compose --project-directory ~/vibewarden/sites/app1/ ps": {output: "app1 running"},
+			"docker compose --project-directory ~/vibewarden/sites/app2/ ps": {output: "app2 running"},
+		},
+	}
+
+	svc := deployapp.NewService(executor, nil)
+
+	var buf bytes.Buffer
+	err := svc.StatusMultiApp(context.Background(), "", &buf)
+	if err != nil {
+		t.Fatalf("StatusMultiApp() unexpected error: %v", err)
+	}
+
+	out := buf.String()
+	if !strings.Contains(out, "=== Sidecar ===") {
+		t.Errorf("expected sidecar header in output, got:\n%s", out)
+	}
+	if !strings.Contains(out, "=== Site: app1 ===") {
+		t.Errorf("expected app1 header in output, got:\n%s", out)
+	}
+	if !strings.Contains(out, "=== Site: app2 ===") {
+		t.Errorf("expected app2 header in output, got:\n%s", out)
+	}
+}
+
+func TestService_StatusMultiApp_Error(t *testing.T) {
+	executor := &fakeExecutor{
+		runResponses: map[string]runResponse{
+			"docker compose --project-directory ~/vibewarden/sites/bad/ ps": {err: errors.New("not found")},
+		},
+	}
+
+	svc := deployapp.NewService(executor, nil)
+
+	err := svc.StatusMultiApp(context.Background(), "bad", io.Discard)
+	if err == nil {
+		t.Fatal("expected error when fetching status for a bad site")
+	}
+	if !strings.Contains(err.Error(), "fetching status for site") {
+		t.Errorf("error should mention site, got: %v", err)
+	}
+}
+
+func TestService_LogsMultiApp_SpecificApp(t *testing.T) {
+	executor := &fakeExecutor{
+		runResponses: map[string]runResponse{
+			"docker compose --project-directory ~/vibewarden/sites/blog/ logs --tail=20": {output: "blog log line"},
+		},
+	}
+
+	svc := deployapp.NewService(executor, nil)
+
+	var buf bytes.Buffer
+	err := svc.LogsMultiApp(context.Background(), "blog", deployapp.LogsOptions{
+		Lines: 20,
+		Out:   &buf,
+	})
+	if err != nil {
+		t.Fatalf("LogsMultiApp() unexpected error: %v", err)
+	}
+	if !strings.Contains(buf.String(), "blog log line") {
+		t.Errorf("expected blog logs in output, got:\n%s", buf.String())
+	}
+}
+
+func TestService_LogsMultiApp_Sidecar(t *testing.T) {
+	executor := &fakeExecutor{
+		runResponses: map[string]runResponse{
+			"docker compose --project-directory ~/vibewarden/.sidecar/ logs --tail=50": {output: "sidecar log"},
+		},
+	}
+
+	svc := deployapp.NewService(executor, nil)
+
+	var buf bytes.Buffer
+	err := svc.LogsMultiApp(context.Background(), "", deployapp.LogsOptions{
+		Lines: 50,
+		Out:   &buf,
+	})
+	if err != nil {
+		t.Fatalf("LogsMultiApp() unexpected error: %v", err)
+	}
+	if !strings.Contains(buf.String(), "sidecar log") {
+		t.Errorf("expected sidecar logs in output, got:\n%s", buf.String())
+	}
+}
+
+func TestService_LogsMultiApp_Follow(t *testing.T) {
+	executor := &fakeExecutor{
+		runResponses: map[string]runResponse{
+			"docker compose --project-directory ~/vibewarden/sites/api/ logs --tail=10 -f": {output: "streaming"},
+		},
+	}
+
+	svc := deployapp.NewService(executor, nil)
+
+	var buf bytes.Buffer
+	err := svc.LogsMultiApp(context.Background(), "api", deployapp.LogsOptions{
+		Lines:  10,
+		Follow: true,
+		Out:    &buf,
+	})
+	if err != nil {
+		t.Fatalf("LogsMultiApp() unexpected error: %v", err)
+	}
+	if !strings.Contains(buf.String(), "streaming") {
+		t.Errorf("expected streaming output, got:\n%s", buf.String())
+	}
+}
+
+func TestService_LogsMultiApp_Error(t *testing.T) {
+	executor := &fakeExecutor{
+		runResponses: map[string]runResponse{
+			"docker compose --project-directory ~/vibewarden/sites/bad/ logs --tail=50": {err: errors.New("not found")},
+		},
+	}
+
+	svc := deployapp.NewService(executor, nil)
+
+	err := svc.LogsMultiApp(context.Background(), "bad", deployapp.LogsOptions{
+		Lines: 50,
+	})
+	if err == nil {
+		t.Fatal("expected error when fetching logs for a bad site")
+	}
+	if !strings.Contains(err.Error(), "fetching remote logs") {
+		t.Errorf("error should mention 'fetching remote logs', got: %v", err)
+	}
+}
+
 // Ensure fmt is used (used in assertRunCalledContains via Errorf).
 var _ = fmt.Sprintf
 
