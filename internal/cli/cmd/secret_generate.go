@@ -87,9 +87,12 @@ Examples:
 		},
 	}
 
-	cmd.Flags().IntVar(&length, "length", defaultSecretLength, "number of random bytes to generate (result is 2x hex chars)")
-	cmd.Flags().BoolVar(&adminToken, "admin-token", false, "generate a 32-byte admin API token (outputs VIBEWARDEN_ADMIN_TOKEN=...)")
-	cmd.Flags().BoolVar(&fleetKey, "fleet-key", false, "generate a 32-byte fleet dashboard key (outputs VIBEWARDEN_FLEET_KEY=...)")
+	cmd.Flags().IntVar(&length, "length", defaultSecretLength,
+		fmt.Sprintf("number of random bytes to generate, %d–%d (result is 2x hex chars)", minSecretLength, maxSecretLength))
+	cmd.Flags().BoolVar(&adminToken, "admin-token", false,
+		"generate a 32-byte admin API token (outputs VIBEWARDEN_ADMIN_TOKEN=…); mutually exclusive with --fleet-key")
+	cmd.Flags().BoolVar(&fleetKey, "fleet-key", false,
+		"generate a 32-byte fleet dashboard key (outputs VIBEWARDEN_FLEET_KEY=…); mutually exclusive with --admin-token")
 
 	return cmd
 }
