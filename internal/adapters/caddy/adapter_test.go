@@ -116,9 +116,10 @@ func TestAdapter_StopWithoutStart(t *testing.T) {
 	}
 	adapter := NewAdapter(cfg, slog.Default(), nil)
 
-	// Stopping without starting should not panic (Caddy handles this gracefully)
+	// Stopping without starting should not panic (Caddy handles this gracefully).
+	// Caddy returns nil when Stop is called on an unstarted instance.
 	err := adapter.Stop(context.Background())
-	// We don't assert on err here since Caddy may return an error
-	// when stopping without having been started — this is acceptable.
-	_ = err
+	if err != nil {
+		t.Errorf("Stop() on unstarted adapter returned unexpected error: %v", err)
+	}
 }
