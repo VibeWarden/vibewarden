@@ -76,6 +76,7 @@ nav:
       - Performance: performance.md
       - Social Login: social-login.md
       - Deploy to VPS: deploy-to-vps.md
+      - Deploy Reference: deploy-reference.md
       - Production Deployment: production-deployment.md
       - Production Hardening: production-hardening.md
       - WebSockets: websockets.md

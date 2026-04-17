@@ -74,6 +74,73 @@ to inspect and manage a local sidecar. Tools:
 
 ---
 
+## CLI commands
+
+VibeWarden is operated via the `vibew` CLI. Below is the complete command list.
+
+| Command | Description |
+|---|---|
+| `vibew init` | Scaffold a new project with VibeWarden |
+| `vibew wrap` | Add VibeWarden sidecar to an existing project |
+| `vibew add <feature>` | Enable a feature (auth, rate-limiting, tls, metrics, admin) |
+| `vibew generate` | Regenerate docker-compose.yml from config |
+| `vibew build` | Build the Docker image for the app |
+| `vibew dev` | Start local dev environment |
+| `vibew restart` | Restart containers without rebuilding |
+| `vibew deploy --target ssh://user@host` | Deploy the stack to a remote server over SSH |
+| `vibew deploy status --target ssh://user@host` | Show remote Docker Compose service status |
+| `vibew deploy logs --target ssh://user@host` | Fetch remote Docker Compose logs (--follow/-f for streaming) |
+| `vibew status` | Show health of all components |
+| `vibew doctor` | Diagnose common issues |
+| `vibew logs` | Pretty-print structured logs |
+| `vibew migrate` | Apply all pending database migrations (alias for migrate up) |
+| `vibew migrate up` | Apply all pending database migrations |
+| `vibew migrate down` | Roll back the most recently applied migration |
+| `vibew migrate status` | Show current migration version and state |
+| `vibew upgrade` | Update the VibeWarden binary to the latest (or a specific) release |
+| `vibew upgrade v0.4.0` | Install a specific version |
+| `vibew plugins` | List available plugins and their enabled/disabled status |
+| `vibew plugins show <name>` | Show detailed config options for a plugin |
+| `vibew secret generate` | Generate a cryptographically secure random secret (hex) |
+| `vibew secret generate --admin-token` | Generate an admin API token (outputs VIBEWARDEN_ADMIN_TOKEN=...) |
+| `vibew secret generate --fleet-key` | Generate a fleet dashboard key (outputs VIBEWARDEN_FLEET_KEY=...) |
+| `vibew secret get <alias-or-path>` | Read a secret from OpenBao |
+| `vibew secret list` | List all managed secret paths |
+| `vibew token` | Generate a signed dev JWT for local testing |
+| `vibew cert export` | Export the local CA certificate |
+| `vibew validate` | Validate configuration |
+| `vibew context refresh` | Regenerate AI agent context files |
+| `vibew eject` | Export raw proxy config to graduate past VibeWarden |
+| `vibew mcp` | Start MCP server for AI agent integration |
+
+### deploy flags
+
+`vibew deploy` uses SSH to deploy the stack remotely. Key flags:
+
+- `--target` (required) -- `ssh://user@host[:port]`
+- `--config` -- path to vibewarden.yaml (default: ./vibewarden.yaml)
+- `--ssh-key` -- path to SSH private key (default: SSH agent / ~/.ssh/config)
+- `--secrets-from` -- .env file to seed into OpenBao on first deploy
+- `--rotate-secrets` -- re-seed secrets on subsequent deploys
+- `--unseal-key` -- OpenBao unseal key (overrides stored key)
+
+### migrate flags
+
+- `--config` (persistent) -- path to vibewarden.yaml
+
+### upgrade flags
+
+- `--dry-run` -- preview without writing files
+- `--install-dir` -- override installation directory
+
+### secret generate flags
+
+- `--length` (default 32) -- number of random bytes (result is 2x hex chars)
+- `--admin-token` -- generate a 32-byte admin token (outputs VIBEWARDEN_ADMIN_TOKEN=...)
+- `--fleet-key` -- generate a 32-byte fleet key (outputs VIBEWARDEN_FLEET_KEY=...)
+
+---
+
 ## Configuration
 
 VibeWarden is configured via `vibewarden.yaml`. Key sections:

@@ -383,11 +383,13 @@ ssh root@<server-ip> 'cd /opt/myapp && docker run --rm \
 
 ## Next steps
 
+- **Deploy command reference**: see [Deploy Reference](deploy-reference.md) for
+  the full `vibew deploy` flag reference, secret rotation, and unsealing.
 - **Production hardening**: see [Production Hardening Checklist](production-hardening.md)
   for a full checklist of security settings to review before going live.
 - **Backups**: see [Production Deployment](production-deployment.md) for Postgres
   backup scripts and TLS certificate backup procedures.
-- **Observability**: enable Prometheus metrics and Grafana dashboards —
+- **Observability**: enable Prometheus metrics and Grafana dashboards --
   see [Observability](observability.md).
 - **Fleet dashboard** (Pro): connect multiple instances to the VibeWarden fleet
   dashboard at `app.vibewarden.dev` for aggregated logs and metrics.

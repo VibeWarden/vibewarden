@@ -273,10 +273,20 @@ add VibeWarden. Use `vibew add` to enable individual features after the initial 
 | `vibew build` | Build the Docker image for the app |
 | `vibew dev` | Start local dev environment |
 | `vibew restart` | Restart containers without rebuilding the image |
+| `vibew deploy` | Deploy the stack to a remote server over SSH ([reference](docs/deploy-reference.md)) |
+| `vibew deploy status` | Show Docker Compose service status on the remote |
+| `vibew deploy logs` | Fetch Docker Compose logs from the remote (`--follow` for streaming) |
 | `vibew status` | Show health of all components |
 | `vibew doctor` | Diagnose common issues |
 | `vibew logs` | Pretty-print structured logs |
-| `vibew deploy logs --follow` | Stream remote logs in real-time |
+| `vibew migrate` | Apply all pending database migrations (alias for `migrate up`) |
+| `vibew migrate up` | Apply all pending database migrations |
+| `vibew migrate down` | Roll back the most recently applied migration |
+| `vibew migrate status` | Show current migration version and state |
+| `vibew upgrade` | Update the VibeWarden binary to the latest (or a specific) release |
+| `vibew plugins` | List available plugins and their enabled/disabled status |
+| `vibew plugins show <name>` | Show detailed configuration options for a plugin |
+| `vibew secret generate` | Generate a cryptographically secure random secret |
 | `vibew secret get <alias-or-path>` | Read a secret from OpenBao |
 | `vibew secret list` | List all managed secret paths |
 | `vibew token` | Generate a signed dev JWT for local testing |
@@ -370,6 +380,7 @@ Architectural decisions are documented in [DECISIONS.md](DECISIONS.md).
 | Rate limiting at scale | [docs/rate-limiting.md](docs/rate-limiting.md) |
 | Production deployment | [docs/production-deployment.md](docs/production-deployment.md) |
 | Hardening checklist | [docs/production-hardening.md](docs/production-hardening.md) |
+| Deploy command reference | [docs/deploy-reference.md](docs/deploy-reference.md) |
 | Architectural decisions | [DECISIONS.md](DECISIONS.md) |
 
 ---

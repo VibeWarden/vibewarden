@@ -59,7 +59,39 @@ echo "v0.13.0" > .vibewarden-version
 Commit `.vibewarden-version` so everyone on your team, as well as your CI environment,
 uses the same version automatically.
 
-### Upgrading to the latest release
+### Upgrading with `vibew upgrade`
+
+`vibew upgrade` downloads and installs a new VibeWarden release, replacing the
+running binary in-place.
+
+```bash
+vibew upgrade            # install the latest release
+vibew upgrade v0.4.0     # install a specific version
+vibew upgrade --dry-run  # preview without writing files
+```
+
+The command:
+
+1. Resolves the target version (latest from the GitHub API, or the tag you
+   supplied).
+2. Downloads the binary archive for the current OS and architecture.
+3. Verifies the SHA-256 checksum.
+4. Replaces the running binary in-place (resolved via `os.Executable` +
+   symlink evaluation). Falls back to `~/.vibewarden/bin` if resolution fails.
+5. Updates `.vibewarden-version` if found in the current or a parent directory.
+6. Touches `vibew`, `vibew.ps1`, `vibew.cmd` in the current directory when present.
+
+If the target directory is not writable (e.g. `/usr/local/bin` without sudo),
+the command automatically retries with `sudo`.
+
+#### Flags
+
+| Flag | Default | Description |
+|------|---------|-------------|
+| `--dry-run` | `false` | Print what would happen without writing any files |
+| `--install-dir` | path of running binary | Directory to install the binary into |
+
+### Upgrading to the latest release (alternative)
 
 ```bash
 ./vibew self-update
