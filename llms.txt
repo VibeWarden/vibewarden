@@ -1,0 +1,55 @@
+# VibeWarden
+
+> Security sidecar for vibe-coded apps
+
+VibeWarden is an open-source security sidecar that protects your web app
+with zero code changes. Single Go binary embedding Caddy. Runs locally
+next to your app via Docker Compose.
+
+## Quick start
+
+curl -fsSL https://vibewarden.dev/install.sh | sh
+
+# New project:
+mkdir myapp && cd myapp
+vibew init && vibew dev
+
+# Existing project:
+cd my-app && vibew wrap --upstream 3000 && vibew dev
+
+## Features
+
+- TLS termination (Let's Encrypt, self-signed, external)
+- Authentication (JWT/OIDC, API keys, Ory Kratos sessions)
+- Rate limiting (per-IP, per-user, Redis-backed)
+- WAF (SQLi, XSS, path traversal detection)
+- Webhook signature verification (Stripe, GitHub, Slack, Twilio)
+- Security headers (HSTS, CSP, CORP, COOP, etc.)
+- Egress proxy with SSRF protection
+- Hot config reload (file watcher + admin API)
+- AI-readable structured logs with published JSON schema
+- Prometheus metrics + OpenTelemetry export
+- MCP server for AI agent integration (vibew mcp)
+- Config JSON schema for editor autocomplete
+
+## Key files in this repo
+
+- vibewarden.yaml            — main configuration (start here)
+- vibewarden.example.yaml    — curated starter config (~40 lines)
+- vibewarden.reference.yaml  — full config reference (~840 lines)
+- AGENTS-VIBEWARDEN.md       — instructions for AI coding agents
+- AGENTS.md                  — tool-agnostic agent context file
+- docs/getting-started.md    — step-by-step setup guide
+- docs/configuration.md      — config reference with tables
+- docs/troubleshooting.md    — common issues + vibew doctor
+- llms-full.txt              — complete AI-readable setup guide
+
+## Docs
+
+- Full setup guide: llms-full.txt (in this repo) or https://vibewarden.dev/llms-full.txt
+- Web docs: https://vibewarden.dev/docs/vibewarden/
+- GitHub: https://github.com/vibewarden/vibewarden
+
+## License
+
+Apache 2.0 (free forever)
