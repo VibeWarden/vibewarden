@@ -11,14 +11,14 @@ import (
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
 
-// ReloadFunc is called after registry mutations to rebuild the proxy config
+// ApplyFunc is called after registry mutations to rebuild the proxy config
 // from the current set of healthy sites. It receives the current context and
 // returns an error if the proxy reload fails.
-type ReloadFunc func(ctx context.Context) error
+type ApplyFunc func(ctx context.Context) error
 
 // MultiSiteService consumes SiteEvent values from a SiteWatcher and maps them
 // to Registry mutations (Add, Remove, SetErr). After each mutation it calls
-// the ReloadFunc to apply the new state to the running proxy.
+// the ApplyFunc to apply the new state to the running proxy.
 //
 // Error isolation: a broken site's configuration never prevents healthy sites
 // from serving. If the proxy reload fails after a mutation, the service
@@ -27,7 +27,7 @@ type MultiSiteService struct {
 	registry *site.Registry
 	eventLog ports.EventLogger
 	logger   *slog.Logger
-	reloadFn ReloadFunc
+	reloadFn ApplyFunc
 }
 
 // NewMultiSiteService creates a MultiSiteService.
@@ -39,7 +39,7 @@ func NewMultiSiteService(
 	registry *site.Registry,
 	eventLog ports.EventLogger,
 	logger *slog.Logger,
-	reloadFn ReloadFunc,
+	reloadFn ApplyFunc,
 ) *MultiSiteService {
 	return &MultiSiteService{
 		registry: registry,
