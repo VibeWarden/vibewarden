@@ -15,7 +15,7 @@ import (
 // additional plugins alongside the built-in OSS catalog.
 //
 // The Pro binary uses this to register proprietary plugins without forking the
-// OSS codebase. See internal/app/serve.RunServe for how registrars are invoked.
+// OSS codebase. See cmd/vibewarden/wiring_serve.go for how registrars are invoked.
 type PluginRegistrar func(
 	registry *Registry,
 	cfg *config.Config,

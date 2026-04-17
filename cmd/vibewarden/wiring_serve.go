@@ -1,4 +1,4 @@
-package serve
+package main
 
 import (
 	"context"
@@ -26,18 +26,18 @@ import (
 	"github.com/vibewarden/vibewarden/migrations"
 )
 
-// Options configures the RunServe function behavior.
-type Options struct {
-	// ConfigPath is the path to vibewarden.yaml. An empty string causes the
+// serveOptions configures the runServe function behavior.
+type serveOptions struct {
+	// configPath is the path to vibewarden.yaml. An empty string causes the
 	// default search paths to be used (current directory and /etc/vibewarden).
-	ConfigPath string
+	configPath string
 
-	// Version is the binary version string, typically set via -ldflags at build
+	// version is the binary version string, typically set via -ldflags at build
 	// time. It is embedded in the ProxyConfig for observability.
-	Version string
+	version string
 }
 
-// RunServe loads config, builds the plugin registry, wires Caddy via plugin
+// runServe loads config, builds the plugin registry, wires Caddy via plugin
 // contributors, and runs until a shutdown signal is received or the context is
 // cancelled.
 //
@@ -45,10 +45,10 @@ type Options struct {
 // extraPlugins. They are called after plugins.RegisterBuiltinPlugins, allowing
 // Pro or custom binaries to extend the registry without forking the OSS code.
 //
-// Signal handling: RunServe installs SIGINT/SIGTERM handlers that cancel the
+// Signal handling: runServe installs SIGINT/SIGTERM handlers that cancel the
 // context and trigger graceful shutdown.
-func RunServe(ctx context.Context, opts Options, extraPlugins ...plugins.PluginRegistrar) error {
-	cfg, err := config.Load(opts.ConfigPath)
+func runServe(ctx context.Context, opts serveOptions, extraPlugins ...plugins.PluginRegistrar) error {
+	cfg, err := config.Load(opts.configPath)
 	if err != nil {
 		return fmt.Errorf("loading config: %w", err)
 	}
@@ -59,7 +59,7 @@ func RunServe(ctx context.Context, opts Options, extraPlugins ...plugins.PluginR
 	config.MigrateLegacyMetrics(cfg, logger)
 
 	logger.Info("VibeWarden starting",
-		slog.String("version", opts.Version),
+		slog.String("version", opts.version),
 		slog.String("listen", fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port)),
 		slog.String("upstream", fmt.Sprintf("%s:%d", cfg.Upstream.Host, cfg.Upstream.Port)),
 	)
@@ -155,7 +155,7 @@ func RunServe(ctx context.Context, opts Options, extraPlugins ...plugins.PluginR
 	// Build ProxyConfig — base fields that the Caddy adapter uses directly.
 	// Plugin-specific wiring (security headers, rate limiting, auth, admin,
 	// metrics) is now driven by each plugin's CaddyContributor implementation.
-	proxyCfg := buildProxyConfig(cfg, registry, opts.Version)
+	proxyCfg := buildProxyConfig(cfg, registry, opts.version)
 
 	// Create Caddy adapter and proxy service.
 	adapter := caddyadapter.NewAdapter(proxyCfg, logger, eventLogger)
@@ -164,11 +164,11 @@ func RunServe(ctx context.Context, opts Options, extraPlugins ...plugins.PluginR
 	// so that a reload can rebuild ProxyConfig without needing to re-initialise
 	// plugins (which must not restart on hot reload).
 	rebuildFn := func(newCfg *config.Config) *ports.ProxyConfig {
-		return buildProxyConfig(newCfg, registry, opts.Version)
+		return buildProxyConfig(newCfg, registry, opts.version)
 	}
 
 	reloadService := reloadsvc.NewService(
-		opts.ConfigPath,
+		opts.configPath,
 		cfg,
 		adapter,
 		eventLogger,
@@ -180,7 +180,7 @@ func RunServe(ctx context.Context, opts Options, extraPlugins ...plugins.PluginR
 	// The applier needs the config path and the reload service, both of which
 	// are available at this point.
 	proposalStore := proposaladapter.NewStore()
-	proposalApplier := proposaladapter.NewApplier(opts.ConfigPath, reloadService)
+	proposalApplier := proposaladapter.NewApplier(opts.configPath, reloadService)
 	proposalSvc := proposalapp.NewService(proposalStore, proposalApplier, eventLogger, logger)
 	proposalHandlers := httpadapter.NewProposalHandlers(proposalSvc, logger)
 
@@ -208,7 +208,7 @@ func RunServe(ctx context.Context, opts Options, extraPlugins ...plugins.PluginR
 		}
 
 		watcher := fsnotifyadapter.NewWatcher(logger, ports.WithDebounce(debounce))
-		watchPath := opts.ConfigPath
+		watchPath := opts.configPath
 		if watchPath == "" {
 			watchPath = "vibewarden.yaml"
 		}
