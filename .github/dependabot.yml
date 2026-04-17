@@ -1,0 +1,68 @@
+version: 2
+
+updates:
+  # Go module — main binary + all internal packages.
+  - package-ecosystem: gomod
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    commit-message:
+      prefix: "deps"
+    labels:
+      - tech-debt
+    groups:
+      # Bundle minor/patch bumps for the OpenTelemetry family — they move
+      # in lockstep and reviewing them individually is churn.
+      otel:
+        patterns:
+          - "go.opentelemetry.io/*"
+      # Bundle testcontainers modules — same lockstep pattern.
+      testcontainers:
+        patterns:
+          - "github.com/testcontainers/*"
+
+  # Go module — demo app (separate go.mod).
+  - package-ecosystem: gomod
+    directory: /examples/demo-app
+    schedule:
+      interval: weekly
+      day: monday
+    commit-message:
+      prefix: "deps(demo)"
+    labels:
+      - tech-debt
+      - demo-app
+
+  # Python — Flask example app (requirements.txt).
+  - package-ecosystem: pip
+    directory: /examples/python-flask
+    schedule:
+      interval: weekly
+      day: monday
+    commit-message:
+      prefix: "deps(flask-example)"
+    labels:
+      - tech-debt
+
+  # Docker — base images in Dockerfile + docker-compose.
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    commit-message:
+      prefix: "deps(docker)"
+    labels:
+      - tech-debt
+
+  # GitHub Actions — keep CI actions pinned to latest.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    commit-message:
+      prefix: "ci"
+    labels:
+      - tech-debt
