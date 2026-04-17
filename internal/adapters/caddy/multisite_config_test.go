@@ -3,6 +3,7 @@ package caddy
 import (
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"testing"
 
 	"github.com/vibewarden/vibewarden/internal/config"
@@ -51,7 +52,7 @@ func TestBuildMultiSiteConfig_SingleSite(t *testing.T) {
 	s := helperNewSite(t, "app1", cfg)
 
 	global := site.DefaultGlobalConfig()
-	result, err := BuildMultiSiteConfig([]*site.Site{s}, global)
+	result, err := BuildMultiSiteConfig([]*site.Site{s}, global, slog.Default())
 	if err != nil {
 		t.Fatalf("BuildMultiSiteConfig() error = %v", err)
 	}
@@ -106,7 +107,7 @@ func TestBuildMultiSiteConfig_TwoSitesDifferentDomains(t *testing.T) {
 	s2 := helperNewSite(t, "app2", cfg2)
 
 	global := site.DefaultGlobalConfig()
-	result, err := BuildMultiSiteConfig([]*site.Site{s1, s2}, global)
+	result, err := BuildMultiSiteConfig([]*site.Site{s1, s2}, global, slog.Default())
 	if err != nil {
 		t.Fatalf("BuildMultiSiteConfig() error = %v", err)
 	}
@@ -161,7 +162,7 @@ func TestBuildMultiSiteConfig_SiteWithNoDomainSkipped(t *testing.T) {
 	s2 := helperNewSite(t, "app2", cfg2)
 
 	global := site.DefaultGlobalConfig()
-	result, err := BuildMultiSiteConfig([]*site.Site{s1, s2}, global)
+	result, err := BuildMultiSiteConfig([]*site.Site{s1, s2}, global, slog.Default())
 	if err != nil {
 		t.Fatalf("BuildMultiSiteConfig() error = %v", err)
 	}
@@ -189,7 +190,7 @@ func TestBuildMultiSiteConfig_ErrorSiteSkipped(t *testing.T) {
 	s2 := helperNewErrorSite(t, "app2")
 
 	global := site.DefaultGlobalConfig()
-	result, err := BuildMultiSiteConfig([]*site.Site{s1, s2}, global)
+	result, err := BuildMultiSiteConfig([]*site.Site{s1, s2}, global, slog.Default())
 	if err != nil {
 		t.Fatalf("BuildMultiSiteConfig() error = %v", err)
 	}
@@ -212,7 +213,7 @@ func TestBuildMultiSiteConfig_ErrorSiteSkipped(t *testing.T) {
 
 func TestBuildMultiSiteConfig_EmptySitesList(t *testing.T) {
 	global := site.DefaultGlobalConfig()
-	_, err := BuildMultiSiteConfig([]*site.Site{}, global)
+	_, err := BuildMultiSiteConfig([]*site.Site{}, global, slog.Default())
 	if err == nil {
 		t.Fatal("expected error for empty sites list, got nil")
 	}
@@ -220,7 +221,7 @@ func TestBuildMultiSiteConfig_EmptySitesList(t *testing.T) {
 
 func TestBuildMultiSiteConfig_NilSitesList(t *testing.T) {
 	global := site.DefaultGlobalConfig()
-	_, err := BuildMultiSiteConfig(nil, global)
+	_, err := BuildMultiSiteConfig(nil, global, slog.Default())
 	if err == nil {
 		t.Fatal("expected error for nil sites list, got nil")
 	}
@@ -231,7 +232,7 @@ func TestBuildMultiSiteConfig_AllSitesUnhealthy(t *testing.T) {
 	s2 := helperNewErrorSite(t, "app2")
 
 	global := site.DefaultGlobalConfig()
-	_, err := BuildMultiSiteConfig([]*site.Site{s1, s2}, global)
+	_, err := BuildMultiSiteConfig([]*site.Site{s1, s2}, global, slog.Default())
 	if err == nil {
 		t.Fatal("expected error when all sites are unhealthy, got nil")
 	}
@@ -256,7 +257,7 @@ func TestBuildMultiSiteConfig_PerSiteMiddlewareIndependence(t *testing.T) {
 	sB := helperNewSite(t, "site-b", cfgB)
 
 	global := site.DefaultGlobalConfig()
-	result, err := BuildMultiSiteConfig([]*site.Site{sA, sB}, global)
+	result, err := BuildMultiSiteConfig([]*site.Site{sA, sB}, global, slog.Default())
 	if err != nil {
 		t.Fatalf("BuildMultiSiteConfig() error = %v", err)
 	}
@@ -313,7 +314,7 @@ func TestBuildMultiSiteConfig_TLSPolicyPerDomain(t *testing.T) {
 
 	global := site.DefaultGlobalConfig()
 	global.ACMEEmail = "admin@example.com"
-	result, err := BuildMultiSiteConfig([]*site.Site{s1, s2, s3}, global)
+	result, err := BuildMultiSiteConfig([]*site.Site{s1, s2, s3}, global, slog.Default())
 	if err != nil {
 		t.Fatalf("BuildMultiSiteConfig() error = %v", err)
 	}
@@ -377,7 +378,7 @@ func TestBuildMultiSiteConfig_ListenAddress(t *testing.T) {
 		ListenPort: 8443,
 		LogLevel:   "info",
 	}
-	result, err := BuildMultiSiteConfig([]*site.Site{s}, global)
+	result, err := BuildMultiSiteConfig([]*site.Site{s}, global, slog.Default())
 	if err != nil {
 		t.Fatalf("BuildMultiSiteConfig() error = %v", err)
 	}
@@ -405,7 +406,7 @@ func TestBuildMultiSiteConfig_HealthRoutePerSite(t *testing.T) {
 	s2 := helperNewSite(t, "app2", cfg2)
 
 	global := site.DefaultGlobalConfig()
-	result, err := BuildMultiSiteConfig([]*site.Site{s1, s2}, global)
+	result, err := BuildMultiSiteConfig([]*site.Site{s1, s2}, global, slog.Default())
 	if err != nil {
 		t.Fatalf("BuildMultiSiteConfig() error = %v", err)
 	}
@@ -460,7 +461,7 @@ func TestBuildMultiSiteConfig_ErrorIsolation(t *testing.T) {
 	s3 := helperNewErrorSite(t, "broken")
 
 	global := site.DefaultGlobalConfig()
-	result, err := BuildMultiSiteConfig([]*site.Site{s1, s2, s3}, global)
+	result, err := BuildMultiSiteConfig([]*site.Site{s1, s2, s3}, global, slog.Default())
 	if err != nil {
 		t.Fatalf("BuildMultiSiteConfig() error = %v", err)
 	}
@@ -494,7 +495,7 @@ func TestBuildMultiSiteConfig_ValidJSON(t *testing.T) {
 	s := helperNewSite(t, "valid", cfg)
 
 	global := site.DefaultGlobalConfig()
-	result, err := BuildMultiSiteConfig([]*site.Site{s}, global)
+	result, err := BuildMultiSiteConfig([]*site.Site{s}, global, slog.Default())
 	if err != nil {
 		t.Fatalf("BuildMultiSiteConfig() error = %v", err)
 	}

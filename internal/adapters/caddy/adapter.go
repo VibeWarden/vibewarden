@@ -137,7 +137,7 @@ func (a *Adapter) buildConfigJSON() ([]byte, error) {
 			g := site.DefaultGlobalConfig()
 			global = &g
 		}
-		cfg, err = BuildMultiSiteConfig(a.registry.HealthySites(), *global)
+		cfg, err = BuildMultiSiteConfig(a.registry.HealthySites(), *global, a.logger)
 	} else {
 		cfg, err = BuildCaddyConfig(a.config)
 	}

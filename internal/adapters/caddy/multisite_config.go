@@ -20,7 +20,7 @@ import (
 // TLS automation policies are generated per domain so that each site gets
 // its own ACME certificate. A single Caddy server instance handles all
 // sites on the same listen address.
-func BuildMultiSiteConfig(sites []*site.Site, globalCfg site.GlobalConfig) (map[string]any, error) {
+func BuildMultiSiteConfig(sites []*site.Site, globalCfg site.GlobalConfig, logger *slog.Logger) (map[string]any, error) {
 	if len(sites) == 0 {
 		return nil, fmt.Errorf("no sites provided")
 	}
@@ -35,7 +35,7 @@ func BuildMultiSiteConfig(sites []*site.Site, globalCfg site.GlobalConfig) (map[
 
 	for _, s := range sites {
 		if !s.IsHealthy() {
-			slog.Default().Warn("skipping unhealthy site",
+			logger.Warn("skipping unhealthy site",
 				slog.String("site", s.Name()),
 				slog.String("status", s.Status().String()),
 			)
@@ -45,7 +45,7 @@ func BuildMultiSiteConfig(sites []*site.Site, globalCfg site.GlobalConfig) (map[
 
 		cfg := s.Config()
 		if cfg == nil {
-			slog.Default().Warn("skipping site with nil config",
+			logger.Warn("skipping site with nil config",
 				slog.String("site", s.Name()),
 			)
 			skipped++
@@ -54,7 +54,7 @@ func BuildMultiSiteConfig(sites []*site.Site, globalCfg site.GlobalConfig) (map[
 
 		domain := cfg.TLS.Domain
 		if domain == "" {
-			slog.Default().Warn("skipping site without TLS domain",
+			logger.Warn("skipping site without TLS domain",
 				slog.String("site", s.Name()),
 			)
 			skipped++
@@ -63,7 +63,7 @@ func BuildMultiSiteConfig(sites []*site.Site, globalCfg site.GlobalConfig) (map[
 
 		siteRoutes, err := buildSiteRoutes(s, domain)
 		if err != nil {
-			slog.Default().Error("skipping site due to route build error",
+			logger.Error("skipping site due to route build error",
 				slog.String("site", s.Name()),
 				slog.String("error", err.Error()),
 			)
