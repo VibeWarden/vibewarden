@@ -5,7 +5,9 @@ import (
 	"log/slog"
 	"testing"
 
+	"github.com/vibewarden/vibewarden/internal/config"
 	"github.com/vibewarden/vibewarden/internal/domain/events"
+	"github.com/vibewarden/vibewarden/internal/domain/site"
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
 
@@ -106,6 +108,144 @@ func TestAdapter_BuildConfigJSON(t *testing.T) {
 				t.Error("buildConfigJSON() returned empty data")
 			}
 		})
+	}
+}
+
+func TestNewMultiSiteAdapter(t *testing.T) {
+	cfg := &ports.ProxyConfig{
+		ListenAddr:   "127.0.0.1:8080",
+		UpstreamAddr: "127.0.0.1:3000",
+	}
+	registry := site.NewRegistry()
+	logger := slog.Default()
+
+	adapter := NewMultiSiteAdapter(cfg, registry, logger, nil)
+
+	if adapter == nil {
+		t.Fatal("NewMultiSiteAdapter() returned nil")
+	}
+	if adapter.config != cfg {
+		t.Error("NewMultiSiteAdapter() did not set config correctly")
+	}
+	if adapter.registry != registry {
+		t.Error("NewMultiSiteAdapter() did not set registry correctly")
+	}
+	if adapter.logger != logger {
+		t.Error("NewMultiSiteAdapter() did not set logger correctly")
+	}
+}
+
+func TestNewMultiSiteAdapter_WithEventLogger(t *testing.T) {
+	cfg := &ports.ProxyConfig{
+		ListenAddr:   "127.0.0.1:8080",
+		UpstreamAddr: "127.0.0.1:3000",
+	}
+	registry := site.NewRegistry()
+	spy := &fakeEventLogger{}
+
+	adapter := NewMultiSiteAdapter(cfg, registry, slog.Default(), spy)
+
+	if adapter == nil {
+		t.Fatal("NewMultiSiteAdapter() returned nil")
+	}
+	if adapter.eventLogger != spy {
+		t.Error("NewMultiSiteAdapter() did not set eventLogger correctly")
+	}
+}
+
+func TestAdapter_BuildConfigJSON_MultiSiteMode(t *testing.T) {
+	registry := site.NewRegistry()
+	global := site.DefaultGlobalConfig()
+	registry.SetGlobal(global)
+
+	siteCfg := &config.Config{
+		Upstream: config.UpstreamConfig{
+			Host: "127.0.0.1",
+			Port: 3001,
+		},
+		TLS: config.TLSConfig{
+			Enabled:  true,
+			Provider: "letsencrypt",
+			Domain:   "app1.example.com",
+		},
+	}
+	s, err := site.NewSite("app1", "/tmp/app1/vibewarden.yaml", siteCfg)
+	if err != nil {
+		t.Fatalf("NewSite() error = %v", err)
+	}
+	registry.Add(s)
+
+	proxyCfg := &ports.ProxyConfig{
+		ListenAddr:   "0.0.0.0:443",
+		UpstreamAddr: "127.0.0.1:3000",
+	}
+	adapter := NewMultiSiteAdapter(proxyCfg, registry, slog.Default(), nil)
+
+	data, err := adapter.buildConfigJSON()
+	if err != nil {
+		t.Fatalf("buildConfigJSON() in multi-site mode error = %v", err)
+	}
+	if len(data) == 0 {
+		t.Error("buildConfigJSON() returned empty data in multi-site mode")
+	}
+}
+
+func TestAdapter_BuildConfigJSON_BackwardCompat_NoRegistry(t *testing.T) {
+	// When registry is nil, the adapter uses single-site mode (BuildCaddyConfig).
+	cfg := &ports.ProxyConfig{
+		ListenAddr:   "127.0.0.1:8080",
+		UpstreamAddr: "127.0.0.1:3000",
+	}
+	adapter := NewAdapter(cfg, slog.Default(), nil)
+
+	data, err := adapter.buildConfigJSON()
+	if err != nil {
+		t.Fatalf("buildConfigJSON() in single-site mode error = %v", err)
+	}
+	if len(data) == 0 {
+		t.Error("buildConfigJSON() returned empty data in single-site mode")
+	}
+
+	// Verify the adapter does NOT have a registry set.
+	if adapter.registry != nil {
+		t.Error("NewAdapter() should not set a registry")
+	}
+}
+
+func TestAdapter_BuildConfigJSON_MultiSite_DefaultGlobal(t *testing.T) {
+	// When the registry has no explicit global config, defaults should be used.
+	registry := site.NewRegistry()
+	// Do NOT call registry.SetGlobal() — test the fallback path.
+
+	siteCfg := &config.Config{
+		Upstream: config.UpstreamConfig{
+			Host: "127.0.0.1",
+			Port: 3001,
+		},
+		TLS: config.TLSConfig{
+			Enabled:  true,
+			Provider: "letsencrypt",
+			Domain:   "app.example.com",
+		},
+	}
+	s, err := site.NewSite("app", "/tmp/app/vibewarden.yaml", siteCfg)
+	if err != nil {
+		t.Fatalf("NewSite() error = %v", err)
+	}
+	registry.Add(s)
+
+	proxyCfg := &ports.ProxyConfig{
+		ListenAddr:   "0.0.0.0:443",
+		UpstreamAddr: "127.0.0.1:3000",
+	}
+	adapter := NewMultiSiteAdapter(proxyCfg, registry, slog.Default(), nil)
+
+	data, err := adapter.buildConfigJSON()
+	if err != nil {
+		t.Fatalf("buildConfigJSON() with default global error = %v", err)
+	}
+	if len(data) == 0 {
+		t.Error("buildConfigJSON() returned empty data with default global")
 	}
 }
 

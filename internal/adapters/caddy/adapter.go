@@ -13,22 +13,45 @@ import (
 	_ "github.com/caddyserver/caddy/v2/modules/standard"
 
 	"github.com/vibewarden/vibewarden/internal/domain/events"
+	"github.com/vibewarden/vibewarden/internal/domain/site"
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
 
 // Adapter implements ports.ProxyServer using embedded Caddy.
+//
+// When registry is non-nil, the adapter operates in multi-site mode:
+// buildConfigJSON delegates to BuildMultiSiteConfig, producing per-host
+// routes from the registry's healthy sites. When registry is nil, the
+// adapter falls back to single-site mode using BuildCaddyConfig.
 type Adapter struct {
 	config      *ports.ProxyConfig
+	registry    *site.Registry
 	logger      *slog.Logger
 	eventLogger ports.EventLogger
 }
 
-// NewAdapter creates a new Caddy adapter with the given configuration.
+// NewAdapter creates a new Caddy adapter in single-site mode.
 // The eventLogger parameter is optional: pass nil to disable structured event
 // logging (the adapter will still emit plain slog lines).
 func NewAdapter(cfg *ports.ProxyConfig, logger *slog.Logger, eventLogger ports.EventLogger) *Adapter {
 	return &Adapter{
 		config:      cfg,
+		logger:      logger,
+		eventLogger: eventLogger,
+	}
+}
+
+// NewMultiSiteAdapter creates a Caddy adapter in multi-site mode.
+// The registry holds all managed sites and the global configuration.
+// When buildConfigJSON is called, it reads the registry's healthy sites
+// and global config to produce per-host Caddy routes.
+//
+// The cfg parameter is still required for backward-compatible fields
+// (version, event logging params) that are sidecar-global, not per-site.
+func NewMultiSiteAdapter(cfg *ports.ProxyConfig, registry *site.Registry, logger *slog.Logger, eventLogger ports.EventLogger) *Adapter {
+	return &Adapter{
+		config:      cfg,
+		registry:    registry,
 		logger:      logger,
 		eventLogger: eventLogger,
 	}
@@ -100,8 +123,25 @@ func (a *Adapter) UpdateConfig(cfg *ports.ProxyConfig) {
 }
 
 // buildConfigJSON constructs and marshals the Caddy JSON configuration.
+// When a registry is present, multi-site mode is used. Otherwise, the
+// adapter falls back to single-site mode for backward compatibility.
 func (a *Adapter) buildConfigJSON() ([]byte, error) {
-	cfg, err := BuildCaddyConfig(a.config)
+	var (
+		cfg map[string]any
+		err error
+	)
+
+	if a.registry != nil {
+		global := a.registry.Global()
+		if global == nil {
+			g := site.DefaultGlobalConfig()
+			global = &g
+		}
+		cfg, err = BuildMultiSiteConfig(a.registry.HealthySites(), *global)
+	} else {
+		cfg, err = BuildCaddyConfig(a.config)
+	}
+
 	if err != nil {
 		return nil, err
 	}
