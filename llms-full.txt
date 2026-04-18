@@ -113,6 +113,41 @@ VibeWarden is operated via the `vibew` CLI. Below is the complete command list.
 | `vibew eject` | Export raw proxy config to graduate past VibeWarden |
 | `vibew mcp` | Start MCP server for AI agent integration |
 
+### init flags
+
+`vibew init` scaffolds a new project in the current directory. It does NOT
+support `--tls` or `--domain` — use `vibew add tls` after init for TLS.
+
+- `--port` (default 3000) -- HTTP port the app listens on
+- `--describe` -- one-line project description (written to PROJECT.md and agent files)
+- `--version` -- VibeWarden version to pin in .vibewarden-version (default: latest)
+- `--force` -- overwrite existing files
+
+### wrap flags
+
+`vibew wrap` adds the sidecar to an existing project.
+
+- `--upstream` (default auto-detected or 3000) -- upstream app port
+- `--auth` -- enable authentication (Ory Kratos)
+- `--rate-limit` -- enable rate limiting
+- `--tls` -- enable TLS (requires `--domain`)
+- `--domain` -- domain for TLS certificate (required with `--tls`)
+- `--force` -- overwrite existing files
+- `--skip-wrapper` -- skip vibew wrapper script generation
+- `--version` -- VibeWarden version to pin in .vibewarden-version (default: latest)
+
+### add flags
+
+`vibew add <feature>` enables features incrementally. Run after `vibew init`
+or `vibew wrap`.
+
+- `vibew add tls --domain <domain>` -- enable TLS (--domain is required)
+  - `--provider` (default letsencrypt) -- letsencrypt, self-signed, or external
+- `vibew add auth` -- enable Ory Kratos authentication (no extra flags)
+- `vibew add rate-limiting` -- enable rate limiting (no extra flags)
+- `vibew add metrics` -- enable Prometheus metrics (no extra flags)
+- `vibew add admin` -- enable admin API (no extra flags)
+
 ### Multi-app deployment
 
 VibeWarden supports deploying multiple apps to a single VM, each on its own
