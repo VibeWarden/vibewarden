@@ -722,8 +722,8 @@ func TestPlugin_ContributeCaddyHandlers_AuthHandler(t *testing.T) {
 	if h.Priority != 40 {
 		t.Errorf("auth handler Priority = %d, want 40", h.Priority)
 	}
-	if h.Handler["handler"] != "authentication" {
-		t.Errorf("auth handler type = %q, want %q", h.Handler["handler"], "authentication")
+	if h.Handler["handler"] != "vibewarden_authentication" {
+		t.Errorf("auth handler type = %q, want %q", h.Handler["handler"], "vibewarden_authentication")
 	}
 	if _, ok := h.Handler["cookie_name"]; !ok {
 		t.Error("auth handler missing cookie_name field")
@@ -810,8 +810,8 @@ func TestPlugin_ContributeCaddyHandlers_IdentityHeadersHandler(t *testing.T) {
 	if h.Priority != 41 {
 		t.Errorf("identity-headers handler Priority = %d, want 41", h.Priority)
 	}
-	if h.Handler["handler"] != "identity_headers" {
-		t.Errorf("identity-headers handler type = %q, want %q", h.Handler["handler"], "identity_headers")
+	if h.Handler["handler"] != "vibewarden_identity_headers" {
+		t.Errorf("identity-headers handler type = %q, want %q", h.Handler["handler"], "vibewarden_identity_headers")
 	}
 	if _, ok := h.Handler["cookie_name"]; !ok {
 		t.Error("identity-headers handler missing cookie_name field")
