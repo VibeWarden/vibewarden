@@ -14,6 +14,32 @@ This initial entry was written by hand to summarise the work leading up to v0.1.
 
 ---
 
+## [v0.12.1] — 2026-04-19
+
+### Bug Fixes
+
+- **CRITICAL: WAF and rate-limiting now enforce in multi-site mode** — plugin handlers
+  were completely missing from the multi-site Caddy config. Per-site plugin registries
+  are now created and handlers injected into each site's route chain.
+  (#934, closes #925)
+- **Deploy exits non-zero on health check timeout** — previously reported "Site deployed"
+  even when the sidecar wasn't running. Now returns `ErrHealthCheck` and suggests
+  `vibew doctor --target <host>` for diagnostics. (#933, closes #927)
+- **`vibew restart` shows stderr and diagnostic hint** on failure instead of bare exit
+  code. (#935, closes #928)
+- **`vibew add tls --domain` updates existing TLS config** instead of saying "already
+  enabled — nothing to do." (#935, closes #929)
+- **Project-scoped Docker image names** — compose `name:` directive prevents stale image
+  reuse across different VibeWarden projects. (#935, closes #930)
+
+### Documentation
+
+- Multi-site deployment section added to AGENTS-VIBEWARDEN.md template — documents
+  `sites/` layout, upstream.host container naming, centralized TLS.
+  (#935, closes #931)
+
+---
+
 ## [v0.12.0] — 2026-04-18
 
 ### Features
