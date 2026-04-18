@@ -157,11 +157,8 @@ func TestDeployMultiSite(t *testing.T) {
 	// -------------------------------------------------------------------
 	// Step 2: Fresh install — BootstrapSidecar with app1.
 	//
-	// The sidecar container will fail to start because its compose file
-	// mounts paths that are inside the SSH container, not on the host.
-	// This is expected in a Docker-socket-mount test environment. The app
-	// container IS created successfully because its compose file has no
-	// host-path bind mounts.
+	// With DinD, dockerd runs inside the test container so all bind mounts
+	// resolve correctly. Both the sidecar and app containers should start.
 	// -------------------------------------------------------------------
 	t.Run("fresh_install", func(t *testing.T) {
 		var buf bytes.Buffer
@@ -172,16 +169,9 @@ func TestDeployMultiSite(t *testing.T) {
 		})
 		t.Logf("bootstrap output:\n%s", buf.String())
 
-		// BootstrapSidecar may fail at the sidecar start step due to
-		// bind mount restrictions in Docker Desktop. The app container
-		// should still have been deployed.
 		if bootstrapErr != nil {
-			if !strings.Contains(bootstrapErr.Error(), "starting sidecar") {
-				// Unexpected error — fail hard.
-				dumpDockerState(ctx, t, executor)
-				t.Fatalf("BootstrapSidecar failed unexpectedly: %v", bootstrapErr)
-			}
-			t.Logf("sidecar start failed (expected in socket-mount env): %v", bootstrapErr)
+			dumpDockerState(ctx, t, executor)
+			t.Fatalf("BootstrapSidecar failed: %v", bootstrapErr)
 		}
 
 		// Wait for the app container to stabilize.
@@ -200,9 +190,8 @@ func TestDeployMultiSite(t *testing.T) {
 	// -------------------------------------------------------------------
 	// Step 3: Add site — DeployMultiApp with app2.
 	//
-	// DeployMultiApp deploys the app and tries to restart the sidecar.
-	// The restart will fail (sidecar isn't running), but the app container
-	// should be created.
+	// With DinD, the sidecar is already running from step 2. DeployMultiApp
+	// adds app2 and restarts the sidecar to pick up the new site.
 	// -------------------------------------------------------------------
 	t.Run("add_site", func(t *testing.T) {
 		var buf bytes.Buffer
@@ -214,11 +203,8 @@ func TestDeployMultiSite(t *testing.T) {
 		t.Logf("add-site output:\n%s", buf.String())
 
 		if deployErr != nil {
-			if !strings.Contains(deployErr.Error(), "restarting sidecar") {
-				dumpDockerState(ctx, t, executor)
-				t.Fatalf("DeployMultiApp failed unexpectedly: %v", deployErr)
-			}
-			t.Logf("sidecar restart failed (expected in socket-mount env): %v", deployErr)
+			dumpDockerState(ctx, t, executor)
+			t.Fatalf("DeployMultiApp failed: %v", deployErr)
 		}
 
 		// Wait for the app2 container.
@@ -543,84 +529,8 @@ app:
 	return cfg
 }
 
-// grantDockerAccess ensures the vibew user can access the Docker socket inside
-// the container. On Docker Desktop for macOS the socket is owned by root:root
-// (GID 0), so we chmod the socket to be world-readable/writable.
-func grantDockerAccess(ctx context.Context, t *testing.T, c testcontainers.Container) {
-	t.Helper()
-
-	// Get the GID of the Docker socket.
-	exitCode, reader, err := c.Exec(ctx, []string{
-		"sh", "-c", "stat -c '%g' /var/run/docker.sock",
-	})
-	if err != nil || exitCode != 0 {
-		t.Fatalf("getting docker socket GID: exit=%d, err=%v", exitCode, err)
-	}
-
-	gidBytes, _ := io.ReadAll(reader)
-	gid := extractNumeric(string(gidBytes))
-	if gid == "" {
-		t.Fatalf("could not extract GID from stat output: %q", string(gidBytes))
-	}
-	t.Logf("docker socket GID: %s", gid)
-
-	// Make the socket accessible to all users inside this test container.
-	exitCode, output, err := c.Exec(ctx, []string{
-		"sh", "-c", "chmod 666 /var/run/docker.sock",
-	})
-	if err != nil {
-		t.Fatalf("chmod docker socket: %v", err)
-	}
-	if exitCode != 0 {
-		outBytes, _ := io.ReadAll(output)
-		t.Fatalf("chmod docker socket failed (exit %d): %s", exitCode, string(outBytes))
-	}
-
-	// Also add the user to the socket's group as a fallback for Linux hosts.
-	_, _, _ = c.Exec(ctx, []string{
-		"sh", "-c", fmt.Sprintf(
-			"addgroup -g %s docker 2>/dev/null || true; addgroup vibew docker 2>/dev/null || true",
-			gid,
-		),
-	})
-	t.Logf("granted vibew user Docker access")
-}
-
-// tagSidecarImage tags a lightweight base image with the sidecar image
-// reference so that docker compose pull succeeds without network access.
-func tagSidecarImage(ctx context.Context, t *testing.T, c testcontainers.Container) {
-	t.Helper()
-
-	exitCode, output, err := c.Exec(ctx, []string{
-		"sh", "-c", fmt.Sprintf("docker tag %s %s", stubBaseImage, sidecarImageRef),
-	})
-	if err != nil {
-		t.Fatalf("tagging sidecar image: %v", err)
-	}
-	if exitCode != 0 {
-		outBytes, _ := io.ReadAll(output)
-		t.Fatalf("docker tag failed (exit %d): %s", exitCode, string(outBytes))
-	}
-	t.Logf("tagged %s as %s", stubBaseImage, sidecarImageRef)
-}
-
-// extractNumeric extracts the first contiguous sequence of digits from s.
-func extractNumeric(s string) string {
-	start := -1
-	for i, c := range s {
-		if c >= '0' && c <= '9' {
-			if start == -1 {
-				start = i
-			}
-		} else if start != -1 {
-			return s[start:i]
-		}
-	}
-	if start != -1 {
-		return s[start:]
-	}
-	return ""
-}
+// Dead code removed: grantDockerAccess, tagSidecarImage, extractNumeric
+// were socket-mount workarounds superseded by the DinD approach.
 
 // waitForContainer polls docker inspect until the container exists or the
 // timeout expires.
