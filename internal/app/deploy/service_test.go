@@ -1292,9 +1292,10 @@ func TestService_Deploy_HealthCheckWarnOnTimeout(t *testing.T) {
 }
 
 // TestService_Deploy_HealthCheckAlwaysUsesLocalhost verifies that the health
-// check always probes http://localhost:<port> via SSH, regardless of TLS
-// configuration or domain. This avoids DNS propagation, firewall, and TLS
-// certificate issuance dependencies.
+// check always probes localhost via SSH, regardless of TLS configuration or
+// domain. When TLS is enabled, it uses https with -k; when disabled, plain http.
+// This avoids DNS propagation, firewall, and TLS certificate issuance
+// dependencies.
 func TestService_Deploy_HealthCheckAlwaysUsesLocalhost(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -1302,22 +1303,22 @@ func TestService_Deploy_HealthCheckAlwaysUsesLocalhost(t *testing.T) {
 		wantCurlCmd string
 	}{
 		{
-			name: "TLS disabled uses localhost",
+			name: "TLS disabled uses HTTP localhost",
 			cfg: &config.Config{
 				Server: config.ServerConfig{Port: 8080},
 			},
 			wantCurlCmd: "curl -sf http://localhost:8080/_vibewarden/health",
 		},
 		{
-			name: "TLS enabled without domain still uses localhost",
+			name: "TLS enabled without domain uses HTTPS with -k",
 			cfg: &config.Config{
 				Server: config.ServerConfig{Port: 8443},
 				TLS:    config.TLSConfig{Enabled: true},
 			},
-			wantCurlCmd: "curl -sf http://localhost:8443/_vibewarden/health",
+			wantCurlCmd: "curl -sfk https://localhost:8443/_vibewarden/health",
 		},
 		{
-			name: "TLS enabled with domain still uses localhost",
+			name: "TLS enabled with domain uses HTTPS with -k on localhost",
 			cfg: &config.Config{
 				Server: config.ServerConfig{Port: 443},
 				TLS: config.TLSConfig{
@@ -1326,7 +1327,7 @@ func TestService_Deploy_HealthCheckAlwaysUsesLocalhost(t *testing.T) {
 					Domain:   "app.example.com",
 				},
 			},
-			wantCurlCmd: "curl -sf http://localhost:443/_vibewarden/health",
+			wantCurlCmd: "curl -sfk https://localhost:443/_vibewarden/health",
 		},
 	}
 
