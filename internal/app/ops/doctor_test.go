@@ -74,7 +74,7 @@ func (f *fakeRemoteExecutor) TransferFile(_ context.Context, _, _ string) error 
 }
 
 func (f *fakeRemoteExecutor) DryRunTransfer(_ context.Context, _, _ string) ([]string, error) {
-	return nil, nil
+	return []string{}, nil
 }
 
 // reachableHealthChecker is a fakeHealthChecker that reports upstream as reachable.

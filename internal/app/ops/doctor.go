@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -167,8 +168,8 @@ func (s *DoctorService) runChecks(ctx context.Context, cfg *config.Config, opts 
 		results = append(results, withSection(s.checkSSHConnectivity(ctx), sectionProduction))
 		results = append(results, withSection(s.checkRemoteContainerHealth(ctx), sectionProduction))
 		if cfg.TLS.Domain != "" {
-			results = append(results, withSection(checkDomainDNS(cfg.TLS.Domain, opts.Target), sectionProduction))
-			results = append(results, withSection(checkRemoteTLSCert(cfg.TLS.Domain), sectionProduction))
+			results = append(results, withSection(checkDomainDNS(ctx, cfg.TLS.Domain, opts.Target), sectionProduction))
+			results = append(results, withSection(checkRemoteTLSCert(ctx, cfg.TLS.Domain), sectionProduction))
 		}
 	}
 
@@ -517,9 +518,13 @@ func (s *DoctorService) checkRemoteContainerHealth(ctx context.Context) CheckRes
 }
 
 // checkDomainDNS resolves the configured TLS domain and verifies it points to
-// the target host IP. Uses net.LookupHost from stdlib.
-func checkDomainDNS(domain, target string) CheckResult {
-	addrs, err := net.LookupHost(domain)
+// the target host IP. Uses net.DefaultResolver.LookupHost for context-aware
+// DNS resolution.
+func checkDomainDNS(ctx context.Context, domain, target string) CheckResult {
+	dnsCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	addrs, err := net.DefaultResolver.LookupHost(dnsCtx, domain)
 	if err != nil {
 		return CheckResult{
 			Name:     "Domain DNS",
@@ -540,7 +545,7 @@ func checkDomainDNS(domain, target string) CheckResult {
 	targetIP := extractHostFromTarget(target)
 
 	// Resolve the target host in case it is a hostname rather than an IP.
-	targetAddrs, err := net.LookupHost(targetIP)
+	targetAddrs, err := net.DefaultResolver.LookupHost(dnsCtx, targetIP)
 	if err != nil {
 		targetAddrs = []string{targetIP}
 	}
@@ -568,38 +573,32 @@ func checkDomainDNS(domain, target string) CheckResult {
 }
 
 // extractHostFromTarget parses the host component from an ssh://user@host[:port]
-// URL. If parsing fails it returns the raw input.
+// URL. It uses net/url.Parse which correctly handles IPv6 addresses and edge
+// cases. If parsing fails it returns the raw input.
 func extractHostFromTarget(raw string) string {
-	// Try standard URL parsing: ssh://user@host:port
-	if strings.Contains(raw, "://") {
-		parts := strings.SplitN(raw, "://", 2)
-		if len(parts) == 2 {
-			after := parts[1]
-			// Remove user@ prefix
-			if idx := strings.Index(after, "@"); idx >= 0 {
-				after = after[idx+1:]
-			}
-			// Remove :port suffix
-			if host, _, err := net.SplitHostPort(after); err == nil {
-				return host
-			}
-			return after
-		}
+	u, err := url.Parse(raw)
+	if err != nil || u.Host == "" {
+		return raw
 	}
-	return raw
+	host := u.Hostname()
+	if host == "" {
+		return raw
+	}
+	return host
 }
 
 // checkRemoteTLSCert connects to domain:443 and checks the certificate expiry.
-func checkRemoteTLSCert(domain string) CheckResult {
-	conn, err := tls.DialWithDialer(
-		&net.Dialer{Timeout: 10 * time.Second},
-		"tcp",
-		domain+":443",
-		&tls.Config{
+func checkRemoteTLSCert(ctx context.Context, domain string) CheckResult {
+	tlsCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	dialer := tls.Dialer{
+		Config: &tls.Config{
 			// We accept any cert — the purpose is to inspect expiry, not validate trust.
 			InsecureSkipVerify: true, //nolint:gosec
 		},
-	)
+	}
+	conn, err := dialer.DialContext(tlsCtx, "tcp", domain+":443")
 	if err != nil {
 		return CheckResult{
 			Name:     "Remote TLS cert",
@@ -609,7 +608,16 @@ func checkRemoteTLSCert(domain string) CheckResult {
 	}
 	defer conn.Close() //nolint:errcheck
 
-	certs := conn.ConnectionState().PeerCertificates
+	tlsConn, ok := conn.(*tls.Conn)
+	if !ok {
+		return CheckResult{
+			Name:     "Remote TLS cert",
+			Severity: SeverityWarn,
+			Detail:   fmt.Sprintf("unexpected connection type from %s:443", domain),
+		}
+	}
+
+	certs := tlsConn.ConnectionState().PeerCertificates
 	if len(certs) == 0 {
 		return CheckResult{
 			Name:     "Remote TLS cert",
