@@ -631,11 +631,11 @@ func (p *Plugin) ContributeCaddyHandlers() []ports.CaddyHandler {
 	// For the Caddy JSON config we use the auth cookie validation approach:
 	// inject a handler that checks for the session cookie and redirects
 	// missing sessions to the login URL.
-	authHandler := buildAuthHandler(cookieName, loginURL, publicPaths)
+	authHandler := buildAuthHandler(cookieName, loginURL, publicPaths, p.cfg.KratosPublicURL)
 
 	// Identity-headers handler: sets upstream request headers from Kratos
 	// session data. These headers are consumed by the upstream application.
-	identityHeadersHandler := buildIdentityHeadersHandler(cookieName)
+	identityHeadersHandler := buildIdentityHeadersHandler(cookieName, p.cfg.KratosPublicURL)
 
 	return []ports.CaddyHandler{
 		{
@@ -693,12 +693,13 @@ func validateKratosConfig(cfg Config) error {
 // In the Caddy JSON config the auth enforcement is represented as a
 // forward_auth handler that delegates session validation to the Kratos
 // whoami endpoint. Public paths bypass auth via a path matcher.
-func buildAuthHandler(cookieName, loginURL string, publicPaths []string) map[string]any {
+func buildAuthHandler(cookieName, loginURL string, publicPaths []string, kratosURL string) map[string]any {
 	return map[string]any{
-		"handler":      "authentication",
+		"handler":      "vibewarden_authentication",
 		"cookie_name":  cookieName,
 		"login_url":    loginURL,
 		"public_paths": publicPaths,
+		"kratos_url":   kratosURL,
 	}
 }
 
@@ -708,10 +709,11 @@ func buildAuthHandler(cookieName, loginURL string, publicPaths []string) map[str
 //   - X-User-Id: Kratos identity UUID
 //   - X-User-Email: primary email address
 //   - X-User-Verified: "true" or "false"
-func buildIdentityHeadersHandler(cookieName string) map[string]any {
+func buildIdentityHeadersHandler(cookieName string, kratosURL string) map[string]any {
 	return map[string]any{
-		"handler":     "identity_headers",
+		"handler":     "vibewarden_identity_headers",
 		"cookie_name": cookieName,
+		"kratos_url":  kratosURL,
 	}
 }
 
