@@ -111,6 +111,11 @@ type ProxyConfig struct {
 	// CaddyContributor.ContributeCaddyHandlers. Handlers are inserted into the
 	// catch-all route's handler chain, ordered by ascending Priority.
 	ExtraHandlers []CaddyHandler
+
+	// SkipStartEvent, when true, instructs the proxy adapter not to emit the
+	// proxy.started structured event on Start(). This escape hatch exists for
+	// callers that wish to emit start events themselves.
+	SkipStartEvent bool
 }
 
 // ResponseHeadersConfig holds configuration for arbitrary response header modifications.
