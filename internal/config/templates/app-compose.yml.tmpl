@@ -17,7 +17,9 @@ services:
 {{- end }}
 {{- if ne .AppHealthcheck "none" }}
     healthcheck:
-      test: ["CMD-SHELL", "{{ if .AppHealthcheck }}{{ .AppHealthcheck }}{{ else }}{{ healthcheckCmd .AppLanguage .UpstreamPort }}{{ end }}"]
+      test:
+        - CMD-SHELL
+        - {{ if .AppHealthcheck }}{{ .AppHealthcheck }}{{ else }}{{ healthcheckCmd .AppLanguage .UpstreamPort }}{{ end }}
       interval: 10s
       timeout: 5s
       retries: 10
