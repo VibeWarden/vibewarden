@@ -29,7 +29,7 @@ func BuildMultiSiteConfig(sites []*site.Site, globalCfg site.GlobalConfig, logge
 
 	var (
 		routes     []map[string]any
-		tlsDomains []string
+		tlsEntries []multiSiteTLSEntry
 		skipped    int
 	)
 
@@ -72,7 +72,10 @@ func BuildMultiSiteConfig(sites []*site.Site, globalCfg site.GlobalConfig, logge
 		}
 
 		routes = append(routes, siteRoutes...)
-		tlsDomains = append(tlsDomains, domain)
+		tlsEntries = append(tlsEntries, multiSiteTLSEntry{
+			domain:   domain,
+			provider: cfg.TLS.Provider,
+		})
 	}
 
 	if len(routes) == 0 {
@@ -95,8 +98,8 @@ func BuildMultiSiteConfig(sites []*site.Site, globalCfg site.GlobalConfig, logge
 		},
 	}
 
-	// Build TLS app with per-domain ACME policies.
-	tlsApp := buildMultiSiteTLSApp(tlsDomains, globalCfg.ACMEEmail)
+	// Build TLS app with per-domain automation policies.
+	tlsApp := buildMultiSiteTLSApp(tlsEntries, globalCfg.ACMEEmail)
 	if tlsApp != nil {
 		apps["tls"] = tlsApp
 	}
@@ -214,28 +217,48 @@ func buildSiteRoutes(s *site.Site, domain string) ([]map[string]any, error) {
 	return []map[string]any{healthRoute, catchAllRoute}, nil
 }
 
-// buildMultiSiteTLSApp constructs the Caddy TLS app with per-domain ACME
-// automation policies. Each domain gets its own policy entry so Caddy
-// obtains separate certificates for each site.
+// multiSiteTLSEntry pairs a domain with its TLS provider so that
+// buildMultiSiteTLSApp can generate the correct issuer configuration
+// (ACME for letsencrypt, internal for self-signed).
+type multiSiteTLSEntry struct {
+	domain   string
+	provider string
+}
+
+// buildMultiSiteTLSApp constructs the Caddy TLS app with per-domain
+// automation policies. Each domain gets its own policy entry. The issuer
+// module is chosen based on the site's TLS provider:
+//   - "self-signed" (or empty) uses Caddy's internal issuer (self-signed CA).
+//   - "letsencrypt" (or "acme") uses the ACME issuer for public certificates.
 //
-// When acmeEmail is non-empty, it is included in the ACME issuer
-// configuration for all policies.
-func buildMultiSiteTLSApp(domains []string, acmeEmail string) map[string]any {
-	if len(domains) == 0 {
+// When acmeEmail is non-empty and the issuer is ACME, it is included in the
+// issuer configuration.
+func buildMultiSiteTLSApp(entries []multiSiteTLSEntry, acmeEmail string) map[string]any {
+	if len(entries) == 0 {
 		return nil
 	}
 
 	var policies []map[string]any
-	for _, domain := range domains {
-		issuer := map[string]any{
-			"module": "acme",
-		}
-		if acmeEmail != "" {
-			issuer["email"] = acmeEmail
+	for _, entry := range entries {
+		var issuer map[string]any
+
+		switch entry.provider {
+		case string(ports.TLSProviderSelfSigned), "":
+			issuer = map[string]any{
+				"module": "internal",
+			}
+		default:
+			// letsencrypt / acme — use ACME issuer.
+			issuer = map[string]any{
+				"module": "acme",
+			}
+			if acmeEmail != "" {
+				issuer["email"] = acmeEmail
+			}
 		}
 
 		policy := map[string]any{
-			"subjects": []string{domain},
+			"subjects": []string{entry.domain},
 			"issuers":  []map[string]any{issuer},
 		}
 		policies = append(policies, policy)

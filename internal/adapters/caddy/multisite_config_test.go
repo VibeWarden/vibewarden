@@ -521,36 +521,56 @@ func TestBuildMultiSiteConfig_ValidJSON(t *testing.T) {
 
 func TestBuildMultiSiteTLSApp(t *testing.T) {
 	tests := []struct {
-		name      string
-		domains   []string
-		acmeEmail string
-		wantNil   bool
-		wantCount int
-		wantEmail bool
+		name       string
+		entries    []multiSiteTLSEntry
+		acmeEmail  string
+		wantNil    bool
+		wantCount  int
+		wantEmail  bool
+		wantModule string // expected issuer module for all policies
 	}{
 		{
-			name:    "no domains",
-			domains: nil,
+			name:    "no entries",
+			entries: nil,
 			wantNil: true,
 		},
 		{
-			name:      "single domain without email",
-			domains:   []string{"example.com"},
-			wantCount: 1,
-			wantEmail: false,
+			name:       "single letsencrypt domain without email",
+			entries:    []multiSiteTLSEntry{{domain: "example.com", provider: "letsencrypt"}},
+			wantCount:  1,
+			wantEmail:  false,
+			wantModule: "acme",
 		},
 		{
-			name:      "two domains with email",
-			domains:   []string{"a.com", "b.com"},
-			acmeEmail: "admin@example.com",
-			wantCount: 2,
-			wantEmail: true,
+			name: "two letsencrypt domains with email",
+			entries: []multiSiteTLSEntry{
+				{domain: "a.com", provider: "letsencrypt"},
+				{domain: "b.com", provider: "letsencrypt"},
+			},
+			acmeEmail:  "admin@example.com",
+			wantCount:  2,
+			wantEmail:  true,
+			wantModule: "acme",
+		},
+		{
+			name:       "single self-signed domain",
+			entries:    []multiSiteTLSEntry{{domain: "app.local", provider: "self-signed"}},
+			wantCount:  1,
+			wantEmail:  false,
+			wantModule: "internal",
+		},
+		{
+			name:       "empty provider defaults to internal",
+			entries:    []multiSiteTLSEntry{{domain: "app.local", provider: ""}},
+			wantCount:  1,
+			wantEmail:  false,
+			wantModule: "internal",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := buildMultiSiteTLSApp(tt.domains, tt.acmeEmail)
+			result := buildMultiSiteTLSApp(tt.entries, tt.acmeEmail)
 			if tt.wantNil {
 				if result != nil {
 					t.Error("expected nil TLS app")
@@ -567,9 +587,12 @@ func TestBuildMultiSiteTLSApp(t *testing.T) {
 				t.Errorf("expected %d policies, got %d", tt.wantCount, len(policies))
 			}
 
-			if tt.wantEmail {
-				for _, p := range policies {
-					issuers := p["issuers"].([]map[string]any)
+			for _, p := range policies {
+				issuers := p["issuers"].([]map[string]any)
+				if issuers[0]["module"] != tt.wantModule {
+					t.Errorf("expected issuer module %q, got %v", tt.wantModule, issuers[0]["module"])
+				}
+				if tt.wantEmail {
 					if issuers[0]["email"] != tt.acmeEmail {
 						t.Errorf("expected email %q, got %v", tt.acmeEmail, issuers[0]["email"])
 					}
