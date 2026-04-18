@@ -521,36 +521,56 @@ func TestBuildMultiSiteConfig_ValidJSON(t *testing.T) {
 
 func TestBuildMultiSiteTLSApp(t *testing.T) {
 	tests := []struct {
-		name      string
-		domains   []string
-		acmeEmail string
-		wantNil   bool
-		wantCount int
-		wantEmail bool
+		name       string
+		entries    []multiSiteTLSEntry
+		acmeEmail  string
+		wantNil    bool
+		wantCount  int
+		wantEmail  bool
+		wantModule string // expected issuer module for all policies
 	}{
 		{
-			name:    "no domains",
-			domains: nil,
+			name:    "no entries",
+			entries: nil,
 			wantNil: true,
 		},
 		{
-			name:      "single domain without email",
-			domains:   []string{"example.com"},
-			wantCount: 1,
-			wantEmail: false,
+			name:       "single letsencrypt domain without email",
+			entries:    []multiSiteTLSEntry{{domain: "example.com", provider: "letsencrypt"}},
+			wantCount:  1,
+			wantEmail:  false,
+			wantModule: "acme",
 		},
 		{
-			name:      "two domains with email",
-			domains:   []string{"a.com", "b.com"},
-			acmeEmail: "admin@example.com",
-			wantCount: 2,
-			wantEmail: true,
+			name: "two letsencrypt domains with email",
+			entries: []multiSiteTLSEntry{
+				{domain: "a.com", provider: "letsencrypt"},
+				{domain: "b.com", provider: "letsencrypt"},
+			},
+			acmeEmail:  "admin@example.com",
+			wantCount:  2,
+			wantEmail:  true,
+			wantModule: "acme",
+		},
+		{
+			name:       "single self-signed domain",
+			entries:    []multiSiteTLSEntry{{domain: "app.local", provider: "self-signed"}},
+			wantCount:  1,
+			wantEmail:  false,
+			wantModule: "internal",
+		},
+		{
+			name:       "empty provider defaults to internal",
+			entries:    []multiSiteTLSEntry{{domain: "app.local", provider: ""}},
+			wantCount:  1,
+			wantEmail:  false,
+			wantModule: "internal",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := buildMultiSiteTLSApp(tt.domains, tt.acmeEmail)
+			result := buildMultiSiteTLSApp(tt.entries, tt.acmeEmail)
 			if tt.wantNil {
 				if result != nil {
 					t.Error("expected nil TLS app")
@@ -567,15 +587,72 @@ func TestBuildMultiSiteTLSApp(t *testing.T) {
 				t.Errorf("expected %d policies, got %d", tt.wantCount, len(policies))
 			}
 
-			if tt.wantEmail {
-				for _, p := range policies {
-					issuers := p["issuers"].([]map[string]any)
+			for _, p := range policies {
+				issuers := p["issuers"].([]map[string]any)
+				if issuers[0]["module"] != tt.wantModule {
+					t.Errorf("expected issuer module %q, got %v", tt.wantModule, issuers[0]["module"])
+				}
+				if tt.wantEmail {
 					if issuers[0]["email"] != tt.acmeEmail {
 						t.Errorf("expected email %q, got %v", tt.acmeEmail, issuers[0]["email"])
 					}
 				}
 			}
 		})
+	}
+}
+
+func TestBuildMultiSiteTLSApp_ExternalProvider(t *testing.T) {
+	entries := []multiSiteTLSEntry{
+		{domain: "ext.example.com", provider: "external", certPath: "/certs/ext.crt", keyPath: "/certs/ext.key"},
+	}
+	result := buildMultiSiteTLSApp(entries, "")
+	if result == nil {
+		t.Fatal("expected non-nil TLS app for external provider")
+	}
+
+	// External uses load_files, not automation/policies.
+	if result["automation"] != nil {
+		t.Error("external provider should not have automation/policies")
+	}
+	certs, ok := result["certificates"].(map[string]any)
+	if !ok {
+		t.Fatal("expected certificates block for external provider")
+	}
+	loadFiles, ok := certs["load_files"].([]map[string]any)
+	if !ok || len(loadFiles) != 1 {
+		t.Fatalf("expected 1 load_files entry, got %v", certs["load_files"])
+	}
+	if loadFiles[0]["certificate"] != "/certs/ext.crt" {
+		t.Errorf("certificate = %v, want /certs/ext.crt", loadFiles[0]["certificate"])
+	}
+	if loadFiles[0]["key"] != "/certs/ext.key" {
+		t.Errorf("key = %v, want /certs/ext.key", loadFiles[0]["key"])
+	}
+}
+
+func TestBuildMultiSiteTLSApp_MixedProviders(t *testing.T) {
+	entries := []multiSiteTLSEntry{
+		{domain: "acme.example.com", provider: "letsencrypt"},
+		{domain: "ext.example.com", provider: "external", certPath: "/certs/ext.crt", keyPath: "/certs/ext.key"},
+		{domain: "local.test", provider: "self-signed"},
+	}
+	result := buildMultiSiteTLSApp(entries, "admin@example.com")
+	if result == nil {
+		t.Fatal("expected non-nil TLS app")
+	}
+
+	// Should have automation for acme + self-signed, and certificates for external.
+	automation := result["automation"].(map[string]any)
+	policies := automation["policies"].([]map[string]any)
+	if len(policies) != 2 {
+		t.Errorf("expected 2 policies (acme + internal), got %d", len(policies))
+	}
+
+	certs := result["certificates"].(map[string]any)
+	loadFiles := certs["load_files"].([]map[string]any)
+	if len(loadFiles) != 1 {
+		t.Errorf("expected 1 load_files entry, got %d", len(loadFiles))
 	}
 }
 
