@@ -602,6 +602,60 @@ func TestBuildMultiSiteTLSApp(t *testing.T) {
 	}
 }
 
+func TestBuildMultiSiteTLSApp_ExternalProvider(t *testing.T) {
+	entries := []multiSiteTLSEntry{
+		{domain: "ext.example.com", provider: "external", certPath: "/certs/ext.crt", keyPath: "/certs/ext.key"},
+	}
+	result := buildMultiSiteTLSApp(entries, "")
+	if result == nil {
+		t.Fatal("expected non-nil TLS app for external provider")
+	}
+
+	// External uses load_files, not automation/policies.
+	if result["automation"] != nil {
+		t.Error("external provider should not have automation/policies")
+	}
+	certs, ok := result["certificates"].(map[string]any)
+	if !ok {
+		t.Fatal("expected certificates block for external provider")
+	}
+	loadFiles, ok := certs["load_files"].([]map[string]any)
+	if !ok || len(loadFiles) != 1 {
+		t.Fatalf("expected 1 load_files entry, got %v", certs["load_files"])
+	}
+	if loadFiles[0]["certificate"] != "/certs/ext.crt" {
+		t.Errorf("certificate = %v, want /certs/ext.crt", loadFiles[0]["certificate"])
+	}
+	if loadFiles[0]["key"] != "/certs/ext.key" {
+		t.Errorf("key = %v, want /certs/ext.key", loadFiles[0]["key"])
+	}
+}
+
+func TestBuildMultiSiteTLSApp_MixedProviders(t *testing.T) {
+	entries := []multiSiteTLSEntry{
+		{domain: "acme.example.com", provider: "letsencrypt"},
+		{domain: "ext.example.com", provider: "external", certPath: "/certs/ext.crt", keyPath: "/certs/ext.key"},
+		{domain: "local.test", provider: "self-signed"},
+	}
+	result := buildMultiSiteTLSApp(entries, "admin@example.com")
+	if result == nil {
+		t.Fatal("expected non-nil TLS app")
+	}
+
+	// Should have automation for acme + self-signed, and certificates for external.
+	automation := result["automation"].(map[string]any)
+	policies := automation["policies"].([]map[string]any)
+	if len(policies) != 2 {
+		t.Errorf("expected 2 policies (acme + internal), got %d", len(policies))
+	}
+
+	certs := result["certificates"].(map[string]any)
+	loadFiles := certs["load_files"].([]map[string]any)
+	if len(loadFiles) != 1 {
+		t.Errorf("expected 1 load_files entry, got %d", len(loadFiles))
+	}
+}
+
 func TestBuildSiteRoutes_InvalidUpstream(t *testing.T) {
 	cfg := &config.Config{
 		Upstream: config.UpstreamConfig{

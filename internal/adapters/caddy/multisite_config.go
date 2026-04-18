@@ -75,6 +75,8 @@ func BuildMultiSiteConfig(sites []*site.Site, globalCfg site.GlobalConfig, logge
 		tlsEntries = append(tlsEntries, multiSiteTLSEntry{
 			domain:   domain,
 			provider: cfg.TLS.Provider,
+			certPath: cfg.TLS.CertPath,
+			keyPath:  cfg.TLS.KeyPath,
 		})
 	}
 
@@ -219,10 +221,12 @@ func buildSiteRoutes(s *site.Site, domain string) ([]map[string]any, error) {
 
 // multiSiteTLSEntry pairs a domain with its TLS provider so that
 // buildMultiSiteTLSApp can generate the correct issuer configuration
-// (ACME for letsencrypt, internal for self-signed).
+// (ACME for letsencrypt, internal for self-signed, load_files for external).
 type multiSiteTLSEntry struct {
 	domain   string
 	provider string
+	certPath string // only used when provider is "external"
+	keyPath  string // only used when provider is "external"
 }
 
 // buildMultiSiteTLSApp constructs the Caddy TLS app with per-domain
@@ -238,7 +242,10 @@ func buildMultiSiteTLSApp(entries []multiSiteTLSEntry, acmeEmail string) map[str
 		return nil
 	}
 
-	var policies []map[string]any
+	var (
+		policies  []map[string]any
+		loadFiles []map[string]any
+	)
 	for _, entry := range entries {
 		var issuer map[string]any
 
@@ -247,6 +254,18 @@ func buildMultiSiteTLSApp(entries []multiSiteTLSEntry, acmeEmail string) map[str
 			issuer = map[string]any{
 				"module": "internal",
 			}
+		case string(ports.TLSProviderExternal):
+			// External provider: operator supplies cert + key files.
+			// No issuer — certificates are loaded via the load_files block below.
+			// Skip adding an issuer-based policy; add a load_files entry instead.
+			if entry.certPath != "" && entry.keyPath != "" {
+				loadFiles = append(loadFiles, map[string]any{
+					"certificate": entry.certPath,
+					"key":         entry.keyPath,
+					"tags":        []string{"vibewarden_external_" + entry.domain},
+				})
+			}
+			continue // skip the issuer-based policy for this entry
 		default:
 			// letsencrypt / acme — use ACME issuer.
 			issuer = map[string]any{
@@ -264,9 +283,22 @@ func buildMultiSiteTLSApp(entries []multiSiteTLSEntry, acmeEmail string) map[str
 		policies = append(policies, policy)
 	}
 
-	return map[string]any{
-		"automation": map[string]any{
+	tlsApp := map[string]any{}
+
+	if len(policies) > 0 {
+		tlsApp["automation"] = map[string]any{
 			"policies": policies,
-		},
+		}
 	}
+
+	if len(loadFiles) > 0 {
+		tlsApp["certificates"] = map[string]any{
+			"load_files": loadFiles,
+		}
+	}
+
+	if len(tlsApp) == 0 {
+		return nil
+	}
+	return tlsApp
 }
