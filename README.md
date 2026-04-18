@@ -11,7 +11,7 @@
 
 <p align="center">
   <strong>Security sidecar for vibe-coded apps.</strong><br>
-  <em>You vibe, we warden. Security is no longer your burden.</em>
+  <em>You vibe, we warden.</em>
 </p>
 
 You ship fast with AI coding tools. VibeWarden adds the security layer you skipped:
