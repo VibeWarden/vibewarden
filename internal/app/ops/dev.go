@@ -102,6 +102,16 @@ func (s *DevService) Run(ctx context.Context, cfg *config.Config, opts DevOption
 		fmt.Fprintln(out, "Observability profile enabled (Prometheus + Grafana).")
 	}
 
+	// Warn when letsencrypt is configured in dev mode — ACME challenges will
+	// fail on localhost since the server is not publicly reachable.
+	if cfg.TLS.Enabled && cfg.TLS.Provider == "letsencrypt" {
+		fmt.Fprintln(out, "")
+		fmt.Fprintln(out, "Warning: tls.provider is 'letsencrypt' -- ACME HTTP-01 challenges require a")
+		fmt.Fprintln(out, "publicly reachable server. Local dev will use self-signed certificates instead.")
+		fmt.Fprintln(out, "Set tls.provider: self-signed to suppress this warning.")
+		fmt.Fprintln(out, "")
+	}
+
 	// Determine the compose file path to use.
 	composeFile, err := s.resolveComposeFile(ctx, cfg, out)
 	if err != nil {

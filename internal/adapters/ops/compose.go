@@ -50,10 +50,12 @@ func (c *ComposeAdapter) Up(ctx context.Context, composeFile string, profiles []
 	return nil
 }
 
-// Restart runs "docker compose [-f <composeFile>] restart [<service>...]".
+// Restart runs "docker compose [-f <composeFile>] up -d --force-recreate --build [<service>...]".
+// This rebuilds images if the Dockerfile has changed and recreates containers,
+// making it safe to call after any project file change.
 // When composeFile is non-empty it is passed as the -f flag.
 // When services is non-empty each service name is appended so that only those
-// services are restarted; when empty all services are restarted.
+// services are rebuilt and recreated; when empty all services are affected.
 // On failure, stderr output from the command is included in the returned error
 // to give the caller actionable context for diagnosis.
 func (c *ComposeAdapter) Restart(ctx context.Context, composeFile string, services []string) error {
@@ -61,7 +63,7 @@ func (c *ComposeAdapter) Restart(ctx context.Context, composeFile string, servic
 	if composeFile != "" {
 		args = append(args, "-f", composeFile)
 	}
-	args = append(args, "restart")
+	args = append(args, "up", "-d", "--force-recreate", "--build")
 	args = append(args, services...)
 
 	cmd := exec.CommandContext(ctx, "docker", args...)
@@ -70,9 +72,9 @@ func (c *ComposeAdapter) Restart(ctx context.Context, composeFile string, servic
 	if err := cmd.Run(); err != nil {
 		msg := strings.TrimSpace(stderr.String())
 		if msg != "" {
-			return fmt.Errorf("docker compose restart: %w\nstderr: %s", err, msg)
+			return fmt.Errorf("docker compose up --force-recreate --build: %w\nstderr: %s", err, msg)
 		}
-		return fmt.Errorf("docker compose restart: %w", err)
+		return fmt.Errorf("docker compose up --force-recreate --build: %w", err)
 	}
 	return nil
 }
@@ -162,4 +164,47 @@ func (c *ComposeAdapter) PS(ctx context.Context, composeFile string) ([]ports.Co
 		})
 	}
 	return results, nil
+}
+
+// Tail returns the last n lines of logs from the specified service.
+// It runs "docker compose [-f <composeFile>] logs --tail <n> <service>".
+func (c *ComposeAdapter) Tail(ctx context.Context, composeFile string, service string, n int) (string, error) {
+	args := []string{"compose"}
+	if composeFile != "" {
+		args = append(args, "-f", composeFile)
+	}
+	args = append(args, "logs", "--tail", fmt.Sprintf("%d", n), service)
+
+	out, err := exec.CommandContext(ctx, "docker", args...).CombinedOutput()
+	if err != nil {
+		return "", fmt.Errorf("docker compose logs: %w", err)
+	}
+	return string(out), nil
+}
+
+// ShellProberAdapter implements ports.DockerShellProber by shelling out to
+// the docker CLI.
+type ShellProberAdapter struct{}
+
+// NewShellProberAdapter creates a new ShellProberAdapter.
+func NewShellProberAdapter() *ShellProberAdapter {
+	return &ShellProberAdapter{}
+}
+
+// HasShell probes whether the given Docker image contains a working /bin/sh by
+// running "docker run --rm --entrypoint="" <image> /bin/sh -c "echo ok"".
+// Returns (true, nil) if the command succeeds, (false, nil) if the command
+// exits with a non-zero status (indicating no shell), or (false, err) for
+// unexpected failures.
+func (a *ShellProberAdapter) HasShell(ctx context.Context, image string) (bool, error) {
+	args := []string{"run", "--rm", "--entrypoint=", image, "/bin/sh", "-c", "echo ok"}
+	cmd := exec.CommandContext(ctx, "docker", args...) //nolint:gosec // args are constructed from caller-supplied image name
+	if err := cmd.Run(); err != nil {
+		var exitErr *exec.ExitError
+		if errors.As(err, &exitErr) {
+			return false, nil
+		}
+		return false, fmt.Errorf("docker run shell probe: %w", err)
+	}
+	return true, nil
 }

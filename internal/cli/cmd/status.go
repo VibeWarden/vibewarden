@@ -43,7 +43,10 @@ Examples:
 
 			httpClient := newStatusHTTPClient(cfg)
 			checker := opsadapter.NewHTTPHealthChecker(httpClient)
-			svc := opsapp.NewStatusService(checker)
+			compose := opsadapter.NewComposeAdapter()
+			svc := opsapp.NewStatusService(checker).
+				WithCompose(compose).
+				WithLogs(compose)
 
 			return svc.Run(cmd.Context(), cfg, cmd.OutOrStdout())
 		},

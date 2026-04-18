@@ -56,7 +56,7 @@ func TestRestartService_Run(t *testing.T) {
 		{
 			name:       "restart all services",
 			services:   nil,
-			wantOutput: "Restarting all services",
+			wantOutput: "Rebuilding and restarting all services",
 		},
 		{
 			name:       "restart single service",

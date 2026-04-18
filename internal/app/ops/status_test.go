@@ -8,6 +8,8 @@ import (
 	"testing"
 
 	"github.com/vibewarden/vibewarden/internal/app/ops"
+	"github.com/vibewarden/vibewarden/internal/config"
+	"github.com/vibewarden/vibewarden/internal/ports"
 )
 
 // fakeHealthChecker is a test double for ports.HealthChecker.
@@ -213,5 +215,166 @@ func TestStatusService_TLSEnabled(t *testing.T) {
 	}
 	if !strings.Contains(out, "example.com") {
 		t.Errorf("expected domain in output, got:\n%s", out)
+	}
+}
+
+// fakeStatusCompose is a test double for ports.ComposeRunner used by status tests.
+type fakeStatusCompose struct {
+	psResult []ports.ContainerInfo
+	psErr    error
+}
+
+func (f *fakeStatusCompose) Up(_ context.Context, _ string, _ []string) error { return nil }
+func (f *fakeStatusCompose) Restart(_ context.Context, _ string, _ []string) error {
+	return nil
+}
+func (f *fakeStatusCompose) Version(_ context.Context) (string, error) { return "", nil }
+func (f *fakeStatusCompose) Info(_ context.Context) error              { return nil }
+func (f *fakeStatusCompose) PS(_ context.Context, _ string) ([]ports.ContainerInfo, error) {
+	return f.psResult, f.psErr
+}
+
+// fakeStatusLogs is a test double for ports.ComposeLogs used by status tests.
+type fakeStatusLogs struct {
+	output string
+	err    error
+}
+
+func (f *fakeStatusLogs) Tail(_ context.Context, _ string, _ string, _ int) (string, error) {
+	return f.output, f.err
+}
+
+func TestStatusService_ProxyUnreachable_NoContainers_ShowsDiagnosis(t *testing.T) {
+	cfg := defaultConfig()
+
+	proxyBase := "https://localhost:8443"
+	checker := &fakeHealthChecker{responses: map[string]healthResponse{
+		proxyBase + "/_vibewarden/health":          {ok: false, err: errors.New("connection refused")},
+		proxyBase + "/_vibewarden/metrics":         {ok: true, statusCode: 200},
+		"http://127.0.0.1:4434/admin/health/ready": {ok: true, statusCode: 200},
+	}}
+
+	compose := &fakeStatusCompose{psResult: nil} // no containers
+	svc := ops.NewStatusService(checker).WithCompose(compose)
+
+	var buf bytes.Buffer
+	if err := svc.Run(context.Background(), cfg, &buf); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	out := buf.String()
+	if !strings.Contains(out, "Sidecar container is not running") {
+		t.Errorf("expected 'Sidecar container is not running' in output, got:\n%s", out)
+	}
+	if !strings.Contains(out, "vibew doctor") {
+		t.Errorf("expected 'vibew doctor' suggestion in output, got:\n%s", out)
+	}
+}
+
+func TestStatusService_ProxyUnreachable_SidecarRunning_ShowsLogDiagnosis(t *testing.T) {
+	cfg := defaultConfig()
+
+	proxyBase := "https://localhost:8443"
+	checker := &fakeHealthChecker{responses: map[string]healthResponse{
+		proxyBase + "/_vibewarden/health":          {ok: false, err: errors.New("connection refused")},
+		proxyBase + "/_vibewarden/metrics":         {ok: true, statusCode: 200},
+		"http://127.0.0.1:4434/admin/health/ready": {ok: true, statusCode: 200},
+	}}
+
+	compose := &fakeStatusCompose{psResult: []ports.ContainerInfo{
+		{Service: "vibewarden", State: "running"},
+	}}
+	logs := &fakeStatusLogs{output: "error: ACME challenge failed for domain"}
+	svc := ops.NewStatusService(checker).WithCompose(compose).WithLogs(logs)
+
+	var buf bytes.Buffer
+	if err := svc.Run(context.Background(), cfg, &buf); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	out := buf.String()
+	if !strings.Contains(out, "TLS/ACME errors") {
+		t.Errorf("expected TLS/ACME diagnosis in output, got:\n%s", out)
+	}
+}
+
+func TestStatusService_ProxyUnreachable_LetsencryptLocal_ShowsHint(t *testing.T) {
+	cfg := defaultConfig()
+	cfg.TLS.Enabled = true
+	cfg.TLS.Provider = "letsencrypt"
+
+	proxyBase := "https://localhost:8443"
+	checker := &fakeHealthChecker{responses: map[string]healthResponse{
+		proxyBase + "/_vibewarden/health":          {ok: false, err: errors.New("connection refused")},
+		proxyBase + "/_vibewarden/metrics":         {ok: true, statusCode: 200},
+		"http://127.0.0.1:4434/admin/health/ready": {ok: true, statusCode: 200},
+	}}
+
+	compose := &fakeStatusCompose{psResult: []ports.ContainerInfo{
+		{Service: "vibewarden", State: "running"},
+	}}
+	svc := ops.NewStatusService(checker).WithCompose(compose)
+
+	var buf bytes.Buffer
+	if err := svc.Run(context.Background(), cfg, &buf); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	out := buf.String()
+	if !strings.Contains(out, "letsencrypt") {
+		t.Errorf("expected letsencrypt hint in output, got:\n%s", out)
+	}
+	if !strings.Contains(out, "self-signed") {
+		t.Errorf("expected self-signed suggestion in output, got:\n%s", out)
+	}
+}
+
+func TestStatusService_ProxyHealthy_NoDiagnostics(t *testing.T) {
+	cfg := defaultConfig()
+
+	proxyBase := "https://localhost:8443"
+	checker := &fakeHealthChecker{responses: map[string]healthResponse{
+		proxyBase + "/_vibewarden/health":          {ok: true, statusCode: 200},
+		proxyBase + "/_vibewarden/metrics":         {ok: true, statusCode: 200},
+		"http://127.0.0.1:4434/admin/health/ready": {ok: true, statusCode: 200},
+	}}
+
+	compose := &fakeStatusCompose{psResult: nil}
+	svc := ops.NewStatusService(checker).WithCompose(compose)
+
+	var buf bytes.Buffer
+	if err := svc.Run(context.Background(), cfg, &buf); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	out := buf.String()
+	if strings.Contains(out, "Diagnosis") {
+		t.Errorf("expected no diagnosis when proxy is healthy, got:\n%s", out)
+	}
+}
+
+func TestStatusService_ProxyUnreachable_DoctorSuggestion(t *testing.T) {
+	cfg := &config.Config{
+		Server: config.ServerConfig{Host: "127.0.0.1", Port: 8443},
+		TLS:    config.TLSConfig{Enabled: true, Provider: "self-signed"},
+	}
+
+	proxyBase := "https://localhost:8443"
+	checker := &fakeHealthChecker{responses: map[string]healthResponse{
+		proxyBase + "/_vibewarden/health":          {ok: false, err: errors.New("connection refused")},
+		"http://127.0.0.1:4434/admin/health/ready": {ok: true, statusCode: 200},
+	}}
+
+	// No compose wired, so diagnosis falls through to the suggestion.
+	svc := ops.NewStatusService(checker)
+
+	var buf bytes.Buffer
+	if err := svc.Run(context.Background(), cfg, &buf); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	out := buf.String()
+	if !strings.Contains(out, "vibew doctor") {
+		t.Errorf("expected 'vibew doctor' suggestion in output, got:\n%s", out)
 	}
 }

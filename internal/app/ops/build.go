@@ -14,13 +14,24 @@ import (
 // BuildService orchestrates the "vibew build" use case.
 // It resolves the Docker image tag from vibewarden.yaml (app.image) or falls
 // back to the current directory name, then delegates to a DockerBuilder.
+// When a shell prober is wired, it probes the built image for /bin/sh and
+// prints a warning when the image has no shell (distroless/scratch images).
 type BuildService struct {
-	builder ports.DockerBuilder
+	builder     ports.DockerBuilder
+	shellProber ports.DockerShellProber // optional; nil disables shell probe
 }
 
 // NewBuildService creates a new BuildService.
 func NewBuildService(builder ports.DockerBuilder) *BuildService {
 	return &BuildService{builder: builder}
+}
+
+// WithShellProber attaches a DockerShellProber to the BuildService.
+// When set, Run probes the built image for /bin/sh after a successful build
+// and prints a warning when no shell is found.
+func (s *BuildService) WithShellProber(prober ports.DockerShellProber) *BuildService {
+	s.shellProber = prober
+	return s
 }
 
 // BuildOptions holds options for the build command.
@@ -63,7 +74,34 @@ func (s *BuildService) Run(ctx context.Context, cfg *config.Config, opts BuildOp
 	}
 
 	fmt.Fprintf(out, "Successfully built: %s\n", tag)
+
+	// Post-build: probe the image for /bin/sh so we can warn about healthcheck
+	// compatibility. Distroless and scratch images have no shell, which means
+	// the generated docker-compose healthcheck (CMD-SHELL) will fail at runtime.
+	s.probeShell(ctx, tag, out)
+
 	return nil
+}
+
+// probeShell checks whether the built image contains /bin/sh and prints a
+// warning when it does not. The probe is best-effort: errors from the prober
+// are silently ignored so they never fail the build.
+func (s *BuildService) probeShell(ctx context.Context, image string, out io.Writer) {
+	if s.shellProber == nil {
+		return
+	}
+
+	hasShell, err := s.shellProber.HasShell(ctx, image)
+	if err != nil {
+		// Probe failure is not fatal — just skip.
+		return
+	}
+	if !hasShell {
+		fmt.Fprintln(out, "")
+		fmt.Fprintln(out, "Warning: your app image has no shell (/bin/sh). The generated healthcheck")
+		fmt.Fprintln(out, "requires a shell. Switch to an Alpine-based image or add a custom healthcheck")
+		fmt.Fprintln(out, "in your Dockerfile.")
+	}
 }
 
 // resolveImageTag returns the Docker image tag for the build.

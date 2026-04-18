@@ -115,13 +115,14 @@ func TestComposeAdapter_Restart_CancelledContextWithService(t *testing.T) {
 }
 
 // restartArgs mirrors the argument-construction logic of ComposeAdapter.Restart
-// for use in table-driven tests.
+// for use in table-driven tests. The adapter now uses "up -d --force-recreate
+// --build" instead of "restart" so that Dockerfile changes are picked up.
 func restartArgs(composeFile string, services []string) []string {
 	args := []string{"compose"}
 	if composeFile != "" {
 		args = append(args, "-f", composeFile)
 	}
-	args = append(args, "restart")
+	args = append(args, "up", "-d", "--force-recreate", "--build")
 	args = append(args, services...)
 	return args
 }
@@ -135,28 +136,28 @@ func TestRestartArgsConstruction(t *testing.T) {
 	}{
 		{
 			name: "no file, no services",
-			want: []string{"compose", "restart"},
+			want: []string{"compose", "up", "-d", "--force-recreate", "--build"},
 		},
 		{
 			name:     "no file, single service",
 			services: []string{"app"},
-			want:     []string{"compose", "restart", "app"},
+			want:     []string{"compose", "up", "-d", "--force-recreate", "--build", "app"},
 		},
 		{
 			name:     "no file, multiple services",
 			services: []string{"app", "kratos"},
-			want:     []string{"compose", "restart", "app", "kratos"},
+			want:     []string{"compose", "up", "-d", "--force-recreate", "--build", "app", "kratos"},
 		},
 		{
 			name:        "with file, no services",
 			composeFile: ".vibewarden/generated/docker-compose.yml",
-			want:        []string{"compose", "-f", ".vibewarden/generated/docker-compose.yml", "restart"},
+			want:        []string{"compose", "-f", ".vibewarden/generated/docker-compose.yml", "up", "-d", "--force-recreate", "--build"},
 		},
 		{
 			name:        "with file and service",
 			composeFile: ".vibewarden/generated/docker-compose.yml",
 			services:    []string{"app"},
-			want:        []string{"compose", "-f", ".vibewarden/generated/docker-compose.yml", "restart", "app"},
+			want:        []string{"compose", "-f", ".vibewarden/generated/docker-compose.yml", "up", "-d", "--force-recreate", "--build", "app"},
 		},
 	}
 
@@ -257,6 +258,36 @@ func TestImageCheckerAdapter_ImageExists_CancelledContext(t *testing.T) {
 	_, err := adapter.ImageExists(ctx, "alpine:latest")
 	if err == nil {
 		t.Fatal("ImageExists() expected error with cancelled context, got nil")
+	}
+}
+
+func TestShellProberAdapter_CancelledContext(t *testing.T) {
+	if !dockerAvailable() {
+		t.Skip("docker binary not available")
+	}
+
+	adapter := opsadapter.NewShellProberAdapter()
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_, err := adapter.HasShell(ctx, "alpine:latest")
+	if err == nil {
+		t.Fatal("HasShell() expected error with cancelled context, got nil")
+	}
+}
+
+func TestComposeAdapter_Tail_CancelledContext(t *testing.T) {
+	if !dockerAvailable() {
+		t.Skip("docker binary not available")
+	}
+
+	adapter := opsadapter.NewComposeAdapter()
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_, err := adapter.Tail(ctx, "", "vibewarden", 10)
+	if err == nil {
+		t.Fatal("Tail() expected error with cancelled context, got nil")
 	}
 }
 

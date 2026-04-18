@@ -195,3 +195,95 @@ func TestBuildService_Run_PassesWorkDirToBuilder(t *testing.T) {
 		t.Errorf("contextDir = %q, want %q", fb.capturedDir, dir)
 	}
 }
+
+// fakeShellProber is a test double for ports.DockerShellProber.
+type fakeShellProber struct {
+	hasShell bool
+	err      error
+}
+
+func (f *fakeShellProber) HasShell(_ context.Context, _ string) (bool, error) {
+	return f.hasShell, f.err
+}
+
+func TestBuildService_ShellProber_NoShellWarning(t *testing.T) {
+	fb := &fakeBuilder{}
+	fp := &fakeShellProber{hasShell: false}
+	svc := ops.NewBuildService(fb).WithShellProber(fp)
+
+	cfg := &config.Config{}
+	cfg.App.Image = "myapp:latest"
+
+	var out bytes.Buffer
+	err := svc.Run(context.Background(), cfg, ops.BuildOptions{WorkDir: "."}, &out)
+	if err != nil {
+		t.Fatalf("Run() unexpected error: %v", err)
+	}
+
+	output := out.String()
+	if !strings.Contains(output, "Warning: your app image has no shell") {
+		t.Errorf("expected shell warning in output, got:\n%s", output)
+	}
+	if !strings.Contains(output, "Alpine-based") {
+		t.Errorf("expected Alpine suggestion in output, got:\n%s", output)
+	}
+}
+
+func TestBuildService_ShellProber_HasShell_NoWarning(t *testing.T) {
+	fb := &fakeBuilder{}
+	fp := &fakeShellProber{hasShell: true}
+	svc := ops.NewBuildService(fb).WithShellProber(fp)
+
+	cfg := &config.Config{}
+	cfg.App.Image = "myapp:latest"
+
+	var out bytes.Buffer
+	err := svc.Run(context.Background(), cfg, ops.BuildOptions{WorkDir: "."}, &out)
+	if err != nil {
+		t.Fatalf("Run() unexpected error: %v", err)
+	}
+
+	output := out.String()
+	if strings.Contains(output, "Warning: your app image has no shell") {
+		t.Errorf("unexpected shell warning in output:\n%s", output)
+	}
+}
+
+func TestBuildService_ShellProber_Error_NoWarning(t *testing.T) {
+	fb := &fakeBuilder{}
+	fp := &fakeShellProber{err: errors.New("docker daemon unreachable")}
+	svc := ops.NewBuildService(fb).WithShellProber(fp)
+
+	cfg := &config.Config{}
+	cfg.App.Image = "myapp:latest"
+
+	var out bytes.Buffer
+	err := svc.Run(context.Background(), cfg, ops.BuildOptions{WorkDir: "."}, &out)
+	if err != nil {
+		t.Fatalf("Run() unexpected error: %v", err)
+	}
+
+	output := out.String()
+	if strings.Contains(output, "Warning: your app image has no shell") {
+		t.Errorf("unexpected shell warning when prober errors:\n%s", output)
+	}
+}
+
+func TestBuildService_ShellProber_NilProber_NoWarning(t *testing.T) {
+	fb := &fakeBuilder{}
+	svc := ops.NewBuildService(fb) // no prober wired
+
+	cfg := &config.Config{}
+	cfg.App.Image = "myapp:latest"
+
+	var out bytes.Buffer
+	err := svc.Run(context.Background(), cfg, ops.BuildOptions{WorkDir: "."}, &out)
+	if err != nil {
+		t.Fatalf("Run() unexpected error: %v", err)
+	}
+
+	output := out.String()
+	if strings.Contains(output, "Warning: your app image has no shell") {
+		t.Errorf("unexpected shell warning when no prober wired:\n%s", output)
+	}
+}

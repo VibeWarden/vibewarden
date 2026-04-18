@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/fatih/color"
@@ -24,13 +26,29 @@ type ComponentStatus struct {
 
 // StatusService orchestrates the "vibew status" use case.
 // It queries each component and returns a structured summary.
+// When a ComposeRunner is wired, it provides additional diagnostic details
+// when the proxy is unreachable (container state, log snippets).
 type StatusService struct {
-	health ports.HealthChecker
+	health  ports.HealthChecker
+	compose ports.ComposeRunner // optional; nil disables container diagnostics
+	logs    ports.ComposeLogs   // optional; nil disables log-based diagnostics
 }
 
 // NewStatusService creates a new StatusService.
 func NewStatusService(health ports.HealthChecker) *StatusService {
 	return &StatusService{health: health}
+}
+
+// WithCompose attaches a ComposeRunner for diagnostic container status checks.
+func (s *StatusService) WithCompose(compose ports.ComposeRunner) *StatusService {
+	s.compose = compose
+	return s
+}
+
+// WithLogs attaches a ComposeLogs for diagnostic log tail checks.
+func (s *StatusService) WithLogs(logs ports.ComposeLogs) *StatusService {
+	s.logs = logs
+	return s
 }
 
 // Run queries all components and writes the status dashboard to out.
@@ -51,6 +69,15 @@ func (s *StatusService) Run(ctx context.Context, cfg *config.Config, out io.Writ
 	statuses := s.gatherStatuses(checkCtx, cfg, proxyBase)
 	pluginStatuses := gatherPluginStatuses(cfg)
 	printStatusTable(statuses, pluginStatuses, out)
+
+	// When the proxy is unreachable, print additional diagnostic details.
+	for _, st := range statuses {
+		if st.Name == "Proxy" && !st.Healthy {
+			s.diagnoseProxy(checkCtx, cfg, out)
+			break
+		}
+	}
+
 	return nil
 }
 
@@ -180,6 +207,54 @@ func (s *StatusService) checkHTTP(ctx context.Context, name, url, base string) C
 		Healthy: true,
 		Detail:  base,
 	}
+}
+
+// diagnoseProxy prints additional diagnostic details when the proxy is
+// unreachable. It checks whether the sidecar container is running and
+// inspects recent log lines for common error patterns.
+func (s *StatusService) diagnoseProxy(ctx context.Context, cfg *config.Config, out io.Writer) {
+	composeFile := filepath.Join(generatedOutputDir, "docker-compose.yml")
+
+	// Step 1: check container state via docker compose ps.
+	if s.compose != nil {
+		containers, err := s.compose.PS(ctx, composeFile)
+		if err == nil {
+			sidecarRunning := false
+			for _, c := range containers {
+				if c.Service == "vibewarden" || c.Service == "sidecar" || c.Service == "proxy" {
+					if c.State == "running" {
+						sidecarRunning = true
+					}
+					break
+				}
+			}
+
+			if len(containers) == 0 || !sidecarRunning {
+				fmt.Fprintln(out, "  Diagnosis: Sidecar container is not running -- run 'vibew dev' to start")
+				fmt.Fprintln(out, "  Suggestion: Run 'vibew doctor' for detailed diagnostics")
+				return
+			}
+		}
+	}
+
+	// Step 2: check sidecar logs for ACME/TLS errors.
+	if s.logs != nil {
+		logOutput, err := s.logs.Tail(ctx, composeFile, "vibewarden", 20)
+		if err == nil && logOutput != "" {
+			lower := strings.ToLower(logOutput)
+			if strings.Contains(lower, "acme") || strings.Contains(lower, "challenge") || strings.Contains(lower, "tls") {
+				fmt.Fprintln(out, "  Diagnosis: Recent sidecar logs contain TLS/ACME errors")
+			}
+		}
+	}
+
+	// Step 3: letsencrypt + localhost is a known misconfiguration.
+	if cfg.TLS.Enabled && cfg.TLS.Provider == "letsencrypt" {
+		fmt.Fprintln(out, "  Diagnosis: tls.provider is 'letsencrypt' -- ACME HTTP-01 challenges require a")
+		fmt.Fprintln(out, "  publicly reachable server. Use tls.provider: self-signed for local dev.")
+	}
+
+	fmt.Fprintln(out, "  Suggestion: Run 'vibew doctor' for detailed diagnostics")
 }
 
 // printStatusTable renders the component and plugin statuses as a table.

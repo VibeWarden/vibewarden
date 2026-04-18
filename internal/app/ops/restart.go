@@ -10,8 +10,8 @@ import (
 )
 
 // RestartService orchestrates the "vibew restart" use case.
-// It restarts one or more services in the Docker Compose stack without
-// rebuilding or recreating containers.
+// It rebuilds and recreates containers using "docker compose up -d
+// --force-recreate --build" so that Dockerfile changes are picked up.
 type RestartService struct {
 	compose ports.ComposeRunner
 }
@@ -21,17 +21,17 @@ func NewRestartService(compose ports.ComposeRunner) *RestartService {
 	return &RestartService{compose: compose}
 }
 
-// Run restarts the compose stack (or a subset of services) using the generated
-// compose file under .vibewarden/generated/.
-// When services is empty all services are restarted.
-// When services is non-empty only those named services are restarted.
+// Run rebuilds and recreates the compose stack (or a subset of services) using
+// the generated compose file under .vibewarden/generated/.
+// When services is empty all services are rebuilt and recreated.
+// When services is non-empty only those named services are affected.
 func (s *RestartService) Run(ctx context.Context, services []string, out io.Writer) error {
 	composeFile := filepath.Join(generatedOutputDir, "docker-compose.yml")
 
 	if len(services) == 0 {
-		fmt.Fprintln(out, "Restarting all services...")
+		fmt.Fprintln(out, "Rebuilding and restarting all services...")
 	} else {
-		fmt.Fprintf(out, "Restarting service(s): %v...\n", services)
+		fmt.Fprintf(out, "Rebuilding and restarting service(s): %v...\n", services)
 	}
 
 	if err := s.compose.Restart(ctx, composeFile, services); err != nil {
