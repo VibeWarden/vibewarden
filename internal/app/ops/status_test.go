@@ -229,7 +229,7 @@ func (f *fakeStatusCompose) Restart(_ context.Context, _ string, _ []string) err
 	return nil
 }
 func (f *fakeStatusCompose) Version(_ context.Context) (string, error) { return "", nil }
-func (f *fakeStatusCompose) Info(_ context.Context) error { return nil }
+func (f *fakeStatusCompose) Info(_ context.Context) error              { return nil }
 func (f *fakeStatusCompose) PS(_ context.Context, _ string) ([]ports.ContainerInfo, error) {
 	return f.psResult, f.psErr
 }
