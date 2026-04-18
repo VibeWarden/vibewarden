@@ -8,6 +8,7 @@ import (
 
 	"github.com/vibewarden/vibewarden/internal/config"
 	"github.com/vibewarden/vibewarden/internal/domain/site"
+	"github.com/vibewarden/vibewarden/internal/ports"
 )
 
 // helperNewSite creates a healthy Site for testing. It panics on error
@@ -52,7 +53,7 @@ func TestBuildMultiSiteConfig_SingleSite(t *testing.T) {
 	s := helperNewSite(t, "app1", cfg)
 
 	global := site.DefaultGlobalConfig()
-	result, err := BuildMultiSiteConfig([]*site.Site{s}, global, slog.Default())
+	result, err := BuildMultiSiteConfig([]*site.Site{s}, global, nil, slog.Default())
 	if err != nil {
 		t.Fatalf("BuildMultiSiteConfig() error = %v", err)
 	}
@@ -107,7 +108,7 @@ func TestBuildMultiSiteConfig_TwoSitesDifferentDomains(t *testing.T) {
 	s2 := helperNewSite(t, "app2", cfg2)
 
 	global := site.DefaultGlobalConfig()
-	result, err := BuildMultiSiteConfig([]*site.Site{s1, s2}, global, slog.Default())
+	result, err := BuildMultiSiteConfig([]*site.Site{s1, s2}, global, nil, slog.Default())
 	if err != nil {
 		t.Fatalf("BuildMultiSiteConfig() error = %v", err)
 	}
@@ -162,7 +163,7 @@ func TestBuildMultiSiteConfig_SiteWithNoDomainSkipped(t *testing.T) {
 	s2 := helperNewSite(t, "app2", cfg2)
 
 	global := site.DefaultGlobalConfig()
-	result, err := BuildMultiSiteConfig([]*site.Site{s1, s2}, global, slog.Default())
+	result, err := BuildMultiSiteConfig([]*site.Site{s1, s2}, global, nil, slog.Default())
 	if err != nil {
 		t.Fatalf("BuildMultiSiteConfig() error = %v", err)
 	}
@@ -190,7 +191,7 @@ func TestBuildMultiSiteConfig_ErrorSiteSkipped(t *testing.T) {
 	s2 := helperNewErrorSite(t, "app2")
 
 	global := site.DefaultGlobalConfig()
-	result, err := BuildMultiSiteConfig([]*site.Site{s1, s2}, global, slog.Default())
+	result, err := BuildMultiSiteConfig([]*site.Site{s1, s2}, global, nil, slog.Default())
 	if err != nil {
 		t.Fatalf("BuildMultiSiteConfig() error = %v", err)
 	}
@@ -213,7 +214,7 @@ func TestBuildMultiSiteConfig_ErrorSiteSkipped(t *testing.T) {
 
 func TestBuildMultiSiteConfig_EmptySitesList(t *testing.T) {
 	global := site.DefaultGlobalConfig()
-	_, err := BuildMultiSiteConfig([]*site.Site{}, global, slog.Default())
+	_, err := BuildMultiSiteConfig([]*site.Site{}, global, nil, slog.Default())
 	if err == nil {
 		t.Fatal("expected error for empty sites list, got nil")
 	}
@@ -221,7 +222,7 @@ func TestBuildMultiSiteConfig_EmptySitesList(t *testing.T) {
 
 func TestBuildMultiSiteConfig_NilSitesList(t *testing.T) {
 	global := site.DefaultGlobalConfig()
-	_, err := BuildMultiSiteConfig(nil, global, slog.Default())
+	_, err := BuildMultiSiteConfig(nil, global, nil, slog.Default())
 	if err == nil {
 		t.Fatal("expected error for nil sites list, got nil")
 	}
@@ -232,7 +233,7 @@ func TestBuildMultiSiteConfig_AllSitesUnhealthy(t *testing.T) {
 	s2 := helperNewErrorSite(t, "app2")
 
 	global := site.DefaultGlobalConfig()
-	_, err := BuildMultiSiteConfig([]*site.Site{s1, s2}, global, slog.Default())
+	_, err := BuildMultiSiteConfig([]*site.Site{s1, s2}, global, nil, slog.Default())
 	if err == nil {
 		t.Fatal("expected error when all sites are unhealthy, got nil")
 	}
@@ -257,7 +258,7 @@ func TestBuildMultiSiteConfig_PerSiteMiddlewareIndependence(t *testing.T) {
 	sB := helperNewSite(t, "site-b", cfgB)
 
 	global := site.DefaultGlobalConfig()
-	result, err := BuildMultiSiteConfig([]*site.Site{sA, sB}, global, slog.Default())
+	result, err := BuildMultiSiteConfig([]*site.Site{sA, sB}, global, nil, slog.Default())
 	if err != nil {
 		t.Fatalf("BuildMultiSiteConfig() error = %v", err)
 	}
@@ -314,7 +315,7 @@ func TestBuildMultiSiteConfig_TLSPolicyPerDomain(t *testing.T) {
 
 	global := site.DefaultGlobalConfig()
 	global.ACMEEmail = "admin@example.com"
-	result, err := BuildMultiSiteConfig([]*site.Site{s1, s2, s3}, global, slog.Default())
+	result, err := BuildMultiSiteConfig([]*site.Site{s1, s2, s3}, global, nil, slog.Default())
 	if err != nil {
 		t.Fatalf("BuildMultiSiteConfig() error = %v", err)
 	}
@@ -378,7 +379,7 @@ func TestBuildMultiSiteConfig_ListenAddress(t *testing.T) {
 		ListenPort: 8443,
 		LogLevel:   "info",
 	}
-	result, err := BuildMultiSiteConfig([]*site.Site{s}, global, slog.Default())
+	result, err := BuildMultiSiteConfig([]*site.Site{s}, global, nil, slog.Default())
 	if err != nil {
 		t.Fatalf("BuildMultiSiteConfig() error = %v", err)
 	}
@@ -406,7 +407,7 @@ func TestBuildMultiSiteConfig_HealthRoutePerSite(t *testing.T) {
 	s2 := helperNewSite(t, "app2", cfg2)
 
 	global := site.DefaultGlobalConfig()
-	result, err := BuildMultiSiteConfig([]*site.Site{s1, s2}, global, slog.Default())
+	result, err := BuildMultiSiteConfig([]*site.Site{s1, s2}, global, nil, slog.Default())
 	if err != nil {
 		t.Fatalf("BuildMultiSiteConfig() error = %v", err)
 	}
@@ -461,7 +462,7 @@ func TestBuildMultiSiteConfig_ErrorIsolation(t *testing.T) {
 	s3 := helperNewErrorSite(t, "broken")
 
 	global := site.DefaultGlobalConfig()
-	result, err := BuildMultiSiteConfig([]*site.Site{s1, s2, s3}, global, slog.Default())
+	result, err := BuildMultiSiteConfig([]*site.Site{s1, s2, s3}, global, nil, slog.Default())
 	if err != nil {
 		t.Fatalf("BuildMultiSiteConfig() error = %v", err)
 	}
@@ -495,7 +496,7 @@ func TestBuildMultiSiteConfig_ValidJSON(t *testing.T) {
 	s := helperNewSite(t, "valid", cfg)
 
 	global := site.DefaultGlobalConfig()
-	result, err := BuildMultiSiteConfig([]*site.Site{s}, global, slog.Default())
+	result, err := BuildMultiSiteConfig([]*site.Site{s}, global, nil, slog.Default())
 	if err != nil {
 		t.Fatalf("BuildMultiSiteConfig() error = %v", err)
 	}
@@ -668,9 +669,216 @@ func TestBuildSiteRoutes_InvalidUpstream(t *testing.T) {
 	}
 	s := helperNewSite(t, "broken-upstream", cfg)
 
-	_, err := buildSiteRoutes(s, "test.example.com")
+	_, err := buildSiteRoutes(s, "test.example.com", nil)
 	if err == nil {
 		t.Fatal("expected error for invalid upstream, got nil")
+	}
+}
+
+func TestBuildMultiSiteConfig_PerSitePluginHandlers(t *testing.T) {
+	// Site A: has plugin handlers (e.g. WAF).
+	cfgA := helperMinimalConfig("a.example.com", 3001)
+	sA := helperNewSite(t, "site-a", cfgA)
+
+	// Site B: no plugin handlers.
+	cfgB := helperMinimalConfig("b.example.com", 3002)
+	sB := helperNewSite(t, "site-b", cfgB)
+
+	global := site.DefaultGlobalConfig()
+
+	// Provide handlers only for site-a.
+	perSiteHandlers := map[string][]ports.CaddyHandler{
+		"site-a": {
+			{
+				Handler:  map[string]any{"handler": "vibewarden_waf_engine", "mode": "block"},
+				Priority: 25,
+			},
+			{
+				Handler:  map[string]any{"handler": "vibewarden_cors", "allow_all": true},
+				Priority: 10,
+			},
+		},
+	}
+
+	result, err := BuildMultiSiteConfig([]*site.Site{sA, sB}, global, perSiteHandlers, slog.Default())
+	if err != nil {
+		t.Fatalf("BuildMultiSiteConfig() error = %v", err)
+	}
+
+	data, _ := json.Marshal(result)
+	var parsed map[string]any
+	_ = json.Unmarshal(data, &parsed)
+
+	apps := parsed["apps"].(map[string]any)
+	httpApp := apps["http"].(map[string]any)
+	servers := httpApp["servers"].(map[string]any)
+	vw := servers["vibewarden"].(map[string]any)
+	routes := vw["routes"].([]any)
+
+	// 4 routes total: 2 per site (health + catch-all).
+	if len(routes) != 4 {
+		t.Fatalf("expected 4 routes, got %d", len(routes))
+	}
+
+	// Catch-all routes are at indices 1 (site-a) and 3 (site-b).
+	catchAllA := routes[1].(map[string]any)
+	handlersA := catchAllA["handle"].([]any)
+
+	catchAllB := routes[3].(map[string]any)
+	handlersB := catchAllB["handle"].([]any)
+
+	// Site A should have 2 more handlers than site B (WAF + CORS from plugins).
+	if len(handlersA) != len(handlersB)+2 {
+		t.Errorf("site A should have %d handlers (site B %d + 2 plugin handlers), got %d",
+			len(handlersB)+2, len(handlersB), len(handlersA))
+	}
+
+	// Verify that plugin handlers are sorted by priority (CORS at 10 before WAF at 25).
+	// The handler chain for site A should be:
+	//   [0] user header strip
+	//   [1] vibewarden_cors (priority 10)
+	//   [2] vibewarden_waf_engine (priority 25)
+	//   [3] reverse_proxy
+	corsHandler := handlersA[1].(map[string]any)
+	if corsHandler["handler"] != "vibewarden_cors" {
+		t.Errorf("expected handler[1] to be vibewarden_cors, got %v", corsHandler["handler"])
+	}
+	wafHandler := handlersA[2].(map[string]any)
+	if wafHandler["handler"] != "vibewarden_waf_engine" {
+		t.Errorf("expected handler[2] to be vibewarden_waf_engine, got %v", wafHandler["handler"])
+	}
+
+	// Verify that site B has no plugin handlers (just user header strip + reverse proxy).
+	for _, h := range handlersB {
+		handler := h.(map[string]any)
+		handlerName := handler["handler"].(string)
+		if handlerName == "vibewarden_waf_engine" || handlerName == "vibewarden_cors" {
+			t.Errorf("site B should not have handler %q", handlerName)
+		}
+	}
+}
+
+func TestBuildMultiSiteConfig_PerSitePluginHandlers_NilMap(t *testing.T) {
+	// When perSiteHandlers is nil, no plugin handlers are inserted.
+	cfg := helperMinimalConfig("app.example.com", 3000)
+	s := helperNewSite(t, "app", cfg)
+
+	global := site.DefaultGlobalConfig()
+	result, err := BuildMultiSiteConfig([]*site.Site{s}, global, nil, slog.Default())
+	if err != nil {
+		t.Fatalf("BuildMultiSiteConfig() error = %v", err)
+	}
+
+	data, _ := json.Marshal(result)
+	var parsed map[string]any
+	_ = json.Unmarshal(data, &parsed)
+
+	apps := parsed["apps"].(map[string]any)
+	httpApp := apps["http"].(map[string]any)
+	servers := httpApp["servers"].(map[string]any)
+	vw := servers["vibewarden"].(map[string]any)
+	routes := vw["routes"].([]any)
+
+	catchAll := routes[1].(map[string]any)
+	handlers := catchAll["handle"].([]any)
+
+	// Should only have user header strip + reverse proxy (no plugin handlers).
+	if len(handlers) != 2 {
+		t.Errorf("expected 2 handlers (strip + proxy), got %d", len(handlers))
+	}
+}
+
+func TestBuildSiteRoutes_WithExtraHandlers(t *testing.T) {
+	cfg := helperMinimalConfig("test.example.com", 3000)
+	s := helperNewSite(t, "test", cfg)
+
+	extraHandlers := []ports.CaddyHandler{
+		{
+			Handler:  map[string]any{"handler": "vibewarden_waf_engine"},
+			Priority: 25,
+		},
+		{
+			Handler:  map[string]any{"handler": "vibewarden_ip_filter"},
+			Priority: 15,
+		},
+	}
+
+	routes, err := buildSiteRoutes(s, "test.example.com", extraHandlers)
+	if err != nil {
+		t.Fatalf("buildSiteRoutes() error = %v", err)
+	}
+
+	// 2 routes: health + catch-all.
+	if len(routes) != 2 {
+		t.Fatalf("expected 2 routes, got %d", len(routes))
+	}
+
+	catchAll := routes[1]
+	handlers := catchAll["handle"].([]map[string]any)
+
+	// Expected: user header strip, ip_filter (15), waf_engine (25), reverse_proxy.
+	if len(handlers) != 4 {
+		t.Fatalf("expected 4 handlers, got %d", len(handlers))
+	}
+
+	// Verify ordering: ip_filter before waf_engine (lower priority runs first).
+	if handlers[1]["handler"] != "vibewarden_ip_filter" {
+		t.Errorf("expected handler[1] = vibewarden_ip_filter, got %v", handlers[1]["handler"])
+	}
+	if handlers[2]["handler"] != "vibewarden_waf_engine" {
+		t.Errorf("expected handler[2] = vibewarden_waf_engine, got %v", handlers[2]["handler"])
+	}
+	if handlers[3]["handler"] != "reverse_proxy" {
+		t.Errorf("expected handler[3] = reverse_proxy, got %v", handlers[3]["handler"])
+	}
+}
+
+func TestBuildSiteRoutes_ExtraHandlersBeforeRateLimit(t *testing.T) {
+	// When both plugin handlers and config-driven rate limiting are active,
+	// plugin handlers should appear before rate limiting in the chain.
+	cfg := helperMinimalConfig("test.example.com", 3000)
+	cfg.RateLimit = config.RateLimitConfig{
+		Enabled: true,
+		PerIP:   config.RateLimitRuleConfig{RequestsPerSecond: 10, Burst: 20},
+	}
+	s := helperNewSite(t, "test", cfg)
+
+	extraHandlers := []ports.CaddyHandler{
+		{
+			Handler:  map[string]any{"handler": "vibewarden_waf_engine"},
+			Priority: 25,
+		},
+	}
+
+	routes, err := buildSiteRoutes(s, "test.example.com", extraHandlers)
+	if err != nil {
+		t.Fatalf("buildSiteRoutes() error = %v", err)
+	}
+
+	catchAll := routes[1]
+	handlers := catchAll["handle"].([]map[string]any)
+
+	// Expected: user header strip, waf_engine, rate_limit, reverse_proxy.
+	// Find indices of waf and rate_limit.
+	wafIdx := -1
+	rlIdx := -1
+	for i, h := range handlers {
+		switch h["handler"] {
+		case "vibewarden_waf_engine":
+			wafIdx = i
+		case "vibewarden_rate_limit":
+			rlIdx = i
+		}
+	}
+
+	if wafIdx < 0 {
+		t.Fatal("WAF handler not found in chain")
+	}
+	if rlIdx < 0 {
+		t.Fatal("rate limit handler not found in chain")
+	}
+	if wafIdx >= rlIdx {
+		t.Errorf("WAF handler (index %d) should appear before rate limit handler (index %d)", wafIdx, rlIdx)
 	}
 }
 

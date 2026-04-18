@@ -120,7 +120,7 @@ func TestNewMultiSiteAdapter(t *testing.T) {
 	registry := site.NewRegistry()
 	logger := slog.Default()
 
-	adapter := NewMultiSiteAdapter(cfg, registry, logger, nil)
+	adapter := NewMultiSiteAdapter(cfg, registry, nil, logger, nil)
 
 	if adapter == nil {
 		t.Fatal("NewMultiSiteAdapter() returned nil")
@@ -144,7 +144,7 @@ func TestNewMultiSiteAdapter_WithEventLogger(t *testing.T) {
 	registry := site.NewRegistry()
 	spy := &fakeEventLogger{}
 
-	adapter := NewMultiSiteAdapter(cfg, registry, slog.Default(), spy)
+	adapter := NewMultiSiteAdapter(cfg, registry, nil, slog.Default(), spy)
 
 	if adapter == nil {
 		t.Fatal("NewMultiSiteAdapter() returned nil")
@@ -180,7 +180,7 @@ func TestAdapter_BuildConfigJSON_MultiSiteMode(t *testing.T) {
 		ListenAddr:   "0.0.0.0:443",
 		UpstreamAddr: "127.0.0.1:3000",
 	}
-	adapter := NewMultiSiteAdapter(proxyCfg, registry, slog.Default(), nil)
+	adapter := NewMultiSiteAdapter(proxyCfg, registry, nil, slog.Default(), nil)
 
 	data, err := adapter.buildConfigJSON()
 	if err != nil {
@@ -239,7 +239,7 @@ func TestAdapter_BuildConfigJSON_MultiSite_DefaultGlobal(t *testing.T) {
 		ListenAddr:   "0.0.0.0:443",
 		UpstreamAddr: "127.0.0.1:3000",
 	}
-	adapter := NewMultiSiteAdapter(proxyCfg, registry, slog.Default(), nil)
+	adapter := NewMultiSiteAdapter(proxyCfg, registry, nil, slog.Default(), nil)
 
 	data, err := adapter.buildConfigJSON()
 	if err != nil {
@@ -331,7 +331,7 @@ func TestAdapter_EmitStartEvents_MultiSite(t *testing.T) {
 		ListenAddr: "0.0.0.0:443",
 		Version:    "v2.0.0",
 	}
-	adapter := NewMultiSiteAdapter(proxyCfg, registry, slog.Default(), spy)
+	adapter := NewMultiSiteAdapter(proxyCfg, registry, nil, slog.Default(), spy)
 
 	adapter.emitStartEvents(context.Background())
 
@@ -429,7 +429,7 @@ func TestAdapter_EmitStartEvents_MultiSite_SkipStartEvent(t *testing.T) {
 		ListenAddr:     "0.0.0.0:443",
 		SkipStartEvent: true,
 	}
-	adapter := NewMultiSiteAdapter(proxyCfg, registry, slog.Default(), spy)
+	adapter := NewMultiSiteAdapter(proxyCfg, registry, nil, slog.Default(), spy)
 
 	adapter.emitStartEvents(context.Background())
 
@@ -466,7 +466,7 @@ func TestAdapter_EmitStartEvents_MultiSite_SkipsErrorSites(t *testing.T) {
 		ListenAddr: "0.0.0.0:443",
 		Version:    "v1.0.0",
 	}
-	adapter := NewMultiSiteAdapter(proxyCfg, registry, slog.Default(), spy)
+	adapter := NewMultiSiteAdapter(proxyCfg, registry, nil, slog.Default(), spy)
 
 	adapter.emitStartEvents(context.Background())
 

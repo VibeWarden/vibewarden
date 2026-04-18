@@ -3,6 +3,7 @@ package caddy
 import (
 	"fmt"
 	"log/slog"
+	"sort"
 
 	"github.com/vibewarden/vibewarden/internal/domain/site"
 	"github.com/vibewarden/vibewarden/internal/ports"
@@ -17,10 +18,16 @@ import (
 // Each site's config.Config is converted to a per-site ProxyConfig and then
 // to a Caddy route with a host matcher restricting it to that site's domain.
 //
+// perSiteHandlers maps each site name to the Caddy handlers contributed by
+// that site's plugin registry (e.g. WAF, auth, CORS). When non-nil, these
+// handlers are inserted into the site's handler chain before the reverse
+// proxy, sorted by ascending priority. Pass nil to omit plugin handlers
+// (backward-compatible with the previous signature).
+//
 // TLS automation policies are generated per domain so that each site gets
 // its own ACME certificate. A single Caddy server instance handles all
 // sites on the same listen address.
-func BuildMultiSiteConfig(sites []*site.Site, globalCfg site.GlobalConfig, logger *slog.Logger) (map[string]any, error) {
+func BuildMultiSiteConfig(sites []*site.Site, globalCfg site.GlobalConfig, perSiteHandlers map[string][]ports.CaddyHandler, logger *slog.Logger) (map[string]any, error) {
 	if len(sites) == 0 {
 		return nil, fmt.Errorf("no sites provided")
 	}
@@ -61,7 +68,12 @@ func BuildMultiSiteConfig(sites []*site.Site, globalCfg site.GlobalConfig, logge
 			continue
 		}
 
-		siteRoutes, err := buildSiteRoutes(s, domain)
+		var extraHandlers []ports.CaddyHandler
+		if perSiteHandlers != nil {
+			extraHandlers = perSiteHandlers[s.Name()]
+		}
+
+		siteRoutes, err := buildSiteRoutes(s, domain, extraHandlers)
 		if err != nil {
 			logger.Error("skipping site due to route build error",
 				slog.String("site", s.Name()),
@@ -117,9 +129,14 @@ func BuildMultiSiteConfig(sites []*site.Site, globalCfg site.GlobalConfig, logge
 // host-matched to the site's domain so that requests to different domains
 // are routed to different upstreams with independent middleware chains.
 //
+// extraHandlers contains plugin-contributed handlers (e.g. WAF, auth, CORS)
+// that are inserted into the handler chain before the reverse proxy, sorted
+// by ascending priority. This mirrors the single-site ExtraHandlers mechanism
+// in BuildCaddyConfig.
+//
 // The returned slice contains the site's health check route and catch-all
 // proxy route, both scoped to the site's domain via host matchers.
-func buildSiteRoutes(s *site.Site, domain string) ([]map[string]any, error) {
+func buildSiteRoutes(s *site.Site, domain string, extraHandlers []ports.CaddyHandler) ([]map[string]any, error) {
 	cfg := s.Config()
 
 	upstreamAddr := fmt.Sprintf("%s:%d", cfg.Upstream.Host, cfg.Upstream.Port)
@@ -155,6 +172,22 @@ func buildSiteRoutes(s *site.Site, domain string) ([]map[string]any, error) {
 			PermittedCrossDomainPolicies: cfg.SecurityHeaders.PermittedCrossDomainPolicies,
 			SuppressViaHeader:            cfg.SecurityHeaders.SuppressViaHeader,
 		}, true))
+	}
+
+	// Insert extra handlers contributed by per-site plugins (e.g. WAF, auth,
+	// CORS, IP filter). These run after security headers but before rate
+	// limiting, matching the single-site handler chain order in BuildCaddyConfig.
+	// Handlers are sorted by ascending priority so that lower-priority plugins
+	// (e.g. WAF at 25) run before higher-priority ones (e.g. rate limiting at 50).
+	if len(extraHandlers) > 0 {
+		sorted := make([]ports.CaddyHandler, len(extraHandlers))
+		copy(sorted, extraHandlers)
+		sort.Slice(sorted, func(i, j int) bool {
+			return sorted[i].Priority < sorted[j].Priority
+		})
+		for _, eh := range sorted {
+			handlers = append(handlers, eh.Handler)
+		}
 	}
 
 	if cfg.RateLimit.Enabled {
