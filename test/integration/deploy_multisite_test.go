@@ -3,13 +3,12 @@
 // Package integration contains integration tests for VibeWarden.
 //
 // TestDeployMultiSite validates the full multi-app deploy flow by starting a
-// test server container with sshd and Docker CLI, then driving the
-// deploy.Service through a real SSH connection to exercise the
-// BootstrapSidecar, DeployMultiApp, and StatusMultiApp code paths end-to-end.
+// Docker-in-Docker test server (sshd + dockerd, --privileged), then driving
+// deploy.Service through a real SSH connection to exercise BootstrapSidecar,
+// DeployMultiApp, and StatusMultiApp end-to-end.
 //
 // Prerequisites:
-//   - Docker daemon running
-//   - Docker socket accessible at /var/run/docker.sock
+//   - Docker daemon running (host Docker, which runs the DinD container)
 //
 // Run:
 //
@@ -63,19 +62,17 @@ const (
 )
 
 // TestDeployMultiSite exercises the full multi-app deploy lifecycle through a
-// real SSH connection to a test server container that has Docker CLI and
-// docker compose available via the mounted Docker socket.
+// real SSH connection to a Docker-in-Docker test server. The container runs
+// both sshd and dockerd (--privileged), so all bind mounts resolve correctly
+// and the sidecar can start just like on a real VPS.
 //
-// The sidecar compose uses bind mounts that reference paths inside the SSH
-// container, which the host Docker daemon cannot resolve. Therefore the
-// sidecar container itself will fail to start, but the app containers are
-// deployed independently via their own compose files and succeed. The test
-// verifies:
+// The test verifies:
 //  1. Directory layout creation via SSH
 //  2. Config and compose file rendering and writing via SSH
 //  3. App container creation and startup (fresh install + add-site)
 //  4. App reachability through the Docker network
 //  5. StatusMultiApp and ListSites listing both sites
+//  6. Sidecar container startup (bind mounts resolve inside DinD)
 func TestDeployMultiSite(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test in short mode")
@@ -99,8 +96,8 @@ func TestDeployMultiSite(t *testing.T) {
 				Context: dockerfilePath,
 			},
 			ExposedPorts: []string{"22/tcp"},
-			Binds:        []string{"/var/run/docker.sock:/var/run/docker.sock"},
-			WaitingFor:   wait.ForListeningPort("22/tcp").WithStartupTimeout(30 * time.Second),
+			Privileged:   true, // required for dockerd inside the container
+			WaitingFor:   wait.ForListeningPort("22/tcp").WithStartupTimeout(60 * time.Second),
 			Name:         testPrefix + "server",
 		},
 		Started: true,
@@ -128,12 +125,6 @@ func TestDeployMultiSite(t *testing.T) {
 	}
 	sshAddr := net.JoinHostPort(sshHost, sshPort.Port())
 	t.Logf("test server SSH endpoint: %s", sshAddr)
-
-	// Grant the vibew user Docker access inside the test server.
-	grantDockerAccess(ctx, t, testServer)
-
-	// Create a stub sidecar image so that docker compose pull succeeds.
-	tagSidecarImage(ctx, t, testServer)
 
 	// Create the SSH-based RemoteExecutor.
 	executor, err := newSSHExecutor(sshAddr, testSSHUser, testSSHPass)
