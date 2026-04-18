@@ -51,41 +51,33 @@ func promptString(w *os.File, r *bufio.Reader, prompt, defaultVal string) (strin
 
 // NewInitCmd creates the `vibew init` subcommand.
 //
-// The command scaffolds a new project with VibeWarden pre-configured.
-// In interactive mode (TTY detected) the user is prompted for project name
-// and description. In non-interactive mode a project name is required via
-// positional argument or --name.
+// The command scaffolds a new VibeWarden project in the current working
+// directory. The project name is derived from the directory's base name
+// (e.g., running in ~/projects/myapp produces project name "myapp").
 //
-// When a project name is supplied as a positional argument or via --name, a
-// subdirectory with that name is created inside the current working directory.
-// The special name "." scaffolds into the current working directory itself,
-// deriving the project name from the current directory's base name.
-// When neither is given, the current directory name is used.
+// This matches `vibew wrap`'s convention: cd into the directory first,
+// then run the command. No subdirectory creation.
 //
 // Usage:
 //
-//	vibew init myproject
-//	vibew init .                   (scaffold in current directory)
-//	vibew init                     (uses current directory name)
-//	vibew init --port 8080 myproject
-//	vibew init --describe "a task management API" myproject
-//	vibew init --name myproject --describe "a task management API"
-//	vibew init --name .            (scaffold in current directory)
+//	mkdir myapp && cd myapp
+//	vibew init
+//	vibew init --port 8080
+//	vibew init --describe "a task management API"
 func NewInitCmd() *cobra.Command {
 	var (
 		port     int
 		force    bool
 		version  string
-		nameFlag string
 		describe string
 	)
 
 	cmd := &cobra.Command{
-		Use:   "init [project-name]",
-		Short: "Create a new project with VibeWarden pre-configured",
+		Use:   "init",
+		Short: "Scaffold a new VibeWarden project in the current directory",
 		Long: `Scaffold a new project with VibeWarden security pre-configured.
 
-The command creates a project directory containing:
+The command scaffolds into the current working directory, creating:
   - vibewarden.yaml (TLS self-signed, rate limiting enabled)
   - .vibewarden-version (pins the vibew version for this project)
   - AGENTS-VIBEWARDEN.md with all agent instructions (auto-generated, vibew-owned)
@@ -94,73 +86,28 @@ The command creates a project directory containing:
   - Dockerfile (generic placeholder with examples for common stacks)
   - .gitignore
 
-In interactive mode (terminal detected) you will be prompted for project name
-and description. In non-interactive mode (piped/CI) a project name is required.
-
-Use "." as the project name to scaffold into the current working directory.
 The project name is derived from the current directory's base name.
+Create the directory first, then cd into it and run vibew init.
 
 Examples:
-  vibew init myproject
-  vibew init myproject --port 8080
-  vibew init --describe "a task management API" myproject
-  vibew init --force myproject
-  vibew init --name myproject --describe "a task management API"
-  vibew init .`,
-		Args: cobra.MaximumNArgs(1),
-		RunE: func(cmd *cobra.Command, args []string) error {
+  mkdir myapp && cd myapp && vibew init
+  vibew init --port 8080
+  vibew init --describe "a task management API"
+  vibew init --force`,
+		Args: cobra.NoArgs,
+		RunE: func(cmd *cobra.Command, _ []string) error {
 			interactive := IsTTY(os.Stdin)
 
-			// A single bufio.Reader wraps os.Stdin for the entire interactive
-			// session. Using multiple readers over the same fd loses buffered
-			// bytes; create one here and pass it to every prompt helper.
 			stdinReader := bufio.NewReader(os.Stdin)
 
-			// Determine project name: positional arg > --name flag > interactive prompt > cwd name.
-			var projectName string
-			parentDir := "."
-			// inCurrentDir tracks whether we are scaffolding into the existing cwd
-			// rather than creating a new subdirectory. Used to suppress the "cd"
-			// step in the success message.
-			inCurrentDir := false
-
-			if len(args) > 0 {
-				projectName = args[0]
-			} else if nameFlag != "" {
-				projectName = nameFlag
-			} else if interactive {
-				cwd, err := os.Getwd()
-				if err != nil {
-					return fmt.Errorf("getting current directory: %w", err)
-				}
-				defaultName := filepath.Base(cwd)
-				chosen, err := promptString(os.Stderr, stdinReader, "Project name", defaultName)
-				if err != nil {
-					return fmt.Errorf("prompting for project name: %w", err)
-				}
-				projectName = chosen
-			} else {
-				// Non-interactive, no positional arg, no --name: use cwd name.
-				cwd, err := os.Getwd()
-				if err != nil {
-					return fmt.Errorf("getting current directory: %w", err)
-				}
-				projectName = filepath.Base(cwd)
-				parentDir = filepath.Dir(cwd)
+			// Always scaffold in the current directory. Derive project name
+			// from the directory's base name (same convention as vibew wrap).
+			cwd, err := os.Getwd()
+			if err != nil {
+				return fmt.Errorf("getting current directory: %w", err)
 			}
-
-			// When the user passes "." as the project name (via positional arg or
-			// --name), scaffold into the current working directory and derive the
-			// project name from the directory's base name.
-			if projectName == "." {
-				cwd, err := os.Getwd()
-				if err != nil {
-					return fmt.Errorf("getting current directory: %w", err)
-				}
-				projectName = filepath.Base(cwd)
-				parentDir = filepath.Dir(cwd)
-				inCurrentDir = true
-			}
+			projectName := filepath.Base(cwd)
+			parentDir := filepath.Dir(cwd)
 
 			// Resolve description: --describe flag > interactive prompt > empty.
 			if describe == "" && interactive {
@@ -192,7 +139,7 @@ Examples:
 				return err
 			}
 
-			printInitSuccessMessage(cmd, projectName, opts, inCurrentDir)
+			printInitSuccessMessage(cmd, projectName, opts)
 			return nil
 		},
 	}
@@ -200,16 +147,13 @@ Examples:
 	cmd.Flags().IntVar(&port, "port", 3000, "HTTP port the app listens on")
 	cmd.Flags().BoolVar(&force, "force", false, "overwrite existing files")
 	cmd.Flags().StringVar(&version, "version", "", "VibeWarden version to pin in .vibewarden-version (default: latest)")
-	cmd.Flags().StringVar(&nameFlag, "name", "", "project name (alternative to positional argument)")
 	cmd.Flags().StringVar(&describe, "describe", "", "one-line description of what the project builds; written to PROJECT.md and injected into agent files")
 
 	return cmd
 }
 
 // printInitSuccessMessage writes next-steps guidance to cmd's output writer.
-// inCurrentDir indicates that files were scaffolded into the working directory
-// rather than a new subdirectory; when true the "cd <project>" step is omitted.
-func printInitSuccessMessage(cmd *cobra.Command, projectName string, opts scaffoldapp.InitProjectOptions, inCurrentDir bool) {
+func printInitSuccessMessage(cmd *cobra.Command, projectName string, opts scaffoldapp.InitProjectOptions) {
 	w := cmd.OutOrStdout()
 
 	fmt.Fprintln(w, "")
@@ -230,9 +174,6 @@ func printInitSuccessMessage(cmd *cobra.Command, projectName string, opts scaffo
 	fmt.Fprintf(w, "  .gitignore               Git ignore rules\n")
 	fmt.Fprintln(w, "")
 	fmt.Fprintln(w, "Next steps:")
-	if !inCurrentDir {
-		fmt.Fprintf(w, "  cd %s\n", projectName)
-	}
 	fmt.Fprintln(w, "  vibew dev                Start dev environment (app + sidecar)")
 	fmt.Fprintln(w, "  vibew status             Check component health")
 	fmt.Fprintln(w, "  vibew doctor             Diagnose common issues")

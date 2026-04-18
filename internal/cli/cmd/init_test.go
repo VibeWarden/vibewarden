@@ -10,49 +10,75 @@ import (
 	"github.com/vibewarden/vibewarden/internal/cli/cmd"
 )
 
-// TestInitCmd_CreatesProjectDir verifies that the named project directory is created.
-func TestInitCmd_CreatesProjectDir(t *testing.T) {
-	dir := scaffoldTestDir(t, true)
+// TestInitCmd_ScaffoldsInCurrentDir verifies that vibew init scaffolds files
+// directly in the current working directory.
+func TestInitCmd_ScaffoldsInCurrentDir(t *testing.T) {
+	parent := scaffoldTestDir(t, false)
+	projectDir := filepath.Join(parent, "testproject")
+	if err := os.MkdirAll(projectDir, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+
+	origDir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(projectDir); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(origDir) })
 
 	root := cmd.NewRootCmd("test")
 	var out bytes.Buffer
 	root.SetOut(&out)
-	root.SetArgs([]string{"init", "testproject"})
+	root.SetArgs([]string{"init"})
 
 	if err := root.Execute(); err != nil {
 		t.Fatalf("init command failed: %v", err)
 	}
 
-	projectDir := filepath.Join(dir, "testproject")
-	if _, err := os.Stat(projectDir); err != nil {
-		t.Errorf("expected project directory %q to exist: %v", projectDir, err)
+	if _, err := os.Stat(filepath.Join(projectDir, "vibewarden.yaml")); err != nil {
+		t.Errorf("expected vibewarden.yaml in cwd %q: %v", projectDir, err)
 	}
 }
 
-// TestInitCmd_GeneratesAllFiles verifies all expected files are created.
+// TestInitCmd_GeneratesAllFiles verifies all expected files are created in cwd.
 func TestInitCmd_GeneratesAllFiles(t *testing.T) {
-	dir := scaffoldTestDir(t, true)
+	parent := scaffoldTestDir(t, false)
+	projectDir := filepath.Join(parent, "newapp")
+	if err := os.MkdirAll(projectDir, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+
+	origDir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(projectDir); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(origDir) })
 
 	root := cmd.NewRootCmd("test")
 	var out bytes.Buffer
 	root.SetOut(&out)
-	root.SetArgs([]string{"init", "newapp"})
+	root.SetArgs([]string{"init"})
 
 	if err := root.Execute(); err != nil {
 		t.Fatalf("init command failed: %v", err)
 	}
 
 	expectedFiles := []string{
-		filepath.Join("newapp", "vibewarden.yaml"),
-		filepath.Join("newapp", "Dockerfile"),
-		filepath.Join("newapp", ".gitignore"),
-		filepath.Join("newapp", "AGENTS-VIBEWARDEN.md"),
-		filepath.Join("newapp", "AGENTS.md"),
-		filepath.Join("newapp", ".vibewarden-version"),
+		"vibewarden.yaml",
+		"Dockerfile",
+		".gitignore",
+		"AGENTS-VIBEWARDEN.md",
+		"AGENTS.md",
+		".vibewarden-version",
 	}
 
 	for _, rel := range expectedFiles {
-		full := filepath.Join(dir, rel)
+		full := filepath.Join(projectDir, rel)
 		if _, err := os.Stat(full); err != nil {
 			t.Errorf("expected file %q to exist: %v", rel, err)
 		}
@@ -60,24 +86,22 @@ func TestInitCmd_GeneratesAllFiles(t *testing.T) {
 
 	// CLAUDE.md and .claude/commands/ must NOT be created.
 	absentFiles := []string{
-		filepath.Join("newapp", "CLAUDE.md"),
-		filepath.Join("newapp", ".claude"),
+		"CLAUDE.md",
+		".claude",
 	}
 	for _, rel := range absentFiles {
-		full := filepath.Join(dir, rel)
+		full := filepath.Join(projectDir, rel)
 		if _, err := os.Stat(full); err == nil {
 			t.Errorf("file/directory %q must not exist", rel)
 		}
 	}
 }
 
-// TestInitCmd_ErrorsOnNonEmptyDir verifies an error is returned when the target
-// directory already exists and contains files.
+// TestInitCmd_ErrorsOnNonEmptyDir verifies an error is returned when the
+// current directory already contains files (without --force).
 func TestInitCmd_ErrorsOnNonEmptyDir(t *testing.T) {
-	dir := scaffoldTestDir(t, true)
-
-	// Pre-populate the directory.
-	projectDir := filepath.Join(dir, "occupied")
+	parent := scaffoldTestDir(t, false)
+	projectDir := filepath.Join(parent, "occupied")
 	if err := os.MkdirAll(projectDir, 0o750); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}
@@ -85,22 +109,29 @@ func TestInitCmd_ErrorsOnNonEmptyDir(t *testing.T) {
 		t.Fatalf("writefile: %v", err)
 	}
 
+	origDir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(projectDir); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(origDir) })
+
 	root := cmd.NewRootCmd("test")
 	var errOut bytes.Buffer
 	root.SetErr(&errOut)
-	root.SetArgs([]string{"init", "occupied"})
+	root.SetArgs([]string{"init"})
 
 	if err := root.Execute(); err == nil {
 		t.Fatal("expected error for non-empty directory, got nil")
 	}
 }
 
-// TestInitCmd_ForceOverwrites verifies --force allows overwriting existing dirs.
+// TestInitCmd_ForceOverwrites verifies --force allows overwriting existing files in cwd.
 func TestInitCmd_ForceOverwrites(t *testing.T) {
-	dir := scaffoldTestDir(t, true)
-
-	// Pre-populate the directory.
-	projectDir := filepath.Join(dir, "myapp")
+	parent := scaffoldTestDir(t, false)
+	projectDir := filepath.Join(parent, "myapp")
 	if err := os.MkdirAll(projectDir, 0o750); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}
@@ -108,35 +139,57 @@ func TestInitCmd_ForceOverwrites(t *testing.T) {
 		t.Fatalf("writefile: %v", err)
 	}
 
+	origDir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(projectDir); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(origDir) })
+
 	root := cmd.NewRootCmd("test")
 	var out bytes.Buffer
 	root.SetOut(&out)
-	root.SetArgs([]string{"init", "--force", "myapp"})
+	root.SetArgs([]string{"init", "--force"})
 
 	if err := root.Execute(); err != nil {
 		t.Fatalf("init --force failed: %v", err)
 	}
 
 	// Core files must exist after force.
-	if _, err := os.Stat(filepath.Join(dir, "myapp", "vibewarden.yaml")); err != nil {
+	if _, err := os.Stat(filepath.Join(projectDir, "vibewarden.yaml")); err != nil {
 		t.Errorf("expected vibewarden.yaml to exist after --force: %v", err)
 	}
 }
 
 // TestInitCmd_CustomPort verifies --port is reflected in generated files.
 func TestInitCmd_CustomPort(t *testing.T) {
-	dir := scaffoldTestDir(t, true)
+	parent := scaffoldTestDir(t, false)
+	projectDir := filepath.Join(parent, "portapp")
+	if err := os.MkdirAll(projectDir, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+
+	origDir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(projectDir); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(origDir) })
 
 	root := cmd.NewRootCmd("test")
 	var out bytes.Buffer
 	root.SetOut(&out)
-	root.SetArgs([]string{"init", "--port", "8080", "portapp"})
+	root.SetArgs([]string{"init", "--port", "8080"})
 
 	if err := root.Execute(); err != nil {
 		t.Fatalf("init failed: %v", err)
 	}
 
-	vwPath := filepath.Join(dir, "portapp", "vibewarden.yaml")
+	vwPath := filepath.Join(projectDir, "vibewarden.yaml")
 	data, err := os.ReadFile(vwPath) //nolint:gosec // test path
 	if err != nil {
 		t.Fatalf("reading vibewarden.yaml: %v", err)
@@ -149,18 +202,31 @@ func TestInitCmd_CustomPort(t *testing.T) {
 // TestInitCmd_AppBuildDefaultsToCurrentDir verifies that the generated
 // vibewarden.yaml uses app.build = "." by default rather than app.image.
 func TestInitCmd_AppBuildDefaultsToCurrentDir(t *testing.T) {
-	dir := scaffoldTestDir(t, true)
+	parent := scaffoldTestDir(t, false)
+	projectDir := filepath.Join(parent, "myapp")
+	if err := os.MkdirAll(projectDir, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+
+	origDir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(projectDir); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(origDir) })
 
 	root := cmd.NewRootCmd("test")
 	var out bytes.Buffer
 	root.SetOut(&out)
-	root.SetArgs([]string{"init", "myapp"})
+	root.SetArgs([]string{"init"})
 
 	if err := root.Execute(); err != nil {
 		t.Fatalf("init failed: %v", err)
 	}
 
-	vwPath := filepath.Join(dir, "myapp", "vibewarden.yaml")
+	vwPath := filepath.Join(projectDir, "vibewarden.yaml")
 	data, err := os.ReadFile(vwPath) //nolint:gosec // test path
 	if err != nil {
 		t.Fatalf("reading vibewarden.yaml: %v", err)
@@ -180,81 +246,40 @@ func TestInitCmd_AppBuildDefaultsToCurrentDir(t *testing.T) {
 	}
 }
 
-// TestInitCmd_DotScaffoldsInCurrentDir verifies that "." as project name scaffolds
-// files into the current working directory using the directory's base name.
-func TestInitCmd_DotScaffoldsInCurrentDir(t *testing.T) {
-	tests := []struct {
-		name    string
-		args    []string // arguments after "init"
-		dirName string   // name of the temp subdirectory to cd into
-	}{
-		{
-			name:    "positional dot",
-			args:    []string{"init", "."},
-			dirName: "myapp",
-		},
-		{
-			name:    "flag dot",
-			args:    []string{"init", "--name", "."},
-			dirName: "flagdot",
-		},
+// TestInitCmd_CwdWorks verifies vibew init works end-to-end in cwd.
+func TestInitCmd_CwdWorks(t *testing.T) {
+	parent := scaffoldTestDir(t, false)
+	projectDir := filepath.Join(parent, "dotproject")
+	if err := os.MkdirAll(projectDir, 0o750); err != nil {
+		t.Fatalf("mkdir: %v", err)
 	}
 
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			// Create a named subdirectory so we have a meaningful base name.
-			parent := scaffoldTestDir(t, false)
-			projectDir := filepath.Join(parent, tt.dirName)
-			if err := os.MkdirAll(projectDir, 0o750); err != nil {
-				t.Fatalf("mkdir: %v", err)
-			}
+	origDir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(projectDir); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(origDir) })
 
-			origDir, err := os.Getwd()
-			if err != nil {
-				t.Fatalf("getwd: %v", err)
-			}
-			if err := os.Chdir(projectDir); err != nil {
-				t.Fatalf("chdir: %v", err)
-			}
-			t.Cleanup(func() { _ = os.Chdir(origDir) })
+	root := cmd.NewRootCmd("test")
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetArgs([]string{"init"})
 
-			root := cmd.NewRootCmd("test")
-			var out bytes.Buffer
-			root.SetOut(&out)
-			root.SetArgs(tt.args)
+	if err := root.Execute(); err != nil {
+		t.Fatalf("init failed: %v", err)
+	}
 
-			if err := root.Execute(); err != nil {
-				t.Fatalf("init command failed: %v", err)
-			}
-
-			// Files must be written directly into the project dir, not a subdir.
-			expectedFiles := []string{
-				"vibewarden.yaml",
-				"Dockerfile",
-				".gitignore",
-				"AGENTS-VIBEWARDEN.md",
-				"AGENTS.md",
-				".vibewarden-version",
-			}
-			for _, rel := range expectedFiles {
-				full := filepath.Join(projectDir, rel)
-				if _, err := os.Stat(full); err != nil {
-					t.Errorf("expected file %q to exist in current dir: %v", rel, err)
-				}
-			}
-
-			// No subdirectory named after the dir should have been created.
-			unwanted := filepath.Join(parent, tt.dirName, tt.dirName)
-			if _, err := os.Stat(unwanted); err == nil {
-				t.Errorf("unexpected subdirectory %q was created; files should be in cwd", unwanted)
-			}
-		})
+	if _, err := os.Stat(filepath.Join(projectDir, "vibewarden.yaml")); err != nil {
+		t.Errorf("vibewarden.yaml should exist after init: %v", err)
 	}
 }
 
-// TestInitCmd_DotUsesBaseName verifies that when "." is supplied the project name
-// in the success message is the current directory's base name, not ".".
-func TestInitCmd_DotUsesBaseName(t *testing.T) {
+// TestInitCmd_UsesBaseNameFromCwd verifies that the project name in the
+// success message is the current directory's base name.
+func TestInitCmd_UsesBaseNameFromCwd(t *testing.T) {
 	parent := scaffoldTestDir(t, false)
 	projectDir := filepath.Join(parent, "basenamedir")
 	if err := os.MkdirAll(projectDir, 0o750); err != nil {
@@ -273,7 +298,7 @@ func TestInitCmd_DotUsesBaseName(t *testing.T) {
 	root := cmd.NewRootCmd("test")
 	var out bytes.Buffer
 	root.SetOut(&out)
-	root.SetArgs([]string{"init", "."})
+	root.SetArgs([]string{"init"})
 
 	if err := root.Execute(); err != nil {
 		t.Fatalf("init command failed: %v", err)
@@ -283,15 +308,11 @@ func TestInitCmd_DotUsesBaseName(t *testing.T) {
 	if !strings.Contains(output, "basenamedir") {
 		t.Errorf("success message should contain directory base name %q, got:\n%s", "basenamedir", output)
 	}
-	// The success message must NOT show "cd basenamedir" because the user is already there.
-	if strings.Contains(output, "cd basenamedir") {
-		t.Errorf("success message must not show 'cd basenamedir' when scaffolding in current dir, got:\n%s", output)
-	}
 }
 
-// TestInitCmd_DotErrorsOnNonEmptyDirWithoutForce verifies that scaffolding with "."
-// into a non-empty directory fails unless --force is passed.
-func TestInitCmd_DotErrorsOnNonEmptyDirWithoutForce(t *testing.T) {
+// TestInitCmd_ErrorsOnNonEmptyCwdWithoutForce verifies that scaffolding into
+// a non-empty cwd fails unless --force is passed.
+func TestInitCmd_ErrorsOnNonEmptyCwdWithoutForce(t *testing.T) {
 	parent := scaffoldTestDir(t, false)
 	projectDir := filepath.Join(parent, "occupied")
 	if err := os.MkdirAll(projectDir, 0o750); err != nil {
@@ -314,16 +335,16 @@ func TestInitCmd_DotErrorsOnNonEmptyDirWithoutForce(t *testing.T) {
 	root := cmd.NewRootCmd("test")
 	var errOut bytes.Buffer
 	root.SetErr(&errOut)
-	root.SetArgs([]string{"init", "."})
+	root.SetArgs([]string{"init"})
 
 	if err := root.Execute(); err == nil {
-		t.Fatal("expected error when scaffolding with '.' into non-empty directory, got nil")
+		t.Fatal("expected error when scaffolding into non-empty directory, got nil")
 	}
 }
 
-// TestInitCmd_DotForceOverwritesCurrentDir verifies that --force allows scaffolding
-// into an existing non-empty current directory when "." is used.
-func TestInitCmd_DotForceOverwritesCurrentDir(t *testing.T) {
+// TestInitCmd_ForceOverwritesCurrentDir verifies that --force allows
+// scaffolding into an existing non-empty current directory.
+func TestInitCmd_ForceOverwritesCurrentDir(t *testing.T) {
 	parent := scaffoldTestDir(t, false)
 	projectDir := filepath.Join(parent, "forceapp")
 	if err := os.MkdirAll(projectDir, 0o750); err != nil {
@@ -345,22 +366,22 @@ func TestInitCmd_DotForceOverwritesCurrentDir(t *testing.T) {
 	root := cmd.NewRootCmd("test")
 	var out bytes.Buffer
 	root.SetOut(&out)
-	root.SetArgs([]string{"init", "--force", "."})
+	root.SetArgs([]string{"init", "--force"})
 
 	if err := root.Execute(); err != nil {
-		t.Fatalf("init --force . failed: %v", err)
+		t.Fatalf("init --force failed: %v", err)
 	}
 
 	if _, err := os.Stat(filepath.Join(projectDir, "vibewarden.yaml")); err != nil {
-		t.Errorf("expected vibewarden.yaml to exist after --force .: %v", err)
+		t.Errorf("expected vibewarden.yaml to exist after --force: %v", err)
 	}
 }
 
-// TestInitCmd_DotWorks verifies vibew init . works end-to-end.
-func TestInitCmd_DotWorks(t *testing.T) {
+// TestInitCmd_PrintsSuccessMessage verifies a success message is printed.
+func TestInitCmd_PrintsSuccessMessage(t *testing.T) {
 	parent := scaffoldTestDir(t, false)
-	projectDir := filepath.Join(parent, "dotproject")
-	if err := os.MkdirAll(projectDir, 0o750); err != nil {
+	projectDir := filepath.Join(parent, "successapp")
+	if err := os.MkdirAll(projectDir, 0o755); err != nil {
 		t.Fatalf("mkdir: %v", err)
 	}
 
@@ -376,31 +397,12 @@ func TestInitCmd_DotWorks(t *testing.T) {
 	root := cmd.NewRootCmd("test")
 	var out bytes.Buffer
 	root.SetOut(&out)
-	root.SetArgs([]string{"init", "."})
-
-	if err := root.Execute(); err != nil {
-		t.Fatalf("init . failed: %v", err)
-	}
-
-	if _, err := os.Stat(filepath.Join(projectDir, "vibewarden.yaml")); err != nil {
-		t.Errorf("vibewarden.yaml should exist after init .: %v", err)
-	}
-}
-
-// TestInitCmd_PrintsSuccessMessage verifies a success message is printed.
-func TestInitCmd_PrintsSuccessMessage(t *testing.T) {
-	dir := scaffoldTestDir(t, true)
-
-	root := cmd.NewRootCmd("test")
-	var out bytes.Buffer
-	root.SetOut(&out)
-	root.SetArgs([]string{"init", "successapp"})
+	root.SetArgs([]string{"init"})
 
 	if err := root.Execute(); err != nil {
 		t.Fatalf("init failed: %v", err)
 	}
 
-	_ = dir // used by scaffoldTestDir for chdir
 	output := out.String()
 	if !strings.Contains(output, "successapp") {
 		t.Errorf("success message does not mention project name, got:\n%s", output)
@@ -450,5 +452,53 @@ func TestInitCmd_NoGroupFlag(t *testing.T) {
 	helpOutput := out.String()
 	if strings.Contains(helpOutput, "--group") {
 		t.Errorf("--group flag must not exist on init command, but appears in help:\n%s", helpOutput)
+	}
+}
+
+// TestInitCmd_NoNameFlag verifies that the --name flag no longer exists.
+func TestInitCmd_NoNameFlag(t *testing.T) {
+	root := cmd.NewRootCmd("test")
+	root.SetArgs([]string{"init", "--help"})
+	var out bytes.Buffer
+	root.SetOut(&out)
+
+	_ = root.Execute()
+	helpOutput := out.String()
+	if strings.Contains(helpOutput, "--name") {
+		t.Errorf("--name flag must not exist on init command, but appears in help:\n%s", helpOutput)
+	}
+}
+
+// TestInitCmd_RejectsPositionalArgs verifies that passing a positional arg fails.
+func TestInitCmd_RejectsPositionalArgs(t *testing.T) {
+	_ = scaffoldTestDir(t, true)
+
+	root := cmd.NewRootCmd("test")
+	var errOut bytes.Buffer
+	root.SetErr(&errOut)
+	root.SetArgs([]string{"init", "someproject"})
+
+	if err := root.Execute(); err == nil {
+		t.Fatal("expected error when passing positional arg, got nil")
+	}
+}
+
+// TestInitCmd_HelpOutput verifies that help text reflects the cwd-only behavior.
+func TestInitCmd_HelpOutput(t *testing.T) {
+	root := cmd.NewRootCmd("test")
+	root.SetArgs([]string{"init", "--help"})
+	var out bytes.Buffer
+	root.SetOut(&out)
+
+	_ = root.Execute()
+	helpOutput := out.String()
+
+	// Must not mention [project-name] since positional args are removed.
+	if strings.Contains(helpOutput, "[project-name]") {
+		t.Errorf("help should not mention [project-name]:\n%s", helpOutput)
+	}
+	// Must mention current directory.
+	if !strings.Contains(helpOutput, "current") {
+		t.Errorf("help should mention 'current' (directory):\n%s", helpOutput)
 	}
 }
