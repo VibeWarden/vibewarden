@@ -3,12 +3,21 @@ package ops_test
 import (
 	"bytes"
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/json"
+	"encoding/pem"
 	"errors"
+	"io"
+	"math/big"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/vibewarden/vibewarden/internal/app/ops"
 	"github.com/vibewarden/vibewarden/internal/ports"
@@ -16,7 +25,7 @@ import (
 
 // fakePortChecker is a test double for ports.PortChecker.
 type fakePortChecker struct {
-	// available maps port → available
+	// available maps port -> available
 	available map[int]bool
 }
 
@@ -27,12 +36,60 @@ func (f *fakePortChecker) IsPortAvailable(_ context.Context, _ string, port int)
 	return true, nil
 }
 
+// fakeRemoteExecutor is a test double for ports.RemoteExecutor.
+type fakeRemoteExecutor struct {
+	runResponses map[string]runResult
+	runErr       error
+}
+
+type runResult struct {
+	output string
+	err    error
+}
+
+func (f *fakeRemoteExecutor) Run(_ context.Context, cmd string) (string, error) {
+	if f.runErr != nil {
+		return "", f.runErr
+	}
+	if r, ok := f.runResponses[cmd]; ok {
+		return r.output, r.err
+	}
+	// Default: echo commands succeed
+	if strings.HasPrefix(cmd, "echo ") {
+		return "ok", nil
+	}
+	return "", errors.New("unknown command")
+}
+
+func (f *fakeRemoteExecutor) RunStream(_ context.Context, _ string, _, _ io.Writer) error {
+	return nil
+}
+
+func (f *fakeRemoteExecutor) Transfer(_ context.Context, _, _ string, _ bool) error {
+	return nil
+}
+
+func (f *fakeRemoteExecutor) TransferFile(_ context.Context, _, _ string) error {
+	return nil
+}
+
+func (f *fakeRemoteExecutor) DryRunTransfer(_ context.Context, _, _ string) ([]string, error) {
+	return []string{}, nil
+}
+
 // reachableHealthChecker is a fakeHealthChecker that reports upstream as reachable.
 func reachableHealthChecker() *fakeHealthChecker {
 	return &fakeHealthChecker{
 		responses: map[string]healthResponse{
 			"http://127.0.0.1:3000": {ok: true, statusCode: 200},
 		},
+	}
+}
+
+// unreachableHealthChecker returns a fakeHealthChecker where upstream is unreachable.
+func unreachableHealthChecker() *fakeHealthChecker {
+	return &fakeHealthChecker{
+		responses: map[string]healthResponse{},
 	}
 }
 
@@ -79,6 +136,38 @@ func optsWithGeneratedFile(t *testing.T) ops.DoctorOptions {
 	return ops.DoctorOptions{
 		ConfigPath: "vibewarden.yaml",
 		WorkDir:    dir,
+	}
+}
+
+// writeSelfSignedCert creates a self-signed certificate in the generated certs
+// directory under workDir with the given validity window.
+func writeSelfSignedCert(t *testing.T, workDir string, notBefore, notAfter time.Time) {
+	t.Helper()
+	certDir := filepath.Join(workDir, ".vibewarden", "generated", "certs")
+	if err := os.MkdirAll(certDir, 0o755); err != nil {
+		t.Fatalf("create certs dir: %v", err)
+	}
+
+	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		t.Fatalf("generate key: %v", err)
+	}
+
+	template := &x509.Certificate{
+		SerialNumber: big.NewInt(1),
+		Subject:      pkix.Name{CommonName: "localhost"},
+		NotBefore:    notBefore,
+		NotAfter:     notAfter,
+	}
+
+	certDER, err := x509.CreateCertificate(rand.Reader, template, template, &key.PublicKey, key)
+	if err != nil {
+		t.Fatalf("create certificate: %v", err)
+	}
+
+	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certDER})
+	if err := os.WriteFile(filepath.Join(certDir, "server.crt"), certPEM, 0o644); err != nil {
+		t.Fatalf("write cert file: %v", err)
 	}
 }
 
@@ -377,5 +466,442 @@ func TestDoctorService_Run_ContainersHealthy_AllOK(t *testing.T) {
 	}
 	if !strings.Contains(out, "running") {
 		t.Errorf("expected 'running' in container health detail, got:\n%s", out)
+	}
+}
+
+// --- New tests for Layer 2: Local Runtime checks ---
+
+func TestDoctorService_Run_UpstreamReachable(t *testing.T) {
+	fc := noContainersCompose()
+	pc := &fakePortChecker{available: map[int]bool{8443: true}}
+	hc := reachableHealthChecker()
+	svc := ops.NewDoctorService(fc, pc, hc)
+	cfg := defaultConfig()
+	var buf bytes.Buffer
+
+	allOK, err := svc.Run(context.Background(), cfg, defaultOpts(t), &buf)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !allOK {
+		t.Errorf("expected allOK = true when upstream is reachable\noutput:\n%s", buf.String())
+	}
+
+	out := buf.String()
+	if !strings.Contains(out, "Upstream reachable") {
+		t.Errorf("expected 'Upstream reachable' check in output, got:\n%s", out)
+	}
+	if !strings.Contains(out, "HTTP 200") {
+		t.Errorf("expected 'HTTP 200' in upstream detail, got:\n%s", out)
+	}
+}
+
+func TestDoctorService_Run_UpstreamUnreachable(t *testing.T) {
+	fc := noContainersCompose()
+	pc := &fakePortChecker{available: map[int]bool{8443: true}}
+	hc := unreachableHealthChecker()
+	svc := ops.NewDoctorService(fc, pc, hc)
+	cfg := defaultConfig()
+	var buf bytes.Buffer
+
+	// Upstream unreachable is WARN, not FAIL, so allOK should still be true.
+	allOK, err := svc.Run(context.Background(), cfg, defaultOpts(t), &buf)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !allOK {
+		t.Errorf("expected allOK = true because upstream unreachable is WARN\noutput:\n%s", buf.String())
+	}
+
+	out := buf.String()
+	if !strings.Contains(out, "Upstream reachable") {
+		t.Errorf("expected 'Upstream reachable' check in output, got:\n%s", out)
+	}
+	if !strings.Contains(out, "unreachable") {
+		t.Errorf("expected 'unreachable' in upstream detail, got:\n%s", out)
+	}
+}
+
+func TestDoctorService_Run_TLSCertValid(t *testing.T) {
+	fc := noContainersCompose()
+	pc := &fakePortChecker{available: map[int]bool{8443: true}}
+	hc := reachableHealthChecker()
+	svc := ops.NewDoctorService(fc, pc, hc)
+	cfg := defaultConfig()
+
+	opts := defaultOpts(t)
+
+	// Write a valid cert that expires in 90 days.
+	writeSelfSignedCert(t, opts.WorkDir, time.Now().Add(-24*time.Hour), time.Now().Add(90*24*time.Hour))
+
+	var buf bytes.Buffer
+	allOK, err := svc.Run(context.Background(), cfg, opts, &buf)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !allOK {
+		t.Errorf("expected allOK = true with valid cert\noutput:\n%s", buf.String())
+	}
+
+	out := buf.String()
+	if !strings.Contains(out, "TLS certificate") {
+		t.Errorf("expected 'TLS certificate' check in output, got:\n%s", out)
+	}
+	if !strings.Contains(out, "valid until") {
+		t.Errorf("expected 'valid until' in cert detail, got:\n%s", out)
+	}
+}
+
+func TestDoctorService_Run_TLSCertExpired(t *testing.T) {
+	fc := noContainersCompose()
+	pc := &fakePortChecker{available: map[int]bool{8443: true}}
+	hc := reachableHealthChecker()
+	svc := ops.NewDoctorService(fc, pc, hc)
+	cfg := defaultConfig()
+
+	opts := defaultOpts(t)
+
+	// Write an expired cert.
+	writeSelfSignedCert(t, opts.WorkDir, time.Now().Add(-48*time.Hour), time.Now().Add(-24*time.Hour))
+
+	var buf bytes.Buffer
+	allOK, err := svc.Run(context.Background(), cfg, opts, &buf)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if allOK {
+		t.Error("expected allOK = false when TLS cert is expired")
+	}
+
+	out := buf.String()
+	if !strings.Contains(out, "expired") {
+		t.Errorf("expected 'expired' in cert detail, got:\n%s", out)
+	}
+}
+
+func TestDoctorService_Run_TLSCertExpiringSoon(t *testing.T) {
+	fc := noContainersCompose()
+	pc := &fakePortChecker{available: map[int]bool{8443: true}}
+	hc := reachableHealthChecker()
+	svc := ops.NewDoctorService(fc, pc, hc)
+	cfg := defaultConfig()
+
+	opts := defaultOpts(t)
+
+	// Write a cert that expires in 3 days (within 7-day warning window).
+	writeSelfSignedCert(t, opts.WorkDir, time.Now().Add(-24*time.Hour), time.Now().Add(3*24*time.Hour))
+
+	var buf bytes.Buffer
+	allOK, err := svc.Run(context.Background(), cfg, opts, &buf)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// WARN does not cause allOK = false.
+	if !allOK {
+		t.Errorf("expected allOK = true because cert-expiring-soon is WARN\noutput:\n%s", buf.String())
+	}
+
+	out := buf.String()
+	if !strings.Contains(out, "expires in") {
+		t.Errorf("expected 'expires in' in cert detail, got:\n%s", out)
+	}
+}
+
+func TestDoctorService_Run_TLSCertMissing(t *testing.T) {
+	fc := noContainersCompose()
+	pc := &fakePortChecker{available: map[int]bool{8443: true}}
+	hc := reachableHealthChecker()
+	svc := ops.NewDoctorService(fc, pc, hc)
+	cfg := defaultConfig()
+
+	// defaultOpts has no cert files at all.
+	opts := defaultOpts(t)
+
+	var buf bytes.Buffer
+	allOK, err := svc.Run(context.Background(), cfg, opts, &buf)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// Cert missing is WARN.
+	if !allOK {
+		t.Errorf("expected allOK = true because missing cert is WARN\noutput:\n%s", buf.String())
+	}
+
+	out := buf.String()
+	if !strings.Contains(out, "TLS certificate") {
+		t.Errorf("expected 'TLS certificate' check in output, got:\n%s", out)
+	}
+	if !strings.Contains(out, "not found") {
+		t.Errorf("expected 'not found' in cert detail, got:\n%s", out)
+	}
+}
+
+func TestDoctorService_Run_TLSCertNonSelfSigned_Skipped(t *testing.T) {
+	fc := noContainersCompose()
+	pc := &fakePortChecker{available: map[int]bool{8443: true}}
+	hc := reachableHealthChecker()
+	svc := ops.NewDoctorService(fc, pc, hc)
+	cfg := defaultConfig()
+	cfg.TLS.Provider = "letsencrypt"
+	cfg.TLS.Domain = "example.com"
+
+	var buf bytes.Buffer
+	allOK, err := svc.Run(context.Background(), cfg, defaultOpts(t), &buf)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !allOK {
+		t.Errorf("expected allOK = true when TLS provider is letsencrypt\noutput:\n%s", buf.String())
+	}
+
+	out := buf.String()
+	if !strings.Contains(out, "skipping local cert check") {
+		t.Errorf("expected 'skipping local cert check' in output, got:\n%s", out)
+	}
+}
+
+// --- New tests for Layer 3: Production checks ---
+
+func TestDoctorService_Run_SSHConnectivity_Success(t *testing.T) {
+	fc := noContainersCompose()
+	pc := &fakePortChecker{available: map[int]bool{8443: true}}
+	hc := reachableHealthChecker()
+	executor := &fakeRemoteExecutor{
+		runResponses: map[string]runResult{
+			"echo ok": {output: "ok", err: nil},
+			"docker compose ps --format json 2>/dev/null || docker-compose ps 2>/dev/null": {
+				output: "", err: nil,
+			},
+		},
+	}
+	svc := ops.NewDoctorService(fc, pc, hc).WithRemoteExecutor(executor)
+	cfg := defaultConfig()
+
+	opts := defaultOpts(t)
+	opts.Target = "ssh://user@192.0.2.1"
+
+	var buf bytes.Buffer
+	_, err := svc.Run(context.Background(), cfg, opts, &buf)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	out := buf.String()
+	if !strings.Contains(out, "SSH connectivity") {
+		t.Errorf("expected 'SSH connectivity' check in output, got:\n%s", out)
+	}
+	if !strings.Contains(out, "connected successfully") {
+		t.Errorf("expected 'connected successfully' in SSH detail, got:\n%s", out)
+	}
+}
+
+func TestDoctorService_Run_SSHConnectivity_Failure(t *testing.T) {
+	fc := noContainersCompose()
+	pc := &fakePortChecker{available: map[int]bool{8443: true}}
+	hc := reachableHealthChecker()
+	executor := &fakeRemoteExecutor{
+		runErr: errors.New("connection refused"),
+	}
+	svc := ops.NewDoctorService(fc, pc, hc).WithRemoteExecutor(executor)
+	cfg := defaultConfig()
+
+	opts := defaultOpts(t)
+	opts.Target = "ssh://user@192.0.2.1"
+
+	var buf bytes.Buffer
+	allOK, err := svc.Run(context.Background(), cfg, opts, &buf)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if allOK {
+		t.Error("expected allOK = false when SSH connectivity fails")
+	}
+
+	out := buf.String()
+	if !strings.Contains(out, "SSH connectivity") {
+		t.Errorf("expected 'SSH connectivity' check in output, got:\n%s", out)
+	}
+	if !strings.Contains(out, "could not connect") {
+		t.Errorf("expected 'could not connect' in SSH detail, got:\n%s", out)
+	}
+}
+
+func TestDoctorService_Run_NoTarget_NoRemoteChecks(t *testing.T) {
+	fc := noContainersCompose()
+	pc := &fakePortChecker{available: map[int]bool{8443: true}}
+	hc := reachableHealthChecker()
+	svc := ops.NewDoctorService(fc, pc, hc)
+	cfg := defaultConfig()
+
+	// No --target flag, no remote executor.
+	opts := defaultOpts(t)
+
+	var buf bytes.Buffer
+	_, err := svc.Run(context.Background(), cfg, opts, &buf)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	out := buf.String()
+	// Production checks should not appear.
+	for _, absent := range []string{"SSH connectivity", "Remote containers", "Domain DNS", "Remote TLS cert"} {
+		if strings.Contains(out, absent) {
+			t.Errorf("expected %q to be absent when no target is set, but found in output:\n%s", absent, out)
+		}
+	}
+}
+
+func TestDoctorService_Run_RemoteContainerHealth_Unhealthy(t *testing.T) {
+	fc := noContainersCompose()
+	pc := &fakePortChecker{available: map[int]bool{8443: true}}
+	hc := reachableHealthChecker()
+
+	// Remote containers with one unhealthy.
+	unhealthyJSON := `{"Service":"proxy","State":"running","Health":"unhealthy"}
+{"Service":"app","State":"running","Health":"healthy"}`
+
+	executor := &fakeRemoteExecutor{
+		runResponses: map[string]runResult{
+			"echo ok": {output: "ok", err: nil},
+			"docker compose ps --format json 2>/dev/null || docker-compose ps 2>/dev/null": {
+				output: unhealthyJSON, err: nil,
+			},
+		},
+	}
+	svc := ops.NewDoctorService(fc, pc, hc).WithRemoteExecutor(executor)
+	cfg := defaultConfig()
+
+	opts := defaultOpts(t)
+	opts.Target = "ssh://user@192.0.2.1"
+
+	var buf bytes.Buffer
+	allOK, err := svc.Run(context.Background(), cfg, opts, &buf)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if allOK {
+		t.Error("expected allOK = false when remote container is unhealthy")
+	}
+
+	out := buf.String()
+	if !strings.Contains(out, "Remote containers") {
+		t.Errorf("expected 'Remote containers' check in output, got:\n%s", out)
+	}
+	if !strings.Contains(out, "unhealthy") {
+		t.Errorf("expected 'unhealthy' in remote containers detail, got:\n%s", out)
+	}
+}
+
+func TestDoctorService_Run_RemoteContainerHealth_AllHealthy(t *testing.T) {
+	fc := noContainersCompose()
+	pc := &fakePortChecker{available: map[int]bool{8443: true}}
+	hc := reachableHealthChecker()
+
+	healthyJSON := `{"Service":"proxy","State":"running","Health":"healthy"}
+{"Service":"app","State":"running","Health":"healthy"}`
+
+	executor := &fakeRemoteExecutor{
+		runResponses: map[string]runResult{
+			"echo ok": {output: "ok", err: nil},
+			"docker compose ps --format json 2>/dev/null || docker-compose ps 2>/dev/null": {
+				output: healthyJSON, err: nil,
+			},
+		},
+	}
+	svc := ops.NewDoctorService(fc, pc, hc).WithRemoteExecutor(executor)
+	cfg := defaultConfig()
+
+	opts := defaultOpts(t)
+	opts.Target = "ssh://user@192.0.2.1"
+
+	var buf bytes.Buffer
+	_, err := svc.Run(context.Background(), cfg, opts, &buf)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	out := buf.String()
+	if !strings.Contains(out, "2 container(s) running") {
+		t.Errorf("expected '2 container(s) running' in remote containers detail, got:\n%s", out)
+	}
+}
+
+func TestDoctorService_Run_SectionHeaders(t *testing.T) {
+	fc := noContainersCompose()
+	pc := &fakePortChecker{available: map[int]bool{8443: true}}
+	hc := reachableHealthChecker()
+	svc := ops.NewDoctorService(fc, pc, hc)
+	cfg := defaultConfig()
+	var buf bytes.Buffer
+
+	_, err := svc.Run(context.Background(), cfg, defaultOpts(t), &buf)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	out := buf.String()
+	if !strings.Contains(out, "Config & Docker") {
+		t.Errorf("expected 'Config & Docker' section header, got:\n%s", out)
+	}
+	if !strings.Contains(out, "Local Runtime") {
+		t.Errorf("expected 'Local Runtime' section header, got:\n%s", out)
+	}
+}
+
+func TestDoctorService_Run_ProductionSectionHeaders(t *testing.T) {
+	fc := noContainersCompose()
+	pc := &fakePortChecker{available: map[int]bool{8443: true}}
+	hc := reachableHealthChecker()
+	executor := &fakeRemoteExecutor{
+		runResponses: map[string]runResult{
+			"echo ok": {output: "ok", err: nil},
+			"docker compose ps --format json 2>/dev/null || docker-compose ps 2>/dev/null": {
+				output: "", err: nil,
+			},
+		},
+	}
+	svc := ops.NewDoctorService(fc, pc, hc).WithRemoteExecutor(executor)
+	cfg := defaultConfig()
+
+	opts := defaultOpts(t)
+	opts.Target = "ssh://user@192.0.2.1"
+
+	var buf bytes.Buffer
+	_, err := svc.Run(context.Background(), cfg, opts, &buf)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	out := buf.String()
+	if !strings.Contains(out, "Production") {
+		t.Errorf("expected 'Production' section header, got:\n%s", out)
+	}
+}
+
+func TestDoctorService_Run_JSONOutput_IncludesSection(t *testing.T) {
+	fc := noContainersCompose()
+	pc := &fakePortChecker{available: map[int]bool{8443: true}}
+	hc := reachableHealthChecker()
+	svc := ops.NewDoctorService(fc, pc, hc)
+	cfg := defaultConfig()
+	var buf bytes.Buffer
+
+	opts := defaultOpts(t)
+	opts.JSON = true
+	_, err := svc.Run(context.Background(), cfg, opts, &buf)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var results []ops.CheckResult
+	if err := json.Unmarshal(buf.Bytes(), &results); err != nil {
+		t.Fatalf("output is not valid JSON: %v\ngot:\n%s", err, buf.String())
+	}
+
+	// All results should have a section.
+	for _, r := range results {
+		if r.Section == "" {
+			t.Errorf("check %q has empty section in JSON output", r.Name)
+		}
 	}
 }

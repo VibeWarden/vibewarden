@@ -10,6 +10,7 @@ import (
 	"github.com/spf13/cobra"
 
 	opsadapter "github.com/vibewarden/vibewarden/internal/adapters/ops"
+	sshadapter "github.com/vibewarden/vibewarden/internal/adapters/ssh"
 	opsapp "github.com/vibewarden/vibewarden/internal/app/ops"
 	"github.com/vibewarden/vibewarden/internal/config"
 )
@@ -22,6 +23,8 @@ func NewDoctorCmd() *cobra.Command {
 	var (
 		configPath string
 		jsonOutput bool
+		target     string
+		sshKey     string
 	)
 
 	cmd := &cobra.Command{
@@ -29,13 +32,25 @@ func NewDoctorCmd() *cobra.Command {
 		Short: "Diagnose common configuration and environment issues",
 		Long: `Run a series of independent diagnostics and report any issues found.
 
-Checks performed (in order):
-  - vibewarden.yaml is present and parses without errors
-  - Docker daemon is reachable (docker info)
-  - Docker Compose v2+ is available (docker compose version)
-  - Required ports are available (proxy port)
-  - Generated files are present (.vibewarden/generated/docker-compose.yml)
-  - If the stack is running: containers are healthy (docker compose ps)
+Checks are organised into three layers:
+
+  Config & Docker (always runs):
+    - vibewarden.yaml is present and parses without errors
+    - Docker daemon is reachable (docker info)
+    - Docker Compose v2+ is available (docker compose version)
+    - Required ports are available (proxy port)
+    - Generated files are present (.vibewarden/generated/docker-compose.yml)
+    - If the stack is running: containers are healthy (docker compose ps)
+
+  Local Runtime (always runs):
+    - Upstream application is reachable (HTTP GET)
+    - TLS certificate is valid (if self-signed)
+
+  Production (requires --target):
+    - SSH connectivity to the target host
+    - Remote container health
+    - Domain DNS resolves to target IP
+    - Remote TLS certificate expiry
 
 Each check runs independently — a failure does not stop subsequent checks.
 Exit code is 1 when any check fails.
@@ -43,7 +58,9 @@ Exit code is 1 when any check fails.
 Examples:
   vibew doctor
   vibew doctor --config ./my-vibewarden.yaml
-  vibew doctor --json`,
+  vibew doctor --json
+  vibew doctor --target ssh://ubuntu@203.0.113.10
+  vibew doctor --target ssh://ubuntu@myserver.example.com --ssh-key ~/.ssh/id_ed25519`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			// Load config — pass nil-safe; doctor will report missing config.
 			cfg, loadErr := config.Load(configPath)
@@ -69,6 +86,21 @@ Examples:
 			healthChecker := opsadapter.NewHTTPHealthChecker(httpClient)
 			svc := opsapp.NewDoctorService(compose, portChecker, healthChecker)
 
+			// When --target is provided, create an SSH executor for production checks.
+			if target != "" {
+				t, parseErr := sshadapter.ParseTarget(target)
+				if parseErr != nil {
+					return fmt.Errorf("invalid --target: %w", parseErr)
+				}
+				var executor *sshadapter.Executor
+				if sshKey != "" {
+					executor = sshadapter.NewExecutorWithKey(t, sshKey)
+				} else {
+					executor = sshadapter.NewExecutor(t)
+				}
+				svc = svc.WithRemoteExecutor(executor)
+			}
+
 			label := configPath
 			if label == "" {
 				label = "vibewarden.yaml"
@@ -78,6 +110,7 @@ Examples:
 				ConfigPath: label,
 				WorkDir:    workDir,
 				JSON:       jsonOutput,
+				Target:     target,
 			}
 
 			allOK, err := svc.Run(cmd.Context(), cfg, opts, cmd.OutOrStdout())
@@ -94,6 +127,8 @@ Examples:
 
 	cmd.Flags().StringVar(&configPath, "config", "", "path to vibewarden.yaml (default: ./vibewarden.yaml)")
 	cmd.Flags().BoolVar(&jsonOutput, "json", false, "output results as JSON")
+	cmd.Flags().StringVar(&target, "target", "", "SSH target for production checks (e.g. ssh://user@host)")
+	cmd.Flags().StringVar(&sshKey, "ssh-key", "", "path to SSH private key (default: use SSH agent)")
 
 	return cmd
 }
