@@ -56,6 +56,31 @@ func TestCatalog_EachDescriptorIsComplete(t *testing.T) {
 	}
 }
 
+func TestCatalog_WAFDescriptorIncludesEngineFields(t *testing.T) {
+	d, ok := plugins.FindDescriptor("waf")
+	if !ok {
+		t.Fatal("WAF plugin not found in Catalog")
+	}
+
+	requiredFields := []string{
+		"enabled",
+		"mode",
+		"rules.sqli",
+		"rules.xss",
+		"rules.path_traversal",
+		"rules.command_injection",
+		"exempt_paths",
+		"content_type_validation.enabled",
+		"content_type_validation.allowed",
+	}
+
+	for _, field := range requiredFields {
+		if _, exists := d.ConfigSchema[field]; !exists {
+			t.Errorf("WAF ConfigSchema missing required field %q", field)
+		}
+	}
+}
+
 func TestFindDescriptor_Found(t *testing.T) {
 	tests := []struct {
 		name string

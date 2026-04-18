@@ -1,8 +1,11 @@
 package cmd
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"log/slog"
 	"os"
 
 	"github.com/spf13/cobra"
@@ -10,6 +13,8 @@ import (
 	caddyadapter "github.com/vibewarden/vibewarden/internal/adapters/caddy"
 	ejectapp "github.com/vibewarden/vibewarden/internal/app/eject"
 	"github.com/vibewarden/vibewarden/internal/config"
+	"github.com/vibewarden/vibewarden/internal/plugins"
+	"github.com/vibewarden/vibewarden/internal/ports"
 )
 
 // NewEjectCmd creates the "vibew eject" subcommand.
@@ -71,10 +76,15 @@ Examples:
 				return fmt.Errorf("loading config: %w", err)
 			}
 
+			extraHandlers, err := buildEjectHandlers(cmd.Context(), cfg)
+			if err != nil {
+				return fmt.Errorf("building plugin handlers: %w", err)
+			}
+
 			builder := caddyadapter.NewEjectBuilder()
 			svc := ejectapp.NewService(builder)
 
-			result, err := svc.Eject(cfg)
+			result, err := svc.Eject(cfg, extraHandlers)
 			if err != nil {
 				return fmt.Errorf("ejecting config: %w", err)
 			}
@@ -105,4 +115,29 @@ Examples:
 	}
 
 	return cmd
+}
+
+// buildEjectHandlers creates a minimal plugin registry, initialises only the
+// CaddyContributor plugins, and collects their handler fragments. This mirrors
+// how the serve path builds ExtraHandlers via registry.CaddyContributors()
+// (see cmd/vibewarden/wiring_serve_helpers.go) while keeping the eject
+// application service free of plugin-specific imports.
+func buildEjectHandlers(ctx context.Context, cfg *config.Config) ([]ports.CaddyHandler, error) {
+	// Use a silent logger — eject is a config-generation tool; plugin lifecycle
+	// messages (init, start) would be noise on stdout/stderr.
+	logger := slog.New(slog.NewTextHandler(io.Discard, nil))
+
+	registry := plugins.NewRegistry(logger)
+	plugins.RegisterBuiltinPlugins(registry, cfg, nil, logger)
+
+	if err := registry.InitAll(ctx); err != nil {
+		return nil, fmt.Errorf("initialising plugins: %w", err)
+	}
+
+	var handlers []ports.CaddyHandler
+	for _, contrib := range registry.CaddyContributors() {
+		handlers = append(handlers, contrib.ContributeCaddyHandlers()...)
+	}
+
+	return handlers, nil
 }

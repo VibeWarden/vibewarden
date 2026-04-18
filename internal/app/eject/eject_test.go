@@ -50,7 +50,7 @@ func TestService_Eject_NilConfig(t *testing.T) {
 	b := &fakeBuilder{}
 	svc := eject.NewService(b)
 
-	_, err := svc.Eject(nil)
+	_, err := svc.Eject(nil, nil)
 	if err == nil {
 		t.Fatal("expected error for nil config, got nil")
 	}
@@ -60,7 +60,7 @@ func TestService_Eject_BuilderError(t *testing.T) {
 	b := &fakeBuilder{err: errors.New("build failed")}
 	svc := eject.NewService(b)
 
-	_, err := svc.Eject(minimalConfig())
+	_, err := svc.Eject(minimalConfig(), nil)
 	if err == nil {
 		t.Fatal("expected error when builder fails, got nil")
 	}
@@ -71,7 +71,7 @@ func TestService_Eject_ReturnsBuilderResult(t *testing.T) {
 	b := &fakeBuilder{result: want}
 	svc := eject.NewService(b)
 
-	got, err := svc.Eject(minimalConfig())
+	got, err := svc.Eject(minimalConfig(), nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -85,7 +85,7 @@ func TestService_Eject_CallsBuilder(t *testing.T) {
 	svc := eject.NewService(b)
 
 	cfg := minimalConfig()
-	_, err := svc.Eject(cfg)
+	_, err := svc.Eject(cfg, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -116,7 +116,7 @@ func TestService_Eject_ProxyConfigListenAddr(t *testing.T) {
 			cfg.Server.Host = tt.host
 			cfg.Server.Port = tt.port
 
-			_, err := svc.Eject(cfg)
+			_, err := svc.Eject(cfg, nil)
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
@@ -152,7 +152,7 @@ func TestService_Eject_ProxyConfigUpstreamAddr(t *testing.T) {
 			cfg.Upstream.Host = tt.host
 			cfg.Upstream.Port = tt.port
 
-			_, err := svc.Eject(cfg)
+			_, err := svc.Eject(cfg, nil)
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
@@ -201,7 +201,7 @@ func TestService_Eject_TLSConfig(t *testing.T) {
 			cfg := minimalConfig()
 			cfg.TLS = tt.tlsCfg
 
-			_, err := svc.Eject(cfg)
+			_, err := svc.Eject(cfg, nil)
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
@@ -226,7 +226,7 @@ func TestService_Eject_VersionIsEjected(t *testing.T) {
 	b := &fakeBuilder{}
 	svc := eject.NewService(b)
 
-	_, err := svc.Eject(minimalConfig())
+	_, err := svc.Eject(minimalConfig(), nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -240,7 +240,7 @@ func TestService_Eject_InternalAddrsOmitted(t *testing.T) {
 	b := &fakeBuilder{}
 	svc := eject.NewService(b)
 
-	_, err := svc.Eject(minimalConfig())
+	_, err := svc.Eject(minimalConfig(), nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -253,6 +253,78 @@ func TestService_Eject_InternalAddrsOmitted(t *testing.T) {
 	}
 	if b.got.Readiness.InternalAddr != "" {
 		t.Errorf("Readiness.InternalAddr should be empty, got %q", b.got.Readiness.InternalAddr)
+	}
+}
+
+func TestService_Eject_ExtraHandlersPassedThrough(t *testing.T) {
+	tests := []struct {
+		name          string
+		handlers      []ports.CaddyHandler
+		wantCount     int
+		wantFirstName string
+	}{
+		{
+			name:      "nil handlers",
+			handlers:  nil,
+			wantCount: 0,
+		},
+		{
+			name:      "empty handlers",
+			handlers:  []ports.CaddyHandler{},
+			wantCount: 0,
+		},
+		{
+			name: "single handler",
+			handlers: []ports.CaddyHandler{
+				{
+					Handler:  map[string]any{"handler": "vibewarden_waf_content_type"},
+					Priority: 25,
+				},
+			},
+			wantCount:     1,
+			wantFirstName: "vibewarden_waf_content_type",
+		},
+		{
+			name: "two handlers",
+			handlers: []ports.CaddyHandler{
+				{
+					Handler:  map[string]any{"handler": "vibewarden_waf_content_type"},
+					Priority: 25,
+				},
+				{
+					Handler:  map[string]any{"handler": "vibewarden_waf_engine"},
+					Priority: 25,
+				},
+			},
+			wantCount:     2,
+			wantFirstName: "vibewarden_waf_content_type",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			b := &fakeBuilder{}
+			svc := eject.NewService(b)
+
+			_, err := svc.Eject(minimalConfig(), tt.handlers)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			got := b.got.ExtraHandlers
+			if len(got) != tt.wantCount {
+				t.Fatalf("ExtraHandlers count = %d, want %d", len(got), tt.wantCount)
+			}
+
+			if tt.wantCount > 0 {
+				gotName, ok := got[0].Handler["handler"].(string)
+				if !ok {
+					t.Errorf("ExtraHandlers[0].Handler[\"handler\"] is not a string")
+				} else if gotName != tt.wantFirstName {
+					t.Errorf("ExtraHandlers[0] handler = %q, want %q", gotName, tt.wantFirstName)
+				}
+			}
+		})
 	}
 }
 

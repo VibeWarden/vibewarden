@@ -51,15 +51,19 @@ func NewService(builder ConfigBuilder) *Service {
 // configuration map. The returned map can be serialised to JSON and fed
 // directly to the target proxy (e.g. Caddy's /load API or a config file).
 //
+// extraHandlers are Caddy handler fragments contributed by plugins (e.g. the
+// WAF plugin). The caller is responsible for building these via the plugin
+// registry, keeping the application layer free of plugin-specific imports.
+//
 // Note: internal-only addresses (metrics, admin, readiness) are omitted from
 // the generated config because those internal HTTP servers are managed by
 // VibeWarden itself and are not meaningful outside of it.
-func (s *Service) Eject(cfg *config.Config) (map[string]any, error) {
+func (s *Service) Eject(cfg *config.Config, extraHandlers []ports.CaddyHandler) (map[string]any, error) {
 	if cfg == nil {
 		return nil, fmt.Errorf("config is required")
 	}
 
-	proxyCfg := buildProxyConfig(cfg)
+	proxyCfg := buildProxyConfig(cfg, extraHandlers)
 	result, err := s.builder.Build(proxyCfg)
 	if err != nil {
 		return nil, fmt.Errorf("building proxy config: %w", err)
@@ -71,7 +75,10 @@ func (s *Service) Eject(cfg *config.Config) (map[string]any, error) {
 // suitable for the eject use case. Internal-service addresses (metrics, admin,
 // readiness) are intentionally left empty because those services are managed by
 // VibeWarden and not meaningful in a standalone proxy deployment.
-func buildProxyConfig(cfg *config.Config) *ports.ProxyConfig {
+//
+// extraHandlers are plugin-contributed Caddy handler fragments passed through
+// from the caller. The eject service does not import any plugin packages.
+func buildProxyConfig(cfg *config.Config, extraHandlers []ports.CaddyHandler) *ports.ProxyConfig {
 	return &ports.ProxyConfig{
 		ListenAddr:   fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port),
 		UpstreamAddr: fmt.Sprintf("%s:%d", cfg.Upstream.Host, cfg.Upstream.Port),
@@ -132,7 +139,8 @@ func buildProxyConfig(cfg *config.Config) *ports.ProxyConfig {
 			Addresses:         cfg.IPFilter.Addresses,
 			TrustProxyHeaders: cfg.IPFilter.TrustProxyHeaders,
 		},
-		Resilience: buildResilienceConfig(cfg),
+		Resilience:    buildResilienceConfig(cfg),
+		ExtraHandlers: extraHandlers,
 		Compression: ports.CompressionConfig{
 			Enabled:    cfg.Compression.Enabled,
 			Algorithms: cfg.Compression.Algorithms,
