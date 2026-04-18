@@ -5,6 +5,8 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"path/filepath"
+	"strings"
 	"text/template"
 
 	templateadapter "github.com/vibewarden/vibewarden/internal/adapters/template"
@@ -186,7 +188,9 @@ func (s *Service) DeployMultiApp(ctx context.Context, cfg *config.Config, opts R
 }
 
 // deploySite writes the per-app vibewarden.yaml and docker-compose.yml to
-// the site directory on the remote host.
+// the site directory on the remote host. When the app uses build mode
+// (cfg.App.Build is set), the app source directory is rsynced to the remote
+// so that Docker can build the image remotely.
 func (s *Service) deploySite(ctx context.Context, cfg *config.Config, projectName string, opts RunOptions) error {
 	siteDir := sitesDir + projectName + "/"
 
@@ -195,9 +199,40 @@ func (s *Service) deploySite(ctx context.Context, cfg *config.Config, projectNam
 		return fmt.Errorf("creating site directory: %w", err)
 	}
 
+	// When app.build is set the image must be built on the remote host.
+	// Transfer the app source (the build context directory) so that
+	// `docker compose up --build` can build the image remotely.
+	// This must happen BEFORE the config file transfer, because the build
+	// context may include a dev vibewarden.yaml that would overwrite the
+	// prod config.
+	if cfg.App.Build != "" {
+		projectRoot := filepath.Dir(filepath.Clean(opts.ConfigPath))
+		buildContextLocal := filepath.Join(projectRoot, cfg.App.Build)
+		buildContextRemote := siteDir + strings.TrimPrefix(strings.TrimSuffix(cfg.App.Build, "/"), "./") + "/"
+		if err := s.executor.Transfer(ctx, buildContextLocal, buildContextRemote, false); err != nil {
+			return fmt.Errorf("transferring app build context: %w", err)
+		}
+	}
+
 	// Transfer the config file as vibewarden.yaml.
 	if err := s.executor.TransferFile(ctx, opts.ConfigPath, siteDir+"vibewarden.yaml"); err != nil {
 		return fmt.Errorf("transferring vibewarden.yaml: %w", err)
+	}
+
+	// Fix upstream.host for Docker networking: if the user configured a
+	// loopback or wildcard address (0.0.0.0, 127.0.0.1, localhost) these
+	// resolve to the sidecar container itself rather than the app container.
+	// Rewrite them to the Docker container name so the sidecar can reach
+	// the app across the shared vibewarden-multiapp network.
+	containerName := appContainerName(projectName)
+	if isLocalUpstreamHost(cfg.Upstream.Host) {
+		sedCmd := fmt.Sprintf(
+			`sed -i 's/\(host:\s*\)%s/\1%s/' %svibewarden.yaml`,
+			cfg.Upstream.Host, containerName, siteDir,
+		)
+		if _, err := s.executor.Run(ctx, sedCmd); err != nil {
+			return fmt.Errorf("rewriting upstream.host in vibewarden.yaml: %w", err)
+		}
 	}
 
 	// Render and write the per-app compose file.
@@ -210,12 +245,34 @@ func (s *Service) deploySite(ctx context.Context, cfg *config.Config, projectNam
 	}
 
 	// Start the app container.
+	// In build mode, pass --build so Docker Compose builds the image from
+	// the transferred source directory.
 	startCmd := fmt.Sprintf("cd %s && docker compose up -d", siteDir)
+	if cfg.App.Build != "" {
+		startCmd = fmt.Sprintf("cd %s && docker compose up -d --build", siteDir)
+	}
 	if _, err := s.executor.Run(ctx, startCmd); err != nil {
 		return fmt.Errorf("starting app container: %w", err)
 	}
 
 	return nil
+}
+
+// appContainerName returns the Docker container name for a site's app
+// container. This must match the container_name in the app-compose template.
+func appContainerName(projectName string) string {
+	return "vibewarden-" + projectName + "-app"
+}
+
+// isLocalUpstreamHost returns true if host is a loopback or wildcard address
+// that would not work in Docker container-to-container networking.
+func isLocalUpstreamHost(host string) bool {
+	switch host {
+	case "0.0.0.0", "127.0.0.1", "localhost":
+		return true
+	default:
+		return false
+	}
 }
 
 // startSidecar pulls the latest sidecar image and starts the sidecar
