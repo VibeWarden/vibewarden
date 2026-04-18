@@ -5,9 +5,11 @@ package eject
 
 import (
 	"fmt"
+	"sort"
 	"time"
 
 	"github.com/vibewarden/vibewarden/internal/config"
+	wafplugin "github.com/vibewarden/vibewarden/internal/plugins/waf"
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
 
@@ -132,7 +134,8 @@ func buildProxyConfig(cfg *config.Config) *ports.ProxyConfig {
 			Addresses:         cfg.IPFilter.Addresses,
 			TrustProxyHeaders: cfg.IPFilter.TrustProxyHeaders,
 		},
-		Resilience: buildResilienceConfig(cfg),
+		Resilience:    buildResilienceConfig(cfg),
+		ExtraHandlers: buildWAFHandlers(cfg),
 		Compression: ports.CompressionConfig{
 			Enabled:    cfg.Compression.Enabled,
 			Algorithms: cfg.Compression.Algorithms,
@@ -149,6 +152,57 @@ func buildProxyConfig(cfg *config.Config) *ports.ProxyConfig {
 		// these internal HTTP servers are managed by VibeWarden and have no
 		// equivalent in a standalone Caddy deployment.
 	}
+}
+
+// buildWAFHandlers constructs the WAF Caddy handler fragments from the app
+// config, replicating the same handler JSON that the WAF plugin produces at
+// runtime. This allows "vibew eject" to include WAF handlers without
+// initialising the full plugin registry.
+//
+// Returns nil when both WAF features are disabled.
+func buildWAFHandlers(cfg *config.Config) []ports.CaddyHandler {
+	var handlers []ports.CaddyHandler
+
+	if cfg.WAF.ContentTypeValidation.Enabled {
+		handler, err := wafplugin.BuildContentTypeHandlerJSON(wafplugin.ContentTypeValidationConfig{
+			Enabled: cfg.WAF.ContentTypeValidation.Enabled,
+			Allowed: cfg.WAF.ContentTypeValidation.Allowed,
+		})
+		if err == nil {
+			handlers = append(handlers, ports.CaddyHandler{
+				Handler:  handler,
+				Priority: 25,
+			})
+		}
+	}
+
+	if cfg.WAF.Enabled {
+		handler, err := wafplugin.BuildEngineHandlerJSON(wafplugin.WAFEngineConfig{
+			Enabled: cfg.WAF.Enabled,
+			Mode:    wafplugin.Mode(cfg.WAF.Mode),
+			Rules: wafplugin.RulesConfig{
+				SQLInjection:     cfg.WAF.Rules.SQLInjection,
+				XSS:              cfg.WAF.Rules.XSS,
+				PathTraversal:    cfg.WAF.Rules.PathTraversal,
+				CommandInjection: cfg.WAF.Rules.CommandInjection,
+			},
+			ExemptPaths: cfg.WAF.ExemptPaths,
+		})
+		if err == nil {
+			handlers = append(handlers, ports.CaddyHandler{
+				Handler:  handler,
+				Priority: 25,
+			})
+		}
+	}
+
+	// Sort by ascending priority for deterministic ordering, matching the
+	// behaviour of the serve code path in wiring_serve_helpers.go.
+	sort.Slice(handlers, func(i, j int) bool {
+		return handlers[i].Priority < handlers[j].Priority
+	})
+
+	return handlers
 }
 
 // buildBodySizeConfig converts the app config body size settings into a

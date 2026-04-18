@@ -124,7 +124,7 @@ func (p *Plugin) ContributeCaddyHandlers() []ports.CaddyHandler {
 	var handlers []ports.CaddyHandler
 
 	if p.cfg.ContentTypeValidation.Enabled {
-		handler, err := buildContentTypeHandlerJSON(p.cfg.ContentTypeValidation)
+		handler, err := BuildContentTypeHandlerJSON(p.cfg.ContentTypeValidation)
 		if err != nil {
 			p.logger.Error("waf plugin: building content type handler JSON",
 				slog.String("err", err.Error()))
@@ -137,7 +137,7 @@ func (p *Plugin) ContributeCaddyHandlers() []ports.CaddyHandler {
 	}
 
 	if p.cfg.Engine.Enabled {
-		handler, err := buildEngineHandlerJSON(p.cfg.Engine)
+		handler, err := BuildEngineHandlerJSON(p.cfg.Engine)
 		if err != nil {
 			p.logger.Error("waf plugin: building engine handler JSON",
 				slog.String("err", err.Error()))
@@ -163,9 +163,11 @@ type contentTypeHandlerConfig struct {
 	Allowed []string `json:"allowed"`
 }
 
-// buildContentTypeHandlerJSON serialises cfg into the Caddy handler JSON map
-// expected by the vibewarden_waf_content_type module.
-func buildContentTypeHandlerJSON(cfg ContentTypeValidationConfig) (map[string]any, error) {
+// BuildContentTypeHandlerJSON serialises cfg into the Caddy handler JSON map
+// expected by the vibewarden_waf_content_type module. It is exported so that
+// the eject use case can replicate the same handler without initialising the
+// full plugin registry.
+func BuildContentTypeHandlerJSON(cfg ContentTypeValidationConfig) (map[string]any, error) {
 	hcfg := contentTypeHandlerConfig{
 		Allowed: cfg.Allowed,
 	}
@@ -199,9 +201,11 @@ type engineHandlerConfig struct {
 	ExemptPaths []string `json:"exempt_paths"`
 }
 
-// buildEngineHandlerJSON serialises cfg into the Caddy handler JSON map
-// expected by the vibewarden_waf_engine module.
-func buildEngineHandlerJSON(cfg WAFEngineConfig) (map[string]any, error) {
+// BuildEngineHandlerJSON serialises cfg into the Caddy handler JSON map
+// expected by the vibewarden_waf_engine module. It is exported so that the
+// eject use case can replicate the same handler without initialising the full
+// plugin registry.
+func BuildEngineHandlerJSON(cfg WAFEngineConfig) (map[string]any, error) {
 	mode := string(cfg.Mode)
 	if mode == "" {
 		mode = string(ModeBlock)

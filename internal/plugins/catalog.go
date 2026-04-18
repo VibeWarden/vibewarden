@@ -61,12 +61,28 @@ var Catalog = []PluginDescriptor{
 	},
 	{
 		Name:        "waf",
-		Description: "WAF: Content-Type validation blocks body requests with missing or disallowed media types",
+		Description: "WAF: rule-based request scanning (SQLi, XSS, path traversal, command injection) and Content-Type validation",
 		ConfigSchema: map[string]string{
+			"enabled":                         "Enable the WAF rule engine (default: true)",
+			"mode":                            "Detection mode: \"detect\" (log only) or \"block\" (reject with 403) (default: \"detect\")",
+			"rules.sqli":                      "Enable SQL injection detection rules (default: true)",
+			"rules.xss":                       "Enable cross-site scripting detection rules (default: true)",
+			"rules.path_traversal":            "Enable path traversal detection rules (default: true)",
+			"rules.command_injection":         "Enable command injection detection rules (default: true)",
+			"exempt_paths":                    "URL path glob patterns that bypass WAF scanning (/_vibewarden/* is always exempt)",
 			"content_type_validation.enabled": "Enable Content-Type validation on POST, PUT, PATCH requests (default: false)",
 			"content_type_validation.allowed": "List of permitted media types (default: application/json, application/x-www-form-urlencoded, multipart/form-data)",
 		},
 		Example: `  waf:
+    enabled: true
+    mode: block
+    rules:
+      sqli: true
+      xss: true
+      path_traversal: true
+      command_injection: true
+    exempt_paths:
+      - /api/webhooks/*
     content_type_validation:
       enabled: true
       allowed:

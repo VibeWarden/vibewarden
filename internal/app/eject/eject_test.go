@@ -256,6 +256,145 @@ func TestService_Eject_InternalAddrsOmitted(t *testing.T) {
 	}
 }
 
+func TestService_Eject_WAFHandlersIncluded(t *testing.T) {
+	tests := []struct {
+		name             string
+		wafCfg           config.WAFConfig
+		wantHandlerCount int
+		wantHandlerNames []string
+	}{
+		{
+			name: "both WAF engine and content-type enabled",
+			wafCfg: config.WAFConfig{
+				Enabled: true,
+				Mode:    "block",
+				Rules: config.WAFRulesConfig{
+					SQLInjection:     true,
+					XSS:              true,
+					PathTraversal:    true,
+					CommandInjection: true,
+				},
+				ContentTypeValidation: config.ContentTypeValidationConfig{
+					Enabled: true,
+					Allowed: []string{"application/json"},
+				},
+			},
+			wantHandlerCount: 2,
+			wantHandlerNames: []string{"vibewarden_waf_content_type", "vibewarden_waf_engine"},
+		},
+		{
+			name: "only WAF engine enabled",
+			wafCfg: config.WAFConfig{
+				Enabled: true,
+				Mode:    "detect",
+				Rules: config.WAFRulesConfig{
+					SQLInjection: true,
+					XSS:          true,
+				},
+			},
+			wantHandlerCount: 1,
+			wantHandlerNames: []string{"vibewarden_waf_engine"},
+		},
+		{
+			name: "only content-type validation enabled",
+			wafCfg: config.WAFConfig{
+				Enabled: false,
+				ContentTypeValidation: config.ContentTypeValidationConfig{
+					Enabled: true,
+					Allowed: []string{"application/json", "multipart/form-data"},
+				},
+			},
+			wantHandlerCount: 1,
+			wantHandlerNames: []string{"vibewarden_waf_content_type"},
+		},
+		{
+			name: "both disabled — no handlers",
+			wafCfg: config.WAFConfig{
+				Enabled: false,
+				ContentTypeValidation: config.ContentTypeValidationConfig{
+					Enabled: false,
+				},
+			},
+			wantHandlerCount: 0,
+			wantHandlerNames: nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			b := &fakeBuilder{}
+			svc := eject.NewService(b)
+
+			cfg := minimalConfig()
+			cfg.WAF = tt.wafCfg
+
+			_, err := svc.Eject(cfg)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			got := b.got.ExtraHandlers
+			if len(got) != tt.wantHandlerCount {
+				t.Fatalf("ExtraHandlers count = %d, want %d", len(got), tt.wantHandlerCount)
+			}
+
+			for i, wantName := range tt.wantHandlerNames {
+				gotName, ok := got[i].Handler["handler"].(string)
+				if !ok {
+					t.Errorf("ExtraHandlers[%d].Handler[\"handler\"] is not a string", i)
+					continue
+				}
+				if gotName != wantName {
+					t.Errorf("ExtraHandlers[%d] handler = %q, want %q", i, gotName, wantName)
+				}
+			}
+
+			// Verify all WAF handlers have priority 25.
+			for i, h := range got {
+				if h.Priority != 25 {
+					t.Errorf("ExtraHandlers[%d].Priority = %d, want 25", i, h.Priority)
+				}
+			}
+		})
+	}
+}
+
+func TestService_Eject_WAFEngineHandlerConfig(t *testing.T) {
+	b := &fakeBuilder{}
+	svc := eject.NewService(b)
+
+	cfg := minimalConfig()
+	cfg.WAF = config.WAFConfig{
+		Enabled: true,
+		Mode:    "block",
+		Rules: config.WAFRulesConfig{
+			SQLInjection:     true,
+			XSS:              false,
+			PathTraversal:    true,
+			CommandInjection: false,
+		},
+		ExemptPaths: []string{"/api/webhooks/*"},
+	}
+
+	_, err := svc.Eject(cfg)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if len(b.got.ExtraHandlers) != 1 {
+		t.Fatalf("ExtraHandlers count = %d, want 1", len(b.got.ExtraHandlers))
+	}
+
+	handler := b.got.ExtraHandlers[0].Handler
+	if handler["handler"] != "vibewarden_waf_engine" {
+		t.Errorf("handler name = %v, want vibewarden_waf_engine", handler["handler"])
+	}
+	// The config field should be present (json.RawMessage).
+	if handler["config"] == nil {
+		t.Error("handler config should not be nil")
+	}
+}
+
 func TestErrUnsupportedFormat_Error(t *testing.T) {
 	err := eject.ErrUnsupportedFormat{Format: eject.Format("nginx")}
 	msg := err.Error()
