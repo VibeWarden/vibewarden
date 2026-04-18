@@ -24,10 +24,11 @@ import (
 // routes from the registry's healthy sites. When registry is nil, the
 // adapter falls back to single-site mode using BuildCaddyConfig.
 type Adapter struct {
-	config      *ports.ProxyConfig
-	registry    *site.Registry
-	logger      *slog.Logger
-	eventLogger ports.EventLogger
+	config          *ports.ProxyConfig
+	registry        *site.Registry
+	perSiteHandlers map[string][]ports.CaddyHandler
+	logger          *slog.Logger
+	eventLogger     ports.EventLogger
 }
 
 // NewAdapter creates a new Caddy adapter in single-site mode.
@@ -46,14 +47,19 @@ func NewAdapter(cfg *ports.ProxyConfig, logger *slog.Logger, eventLogger ports.E
 // When buildConfigJSON is called, it reads the registry's healthy sites
 // and global config to produce per-host Caddy routes.
 //
+// perSiteHandlers maps each site name to the Caddy handlers contributed by
+// that site's plugin registry (e.g. WAF, auth, CORS). Pass nil to omit
+// plugin-contributed handlers.
+//
 // The cfg parameter is still required for backward-compatible fields
 // (version, event logging params) that are sidecar-global, not per-site.
-func NewMultiSiteAdapter(cfg *ports.ProxyConfig, registry *site.Registry, logger *slog.Logger, eventLogger ports.EventLogger) *Adapter {
+func NewMultiSiteAdapter(cfg *ports.ProxyConfig, registry *site.Registry, perSiteHandlers map[string][]ports.CaddyHandler, logger *slog.Logger, eventLogger ports.EventLogger) *Adapter {
 	return &Adapter{
-		config:      cfg,
-		registry:    registry,
-		logger:      logger,
-		eventLogger: eventLogger,
+		config:          cfg,
+		registry:        registry,
+		perSiteHandlers: perSiteHandlers,
+		logger:          logger,
+		eventLogger:     eventLogger,
 	}
 }
 
@@ -112,6 +118,14 @@ func (a *Adapter) UpdateConfig(cfg *ports.ProxyConfig) {
 	a.config = cfg
 }
 
+// UpdatePerSiteHandlers replaces the per-site plugin handlers map with the
+// supplied value. This must be called before Reload when site configurations
+// change so that the rebuilt Caddy config includes the current plugin handlers
+// rather than stale ones computed at startup.
+func (a *Adapter) UpdatePerSiteHandlers(handlers map[string][]ports.CaddyHandler) {
+	a.perSiteHandlers = handlers
+}
+
 // buildConfigJSON constructs and marshals the Caddy JSON configuration.
 // When a registry is present, multi-site mode is used. Otherwise, the
 // adapter falls back to single-site mode for backward compatibility.
@@ -127,7 +141,7 @@ func (a *Adapter) buildConfigJSON() ([]byte, error) {
 			g := site.DefaultGlobalConfig()
 			global = &g
 		}
-		cfg, err = BuildMultiSiteConfig(a.registry.HealthySites(), *global, a.logger)
+		cfg, err = BuildMultiSiteConfig(a.registry.HealthySites(), *global, a.perSiteHandlers, a.logger)
 	} else {
 		cfg, err = BuildCaddyConfig(a.config)
 	}

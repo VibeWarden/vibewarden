@@ -120,7 +120,7 @@ func TestNewMultiSiteAdapter(t *testing.T) {
 	registry := site.NewRegistry()
 	logger := slog.Default()
 
-	adapter := NewMultiSiteAdapter(cfg, registry, logger, nil)
+	adapter := NewMultiSiteAdapter(cfg, registry, nil, logger, nil)
 
 	if adapter == nil {
 		t.Fatal("NewMultiSiteAdapter() returned nil")
@@ -144,7 +144,7 @@ func TestNewMultiSiteAdapter_WithEventLogger(t *testing.T) {
 	registry := site.NewRegistry()
 	spy := &fakeEventLogger{}
 
-	adapter := NewMultiSiteAdapter(cfg, registry, slog.Default(), spy)
+	adapter := NewMultiSiteAdapter(cfg, registry, nil, slog.Default(), spy)
 
 	if adapter == nil {
 		t.Fatal("NewMultiSiteAdapter() returned nil")
@@ -180,7 +180,7 @@ func TestAdapter_BuildConfigJSON_MultiSiteMode(t *testing.T) {
 		ListenAddr:   "0.0.0.0:443",
 		UpstreamAddr: "127.0.0.1:3000",
 	}
-	adapter := NewMultiSiteAdapter(proxyCfg, registry, slog.Default(), nil)
+	adapter := NewMultiSiteAdapter(proxyCfg, registry, nil, slog.Default(), nil)
 
 	data, err := adapter.buildConfigJSON()
 	if err != nil {
@@ -239,7 +239,7 @@ func TestAdapter_BuildConfigJSON_MultiSite_DefaultGlobal(t *testing.T) {
 		ListenAddr:   "0.0.0.0:443",
 		UpstreamAddr: "127.0.0.1:3000",
 	}
-	adapter := NewMultiSiteAdapter(proxyCfg, registry, slog.Default(), nil)
+	adapter := NewMultiSiteAdapter(proxyCfg, registry, nil, slog.Default(), nil)
 
 	data, err := adapter.buildConfigJSON()
 	if err != nil {
@@ -331,7 +331,7 @@ func TestAdapter_EmitStartEvents_MultiSite(t *testing.T) {
 		ListenAddr: "0.0.0.0:443",
 		Version:    "v2.0.0",
 	}
-	adapter := NewMultiSiteAdapter(proxyCfg, registry, slog.Default(), spy)
+	adapter := NewMultiSiteAdapter(proxyCfg, registry, nil, slog.Default(), spy)
 
 	adapter.emitStartEvents(context.Background())
 
@@ -429,7 +429,7 @@ func TestAdapter_EmitStartEvents_MultiSite_SkipStartEvent(t *testing.T) {
 		ListenAddr:     "0.0.0.0:443",
 		SkipStartEvent: true,
 	}
-	adapter := NewMultiSiteAdapter(proxyCfg, registry, slog.Default(), spy)
+	adapter := NewMultiSiteAdapter(proxyCfg, registry, nil, slog.Default(), spy)
 
 	adapter.emitStartEvents(context.Background())
 
@@ -466,7 +466,7 @@ func TestAdapter_EmitStartEvents_MultiSite_SkipsErrorSites(t *testing.T) {
 		ListenAddr: "0.0.0.0:443",
 		Version:    "v1.0.0",
 	}
-	adapter := NewMultiSiteAdapter(proxyCfg, registry, slog.Default(), spy)
+	adapter := NewMultiSiteAdapter(proxyCfg, registry, nil, slog.Default(), spy)
 
 	adapter.emitStartEvents(context.Background())
 
@@ -496,6 +496,70 @@ func TestAdapter_EmitStartEvents_NilEventLogger(t *testing.T) {
 	// Here we just verify the adapter was created correctly.
 	if adapter.eventLogger != nil {
 		t.Error("expected nil eventLogger")
+	}
+}
+
+func TestAdapter_UpdatePerSiteHandlers(t *testing.T) {
+	registry := site.NewRegistry()
+	global := site.DefaultGlobalConfig()
+	registry.SetGlobal(global)
+
+	proxyCfg := &ports.ProxyConfig{
+		ListenAddr: "0.0.0.0:443",
+		Version:    "v1.0.0",
+	}
+	adapter := NewMultiSiteAdapter(proxyCfg, registry, nil, slog.Default(), nil)
+
+	if adapter.perSiteHandlers != nil {
+		t.Fatal("expected nil perSiteHandlers before update")
+	}
+
+	newHandlers := map[string][]ports.CaddyHandler{
+		"app1": {
+			{Priority: 10, Handler: map[string]any{"handler": "test"}},
+		},
+	}
+	adapter.UpdatePerSiteHandlers(newHandlers)
+
+	if adapter.perSiteHandlers == nil {
+		t.Fatal("expected non-nil perSiteHandlers after update")
+	}
+	if len(adapter.perSiteHandlers["app1"]) != 1 {
+		t.Errorf("expected 1 handler for app1, got %d", len(adapter.perSiteHandlers["app1"]))
+	}
+}
+
+func TestAdapter_UpdatePerSiteHandlers_OverwritesExisting(t *testing.T) {
+	registry := site.NewRegistry()
+
+	initialHandlers := map[string][]ports.CaddyHandler{
+		"app1": {
+			{Priority: 10, Handler: map[string]any{"handler": "old"}},
+		},
+	}
+	proxyCfg := &ports.ProxyConfig{
+		ListenAddr: "0.0.0.0:443",
+		Version:    "v1.0.0",
+	}
+	adapter := NewMultiSiteAdapter(proxyCfg, registry, initialHandlers, slog.Default(), nil)
+
+	if len(adapter.perSiteHandlers["app1"]) != 1 {
+		t.Fatalf("expected 1 initial handler for app1, got %d", len(adapter.perSiteHandlers["app1"]))
+	}
+
+	newHandlers := map[string][]ports.CaddyHandler{
+		"app2": {
+			{Priority: 20, Handler: map[string]any{"handler": "new1"}},
+			{Priority: 30, Handler: map[string]any{"handler": "new2"}},
+		},
+	}
+	adapter.UpdatePerSiteHandlers(newHandlers)
+
+	if _, hasApp1 := adapter.perSiteHandlers["app1"]; hasApp1 {
+		t.Error("expected app1 to be absent after overwrite")
+	}
+	if len(adapter.perSiteHandlers["app2"]) != 2 {
+		t.Errorf("expected 2 handlers for app2, got %d", len(adapter.perSiteHandlers["app2"]))
 	}
 }
 
