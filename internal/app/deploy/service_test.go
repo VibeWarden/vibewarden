@@ -196,8 +196,9 @@ func TestService_Deploy_TransferFails(t *testing.T) {
 }
 
 // TestService_Deploy_HealthCheckTimeout verifies that a health-check timeout
-// does NOT fail the deploy — it prints a warning and returns nil so that
-// "Deploy complete." is still printed. The operator can check status manually.
+// DOES fail the deploy — it returns ErrHealthCheck and prints an actionable
+// message. The operator can run "vibew deploy status" or "vibew doctor" to
+// diagnose.
 func TestService_Deploy_HealthCheckTimeout(t *testing.T) {
 	executor := &fakeExecutor{
 		runResponses: map[string]runResponse{
@@ -222,17 +223,20 @@ func TestService_Deploy_HealthCheckTimeout(t *testing.T) {
 		ConfigPath: "/tmp/proj/vibewarden.yaml",
 		Out:        &buf,
 	})
-	// Health check timeout must NOT fail the deploy.
-	if err != nil {
-		t.Fatalf("Deploy() should succeed even when health check times out, got error: %v", err)
+	// Health check timeout must now fail the deploy.
+	if !errors.Is(err, deployapp.ErrHealthCheck) {
+		t.Fatalf("Deploy() should return ErrHealthCheck when health check times out, got: %v", err)
 	}
 
 	out := buf.String()
-	if !strings.Contains(out, "Deploy complete") {
-		t.Errorf("expected 'Deploy complete' in output even after health-check timeout, got:\n%s", out)
+	if !strings.Contains(out, "health check failed") {
+		t.Errorf("expected 'health check failed' in output, got:\n%s", out)
 	}
 	if !strings.Contains(out, "Warning") {
 		t.Errorf("expected a warning message in output after health-check timeout, got:\n%s", out)
+	}
+	if !strings.Contains(out, "vibew doctor") {
+		t.Errorf("expected 'vibew doctor' suggestion in output, got:\n%s", out)
 	}
 }
 
@@ -1410,7 +1414,7 @@ func TestDriftError_ErrorMessage(t *testing.T) {
 }
 
 // TestService_Deploy_HealthCheckWarnOnTimeout verifies the exact warning message
-// format when the health check times out.
+// format when the health check times out, including the doctor suggestion.
 func TestService_Deploy_HealthCheckWarnOnTimeout(t *testing.T) {
 	executor := &fakeExecutor{
 		runResponses: map[string]runResponse{
@@ -1431,16 +1435,23 @@ func TestService_Deploy_HealthCheckWarnOnTimeout(t *testing.T) {
 		Out:        &buf,
 	})
 
-	if err != nil {
-		t.Fatalf("Deploy() should return nil on health-check timeout, got: %v", err)
+	if !errors.Is(err, deployapp.ErrHealthCheck) {
+		t.Fatalf("Deploy() should return ErrHealthCheck on health-check timeout, got: %v", err)
 	}
 
 	out := buf.String()
 	if !strings.Contains(out, "Warning") {
 		t.Errorf("expected warning in output, got:\n%s", out)
 	}
-	if !strings.Contains(out, "Deploy complete") {
-		t.Errorf("expected 'Deploy complete' in output, got:\n%s", out)
+	if !strings.Contains(out, "vibew deploy status") {
+		t.Errorf("expected 'vibew deploy status' suggestion in output, got:\n%s", out)
+	}
+	if !strings.Contains(out, "vibew doctor") {
+		t.Errorf("expected 'vibew doctor' suggestion in output, got:\n%s", out)
+	}
+	// "Deploy complete" should NOT appear when health check fails.
+	if strings.Contains(out, "Deploy complete.") {
+		t.Errorf("'Deploy complete.' should NOT appear when health check fails, got:\n%s", out)
 	}
 }
 

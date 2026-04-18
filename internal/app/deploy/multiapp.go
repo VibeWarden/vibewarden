@@ -138,7 +138,10 @@ func (s *Service) BootstrapSidecar(ctx context.Context, cfg *config.Config, opts
 	}
 	healthURL := healthCheckURL(port, cfg.TLS.Enabled)
 	fmt.Fprintf(out, "Waiting for sidecar health check at %s (via SSH)...\n", healthURL)
-	s.waitHealthy(ctx, port, cfg.TLS.Enabled, out)
+	if !s.waitHealthy(ctx, port, cfg.TLS.Enabled, out) {
+		fmt.Fprintln(out, "Bootstrap completed but health check failed — verify with: vibew deploy status")
+		return ErrHealthCheck
+	}
 
 	fmt.Fprintln(out, "Bootstrap complete.")
 	return nil
@@ -181,7 +184,10 @@ func (s *Service) DeployMultiApp(ctx context.Context, cfg *config.Config, opts R
 	}
 	healthURL := healthCheckURL(port, cfg.TLS.Enabled)
 	fmt.Fprintf(out, "Waiting for sidecar health check at %s (via SSH)...\n", healthURL)
-	s.waitHealthy(ctx, port, cfg.TLS.Enabled, out)
+	if !s.waitHealthy(ctx, port, cfg.TLS.Enabled, out) {
+		fmt.Fprintln(out, "Site deployed but health check failed — verify with: vibew deploy status")
+		return ErrHealthCheck
+	}
 
 	fmt.Fprintln(out, "Site deployed.")
 	return nil
