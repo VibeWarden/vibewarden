@@ -22,6 +22,10 @@ type fakeExecutor struct {
 	transferErr error
 	// transferFileErr is returned by every TransferFile call if set.
 	transferFileErr error
+	// dryRunChanges is returned by DryRunTransfer when non-nil.
+	dryRunChanges []string
+	// dryRunErr is returned by DryRunTransfer when non-nil.
+	dryRunErr error
 	// runCalls records every Run invocation for assertions.
 	runCalls []string
 	// transferCalls records every Transfer invocation for assertions.
@@ -74,6 +78,13 @@ func (f *fakeExecutor) Transfer(_ context.Context, localDir, remoteDir string, d
 func (f *fakeExecutor) TransferFile(_ context.Context, localFile, remotePath string) error {
 	f.transferFileCalls = append(f.transferFileCalls, transferFileCall{localFile: localFile, remotePath: remotePath})
 	return f.transferFileErr
+}
+
+func (f *fakeExecutor) DryRunTransfer(_ context.Context, _, _ string) ([]string, error) {
+	if f.dryRunErr != nil {
+		return nil, f.dryRunErr
+	}
+	return f.dryRunChanges, nil
 }
 
 // fakeGenerator is a test double for ports.ConfigGenerator.
@@ -655,6 +666,10 @@ func (m *mockRunExecutor) Transfer(_ context.Context, localDir, remoteDir string
 func (m *mockRunExecutor) TransferFile(_ context.Context, localFile, remotePath string) error {
 	m.transferFileCalls = append(m.transferFileCalls, transferFileCall{localFile: localFile, remotePath: remotePath})
 	return nil
+}
+
+func (m *mockRunExecutor) DryRunTransfer(_ context.Context, _, _ string) ([]string, error) {
+	return nil, nil
 }
 
 // TestService_Deploy_TransferFileCalledForConfig verifies that Deploy uses
@@ -1254,6 +1269,144 @@ func TestService_Deploy_PullsSidecarInImageMode(t *testing.T) {
 	// Both the targeted sidecar pull and the full pull must be present.
 	assertRunCalledContains(t, executor.runCalls, "docker compose pull vibewarden")
 	assertRunCalledContains(t, executor.runCalls, "docker compose pull")
+}
+
+// TestService_Deploy_DriftDetected_AbortsWithoutForce verifies that Deploy
+// returns a DriftError when remote files have diverged and --force is not set.
+func TestService_Deploy_DriftDetected_AbortsWithoutForce(t *testing.T) {
+	executor := &fakeExecutor{
+		dryRunChanges: []string{
+			">f..T...... docker-compose.yml",
+			"*deleting   custom-config.yml",
+		},
+	}
+	generator := &fakeGenerator{}
+
+	svc := deployapp.NewService(executor, generator)
+
+	err := svc.Deploy(context.Background(), defaultConfig(), deployapp.RunOptions{
+		ConfigPath: "/tmp/proj/vibewarden.yaml",
+		Force:      false,
+	})
+	if err == nil {
+		t.Fatal("expected DriftError when drift is detected without --force")
+	}
+
+	var driftErr *deployapp.DriftError
+	if !errors.As(err, &driftErr) {
+		t.Fatalf("expected error to be *DriftError, got %T: %v", err, err)
+	}
+	if len(driftErr.Changes) != 2 {
+		t.Errorf("expected 2 changes, got %d", len(driftErr.Changes))
+	}
+	if !strings.Contains(err.Error(), "docker-compose.yml") {
+		t.Errorf("error message should list affected files, got: %v", err)
+	}
+	if !strings.Contains(err.Error(), "vibew deploy --force") {
+		t.Errorf("error message should suggest --force, got: %v", err)
+	}
+}
+
+// TestService_Deploy_DriftDetected_ProceedsWithForce verifies that Deploy
+// ignores drift when --force is set and completes successfully.
+func TestService_Deploy_DriftDetected_ProceedsWithForce(t *testing.T) {
+	executor := &fakeExecutor{
+		dryRunChanges: []string{
+			">f..T...... docker-compose.yml",
+		},
+	}
+	generator := &fakeGenerator{}
+
+	svc := deployapp.NewService(executor, generator)
+
+	var buf bytes.Buffer
+	err := svc.Deploy(context.Background(), defaultConfig(), deployapp.RunOptions{
+		ConfigPath: "/tmp/proj/vibewarden.yaml",
+		Force:      true,
+		Out:        &buf,
+	})
+	if err != nil {
+		t.Fatalf("Deploy() with --force should succeed even with drift, got: %v", err)
+	}
+	if !strings.Contains(buf.String(), "Deploy complete") {
+		t.Errorf("expected 'Deploy complete' in output, got:\n%s", buf.String())
+	}
+}
+
+// TestService_Deploy_NoDrift_ProceedsWithoutForce verifies that Deploy proceeds
+// normally when no drift is detected and --force is not set.
+func TestService_Deploy_NoDrift_ProceedsWithoutForce(t *testing.T) {
+	executor := &fakeExecutor{
+		dryRunChanges: nil, // no changes
+	}
+	generator := &fakeGenerator{}
+
+	svc := deployapp.NewService(executor, generator)
+
+	var buf bytes.Buffer
+	err := svc.Deploy(context.Background(), defaultConfig(), deployapp.RunOptions{
+		ConfigPath: "/tmp/proj/vibewarden.yaml",
+		Force:      false,
+		Out:        &buf,
+	})
+	if err != nil {
+		t.Fatalf("Deploy() without drift should succeed, got: %v", err)
+	}
+	if !strings.Contains(buf.String(), "Deploy complete") {
+		t.Errorf("expected 'Deploy complete' in output, got:\n%s", buf.String())
+	}
+}
+
+// TestService_Deploy_DryRunFails_FallsThrough verifies that a dry-run failure
+// (e.g. first deploy when the remote dir does not exist) prints a note but
+// does not abort the deploy.
+func TestService_Deploy_DryRunFails_FallsThrough(t *testing.T) {
+	executor := &fakeExecutor{
+		dryRunErr: errors.New("rsync: connection refused"),
+	}
+	generator := &fakeGenerator{}
+
+	svc := deployapp.NewService(executor, generator)
+
+	var buf bytes.Buffer
+	err := svc.Deploy(context.Background(), defaultConfig(), deployapp.RunOptions{
+		ConfigPath: "/tmp/proj/vibewarden.yaml",
+		Force:      false,
+		Out:        &buf,
+	})
+	if err != nil {
+		t.Fatalf("Deploy() should succeed when dry-run fails (first deploy), got: %v", err)
+	}
+	if !strings.Contains(buf.String(), "drift detection skipped") {
+		t.Errorf("expected note about skipped drift detection, got:\n%s", buf.String())
+	}
+	if !strings.Contains(buf.String(), "Deploy complete") {
+		t.Errorf("expected 'Deploy complete' in output, got:\n%s", buf.String())
+	}
+}
+
+// TestDriftError_ErrorMessage verifies the DriftError message format.
+func TestDriftError_ErrorMessage(t *testing.T) {
+	err := &deployapp.DriftError{
+		Changes: []string{
+			">f..T...... docker-compose.yml",
+			"*deleting   custom-config.yml",
+		},
+	}
+
+	msg := err.Error()
+	if !strings.Contains(msg, "remote files have been modified") {
+		t.Errorf("expected 'remote files have been modified' in message, got: %s", msg)
+	}
+	if !strings.Contains(msg, "docker-compose.yml") {
+		t.Errorf("expected 'docker-compose.yml' in message, got: %s", msg)
+	}
+	if !strings.Contains(msg, "custom-config.yml") {
+		t.Errorf("expected 'custom-config.yml' in message, got: %s", msg)
+	}
+	if !strings.Contains(msg, "vibew deploy --force") {
+		t.Errorf("expected '--force' suggestion in message, got: %s", msg)
+	}
 }
 
 // TestService_Deploy_HealthCheckWarnOnTimeout verifies the exact warning message

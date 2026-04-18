@@ -424,6 +424,13 @@ func (e *sshExecutor) TransferFile(_ context.Context, localFile, remotePath stri
 	return e.writeRemoteFile(remotePath, content)
 }
 
+// DryRunTransfer performs a dry-run comparison of localDir against remoteDir.
+// In integration tests this always returns no changes, since the test controls
+// the exact file content and drift detection is tested at the unit level.
+func (e *sshExecutor) DryRunTransfer(_ context.Context, _, _ string) ([]string, error) {
+	return nil, nil
+}
+
 // runCmd is an internal helper that runs a command and returns the output.
 func (e *sshExecutor) runCmd(cmd string) (string, error) {
 	session, err := e.client.NewSession()

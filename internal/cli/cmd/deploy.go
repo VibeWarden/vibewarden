@@ -30,6 +30,7 @@ func NewDeployCmd() *cobra.Command {
 		secretsFrom   string
 		rotateSecrets bool
 		unsealKey     string
+		force         bool
 	)
 
 	cmd := &cobra.Command{
@@ -105,6 +106,7 @@ Examples:
 
 			opts := deployapp.RunOptions{
 				ConfigPath: absConfig,
+				Force:      force,
 				Out:        cmd.OutOrStdout(),
 			}
 
@@ -173,6 +175,7 @@ Examples:
 	cmd.Flags().StringVar(&secretsFrom, "secrets-from", "", "path to a .env-format file whose KEY=VALUE pairs are seeded into OpenBao")
 	cmd.Flags().BoolVar(&rotateSecrets, "rotate-secrets", false, "re-seed secrets from --secrets-from on subsequent deploys")
 	cmd.Flags().StringVar(&unsealKey, "unseal-key", "", "OpenBao unseal key (required when redeploying a sealed instance); overrides stored key")
+	cmd.Flags().BoolVar(&force, "force", false, "overwrite remote files even if they have been modified since last deploy")
 
 	if err := cmd.MarkFlagRequired("target"); err != nil {
 		fmt.Fprintln(os.Stderr, "warning: flag required registration failed:", err)

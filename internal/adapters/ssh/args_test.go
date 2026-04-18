@@ -166,3 +166,107 @@ func TestRsyncFileArgs_WithKey(t *testing.T) {
 		t.Errorf("expected '-i /home/user/.ssh/deploy_key' in rsync file -e ssh command, got: %v", args)
 	}
 }
+
+func TestRsyncDryRunArgs_ContainsDryRunAndItemize(t *testing.T) {
+	e := NewExecutor(Target{User: "ubuntu", Host: "10.0.0.1"})
+
+	args := e.rsyncDryRunArgs("/home/user/generated", "~/vibewarden/project/")
+
+	// Must contain --dry-run, --delete, --itemize-changes.
+	wantFlags := []string{"--dry-run", "--delete", "--itemize-changes"}
+	for _, flag := range wantFlags {
+		found := false
+		for _, a := range args {
+			if a == flag {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("expected %q in rsyncDryRunArgs, got: %v", flag, args)
+		}
+	}
+
+	// Source must have trailing slash.
+	src := args[len(args)-2]
+	if src != "/home/user/generated/" {
+		t.Errorf("source = %q, want %q", src, "/home/user/generated/")
+	}
+
+	// Destination must be user@host:remoteDir.
+	dst := args[len(args)-1]
+	wantDst := "ubuntu@10.0.0.1:~/vibewarden/project/"
+	if dst != wantDst {
+		t.Errorf("destination = %q, want %q", dst, wantDst)
+	}
+}
+
+func TestRsyncDryRunArgs_WithKey(t *testing.T) {
+	e := NewExecutorWithKey(Target{User: "deploy", Host: "myserver.com", Port: 2222}, "/home/user/.ssh/key")
+
+	args := e.rsyncDryRunArgs("/local/dir", "~/remote/dir/")
+
+	// The -e flag value must contain -i <keyPath> and -p <port>.
+	found := false
+	for i, a := range args {
+		if a == "-e" && i+1 < len(args) {
+			sshCmd := args[i+1]
+			if strings.Contains(sshCmd, "-i /home/user/.ssh/key") &&
+				strings.Contains(sshCmd, "-p 2222") {
+				found = true
+			}
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected key and port in rsync dry-run ssh command, got: %v", args)
+	}
+}
+
+func TestParseDryRunOutput(t *testing.T) {
+	tests := []struct {
+		name   string
+		output string
+		want   []string
+	}{
+		{
+			name:   "empty output returns nil",
+			output: "",
+			want:   nil,
+		},
+		{
+			name:   "only whitespace returns nil",
+			output: "  \n  \n  ",
+			want:   nil,
+		},
+		{
+			name:   "file changes are included",
+			output: ">f..T...... docker-compose.yml\n*deleting   custom-config.yml\n",
+			want:   []string{">f..T...... docker-compose.yml", "*deleting   custom-config.yml"},
+		},
+		{
+			name:   "directory metadata changes are filtered out",
+			output: ".d..t...... somedir/\n>f..T...... file.txt\n",
+			want:   []string{">f..T...... file.txt"},
+		},
+		{
+			name:   "mixed content with blank lines",
+			output: "\n>f+++++++++ new-file.yml\n\n*deleting   old-file.yml\n.d..t...... dir/\n\n",
+			want:   []string{">f+++++++++ new-file.yml", "*deleting   old-file.yml"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := parseDryRunOutput(tt.output)
+			if len(got) != len(tt.want) {
+				t.Fatalf("parseDryRunOutput() returned %d items, want %d: got=%v", len(got), len(tt.want), got)
+			}
+			for i, g := range got {
+				if g != tt.want[i] {
+					t.Errorf("parseDryRunOutput()[%d] = %q, want %q", i, g, tt.want[i])
+				}
+			}
+		})
+	}
+}

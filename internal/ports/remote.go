@@ -34,4 +34,11 @@ type RemoteExecutor interface {
 	// trailing slash is appended to the source, so rsync treats it as a single
 	// file rather than a directory.
 	TransferFile(ctx context.Context, localFile, remotePath string) error
+
+	// DryRunTransfer performs a dry-run rsync between localDir and remoteDir
+	// with --delete --itemize-changes to detect what would change without
+	// actually modifying any files. It returns a list of human-readable change
+	// descriptions (one per affected file). An empty slice means the remote
+	// directory is already in sync with the local directory.
+	DryRunTransfer(ctx context.Context, localDir, remoteDir string) ([]string, error)
 }

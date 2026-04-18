@@ -172,6 +172,53 @@ func (e *Executor) TransferFile(ctx context.Context, localFile, remotePath strin
 	return nil
 }
 
+// DryRunTransfer performs a dry-run rsync between localDir and remoteDir with
+// --delete --itemize-changes to detect what would change without modifying any
+// files. It returns a list of human-readable change descriptions (one per
+// affected file). An empty slice means the directories are in sync.
+func (e *Executor) DryRunTransfer(ctx context.Context, localDir, remoteDir string) ([]string, error) {
+	args := e.rsyncDryRunArgs(localDir, remoteDir)
+	//nolint:gosec // localDir is constructed internally from config paths; remoteDir
+	// is a fixed pattern (~/vibewarden/<project>/). Safe in this context.
+	c := exec.CommandContext(ctx, "rsync", args...)
+
+	var buf bytes.Buffer
+	c.Stdout = &buf
+	c.Stderr = &buf
+
+	if err := c.Run(); err != nil {
+		return nil, fmt.Errorf("rsync dry-run %s → %s:%s: %w\noutput: %s",
+			localDir, e.target.Destination(), remoteDir, err, strings.TrimSpace(buf.String()))
+	}
+
+	return parseDryRunOutput(buf.String()), nil
+}
+
+// parseDryRunOutput extracts meaningful change lines from rsync --itemize-changes
+// dry-run output. Each non-empty line that starts with an itemize code (e.g.
+// ">f..T......", "*deleting") is included. Directory-only metadata changes and
+// blank lines are filtered out.
+func parseDryRunOutput(output string) []string {
+	var changes []string
+	for _, line := range strings.Split(output, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		// rsync --itemize-changes prefixes each change with a code like:
+		//   >f..T...... filename   (file will be transferred)
+		//   *deleting   filename   (file will be deleted)
+		//   .d..t...... dirname/   (directory metadata change — skip)
+		// We include all lines except directory-only metadata changes
+		// (those starting with ".d").
+		if strings.HasPrefix(line, ".d") {
+			continue
+		}
+		changes = append(changes, line)
+	}
+	return changes
+}
+
 // sshArgs builds the ssh argument list for the given command.
 func (e *Executor) sshArgs(cmd string) []string {
 	args := []string{
@@ -213,6 +260,32 @@ func (e *Executor) rsyncArgs(localDir, remoteDir string, deleteExtra bool) []str
 	dst := e.target.Destination() + ":" + remoteDir
 	args = append(args, src, dst)
 	return args
+}
+
+// rsyncDryRunArgs builds the rsync argument list for a dry-run transfer with
+// --delete and --itemize-changes. This shows what would change without
+// modifying any files on the remote.
+func (e *Executor) rsyncDryRunArgs(localDir, remoteDir string) []string {
+	sshCmd := "ssh -o StrictHostKeyChecking=accept-new -o BatchMode=yes"
+	if e.keyPath != "" {
+		sshCmd += " -i " + e.keyPath
+	}
+	if e.target.Port != 0 {
+		sshCmd += " -p " + strconv.Itoa(e.target.Port)
+	}
+
+	src := strings.TrimSuffix(localDir, "/") + "/"
+	dst := e.target.Destination() + ":" + remoteDir
+
+	return []string{
+		"-az",
+		"--dry-run",
+		"--delete",
+		"--itemize-changes",
+		"-e", sshCmd,
+		src,
+		dst,
+	}
 }
 
 // rsyncFileArgs builds the rsync argument list for a single-file transfer.
