@@ -8,6 +8,7 @@ profile: dev
 
 app:
   build: .
+  language: typescript
 
 server:
   host: "0.0.0.0"

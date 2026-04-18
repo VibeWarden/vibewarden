@@ -38,11 +38,36 @@ func NewRenderer(f fs.ReadFileFS) *Renderer {
 	return &Renderer{fs: f}
 }
 
+// SharedFuncMap returns the custom template functions so that callers outside
+// this package (e.g. deploy) can register them on their own templates.
+func SharedFuncMap() template.FuncMap { return funcMap }
+
 // funcMap defines the custom template functions available to all templates.
 var funcMap = template.FuncMap{
 	// mul multiplies two integers and returns the product.
 	// Used in loki-config.yml.tmpl to convert retention days to hours.
 	"mul": func(a, b int) int { return a * b },
+
+	// healthcheckCmd returns a Docker health check command appropriate for
+	// the given language runtime. Images based on Alpine (Go, Kotlin) ship
+	// wget; Python and Node slim images do not but always have their own
+	// runtime available. Falls back to wget for unknown languages.
+	"healthcheckCmd": func(lang string, port int) string {
+		switch lang {
+		case "python":
+			return fmt.Sprintf(
+				`python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:%d/health')"`,
+				port)
+		case "typescript", "javascript":
+			return fmt.Sprintf(
+				`node -e "const h=require('http');h.get('http://127.0.0.1:%d/health',r=>{process.exit(r.statusCode===200?0:1)}).on('error',()=>process.exit(1))"`,
+				port)
+		default: // go, kotlin, alpine-based, unknown
+			return fmt.Sprintf(
+				`wget -q --spider http://127.0.0.1:%d/health || exit 1`,
+				port)
+		}
+	},
 }
 
 // Render executes the named template with data and returns the rendered bytes.

@@ -8,6 +8,7 @@ profile: dev
 
 app:
   build: .
+  language: python
 
 server:
   host: "0.0.0.0"

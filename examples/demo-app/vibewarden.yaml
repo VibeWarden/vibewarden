@@ -14,6 +14,7 @@ profile: dev
 app:
   # Build from local Dockerfile (dev mode)
   build: .
+  language: go
   # Image for production (overridable via VIBEWARDEN_APP_IMAGE):
   # image: ghcr.io/vibewarden/demo-app:latest
 
