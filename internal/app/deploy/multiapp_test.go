@@ -912,3 +912,79 @@ func TestDeploySite_BuildMode_TransferBeforeConfig(t *testing.T) {
 	// in deploySite, the fact that Transfer has entries confirms it was called.
 	// The code structure ensures Transfer happens before TransferFile.
 }
+
+// TestBootstrapSidecar_HealthCheckFails verifies that BootstrapSidecar returns
+// ErrHealthCheck when the sidecar health check times out.
+func TestBootstrapSidecar_HealthCheckFails(t *testing.T) {
+	executor := &fakeExecutor{
+		runResponses: map[string]runResponse{
+			"curl -sf http://localhost:443/_vibewarden/health": {err: errors.New("exit status 7")},
+		},
+	}
+	generator := &fakeGenerator{}
+
+	svc := deployapp.NewService(executor, generator)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() { cancel() }()
+
+	var buf bytes.Buffer
+	err := svc.BootstrapSidecar(ctx, multiappConfig(), deployapp.RunOptions{
+		ConfigPath:  "/tmp/proj/vibewarden.yaml",
+		ProjectName: "myproject",
+		Out:         &buf,
+	})
+	if !errors.Is(err, deployapp.ErrHealthCheck) {
+		t.Fatalf("BootstrapSidecar() should return ErrHealthCheck, got: %v", err)
+	}
+
+	out := buf.String()
+	if !strings.Contains(out, "health check failed") {
+		t.Errorf("expected 'health check failed' in output, got:\n%s", out)
+	}
+	if !strings.Contains(out, "vibew doctor") {
+		t.Errorf("expected 'vibew doctor' suggestion in output, got:\n%s", out)
+	}
+	// "Bootstrap complete" should NOT appear when health check fails.
+	if strings.Contains(out, "Bootstrap complete.") {
+		t.Errorf("'Bootstrap complete.' should NOT appear when health check fails, got:\n%s", out)
+	}
+}
+
+// TestDeployMultiApp_HealthCheckFails verifies that DeployMultiApp returns
+// ErrHealthCheck when the sidecar health check times out.
+func TestDeployMultiApp_HealthCheckFails(t *testing.T) {
+	executor := &fakeExecutor{
+		runResponses: map[string]runResponse{
+			"curl -sf http://localhost:443/_vibewarden/health": {err: errors.New("exit status 7")},
+		},
+	}
+	generator := &fakeGenerator{}
+
+	svc := deployapp.NewService(executor, generator)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() { cancel() }()
+
+	var buf bytes.Buffer
+	err := svc.DeployMultiApp(ctx, multiappConfig(), deployapp.RunOptions{
+		ConfigPath:  "/tmp/site/vibewarden.yaml",
+		ProjectName: "mysite",
+		Out:         &buf,
+	})
+	if !errors.Is(err, deployapp.ErrHealthCheck) {
+		t.Fatalf("DeployMultiApp() should return ErrHealthCheck, got: %v", err)
+	}
+
+	out := buf.String()
+	if !strings.Contains(out, "health check failed") {
+		t.Errorf("expected 'health check failed' in output, got:\n%s", out)
+	}
+	if !strings.Contains(out, "vibew doctor") {
+		t.Errorf("expected 'vibew doctor' suggestion in output, got:\n%s", out)
+	}
+	// "Site deployed." should NOT appear when health check fails.
+	if strings.Contains(out, "Site deployed.") {
+		t.Errorf("'Site deployed.' should NOT appear when health check fails, got:\n%s", out)
+	}
+}

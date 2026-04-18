@@ -4,6 +4,7 @@ package deploy
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -14,6 +15,11 @@ import (
 	"github.com/vibewarden/vibewarden/internal/config"
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
+
+// ErrHealthCheck is returned when the sidecar health check fails after
+// deployment. Files have been deployed and services started, but the
+// sidecar did not become healthy within the timeout.
+var ErrHealthCheck = errors.New("health check failed")
 
 // DriftError is returned when remote files have diverged from local files
 // and --force was not specified. It carries the list of changes that would
@@ -230,7 +236,10 @@ func (s *Service) Deploy(ctx context.Context, cfg *config.Config, opts RunOption
 	}
 	healthURL := healthCheckURL(port, cfg.TLS.Enabled)
 	fmt.Fprintf(out, "Waiting for sidecar health check at %s (via SSH)...\n", healthURL)
-	s.waitHealthy(ctx, port, cfg.TLS.Enabled, out)
+	if !s.waitHealthy(ctx, port, cfg.TLS.Enabled, out) {
+		fmt.Fprintln(out, "Deploy completed but health check failed — verify with: vibew deploy status")
+		return ErrHealthCheck
+	}
 
 	fmt.Fprintln(out, "Deploy complete.")
 	return nil
@@ -451,10 +460,10 @@ func (s *Service) checkRemotePrerequisites(ctx context.Context) error {
 // certificate issuance dependencies — the request is made from inside the
 // server to its own localhost interface.
 //
-// On timeout or context cancellation the function prints a warning and returns
-// without error — the deploy is considered successful because services may still
-// be starting up. The operator can run "vibew deploy status" to check manually.
-func (s *Service) waitHealthy(ctx context.Context, port int, tlsEnabled bool, out io.Writer) {
+// Returns true when the sidecar becomes healthy, false on timeout or context
+// cancellation. When false, a warning is printed suggesting diagnostic
+// commands the operator can run.
+func (s *Service) waitHealthy(ctx context.Context, port int, tlsEnabled bool, out io.Writer) bool {
 	cmd := healthCheckCmd(port, tlsEnabled)
 	deadline := time.Now().Add(healthCheckTimeout)
 	attempt := 0
@@ -465,20 +474,20 @@ func (s *Service) waitHealthy(ctx context.Context, port int, tlsEnabled bool, ou
 		_, err := s.executor.Run(ctx, cmd)
 		if err == nil {
 			fmt.Fprintln(out, "Sidecar is healthy.")
-			return
+			return true
 		}
 		lastErr = err
 		fmt.Fprintf(out, "  attempt %d: %v\n", attempt, err)
 
 		if time.Now().After(deadline) {
-			fmt.Fprintf(out, "Warning: health check timed out (last error: %v). Services may still be starting. Run: vibew deploy status --target ... to check.\n", lastErr)
-			return
+			fmt.Fprintf(out, "Warning: health check timed out (last error: %v). Services may still be starting.\n  Run: vibew deploy status --target <host> to check.\n  Run: vibew doctor --target <host> to diagnose.\n", lastErr)
+			return false
 		}
 
 		select {
 		case <-ctx.Done():
-			fmt.Fprintf(out, "Warning: health check cancelled (%v). Services may still be starting. Run: vibew deploy status --target ... to check.\n", ctx.Err())
-			return
+			fmt.Fprintf(out, "Warning: health check cancelled (%v). Services may still be starting.\n  Run: vibew deploy status --target <host> to check.\n  Run: vibew doctor --target <host> to diagnose.\n", ctx.Err())
+			return false
 		case <-time.After(healthCheckInterval):
 		}
 	}
