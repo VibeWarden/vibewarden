@@ -25,11 +25,11 @@ type ComposeRunner interface {
 	// The output of the command is streamed to the caller via the returned channel.
 	Up(ctx context.Context, composeFile string, profiles []string) error
 
-	// Restart restarts services in the compose project.
-	// composeFile is the path to the docker-compose.yml; when empty the default
-	// discovery logic applies.
-	// services is the optional list of service names to restart; when empty all
-	// services are restarted.
+	// Restart rebuilds and recreates services in the compose project using
+	// docker compose up -d --force-recreate --build. This ensures Dockerfile
+	// changes are picked up. composeFile is the path to the docker-compose.yml;
+	// when empty the default discovery logic applies. services is the optional
+	// list of service names to restart; when empty all services are restarted.
 	Restart(ctx context.Context, composeFile string, services []string) error
 
 	// Version returns the docker compose version string.
