@@ -499,6 +499,70 @@ func TestAdapter_EmitStartEvents_NilEventLogger(t *testing.T) {
 	}
 }
 
+func TestAdapter_UpdatePerSiteHandlers(t *testing.T) {
+	registry := site.NewRegistry()
+	global := site.DefaultGlobalConfig()
+	registry.SetGlobal(global)
+
+	proxyCfg := &ports.ProxyConfig{
+		ListenAddr: "0.0.0.0:443",
+		Version:    "v1.0.0",
+	}
+	adapter := NewMultiSiteAdapter(proxyCfg, registry, nil, slog.Default(), nil)
+
+	if adapter.perSiteHandlers != nil {
+		t.Fatal("expected nil perSiteHandlers before update")
+	}
+
+	newHandlers := map[string][]ports.CaddyHandler{
+		"app1": {
+			{Priority: 10, Handler: map[string]any{"handler": "test"}},
+		},
+	}
+	adapter.UpdatePerSiteHandlers(newHandlers)
+
+	if adapter.perSiteHandlers == nil {
+		t.Fatal("expected non-nil perSiteHandlers after update")
+	}
+	if len(adapter.perSiteHandlers["app1"]) != 1 {
+		t.Errorf("expected 1 handler for app1, got %d", len(adapter.perSiteHandlers["app1"]))
+	}
+}
+
+func TestAdapter_UpdatePerSiteHandlers_OverwritesExisting(t *testing.T) {
+	registry := site.NewRegistry()
+
+	initialHandlers := map[string][]ports.CaddyHandler{
+		"app1": {
+			{Priority: 10, Handler: map[string]any{"handler": "old"}},
+		},
+	}
+	proxyCfg := &ports.ProxyConfig{
+		ListenAddr: "0.0.0.0:443",
+		Version:    "v1.0.0",
+	}
+	adapter := NewMultiSiteAdapter(proxyCfg, registry, initialHandlers, slog.Default(), nil)
+
+	if len(adapter.perSiteHandlers["app1"]) != 1 {
+		t.Fatalf("expected 1 initial handler for app1, got %d", len(adapter.perSiteHandlers["app1"]))
+	}
+
+	newHandlers := map[string][]ports.CaddyHandler{
+		"app2": {
+			{Priority: 20, Handler: map[string]any{"handler": "new1"}},
+			{Priority: 30, Handler: map[string]any{"handler": "new2"}},
+		},
+	}
+	adapter.UpdatePerSiteHandlers(newHandlers)
+
+	if _, hasApp1 := adapter.perSiteHandlers["app1"]; hasApp1 {
+		t.Error("expected app1 to be absent after overwrite")
+	}
+	if len(adapter.perSiteHandlers["app2"]) != 2 {
+		t.Errorf("expected 2 handlers for app2, got %d", len(adapter.perSiteHandlers["app2"]))
+	}
+}
+
 func TestAdapter_StopWithoutStart(t *testing.T) {
 	cfg := &ports.ProxyConfig{
 		ListenAddr:   "127.0.0.1:8080",

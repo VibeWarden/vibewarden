@@ -118,6 +118,14 @@ func (a *Adapter) UpdateConfig(cfg *ports.ProxyConfig) {
 	a.config = cfg
 }
 
+// UpdatePerSiteHandlers replaces the per-site plugin handlers map with the
+// supplied value. This must be called before Reload when site configurations
+// change so that the rebuilt Caddy config includes the current plugin handlers
+// rather than stale ones computed at startup.
+func (a *Adapter) UpdatePerSiteHandlers(handlers map[string][]ports.CaddyHandler) {
+	a.perSiteHandlers = handlers
+}
+
 // buildConfigJSON constructs and marshals the Caddy JSON configuration.
 // When a registry is present, multi-site mode is used. Otherwise, the
 // adapter falls back to single-site mode for backward compatibility.

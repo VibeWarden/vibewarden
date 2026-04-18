@@ -7,7 +7,6 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
-	"sort"
 	"syscall"
 
 	caddyadapter "github.com/vibewarden/vibewarden/internal/adapters/caddy"
@@ -144,7 +143,16 @@ func runServeMultiSite(ctx context.Context, baseDir string, ver string) error {
 		)
 	} else {
 		// Step 10: Create the MultiSiteService event loop.
+		// The reload function rebuilds per-site plugin handlers from the
+		// current registry state before reloading Caddy, ensuring that
+		// modified site configs get fresh handlers instead of stale ones
+		// computed at startup.
 		reloadFn := func(reloadCtx context.Context) error {
+			freshHandlers, buildErr := buildPerSitePluginHandlers(reloadCtx, registry, eventLogger, logger)
+			if buildErr != nil {
+				return fmt.Errorf("rebuilding per-site plugin handlers: %w", buildErr)
+			}
+			adapter.UpdatePerSiteHandlers(freshHandlers)
 			return adapter.Reload(reloadCtx)
 		}
 		multiSiteSvc := reloadsvc.NewMultiSiteService(registry, eventLogger, logger, reloadFn)
@@ -214,11 +222,18 @@ func buildPerSitePluginHandlers(
 			handlers = append(handlers, contrib.ContributeCaddyHandlers()...)
 		}
 
+		// Clean up the per-site registry: handlers have been serialized to
+		// JSON-compatible structures, so plugin instances (including any
+		// OTel MeterProvider allocated by the metrics plugin) are no longer
+		// needed. Without this call, resources are leaked.
+		if stopErr := reg.StopAll(ctx); stopErr != nil {
+			siteLogger.Warn("per-site plugin registry stop error",
+				slog.String("error", stopErr.Error()),
+			)
+		}
+
 		if len(handlers) > 0 {
-			// Sort by ascending priority for deterministic ordering.
-			sort.Slice(handlers, func(i, j int) bool {
-				return handlers[i].Priority < handlers[j].Priority
-			})
+			// Sorting is deferred to buildSiteRoutes to avoid duplicate sorts.
 			perSiteHandlers[s.Name()] = handlers
 
 			siteLogger.Info("plugin handlers collected",
