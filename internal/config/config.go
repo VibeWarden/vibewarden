@@ -1322,8 +1322,16 @@ type SecretsConfig struct {
 	// Enabled toggles the secrets plugin (default: false).
 	Enabled bool `mapstructure:"enabled"`
 
+	// Store selects the secret store backend: "builtin" or "openbao".
+	// Default: "builtin". When empty or unset, "builtin" is used.
+	Store string `mapstructure:"store"`
+
 	// Provider selects the secret store backend (default: "openbao").
+	// Deprecated: use Store instead. Kept for backward compatibility.
 	Provider string `mapstructure:"provider"`
+
+	// Builtin holds settings for the built-in encrypted file store.
+	Builtin SecretsBuiltinConfig `mapstructure:"builtin"`
 
 	// OpenBao holds connection and authentication settings for the OpenBao server.
 	OpenBao SecretsOpenBaoConfig `mapstructure:"openbao"`
@@ -1339,6 +1347,17 @@ type SecretsConfig struct {
 
 	// CacheTTL is how long fetched secrets are held in memory (default: "5m").
 	CacheTTL string `mapstructure:"cache_ttl"`
+}
+
+// SecretsBuiltinConfig holds settings for the built-in encrypted file store.
+type SecretsBuiltinConfig struct {
+	// Path is the location of the encrypted secrets file.
+	// Default: ".vibewarden/secrets.enc".
+	Path string `mapstructure:"path"`
+
+	// KeyFile is the path to a file containing the 32-byte hex-encoded master key.
+	// If empty, the VIBEWARDEN_SECRETS_MASTER_KEY environment variable is used.
+	KeyFile string `mapstructure:"key_file"`
 }
 
 // SecretsOpenBaoConfig holds connection settings for the OpenBao server.
@@ -2245,7 +2264,10 @@ func Load(configPath string) (*Config, error) {
 	v.SetDefault("webhooks.signature_verification.enabled", false)
 	v.SetDefault("webhooks.signature_verification.paths", []WebhookSignaturePathConfig{})
 	v.SetDefault("secrets.enabled", false)
+	v.SetDefault("secrets.store", "builtin")
 	v.SetDefault("secrets.provider", "openbao")
+	v.SetDefault("secrets.builtin.path", ".vibewarden/secrets.enc")
+	v.SetDefault("secrets.builtin.key_file", "")
 	v.SetDefault("secrets.openbao.address", "")
 	v.SetDefault("secrets.openbao.auth.method", "token")
 	v.SetDefault("secrets.openbao.auth.token", "")

@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/vibewarden/vibewarden/internal/adapters/builtin"
 	"github.com/vibewarden/vibewarden/internal/adapters/openbao"
 	"github.com/vibewarden/vibewarden/internal/domain/events"
 	"github.com/vibewarden/vibewarden/internal/ports"
@@ -28,9 +29,9 @@ const (
 // It implements ports.Plugin and ports.CaddyContributor.
 //
 // On startup it:
-//  1. Connects to OpenBao and authenticates.
+//  1. Connects to the configured secret store (builtin or OpenBao) and authenticates.
 //  2. Fetches all configured static secrets into an in-memory cache.
-//  3. Requests dynamic credentials (if configured) and writes them to an env file.
+//  3. Requests dynamic credentials (if configured, OpenBao only) and writes them to an env file.
 //  4. Starts background goroutines for cache refresh, credential rotation,
 //     and secret health checks.
 //
@@ -38,7 +39,8 @@ const (
 // the CaddyContributor interface.
 type Plugin struct {
 	cfg       Config
-	store     *openbao.Adapter
+	store     ports.SecretStore
+	obAdapter *openbao.Adapter // non-nil only when store is "openbao"; needed for dynamic creds
 	logger    *slog.Logger
 	eventLog  ports.EventLogger
 	healthy   bool
@@ -92,13 +94,20 @@ func applyDefaults(cfg *Config) {
 	if cfg.Provider == "" {
 		cfg.Provider = "openbao"
 	}
+	if cfg.Store == "" {
+		cfg.Store = "builtin"
+	}
+	if cfg.Builtin.Path == "" {
+		cfg.Builtin.Path = ".vibewarden/secrets.enc"
+	}
 }
 
 // Name returns the canonical plugin identifier "secrets".
 func (p *Plugin) Name() string { return "secrets" }
 
-// Init connects to OpenBao, authenticates, and pre-fetches static secrets.
-// Returns an error if the plugin is enabled and the connection fails.
+// Init connects to the configured secret store, authenticates, and pre-fetches
+// static secrets. Returns an error if the plugin is enabled and the connection
+// or store initialisation fails.
 func (p *Plugin) Init(ctx context.Context) error {
 	if !p.cfg.Enabled {
 		p.healthy = true
@@ -106,38 +115,17 @@ func (p *Plugin) Init(ctx context.Context) error {
 		return nil
 	}
 
-	if p.cfg.Provider != "openbao" {
-		return fmt.Errorf("secrets plugin: unsupported provider %q (only \"openbao\" is supported)", p.cfg.Provider)
-	}
-
-	if p.cfg.OpenBao.Address == "" {
-		return fmt.Errorf("secrets plugin: openbao.address is required when secrets plugin is enabled")
-	}
-
-	// Build the OpenBao adapter.
-	p.store = openbao.New(openbao.Config{
-		Address: p.cfg.OpenBao.Address,
-		Auth: openbao.AuthConfig{
-			Method:   openbao.AuthMethod(p.cfg.OpenBao.Auth.Method),
-			Token:    p.cfg.OpenBao.Auth.Token,
-			RoleID:   p.cfg.OpenBao.Auth.RoleID,
-			SecretID: p.cfg.OpenBao.Auth.SecretID,
-		},
-		MountPath: p.cfg.OpenBao.MountPath,
-	}, p.logger)
-
-	// Authenticate to OpenBao.
-	if err := p.store.Authenticate(ctx); err != nil {
-		p.healthy = false
-		p.healthMsg = fmt.Sprintf("authentication failed: %s", err.Error())
-		return fmt.Errorf("secrets plugin init: authenticate: %w", err)
-	}
-
-	// Verify connectivity.
-	if err := p.store.Health(ctx); err != nil {
-		p.healthy = false
-		p.healthMsg = fmt.Sprintf("openbao unhealthy: %s", err.Error())
-		return fmt.Errorf("secrets plugin init: health check: %w", err)
+	switch p.cfg.Store {
+	case "builtin":
+		if err := p.initBuiltin(ctx); err != nil {
+			return err
+		}
+	case "openbao":
+		if err := p.initOpenBao(ctx); err != nil {
+			return err
+		}
+	default:
+		return fmt.Errorf("secrets plugin: unsupported store %q (supported: \"builtin\", \"openbao\")", p.cfg.Store)
 	}
 
 	// Pre-fetch all configured static secrets into cache.
@@ -148,8 +136,8 @@ func (p *Plugin) Init(ctx context.Context) error {
 		)
 	}
 
-	// Request dynamic credentials if configured.
-	if p.cfg.Dynamic.Postgres.Enabled {
+	// Request dynamic credentials if configured (OpenBao only).
+	if p.cfg.Dynamic.Postgres.Enabled && p.obAdapter != nil {
 		if err := p.refreshDynamicCredentials(ctx); err != nil {
 			p.logger.WarnContext(ctx, "secrets plugin: initial dynamic credential fetch failed",
 				slog.String("error", err.Error()),
@@ -167,9 +155,79 @@ func (p *Plugin) Init(ctx context.Context) error {
 		}
 	}
 
+	return nil
+}
+
+// initBuiltin creates and configures the built-in encrypted file store.
+func (p *Plugin) initBuiltin(ctx context.Context) error {
+	masterKey, err := p.resolveMasterKey()
+	if err != nil {
+		p.healthy = false
+		p.healthMsg = fmt.Sprintf("master key resolution failed: %s", err.Error())
+		return fmt.Errorf("secrets plugin init: resolving master key: %w", err)
+	}
+
+	store, err := builtin.NewStore(p.cfg.Builtin.Path, masterKey)
+	if err != nil {
+		p.healthy = false
+		p.healthMsg = fmt.Sprintf("builtin store init failed: %s", err.Error())
+		return fmt.Errorf("secrets plugin init: builtin store: %w", err)
+	}
+
+	p.store = store
+	p.healthy = true
+	p.healthMsg = "using builtin encrypted store"
+	p.logger.InfoContext(ctx, "secrets plugin initialised",
+		slog.String("store", "builtin"),
+		slog.String("path", p.cfg.Builtin.Path),
+		slog.Int("static_injections", len(p.cfg.Inject.Headers)+len(p.cfg.Inject.Env)),
+	)
+	return nil
+}
+
+// resolveMasterKey delegates to builtin.ResolveMasterKey to avoid
+// duplicating key-resolution logic between the plugin and CLI.
+func (p *Plugin) resolveMasterKey() ([]byte, error) {
+	return builtin.ResolveMasterKey(p.cfg.Builtin.KeyFile)
+}
+
+// initOpenBao creates and configures the OpenBao adapter.
+func (p *Plugin) initOpenBao(ctx context.Context) error {
+	if p.cfg.OpenBao.Address == "" {
+		return fmt.Errorf("secrets plugin: openbao.address is required when store is \"openbao\"")
+	}
+
+	adapter := openbao.New(openbao.Config{
+		Address: p.cfg.OpenBao.Address,
+		Auth: openbao.AuthConfig{
+			Method:   openbao.AuthMethod(p.cfg.OpenBao.Auth.Method),
+			Token:    p.cfg.OpenBao.Auth.Token,
+			RoleID:   p.cfg.OpenBao.Auth.RoleID,
+			SecretID: p.cfg.OpenBao.Auth.SecretID,
+		},
+		MountPath: p.cfg.OpenBao.MountPath,
+	}, p.logger)
+
+	// Authenticate to OpenBao.
+	if err := adapter.Authenticate(ctx); err != nil {
+		p.healthy = false
+		p.healthMsg = fmt.Sprintf("authentication failed: %s", err.Error())
+		return fmt.Errorf("secrets plugin init: authenticate: %w", err)
+	}
+
+	// Verify connectivity.
+	if err := adapter.Health(ctx); err != nil {
+		p.healthy = false
+		p.healthMsg = fmt.Sprintf("openbao unhealthy: %s", err.Error())
+		return fmt.Errorf("secrets plugin init: health check: %w", err)
+	}
+
+	p.store = adapter
+	p.obAdapter = adapter
 	p.healthy = true
 	p.healthMsg = "connected to OpenBao"
 	p.logger.InfoContext(ctx, "secrets plugin initialised",
+		slog.String("store", "openbao"),
 		slog.String("address", p.cfg.OpenBao.Address),
 		slog.Int("static_injections", len(p.cfg.Inject.Headers)+len(p.cfg.Inject.Env)),
 		slog.Bool("dynamic_postgres", p.cfg.Dynamic.Postgres.Enabled),
@@ -191,8 +249,8 @@ func (p *Plugin) Start(ctx context.Context) error {
 		p.runCacheRefreshLoop(ctx)
 	}()
 
-	// Background credential rotation (only when dynamic postgres is enabled).
-	if p.cfg.Dynamic.Postgres.Enabled {
+	// Background credential rotation (only when dynamic postgres is enabled and using OpenBao).
+	if p.cfg.Dynamic.Postgres.Enabled && p.obAdapter != nil {
 		p.wg.Add(1)
 		go func() {
 			defer p.wg.Done()
@@ -320,7 +378,7 @@ func (p *Plugin) refreshCache(ctx context.Context) error {
 // refreshDynamicCredentials requests fresh credentials for all configured roles.
 func (p *Plugin) refreshDynamicCredentials(ctx context.Context) error {
 	for _, role := range p.cfg.Dynamic.Postgres.Roles {
-		creds, err := p.store.RequestDynamicCredentials(ctx, role.Name)
+		creds, err := p.obAdapter.RequestDynamicCredentials(ctx, role.Name)
 		if err != nil {
 			p.logger.WarnContext(ctx, "secrets plugin: failed to fetch dynamic credentials",
 				slog.String("role", role.Name),
@@ -485,7 +543,7 @@ func (p *Plugin) rotateDynamicCredentialsIfNeeded(ctx context.Context) {
 			slog.Duration("remaining", remaining),
 		)
 
-		newTTL, err := p.store.RenewLease(ctx, creds.LeaseID, int(creds.TTL.Seconds()))
+		newTTL, err := p.obAdapter.RenewLease(ctx, creds.LeaseID, int(creds.TTL.Seconds()))
 		if err == nil {
 			p.dynCredsMu.Lock()
 			p.dynCreds[role.Name].TTL = newTTL
@@ -504,7 +562,7 @@ func (p *Plugin) rotateDynamicCredentialsIfNeeded(ctx context.Context) {
 			slog.String("role", role.Name),
 			slog.String("error", err.Error()),
 		)
-		newCreds, newErr := p.store.RequestDynamicCredentials(ctx, role.Name)
+		newCreds, newErr := p.obAdapter.RequestDynamicCredentials(ctx, role.Name)
 		if newErr != nil {
 			p.logger.ErrorContext(ctx, "secrets plugin: credential rotation failed",
 				slog.String("role", role.Name),
@@ -546,7 +604,7 @@ func (p *Plugin) rotateDynamicCredentialsIfNeeded(ctx context.Context) {
 			time.Sleep(5 * time.Second)
 			revokeCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
-			if revokeErr := p.store.RevokeLease(revokeCtx, old.LeaseID); revokeErr != nil {
+			if revokeErr := p.obAdapter.RevokeLease(revokeCtx, old.LeaseID); revokeErr != nil {
 				p.logger.Warn("secrets plugin: old lease revocation failed",
 					slog.String("lease_id", old.LeaseID),
 					slog.String("error", revokeErr.Error()),
@@ -613,8 +671,8 @@ func (p *Plugin) runHealthCheck(ctx context.Context) {
 		p.checkStaticSecret(ctx, inj.SecretPath, inj.SecretKey, &findings)
 	}
 
-	// Check dynamic credentials for expiring leases.
-	if p.cfg.Dynamic.Postgres.Enabled {
+	// Check dynamic credentials for expiring leases (OpenBao only).
+	if p.cfg.Dynamic.Postgres.Enabled && p.obAdapter != nil {
 		for _, role := range p.cfg.Dynamic.Postgres.Roles {
 			p.dynCredsMu.RLock()
 			creds, ok := p.dynCreds[role.Name]
@@ -674,27 +732,34 @@ func (p *Plugin) runHealthCheck(ctx context.Context) {
 }
 
 // checkStaticSecret performs health checks on a single static secret.
-// It checks staleness via metadata and weakness/length via the cached value.
+// It checks staleness via metadata (OpenBao only) and weakness/length via the cached value.
 func (p *Plugin) checkStaticSecret(ctx context.Context, path, key string, findings *[]HealthFinding) {
-	// Staleness check via metadata (no value needed).
-	meta, err := p.store.GetMetadata(ctx, path)
-	if err == nil && !meta.UpdatedTime.IsZero() {
-		age := time.Since(meta.UpdatedTime)
-		if age > p.cfg.Health.MaxStaticAge {
-			*findings = append(*findings, HealthFinding{
-				Path:     path,
-				Check:    "stale",
-				Severity: SeverityWarning,
-				Message: fmt.Sprintf(
-					"secret at %q (key: %q) has not been updated in %s (max: %s)",
-					path, key, age.Round(time.Hour), p.cfg.Health.MaxStaticAge,
-				),
-			})
+	// Staleness check via metadata (only available with OpenBao).
+	if p.obAdapter != nil {
+		meta, err := p.obAdapter.GetMetadata(ctx, path)
+		if err == nil && !meta.UpdatedTime.IsZero() {
+			age := time.Since(meta.UpdatedTime)
+			if age > p.cfg.Health.MaxStaticAge {
+				*findings = append(*findings, HealthFinding{
+					Path:     path,
+					Check:    "stale",
+					Severity: SeverityWarning,
+					Message: fmt.Sprintf(
+						"secret at %q (key: %q) has not been updated in %s (max: %s)",
+						path, key, age.Round(time.Hour), p.cfg.Health.MaxStaticAge,
+					),
+				})
+			}
 		}
 	}
 
 	// Value-based checks: weakness and length.
-	// We use the cache to avoid extra network calls; values are already loaded.
+	p.checkStaticSecretValue(path, key, findings)
+}
+
+// checkStaticSecretValue performs value-based health checks (weakness and length)
+// on a single static secret using cached values.
+func (p *Plugin) checkStaticSecretValue(path, key string, findings *[]HealthFinding) {
 	p.cacheMu.RLock()
 	val, ok := p.cache[cacheKeyFor(path, key)]
 	p.cacheMu.RUnlock()

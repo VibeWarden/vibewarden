@@ -35,4 +35,7 @@ func TestSecretSource_Constants(t *testing.T) {
 	if secret.SourceCredentialsFile != "credentials_file" {
 		t.Errorf("SourceCredentialsFile = %q, want %q", secret.SourceCredentialsFile, "credentials_file")
 	}
+	if secret.SourceBuiltin != "builtin" {
+		t.Errorf("SourceBuiltin = %q, want %q", secret.SourceBuiltin, "builtin")
+	}
 }

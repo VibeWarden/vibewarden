@@ -16,8 +16,15 @@ type Config struct {
 	// Enabled toggles the secrets plugin.
 	Enabled bool
 
-	// Provider selects the secret store backend. Currently only "openbao" is supported.
+	// Store selects the secret store backend: "builtin" or "openbao".
+	// Default: "builtin".
+	Store string
+
+	// Provider selects the secret store backend (deprecated: use Store).
 	Provider string
+
+	// Builtin holds settings for the built-in encrypted file store.
+	Builtin BuiltinConfig
 
 	// OpenBao holds connection and authentication settings for the OpenBao server.
 	OpenBao OpenBaoConfig
@@ -141,4 +148,15 @@ type HealthConfig struct {
 	// WeakPatterns is the list of substrings that indicate a weak/default secret.
 	// Matching is case-insensitive.
 	WeakPatterns []string
+}
+
+// BuiltinConfig holds settings for the built-in encrypted file store.
+type BuiltinConfig struct {
+	// Path is the location of the encrypted secrets file.
+	// Default: ".vibewarden/secrets.enc".
+	Path string
+
+	// KeyFile is the path to a file containing the hex-encoded 32-byte master key.
+	// If empty, the VIBEWARDEN_SECRETS_MASTER_KEY environment variable is used.
+	KeyFile string
 }

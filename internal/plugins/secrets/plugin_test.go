@@ -125,23 +125,23 @@ func TestPlugin_DisabledPlugin(t *testing.T) {
 	}
 }
 
-func TestPlugin_Init_InvalidProvider(t *testing.T) {
+func TestPlugin_Init_InvalidStore(t *testing.T) {
 	p := secrets.New(secrets.Config{
-		Enabled:  true,
-		Provider: "aws-secrets-manager",
-		OpenBao:  secrets.OpenBaoConfig{Address: "http://localhost:8200"},
+		Enabled: true,
+		Store:   "aws-secrets-manager",
+		OpenBao: secrets.OpenBaoConfig{Address: "http://localhost:8200"},
 	}, nil, slog.Default())
 
 	err := p.Init(context.Background())
 	if err == nil {
-		t.Error("Init() expected error for unsupported provider, got nil")
+		t.Error("Init() expected error for unsupported store, got nil")
 	}
 }
 
 func TestPlugin_Init_MissingAddress(t *testing.T) {
 	p := secrets.New(secrets.Config{
-		Enabled:  true,
-		Provider: "openbao",
+		Enabled: true,
+		Store:   "openbao",
 		// Address intentionally empty
 	}, nil, slog.Default())
 
@@ -159,8 +159,8 @@ func TestPlugin_Init_UnhealthyOpenBao(t *testing.T) {
 	defer srv.Close()
 
 	p := secrets.New(secrets.Config{
-		Enabled:  true,
-		Provider: "openbao",
+		Enabled: true,
+		Store:   "openbao",
 		OpenBao: secrets.OpenBaoConfig{
 			Address: srv.URL,
 			Auth:    secrets.OpenBaoAuthConfig{Method: "token", Token: "test"},
@@ -181,8 +181,8 @@ func TestPlugin_Init_StaticSecretFetch(t *testing.T) {
 
 	eventLog := &fakeEventLogger{}
 	p := secrets.New(secrets.Config{
-		Enabled:  true,
-		Provider: "openbao",
+		Enabled: true,
+		Store:   "openbao",
 		OpenBao: secrets.OpenBaoConfig{
 			Address: srv.URL,
 			Auth:    secrets.OpenBaoAuthConfig{Method: "token", Token: "root"},
@@ -215,8 +215,8 @@ func TestPlugin_ContributeCaddyHandlers_WithHeaders(t *testing.T) {
 	defer srv.Close()
 
 	p := secrets.New(secrets.Config{
-		Enabled:  true,
-		Provider: "openbao",
+		Enabled: true,
+		Store:   "openbao",
 		OpenBao: secrets.OpenBaoConfig{
 			Address: srv.URL,
 			Auth:    secrets.OpenBaoAuthConfig{Method: "token", Token: "root"},
@@ -253,8 +253,8 @@ func TestPlugin_ContributeCaddyHandlers_NoHeaders(t *testing.T) {
 	defer srv.Close()
 
 	p := secrets.New(secrets.Config{
-		Enabled:  true,
-		Provider: "openbao",
+		Enabled: true,
+		Store:   "openbao",
 		OpenBao: secrets.OpenBaoConfig{
 			Address: srv.URL,
 			Auth:    secrets.OpenBaoAuthConfig{Method: "token", Token: "root"},
@@ -282,8 +282,8 @@ func TestPlugin_WriteEnvFile(t *testing.T) {
 	defer srv.Close()
 
 	p := secrets.New(secrets.Config{
-		Enabled:  true,
-		Provider: "openbao",
+		Enabled: true,
+		Store:   "openbao",
 		OpenBao: secrets.OpenBaoConfig{
 			Address: srv.URL,
 			Auth:    secrets.OpenBaoAuthConfig{Method: "token", Token: "root"},
@@ -333,8 +333,8 @@ func TestPlugin_HealthCheck_WeakSecret(t *testing.T) {
 
 	eventLog := &fakeEventLogger{}
 	p := secrets.New(secrets.Config{
-		Enabled:  true,
-		Provider: "openbao",
+		Enabled: true,
+		Store:   "openbao",
 		OpenBao: secrets.OpenBaoConfig{
 			Address: srv.URL,
 			Auth:    secrets.OpenBaoAuthConfig{Method: "token", Token: "root"},
