@@ -113,6 +113,36 @@ VibeWarden is operated via the `vibew` CLI. Below is the complete command list.
 | `vibew eject` | Export raw proxy config to graduate past VibeWarden |
 | `vibew mcp` | Start MCP server for AI agent integration |
 
+### Multi-app deployment
+
+VibeWarden supports deploying multiple apps to a single VM, each on its own
+subdomain, behind one shared sidecar. `vibew deploy` automatically detects
+whether the target already has a sidecar:
+
+- First deploy with `tls.domain` set: bootstraps the sidecar and first site.
+- Subsequent deploys: adds new sites alongside existing ones.
+
+Each app keeps its own `vibewarden.yaml` (same file as local). No config
+merging. Server-side layout:
+
+```
+~/vibewarden/
+  .sidecar/global.yaml         # VM-wide settings
+  .sidecar/docker-compose.yml  # sidecar container
+  sites/<app>/vibewarden.yaml  # per-app config (copied from project)
+  sites/<app>/docker-compose.yml  # per-app container (generated)
+```
+
+The sidecar watches `sites/*/vibewarden.yaml` and hot-reloads on change.
+A broken site config does not affect other sites.
+
+Key commands:
+- `vibew deploy status --target ssh://user@host` -- shows all sites
+- `vibew deploy status --target ssh://user@host --app blog` -- single site
+- `vibew deploy logs --target ssh://user@host --app blog --follow` -- site logs
+
+Full guide: https://vibewarden.dev/docs/multi-app/
+
 ### deploy flags
 
 `vibew deploy` uses SSH to deploy the stack remotely. Key flags:

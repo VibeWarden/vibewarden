@@ -180,6 +180,7 @@ It never holds external secrets or connects directly to third-party APIs.
 | Maintenance mode | Serve a maintenance page with one config flag |
 | Response headers | Modify upstream response headers before forwarding |
 | Webhook verification | Signature verification for Stripe, GitHub, Slack, Twilio |
+| Multi-app deployment | Multiple apps on one VM with subdomain routing — [guide](docs/multi-app.md) |
 | Hot reload | File watcher + admin API — no restart required |
 | MCP server | `vibew mcp` — AI agent integration via Model Context Protocol; `vibewarden_stream_logs` tool for filtered real-time event streaming |
 | Config schema | JSON schema for `vibewarden.yaml` — editor autocomplete |
@@ -381,6 +382,7 @@ Architectural decisions are documented in [DECISIONS.md](DECISIONS.md).
 | Production deployment | [docs/production-deployment.md](docs/production-deployment.md) |
 | Hardening checklist | [docs/production-hardening.md](docs/production-hardening.md) |
 | Deploy command reference | [docs/deploy-reference.md](docs/deploy-reference.md) |
+| Multi-app deployment | [docs/multi-app.md](docs/multi-app.md) |
 | Architectural decisions | [DECISIONS.md](DECISIONS.md) |
 
 ---

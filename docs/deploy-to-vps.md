@@ -381,10 +381,19 @@ ssh root@<server-ip> 'cd /opt/myapp && docker run --rm \
 
 ---
 
+## Multi-app deployment
+
+To deploy multiple apps to the same VM, each on its own subdomain behind a
+shared sidecar, see [Multi-App Deployment](multi-app.md).
+
+---
+
 ## Next steps
 
 - **Deploy command reference**: see [Deploy Reference](deploy-reference.md) for
   the full `vibew deploy` flag reference, secret rotation, and unsealing.
+- **Multi-app deployment**: see [Multi-App Deployment](multi-app.md) for
+  deploying multiple apps to one VM with subdomain routing.
 - **Production hardening**: see [Production Hardening Checklist](production-hardening.md)
   for a full checklist of security settings to review before going live.
 - **Backups**: see [Production Deployment](production-deployment.md) for Postgres

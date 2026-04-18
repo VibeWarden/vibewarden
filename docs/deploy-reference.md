@@ -43,7 +43,22 @@ vibew deploy --target ssh://user@host --config vibewarden.prod.yaml
 | `--rotate-secrets` | No | `false` | Re-seed secrets from `--secrets-from` on subsequent deploys |
 | `--unseal-key` | No | stored key | OpenBao unseal key; overrides the key stored in `~/vibewarden/<project>/.openbao-credentials` on the remote |
 
-#### What happens on first deploy
+#### Deploy mode detection
+
+`vibew deploy` automatically detects whether the target has an existing
+VibeWarden sidecar and selects the right strategy:
+
+| Existing sidecar? | `tls.domain` set? | Behavior |
+|--------------------|-------------------|----------|
+| No | Yes | **Bootstrap**: creates sidecar + first site (multi-app) |
+| No | No | **Legacy deploy**: single-app mode (backward compatible) |
+| Yes | Yes | **Add site**: adds app alongside existing sites |
+| Yes | No | **Error**: `cannot add a site without a TLS domain` |
+
+Detection works by checking for `~/vibewarden/.sidecar/global.yaml` on the
+remote host via SSH (single round-trip).
+
+#### What happens on first deploy (single-app, no domain)
 
 1. Generates runtime config (Docker Compose files, Kratos config) locally.
 2. Transfers files to the remote via `rsync`.
@@ -54,7 +69,25 @@ vibew deploy --target ssh://user@host --config vibewarden.prod.yaml
 5. Prints the unseal key, root token, role ID, and secret ID. Save the unseal
    key -- it is not shown again.
 
-#### What happens on subsequent deploys
+#### What happens on first deploy (multi-app, with domain)
+
+1. Creates the directory layout: `~/vibewarden/.sidecar/` and
+   `~/vibewarden/sites/<project>/`.
+2. Creates the shared `vibewarden-multiapp` Docker network.
+3. Writes `global.yaml` and the sidecar `docker-compose.yml`.
+4. Copies your `vibewarden.yaml` to `sites/<project>/vibewarden.yaml`.
+5. Renders and starts the per-app Docker Compose stack.
+6. Starts the sidecar container.
+7. Runs a health check via SSH.
+
+#### What happens when adding a site
+
+1. Copies your `vibewarden.yaml` to `sites/<project>/vibewarden.yaml`.
+2. Renders and starts the per-app Docker Compose stack.
+3. Restarts the sidecar to pick up the new site configuration.
+4. Runs a health check via SSH.
+
+#### What happens on subsequent deploys (single-app)
 
 1. Regenerates and transfers updated config.
 2. Restarts Docker Compose on the remote.
@@ -72,6 +105,9 @@ Show Docker Compose service status on the remote.
 vibew deploy status --target ssh://user@host
 ```
 
+In multi-app mode (auto-detected), shows the sidecar status plus all sites.
+Use `--app` to target a specific site.
+
 #### Flags
 
 | Flag | Required | Default | Description |
@@ -79,6 +115,7 @@ vibew deploy status --target ssh://user@host
 | `--target` | Yes | -- | Remote target in `ssh://user@host[:port]` format |
 | `--config` | No | `./vibewarden.yaml` | Path to vibewarden.yaml (used to derive the remote project directory) |
 | `--ssh-key` | No | SSH agent / `~/.ssh/config` | Path to the SSH private key file |
+| `--app` | No | (all sites) | Target a specific site in multi-app mode (e.g. `--app blog`) |
 
 ---
 
@@ -90,6 +127,9 @@ Fetch Docker Compose logs from the remote.
 vibew deploy logs --target ssh://user@host
 ```
 
+In multi-app mode (auto-detected), shows sidecar logs by default. Use `--app`
+to view a specific site's logs.
+
 #### Flags
 
 | Flag | Required | Default | Description |
@@ -99,6 +139,7 @@ vibew deploy logs --target ssh://user@host
 | `--ssh-key` | No | SSH agent / `~/.ssh/config` | Path to the SSH private key file |
 | `--lines` | No | `50` | Number of log lines to fetch (`0` = all) |
 | `--follow` / `-f` | No | `false` | Stream log output continuously until cancelled (Ctrl-C) |
+| `--app` | No | (sidecar) | Target a specific site in multi-app mode (e.g. `--app blog`) |
 
 ---
 
@@ -174,6 +215,29 @@ vibew deploy logs --target ssh://ubuntu@203.0.113.10 --follow
 
 Press Ctrl-C to stop streaming.
 
+### Multi-app: deploy a second app to the same VM
+
+```bash
+vibew deploy \
+  --config vibewarden.yaml \
+  --target ssh://ubuntu@203.0.113.10
+```
+
+The CLI detects the existing sidecar and adds the new site. The config must
+have `tls.domain` set.
+
+### Multi-app: check all sites
+
+```bash
+vibew deploy status --target ssh://ubuntu@203.0.113.10
+```
+
+### Multi-app: view a specific site's logs
+
+```bash
+vibew deploy logs --target ssh://ubuntu@203.0.113.10 --app blog --follow
+```
+
 ---
 
 ## Common errors
@@ -184,6 +248,7 @@ Press Ctrl-C to stop streaming.
 | `invalid --target: scheme must be "ssh"` | Wrong URL scheme (e.g. `http://`) | Use `ssh://user@host` format |
 | `openbao bootstrap: ...` | OpenBao initialisation failed | Check remote Docker logs; verify port 8200 is reachable on the remote |
 | `loading config: ...` | Invalid or missing vibewarden.yaml | Run `vibew validate --config <path>` locally |
+| `cannot add a site without a TLS domain` | Adding a site to a multi-app host without `tls.domain` | Set `tls.domain` in vibewarden.yaml |
 | `rsync: connection refused` | SSH not reachable | Verify `ssh user@host echo OK` works first |
 
 ---
@@ -191,5 +256,6 @@ Press Ctrl-C to stop streaming.
 ## Related
 
 - [Deploy to VPS](deploy-to-vps.md) -- full first-deploy walkthrough
+- [Multi-App Deployment](multi-app.md) -- multiple apps on one VM
 - [Secret Management](secret-management.md) -- OpenBao configuration details
 - [Production Hardening](production-hardening.md) -- post-deploy security checklist
