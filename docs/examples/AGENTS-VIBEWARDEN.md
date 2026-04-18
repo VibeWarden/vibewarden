@@ -77,8 +77,7 @@ vibew logs         # pretty-print structured logs
 ## Known limitations
 
 - WAF is in `detect` mode by default (logs but does not block). Set `waf.mode: block` in vibewarden.yaml to enforce blocking.
-- `vibew add waf` does not exist — configure WAF directly in vibewarden.yaml under `plugins.waf`.
-- `vibew doctor` checks config, Docker, ports, and container health, but does not verify production reachability or external HTTP health.
+- `vibew doctor` checks config, Docker, ports, container health, and production reachability (when `--target` is provided).
 - Multi-site deployment is new and may have edge cases — report issues if routes or certs behave unexpectedly.
 - `vibew init` does not accept `--tls` or `--domain` flags — run `vibew add tls --domain <your-domain>` after init.
 

@@ -44,6 +44,11 @@ type ComposeRunner interface {
 	// composeFile is the path to the docker-compose.yml; when empty the default
 	// discovery logic applies.  Returns an empty slice when no containers exist.
 	PS(ctx context.Context, composeFile string) ([]ContainerInfo, error)
+
+	// Logs returns the last tailLines lines of logs for the given service.
+	// composeFile is the path to the docker-compose.yml; when empty the default
+	// discovery logic applies.
+	Logs(ctx context.Context, composeFile string, service string, tailLines int) (string, error)
 }
 
 // DockerBuilder runs "docker build" commands.

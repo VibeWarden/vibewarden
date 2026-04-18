@@ -9,6 +9,8 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
+	"time"
 
 	"github.com/vibewarden/vibewarden/internal/config"
 	"github.com/vibewarden/vibewarden/internal/ports"
@@ -24,6 +26,15 @@ var buildInstructionsByLang = map[string]string{
 }
 
 const generatedOutputDir = ".vibewarden/generated"
+
+// sidecarServiceName is the Compose service name for the VibeWarden sidecar
+// as defined in the generated docker-compose.yml template.
+const sidecarServiceName = "vibewarden"
+
+// SidecarSettleDuration is the time to wait after compose up before checking
+// whether the sidecar container is still running. It is a package-level
+// variable so that tests can override it to avoid real delays.
+var SidecarSettleDuration = 5 * time.Second
 
 // DevService orchestrates the "vibew dev" use case.
 // It optionally generates runtime configuration files from vibewarden.yaml
@@ -125,6 +136,11 @@ func (s *DevService) Run(ctx context.Context, cfg *config.Config, opts DevOption
 
 	if err := s.compose.Up(ctx, composeFile, profiles); err != nil {
 		return fmt.Errorf("starting dev environment: %w", err)
+	}
+
+	// Post-start: verify the sidecar container is still running.
+	if err := s.verifySidecar(ctx, composeFile, out); err != nil {
+		return err
 	}
 
 	printServiceURLs(cfg, opts, out)
@@ -239,6 +255,58 @@ func (s *DevService) checkAppImage(ctx context.Context, cfg *config.Config, opts
 	}
 
 	return buildMissingImageError(image, opts.DetectedLang)
+}
+
+// verifySidecar waits briefly after compose up, then checks whether the
+// sidecar container is still running. If it exited or is restarting, the
+// last few lines of its logs are printed and an error is returned so that
+// the command exits non-zero instead of printing a misleading success message.
+func (s *DevService) verifySidecar(ctx context.Context, composeFile string, out io.Writer) error {
+	fmt.Fprintln(out, "Waiting for sidecar to settle...")
+
+	select {
+	case <-time.After(SidecarSettleDuration):
+	case <-ctx.Done():
+		return nil
+	}
+
+	containers, err := s.compose.PS(ctx, composeFile)
+	if err != nil {
+		// PS failure is not fatal — the containers might still be starting.
+		slog.Warn("could not check sidecar status", "error", err)
+		return nil
+	}
+
+	for _, c := range containers {
+		if c.Service != sidecarServiceName {
+			continue
+		}
+
+		state := strings.ToLower(c.State)
+		if state == "running" {
+			return nil
+		}
+
+		// Sidecar is not running — fetch logs for diagnosis.
+		fmt.Fprintln(out, "")
+		fmt.Fprintln(out, "Sidecar container is not running (state: "+c.State+").")
+
+		logs, logsErr := s.compose.Logs(ctx, composeFile, sidecarServiceName, 20)
+		if logsErr != nil {
+			slog.Warn("could not fetch sidecar logs", "error", logsErr)
+		} else if logs != "" {
+			fmt.Fprintln(out, "")
+			fmt.Fprintln(out, "Last sidecar logs:")
+			fmt.Fprintln(out, logs)
+		}
+
+		fmt.Fprintln(out, "Sidecar failed to start — run vibew logs or vibew doctor for details.")
+		return fmt.Errorf("sidecar failed to start (state: %s)", c.State) //nolint:err113 // dynamic user-facing error
+	}
+
+	// Sidecar container not found in PS output — might not be part of the
+	// compose project (e.g. user-managed compose file). Not an error.
+	return nil
 }
 
 // buildMissingImageError constructs a descriptive error for a missing Docker

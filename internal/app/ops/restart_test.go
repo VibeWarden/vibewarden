@@ -43,6 +43,10 @@ func (f *fakeComposeRunner) PS(_ context.Context, _ string) ([]ports.ContainerIn
 	return nil, nil
 }
 
+func (f *fakeComposeRunner) Logs(_ context.Context, _ string, _ string, _ int) (string, error) {
+	return "", nil
+}
+
 func TestRestartService_Run(t *testing.T) {
 	wantComposeFile := filepath.Join(".vibewarden", "generated", "docker-compose.yml")
 

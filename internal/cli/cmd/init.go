@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/spf13/cobra"
+	"golang.org/x/term"
 
 	templateadapter "github.com/vibewarden/vibewarden/internal/adapters/template"
 	scaffoldapp "github.com/vibewarden/vibewarden/internal/app/scaffold"
@@ -18,15 +19,12 @@ import (
 )
 
 // IsTTY reports whether fd is connected to a terminal.
-// It calls the os.File.Stat method and checks for ModeCharDevice, which is set
-// on UNIX ttys and on Windows console handles. The function is a package-level
-// variable so that tests can replace it without build-tag gymnastics.
+// It uses term.IsTerminal (ioctl-based) which is more reliable than os.File.Stat
+// for detecting non-TTY contexts such as CI, piped stdin, or AI agent sessions.
+// The function is a package-level variable so that tests can replace it without
+// build-tag gymnastics.
 var IsTTY = func(fd *os.File) bool {
-	info, err := fd.Stat()
-	if err != nil {
-		return false
-	}
-	return (info.Mode() & os.ModeCharDevice) != 0
+	return term.IsTerminal(int(fd.Fd()))
 }
 
 // promptString writes prompt to w and reads a single line of input from r.
