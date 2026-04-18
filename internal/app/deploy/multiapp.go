@@ -134,9 +134,9 @@ func (s *Service) BootstrapSidecar(ctx context.Context, cfg *config.Config, opts
 	if port == 0 {
 		port = defaultHealthPort
 	}
-	healthURL := fmt.Sprintf("http://localhost:%d/_vibewarden/health", port)
+	healthURL := healthCheckURL(port, cfg.TLS.Enabled)
 	fmt.Fprintf(out, "Waiting for sidecar health check at %s (via SSH)...\n", healthURL)
-	s.waitHealthy(ctx, port, out)
+	s.waitHealthy(ctx, port, cfg.TLS.Enabled, out)
 
 	fmt.Fprintln(out, "Bootstrap complete.")
 	return nil
@@ -177,9 +177,9 @@ func (s *Service) DeployMultiApp(ctx context.Context, cfg *config.Config, opts R
 	if port == 0 {
 		port = defaultHealthPort
 	}
-	healthURL := fmt.Sprintf("http://localhost:%d/_vibewarden/health", port)
+	healthURL := healthCheckURL(port, cfg.TLS.Enabled)
 	fmt.Fprintf(out, "Waiting for sidecar health check at %s (via SSH)...\n", healthURL)
-	s.waitHealthy(ctx, port, out)
+	s.waitHealthy(ctx, port, cfg.TLS.Enabled, out)
 
 	fmt.Fprintln(out, "Site deployed.")
 	return nil

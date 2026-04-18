@@ -20,6 +20,16 @@ func multiappConfig() *config.Config {
 	}
 }
 
+// multiappTLSConfig returns a Config with TLS enabled for multi-app deploy tests.
+func multiappTLSConfig() *config.Config {
+	return &config.Config{
+		Server:   config.ServerConfig{Port: 443},
+		Upstream: config.UpstreamConfig{Port: 3000},
+		App:      config.AppConfig{Image: "myapp:latest"},
+		TLS:      config.TLSConfig{Enabled: true},
+	}
+}
+
 func TestBootstrapSidecar_HappyPath(t *testing.T) {
 	executor := &fakeExecutor{}
 	generator := &fakeGenerator{}
@@ -468,5 +478,127 @@ func TestBootstrapSidecar_DeriveProjectName(t *testing.T) {
 	}
 	if !found {
 		t.Errorf("expected site directory to use derived name 'my-awesome-app', got run calls: %v", executor.runCalls)
+	}
+}
+
+func TestBootstrapSidecar_TLSHealthCheck(t *testing.T) {
+	tests := []struct {
+		name        string
+		cfg         *config.Config
+		wantCurlCmd string
+		wantScheme  string
+	}{
+		{
+			name:        "TLS disabled uses HTTP with -sf",
+			cfg:         multiappConfig(),
+			wantCurlCmd: "curl -sf http://localhost:443/_vibewarden/health",
+			wantScheme:  "http://",
+		},
+		{
+			name:        "TLS enabled uses HTTPS with -sfk",
+			cfg:         multiappTLSConfig(),
+			wantCurlCmd: "curl -sfk https://localhost:443/_vibewarden/health",
+			wantScheme:  "https://",
+		},
+		{
+			name: "TLS enabled with custom port uses HTTPS with -sfk",
+			cfg: &config.Config{
+				Server:   config.ServerConfig{Port: 8443},
+				Upstream: config.UpstreamConfig{Port: 3000},
+				App:      config.AppConfig{Image: "myapp:latest"},
+				TLS:      config.TLSConfig{Enabled: true},
+			},
+			wantCurlCmd: "curl -sfk https://localhost:8443/_vibewarden/health",
+			wantScheme:  "https://",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			executor := &fakeExecutor{}
+			generator := &fakeGenerator{}
+
+			svc := deployapp.NewService(executor, generator)
+
+			var buf bytes.Buffer
+			err := svc.BootstrapSidecar(context.Background(), tt.cfg, deployapp.RunOptions{
+				ConfigPath:  "/tmp/proj/vibewarden.yaml",
+				ProjectName: "myproject",
+				Out:         &buf,
+			})
+			if err != nil {
+				t.Fatalf("BootstrapSidecar() unexpected error: %v", err)
+			}
+
+			// Verify the correct curl command was executed.
+			assertRunCalled(t, executor.runCalls, tt.wantCurlCmd)
+
+			// Verify the output mentions the correct scheme in the health check URL.
+			out := buf.String()
+			if !strings.Contains(out, tt.wantScheme) {
+				t.Errorf("expected output to contain %q, got:\n%s", tt.wantScheme, out)
+			}
+		})
+	}
+}
+
+func TestDeployMultiApp_TLSHealthCheck(t *testing.T) {
+	tests := []struct {
+		name        string
+		cfg         *config.Config
+		wantCurlCmd string
+		wantScheme  string
+	}{
+		{
+			name:        "TLS disabled uses HTTP with -sf",
+			cfg:         multiappConfig(),
+			wantCurlCmd: "curl -sf http://localhost:443/_vibewarden/health",
+			wantScheme:  "http://",
+		},
+		{
+			name:        "TLS enabled uses HTTPS with -sfk",
+			cfg:         multiappTLSConfig(),
+			wantCurlCmd: "curl -sfk https://localhost:443/_vibewarden/health",
+			wantScheme:  "https://",
+		},
+		{
+			name: "TLS enabled with custom port uses HTTPS with -sfk",
+			cfg: &config.Config{
+				Server:   config.ServerConfig{Port: 8443},
+				Upstream: config.UpstreamConfig{Port: 3000},
+				App:      config.AppConfig{Image: "myapp:latest"},
+				TLS:      config.TLSConfig{Enabled: true},
+			},
+			wantCurlCmd: "curl -sfk https://localhost:8443/_vibewarden/health",
+			wantScheme:  "https://",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			executor := &fakeExecutor{}
+			generator := &fakeGenerator{}
+
+			svc := deployapp.NewService(executor, generator)
+
+			var buf bytes.Buffer
+			err := svc.DeployMultiApp(context.Background(), tt.cfg, deployapp.RunOptions{
+				ConfigPath:  "/tmp/site/vibewarden.yaml",
+				ProjectName: "mysite",
+				Out:         &buf,
+			})
+			if err != nil {
+				t.Fatalf("DeployMultiApp() unexpected error: %v", err)
+			}
+
+			// Verify the correct curl command was executed.
+			assertRunCalled(t, executor.runCalls, tt.wantCurlCmd)
+
+			// Verify the output mentions the correct scheme in the health check URL.
+			out := buf.String()
+			if !strings.Contains(out, tt.wantScheme) {
+				t.Errorf("expected output to contain %q, got:\n%s", tt.wantScheme, out)
+			}
+		})
 	}
 }

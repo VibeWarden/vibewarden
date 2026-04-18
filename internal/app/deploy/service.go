@@ -228,9 +228,9 @@ func (s *Service) Deploy(ctx context.Context, cfg *config.Config, opts RunOption
 	if port == 0 {
 		port = defaultHealthPort
 	}
-	healthURL := fmt.Sprintf("http://localhost:%d/_vibewarden/health", port)
+	healthURL := healthCheckURL(port, cfg.TLS.Enabled)
 	fmt.Fprintf(out, "Waiting for sidecar health check at %s (via SSH)...\n", healthURL)
-	s.waitHealthy(ctx, port, out)
+	s.waitHealthy(ctx, port, cfg.TLS.Enabled, out)
 
 	fmt.Fprintln(out, "Deploy complete.")
 	return nil
@@ -443,6 +443,10 @@ func (s *Service) checkRemotePrerequisites(ctx context.Context) error {
 // until curl reports success (exit code 0) or the context deadline /
 // healthCheckTimeout expires.
 //
+// When tlsEnabled is true the probe uses HTTPS with the -k flag (skip TLS
+// certificate verification) because we are hitting localhost, not the public
+// domain. When TLS is disabled the probe uses plain HTTP.
+//
 // Running the probe over SSH avoids all DNS propagation, firewall, and TLS
 // certificate issuance dependencies — the request is made from inside the
 // server to its own localhost interface.
@@ -450,8 +454,8 @@ func (s *Service) checkRemotePrerequisites(ctx context.Context) error {
 // On timeout or context cancellation the function prints a warning and returns
 // without error — the deploy is considered successful because services may still
 // be starting up. The operator can run "vibew deploy status" to check manually.
-func (s *Service) waitHealthy(ctx context.Context, port int, out io.Writer) {
-	cmd := fmt.Sprintf("curl -sf http://localhost:%d/_vibewarden/health", port)
+func (s *Service) waitHealthy(ctx context.Context, port int, tlsEnabled bool, out io.Writer) {
+	cmd := healthCheckCmd(port, tlsEnabled)
 	deadline := time.Now().Add(healthCheckTimeout)
 	attempt := 0
 	var lastErr error
@@ -478,6 +482,27 @@ func (s *Service) waitHealthy(ctx context.Context, port int, out io.Writer) {
 		case <-time.After(healthCheckInterval):
 		}
 	}
+}
+
+// healthCheckURL returns the health check URL using HTTPS when TLS is enabled
+// and HTTP otherwise. The host is always localhost because the probe runs on
+// the remote server itself via SSH.
+func healthCheckURL(port int, tlsEnabled bool) string {
+	scheme := "http"
+	if tlsEnabled {
+		scheme = "https"
+	}
+	return fmt.Sprintf("%s://localhost:%d/_vibewarden/health", scheme, port)
+}
+
+// healthCheckCmd returns the curl command used to probe the health endpoint.
+// When TLS is enabled it adds the -k flag to skip certificate verification,
+// since the probe targets localhost rather than the public domain.
+func healthCheckCmd(port int, tlsEnabled bool) string {
+	if tlsEnabled {
+		return fmt.Sprintf("curl -sfk https://localhost:%d/_vibewarden/health", port)
+	}
+	return fmt.Sprintf("curl -sf http://localhost:%d/_vibewarden/health", port)
 }
 
 // ProjectNameFromConfig derives a project name from the config file path.
