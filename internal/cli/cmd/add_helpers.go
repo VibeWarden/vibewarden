@@ -40,7 +40,11 @@ func runAddFeature(
 	result, err := svc.AddFeature(context.Background(), dir, addOpts)
 	if err != nil {
 		if errors.Is(err, domainscaffold.ErrFeatureAlreadyEnabled) {
-			fmt.Fprintf(cmd.OutOrStdout(), "Feature %q is already enabled in vibewarden.yaml — nothing to do.\n", feature)
+			if feature == domainscaffold.FeatureTLS {
+				fmt.Fprintf(cmd.OutOrStdout(), "TLS is already enabled in vibewarden.yaml.\nTo update the domain, run: vibew add tls --domain <new-domain>\n")
+			} else {
+				fmt.Fprintf(cmd.OutOrStdout(), "Feature %q is already enabled in vibewarden.yaml — nothing to do.\n", feature)
+			}
 			return nil
 		}
 		if errors.Is(err, domainscaffold.ErrConfigNotFound) {

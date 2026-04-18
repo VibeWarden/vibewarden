@@ -35,6 +35,8 @@ func (s *RestartService) Run(ctx context.Context, services []string, out io.Writ
 	}
 
 	if err := s.compose.Restart(ctx, composeFile, services); err != nil {
+		fmt.Fprintln(out, "")
+		fmt.Fprintln(out, "Restart failed. Run 'vibew logs' or 'vibew doctor' to diagnose.")
 		return fmt.Errorf("restarting services: %w", err)
 	}
 

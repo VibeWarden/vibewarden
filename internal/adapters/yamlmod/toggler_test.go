@@ -228,11 +228,21 @@ func TestToggler_EnableFeature(t *testing.T) {
 			wantInYAML: []string{"enabled: true", "letsencrypt"},
 		},
 		{
-			name:      "enable tls when already enabled returns ErrFeatureAlreadyEnabled",
+			name:      "enable tls when already enabled without domain returns ErrFeatureAlreadyEnabled",
 			initial:   "tls:\n  enabled: true\n  domain: foo.com\n",
 			feature:   scaffold.FeatureTLS,
 			wantErr:   true,
 			wantErrIs: scaffold.ErrFeatureAlreadyEnabled,
+		},
+		{
+			name:    "enable tls when already enabled with new domain updates domain",
+			initial: "tls:\n  enabled: true\n  domain: foo.com\n  provider: self-signed\n",
+			feature: scaffold.FeatureTLS,
+			opts: scaffold.FeatureOptions{
+				TLSDomain:   "bar.com",
+				TLSProvider: "letsencrypt",
+			},
+			wantInYAML: []string{"enabled: true", "bar.com", "letsencrypt"},
 		},
 		{
 			name:       "enable admin adds admin section",

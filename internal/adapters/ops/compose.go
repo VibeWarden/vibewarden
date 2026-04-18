@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"os/exec"
+	"strings"
 
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
@@ -53,6 +54,8 @@ func (c *ComposeAdapter) Up(ctx context.Context, composeFile string, profiles []
 // When composeFile is non-empty it is passed as the -f flag.
 // When services is non-empty each service name is appended so that only those
 // services are restarted; when empty all services are restarted.
+// On failure, stderr output from the command is included in the returned error
+// to give the caller actionable context for diagnosis.
 func (c *ComposeAdapter) Restart(ctx context.Context, composeFile string, services []string) error {
 	args := []string{"compose"}
 	if composeFile != "" {
@@ -62,7 +65,13 @@ func (c *ComposeAdapter) Restart(ctx context.Context, composeFile string, servic
 	args = append(args, services...)
 
 	cmd := exec.CommandContext(ctx, "docker", args...)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
+		msg := strings.TrimSpace(stderr.String())
+		if msg != "" {
+			return fmt.Errorf("docker compose restart: %w\nstderr: %s", err, msg)
+		}
 		return fmt.Errorf("docker compose restart: %w", err)
 	}
 	return nil

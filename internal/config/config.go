@@ -153,6 +153,32 @@ func (c *Config) IsProdProfile() bool {
 	return c.Profile == "prod"
 }
 
+// ComposeProjectName returns the Docker Compose project name to use in the
+// generated docker-compose.yml. This prevents Docker Compose from deriving the
+// project name from the directory name (which would be "generated" for files
+// under .vibewarden/generated/) and avoids stale image names like "generated-app".
+//
+// Derivation order:
+//  1. App.Image with the tag stripped (e.g. "myapp:latest" -> "myapp").
+//  2. "vibewarden" as a safe fallback.
+func (c *Config) ComposeProjectName() string {
+	if c.App.Image != "" {
+		name := c.App.Image
+		// Strip registry prefix if present (e.g. "ghcr.io/org/myapp:latest" -> "myapp").
+		if idx := strings.LastIndex(name, "/"); idx >= 0 {
+			name = name[idx+1:]
+		}
+		// Strip tag (e.g. "myapp:latest" -> "myapp").
+		if idx := strings.Index(name, ":"); idx >= 0 {
+			name = name[:idx]
+		}
+		if name != "" {
+			return name
+		}
+	}
+	return "vibewarden"
+}
+
 // EgressNoProxy builds the NO_PROXY value for the app service based on which
 // internal services are enabled in the configuration. The value always includes
 // localhost and the vibewarden service name. Additional services are appended

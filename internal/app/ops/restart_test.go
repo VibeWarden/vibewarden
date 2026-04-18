@@ -69,10 +69,11 @@ func TestRestartService_Run(t *testing.T) {
 			wantOutput: "app",
 		},
 		{
-			name:       "compose error is propagated",
+			name:       "compose error is propagated with diagnostic hint",
 			services:   nil,
 			restartErr: errors.New("docker daemon not running"),
 			wantErr:    true,
+			wantOutput: "vibew logs",
 		},
 	}
 
@@ -88,6 +89,10 @@ func TestRestartService_Run(t *testing.T) {
 				t.Fatalf("Run() error = %v, wantErr %v", err, tt.wantErr)
 			}
 			if tt.wantErr {
+				// Even on error, verify diagnostic output if expected.
+				if tt.wantOutput != "" && !strings.Contains(out.String(), tt.wantOutput) {
+					t.Errorf("error output %q does not contain %q", out.String(), tt.wantOutput)
+				}
 				return
 			}
 

@@ -193,10 +193,11 @@ func TestAddTLSCmd(t *testing.T) {
 			wantInYAML:      []string{"self-signed", "internal.corp"},
 		},
 		{
-			name:            "already enabled tls is no-op",
-			initial:         "tls:\n  enabled: true\n  domain: foo.com\n",
-			args:            []string{"tls", "--domain", "bar.com"},
-			wantOutContains: "already enabled",
+			name:            "already enabled tls with new domain updates settings",
+			initial:         "tls:\n  enabled: true\n  domain: foo.com\n  provider: self-signed\n",
+			args:            []string{"tls", "--domain", "bar.com", "--provider", "letsencrypt"},
+			wantOutContains: `"tls" enabled successfully`,
+			wantInYAML:      []string{"enabled: true", "bar.com", "letsencrypt"},
 		},
 	}
 
