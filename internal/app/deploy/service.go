@@ -15,6 +15,28 @@ import (
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
 
+// DriftError is returned when remote files have diverged from local files
+// and --force was not specified. It carries the list of changes that would
+// be applied so the CLI can display them to the user.
+type DriftError struct {
+	// Changes is a list of human-readable descriptions of files that would
+	// be modified or deleted on the remote host.
+	Changes []string
+}
+
+// Error implements the error interface.
+func (e *DriftError) Error() string {
+	var b strings.Builder
+	b.WriteString("remote files have been modified since last deploy:\n")
+	for _, c := range e.Changes {
+		b.WriteString("  ")
+		b.WriteString(c)
+		b.WriteString("\n")
+	}
+	b.WriteString("\nRun 'vibew deploy --force' to overwrite, or back up changes first.")
+	return b.String()
+}
+
 const (
 	// remoteBaseDir is the root directory on the remote host where all
 	// VibeWarden projects are deployed.
@@ -66,6 +88,12 @@ type RunOptions struct {
 	// before transfer. Defaults to ".vibewarden/generated" when empty.
 	GeneratedDir string
 
+	// Force, when true, skips the drift detection warning and overwrites
+	// remote files unconditionally. When false (the default), a dry-run rsync
+	// is performed before the real transfer and the deploy aborts with an
+	// actionable message if remote files have diverged.
+	Force bool
+
 	// Out is the writer used for progress messages. May be nil (output is
 	// discarded).
 	Out io.Writer
@@ -115,6 +143,19 @@ func (s *Service) Deploy(ctx context.Context, cfg *config.Config, opts RunOption
 	// Ensure the remote directory exists.
 	if _, err := s.executor.Run(ctx, "mkdir -p "+remoteDir); err != nil {
 		return fmt.Errorf("creating remote directory: %w", err)
+	}
+
+	// Drift detection: before overwriting remote files with --delete, check
+	// what would change and abort unless --force is set.
+	if !opts.Force {
+		changes, err := s.executor.DryRunTransfer(ctx, generatedDir, remoteDir)
+		if err != nil {
+			// If the dry-run fails (e.g. remote directory does not exist yet on
+			// first deploy), fall through — the real rsync will create it.
+			fmt.Fprintf(out, "Note: drift detection skipped (%v)\n", err)
+		} else if len(changes) > 0 {
+			return &DriftError{Changes: changes}
+		}
 	}
 
 	// rsync generated files.

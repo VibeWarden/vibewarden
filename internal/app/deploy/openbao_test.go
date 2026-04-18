@@ -366,3 +366,7 @@ func (w *wildcardExecutor) Transfer(_ context.Context, _, _ string, _ bool) erro
 func (w *wildcardExecutor) TransferFile(_ context.Context, _, _ string) error {
 	return nil
 }
+
+func (w *wildcardExecutor) DryRunTransfer(_ context.Context, _, _ string) ([]string, error) {
+	return nil, nil
+}
