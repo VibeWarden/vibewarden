@@ -12,6 +12,10 @@ This initial entry was written by hand to summarise the work leading up to v0.1.
 
 ## [Unreleased]
 
+---
+
+## [v0.11.0] — 2026-04-15
+
 ### Breaking changes
 
 - **`auth.enabled` removed from `vibewarden.yaml`** (ADR-065). `auth.mode` is
@@ -20,6 +24,88 @@ This initial entry was written by hand to summarise the work leading up to v0.1.
   to enable a strategy. Any presence of `auth.enabled` — even `false` — is
   rejected at config load with an actionable error pointing at ADR-065.
   Migration: delete the `auth.enabled` line; keep or set `auth.mode`.
+  (#845, closes #816)
+- **`vibew init` no longer accepts a positional name argument** (ADR-073). It
+  always scaffolds in the current directory. Use `mkdir myapp && cd myapp &&
+  vibew init` instead of `vibew init myapp`. The `--name` flag is also removed.
+  (#895, closes #842)
+
+### Features
+
+- **Multi-app deployment** (epic #869, ADRs 068-072) — deploy multiple apps to
+  the same VM with subdomain routing. Each app gets its own `vibewarden.yaml`,
+  independent TLS certs, and per-site middleware. `vibew deploy` detects an
+  existing VibeWarden instance and adds sites automatically without downtime.
+  - Site domain model and multi-config loader (#875, closes #870)
+  - Caddy multi-host route generation (#876, closes #871)
+  - Deploy detection and multi-app orchestration (#877, closes #872)
+  - Multi-site directory watcher and hot-reload service (#878, closes #873)
+  - Multi-app CLI and serve entry point (#879, closes #874)
+- **Language-aware Docker health check probes** — Python uses `python -c`, Node
+  uses `node -e`, Go/Alpine uses `wget`. Eliminates missing-wget failures on slim
+  images. (#886, closes #884)
+- **MCP tool list generated at runtime** — `vibew mcp --help` always reflects
+  all registered tools; the list can no longer drift from the live registry.
+  (#835, closes #813)
+- **Composition roots moved to `cmd/vibewarden/`** (ADR-067) — cleaner
+  separation between wiring and domain logic. (#867, closes #809)
+- **Ports layer consolidated** (ADR-064) — all port interfaces live under
+  `internal/ports/`, reducing import fan-out. (#843, closes #818)
+
+### Bug fixes
+
+- Caddy auth handler modules now registered when `auth.mode: kratos` is set;
+  previously crashed with `unknown field "cookie_name"`. (#885, closes #883)
+- External TLS provider in multi-site mode no longer falls through to ACME.
+  (#858, closes #823)
+- YAML quoting in language-aware health check commands corrected. (#898, closes #898)
+- `vibew generate` no longer requires a scaffolding marker to be present.
+  (#881, closes #880)
+- Docker build context fixed for generated compose files. (#859, closes #808)
+- `errors.Is` used consistently for `http.ErrServerClosed` checks across all
+  five serve paths. (#837, closes #814)
+- OpenBao `tryOpenBao` and `tryDynamicCredentials` silent error masking removed;
+  transport errors now propagate. (#830, closes #812) (#834, closes #832)
+- `CertMonitor.Stop` double-close panic fixed by adding a sync.Once guard.
+  (#858, closes #823)
+- SSRF `privateRanges` moved from package-level `init()` to per-guard state,
+  eliminating a data race. (#838, closes #815)
+- OpenBao `NotFound` is now a sentinel error for clean `errors.Is` checks.
+  (#830, closes #821)
+- WAF defaults in `vibewarden.reference.yaml` corrected. (#828, closes #810)
+- Scaffold tests isolated and repo safety check added (ADR-066). (#846, closes #844)
+- Removed `.claude/CLAUDE.md` and `.cursor/rules` from scaffold file lists.
+  (#829, closes #811)
+- CLI help-text corrections for `plugins` and `secret generate` commands.
+  (#868, closes #865, #866)
+- `vibew init` docs aligned with `vibew wrap` in getting-started guide.
+  (#841, closes #820)
+- `--lang` flag removed; bare `vibew init` used everywhere in docs. (#857, closes #842)
+
+### Infrastructure and dependencies
+
+- Dependabot configured for gomod, pip, docker, and github-actions ecosystems.
+  (#847)
+- Integration test pipeline added: Tier 1 multi-site Host-header routing and
+  Tier 3 Docker-in-Docker deploy test. (#889, #890, #891)
+- 9 Dependabot PRs merged: Alpine 3.21 to 3.23, `actions/checkout@v6`,
+  `actions/setup-go@v6`, `actions/upload-artifact@v7`,
+  `docker/setup-qemu-action@v4`, `docker/setup-buildx-action@v4`,
+  `golangci/golangci-lint-action@v9`, OTel exporters (CVE-2026-39882),
+  `modernc.org/sqlite` bump. (#847-#856, #827)
+- CI Trivy image scan and coverage gate stabilised on main. (#833)
+- All agents upgraded to Opus 4.7. (#803)
+- ADRs split into individual files under `decisions/`; 6 previously missing
+  ADRs recovered. (#894)
+
+### Documentation
+
+- `vibew deploy`, `vibew upgrade`, `vibew migrate`, `vibew plugins`, and
+  `vibew secret generate` commands documented. (#864, closes #817)
+- `llms.txt` short-index added at repo root. (#860, closes #826)
+- Sample `AGENTS-VIBEWARDEN.md` added to `docs/examples/`. (#861, closes #825)
+- Install PATH hint and dead-upstream error example added to docs. (#863, closes #825)
+- Reference YAML readers pointed at `example.yaml` first. (#839, closes #822)
 
 ---
 
@@ -154,4 +240,5 @@ Single Go binary embedding Caddy. Zero-to-secure in minutes for vibe-coded apps.
 
 ---
 
+[v0.11.0]: https://github.com/vibewarden/vibewarden/releases/tag/v0.11.0
 [v0.1.0]: https://github.com/vibewarden/vibewarden/releases/tag/v0.1.0
