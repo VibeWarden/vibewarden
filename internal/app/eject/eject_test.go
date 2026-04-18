@@ -50,7 +50,7 @@ func TestService_Eject_NilConfig(t *testing.T) {
 	b := &fakeBuilder{}
 	svc := eject.NewService(b)
 
-	_, err := svc.Eject(nil)
+	_, err := svc.Eject(nil, nil)
 	if err == nil {
 		t.Fatal("expected error for nil config, got nil")
 	}
@@ -60,7 +60,7 @@ func TestService_Eject_BuilderError(t *testing.T) {
 	b := &fakeBuilder{err: errors.New("build failed")}
 	svc := eject.NewService(b)
 
-	_, err := svc.Eject(minimalConfig())
+	_, err := svc.Eject(minimalConfig(), nil)
 	if err == nil {
 		t.Fatal("expected error when builder fails, got nil")
 	}
@@ -71,7 +71,7 @@ func TestService_Eject_ReturnsBuilderResult(t *testing.T) {
 	b := &fakeBuilder{result: want}
 	svc := eject.NewService(b)
 
-	got, err := svc.Eject(minimalConfig())
+	got, err := svc.Eject(minimalConfig(), nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -85,7 +85,7 @@ func TestService_Eject_CallsBuilder(t *testing.T) {
 	svc := eject.NewService(b)
 
 	cfg := minimalConfig()
-	_, err := svc.Eject(cfg)
+	_, err := svc.Eject(cfg, nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -116,7 +116,7 @@ func TestService_Eject_ProxyConfigListenAddr(t *testing.T) {
 			cfg.Server.Host = tt.host
 			cfg.Server.Port = tt.port
 
-			_, err := svc.Eject(cfg)
+			_, err := svc.Eject(cfg, nil)
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
@@ -152,7 +152,7 @@ func TestService_Eject_ProxyConfigUpstreamAddr(t *testing.T) {
 			cfg.Upstream.Host = tt.host
 			cfg.Upstream.Port = tt.port
 
-			_, err := svc.Eject(cfg)
+			_, err := svc.Eject(cfg, nil)
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
@@ -201,7 +201,7 @@ func TestService_Eject_TLSConfig(t *testing.T) {
 			cfg := minimalConfig()
 			cfg.TLS = tt.tlsCfg
 
-			_, err := svc.Eject(cfg)
+			_, err := svc.Eject(cfg, nil)
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
@@ -226,7 +226,7 @@ func TestService_Eject_VersionIsEjected(t *testing.T) {
 	b := &fakeBuilder{}
 	svc := eject.NewService(b)
 
-	_, err := svc.Eject(minimalConfig())
+	_, err := svc.Eject(minimalConfig(), nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -240,7 +240,7 @@ func TestService_Eject_InternalAddrsOmitted(t *testing.T) {
 	b := &fakeBuilder{}
 	svc := eject.NewService(b)
 
-	_, err := svc.Eject(minimalConfig())
+	_, err := svc.Eject(minimalConfig(), nil)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
@@ -256,67 +256,48 @@ func TestService_Eject_InternalAddrsOmitted(t *testing.T) {
 	}
 }
 
-func TestService_Eject_WAFHandlersIncluded(t *testing.T) {
+func TestService_Eject_ExtraHandlersPassedThrough(t *testing.T) {
 	tests := []struct {
-		name             string
-		wafCfg           config.WAFConfig
-		wantHandlerCount int
-		wantHandlerNames []string
+		name          string
+		handlers      []ports.CaddyHandler
+		wantCount     int
+		wantFirstName string
 	}{
 		{
-			name: "both WAF engine and content-type enabled",
-			wafCfg: config.WAFConfig{
-				Enabled: true,
-				Mode:    "block",
-				Rules: config.WAFRulesConfig{
-					SQLInjection:     true,
-					XSS:              true,
-					PathTraversal:    true,
-					CommandInjection: true,
-				},
-				ContentTypeValidation: config.ContentTypeValidationConfig{
-					Enabled: true,
-					Allowed: []string{"application/json"},
-				},
-			},
-			wantHandlerCount: 2,
-			wantHandlerNames: []string{"vibewarden_waf_content_type", "vibewarden_waf_engine"},
+			name:      "nil handlers",
+			handlers:  nil,
+			wantCount: 0,
 		},
 		{
-			name: "only WAF engine enabled",
-			wafCfg: config.WAFConfig{
-				Enabled: true,
-				Mode:    "detect",
-				Rules: config.WAFRulesConfig{
-					SQLInjection: true,
-					XSS:          true,
-				},
-			},
-			wantHandlerCount: 1,
-			wantHandlerNames: []string{"vibewarden_waf_engine"},
+			name:      "empty handlers",
+			handlers:  []ports.CaddyHandler{},
+			wantCount: 0,
 		},
 		{
-			name: "only content-type validation enabled",
-			wafCfg: config.WAFConfig{
-				Enabled: false,
-				ContentTypeValidation: config.ContentTypeValidationConfig{
-					Enabled: true,
-					Allowed: []string{"application/json", "multipart/form-data"},
+			name: "single handler",
+			handlers: []ports.CaddyHandler{
+				{
+					Handler:  map[string]any{"handler": "vibewarden_waf_content_type"},
+					Priority: 25,
 				},
 			},
-			wantHandlerCount: 1,
-			wantHandlerNames: []string{"vibewarden_waf_content_type"},
+			wantCount:     1,
+			wantFirstName: "vibewarden_waf_content_type",
 		},
 		{
-			name: "both disabled — no handlers",
-			wafCfg: config.WAFConfig{
-				Enabled: false,
-				ContentTypeValidation: config.ContentTypeValidationConfig{
-					Enabled: false,
+			name: "two handlers",
+			handlers: []ports.CaddyHandler{
+				{
+					Handler:  map[string]any{"handler": "vibewarden_waf_content_type"},
+					Priority: 25,
+				},
+				{
+					Handler:  map[string]any{"handler": "vibewarden_waf_engine"},
+					Priority: 25,
 				},
 			},
-			wantHandlerCount: 0,
-			wantHandlerNames: nil,
+			wantCount:     2,
+			wantFirstName: "vibewarden_waf_content_type",
 		},
 	}
 
@@ -325,73 +306,25 @@ func TestService_Eject_WAFHandlersIncluded(t *testing.T) {
 			b := &fakeBuilder{}
 			svc := eject.NewService(b)
 
-			cfg := minimalConfig()
-			cfg.WAF = tt.wafCfg
-
-			_, err := svc.Eject(cfg)
+			_, err := svc.Eject(minimalConfig(), tt.handlers)
 			if err != nil {
 				t.Fatalf("unexpected error: %v", err)
 			}
 
 			got := b.got.ExtraHandlers
-			if len(got) != tt.wantHandlerCount {
-				t.Fatalf("ExtraHandlers count = %d, want %d", len(got), tt.wantHandlerCount)
+			if len(got) != tt.wantCount {
+				t.Fatalf("ExtraHandlers count = %d, want %d", len(got), tt.wantCount)
 			}
 
-			for i, wantName := range tt.wantHandlerNames {
-				gotName, ok := got[i].Handler["handler"].(string)
+			if tt.wantCount > 0 {
+				gotName, ok := got[0].Handler["handler"].(string)
 				if !ok {
-					t.Errorf("ExtraHandlers[%d].Handler[\"handler\"] is not a string", i)
-					continue
-				}
-				if gotName != wantName {
-					t.Errorf("ExtraHandlers[%d] handler = %q, want %q", i, gotName, wantName)
-				}
-			}
-
-			// Verify all WAF handlers have priority 25.
-			for i, h := range got {
-				if h.Priority != 25 {
-					t.Errorf("ExtraHandlers[%d].Priority = %d, want 25", i, h.Priority)
+					t.Errorf("ExtraHandlers[0].Handler[\"handler\"] is not a string")
+				} else if gotName != tt.wantFirstName {
+					t.Errorf("ExtraHandlers[0] handler = %q, want %q", gotName, tt.wantFirstName)
 				}
 			}
 		})
-	}
-}
-
-func TestService_Eject_WAFEngineHandlerConfig(t *testing.T) {
-	b := &fakeBuilder{}
-	svc := eject.NewService(b)
-
-	cfg := minimalConfig()
-	cfg.WAF = config.WAFConfig{
-		Enabled: true,
-		Mode:    "block",
-		Rules: config.WAFRulesConfig{
-			SQLInjection:     true,
-			XSS:              false,
-			PathTraversal:    true,
-			CommandInjection: false,
-		},
-		ExemptPaths: []string{"/api/webhooks/*"},
-	}
-
-	_, err := svc.Eject(cfg)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-
-	if len(b.got.ExtraHandlers) != 1 {
-		t.Fatalf("ExtraHandlers count = %d, want 1", len(b.got.ExtraHandlers))
-	}
-
-	handler := b.got.ExtraHandlers[0].Handler
-	if handler["handler"] != "vibewarden_waf_engine" {
-		t.Errorf("handler name = %v, want vibewarden_waf_engine", handler["handler"])
-	}
-	// The config field should be present (json.RawMessage).
-	if handler["config"] == nil {
-		t.Error("handler config should not be nil")
 	}
 }
 

@@ -5,11 +5,9 @@ package eject
 
 import (
 	"fmt"
-	"sort"
 	"time"
 
 	"github.com/vibewarden/vibewarden/internal/config"
-	wafplugin "github.com/vibewarden/vibewarden/internal/plugins/waf"
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
 
@@ -53,15 +51,19 @@ func NewService(builder ConfigBuilder) *Service {
 // configuration map. The returned map can be serialised to JSON and fed
 // directly to the target proxy (e.g. Caddy's /load API or a config file).
 //
+// extraHandlers are Caddy handler fragments contributed by plugins (e.g. the
+// WAF plugin). The caller is responsible for building these via the plugin
+// registry, keeping the application layer free of plugin-specific imports.
+//
 // Note: internal-only addresses (metrics, admin, readiness) are omitted from
 // the generated config because those internal HTTP servers are managed by
 // VibeWarden itself and are not meaningful outside of it.
-func (s *Service) Eject(cfg *config.Config) (map[string]any, error) {
+func (s *Service) Eject(cfg *config.Config, extraHandlers []ports.CaddyHandler) (map[string]any, error) {
 	if cfg == nil {
 		return nil, fmt.Errorf("config is required")
 	}
 
-	proxyCfg := buildProxyConfig(cfg)
+	proxyCfg := buildProxyConfig(cfg, extraHandlers)
 	result, err := s.builder.Build(proxyCfg)
 	if err != nil {
 		return nil, fmt.Errorf("building proxy config: %w", err)
@@ -73,7 +75,10 @@ func (s *Service) Eject(cfg *config.Config) (map[string]any, error) {
 // suitable for the eject use case. Internal-service addresses (metrics, admin,
 // readiness) are intentionally left empty because those services are managed by
 // VibeWarden and not meaningful in a standalone proxy deployment.
-func buildProxyConfig(cfg *config.Config) *ports.ProxyConfig {
+//
+// extraHandlers are plugin-contributed Caddy handler fragments passed through
+// from the caller. The eject service does not import any plugin packages.
+func buildProxyConfig(cfg *config.Config, extraHandlers []ports.CaddyHandler) *ports.ProxyConfig {
 	return &ports.ProxyConfig{
 		ListenAddr:   fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port),
 		UpstreamAddr: fmt.Sprintf("%s:%d", cfg.Upstream.Host, cfg.Upstream.Port),
@@ -135,7 +140,7 @@ func buildProxyConfig(cfg *config.Config) *ports.ProxyConfig {
 			TrustProxyHeaders: cfg.IPFilter.TrustProxyHeaders,
 		},
 		Resilience:    buildResilienceConfig(cfg),
-		ExtraHandlers: buildWAFHandlers(cfg),
+		ExtraHandlers: extraHandlers,
 		Compression: ports.CompressionConfig{
 			Enabled:    cfg.Compression.Enabled,
 			Algorithms: cfg.Compression.Algorithms,
@@ -152,57 +157,6 @@ func buildProxyConfig(cfg *config.Config) *ports.ProxyConfig {
 		// these internal HTTP servers are managed by VibeWarden and have no
 		// equivalent in a standalone Caddy deployment.
 	}
-}
-
-// buildWAFHandlers constructs the WAF Caddy handler fragments from the app
-// config, replicating the same handler JSON that the WAF plugin produces at
-// runtime. This allows "vibew eject" to include WAF handlers without
-// initialising the full plugin registry.
-//
-// Returns nil when both WAF features are disabled.
-func buildWAFHandlers(cfg *config.Config) []ports.CaddyHandler {
-	var handlers []ports.CaddyHandler
-
-	if cfg.WAF.ContentTypeValidation.Enabled {
-		handler, err := wafplugin.BuildContentTypeHandlerJSON(wafplugin.ContentTypeValidationConfig{
-			Enabled: cfg.WAF.ContentTypeValidation.Enabled,
-			Allowed: cfg.WAF.ContentTypeValidation.Allowed,
-		})
-		if err == nil {
-			handlers = append(handlers, ports.CaddyHandler{
-				Handler:  handler,
-				Priority: 25,
-			})
-		}
-	}
-
-	if cfg.WAF.Enabled {
-		handler, err := wafplugin.BuildEngineHandlerJSON(wafplugin.WAFEngineConfig{
-			Enabled: cfg.WAF.Enabled,
-			Mode:    wafplugin.Mode(cfg.WAF.Mode),
-			Rules: wafplugin.RulesConfig{
-				SQLInjection:     cfg.WAF.Rules.SQLInjection,
-				XSS:              cfg.WAF.Rules.XSS,
-				PathTraversal:    cfg.WAF.Rules.PathTraversal,
-				CommandInjection: cfg.WAF.Rules.CommandInjection,
-			},
-			ExemptPaths: cfg.WAF.ExemptPaths,
-		})
-		if err == nil {
-			handlers = append(handlers, ports.CaddyHandler{
-				Handler:  handler,
-				Priority: 25,
-			})
-		}
-	}
-
-	// Sort by ascending priority for deterministic ordering, matching the
-	// behaviour of the serve code path in wiring_serve_helpers.go.
-	sort.Slice(handlers, func(i, j int) bool {
-		return handlers[i].Priority < handlers[j].Priority
-	})
-
-	return handlers
 }
 
 // buildBodySizeConfig converts the app config body size settings into a
