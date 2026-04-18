@@ -14,6 +14,47 @@ This initial entry was written by hand to summarise the work leading up to v0.1.
 
 ---
 
+## [v0.12.0] — 2026-04-18
+
+### Features
+
+- **Built-in AES-256-GCM encrypted secret store** — eliminates OpenBao dependency
+  for common secret management. Zero external deps, stdlib crypto only.
+  (#904, closes #899)
+- **`vibew add waf`** subcommand for CLI parity with other plugins. Accepts
+  `--mode detect|block`. (#922, closes #912)
+- **`vibew doctor` enhanced** with local runtime checks (upstream reachability,
+  TLS cert validity) and production checks (SSH connectivity, remote container
+  health, domain DNS, TLS cert expiry). Auto-detects applicable checks.
+  (#923, closes #913)
+
+### Bug Fixes
+
+- **WAF handlers in `vibew eject`** — previously missing from the Caddy route
+  chain in eject output, leading to false "WAF not enforced" diagnosis.
+  (#915, closes #906)
+- **Deploy health check protocol** — now uses HTTPS with `-k` when TLS is
+  enabled, was polling plain HTTP on port 443. (#919, closes #907)
+- **Deploy drift detection** — `vibew deploy` detects hand-edited files on the
+  server and requires `--force` to overwrite. (#920, closes #908)
+- **`proxy.started` log accuracy** — emits per-site events with correct TLS,
+  upstream, and security header values in multi-site mode. (#918, closes #909)
+- **Multi-site deploy production fixes** — `app.build` rsync, network
+  `external: true`, `upstream.host` rewrite from loopback to container name.
+  (#921, closes #911)
+- AI prompt templates: removed 'without confirmation' phrasing that triggered
+  safety guardrails. (#903)
+
+### Documentation
+
+- Fixed non-existent CLI flags in `llms-full.txt`; added `init`, `wrap`, and
+  `add` flag documentation. (#917, closes #910)
+- Known limitations section added to `AGENTS-VIBEWARDEN.md` template and
+  example. (#916, closes #914)
+- Missing `package-lock.json` added to Next.js example. (#902, closes #897)
+
+---
+
 ## [v0.11.0] — 2026-04-15
 
 ### Breaking changes
