@@ -1,7 +1,9 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -81,13 +83,16 @@ func parseKeyValueArgs(args []string) (map[string]string, error) {
 }
 
 // loadConfigForCLI loads the config for CLI commands, returning a default
-// config when the config file does not exist.
+// config when the config file does not exist. Config parse errors (malformed
+// YAML) are propagated — only a missing file is treated as "use defaults."
 func loadConfigForCLI(configPath string) (*config.Config, error) {
 	cfg, err := config.Load(configPath)
 	if err != nil {
-		// Return a default config so the builtin store can still be used
-		// with just the VIBEWARDEN_SECRETS_MASTER_KEY env var.
-		return &config.Config{}, nil
+		if errors.Is(err, os.ErrNotExist) || (configPath == "" && cfg == nil) {
+			// No config file — use defaults (builtin store with env var key).
+			return &config.Config{}, nil
+		}
+		return nil, fmt.Errorf("loading config: %w", err)
 	}
 	return cfg, nil
 }

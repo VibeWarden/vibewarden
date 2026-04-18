@@ -13,6 +13,7 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -275,6 +276,37 @@ func (s *Store) decrypt(data []byte) ([]byte, error) {
 		return nil, fmt.Errorf("decrypting: %w", err)
 	}
 	return plaintext, nil
+}
+
+// ResolveMasterKey resolves the 32-byte AES-256 master key from the config.
+// It checks the key file first, then falls back to the VIBEWARDEN_SECRETS_MASTER_KEY
+// environment variable. This function is shared between the secrets plugin
+// and the CLI commands to avoid duplication.
+func ResolveMasterKey(keyFile string) ([]byte, error) {
+	var hexKey string
+
+	if keyFile != "" {
+		raw, err := os.ReadFile(keyFile) //nolint:gosec // keyFile is from trusted config
+		if err != nil {
+			return nil, fmt.Errorf("reading key file %q: %w", keyFile, err)
+		}
+		hexKey = strings.TrimSpace(string(raw))
+	} else {
+		hexKey = os.Getenv("VIBEWARDEN_SECRETS_MASTER_KEY")
+	}
+
+	if hexKey == "" {
+		return nil, fmt.Errorf("master key not set: set VIBEWARDEN_SECRETS_MASTER_KEY or configure secrets.builtin.key_file")
+	}
+
+	key, err := hex.DecodeString(hexKey)
+	if err != nil {
+		return nil, fmt.Errorf("decoding hex master key: %w", err)
+	}
+	if len(key) != 32 {
+		return nil, fmt.Errorf("master key must be 32 bytes (64 hex chars), got %d bytes", len(key))
+	}
+	return key, nil
 }
 
 // Interface guard — compile-time verification that Store implements SecretStore.

@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -160,31 +159,10 @@ func buildBuiltinStore(cfg *config.Config) (ports.SecretStore, error) {
 
 // resolveBuiltinMasterKey reads the master key from the key file or the
 // VIBEWARDEN_SECRETS_MASTER_KEY environment variable.
+// resolveBuiltinMasterKey delegates to the shared builtin.ResolveMasterKey
+// to avoid duplicating key-resolution logic between CLI and plugin.
 func resolveBuiltinMasterKey(cfg *config.Config) ([]byte, error) {
-	var hexKey string
-
-	if cfg.Secrets.Builtin.KeyFile != "" {
-		raw, err := os.ReadFile(cfg.Secrets.Builtin.KeyFile)
-		if err != nil {
-			return nil, fmt.Errorf("reading key file %q: %w", cfg.Secrets.Builtin.KeyFile, err)
-		}
-		hexKey = strings.TrimSpace(string(raw))
-	} else {
-		hexKey = os.Getenv("VIBEWARDEN_SECRETS_MASTER_KEY")
-	}
-
-	if hexKey == "" {
-		return nil, fmt.Errorf("master key not set")
-	}
-
-	key, err := hex.DecodeString(hexKey)
-	if err != nil {
-		return nil, fmt.Errorf("decoding hex master key: %w", err)
-	}
-	if len(key) != 32 {
-		return nil, fmt.Errorf("master key must be 32 bytes (64 hex chars), got %d bytes", len(key))
-	}
-	return key, nil
+	return builtinstore.ResolveMasterKey(cfg.Secrets.Builtin.KeyFile)
 }
 
 // buildOpenBaoStore creates an OpenBao adapter from config.

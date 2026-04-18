@@ -2,7 +2,6 @@ package secrets
 
 import (
 	"context"
-	"encoding/hex"
 	"fmt"
 	"log/slog"
 	"os"
@@ -186,36 +185,10 @@ func (p *Plugin) initBuiltin(ctx context.Context) error {
 	return nil
 }
 
-// resolveMasterKey reads the master key from the key file or the
-// VIBEWARDEN_SECRETS_MASTER_KEY environment variable. The key must be
-// hex-encoded and decode to exactly 32 bytes.
+// resolveMasterKey delegates to builtin.ResolveMasterKey to avoid
+// duplicating key-resolution logic between the plugin and CLI.
 func (p *Plugin) resolveMasterKey() ([]byte, error) {
-	var hexKey string
-
-	if p.cfg.Builtin.KeyFile != "" {
-		raw, err := os.ReadFile(p.cfg.Builtin.KeyFile)
-		if err != nil {
-			return nil, fmt.Errorf("reading key file %q: %w", p.cfg.Builtin.KeyFile, err)
-		}
-		hexKey = strings.TrimSpace(string(raw))
-	} else {
-		hexKey = os.Getenv("VIBEWARDEN_SECRETS_MASTER_KEY")
-	}
-
-	if hexKey == "" {
-		return nil, fmt.Errorf("master key not set: provide VIBEWARDEN_SECRETS_MASTER_KEY env var or secrets.builtin.key_file")
-	}
-
-	key, err := hex.DecodeString(hexKey)
-	if err != nil {
-		return nil, fmt.Errorf("decoding hex master key: %w", err)
-	}
-
-	if len(key) != 32 {
-		return nil, fmt.Errorf("master key must be 32 bytes (64 hex chars), got %d bytes", len(key))
-	}
-
-	return key, nil
+	return builtin.ResolveMasterKey(p.cfg.Builtin.KeyFile)
 }
 
 // initOpenBao creates and configures the OpenBao adapter.
