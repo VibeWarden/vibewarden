@@ -70,17 +70,7 @@ func (a *Adapter) Start(ctx context.Context) error {
 	}
 
 	if a.eventLogger != nil {
-		ev := events.NewProxyStarted(events.ProxyStartedParams{
-			ListenAddr:             a.config.ListenAddr,
-			UpstreamAddr:           a.config.UpstreamAddr,
-			TLSEnabled:             a.config.TLS.Enabled,
-			TLSProvider:            string(a.config.TLS.Provider),
-			SecurityHeadersEnabled: a.config.SecurityHeaders.Enabled,
-			Version:                a.config.Version,
-		})
-		if logErr := a.eventLogger.Log(ctx, ev); logErr != nil {
-			a.logger.Error("failed to emit proxy.started event", slog.String("error", logErr.Error()))
-		}
+		a.emitStartEvents(ctx)
 	}
 
 	// Block until context is cancelled.
@@ -152,4 +142,66 @@ func (a *Adapter) buildConfigJSON() ([]byte, error) {
 	}
 
 	return data, nil
+}
+
+// emitStartEvents emits proxy.started structured events after the Caddy
+// server has loaded its configuration successfully.
+//
+// In single-site mode, a single event is emitted with the values from the
+// adapter's ProxyConfig. In multi-site mode, one event is emitted per
+// healthy site in the registry with that site's actual TLS, upstream, and
+// security header settings — avoiding the misleading zero-value event that
+// would result from the minimal multi-site ProxyConfig.
+//
+// If SkipStartEvent is set on the ProxyConfig, no events are emitted. This
+// escape hatch exists for callers that wish to emit events themselves.
+func (a *Adapter) emitStartEvents(ctx context.Context) {
+	if a.config.SkipStartEvent {
+		return
+	}
+
+	if a.registry != nil {
+		a.emitMultiSiteStartEvents(ctx)
+		return
+	}
+
+	ev := events.NewProxyStarted(events.ProxyStartedParams{
+		ListenAddr:             a.config.ListenAddr,
+		UpstreamAddr:           a.config.UpstreamAddr,
+		TLSEnabled:             a.config.TLS.Enabled,
+		TLSProvider:            string(a.config.TLS.Provider),
+		SecurityHeadersEnabled: a.config.SecurityHeaders.Enabled,
+		Version:                a.config.Version,
+	})
+	if logErr := a.eventLogger.Log(ctx, ev); logErr != nil {
+		a.logger.Error("failed to emit proxy.started event", slog.String("error", logErr.Error()))
+	}
+}
+
+// emitMultiSiteStartEvents emits one proxy.started event per healthy site in
+// the registry, using each site's actual configuration values.
+func (a *Adapter) emitMultiSiteStartEvents(ctx context.Context) {
+	for _, s := range a.registry.HealthySites() {
+		cfg := s.Config()
+		if cfg == nil {
+			continue
+		}
+
+		upstreamAddr := fmt.Sprintf("%s:%d", cfg.Upstream.Host, cfg.Upstream.Port)
+
+		ev := events.NewProxyStarted(events.ProxyStartedParams{
+			ListenAddr:             a.config.ListenAddr,
+			UpstreamAddr:           upstreamAddr,
+			TLSEnabled:             cfg.TLS.Enabled,
+			TLSProvider:            cfg.TLS.Provider,
+			SecurityHeadersEnabled: cfg.SecurityHeaders.Enabled,
+			Version:                a.config.Version,
+		})
+		if logErr := a.eventLogger.Log(ctx, ev); logErr != nil {
+			a.logger.Error("failed to emit proxy.started event",
+				slog.String("site", s.Name()),
+				slog.String("error", logErr.Error()),
+			)
+		}
+	}
 }
