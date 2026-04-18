@@ -107,6 +107,14 @@ func TestToggler_ReadFeatures(t *testing.T) {
 			},
 		},
 		{
+			name: "waf enabled",
+			yaml: minimalConfig + "\nwaf:\n  enabled: true\n  mode: detect\n",
+			want: scaffold.FeatureState{
+				UpstreamPort: 3000,
+				WAFEnabled:   true,
+			},
+		},
+		{
 			name:    "missing file returns ErrConfigNotFound",
 			wantErr: true,
 		},
@@ -157,6 +165,9 @@ func TestToggler_ReadFeatures(t *testing.T) {
 			}
 			if got.MetricsEnabled != tt.want.MetricsEnabled {
 				t.Errorf("MetricsEnabled = %v, want %v", got.MetricsEnabled, tt.want.MetricsEnabled)
+			}
+			if got.WAFEnabled != tt.want.WAFEnabled {
+				t.Errorf("WAFEnabled = %v, want %v", got.WAFEnabled, tt.want.WAFEnabled)
 			}
 		})
 	}
@@ -246,6 +257,33 @@ func TestToggler_EnableFeature(t *testing.T) {
 			name:      "enable metrics twice returns ErrFeatureAlreadyEnabled",
 			initial:   minimalConfig + "\nmetrics:\n  enabled: true\n",
 			feature:   scaffold.FeatureMetrics,
+			wantErr:   true,
+			wantErrIs: scaffold.ErrFeatureAlreadyEnabled,
+		},
+		{
+			name:       "enable waf adds waf section in detect mode",
+			initial:    minimalConfig,
+			feature:    scaffold.FeatureWAF,
+			opts:       scaffold.FeatureOptions{WAFMode: "detect"},
+			wantInYAML: []string{"waf:", "enabled: true", "mode: detect", "sqli: true", "xss: true", "path_traversal: true", "command_injection: true"},
+		},
+		{
+			name:       "enable waf in block mode",
+			initial:    minimalConfig,
+			feature:    scaffold.FeatureWAF,
+			opts:       scaffold.FeatureOptions{WAFMode: "block"},
+			wantInYAML: []string{"waf:", "enabled: true", "mode: block"},
+		},
+		{
+			name:       "enable waf defaults mode to detect",
+			initial:    minimalConfig,
+			feature:    scaffold.FeatureWAF,
+			wantInYAML: []string{"waf:", "enabled: true", "mode: detect"},
+		},
+		{
+			name:      "enable waf twice returns ErrFeatureAlreadyEnabled",
+			initial:   minimalConfig + "\nwaf:\n  enabled: true\n  mode: detect\n",
+			feature:   scaffold.FeatureWAF,
 			wantErr:   true,
 			wantErrIs: scaffold.ErrFeatureAlreadyEnabled,
 		},
