@@ -1,6 +1,6 @@
 # VibeWarden Makefile
 
-.PHONY: build test lint run docker-up docker-down observability-up observability-down grafana-open prometheus-open loki-open clean check setup-hooks demo demo-build demo-tls demo-down demo-clean deploy-demo
+.PHONY: build test lint run docker-up docker-down observability-up observability-down grafana-open prometheus-open loki-open clean check integration check-all setup-hooks demo demo-build demo-tls demo-down demo-clean deploy-demo
 
 # Build variables
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
@@ -70,6 +70,17 @@ check: ## Run all quality checks (lint, build, tests)
 	@test -z "$$(cd examples/demo-app && gofmt -l .)" || (echo "gofmt: these demo-app files need formatting:" && cd examples/demo-app && gofmt -l . && exit 1)
 	cd examples/demo-app && go vet ./... && go build ./... && go test -race ./...
 	@echo "==> All checks passed!"
+
+# Run integration tests (requires Docker running).
+# These are gated behind //go:build integration and test multi-app routing,
+# deploy flows, and Docker-in-Docker scenarios.
+integration: ## Run integration tests (requires Docker)
+	@echo "==> Running integration tests..."
+	go test -race -tags integration ./test/integration/ -v -timeout 300s
+	@echo "==> Integration tests passed!"
+
+# Run all checks + integration tests.
+check-all: check integration ## Run all quality checks + integration tests
 
 # Build the VibeWarden Docker image locally and tag it so demo targets work
 # without pulling from ghcr.io. No Go toolchain required — Docker handles the build.
