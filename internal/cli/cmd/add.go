@@ -22,7 +22,8 @@ Examples:
   vibew add rate-limiting
   vibew add tls --domain example.com
   vibew add admin
-  vibew add metrics`,
+  vibew add metrics
+  vibew add waf --mode block`,
 		// Default: print help when no subcommand is given.
 		Run: func(cmd *cobra.Command, _ []string) {
 			cmd.Help() //nolint:errcheck
@@ -34,6 +35,7 @@ Examples:
 	cmd.AddCommand(newAddTLSCmd())
 	cmd.AddCommand(newAddAdminCmd())
 	cmd.AddCommand(newAddMetricsCmd())
+	cmd.AddCommand(newAddWAFCmd())
 
 	return cmd
 }

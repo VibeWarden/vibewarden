@@ -52,6 +52,9 @@ func (t *Toggler) ReadFeatures(_ context.Context, path string) (*scaffold.Featur
 	// metrics.enabled
 	state.MetricsEnabled = boolField(root, "metrics", "enabled")
 
+	// waf.enabled
+	state.WAFEnabled = boolField(root, "waf", "enabled")
+
 	return state, nil
 }
 
@@ -98,6 +101,16 @@ func (t *Toggler) EnableFeature(_ context.Context, path string, feature scaffold
 			return fmt.Errorf("add metrics: %w", scaffold.ErrFeatureAlreadyEnabled)
 		}
 		appendMetricsBlock(root)
+
+	case scaffold.FeatureWAF:
+		if boolField(root, "waf", "enabled") {
+			return fmt.Errorf("add waf: %w", scaffold.ErrFeatureAlreadyEnabled)
+		}
+		mode := opts.WAFMode
+		if mode == "" {
+			mode = "detect"
+		}
+		upsertWAFBlock(root, mode)
 
 	default:
 		return fmt.Errorf("unknown feature %q", feature)
@@ -358,6 +371,32 @@ func appendMetricsBlock(root *yaml.Node) {
 	appendNode(metrics, keyNode("enabled"), scalarNode("true", "!!bool"))
 	appendNode(metrics, keyNode("path"), scalarNode("/metrics", "!!str"))
 	appendNode(root, headComment(keyNode("metrics"), "# Prometheus metrics"), metrics)
+}
+
+// upsertWAFBlock sets waf.enabled = true plus mode in root. If the waf key
+// already exists, its fields are updated; otherwise the section is appended.
+func upsertWAFBlock(root *yaml.Node, mode string) {
+	existing := findKey(root, "waf")
+	if existing != nil {
+		setScalar(existing, "enabled", "true", "!!bool")
+		if mode != "" {
+			upsertField(existing, "mode", mode, "!!str")
+		}
+		return
+	}
+
+	waf := mappingNode()
+	appendNode(waf, keyNode("enabled"), scalarNode("true", "!!bool"))
+	appendNode(waf, keyNode("mode"), scalarNode(mode, "!!str"))
+
+	rules := mappingNode()
+	appendNode(rules, keyNode("sqli"), scalarNode("true", "!!bool"))
+	appendNode(rules, keyNode("xss"), scalarNode("true", "!!bool"))
+	appendNode(rules, keyNode("path_traversal"), scalarNode("true", "!!bool"))
+	appendNode(rules, keyNode("command_injection"), scalarNode("true", "!!bool"))
+	appendNode(waf, keyNode("rules"), rules)
+
+	appendNode(root, headComment(keyNode("waf"), "# Web Application Firewall"), waf)
 }
 
 // upsertField sets key to value in mapping m; if key does not exist it is

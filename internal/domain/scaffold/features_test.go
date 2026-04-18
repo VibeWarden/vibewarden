@@ -18,6 +18,7 @@ func TestFeature_Constants(t *testing.T) {
 		{"tls", scaffold.FeatureTLS, "tls"},
 		{"admin", scaffold.FeatureAdmin, "admin"},
 		{"metrics", scaffold.FeatureMetrics, "metrics"},
+		{"waf", scaffold.FeatureWAF, "waf"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
@@ -35,6 +36,7 @@ func TestFeature_Distinctness(t *testing.T) {
 		scaffold.FeatureTLS,
 		scaffold.FeatureAdmin,
 		scaffold.FeatureMetrics,
+		scaffold.FeatureWAF,
 	}
 	seen := make(map[scaffold.Feature]bool)
 	for _, f := range features {
@@ -106,6 +108,9 @@ func TestFeatureState_ZeroValue(t *testing.T) {
 	if fs.MetricsEnabled {
 		t.Error("zero FeatureState.MetricsEnabled should be false")
 	}
+	if fs.WAFEnabled {
+		t.Error("zero FeatureState.WAFEnabled should be false")
+	}
 }
 
 func TestFeatureState_Construction(t *testing.T) {
@@ -135,6 +140,7 @@ func TestFeatureState_Construction(t *testing.T) {
 				TLSEnabled:       true,
 				AdminEnabled:     true,
 				MetricsEnabled:   true,
+				WAFEnabled:       true,
 			},
 		},
 	}
@@ -161,6 +167,9 @@ func TestFeatureState_Construction(t *testing.T) {
 			if copy.MetricsEnabled != tt.state.MetricsEnabled {
 				t.Errorf("MetricsEnabled mismatch")
 			}
+			if copy.WAFEnabled != tt.state.WAFEnabled {
+				t.Errorf("WAFEnabled mismatch")
+			}
 		})
 	}
 }
@@ -173,6 +182,9 @@ func TestFeatureOptions_ZeroValue(t *testing.T) {
 	}
 	if fo.TLSProvider != "" {
 		t.Errorf("zero FeatureOptions.TLSProvider = %q, want empty", fo.TLSProvider)
+	}
+	if fo.WAFMode != "" {
+		t.Errorf("zero FeatureOptions.WAFMode = %q, want empty", fo.WAFMode)
 	}
 }
 
@@ -202,15 +214,32 @@ func TestFeatureOptions_Construction(t *testing.T) {
 				TLSProvider: "external",
 			},
 		},
+		{
+			name: "waf detect mode",
+			opts: scaffold.FeatureOptions{
+				WAFMode: "detect",
+			},
+		},
+		{
+			name: "waf block mode",
+			opts: scaffold.FeatureOptions{
+				WAFMode: "block",
+			},
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if tt.opts.TLSDomain == "" {
-				t.Errorf("TLSDomain should not be empty in test case %q", tt.name)
+			// Value object: a copy must equal the original field by field.
+			cp := tt.opts
+			if cp.TLSDomain != tt.opts.TLSDomain {
+				t.Errorf("TLSDomain mismatch: got %q, want %q", cp.TLSDomain, tt.opts.TLSDomain)
 			}
-			if tt.opts.TLSProvider == "" {
-				t.Errorf("TLSProvider should not be empty in test case %q", tt.name)
+			if cp.TLSProvider != tt.opts.TLSProvider {
+				t.Errorf("TLSProvider mismatch: got %q, want %q", cp.TLSProvider, tt.opts.TLSProvider)
+			}
+			if cp.WAFMode != tt.opts.WAFMode {
+				t.Errorf("WAFMode mismatch: got %q, want %q", cp.WAFMode, tt.opts.WAFMode)
 			}
 		})
 	}

@@ -24,6 +24,9 @@ const (
 
 	// FeatureMetrics enables Prometheus metrics.
 	FeatureMetrics Feature = "metrics"
+
+	// FeatureWAF enables the Web Application Firewall.
+	FeatureWAF Feature = "waf"
 )
 
 // ErrFeatureAlreadyEnabled is returned by FeatureToggler.EnableFeature when
@@ -54,6 +57,9 @@ type FeatureState struct {
 
 	// MetricsEnabled is true when the metrics section is enabled.
 	MetricsEnabled bool
+
+	// WAFEnabled is true when the waf section is enabled.
+	WAFEnabled bool
 }
 
 // FeatureOptions carries feature-specific options supplied by the user when
@@ -67,4 +73,8 @@ type FeatureOptions struct {
 	// TLSProvider is the TLS provider: "letsencrypt", "self-signed", or "external".
 	// Defaults to "letsencrypt" when TLSDomain is set.
 	TLSProvider string
+
+	// WAFMode is the WAF operating mode: "detect" or "block".
+	// Defaults to "detect" when enabling FeatureWAF.
+	WAFMode string
 }
