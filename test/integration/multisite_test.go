@@ -9,7 +9,7 @@
 //
 // Prerequisites:
 //   - Docker daemon running
-//   - ghcr.io/vibewarden/vibewarden:latest built locally (make demo-build)
+//   - vibewarden:local-test image built (make integration does this automatically)
 //
 // Run:
 //
@@ -37,8 +37,9 @@ import (
 
 const (
 	// sidecarImage is the Docker image used for the VibeWarden sidecar.
-	// It must be built locally before running integration tests (make demo-build).
-	sidecarImage = "ghcr.io/vibewarden/vibewarden:latest"
+	// Built locally as vibewarden:local-test (never pushed to a registry).
+	// Run `make integration` or `docker build -t vibewarden:local-test .`
+	sidecarImage = "vibewarden:local-test"
 
 	// echoImage is the Docker image used for upstream app containers.
 	// hashicorp/http-echo is MIT-licensed and returns a fixed text response.

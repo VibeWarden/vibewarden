@@ -75,6 +75,8 @@ check: ## Run all quality checks (lint, build, tests)
 # These are gated behind //go:build integration and test multi-app routing,
 # deploy flows, and Docker-in-Docker scenarios.
 integration: ## Run integration tests (requires Docker)
+	@echo "==> Building VibeWarden image for integration tests (vibewarden:local-test)..."
+	docker build --tag vibewarden:local-test .
 	@echo "==> Running integration tests..."
 	go test -race -tags integration ./test/integration/ -v -timeout 300s
 	@echo "==> Integration tests passed!"

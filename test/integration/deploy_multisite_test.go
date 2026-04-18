@@ -51,11 +51,9 @@ const (
 	// high port to minimize the chance of conflict with services on the host.
 	testListenPort = 18443
 
-	// sidecarImageRef is the Docker image reference expected by the sidecar
-	// compose template. We tag a lightweight image with this name before the
-	// test so that docker compose pull succeeds without network access to
-	// the real registry.
-	sidecarImageRef = "ghcr.io/vibewarden/vibewarden:latest"
+	// sidecarImageRef is the Docker image reference used in cleanup.
+	// The deploy service uses the image name from the sidecar compose template.
+	sidecarImageRef = "vibewarden:local-test"
 
 	// stubBaseImage is the image we tag as the sidecar image.
 	stubBaseImage = "alpine:3.23"
