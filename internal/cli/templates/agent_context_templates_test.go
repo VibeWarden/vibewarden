@@ -34,6 +34,22 @@ func TestAgentContextTemplates_AgentsVibewardenMD(t *testing.T) {
 			},
 		},
 		{
+			name: "basic render contains known limitations section",
+			data: domainscaffold.InitProjectData{
+				ProjectName: "myapp",
+				Port:        3000,
+			},
+			wantContains: []string{
+				"Known limitations",
+				"detect",
+				"vibew add waf",
+				"vibew doctor",
+				"Multi-site",
+				"vibew init",
+				"vibew add tls --domain",
+			},
+		},
+		{
 			name: "with description includes description section",
 			data: domainscaffold.InitProjectData{
 				ProjectName: "myapp",
