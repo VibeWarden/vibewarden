@@ -2,11 +2,16 @@ package ops
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
+	"encoding/pem"
 	"fmt"
 	"io"
+	"net"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/fatih/color"
@@ -35,6 +40,9 @@ type CheckResult struct {
 	Severity Severity `json:"severity"`
 	// Detail is an optional explanation (shown on success and failure).
 	Detail string `json:"detail,omitempty"`
+	// Section groups the check for display purposes (e.g. "Config & Docker",
+	// "Local Runtime", "Production"). Empty for legacy checks.
+	Section string `json:"section,omitempty"`
 }
 
 // OK returns true when the check severity is OK.
@@ -43,9 +51,10 @@ func (c CheckResult) OK() bool { return c.Severity == SeverityOK }
 // DoctorService orchestrates the "vibew doctor" use case.
 // Every check runs independently — a failing check does not stop subsequent ones.
 type DoctorService struct {
-	compose       ports.ComposeRunner
-	portChecker   ports.PortChecker
-	healthChecker ports.HealthChecker
+	compose        ports.ComposeRunner
+	portChecker    ports.PortChecker
+	healthChecker  ports.HealthChecker
+	remoteExecutor ports.RemoteExecutor
 }
 
 // NewDoctorService creates a new DoctorService.
@@ -57,6 +66,15 @@ func NewDoctorService(compose ports.ComposeRunner, portChecker ports.PortChecker
 	}
 }
 
+// WithRemoteExecutor returns a copy of the DoctorService with the given
+// RemoteExecutor set for production checks. When nil, production checks are
+// skipped.
+func (s *DoctorService) WithRemoteExecutor(executor ports.RemoteExecutor) *DoctorService {
+	cp := *s
+	cp.remoteExecutor = executor
+	return &cp
+}
+
 // DoctorOptions controls how Run behaves.
 type DoctorOptions struct {
 	// ConfigPath is the path to the vibewarden.yaml file (used in the report label).
@@ -66,6 +84,9 @@ type DoctorOptions struct {
 	WorkDir string
 	// JSON requests machine-readable JSON output instead of the human-readable table.
 	JSON bool
+	// Target is the SSH target for production checks (e.g. "ssh://user@host").
+	// When empty, production checks are skipped.
+	Target string
 }
 
 // Run executes all diagnostics and writes the report to out.
@@ -77,7 +98,7 @@ func (s *DoctorService) Run(ctx context.Context, cfg *config.Config, opts Doctor
 		workDir = "."
 	}
 
-	checks := s.runChecks(ctx, cfg, opts.ConfigPath, workDir)
+	checks := s.runChecks(ctx, cfg, opts, workDir)
 
 	if opts.JSON {
 		if err := printDoctorJSON(checks, out); err != nil {
@@ -97,20 +118,32 @@ func (s *DoctorService) Run(ctx context.Context, cfg *config.Config, opts Doctor
 	return allOK, nil
 }
 
+// sectionConfigDocker is the section header for config and Docker checks.
+const sectionConfigDocker = "Config & Docker"
+
+// sectionLocalRuntime is the section header for local runtime checks.
+const sectionLocalRuntime = "Local Runtime"
+
+// sectionProduction is the section header for production checks.
+const sectionProduction = "Production"
+
+// localTLSCertExpiryWarnDays is the number of days before expiry that triggers
+// a warning for local TLS certificates.
+const localTLSCertExpiryWarnDays = 7
+
+// remoteTLSCertExpiryWarnDays is the number of days before expiry that triggers
+// a warning for remote TLS certificates.
+const remoteTLSCertExpiryWarnDays = 30
+
 // runChecks executes every diagnostic check and returns the aggregated results.
-func (s *DoctorService) runChecks(ctx context.Context, cfg *config.Config, configPath, workDir string) []CheckResult {
+func (s *DoctorService) runChecks(ctx context.Context, cfg *config.Config, opts DoctorOptions, workDir string) []CheckResult {
 	var results []CheckResult
 
-	// 1. vibewarden.yaml present and valid
-	results = append(results, checkConfigFile(cfg, configPath))
+	// --- Layer 1: Config & Docker ---
+	results = append(results, withSection(checkConfigFile(cfg, opts.ConfigPath), sectionConfigDocker))
+	results = append(results, withSection(s.checkDockerRunning(ctx), sectionConfigDocker))
+	results = append(results, withSection(s.checkDockerCompose(ctx), sectionConfigDocker))
 
-	// 2. Is Docker running?
-	results = append(results, s.checkDockerRunning(ctx))
-
-	// 3. Is Docker Compose v2 available?
-	results = append(results, s.checkDockerCompose(ctx))
-
-	// 4. Required ports available
 	proxyPort := cfg.Server.Port
 	if proxyPort == 0 {
 		proxyPort = 8443
@@ -119,16 +152,33 @@ func (s *DoctorService) runChecks(ctx context.Context, cfg *config.Config, confi
 	if proxyHost == "" {
 		proxyHost = "127.0.0.1"
 	}
-	results = append(results, s.checkPort(ctx, "Proxy port", proxyHost, proxyPort))
+	results = append(results, withSection(s.checkPort(ctx, "Proxy port", proxyHost, proxyPort), sectionConfigDocker))
 
-	// 5. Generated files present
 	generatedCompose := filepath.Join(workDir, ".vibewarden", "generated", "docker-compose.yml")
-	results = append(results, checkGeneratedFiles(generatedCompose))
+	results = append(results, withSection(checkGeneratedFiles(generatedCompose), sectionConfigDocker))
+	results = append(results, withSection(s.checkContainerHealth(ctx, generatedCompose), sectionConfigDocker))
 
-	// 6. If stack is running: container health
-	results = append(results, s.checkContainerHealth(ctx, generatedCompose))
+	// --- Layer 2: Local Runtime ---
+	results = append(results, withSection(s.checkUpstreamReachable(ctx, cfg), sectionLocalRuntime))
+	results = append(results, withSection(checkTLSCertValid(cfg, workDir), sectionLocalRuntime))
+
+	// --- Layer 3: Production (only when target is set and executor is available) ---
+	if opts.Target != "" && s.remoteExecutor != nil {
+		results = append(results, withSection(s.checkSSHConnectivity(ctx), sectionProduction))
+		results = append(results, withSection(s.checkRemoteContainerHealth(ctx), sectionProduction))
+		if cfg.TLS.Domain != "" {
+			results = append(results, withSection(checkDomainDNS(cfg.TLS.Domain, opts.Target), sectionProduction))
+			results = append(results, withSection(checkRemoteTLSCert(cfg.TLS.Domain), sectionProduction))
+		}
+	}
 
 	return results
+}
+
+// withSection returns a copy of the CheckResult with the Section field set.
+func withSection(r CheckResult, section string) CheckResult {
+	r.Section = section
+	return r
 }
 
 func (s *DoctorService) checkDockerRunning(ctx context.Context) CheckResult {
@@ -275,17 +325,345 @@ func (s *DoctorService) checkContainerHealth(ctx context.Context, composePath st
 	}
 }
 
+// checkUpstreamReachable verifies that the upstream application responds to
+// HTTP health checks. This uses the HealthChecker port already injected into
+// the service.
+func (s *DoctorService) checkUpstreamReachable(ctx context.Context, cfg *config.Config) CheckResult {
+	host := cfg.Upstream.Host
+	if host == "" {
+		host = "127.0.0.1"
+	}
+	port := cfg.Upstream.Port
+	if port == 0 {
+		port = 3000
+	}
+
+	url := fmt.Sprintf("http://%s:%d", host, port)
+
+	checkCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	ok, statusCode, err := s.healthChecker.CheckHealth(checkCtx, url)
+	if err != nil {
+		return CheckResult{
+			Name:     "Upstream reachable",
+			Severity: SeverityWarn,
+			Detail:   fmt.Sprintf("%s — unreachable (app may not be started yet)", url),
+		}
+	}
+	if !ok {
+		return CheckResult{
+			Name:     "Upstream reachable",
+			Severity: SeverityWarn,
+			Detail:   fmt.Sprintf("%s — responded with HTTP %d", url, statusCode),
+		}
+	}
+	return CheckResult{
+		Name:     "Upstream reachable",
+		Severity: SeverityOK,
+		Detail:   fmt.Sprintf("%s — HTTP %d", url, statusCode),
+	}
+}
+
+// checkTLSCertValid checks the local self-signed TLS certificate for expiry.
+// It only runs when the TLS provider is "self-signed" and cert files exist in
+// the generated certs directory.
+func checkTLSCertValid(cfg *config.Config, workDir string) CheckResult {
+	if cfg.TLS.Provider != "self-signed" {
+		return CheckResult{
+			Name:     "TLS certificate",
+			Severity: SeverityOK,
+			Detail:   fmt.Sprintf("provider is %q — skipping local cert check", cfg.TLS.Provider),
+		}
+	}
+
+	certPath := filepath.Join(workDir, ".vibewarden", "generated", "certs", "server.crt")
+	certPEM, err := os.ReadFile(certPath) //nolint:gosec // path is built from workDir + fixed relative path
+	if err != nil {
+		return CheckResult{
+			Name:     "TLS certificate",
+			Severity: SeverityWarn,
+			Detail:   fmt.Sprintf("%s not found — run 'vibew generate' to create certs", certPath),
+		}
+	}
+
+	block, _ := pem.Decode(certPEM)
+	if block == nil {
+		return CheckResult{
+			Name:     "TLS certificate",
+			Severity: SeverityFail,
+			Detail:   fmt.Sprintf("%s — failed to decode PEM block", certPath),
+		}
+	}
+
+	cert, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		return CheckResult{
+			Name:     "TLS certificate",
+			Severity: SeverityFail,
+			Detail:   fmt.Sprintf("%s — failed to parse certificate: %v", certPath, err),
+		}
+	}
+
+	now := time.Now()
+	if now.After(cert.NotAfter) {
+		return CheckResult{
+			Name:     "TLS certificate",
+			Severity: SeverityFail,
+			Detail:   fmt.Sprintf("expired on %s", cert.NotAfter.Format(time.DateOnly)),
+		}
+	}
+
+	daysUntilExpiry := int(time.Until(cert.NotAfter).Hours() / 24)
+	if daysUntilExpiry <= localTLSCertExpiryWarnDays {
+		return CheckResult{
+			Name:     "TLS certificate",
+			Severity: SeverityWarn,
+			Detail:   fmt.Sprintf("expires in %d day(s) on %s", daysUntilExpiry, cert.NotAfter.Format(time.DateOnly)),
+		}
+	}
+
+	return CheckResult{
+		Name:     "TLS certificate",
+		Severity: SeverityOK,
+		Detail:   fmt.Sprintf("valid until %s (%d days)", cert.NotAfter.Format(time.DateOnly), daysUntilExpiry),
+	}
+}
+
+// checkSSHConnectivity tries to run a simple command on the remote host to
+// verify SSH access.
+func (s *DoctorService) checkSSHConnectivity(ctx context.Context) CheckResult {
+	checkCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	_, err := s.remoteExecutor.Run(checkCtx, "echo ok")
+	if err != nil {
+		return CheckResult{
+			Name:     "SSH connectivity",
+			Severity: SeverityFail,
+			Detail:   fmt.Sprintf("could not connect: %v", err),
+		}
+	}
+	return CheckResult{
+		Name:     "SSH connectivity",
+		Severity: SeverityOK,
+		Detail:   "connected successfully",
+	}
+}
+
+// checkRemoteContainerHealth runs "docker compose ps" on the remote host via
+// SSH and reports the health of each container.
+func (s *DoctorService) checkRemoteContainerHealth(ctx context.Context) CheckResult {
+	checkCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
+	defer cancel()
+
+	output, err := s.remoteExecutor.Run(checkCtx, "docker compose ps --format json 2>/dev/null || docker-compose ps 2>/dev/null")
+	if err != nil {
+		return CheckResult{
+			Name:     "Remote containers",
+			Severity: SeverityFail,
+			Detail:   fmt.Sprintf("could not query remote containers: %v", err),
+		}
+	}
+
+	output = strings.TrimSpace(output)
+	if output == "" {
+		return CheckResult{
+			Name:     "Remote containers",
+			Severity: SeverityWarn,
+			Detail:   "no containers found on remote host",
+		}
+	}
+
+	// Try to parse JSON lines output (docker compose ps --format json).
+	var unhealthy []string
+	var total int
+	for _, line := range strings.Split(output, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		var info struct {
+			Service string `json:"Service"`
+			State   string `json:"State"`
+			Health  string `json:"Health"`
+		}
+		if err := json.Unmarshal([]byte(line), &info); err != nil {
+			// Not JSON — fallback to reporting raw output as OK.
+			return CheckResult{
+				Name:     "Remote containers",
+				Severity: SeverityOK,
+				Detail:   "containers found (non-JSON output)",
+			}
+		}
+		total++
+		if info.State != "running" || (info.Health != "" && info.Health != "healthy") {
+			unhealthy = append(unhealthy, fmt.Sprintf("%s (%s/%s)", info.Service, info.State, info.Health))
+		}
+	}
+
+	if len(unhealthy) > 0 {
+		return CheckResult{
+			Name:     "Remote containers",
+			Severity: SeverityFail,
+			Detail:   fmt.Sprintf("unhealthy containers: %v", unhealthy),
+		}
+	}
+	return CheckResult{
+		Name:     "Remote containers",
+		Severity: SeverityOK,
+		Detail:   fmt.Sprintf("%d container(s) running", total),
+	}
+}
+
+// checkDomainDNS resolves the configured TLS domain and verifies it points to
+// the target host IP. Uses net.LookupHost from stdlib.
+func checkDomainDNS(domain, target string) CheckResult {
+	addrs, err := net.LookupHost(domain)
+	if err != nil {
+		return CheckResult{
+			Name:     "Domain DNS",
+			Severity: SeverityWarn,
+			Detail:   fmt.Sprintf("could not resolve %s: %v", domain, err),
+		}
+	}
+
+	if len(addrs) == 0 {
+		return CheckResult{
+			Name:     "Domain DNS",
+			Severity: SeverityWarn,
+			Detail:   fmt.Sprintf("no DNS records found for %s", domain),
+		}
+	}
+
+	// Extract the host from the SSH target URL (ssh://user@host[:port]).
+	targetIP := extractHostFromTarget(target)
+
+	// Resolve the target host in case it is a hostname rather than an IP.
+	targetAddrs, err := net.LookupHost(targetIP)
+	if err != nil {
+		targetAddrs = []string{targetIP}
+	}
+
+	targetSet := make(map[string]bool, len(targetAddrs))
+	for _, a := range targetAddrs {
+		targetSet[a] = true
+	}
+
+	for _, a := range addrs {
+		if targetSet[a] {
+			return CheckResult{
+				Name:     "Domain DNS",
+				Severity: SeverityOK,
+				Detail:   fmt.Sprintf("%s resolves to %s (matches target)", domain, a),
+			}
+		}
+	}
+
+	return CheckResult{
+		Name:     "Domain DNS",
+		Severity: SeverityWarn,
+		Detail:   fmt.Sprintf("%s resolves to %s but target is %s", domain, strings.Join(addrs, ", "), targetIP),
+	}
+}
+
+// extractHostFromTarget parses the host component from an ssh://user@host[:port]
+// URL. If parsing fails it returns the raw input.
+func extractHostFromTarget(raw string) string {
+	// Try standard URL parsing: ssh://user@host:port
+	if strings.Contains(raw, "://") {
+		parts := strings.SplitN(raw, "://", 2)
+		if len(parts) == 2 {
+			after := parts[1]
+			// Remove user@ prefix
+			if idx := strings.Index(after, "@"); idx >= 0 {
+				after = after[idx+1:]
+			}
+			// Remove :port suffix
+			if host, _, err := net.SplitHostPort(after); err == nil {
+				return host
+			}
+			return after
+		}
+	}
+	return raw
+}
+
+// checkRemoteTLSCert connects to domain:443 and checks the certificate expiry.
+func checkRemoteTLSCert(domain string) CheckResult {
+	conn, err := tls.DialWithDialer(
+		&net.Dialer{Timeout: 10 * time.Second},
+		"tcp",
+		domain+":443",
+		&tls.Config{
+			// We accept any cert — the purpose is to inspect expiry, not validate trust.
+			InsecureSkipVerify: true, //nolint:gosec
+		},
+	)
+	if err != nil {
+		return CheckResult{
+			Name:     "Remote TLS cert",
+			Severity: SeverityWarn,
+			Detail:   fmt.Sprintf("could not connect to %s:443: %v", domain, err),
+		}
+	}
+	defer conn.Close() //nolint:errcheck
+
+	certs := conn.ConnectionState().PeerCertificates
+	if len(certs) == 0 {
+		return CheckResult{
+			Name:     "Remote TLS cert",
+			Severity: SeverityWarn,
+			Detail:   fmt.Sprintf("no certificates presented by %s:443", domain),
+		}
+	}
+
+	leaf := certs[0]
+	now := time.Now()
+
+	if now.After(leaf.NotAfter) {
+		return CheckResult{
+			Name:     "Remote TLS cert",
+			Severity: SeverityFail,
+			Detail:   fmt.Sprintf("expired on %s", leaf.NotAfter.Format(time.DateOnly)),
+		}
+	}
+
+	daysUntilExpiry := int(time.Until(leaf.NotAfter).Hours() / 24)
+	if daysUntilExpiry <= remoteTLSCertExpiryWarnDays {
+		return CheckResult{
+			Name:     "Remote TLS cert",
+			Severity: SeverityWarn,
+			Detail:   fmt.Sprintf("expires in %d day(s) on %s", daysUntilExpiry, leaf.NotAfter.Format(time.DateOnly)),
+		}
+	}
+
+	return CheckResult{
+		Name:     "Remote TLS cert",
+		Severity: SeverityOK,
+		Detail:   fmt.Sprintf("valid until %s (%d days)", leaf.NotAfter.Format(time.DateOnly), daysUntilExpiry),
+	}
+}
+
 // printDoctorReport renders the check results to out using ANSI colour codes.
+// Results are grouped by section with headers.
 func printDoctorReport(results []CheckResult, out io.Writer) {
 	green := color.New(color.FgGreen).SprintFunc()
 	yellow := color.New(color.FgYellow).SprintFunc()
 	red := color.New(color.FgRed).SprintFunc()
+	bold := color.New(color.Bold).SprintFunc()
 
 	fmt.Fprintln(out, "")
 	fmt.Fprintln(out, "VibeWarden Doctor")
 	fmt.Fprintln(out, "─────────────────────────────────────────")
 
+	currentSection := ""
 	for _, r := range results {
+		if r.Section != "" && r.Section != currentSection {
+			currentSection = r.Section
+			fmt.Fprintf(out, "\n  %s\n", bold(currentSection))
+		}
+
 		var badge string
 		switch r.Severity {
 		case SeverityOK:
