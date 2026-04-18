@@ -3142,3 +3142,29 @@ this_key_does_not_exist:
 		t.Errorf("server.port = %d, want 8080 (config loaded but value wrong)", cfg.Server.Port)
 	}
 }
+
+func TestComposeProjectName(t *testing.T) {
+	tests := []struct {
+		name     string
+		appImage string
+		want     string
+	}{
+		{"empty image falls back to vibewarden", "", "vibewarden"},
+		{"simple image name", "myapp:latest", "myapp"},
+		{"image without tag", "myapp", "myapp"},
+		{"registry prefix stripped", "ghcr.io/org/myapp:latest", "myapp"},
+		{"deep registry path stripped", "registry.example.com/org/team/myapp:v2", "myapp"},
+		{"image with only tag", ":latest", "vibewarden"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &config.Config{}
+			cfg.App.Image = tt.appImage
+			got := cfg.ComposeProjectName()
+			if got != tt.want {
+				t.Errorf("ComposeProjectName() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}

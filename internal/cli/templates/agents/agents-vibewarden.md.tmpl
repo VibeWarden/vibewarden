@@ -77,6 +77,33 @@ app port directly — it has no security.
 | `vibew add auth` | Enable authentication |
 | `vibew eject` | Eject to raw Docker Compose |
 
+## Multi-site deployment
+
+VibeWarden supports hosting multiple sites behind a single sidecar instance.
+Each site gets its own vibewarden.yaml and app container while sharing TLS
+termination, WAF, rate limiting, and logging through the shared sidecar.
+
+### Directory layout
+
+```
+vibewarden.yaml          # global config (server port, TLS, shared settings)
+sites/
+  app1/
+    vibewarden.yaml      # per-site config (upstream, auth, routes)
+    docker-compose.yml   # app1 container(s)
+  app2/
+    vibewarden.yaml
+    docker-compose.yml
+```
+
+### Key rules
+
+- `upstream.host` in each site config must match the Docker Compose service
+  (container) name of that site's app (e.g., `app1-app`).
+- The sidecar reads all site configs from `sites/` automatically on startup.
+- TLS certificates are managed centrally by the sidecar for all configured domains.
+- Run `vibew deploy` to push the full multi-site layout to a remote host.
+
 ## Known limitations
 
 - WAF is in `detect` mode by default (logs but does not block). Set `waf.mode: block` in vibewarden.yaml to enforce blocking.

@@ -82,13 +82,25 @@ func (t *Toggler) EnableFeature(_ context.Context, path string, feature scaffold
 
 	case scaffold.FeatureTLS:
 		if boolField(root, "tls", "enabled") {
-			return fmt.Errorf("add tls: %w", scaffold.ErrFeatureAlreadyEnabled)
+			// When TLS is already enabled, allow updating domain/provider
+			// when the caller provides a domain. This makes
+			// `vibew add tls --domain newdomain.com` idempotent and useful.
+			if opts.TLSDomain != "" {
+				provider := opts.TLSProvider
+				if provider == "" {
+					provider = "letsencrypt"
+				}
+				upsertTLSBlock(root, opts.TLSDomain, provider)
+			} else {
+				return fmt.Errorf("add tls: %w", scaffold.ErrFeatureAlreadyEnabled)
+			}
+		} else {
+			provider := opts.TLSProvider
+			if provider == "" {
+				provider = "letsencrypt"
+			}
+			upsertTLSBlock(root, opts.TLSDomain, provider)
 		}
-		provider := opts.TLSProvider
-		if provider == "" {
-			provider = "letsencrypt"
-		}
-		upsertTLSBlock(root, opts.TLSDomain, provider)
 
 	case scaffold.FeatureAdmin:
 		if boolField(root, "admin", "enabled") {
