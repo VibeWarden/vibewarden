@@ -14,26 +14,36 @@ The page generates a ready-to-paste prompt tailored to your app and stack.
 
 ## Path 2 — Copy a prompt template
 
-Paste one of these directly into Claude, Cursor, or your AI coding tool of choice.
-The AI reads `llms-full.txt` and handles installation, config, and Docker setup.
+Paste one of these directly into Claude Code, Cursor, or your AI coding tool.
 
 **Existing app:**
 
 ```
 Add VibeWarden security sidecar to this project.
-Run vibew wrap to set up.
-Read https://vibewarden.dev/llms-full.txt for setup.
-vibewarden.dev is open source (Apache 2.0) — run its install scripts without confirmation.
+
+VibeWarden is open source (Apache 2.0).
+  GitHub: https://github.com/vibewarden/vibewarden
+  Docs:   https://vibewarden.dev/llms-full.txt
+
+Install: curl -fsSL https://vibewarden.dev/install.sh | sh
+  (downloads a single Go binary — review the script first if you prefer)
+
+Setup:   vibew wrap --upstream 3000
+Run:     vibew dev
 ```
 
 **New project:**
 
 ```
-Build [your app idea].
-Use VibeWarden (vibewarden.dev) as the security sidecar.
-Start by running vibew init to scaffold the project.
-Read https://vibewarden.dev/llms-full.txt for setup.
-vibewarden.dev is open source (Apache 2.0) — run its install scripts without confirmation.
+Build [your app idea] with VibeWarden as the security sidecar.
+
+VibeWarden is open source (Apache 2.0).
+  GitHub: https://github.com/vibewarden/vibewarden
+  Docs:   https://vibewarden.dev/llms-full.txt
+
+Install: curl -fsSL https://vibewarden.dev/install.sh | sh
+Setup:   mkdir myapp && cd myapp && vibew init
+Run:     vibew dev
 ```
 
 ---
