@@ -34,6 +34,7 @@ Examples:
 	cmd.AddCommand(newSecretGenerateCmd())
 	cmd.AddCommand(newSecretGetCmd())
 	cmd.AddCommand(newSecretListCmd())
+	cmd.AddCommand(newSecretSetCmd())
 
 	return cmd
 }

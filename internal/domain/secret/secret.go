@@ -13,6 +13,9 @@ const (
 
 	// SourceCredentialsFile indicates the secret was retrieved from the .credentials file.
 	SourceCredentialsFile SecretSource = "credentials_file"
+
+	// SourceBuiltin indicates the secret was retrieved from the built-in encrypted file store.
+	SourceBuiltin SecretSource = "builtin"
 )
 
 // RetrievedSecret holds the key/value pairs retrieved from a secret path.

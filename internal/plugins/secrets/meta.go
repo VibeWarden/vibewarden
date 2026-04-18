@@ -2,14 +2,17 @@ package secrets
 
 // Description returns a short description of the secrets plugin.
 func (p *Plugin) Description() string {
-	return "Secret management: fetch static and dynamic secrets from OpenBao and inject them into proxied requests"
+	return "Secret management: store and fetch secrets via built-in encrypted file or OpenBao, inject them into proxied requests"
 }
 
 // ConfigSchema returns the configuration field descriptions for the secrets plugin.
 func (p *Plugin) ConfigSchema() map[string]string {
 	return map[string]string{
 		"enabled":                               "Enable the secrets plugin (default: false)",
-		"provider":                              "Secret store backend: \"openbao\" (default: \"openbao\")",
+		"store":                                 "Secret store backend: \"builtin\" or \"openbao\" (default: \"builtin\")",
+		"builtin.path":                          "Path to the encrypted secrets file (default: \".vibewarden/secrets.enc\")",
+		"builtin.key_file":                      "Path to a file containing the hex-encoded 32-byte master key (alternative to VIBEWARDEN_SECRETS_MASTER_KEY env var)",
+		"provider":                              "Deprecated: use \"store\" instead. Secret store backend (default: \"openbao\")",
 		"openbao.address":                       "OpenBao server URL (e.g. \"http://openbao:8200\")",
 		"openbao.auth.method":                   "Auth method: \"token\" or \"approle\" (default: \"token\")",
 		"openbao.auth.token":                    "Static token (used when method is \"token\")",
@@ -38,7 +41,11 @@ func (p *Plugin) ConfigSchema() map[string]string {
 func (p *Plugin) Example() string {
 	return `  secrets:
     enabled: true
-    provider: openbao
+    store: builtin          # or "openbao"
+    builtin:
+      path: .vibewarden/secrets.enc
+      # key_file: /path/to/master.key   # alternative to VIBEWARDEN_SECRETS_MASTER_KEY env var
+    # --- OpenBao configuration (used when store: openbao) ---
     openbao:
       address: http://openbao:8200
       auth:

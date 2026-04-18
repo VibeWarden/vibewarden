@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -11,6 +12,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	builtinstore "github.com/vibewarden/vibewarden/internal/adapters/builtin"
 	credentialsadapter "github.com/vibewarden/vibewarden/internal/adapters/credentials"
 	openbao "github.com/vibewarden/vibewarden/internal/adapters/openbao"
 	appsecret "github.com/vibewarden/vibewarden/internal/app/secret"
@@ -92,9 +94,11 @@ Examples:
 // defaultOutputDir is the standard generated files directory.
 const defaultOutputDir = ".vibewarden/generated"
 
-// buildSecretService constructs the SecretService, wiring OpenBao and credentials adapters.
-// If OpenBao is not configured in vibewarden.yaml, a nil SecretStore is passed
-// to the service (falling back to .credentials for all lookups).
+// buildSecretService constructs the SecretService, wiring the appropriate store
+// adapter and the credentials file adapter. The store is selected based on
+// config: "builtin" (default) uses an AES-256-GCM encrypted file, "openbao"
+// uses the OpenBao HTTP adapter. When no config exists, credentials-file-only
+// mode is used.
 func buildSecretService(configPath, outputDir string) (*appsecret.Service, error) {
 	if outputDir == "" {
 		outputDir = defaultOutputDir
@@ -106,22 +110,100 @@ func buildSecretService(configPath, outputDir string) (*appsecret.Service, error
 		return appsecret.NewService(nil, credentialsadapter.NewStore(), outputDir), nil
 	}
 
-	var secretStore ports.SecretStore
-	if cfg.Secrets.OpenBao.Address != "" {
-		adapter := openbao.New(openbao.Config{
-			Address:   cfg.Secrets.OpenBao.Address,
-			MountPath: cfg.Secrets.OpenBao.MountPath,
-			Auth: openbao.AuthConfig{
-				Method:   openbao.AuthMethod(cfg.Secrets.OpenBao.Auth.Method),
-				Token:    cfg.Secrets.OpenBao.Auth.Token,
-				RoleID:   cfg.Secrets.OpenBao.Auth.RoleID,
-				SecretID: cfg.Secrets.OpenBao.Auth.SecretID,
-			},
-		}, slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn})))
-		secretStore = adapter
+	secretStore, err := buildSecretStore(cfg)
+	if err != nil {
+		return nil, fmt.Errorf("building secret store: %w", err)
 	}
 
 	return appsecret.NewService(secretStore, credentialsadapter.NewStore(), outputDir), nil
+}
+
+// buildSecretStore creates the appropriate SecretStore based on config.
+// Returns nil when neither store is configured (credentials-file-only mode).
+func buildSecretStore(cfg *config.Config) (ports.SecretStore, error) {
+	store := cfg.Secrets.Store
+	if store == "" {
+		store = "builtin"
+	}
+
+	switch store {
+	case "builtin":
+		return buildBuiltinStore(cfg)
+	case "openbao":
+		return buildOpenBaoStore(cfg), nil
+	default:
+		return nil, fmt.Errorf("unsupported secrets.store %q", store)
+	}
+}
+
+// buildBuiltinStore creates a builtin encrypted file store from config.
+// Returns nil (no error) when the master key is not available, allowing
+// fallback to credentials-file-only mode.
+func buildBuiltinStore(cfg *config.Config) (ports.SecretStore, error) {
+	masterKey, err := resolveBuiltinMasterKey(cfg)
+	if err != nil {
+		// Master key not available — fall back to credentials-file-only mode.
+		return nil, nil //nolint:nilerr // intentional: missing key is not an error in CLI context
+	}
+
+	path := cfg.Secrets.Builtin.Path
+	if path == "" {
+		path = ".vibewarden/secrets.enc"
+	}
+
+	store, err := builtinstore.NewStore(path, masterKey)
+	if err != nil {
+		return nil, fmt.Errorf("creating builtin store: %w", err)
+	}
+	return store, nil
+}
+
+// resolveBuiltinMasterKey reads the master key from the key file or the
+// VIBEWARDEN_SECRETS_MASTER_KEY environment variable.
+func resolveBuiltinMasterKey(cfg *config.Config) ([]byte, error) {
+	var hexKey string
+
+	if cfg.Secrets.Builtin.KeyFile != "" {
+		raw, err := os.ReadFile(cfg.Secrets.Builtin.KeyFile)
+		if err != nil {
+			return nil, fmt.Errorf("reading key file %q: %w", cfg.Secrets.Builtin.KeyFile, err)
+		}
+		hexKey = strings.TrimSpace(string(raw))
+	} else {
+		hexKey = os.Getenv("VIBEWARDEN_SECRETS_MASTER_KEY")
+	}
+
+	if hexKey == "" {
+		return nil, fmt.Errorf("master key not set")
+	}
+
+	key, err := hex.DecodeString(hexKey)
+	if err != nil {
+		return nil, fmt.Errorf("decoding hex master key: %w", err)
+	}
+	if len(key) != 32 {
+		return nil, fmt.Errorf("master key must be 32 bytes (64 hex chars), got %d bytes", len(key))
+	}
+	return key, nil
+}
+
+// buildOpenBaoStore creates an OpenBao adapter from config.
+// Returns nil when openbao.address is not configured.
+func buildOpenBaoStore(cfg *config.Config) ports.SecretStore {
+	if cfg.Secrets.OpenBao.Address == "" {
+		return nil
+	}
+	adapter := openbao.New(openbao.Config{
+		Address:   cfg.Secrets.OpenBao.Address,
+		MountPath: cfg.Secrets.OpenBao.MountPath,
+		Auth: openbao.AuthConfig{
+			Method:   openbao.AuthMethod(cfg.Secrets.OpenBao.Auth.Method),
+			Token:    cfg.Secrets.OpenBao.Auth.Token,
+			RoleID:   cfg.Secrets.OpenBao.Auth.RoleID,
+			SecretID: cfg.Secrets.OpenBao.Auth.SecretID,
+		},
+	}, slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: slog.LevelWarn})))
+	return adapter
 }
 
 // formatSecretGetError converts service errors into user-friendly messages.
