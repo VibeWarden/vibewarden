@@ -1,17 +1,13 @@
 package deploy
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"io"
 	"path/filepath"
 	"strings"
-	"text/template"
 
-	templateadapter "github.com/vibewarden/vibewarden/internal/adapters/template"
 	"github.com/vibewarden/vibewarden/internal/config"
-	"github.com/vibewarden/vibewarden/internal/config/templates"
 )
 
 const (
@@ -62,7 +58,11 @@ type AppComposeData struct {
 // host and starts the shared sidecar container. This is called when Detect
 // returns DeployModeFreshInstall.
 //
-// The created layout:
+// It produces a local deploy bundle under .vibewarden/deploy/ containing the
+// sidecar compose, global.yaml, and the first site's compose and config.
+// Files are then rsynced to the remote -- no sed or runtime patching.
+//
+// The created remote layout:
 //
 //	~/vibewarden/
 //	  .sidecar/
@@ -83,7 +83,27 @@ func (s *Service) BootstrapSidecar(ctx context.Context, cfg *config.Config, opts
 		projectName = ProjectNameFromConfig(opts.ConfigPath)
 	}
 
-	// Step 1: create the directory layout.
+	bundleDir := opts.GeneratedDir
+	if bundleDir == "" {
+		bundleDir = defaultBundleDir
+	}
+
+	// Step 1: produce the local deploy bundle.
+	fmt.Fprintln(out, "Bundling sidecar and first site locally...")
+	if err := s.BundleSidecar(ctx, cfg, bundleDir); err != nil {
+		return fmt.Errorf("bundling sidecar: %w", err)
+	}
+	if err := s.Bundle(ctx, BundleOptions{
+		Config:      cfg,
+		ConfigPath:  opts.ConfigPath,
+		ProjectName: projectName,
+		MultiSite:   true,
+		OutputDir:   bundleDir,
+	}); err != nil {
+		return fmt.Errorf("bundling first site: %w", err)
+	}
+
+	// Step 2: create remote directories and shared Docker network.
 	fmt.Fprintln(out, "Creating multi-app directory layout...")
 	siteDir := sitesDir + projectName + "/"
 	mkdirCmd := fmt.Sprintf("mkdir -p %s %s", sidecarDir, siteDir)
@@ -91,38 +111,45 @@ func (s *Service) BootstrapSidecar(ctx context.Context, cfg *config.Config, opts
 		return fmt.Errorf("creating directory layout: %w", err)
 	}
 
-	// Step 2: create the shared Docker network.
 	fmt.Fprintln(out, "Creating shared Docker network...")
 	netCmd := fmt.Sprintf("docker network create %s 2>/dev/null || true", multiappNetwork)
 	if _, err := s.executor.Run(ctx, netCmd); err != nil {
 		return fmt.Errorf("creating docker network: %w", err)
 	}
 
-	// Step 3: write global.yaml to the remote.
-	fmt.Fprintln(out, "Writing global.yaml...")
-	listenPort := cfg.Server.Port
-	if listenPort == 0 {
-		listenPort = defaultHealthPort
-	}
-	globalYAML := renderGlobalYAML(listenPort)
-	if err := s.writeRemoteFile(ctx, sidecarDir+"global.yaml", globalYAML); err != nil {
-		return fmt.Errorf("writing global.yaml: %w", err)
+	// Step 3: rsync sidecar bundle to remote.
+	fmt.Fprintln(out, "Transferring sidecar files...")
+	sidecarBundleSrc := filepath.Join(bundleDir, ".sidecar")
+	if err := s.executor.Transfer(ctx, sidecarBundleSrc, sidecarDir, true); err != nil {
+		return fmt.Errorf("transferring sidecar bundle: %w", err)
 	}
 
-	// Step 4: render and write the sidecar compose file.
-	fmt.Fprintln(out, "Writing sidecar docker-compose.yml...")
-	sidecarCompose, err := renderSidecarCompose(listenPort)
-	if err != nil {
-		return fmt.Errorf("rendering sidecar compose: %w", err)
-	}
-	if err := s.writeRemoteFile(ctx, sidecarDir+"docker-compose.yml", sidecarCompose); err != nil {
-		return fmt.Errorf("writing sidecar docker-compose.yml: %w", err)
+	// Step 4: rsync site bundle to remote.
+	fmt.Fprintf(out, "Transferring site %q files...\n", projectName)
+	siteBundleSrc := filepath.Join(bundleDir, "sites", projectName)
+	if err := s.executor.Transfer(ctx, siteBundleSrc, siteDir, true); err != nil {
+		return fmt.Errorf("transferring site bundle: %w", err)
 	}
 
-	// Step 5: deploy the first site.
-	fmt.Fprintf(out, "Deploying site %q...\n", projectName)
-	if err := s.deploySite(ctx, cfg, projectName, opts); err != nil {
-		return fmt.Errorf("deploying first site: %w", err)
+	// Step 4b: if app.build is set, rsync the build context to the remote site dir.
+	if cfg.App.Build != "" {
+		projectRoot := filepath.Dir(filepath.Clean(opts.ConfigPath))
+		buildContextLocal := filepath.Join(projectRoot, cfg.App.Build)
+		buildContextRemote := siteDir + strings.TrimPrefix(strings.TrimSuffix(cfg.App.Build, "/"), "./") + "/"
+		fmt.Fprintf(out, "Transferring app build context (%s)...\n", cfg.App.Build)
+		if err := s.executor.Transfer(ctx, buildContextLocal, buildContextRemote, false); err != nil {
+			return fmt.Errorf("transferring app build context: %w", err)
+		}
+	}
+
+	// Step 5: start the app container.
+	fmt.Fprintf(out, "Starting site %q...\n", projectName)
+	startCmd := fmt.Sprintf("cd %s && docker compose up -d", siteDir)
+	if cfg.App.Build != "" {
+		startCmd = fmt.Sprintf("cd %s && docker compose up -d --build", siteDir)
+	}
+	if _, err := s.executor.Run(ctx, startCmd); err != nil {
+		return fmt.Errorf("starting app container: %w", err)
 	}
 
 	// Step 6: start the sidecar.
@@ -150,9 +177,9 @@ func (s *Service) BootstrapSidecar(ctx context.Context, cfg *config.Config, opts
 // DeployMultiApp adds a new site to an existing VibeWarden sidecar
 // installation. This is called when Detect returns DeployModeAddSite.
 //
-// It writes the per-app configuration and compose file to
-// ~/vibewarden/sites/<project>/ and then restarts the sidecar to pick up
-// the new site configuration.
+// It produces a local deploy bundle with the per-app configuration and compose
+// file, rsyncs it to ~/vibewarden/sites/<project>/, and then restarts the
+// sidecar to pick up the new site configuration.
 func (s *Service) DeployMultiApp(ctx context.Context, cfg *config.Config, opts RunOptions) error {
 	out := opts.Out
 	if out == nil {
@@ -164,20 +191,65 @@ func (s *Service) DeployMultiApp(ctx context.Context, cfg *config.Config, opts R
 		projectName = ProjectNameFromConfig(opts.ConfigPath)
 	}
 
-	// Step 1: deploy the site files.
-	fmt.Fprintf(out, "Deploying site %q to existing sidecar...\n", projectName)
-	if err := s.deploySite(ctx, cfg, projectName, opts); err != nil {
-		return fmt.Errorf("deploying site: %w", err)
+	bundleDir := opts.GeneratedDir
+	if bundleDir == "" {
+		bundleDir = defaultBundleDir
 	}
 
-	// Step 2: restart the sidecar to pick up the new site.
+	// Step 1: produce the local deploy bundle for this site.
+	fmt.Fprintf(out, "Bundling site %q locally...\n", projectName)
+	if err := s.Bundle(ctx, BundleOptions{
+		Config:      cfg,
+		ConfigPath:  opts.ConfigPath,
+		ProjectName: projectName,
+		MultiSite:   true,
+		OutputDir:   bundleDir,
+	}); err != nil {
+		return fmt.Errorf("bundling site: %w", err)
+	}
+
+	// Step 2: ensure remote site directory exists.
+	siteDir := sitesDir + projectName + "/"
+	if _, err := s.executor.Run(ctx, "mkdir -p "+siteDir); err != nil {
+		return fmt.Errorf("creating site directory: %w", err)
+	}
+
+	// Step 3: rsync site bundle to remote.
+	fmt.Fprintf(out, "Transferring site %q files...\n", projectName)
+	siteBundleSrc := filepath.Join(bundleDir, "sites", projectName)
+	if err := s.executor.Transfer(ctx, siteBundleSrc, siteDir, true); err != nil {
+		return fmt.Errorf("transferring site bundle: %w", err)
+	}
+
+	// Step 3b: if app.build is set, rsync the build context to the remote site dir.
+	if cfg.App.Build != "" {
+		projectRoot := filepath.Dir(filepath.Clean(opts.ConfigPath))
+		buildContextLocal := filepath.Join(projectRoot, cfg.App.Build)
+		buildContextRemote := siteDir + strings.TrimPrefix(strings.TrimSuffix(cfg.App.Build, "/"), "./") + "/"
+		fmt.Fprintf(out, "Transferring app build context (%s)...\n", cfg.App.Build)
+		if err := s.executor.Transfer(ctx, buildContextLocal, buildContextRemote, false); err != nil {
+			return fmt.Errorf("transferring app build context: %w", err)
+		}
+	}
+
+	// Step 4: start the app container.
+	fmt.Fprintf(out, "Starting site %q...\n", projectName)
+	startCmd := fmt.Sprintf("cd %s && docker compose up -d", siteDir)
+	if cfg.App.Build != "" {
+		startCmd = fmt.Sprintf("cd %s && docker compose up -d --build", siteDir)
+	}
+	if _, err := s.executor.Run(ctx, startCmd); err != nil {
+		return fmt.Errorf("starting app container: %w", err)
+	}
+
+	// Step 5: restart the sidecar to pick up the new site.
 	fmt.Fprintln(out, "Restarting sidecar to load new site...")
 	restartCmd := fmt.Sprintf("cd %s && docker compose restart vibewarden", sidecarDir)
 	if _, err := s.executor.Run(ctx, restartCmd); err != nil {
 		return fmt.Errorf("restarting sidecar: %w", err)
 	}
 
-	// Step 3: health check.
+	// Step 6: health check.
 	port := cfg.Server.Port
 	if port == 0 {
 		port = defaultHealthPort
@@ -190,77 +262,6 @@ func (s *Service) DeployMultiApp(ctx context.Context, cfg *config.Config, opts R
 	}
 
 	fmt.Fprintln(out, "Site deployed.")
-	return nil
-}
-
-// deploySite writes the per-app vibewarden.yaml and docker-compose.yml to
-// the site directory on the remote host. When the app uses build mode
-// (cfg.App.Build is set), the app source directory is rsynced to the remote
-// so that Docker can build the image remotely.
-func (s *Service) deploySite(ctx context.Context, cfg *config.Config, projectName string, opts RunOptions) error {
-	siteDir := sitesDir + projectName + "/"
-
-	// Ensure the site directory exists.
-	if _, err := s.executor.Run(ctx, "mkdir -p "+siteDir); err != nil {
-		return fmt.Errorf("creating site directory: %w", err)
-	}
-
-	// When app.build is set the image must be built on the remote host.
-	// Transfer the app source (the build context directory) so that
-	// `docker compose up --build` can build the image remotely.
-	// This must happen BEFORE the config file transfer, because the build
-	// context may include a dev vibewarden.yaml that would overwrite the
-	// prod config.
-	if cfg.App.Build != "" {
-		projectRoot := filepath.Dir(filepath.Clean(opts.ConfigPath))
-		buildContextLocal := filepath.Join(projectRoot, cfg.App.Build)
-		buildContextRemote := siteDir + strings.TrimPrefix(strings.TrimSuffix(cfg.App.Build, "/"), "./") + "/"
-		if err := s.executor.Transfer(ctx, buildContextLocal, buildContextRemote, false); err != nil {
-			return fmt.Errorf("transferring app build context: %w", err)
-		}
-	}
-
-	// Transfer the config file as vibewarden.yaml.
-	if err := s.executor.TransferFile(ctx, opts.ConfigPath, siteDir+"vibewarden.yaml"); err != nil {
-		return fmt.Errorf("transferring vibewarden.yaml: %w", err)
-	}
-
-	// Fix upstream.host for Docker networking: if the user configured a
-	// loopback or wildcard address (0.0.0.0, 127.0.0.1, localhost) these
-	// resolve to the sidecar container itself rather than the app container.
-	// Rewrite them to the Docker container name so the sidecar can reach
-	// the app across the shared vibewarden-multiapp network.
-	containerName := appContainerName(projectName)
-	if isLocalUpstreamHost(cfg.Upstream.Host) {
-		sedCmd := fmt.Sprintf(
-			`sed -i 's/\(host:\s*\)%s/\1%s/' %svibewarden.yaml`,
-			cfg.Upstream.Host, containerName, siteDir,
-		)
-		if _, err := s.executor.Run(ctx, sedCmd); err != nil {
-			return fmt.Errorf("rewriting upstream.host in vibewarden.yaml: %w", err)
-		}
-	}
-
-	// Render and write the per-app compose file.
-	appCompose, err := renderAppCompose(cfg, projectName)
-	if err != nil {
-		return fmt.Errorf("rendering app compose: %w", err)
-	}
-	if err := s.writeRemoteFile(ctx, siteDir+"docker-compose.yml", appCompose); err != nil {
-		return fmt.Errorf("writing app docker-compose.yml: %w", err)
-	}
-
-	// Start the app container.
-	// In build mode, pass --build so Docker Compose builds the image from
-	// the transferred source directory.
-	startCmd := fmt.Sprintf("cd %s && docker compose up -d", siteDir)
-	if cfg.App.Build != "" {
-		startCmd = fmt.Sprintf("cd %s && docker compose up -d --build", siteDir)
-	}
-	if _, err := s.executor.Run(ctx, startCmd); err != nil {
-		return fmt.Errorf("starting app container: %w", err)
-	}
-
 	return nil
 }
 
@@ -295,79 +296,4 @@ func (s *Service) startSidecar(ctx context.Context) error {
 	}
 
 	return nil
-}
-
-// writeRemoteFile writes content to a file on the remote host using printf
-// piped through tee for idempotent file creation.
-func (s *Service) writeRemoteFile(ctx context.Context, remotePath, content string) error {
-	// Use a heredoc to write the file content to avoid shell quoting issues.
-	cmd := fmt.Sprintf("cat > %s << 'VIBEWARDEN_EOF'\n%s\nVIBEWARDEN_EOF", remotePath, content)
-	if _, err := s.executor.Run(ctx, cmd); err != nil {
-		return fmt.Errorf("writing %s: %w", remotePath, err)
-	}
-	return nil
-}
-
-// renderGlobalYAML produces the global.yaml content for the sidecar.
-func renderGlobalYAML(listenPort int) string {
-	return fmt.Sprintf(`# global.yaml — VibeWarden sidecar global configuration
-# Generated by vibew deploy — do not edit manually.
-listen_port: %d
-log_level: info
-`, listenPort)
-}
-
-// renderSidecarCompose renders the sidecar docker-compose.yml template.
-func renderSidecarCompose(listenPort int) (string, error) {
-	tmplContent, err := templates.FS.ReadFile("sidecar-compose.yml.tmpl")
-	if err != nil {
-		return "", fmt.Errorf("reading sidecar compose template: %w", err)
-	}
-
-	tmpl, err := template.New("sidecar-compose").Funcs(templateadapter.SharedFuncMap()).Parse(string(tmplContent))
-	if err != nil {
-		return "", fmt.Errorf("parsing sidecar compose template: %w", err)
-	}
-
-	data := SidecarComposeData{ListenPort: listenPort}
-	var buf bytes.Buffer
-	if err := tmpl.Execute(&buf, data); err != nil {
-		return "", fmt.Errorf("executing sidecar compose template: %w", err)
-	}
-
-	return buf.String(), nil
-}
-
-// renderAppCompose renders the per-app docker-compose.yml template.
-func renderAppCompose(cfg *config.Config, projectName string) (string, error) {
-	tmplContent, err := templates.FS.ReadFile("app-compose.yml.tmpl")
-	if err != nil {
-		return "", fmt.Errorf("reading app compose template: %w", err)
-	}
-
-	tmpl, err := template.New("app-compose").Funcs(templateadapter.SharedFuncMap()).Parse(string(tmplContent))
-	if err != nil {
-		return "", fmt.Errorf("parsing app compose template: %w", err)
-	}
-
-	healthcheck := "none"
-	if cfg.App.Healthcheck != "none" && cfg.App.Healthcheck != "" {
-		healthcheck = cfg.App.Healthcheck
-	}
-
-	data := AppComposeData{
-		ProjectName:    projectName,
-		AppImage:       cfg.App.Image,
-		AppBuild:       cfg.App.Build,
-		AppHealthcheck: healthcheck,
-		UpstreamPort:   cfg.Upstream.Port,
-		AppLanguage:    cfg.App.Language,
-	}
-
-	var buf bytes.Buffer
-	if err := tmpl.Execute(&buf, data); err != nil {
-		return "", fmt.Errorf("executing app compose template: %w", err)
-	}
-
-	return buf.String(), nil
 }

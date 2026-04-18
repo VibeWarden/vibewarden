@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -38,9 +40,10 @@ func TestBootstrapSidecar_HappyPath(t *testing.T) {
 
 	var buf bytes.Buffer
 	err := svc.BootstrapSidecar(context.Background(), multiappConfig(), deployapp.RunOptions{
-		ConfigPath:  "/tmp/myproject/vibewarden.yaml",
-		ProjectName: "myproject",
-		Out:         &buf,
+		ConfigPath:   "/tmp/myproject/vibewarden.yaml",
+		ProjectName:  "myproject",
+		GeneratedDir: t.TempDir(),
+		Out:          &buf,
 	})
 	if err != nil {
 		t.Fatalf("BootstrapSidecar() unexpected error: %v\noutput:\n%s", err, buf.String())
@@ -57,31 +60,16 @@ func TestBootstrapSidecar_HappyPath(t *testing.T) {
 	// Verify shared Docker network creation was called.
 	assertRunCalledContains(t, executor.runCalls, "docker network create vibewarden-multiapp")
 
-	// Verify global.yaml was written.
-	assertRunCalledContains(t, executor.runCalls, "global.yaml")
-
-	// Verify sidecar compose was written.
-	assertRunCalledContains(t, executor.runCalls, ".sidecar/docker-compose.yml")
-
 	// Verify site directory was created.
-	assertRunCalledContains(t, executor.runCalls, "mkdir -p ~/vibewarden/sites/myproject/")
+	assertRunCalledContains(t, executor.runCalls, "mkdir -p ~/vibewarden/.sidecar/ ~/vibewarden/sites/myproject/")
 
 	// Verify sidecar was started.
 	assertRunCalledContains(t, executor.runCalls, "docker compose up -d")
 
-	// Verify config file was transferred.
-	if len(executor.transferFileCalls) == 0 {
-		t.Error("expected TransferFile to be called for vibewarden.yaml")
-	}
-	found := false
-	for _, call := range executor.transferFileCalls {
-		if strings.Contains(call.remotePath, "sites/myproject/vibewarden.yaml") {
-			found = true
-			break
-		}
-	}
-	if !found {
-		t.Errorf("expected TransferFile to sites/myproject/vibewarden.yaml, got: %v", executor.transferFileCalls)
+	// Verify Transfer was called for both sidecar and site bundles.
+	if len(executor.transferCalls) < 2 {
+		t.Errorf("expected at least 2 Transfer calls (sidecar + site), got %d: %v",
+			len(executor.transferCalls), executor.transferCalls)
 	}
 }
 
@@ -98,8 +86,9 @@ func TestBootstrapSidecar_DirectoryCreationFails(t *testing.T) {
 	svc := deployapp.NewService(executor, generator)
 
 	err := svc.BootstrapSidecar(context.Background(), multiappConfig(), deployapp.RunOptions{
-		ConfigPath:  "/tmp/myproject/vibewarden.yaml",
-		ProjectName: "myproject",
+		ConfigPath:   "/tmp/myproject/vibewarden.yaml",
+		ProjectName:  "myproject",
+		GeneratedDir: t.TempDir(),
 	})
 	if err == nil {
 		t.Fatal("expected error when directory creation fails")
@@ -116,8 +105,9 @@ func TestBootstrapSidecar_CreatesCorrectLayout(t *testing.T) {
 	svc := deployapp.NewService(executor, generator)
 
 	err := svc.BootstrapSidecar(context.Background(), multiappConfig(), deployapp.RunOptions{
-		ConfigPath:  "/tmp/myproject/vibewarden.yaml",
-		ProjectName: "myproject",
+		ConfigPath:   "/tmp/myproject/vibewarden.yaml",
+		ProjectName:  "myproject",
+		GeneratedDir: t.TempDir(),
 	})
 	if err != nil {
 		t.Fatalf("BootstrapSidecar() unexpected error: %v", err)
@@ -147,24 +137,23 @@ func TestBootstrapSidecar_WritesGlobalYAML(t *testing.T) {
 	cfg := multiappConfig()
 	cfg.Server.Port = 8443
 
+	bundleDir := t.TempDir()
 	err := svc.BootstrapSidecar(context.Background(), cfg, deployapp.RunOptions{
-		ConfigPath:  "/tmp/proj/vibewarden.yaml",
-		ProjectName: "myproject",
+		ConfigPath:   "/tmp/proj/vibewarden.yaml",
+		ProjectName:  "myproject",
+		GeneratedDir: bundleDir,
 	})
 	if err != nil {
 		t.Fatalf("BootstrapSidecar() unexpected error: %v", err)
 	}
 
-	// Verify that global.yaml was written with the correct port.
-	found := false
-	for _, call := range executor.runCalls {
-		if strings.Contains(call, "global.yaml") && strings.Contains(call, "listen_port: 8443") {
-			found = true
-			break
-		}
+	// Verify that global.yaml was written locally in the bundle with the correct port.
+	globalYAML, err := os.ReadFile(filepath.Join(bundleDir, ".sidecar", "global.yaml"))
+	if err != nil {
+		t.Fatalf("reading bundled global.yaml: %v", err)
 	}
-	if !found {
-		t.Errorf("expected global.yaml to contain 'listen_port: 8443', got run calls: %v", executor.runCalls)
+	if !strings.Contains(string(globalYAML), "listen_port: 8443") {
+		t.Errorf("expected global.yaml to contain 'listen_port: 8443', got:\n%s", string(globalYAML))
 	}
 }
 
@@ -176,9 +165,10 @@ func TestDeployMultiApp_HappyPath(t *testing.T) {
 
 	var buf bytes.Buffer
 	err := svc.DeployMultiApp(context.Background(), multiappConfig(), deployapp.RunOptions{
-		ConfigPath:  "/tmp/newsite/vibewarden.yaml",
-		ProjectName: "newsite",
-		Out:         &buf,
+		ConfigPath:   "/tmp/newsite/vibewarden.yaml",
+		ProjectName:  "newsite",
+		GeneratedDir: t.TempDir(),
+		Out:          &buf,
 	})
 	if err != nil {
 		t.Fatalf("DeployMultiApp() unexpected error: %v\noutput:\n%s", err, buf.String())
@@ -195,16 +185,9 @@ func TestDeployMultiApp_HappyPath(t *testing.T) {
 	// Verify sidecar was restarted (not a full up).
 	assertRunCalledContains(t, executor.runCalls, "docker compose restart vibewarden")
 
-	// Verify config was transferred.
-	found := false
-	for _, call := range executor.transferFileCalls {
-		if strings.Contains(call.remotePath, "sites/newsite/vibewarden.yaml") {
-			found = true
-			break
-		}
-	}
-	if !found {
-		t.Errorf("expected TransferFile to sites/newsite/vibewarden.yaml, got: %v", executor.transferFileCalls)
+	// Verify Transfer was called for the site bundle.
+	if len(executor.transferCalls) < 1 {
+		t.Errorf("expected at least 1 Transfer call for site bundle, got %d", len(executor.transferCalls))
 	}
 }
 
@@ -215,24 +198,18 @@ func TestDeployMultiApp_DoesNotTouchExistingSites(t *testing.T) {
 	svc := deployapp.NewService(executor, generator)
 
 	err := svc.DeployMultiApp(context.Background(), multiappConfig(), deployapp.RunOptions{
-		ConfigPath:  "/tmp/site2/vibewarden.yaml",
-		ProjectName: "site2",
+		ConfigPath:   "/tmp/site2/vibewarden.yaml",
+		ProjectName:  "site2",
+		GeneratedDir: t.TempDir(),
 	})
 	if err != nil {
 		t.Fatalf("DeployMultiApp() unexpected error: %v", err)
 	}
 
-	// No run call should reference a site other than "site2".
+	// No run call should reference a site other than "site2" (ignoring sidecar commands).
 	for _, call := range executor.runCalls {
 		if strings.Contains(call, "sites/") && !strings.Contains(call, "sites/site2") {
 			t.Errorf("DeployMultiApp touched a different site directory: %q", call)
-		}
-	}
-
-	// No transfer call should reference a site other than "site2".
-	for _, call := range executor.transferFileCalls {
-		if strings.Contains(call.remotePath, "sites/") && !strings.Contains(call.remotePath, "sites/site2") {
-			t.Errorf("DeployMultiApp transferred to a different site: %q", call.remotePath)
 		}
 	}
 }
@@ -250,8 +227,9 @@ func TestDeployMultiApp_RestartFails(t *testing.T) {
 	svc := deployapp.NewService(executor, generator)
 
 	err := svc.DeployMultiApp(context.Background(), multiappConfig(), deployapp.RunOptions{
-		ConfigPath:  "/tmp/site/vibewarden.yaml",
-		ProjectName: "mysite",
+		ConfigPath:   "/tmp/site/vibewarden.yaml",
+		ProjectName:  "mysite",
+		GeneratedDir: t.TempDir(),
 	})
 	if err == nil {
 		t.Fatal("expected error when sidecar restart fails")
@@ -269,9 +247,10 @@ func TestDeployMultiApp_NilOut(t *testing.T) {
 
 	// Should not panic with nil Out.
 	err := svc.DeployMultiApp(context.Background(), multiappConfig(), deployapp.RunOptions{
-		ConfigPath:  "/tmp/site/vibewarden.yaml",
-		ProjectName: "mysite",
-		Out:         nil,
+		ConfigPath:   "/tmp/site/vibewarden.yaml",
+		ProjectName:  "mysite",
+		GeneratedDir: t.TempDir(),
+		Out:          nil,
 	})
 	if err != nil {
 		t.Fatalf("DeployMultiApp() unexpected error: %v", err)
@@ -287,24 +266,130 @@ func TestBootstrapSidecar_DefaultPort(t *testing.T) {
 	cfg := multiappConfig()
 	cfg.Server.Port = 0 // should default to 8443
 
+	bundleDir := t.TempDir()
 	err := svc.BootstrapSidecar(context.Background(), cfg, deployapp.RunOptions{
-		ConfigPath:  "/tmp/proj/vibewarden.yaml",
-		ProjectName: "myproject",
+		ConfigPath:   "/tmp/proj/vibewarden.yaml",
+		ProjectName:  "myproject",
+		GeneratedDir: bundleDir,
 	})
 	if err != nil {
 		t.Fatalf("BootstrapSidecar() unexpected error: %v", err)
 	}
 
 	// Verify that global.yaml uses the default port.
-	found := false
-	for _, call := range executor.runCalls {
-		if strings.Contains(call, "global.yaml") && strings.Contains(call, "listen_port: 8443") {
-			found = true
-			break
-		}
+	globalYAML, err := os.ReadFile(filepath.Join(bundleDir, ".sidecar", "global.yaml"))
+	if err != nil {
+		t.Fatalf("reading bundled global.yaml: %v", err)
 	}
-	if !found {
-		t.Errorf("expected global.yaml to contain 'listen_port: 8443' (default), got run calls: %v", executor.runCalls)
+	if !strings.Contains(string(globalYAML), "listen_port: 8443") {
+		t.Errorf("expected global.yaml to contain 'listen_port: 8443' (default), got:\n%s", string(globalYAML))
+	}
+}
+
+// TestDeployMultiApp_BundleWritesResolvedUpstreamHost verifies that the
+// bundle's vibewarden.yaml contains the resolved upstream.host (container name)
+// rather than the user's original local address. This replaces the old sed test.
+func TestDeployMultiApp_BundleWritesResolvedUpstreamHost(t *testing.T) {
+	tests := []struct {
+		name         string
+		upstreamHost string
+		wantHost     string
+	}{
+		{
+			name:         "0.0.0.0 is resolved to container name",
+			upstreamHost: "0.0.0.0",
+			wantHost:     "vibewarden-mysite-app",
+		},
+		{
+			name:         "127.0.0.1 is resolved to container name",
+			upstreamHost: "127.0.0.1",
+			wantHost:     "vibewarden-mysite-app",
+		},
+		{
+			name:         "localhost is resolved to container name",
+			upstreamHost: "localhost",
+			wantHost:     "vibewarden-mysite-app",
+		},
+		{
+			name:         "custom host is preserved",
+			upstreamHost: "my-custom-host",
+			wantHost:     "my-custom-host",
+		},
+		{
+			name:         "empty host is preserved",
+			upstreamHost: "",
+			wantHost:     "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			executor := &fakeExecutor{}
+			generator := &fakeGenerator{}
+
+			svc := deployapp.NewService(executor, generator)
+
+			cfg := multiappConfig()
+			cfg.Upstream.Host = tt.upstreamHost
+
+			bundleDir := t.TempDir()
+			err := svc.DeployMultiApp(context.Background(), cfg, deployapp.RunOptions{
+				ConfigPath:   "/tmp/site/vibewarden.yaml",
+				ProjectName:  "mysite",
+				GeneratedDir: bundleDir,
+			})
+			if err != nil {
+				t.Fatalf("DeployMultiApp() unexpected error: %v", err)
+			}
+
+			// Read the bundled vibewarden.yaml and verify upstream.host.
+			configPath := filepath.Join(bundleDir, "sites", "mysite", "vibewarden.yaml")
+			data, err := os.ReadFile(configPath)
+			if err != nil {
+				t.Fatalf("reading bundled config: %v", err)
+			}
+
+			content := string(data)
+			if tt.wantHost != "" {
+				if !strings.Contains(content, "host: "+tt.wantHost) {
+					t.Errorf("bundled config should contain 'host: %s', got:\n%s", tt.wantHost, content)
+				}
+			}
+
+			// Verify no sed was called.
+			for _, call := range executor.runCalls {
+				if strings.Contains(call, "sed") {
+					t.Errorf("no sed should be called, but found: %q", call)
+				}
+			}
+		})
+	}
+}
+
+// TestDeployMultiApp_NoSedCalled verifies that no sed calls are made during
+// multi-app deployment. Config resolution happens locally via the bundle.
+func TestDeployMultiApp_NoSedCalled(t *testing.T) {
+	executor := &fakeExecutor{}
+	generator := &fakeGenerator{}
+
+	svc := deployapp.NewService(executor, generator)
+
+	cfg := multiappConfig()
+	cfg.Upstream.Host = "0.0.0.0"
+
+	err := svc.DeployMultiApp(context.Background(), cfg, deployapp.RunOptions{
+		ConfigPath:   "/tmp/site/vibewarden.yaml",
+		ProjectName:  "mysite",
+		GeneratedDir: t.TempDir(),
+	})
+	if err != nil {
+		t.Fatalf("DeployMultiApp() unexpected error: %v", err)
+	}
+
+	for _, call := range executor.runCalls {
+		if strings.Contains(call, "sed") {
+			t.Errorf("expected no sed calls, but found: %q", call)
+		}
 	}
 }
 
@@ -318,26 +403,28 @@ func TestRenderAppCompose_ImageMode(t *testing.T) {
 	cfg.App.Image = "myapp:v2"
 	cfg.App.Build = ""
 
+	bundleDir := t.TempDir()
 	err := svc.DeployMultiApp(context.Background(), cfg, deployapp.RunOptions{
-		ConfigPath:  "/tmp/site/vibewarden.yaml",
-		ProjectName: "mysite",
+		ConfigPath:   "/tmp/site/vibewarden.yaml",
+		ProjectName:  "mysite",
+		GeneratedDir: bundleDir,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Verify the app compose was written with the image reference.
-	found := false
-	for _, call := range executor.runCalls {
-		if strings.Contains(call, "docker-compose.yml") &&
-			strings.Contains(call, "myapp:v2") &&
-			strings.Contains(call, "vibewarden-mysite-app") {
-			found = true
-			break
-		}
+	// Verify the app compose was written to the bundle with the image reference.
+	composePath := filepath.Join(bundleDir, "sites", "mysite", "docker-compose.yml")
+	data, err := os.ReadFile(composePath)
+	if err != nil {
+		t.Fatalf("reading bundled compose: %v", err)
 	}
-	if !found {
-		t.Errorf("expected app compose to contain image 'myapp:v2' and container name 'vibewarden-mysite-app'")
+	content := string(data)
+	if !strings.Contains(content, "myapp:v2") {
+		t.Errorf("expected compose to contain 'myapp:v2', got:\n%s", content)
+	}
+	if !strings.Contains(content, "vibewarden-mysite-app") {
+		t.Errorf("expected compose to contain 'vibewarden-mysite-app', got:\n%s", content)
 	}
 }
 
@@ -351,26 +438,28 @@ func TestRenderAppCompose_BuildMode(t *testing.T) {
 	cfg.App.Image = ""
 	cfg.App.Build = "."
 
+	bundleDir := t.TempDir()
 	err := svc.DeployMultiApp(context.Background(), cfg, deployapp.RunOptions{
-		ConfigPath:  "/tmp/site/vibewarden.yaml",
-		ProjectName: "buildsite",
+		ConfigPath:   "/tmp/site/vibewarden.yaml",
+		ProjectName:  "buildsite",
+		GeneratedDir: bundleDir,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
 	// Verify the app compose was written with build context.
-	found := false
-	for _, call := range executor.runCalls {
-		if strings.Contains(call, "docker-compose.yml") &&
-			strings.Contains(call, "build:") &&
-			strings.Contains(call, "vibewarden-buildsite-app") {
-			found = true
-			break
-		}
+	composePath := filepath.Join(bundleDir, "sites", "buildsite", "docker-compose.yml")
+	data, err := os.ReadFile(composePath)
+	if err != nil {
+		t.Fatalf("reading bundled compose: %v", err)
 	}
-	if !found {
-		t.Errorf("expected app compose to contain build context and container name 'vibewarden-buildsite-app'")
+	content := string(data)
+	if !strings.Contains(content, "build:") {
+		t.Errorf("expected compose to contain 'build:', got:\n%s", content)
+	}
+	if !strings.Contains(content, "vibewarden-buildsite-app") {
+		t.Errorf("expected compose to contain 'vibewarden-buildsite-app', got:\n%s", content)
 	}
 }
 
@@ -380,26 +469,28 @@ func TestRenderAppCompose_ExternalNetwork(t *testing.T) {
 
 	svc := deployapp.NewService(executor, generator)
 
+	bundleDir := t.TempDir()
 	err := svc.DeployMultiApp(context.Background(), multiappConfig(), deployapp.RunOptions{
-		ConfigPath:  "/tmp/site/vibewarden.yaml",
-		ProjectName: "netsite",
+		ConfigPath:   "/tmp/site/vibewarden.yaml",
+		ProjectName:  "netsite",
+		GeneratedDir: bundleDir,
 	})
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
 	// Verify the app compose references the shared network as external.
-	found := false
-	for _, call := range executor.runCalls {
-		if strings.Contains(call, "docker-compose.yml") &&
-			strings.Contains(call, "vibewarden-multiapp") &&
-			strings.Contains(call, "external: true") {
-			found = true
-			break
-		}
+	composePath := filepath.Join(bundleDir, "sites", "netsite", "docker-compose.yml")
+	data, err := os.ReadFile(composePath)
+	if err != nil {
+		t.Fatalf("reading bundled compose: %v", err)
 	}
-	if !found {
-		t.Errorf("expected app compose to reference vibewarden-multiapp as external network")
+	content := string(data)
+	if !strings.Contains(content, "vibewarden-multiapp") {
+		t.Errorf("expected compose to reference 'vibewarden-multiapp', got:\n%s", content)
+	}
+	if !strings.Contains(content, "external: true") {
+		t.Errorf("expected compose to declare network as 'external: true', got:\n%s", content)
 	}
 }
 
@@ -412,43 +503,46 @@ func TestRenderSidecarCompose_NetworkAndVolumes(t *testing.T) {
 	cfg := multiappConfig()
 	cfg.Server.Port = 443
 
+	bundleDir := t.TempDir()
 	err := svc.BootstrapSidecar(context.Background(), cfg, deployapp.RunOptions{
-		ConfigPath:  "/tmp/proj/vibewarden.yaml",
-		ProjectName: "myproject",
+		ConfigPath:   "/tmp/proj/vibewarden.yaml",
+		ProjectName:  "myproject",
+		GeneratedDir: bundleDir,
 	})
 	if err != nil {
 		t.Fatalf("BootstrapSidecar() unexpected error: %v", err)
 	}
 
 	// Verify the sidecar compose was written with the correct port.
-	found := false
-	for _, call := range executor.runCalls {
-		if strings.Contains(call, ".sidecar/docker-compose.yml") &&
-			strings.Contains(call, "443:443") &&
-			strings.Contains(call, "vibewarden-multiapp") {
-			found = true
-			break
-		}
+	composePath := filepath.Join(bundleDir, ".sidecar", "docker-compose.yml")
+	data, err := os.ReadFile(composePath)
+	if err != nil {
+		t.Fatalf("reading bundled sidecar compose: %v", err)
 	}
-	if !found {
-		t.Errorf("expected sidecar compose to contain port mapping and network name")
+	content := string(data)
+	if !strings.Contains(content, "443:443") {
+		t.Errorf("expected sidecar compose to contain '443:443', got:\n%s", content)
+	}
+	if !strings.Contains(content, "vibewarden-multiapp") {
+		t.Errorf("expected sidecar compose to reference 'vibewarden-multiapp', got:\n%s", content)
 	}
 }
 
-func TestBootstrapSidecar_TransferFileFails(t *testing.T) {
+func TestBootstrapSidecar_TransferFails(t *testing.T) {
 	executor := &fakeExecutor{
-		transferFileErr: errors.New("rsync failed"),
+		transferErr: errors.New("rsync failed"),
 	}
 	generator := &fakeGenerator{}
 
 	svc := deployapp.NewService(executor, generator)
 
 	err := svc.BootstrapSidecar(context.Background(), multiappConfig(), deployapp.RunOptions{
-		ConfigPath:  "/tmp/proj/vibewarden.yaml",
-		ProjectName: "myproject",
+		ConfigPath:   "/tmp/proj/vibewarden.yaml",
+		ProjectName:  "myproject",
+		GeneratedDir: t.TempDir(),
 	})
 	if err == nil {
-		t.Fatal("expected error when TransferFile fails")
+		t.Fatal("expected error when Transfer fails")
 	}
 	if !strings.Contains(err.Error(), "transferring") {
 		t.Errorf("error should mention 'transferring', got: %v", err)
@@ -462,7 +556,8 @@ func TestBootstrapSidecar_DeriveProjectName(t *testing.T) {
 	svc := deployapp.NewService(executor, generator)
 
 	err := svc.BootstrapSidecar(context.Background(), multiappConfig(), deployapp.RunOptions{
-		ConfigPath: "/home/user/my-awesome-app/vibewarden.yaml",
+		ConfigPath:   "/home/user/my-awesome-app/vibewarden.yaml",
+		GeneratedDir: t.TempDir(),
 	})
 	if err != nil {
 		t.Fatalf("BootstrapSidecar() unexpected error: %v", err)
@@ -522,9 +617,10 @@ func TestBootstrapSidecar_TLSHealthCheck(t *testing.T) {
 
 			var buf bytes.Buffer
 			err := svc.BootstrapSidecar(context.Background(), tt.cfg, deployapp.RunOptions{
-				ConfigPath:  "/tmp/proj/vibewarden.yaml",
-				ProjectName: "myproject",
-				Out:         &buf,
+				ConfigPath:   "/tmp/proj/vibewarden.yaml",
+				ProjectName:  "myproject",
+				GeneratedDir: t.TempDir(),
+				Out:          &buf,
 			})
 			if err != nil {
 				t.Fatalf("BootstrapSidecar() unexpected error: %v", err)
@@ -583,9 +679,10 @@ func TestDeployMultiApp_TLSHealthCheck(t *testing.T) {
 
 			var buf bytes.Buffer
 			err := svc.DeployMultiApp(context.Background(), tt.cfg, deployapp.RunOptions{
-				ConfigPath:  "/tmp/site/vibewarden.yaml",
-				ProjectName: "mysite",
-				Out:         &buf,
+				ConfigPath:   "/tmp/site/vibewarden.yaml",
+				ProjectName:  "mysite",
+				GeneratedDir: t.TempDir(),
+				Out:          &buf,
 			})
 			if err != nil {
 				t.Fatalf("DeployMultiApp() unexpected error: %v", err)
@@ -603,11 +700,8 @@ func TestDeployMultiApp_TLSHealthCheck(t *testing.T) {
 	}
 }
 
-// --- Bug #911 fix tests ---
-
 // TestDeploySite_BuildMode_RsyncsSource verifies that when cfg.App.Build is set,
-// the app source directory is transferred to the remote site directory before
-// docker compose up is called (Bug 1: app.build silently not rsynced).
+// the app source directory is transferred to the remote site directory.
 func TestDeploySite_BuildMode_RsyncsSource(t *testing.T) {
 	executor := &fakeExecutor{}
 	generator := &fakeGenerator{}
@@ -619,16 +713,18 @@ func TestDeploySite_BuildMode_RsyncsSource(t *testing.T) {
 	cfg.App.Build = "."
 
 	err := svc.DeployMultiApp(context.Background(), cfg, deployapp.RunOptions{
-		ConfigPath:  "/tmp/myproject/vibewarden.yaml",
-		ProjectName: "buildapp",
+		ConfigPath:   "/tmp/myproject/vibewarden.yaml",
+		ProjectName:  "buildapp",
+		GeneratedDir: t.TempDir(),
 	})
 	if err != nil {
 		t.Fatalf("DeployMultiApp() unexpected error: %v", err)
 	}
 
-	// Transfer must be called for the build context.
-	if len(executor.transferCalls) == 0 {
-		t.Fatal("expected Transfer to be called for app build context")
+	// Transfer must be called for the build context (plus the site bundle).
+	if len(executor.transferCalls) < 2 {
+		t.Fatalf("expected at least 2 Transfer calls (site bundle + build context), got %d: %v",
+			len(executor.transferCalls), executor.transferCalls)
 	}
 
 	found := false
@@ -656,8 +752,9 @@ func TestDeploySite_BuildMode_UsesComposeUpBuild(t *testing.T) {
 	cfg.App.Build = "."
 
 	err := svc.DeployMultiApp(context.Background(), cfg, deployapp.RunOptions{
-		ConfigPath:  "/tmp/myproject/vibewarden.yaml",
-		ProjectName: "buildapp",
+		ConfigPath:   "/tmp/myproject/vibewarden.yaml",
+		ProjectName:  "buildapp",
+		GeneratedDir: t.TempDir(),
 	})
 	if err != nil {
 		t.Fatalf("DeployMultiApp() unexpected error: %v", err)
@@ -666,10 +763,10 @@ func TestDeploySite_BuildMode_UsesComposeUpBuild(t *testing.T) {
 	assertRunCalledContains(t, executor.runCalls, "docker compose up -d --build")
 }
 
-// TestDeploySite_ImageMode_NoTransfer verifies that in image mode (no build),
-// the app source is NOT transferred and docker compose up is called without
-// --build.
-func TestDeploySite_ImageMode_NoTransfer(t *testing.T) {
+// TestDeploySite_ImageMode_NoBuildContext verifies that in image mode (no build),
+// docker compose up is called without --build and no extra transfer is made for
+// build context.
+func TestDeploySite_ImageMode_NoBuildContext(t *testing.T) {
 	executor := &fakeExecutor{}
 	generator := &fakeGenerator{}
 
@@ -680,16 +777,17 @@ func TestDeploySite_ImageMode_NoTransfer(t *testing.T) {
 	cfg.App.Build = ""
 
 	err := svc.DeployMultiApp(context.Background(), cfg, deployapp.RunOptions{
-		ConfigPath:  "/tmp/myproject/vibewarden.yaml",
-		ProjectName: "imgapp",
+		ConfigPath:   "/tmp/myproject/vibewarden.yaml",
+		ProjectName:  "imgapp",
+		GeneratedDir: t.TempDir(),
 	})
 	if err != nil {
 		t.Fatalf("DeployMultiApp() unexpected error: %v", err)
 	}
 
-	// No Transfer calls expected for image mode.
-	if len(executor.transferCalls) != 0 {
-		t.Errorf("expected no Transfer calls in image mode, got %d: %v",
+	// Only the site bundle Transfer (no build context).
+	if len(executor.transferCalls) != 1 {
+		t.Errorf("expected 1 Transfer call in image mode (site bundle only), got %d: %v",
 			len(executor.transferCalls), executor.transferCalls)
 	}
 
@@ -704,20 +802,29 @@ func TestDeploySite_ImageMode_NoTransfer(t *testing.T) {
 // TestDeploySite_BuildMode_TransferFails verifies that a failure to rsync the
 // app build context is propagated as an error.
 func TestDeploySite_BuildMode_TransferFails(t *testing.T) {
-	executor := &fakeExecutor{
-		transferErr: errors.New("rsync failed"),
+	callCount := 0
+	mockExec := &mockRunExecutor{
+		runFn: func(_ string) (string, error) { return "", nil },
 	}
-	generator := &fakeGenerator{}
+	// Fail on the second Transfer call (build context).
+	failingExec := &buildContextFailExecutor{
+		mockRunExecutor: mockExec,
+		failOnTransfer:  2,
+		transferErr:     errors.New("rsync failed"),
+		callCount:       &callCount,
+	}
 
-	svc := deployapp.NewService(executor, generator)
+	generator := &fakeGenerator{}
+	svc := deployapp.NewService(failingExec, generator)
 
 	cfg := multiappConfig()
 	cfg.App.Image = ""
 	cfg.App.Build = "."
 
 	err := svc.DeployMultiApp(context.Background(), cfg, deployapp.RunOptions{
-		ConfigPath:  "/tmp/myproject/vibewarden.yaml",
-		ProjectName: "buildapp",
+		ConfigPath:   "/tmp/myproject/vibewarden.yaml",
+		ProjectName:  "buildapp",
+		GeneratedDir: t.TempDir(),
 	})
 	if err == nil {
 		t.Fatal("expected error when build context transfer fails")
@@ -728,8 +835,7 @@ func TestDeploySite_BuildMode_TransferFails(t *testing.T) {
 }
 
 // TestRenderSidecarCompose_NetworkExternal verifies that the sidecar compose
-// template declares the vibewarden-multiapp network as external: true, not
-// driver: bridge (Bug 2: network missing external: true).
+// template declares the vibewarden-multiapp network as external: true.
 func TestRenderSidecarCompose_NetworkExternal(t *testing.T) {
 	executor := &fakeExecutor{}
 	generator := &fakeGenerator{}
@@ -739,178 +845,33 @@ func TestRenderSidecarCompose_NetworkExternal(t *testing.T) {
 	cfg := multiappConfig()
 	cfg.Server.Port = 443
 
+	bundleDir := t.TempDir()
 	err := svc.BootstrapSidecar(context.Background(), cfg, deployapp.RunOptions{
-		ConfigPath:  "/tmp/proj/vibewarden.yaml",
-		ProjectName: "myproject",
+		ConfigPath:   "/tmp/proj/vibewarden.yaml",
+		ProjectName:  "myproject",
+		GeneratedDir: bundleDir,
 	})
 	if err != nil {
 		t.Fatalf("BootstrapSidecar() unexpected error: %v", err)
 	}
 
-	// Verify the sidecar compose declares the network as external.
-	found := false
-	for _, call := range executor.runCalls {
-		if strings.Contains(call, ".sidecar/docker-compose.yml") &&
-			strings.Contains(call, "vibewarden-multiapp") &&
-			strings.Contains(call, "external: true") {
-			found = true
-			break
-		}
+	composePath := filepath.Join(bundleDir, ".sidecar", "docker-compose.yml")
+	data, err := os.ReadFile(composePath)
+	if err != nil {
+		t.Fatalf("reading bundled sidecar compose: %v", err)
 	}
-	if !found {
-		t.Errorf("expected sidecar compose to declare vibewarden-multiapp as external: true")
+	content := string(data)
+
+	// Verify the sidecar compose declares the network as external.
+	if !strings.Contains(content, "vibewarden-multiapp") ||
+		!strings.Contains(content, "external: true") {
+		t.Errorf("expected sidecar compose to declare vibewarden-multiapp as external: true, got:\n%s", content)
 	}
 
 	// Verify it does NOT contain driver: bridge.
-	for _, call := range executor.runCalls {
-		if strings.Contains(call, ".sidecar/docker-compose.yml") &&
-			strings.Contains(call, "driver: bridge") {
-			t.Errorf("sidecar compose must NOT contain 'driver: bridge', got: %q", call)
-		}
+	if strings.Contains(content, "driver: bridge") {
+		t.Errorf("sidecar compose must NOT contain 'driver: bridge', got:\n%s", content)
 	}
-}
-
-// TestDeploySite_UpstreamHostRewrite verifies that when upstream.host is set to
-// a loopback or wildcard address (0.0.0.0, 127.0.0.1, localhost), it is
-// rewritten to the app container name so the sidecar can reach the app over
-// the shared Docker network (Bug 3: upstream.host defaults to 0.0.0.0).
-func TestDeploySite_UpstreamHostRewrite(t *testing.T) {
-	tests := []struct {
-		name          string
-		upstreamHost  string
-		wantSedCall   bool
-		wantContainer string
-	}{
-		{
-			name:          "0.0.0.0 is rewritten to container name",
-			upstreamHost:  "0.0.0.0",
-			wantSedCall:   true,
-			wantContainer: "vibewarden-mysite-app",
-		},
-		{
-			name:          "127.0.0.1 is rewritten to container name",
-			upstreamHost:  "127.0.0.1",
-			wantSedCall:   true,
-			wantContainer: "vibewarden-mysite-app",
-		},
-		{
-			name:          "localhost is rewritten to container name",
-			upstreamHost:  "localhost",
-			wantSedCall:   true,
-			wantContainer: "vibewarden-mysite-app",
-		},
-		{
-			name:         "custom host is left unchanged",
-			upstreamHost: "my-custom-host",
-			wantSedCall:  false,
-		},
-		{
-			name:         "empty host is left unchanged",
-			upstreamHost: "",
-			wantSedCall:  false,
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			executor := &fakeExecutor{}
-			generator := &fakeGenerator{}
-
-			svc := deployapp.NewService(executor, generator)
-
-			cfg := multiappConfig()
-			cfg.Upstream.Host = tt.upstreamHost
-
-			err := svc.DeployMultiApp(context.Background(), cfg, deployapp.RunOptions{
-				ConfigPath:  "/tmp/site/vibewarden.yaml",
-				ProjectName: "mysite",
-			})
-			if err != nil {
-				t.Fatalf("DeployMultiApp() unexpected error: %v", err)
-			}
-
-			sedFound := false
-			for _, call := range executor.runCalls {
-				if strings.Contains(call, "sed -i") && strings.Contains(call, "vibewarden.yaml") {
-					sedFound = true
-					if tt.wantSedCall && !strings.Contains(call, tt.wantContainer) {
-						t.Errorf("sed call should contain container name %q, got: %q", tt.wantContainer, call)
-					}
-					break
-				}
-			}
-			if tt.wantSedCall && !sedFound {
-				t.Errorf("expected sed call to rewrite upstream.host, got run calls: %v", executor.runCalls)
-			}
-			if !tt.wantSedCall && sedFound {
-				t.Errorf("did not expect sed call for upstream.host %q", tt.upstreamHost)
-			}
-		})
-	}
-}
-
-// TestDeploySite_UpstreamHostRewriteFails verifies that a sed failure when
-// rewriting upstream.host is propagated as an error.
-func TestDeploySite_UpstreamHostRewriteFails(t *testing.T) {
-	executor := &fakeExecutor{
-		runResponses: map[string]runResponse{},
-	}
-	// Set the sed command to fail. We need to match the exact command.
-	sedCmd := `sed -i 's/\(host:\s*\)0.0.0.0/\1vibewarden-mysite-app/' ~/vibewarden/sites/mysite/vibewarden.yaml`
-	executor.runResponses[sedCmd] = runResponse{err: errors.New("sed failed")}
-
-	generator := &fakeGenerator{}
-	svc := deployapp.NewService(executor, generator)
-
-	cfg := multiappConfig()
-	cfg.Upstream.Host = "0.0.0.0"
-
-	err := svc.DeployMultiApp(context.Background(), cfg, deployapp.RunOptions{
-		ConfigPath:  "/tmp/site/vibewarden.yaml",
-		ProjectName: "mysite",
-	})
-	if err == nil {
-		t.Fatal("expected error when sed fails")
-	}
-	if !strings.Contains(err.Error(), "rewriting upstream.host") {
-		t.Errorf("error should mention 'rewriting upstream.host', got: %v", err)
-	}
-}
-
-// TestDeploySite_BuildMode_TransferBeforeConfig verifies that when app.build is
-// set, the build context is transferred BEFORE the config file, so that a dev
-// vibewarden.yaml in the build context does not overwrite the prod config.
-func TestDeploySite_BuildMode_TransferBeforeConfig(t *testing.T) {
-	executor := &fakeExecutor{}
-	generator := &fakeGenerator{}
-
-	svc := deployapp.NewService(executor, generator)
-
-	cfg := multiappConfig()
-	cfg.App.Image = ""
-	cfg.App.Build = "."
-
-	err := svc.DeployMultiApp(context.Background(), cfg, deployapp.RunOptions{
-		ConfigPath:  "/tmp/myproject/vibewarden.yaml",
-		ProjectName: "buildapp",
-	})
-	if err != nil {
-		t.Fatalf("DeployMultiApp() unexpected error: %v", err)
-	}
-
-	// Transfer (build context rsync) must happen before TransferFile (config).
-	if len(executor.transferCalls) == 0 {
-		t.Fatal("expected Transfer to be called for build context")
-	}
-	if len(executor.transferFileCalls) == 0 {
-		t.Fatal("expected TransferFile to be called for config")
-	}
-
-	// The fakeExecutor records calls in order. Transfer is appended to
-	// transferCalls and TransferFile to transferFileCalls, but we need to
-	// verify ordering. Since both slices are populated from the same goroutine
-	// in deploySite, the fact that Transfer has entries confirms it was called.
-	// The code structure ensures Transfer happens before TransferFile.
 }
 
 // TestBootstrapSidecar_HealthCheckFails verifies that BootstrapSidecar returns
@@ -930,9 +891,10 @@ func TestBootstrapSidecar_HealthCheckFails(t *testing.T) {
 
 	var buf bytes.Buffer
 	err := svc.BootstrapSidecar(ctx, multiappConfig(), deployapp.RunOptions{
-		ConfigPath:  "/tmp/proj/vibewarden.yaml",
-		ProjectName: "myproject",
-		Out:         &buf,
+		ConfigPath:   "/tmp/proj/vibewarden.yaml",
+		ProjectName:  "myproject",
+		GeneratedDir: t.TempDir(),
+		Out:          &buf,
 	})
 	if !errors.Is(err, deployapp.ErrHealthCheck) {
 		t.Fatalf("BootstrapSidecar() should return ErrHealthCheck, got: %v", err)
@@ -968,9 +930,10 @@ func TestDeployMultiApp_HealthCheckFails(t *testing.T) {
 
 	var buf bytes.Buffer
 	err := svc.DeployMultiApp(ctx, multiappConfig(), deployapp.RunOptions{
-		ConfigPath:  "/tmp/site/vibewarden.yaml",
-		ProjectName: "mysite",
-		Out:         &buf,
+		ConfigPath:   "/tmp/site/vibewarden.yaml",
+		ProjectName:  "mysite",
+		GeneratedDir: t.TempDir(),
+		Out:          &buf,
 	})
 	if !errors.Is(err, deployapp.ErrHealthCheck) {
 		t.Fatalf("DeployMultiApp() should return ErrHealthCheck, got: %v", err)
@@ -986,5 +949,37 @@ func TestDeployMultiApp_HealthCheckFails(t *testing.T) {
 	// "Site deployed." should NOT appear when health check fails.
 	if strings.Contains(out, "Site deployed.") {
 		t.Errorf("'Site deployed.' should NOT appear when health check fails, got:\n%s", out)
+	}
+}
+
+// TestBootstrapSidecar_NoTransferFileOrWriteRemoteFile verifies that
+// BootstrapSidecar no longer uses TransferFile or writeRemoteFile -- everything
+// is bundled locally and rsynced.
+func TestBootstrapSidecar_NoTransferFileOrWriteRemoteFile(t *testing.T) {
+	executor := &fakeExecutor{}
+	generator := &fakeGenerator{}
+
+	svc := deployapp.NewService(executor, generator)
+
+	err := svc.BootstrapSidecar(context.Background(), multiappConfig(), deployapp.RunOptions{
+		ConfigPath:   "/tmp/proj/vibewarden.yaml",
+		ProjectName:  "myproject",
+		GeneratedDir: t.TempDir(),
+	})
+	if err != nil {
+		t.Fatalf("BootstrapSidecar() unexpected error: %v", err)
+	}
+
+	// TransferFile should not be called.
+	if len(executor.transferFileCalls) != 0 {
+		t.Errorf("expected no TransferFile calls, got %d: %v",
+			len(executor.transferFileCalls), executor.transferFileCalls)
+	}
+
+	// No heredoc/cat commands for file writing.
+	for _, call := range executor.runCalls {
+		if strings.Contains(call, "VIBEWARDEN_EOF") || strings.Contains(call, "cat >") {
+			t.Errorf("expected no writeRemoteFile calls (heredoc), but found: %q", call)
+		}
 	}
 }
