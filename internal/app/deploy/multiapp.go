@@ -7,6 +7,7 @@ import (
 	"io"
 	"text/template"
 
+	templateadapter "github.com/vibewarden/vibewarden/internal/adapters/template"
 	"github.com/vibewarden/vibewarden/internal/config"
 	"github.com/vibewarden/vibewarden/internal/config/templates"
 )
@@ -50,6 +51,9 @@ type AppComposeData struct {
 
 	// UpstreamPort is the port the app listens on inside the container.
 	UpstreamPort int
+
+	// AppLanguage is the app's language/runtime for health check probe selection.
+	AppLanguage string
 }
 
 // BootstrapSidecar creates the full multi-app directory layout on the remote
@@ -257,7 +261,7 @@ func renderSidecarCompose(listenPort int) (string, error) {
 		return "", fmt.Errorf("reading sidecar compose template: %w", err)
 	}
 
-	tmpl, err := template.New("sidecar-compose").Parse(string(tmplContent))
+	tmpl, err := template.New("sidecar-compose").Funcs(templateadapter.SharedFuncMap()).Parse(string(tmplContent))
 	if err != nil {
 		return "", fmt.Errorf("parsing sidecar compose template: %w", err)
 	}
@@ -278,7 +282,7 @@ func renderAppCompose(cfg *config.Config, projectName string) (string, error) {
 		return "", fmt.Errorf("reading app compose template: %w", err)
 	}
 
-	tmpl, err := template.New("app-compose").Parse(string(tmplContent))
+	tmpl, err := template.New("app-compose").Funcs(templateadapter.SharedFuncMap()).Parse(string(tmplContent))
 	if err != nil {
 		return "", fmt.Errorf("parsing app compose template: %w", err)
 	}
@@ -294,6 +298,7 @@ func renderAppCompose(cfg *config.Config, projectName string) (string, error) {
 		AppBuild:       cfg.App.Build,
 		AppHealthcheck: healthcheck,
 		UpstreamPort:   cfg.Upstream.Port,
+		AppLanguage:    cfg.App.Language,
 	}
 
 	var buf bytes.Buffer

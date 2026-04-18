@@ -364,10 +364,19 @@ type AppConfig struct {
 	Image string `mapstructure:"image"`
 
 	// Healthcheck is the Docker healthcheck command for the app container.
-	// Default: "wget -q --spider http://localhost:<port>/health || exit 1"
-	// Override for images without wget: "curl -sf http://localhost:<port>/health || exit 1"
+	// When empty, the default probe is chosen based on Language:
+	//   python     → python -c "import urllib.request; ..."
+	//   typescript → node -e "require('http').get(...)"
+	//   go/kotlin  → wget -q --spider ...  (Alpine images ship wget)
+	//   (default)  → wget -q --spider ...
 	// Set to "none" to disable the healthcheck entirely.
 	Healthcheck string `mapstructure:"healthcheck"`
+
+	// Language is the app's primary language/runtime. Used to select the
+	// appropriate Docker health check probe when Healthcheck is not set.
+	// Values: "go", "python", "typescript", "kotlin", or empty (auto-detect
+	// at init/wrap time; falls back to wget).
+	Language string `mapstructure:"language"`
 }
 
 // TLSCertMonitoringConfig holds configuration for the certificate expiry monitor.

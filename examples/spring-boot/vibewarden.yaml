@@ -11,6 +11,7 @@ upstream:
 
 app:
   build: .
+  language: kotlin
 
 tls:
   enabled: true
