@@ -43,7 +43,7 @@ const (
 	permDir = os.FileMode(0o750)
 	// permConfig is the permission mode for generated config/data files.
 	// Readable only by the owner to protect credentials embedded in kratos.yml.
-	permConfig = os.FileMode(0o600)
+	permConfig = os.FileMode(0o644)
 )
 
 // Service implements ports.ConfigGenerator using a ports.TemplateRenderer.

@@ -7,6 +7,7 @@ import (
 	"sort"
 
 	"github.com/spf13/cobra"
+	"gopkg.in/yaml.v3"
 
 	credentialsadapter "github.com/vibewarden/vibewarden/internal/adapters/credentials"
 	opsadapter "github.com/vibewarden/vibewarden/internal/adapters/ops"
@@ -150,18 +151,25 @@ Examples:
 				Out:            cmd.OutOrStdout(),
 			}
 
-			// Merge production overrides before checking feature flags
-			// so that e.g. secrets.enabled: false in production yaml
-			// correctly disables OpenBao bootstrap.
-			deployCfg := cfg
+			// Check if the production overlay explicitly disables secrets.
+			// The typed Config overlay can't distinguish "not set" from "set
+			// to false" for booleans, so we read the raw YAML map.
+			secretsEnabled := cfg.Secrets.Enabled
 			if prodConfigPath != "" {
-				if merged, mergeErr := deployapp.LoadMergedConfig(cfg, prodConfigPath); mergeErr == nil {
-					deployCfg = merged
+				if data, readErr := os.ReadFile(prodConfigPath); readErr == nil {
+					var m map[string]any
+					if yaml.Unmarshal(data, &m) == nil {
+						if secrets, ok := m["secrets"].(map[string]any); ok {
+							if enabled, ok := secrets["enabled"].(bool); ok {
+								secretsEnabled = enabled
+							}
+						}
+					}
 				}
 			}
 
 			// Bootstrap OpenBao when the secrets plugin is enabled.
-			if deployCfg.Secrets.Enabled {
+			if secretsEnabled {
 				bootstrapper := deployapp.NewOpenBaoBootstrapper(executor)
 				result, err := bootstrapper.Bootstrap(cmd.Context(), deployapp.BootstrapOptions{
 					SecretsFile:   secretsFrom,
