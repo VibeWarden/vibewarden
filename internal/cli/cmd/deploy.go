@@ -150,8 +150,18 @@ Examples:
 				Out:            cmd.OutOrStdout(),
 			}
 
+			// Merge production overrides before checking feature flags
+			// so that e.g. secrets.enabled: false in production yaml
+			// correctly disables OpenBao bootstrap.
+			deployCfg := cfg
+			if prodConfigPath != "" {
+				if merged, mergeErr := deployapp.LoadMergedConfig(cfg, prodConfigPath); mergeErr == nil {
+					deployCfg = merged
+				}
+			}
+
 			// Bootstrap OpenBao when the secrets plugin is enabled.
-			if cfg.Secrets.Enabled {
+			if deployCfg.Secrets.Enabled {
 				bootstrapper := deployapp.NewOpenBaoBootstrapper(executor)
 				result, err := bootstrapper.Bootstrap(cmd.Context(), deployapp.BootstrapOptions{
 					SecretsFile:   secretsFrom,

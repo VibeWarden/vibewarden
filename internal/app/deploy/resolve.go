@@ -161,12 +161,12 @@ func deepMerge(dst, src map[string]any) {
 	}
 }
 
-// loadMergedConfig loads the production override file (if prodConfigPath is
+// LoadMergedConfig loads the production override file (if prodConfigPath is
 // non-empty) and overlays its values on top of base. When prodConfigPath is
 // empty the base config is returned unchanged. Errors from config.Load are
 // propagated so that syntax errors in the production YAML are never silently
 // ignored.
-func loadMergedConfig(base *config.Config, prodConfigPath string) (*config.Config, error) {
+func LoadMergedConfig(base *config.Config, prodConfigPath string) (*config.Config, error) {
 	if prodConfigPath == "" {
 		return base, nil
 	}

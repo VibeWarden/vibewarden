@@ -243,7 +243,7 @@ func (s *Service) Deploy(ctx context.Context, cfg *config.Config, opts RunOption
 	// Step 6: health check -- run curl on the remote so the probe is independent
 	// of DNS propagation, external port availability, and TLS certificate issuance.
 	// Use the merged config (base + prod overlay) for the correct port and TLS state.
-	healthCfg, err := loadMergedConfig(cfg, opts.ProdConfigPath)
+	healthCfg, err := LoadMergedConfig(cfg, opts.ProdConfigPath)
 	if err != nil {
 		return err
 	}
