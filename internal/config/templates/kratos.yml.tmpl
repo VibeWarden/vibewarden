@@ -16,9 +16,9 @@ serve:
     base_url: {{ .Kratos.AdminURL }}
 
 selfservice:
-  default_browser_return_url: http://localhost:{{ .Server.Port }}/
+  default_browser_return_url: {{ if .TLS.Enabled }}https{{ else }}http{{ end }}://localhost:{{ .Server.Port }}/
   allowed_return_urls:
-    - http://localhost:{{ .Server.Port }}
+    - {{ if .TLS.Enabled }}https{{ else }}http{{ end }}://localhost:{{ .Server.Port }}
 
   methods:
 {{- if eq .Auth.IdentitySchema "email_password" }}
@@ -98,34 +98,34 @@ selfservice:
 
   flows:
     error:
-      ui_url: http://localhost:{{ .Server.Port }}/auth/error
+      ui_url: {{ if .TLS.Enabled }}https{{ else }}http{{ end }}://localhost:{{ .Server.Port }}/auth/error
 
     settings:
-      ui_url: http://localhost:{{ .Server.Port }}/auth/settings
+      ui_url: {{ if .TLS.Enabled }}https{{ else }}http{{ end }}://localhost:{{ .Server.Port }}/auth/settings
       privileged_session_max_age: 15m
       required_aal: highest_available
 
     recovery:
       enabled: true
-      ui_url: http://localhost:{{ .Server.Port }}/auth/recovery
+      ui_url: {{ if .TLS.Enabled }}https{{ else }}http{{ end }}://localhost:{{ .Server.Port }}/auth/recovery
 
     verification:
       enabled: true
-      ui_url: http://localhost:{{ .Server.Port }}/auth/verification
+      ui_url: {{ if .TLS.Enabled }}https{{ else }}http{{ end }}://localhost:{{ .Server.Port }}/auth/verification
       after:
-        default_browser_return_url: http://localhost:{{ .Server.Port }}/
+        default_browser_return_url: {{ if .TLS.Enabled }}https{{ else }}http{{ end }}://localhost:{{ .Server.Port }}/
 
     logout:
       after:
-        default_browser_return_url: http://localhost:{{ .Server.Port }}/auth/login
+        default_browser_return_url: {{ if .TLS.Enabled }}https{{ else }}http{{ end }}://localhost:{{ .Server.Port }}/auth/login
 
     login:
-      ui_url: http://localhost:{{ .Server.Port }}/auth/login
+      ui_url: {{ if .TLS.Enabled }}https{{ else }}http{{ end }}://localhost:{{ .Server.Port }}/auth/login
       lifespan: 10m
 
     registration:
       lifespan: 10m
-      ui_url: http://localhost:{{ .Server.Port }}/auth/registration
+      ui_url: {{ if .TLS.Enabled }}https{{ else }}http{{ end }}://localhost:{{ .Server.Port }}/auth/registration
       after:
         password:
           hooks:
