@@ -1455,6 +1455,255 @@ func TestService_Deploy_HealthCheckWarnOnTimeout(t *testing.T) {
 	}
 }
 
+// fakeImageExporter is a test double for ports.ImageExporter.
+type fakeImageExporter struct {
+	// saveCalls records every Save invocation for assertions.
+	saveCalls []imageExportCall
+	// saveErr is returned by every Save call if set.
+	saveErr error
+}
+
+type imageExportCall struct {
+	imageName string
+	destPath  string
+}
+
+func (f *fakeImageExporter) Save(_ context.Context, imageName, destPath string) error {
+	f.saveCalls = append(f.saveCalls, imageExportCall{imageName: imageName, destPath: destPath})
+	return f.saveErr
+}
+
+// TestService_Deploy_LocalImage verifies that when cfg.App.Image is a bare name
+// (no registry prefix), the deploy flow transfers the image via docker save/load
+// instead of pulling from a registry.
+func TestService_Deploy_LocalImage(t *testing.T) {
+	executor := &fakeExecutor{}
+	generator := &fakeGenerator{}
+	exporter := &fakeImageExporter{}
+
+	svc := deployapp.NewService(executor, generator).WithImageExporter(exporter)
+
+	cfg := defaultConfig()
+	cfg.App.Image = "myapp:latest"
+
+	var buf bytes.Buffer
+	err := svc.Deploy(context.Background(), cfg, deployapp.RunOptions{
+		ConfigPath: "/tmp/proj/vibewarden.yaml",
+		Out:        &buf,
+	})
+	if err != nil {
+		t.Fatalf("Deploy() unexpected error: %v\noutput:\n%s", err, buf.String())
+	}
+
+	out := buf.String()
+	if !strings.Contains(out, "Transferring local image myapp:latest") {
+		t.Errorf("expected transfer message in output, got:\n%s", out)
+	}
+
+	// Verify docker save was called.
+	if len(exporter.saveCalls) == 0 {
+		t.Fatal("expected Save to be called for local image")
+	}
+	if exporter.saveCalls[0].imageName != "myapp:latest" {
+		t.Errorf("Save imageName = %q, want %q", exporter.saveCalls[0].imageName, "myapp:latest")
+	}
+
+	// Verify docker load was called on the remote.
+	assertRunCalledContains(t, executor.runCalls, "docker load")
+
+	// Verify docker compose pull was NOT called for all services (only sidecar).
+	// The local image should not be pulled from a registry.
+	for _, c := range executor.runCalls {
+		if strings.Contains(c, "docker compose pull") && !strings.Contains(c, "pull vibewarden") {
+			t.Errorf("unexpected broad 'docker compose pull' for local image, got run call: %q", c)
+		}
+	}
+
+	// docker compose up -d must be called.
+	assertRunCalledContains(t, executor.runCalls, "docker compose up -d")
+}
+
+// TestService_Deploy_LocalImage_SaveFails verifies that a failure in docker save
+// is propagated as an error.
+func TestService_Deploy_LocalImage_SaveFails(t *testing.T) {
+	executor := &fakeExecutor{}
+	generator := &fakeGenerator{}
+	exporter := &fakeImageExporter{saveErr: errors.New("image not found")}
+
+	svc := deployapp.NewService(executor, generator).WithImageExporter(exporter)
+
+	cfg := defaultConfig()
+	cfg.App.Image = "noexist:latest"
+
+	err := svc.Deploy(context.Background(), cfg, deployapp.RunOptions{
+		ConfigPath: "/tmp/proj/vibewarden.yaml",
+	})
+	if err == nil {
+		t.Fatal("expected error when docker save fails")
+	}
+	if !strings.Contains(err.Error(), "transferring local image") {
+		t.Errorf("error should mention 'transferring local image', got: %v", err)
+	}
+	if !strings.Contains(err.Error(), "saving image") {
+		t.Errorf("error should mention 'saving image', got: %v", err)
+	}
+}
+
+// TestService_Deploy_LocalImage_TransferFails verifies that a failure to rsync
+// the image tar to the remote is propagated as an error.
+func TestService_Deploy_LocalImage_TransferFails(t *testing.T) {
+	// Use a custom executor that fails only on the second TransferFile call
+	// (the image archive transfer) and succeeds on the first (config file).
+	callCount := 0
+	executor := &imageTransferFailExecutor{
+		mockRunExecutor: &mockRunExecutor{
+			runFn: func(_ string) (string, error) { return "", nil },
+		},
+		failOnTransferFile: 2, // second TransferFile call (image archive)
+		transferFileErr:    fmt.Errorf("rsync: connection reset"),
+		callCount:          &callCount,
+	}
+	exporter := &fakeImageExporter{}
+
+	svc := deployapp.NewService(executor, &fakeGenerator{}).WithImageExporter(exporter)
+
+	cfg := defaultConfig()
+	cfg.App.Image = "myapp:latest"
+
+	err := svc.Deploy(context.Background(), cfg, deployapp.RunOptions{
+		ConfigPath: "/tmp/proj/vibewarden.yaml",
+	})
+	if err == nil {
+		t.Fatal("expected error when image archive transfer fails")
+	}
+	if !strings.Contains(err.Error(), "transferring local image") {
+		t.Errorf("error should mention 'transferring local image', got: %v", err)
+	}
+	if !strings.Contains(err.Error(), "transferring image archive") {
+		t.Errorf("error should mention 'transferring image archive', got: %v", err)
+	}
+}
+
+// imageTransferFailExecutor wraps mockRunExecutor and fails on the nth
+// TransferFile call.
+type imageTransferFailExecutor struct {
+	*mockRunExecutor
+	failOnTransferFile int
+	transferFileErr    error
+	callCount          *int
+}
+
+func (e *imageTransferFailExecutor) TransferFile(_ context.Context, localFile, remotePath string) error {
+	*e.callCount++
+	if *e.callCount == e.failOnTransferFile {
+		return e.transferFileErr
+	}
+	e.transferFileCalls = append(e.transferFileCalls,
+		transferFileCall{localFile: localFile, remotePath: remotePath})
+	return nil
+}
+
+// TestService_Deploy_LocalImage_LoadFails verifies that a failure in docker load
+// on the remote is propagated.
+func TestService_Deploy_LocalImage_LoadFails(t *testing.T) {
+	// We need a custom executor that fails only on docker load.
+	executor := &mockRunExecutor{
+		runFn: func(cmd string) (string, error) {
+			if strings.Contains(cmd, "docker load") {
+				return "", errors.New("docker load failed")
+			}
+			return "", nil
+		},
+	}
+	exporter := &fakeImageExporter{}
+
+	svc := deployapp.NewService(executor, &fakeGenerator{}).WithImageExporter(exporter)
+
+	cfg := defaultConfig()
+	cfg.App.Image = "myapp:latest"
+
+	err := svc.Deploy(context.Background(), cfg, deployapp.RunOptions{
+		ConfigPath: "/tmp/proj/vibewarden.yaml",
+	})
+	if err == nil {
+		t.Fatal("expected error when docker load fails")
+	}
+	if !strings.Contains(err.Error(), "transferring local image") {
+		t.Errorf("error should mention 'transferring local image', got: %v", err)
+	}
+}
+
+// TestService_Deploy_RegistryImage_NoTransfer verifies that when cfg.App.Image
+// has a registry prefix, the image is NOT transferred locally — it falls back
+// to the normal docker compose pull flow.
+func TestService_Deploy_RegistryImage_NoTransfer(t *testing.T) {
+	executor := &fakeExecutor{}
+	generator := &fakeGenerator{}
+	exporter := &fakeImageExporter{}
+
+	svc := deployapp.NewService(executor, generator).WithImageExporter(exporter)
+
+	cfg := defaultConfig()
+	cfg.App.Image = "ghcr.io/org/myapp:latest"
+
+	err := svc.Deploy(context.Background(), cfg, deployapp.RunOptions{
+		ConfigPath: "/tmp/proj/vibewarden.yaml",
+	})
+	if err != nil {
+		t.Fatalf("Deploy() unexpected error: %v", err)
+	}
+
+	// Save must NOT be called for registry images.
+	if len(exporter.saveCalls) != 0 {
+		t.Errorf("expected no Save calls for registry image, got %d", len(exporter.saveCalls))
+	}
+
+	// docker compose pull (full pull) MUST be called.
+	found := false
+	for _, c := range executor.runCalls {
+		if strings.Contains(c, "docker compose pull") && !strings.Contains(c, "pull vibewarden") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected 'docker compose pull' for registry image, got run calls: %v", executor.runCalls)
+	}
+}
+
+// TestService_Deploy_LocalImage_NoExporter verifies that when the image exporter
+// is nil (not wired) but a local image is used, the deploy falls through to the
+// normal docker compose pull flow without error. This preserves backward
+// compatibility for callers that do not wire an ImageExporter.
+func TestService_Deploy_LocalImage_NoExporter(t *testing.T) {
+	executor := &fakeExecutor{}
+	generator := &fakeGenerator{}
+
+	svc := deployapp.NewService(executor, generator) // no WithImageExporter
+
+	cfg := defaultConfig()
+	cfg.App.Image = "myapp:latest"
+
+	err := svc.Deploy(context.Background(), cfg, deployapp.RunOptions{
+		ConfigPath: "/tmp/proj/vibewarden.yaml",
+	})
+	if err != nil {
+		t.Fatalf("Deploy() should succeed without exporter (falls back to pull), got: %v", err)
+	}
+
+	// docker compose pull should be called (normal image mode fallback).
+	found := false
+	for _, c := range executor.runCalls {
+		if strings.Contains(c, "docker compose pull") && !strings.Contains(c, "pull vibewarden") {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("expected 'docker compose pull' when exporter is nil, got run calls: %v", executor.runCalls)
+	}
+}
+
 // TestService_Deploy_HealthCheckAlwaysUsesLocalhost verifies that the health
 // check always probes localhost via SSH, regardless of TLS configuration or
 // domain. When TLS is enabled, it uses https with -k; when disabled, plain http.

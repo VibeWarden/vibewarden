@@ -988,3 +988,136 @@ func TestDeployMultiApp_HealthCheckFails(t *testing.T) {
 		t.Errorf("'Site deployed.' should NOT appear when health check fails, got:\n%s", out)
 	}
 }
+
+// TestDeployMultiApp_LocalImage verifies that when cfg.App.Image is a bare name
+// (no registry prefix), the multi-app deploy flow transfers the image via
+// docker save/load instead of pulling from a registry.
+func TestDeployMultiApp_LocalImage(t *testing.T) {
+	executor := &fakeExecutor{}
+	generator := &fakeGenerator{}
+	exporter := &fakeImageExporter{}
+
+	svc := deployapp.NewService(executor, generator).WithImageExporter(exporter)
+
+	cfg := multiappConfig()
+	cfg.App.Image = "myapp:latest"
+
+	var buf bytes.Buffer
+	err := svc.DeployMultiApp(context.Background(), cfg, deployapp.RunOptions{
+		ConfigPath:  "/tmp/site/vibewarden.yaml",
+		ProjectName: "localsite",
+		Out:         &buf,
+	})
+	if err != nil {
+		t.Fatalf("DeployMultiApp() unexpected error: %v\noutput:\n%s", err, buf.String())
+	}
+
+	out := buf.String()
+	if !strings.Contains(out, "Transferring local image myapp:latest") {
+		t.Errorf("expected transfer message in output, got:\n%s", out)
+	}
+
+	// Verify docker save was called.
+	if len(exporter.saveCalls) == 0 {
+		t.Fatal("expected Save to be called for local image")
+	}
+	if exporter.saveCalls[0].imageName != "myapp:latest" {
+		t.Errorf("Save imageName = %q, want %q", exporter.saveCalls[0].imageName, "myapp:latest")
+	}
+
+	// Verify docker load was called on the remote.
+	assertRunCalledContains(t, executor.runCalls, "docker load")
+}
+
+// TestBootstrapSidecar_LocalImage verifies that the bootstrap flow transfers
+// a local image when cfg.App.Image has no registry prefix.
+func TestBootstrapSidecar_LocalImage(t *testing.T) {
+	executor := &fakeExecutor{}
+	generator := &fakeGenerator{}
+	exporter := &fakeImageExporter{}
+
+	svc := deployapp.NewService(executor, generator).WithImageExporter(exporter)
+
+	cfg := multiappConfig()
+	cfg.App.Image = "myapp:latest"
+
+	var buf bytes.Buffer
+	err := svc.BootstrapSidecar(context.Background(), cfg, deployapp.RunOptions{
+		ConfigPath:  "/tmp/proj/vibewarden.yaml",
+		ProjectName: "localproj",
+		Out:         &buf,
+	})
+	if err != nil {
+		t.Fatalf("BootstrapSidecar() unexpected error: %v\noutput:\n%s", err, buf.String())
+	}
+
+	out := buf.String()
+	if !strings.Contains(out, "Transferring local image myapp:latest") {
+		t.Errorf("expected transfer message in output, got:\n%s", out)
+	}
+
+	// Verify docker save was called.
+	if len(exporter.saveCalls) == 0 {
+		t.Fatal("expected Save to be called for local image")
+	}
+
+	// Verify docker load was called on the remote.
+	assertRunCalledContains(t, executor.runCalls, "docker load")
+}
+
+// TestDeployMultiApp_RegistryImage_NoLocalTransfer verifies that registry images
+// are not transferred via docker save/load in multi-app mode.
+func TestDeployMultiApp_RegistryImage_NoLocalTransfer(t *testing.T) {
+	executor := &fakeExecutor{}
+	generator := &fakeGenerator{}
+	exporter := &fakeImageExporter{}
+
+	svc := deployapp.NewService(executor, generator).WithImageExporter(exporter)
+
+	cfg := multiappConfig()
+	cfg.App.Image = "ghcr.io/org/myapp:latest"
+
+	err := svc.DeployMultiApp(context.Background(), cfg, deployapp.RunOptions{
+		ConfigPath:  "/tmp/site/vibewarden.yaml",
+		ProjectName: "regsite",
+	})
+	if err != nil {
+		t.Fatalf("DeployMultiApp() unexpected error: %v", err)
+	}
+
+	// Save must NOT be called for registry images.
+	if len(exporter.saveCalls) != 0 {
+		t.Errorf("expected no Save calls for registry image, got %d", len(exporter.saveCalls))
+	}
+
+	// docker load must NOT be called for registry images.
+	for _, c := range executor.runCalls {
+		if strings.Contains(c, "docker load") {
+			t.Errorf("unexpected 'docker load' for registry image, got run call: %q", c)
+		}
+	}
+}
+
+// TestDeployMultiApp_LocalImage_SaveFails verifies that a docker save failure
+// in multi-app mode is propagated.
+func TestDeployMultiApp_LocalImage_SaveFails(t *testing.T) {
+	executor := &fakeExecutor{}
+	generator := &fakeGenerator{}
+	exporter := &fakeImageExporter{saveErr: errors.New("image not found")}
+
+	svc := deployapp.NewService(executor, generator).WithImageExporter(exporter)
+
+	cfg := multiappConfig()
+	cfg.App.Image = "noexist:latest"
+
+	err := svc.DeployMultiApp(context.Background(), cfg, deployapp.RunOptions{
+		ConfigPath:  "/tmp/site/vibewarden.yaml",
+		ProjectName: "failsite",
+	})
+	if err == nil {
+		t.Fatal("expected error when docker save fails")
+	}
+	if !strings.Contains(err.Error(), "transferring local image") {
+		t.Errorf("error should mention 'transferring local image', got: %v", err)
+	}
+}

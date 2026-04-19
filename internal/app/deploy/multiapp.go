@@ -250,6 +250,20 @@ func (s *Service) deploySite(ctx context.Context, cfg *config.Config, projectNam
 		return fmt.Errorf("writing app docker-compose.yml: %w", err)
 	}
 
+	// Transfer local image if using a bare image name (no registry prefix) and
+	// an image exporter is configured.
+	// This must happen before docker compose up so the image is available on
+	// the remote daemon.
+	if cfg.App.Image != "" && isLocalImage(cfg.App.Image) && s.imageExporter != nil {
+		out := opts.Out
+		if out == nil {
+			out = io.Discard
+		}
+		if err := s.transferLocalImage(ctx, cfg.App.Image, siteDir, out); err != nil {
+			return fmt.Errorf("transferring local image: %w", err)
+		}
+	}
+
 	// Start the app container.
 	// In build mode, pass --build so Docker Compose builds the image from
 	// the transferred source directory.

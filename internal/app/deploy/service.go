@@ -63,8 +63,9 @@ const (
 // It generates runtime config, transfers files to the remote, starts Docker
 // Compose, and verifies the sidecar health endpoint.
 type Service struct {
-	executor  ports.RemoteExecutor
-	generator ports.ConfigGenerator
+	executor      ports.RemoteExecutor
+	generator     ports.ConfigGenerator
+	imageExporter ports.ImageExporter
 }
 
 // NewService creates a Service.
@@ -78,6 +79,15 @@ func NewService(
 		executor:  executor,
 		generator: generator,
 	}
+}
+
+// WithImageExporter returns a copy of the Service with the given ImageExporter
+// set. The exporter is used to save Docker images from the local daemon so they
+// can be transferred to the remote host when the image name has no registry
+// prefix (bare name like "myapp:latest").
+func (s *Service) WithImageExporter(exporter ports.ImageExporter) *Service {
+	s.imageExporter = exporter
+	return s
 }
 
 // RunOptions holds parameters for a deploy run.
@@ -197,7 +207,19 @@ func (s *Service) Deploy(ctx context.Context, cfg *config.Config, opts RunOption
 		return fmt.Errorf("transferring %s: %w", remoteConfigName, err)
 	}
 
-	// Step 4: start Docker Compose on the remote.
+	// Step 4: transfer local image if using a bare image name (no registry prefix)
+	// and an image exporter is configured.
+	// This must happen before docker compose up so the image is available on the
+	// remote daemon.
+	localImageTransferred := false
+	if cfg.App.Image != "" && isLocalImage(cfg.App.Image) && s.imageExporter != nil {
+		if err := s.transferLocalImage(ctx, cfg.App.Image, remoteDir, out); err != nil {
+			return fmt.Errorf("transferring local image: %w", err)
+		}
+		localImageTransferred = true
+	}
+
+	// Step 5: start Docker Compose on the remote.
 	// Always pull the latest sidecar image before starting, regardless of mode.
 	// In build mode the app image is built locally, but the sidecar image may be
 	// cached from an older version, so we explicitly pull it first.
@@ -211,6 +233,13 @@ func (s *Service) Deploy(ctx context.Context, cfg *config.Config, opts RunOption
 	if cfg.App.Build != "" {
 		fmt.Fprintln(out, "Building and starting services on remote...")
 		upCmd := fmt.Sprintf("cd %s && docker compose up -d --build --force-recreate", remoteDir)
+		if _, err := s.executor.Run(ctx, upCmd); err != nil {
+			return fmt.Errorf("docker compose up: %w", err)
+		}
+	} else if localImageTransferred {
+		// Local image was already transferred — skip pulling and just start.
+		fmt.Fprintln(out, "Starting services on remote...")
+		upCmd := fmt.Sprintf("cd %s && docker compose up -d --force-recreate", remoteDir)
 		if _, err := s.executor.Run(ctx, upCmd); err != nil {
 			return fmt.Errorf("docker compose up: %w", err)
 		}
@@ -228,7 +257,7 @@ func (s *Service) Deploy(ctx context.Context, cfg *config.Config, opts RunOption
 		}
 	}
 
-	// Step 5: health check — run curl on the remote so the probe is independent
+	// Step 6: health check — run curl on the remote so the probe is independent
 	// of DNS propagation, external port availability, and TLS certificate issuance.
 	port := cfg.Server.Port
 	if port == 0 {

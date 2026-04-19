@@ -8,6 +8,7 @@ import (
 	"github.com/spf13/cobra"
 
 	credentialsadapter "github.com/vibewarden/vibewarden/internal/adapters/credentials"
+	opsadapter "github.com/vibewarden/vibewarden/internal/adapters/ops"
 	sshadapter "github.com/vibewarden/vibewarden/internal/adapters/ssh"
 	templateadapter "github.com/vibewarden/vibewarden/internal/adapters/template"
 	deployapp "github.com/vibewarden/vibewarden/internal/app/deploy"
@@ -94,7 +95,8 @@ Examples:
 				credentialsadapter.NewGenerator(),
 				credentialsadapter.NewStore(),
 			).WithConfigSourcePath(configPath)
-			svc := deployapp.NewService(executor, generator)
+			svc := deployapp.NewService(executor, generator).
+				WithImageExporter(opsadapter.NewImageExportAdapter())
 
 			absConfig, err := filepath.Abs(configPath)
 			if err != nil {
