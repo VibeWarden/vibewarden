@@ -31,6 +31,7 @@ func NewDeployCmd() *cobra.Command {
 		rotateSecrets bool
 		unsealKey     string
 		force         bool
+		env           string
 	)
 
 	cmd := &cobra.Command{
@@ -77,6 +78,12 @@ Examples:
 				return fmt.Errorf("invalid --target: %w", err)
 			}
 
+			// Determine the deployment environment name.
+			envName := env
+			if envName == "" {
+				envName = "production"
+			}
+
 			cfg, err := config.Load(configPath)
 			if err != nil {
 				return fmt.Errorf("loading config: %w", err)
@@ -101,13 +108,19 @@ Examples:
 				absConfig = configPath
 			}
 
+			// Determine the production override file path after resolving the
+			// base config to an absolute path.
+			prodConfigPath := prodConfigPathForEnv(absConfig, envName)
+
 			projectName := deployapp.ProjectNameFromConfig(absConfig)
 			remoteDir := "~/vibewarden/" + projectName + "/"
 
 			opts := deployapp.RunOptions{
-				ConfigPath: absConfig,
-				Force:      force,
-				Out:        cmd.OutOrStdout(),
+				ConfigPath:     absConfig,
+				ProdConfigPath: prodConfigPath,
+				Env:            envName,
+				Force:          force,
+				Out:            cmd.OutOrStdout(),
 			}
 
 			// Bootstrap OpenBao when the secrets plugin is enabled.
@@ -176,6 +189,7 @@ Examples:
 	cmd.Flags().BoolVar(&rotateSecrets, "rotate-secrets", false, "re-seed secrets from --secrets-from on subsequent deploys")
 	cmd.Flags().StringVar(&unsealKey, "unseal-key", "", "OpenBao unseal key (required when redeploying a sealed instance); overrides stored key")
 	cmd.Flags().BoolVar(&force, "force", false, "overwrite remote files even if they have been modified since last deploy")
+	cmd.Flags().StringVar(&env, "env", "production", `deployment environment name; reads vibewarden.<env>.yaml as production override`)
 
 	if err := cmd.MarkFlagRequired("target"); err != nil {
 		fmt.Fprintln(os.Stderr, "warning: flag required registration failed:", err)
@@ -372,4 +386,17 @@ Examples:
 	}
 
 	return cmd
+}
+
+// prodConfigPathForEnv returns the path to the environment-specific production
+// override file (e.g. vibewarden.production.yaml) based on the base config
+// path. When the computed file does not exist, an empty string is returned
+// (no override).
+func prodConfigPathForEnv(configPath, envName string) string {
+	dir := filepath.Dir(configPath)
+	prodFile := filepath.Join(dir, "vibewarden."+envName+".yaml")
+	if _, err := os.Stat(prodFile); err == nil {
+		return prodFile
+	}
+	return ""
 }

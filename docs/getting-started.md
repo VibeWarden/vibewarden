@@ -169,15 +169,22 @@ Common flags:
 ### What `init` generates
 
 ```
-./                           # current directory (you mkdir + cd first)
-  vibewarden.yaml            # Main config — TLS self-signed, rate limit enabled
-  .vibewarden-version        # Pinned VibeWarden version
-  Dockerfile                 # Placeholder with examples for common stacks
+./                                # current directory (you mkdir + cd first)
+  vibewarden.yaml                 # Local dev config (TLS self-signed, port 8443)
+  vibewarden.production.yaml      # Production overrides (letsencrypt, port 443)
+  .vibewarden-version             # Pinned VibeWarden version
+  Dockerfile                      # Placeholder with examples for common stacks
   .gitignore
-  PROJECT.md                 # Project description (only when --describe is given)
-  AGENTS.md                  # AI agent context (tool-agnostic)
-  AGENTS-VIBEWARDEN.md       # VibeWarden-specific instructions for agents
+  PROJECT.md                      # Project description (only when --describe is given)
+  AGENTS.md                       # AI agent context (tool-agnostic)
+  AGENTS-VIBEWARDEN.md            # VibeWarden-specific instructions for agents
 ```
+
+!!! note "Environment separation"
+    `vibewarden.yaml` is your local dev config. `vibewarden.production.yaml`
+    contains production overrides. `vibew deploy` deep-merges the production
+    overrides automatically. Never put production-only settings in
+    `vibewarden.yaml`.
 
 `init` does **not** generate app source code. It sets up the sidecar
 and the agent context files so that your AI assistant can write the app
@@ -446,9 +453,9 @@ See the [Observability guide](observability.md) for details.
 ./vibew add tls --domain myapp.example.com
 ```
 
-This sets `tls.provider: letsencrypt` and `tls.domain` in `vibewarden.yaml`.
-On the next `vibew generate` + `docker compose up`, Caddy obtains a certificate
-from Let's Encrypt automatically.
+This sets `tls.provider: letsencrypt` and `tls.domain` in `vibewarden.yaml` and
+writes the domain to `vibewarden.production.yaml`. When you run `vibew deploy`,
+the production overrides (letsencrypt, port 443) are merged automatically.
 
 See the [Production Deployment guide](production-deployment.md) for the full
 production checklist.

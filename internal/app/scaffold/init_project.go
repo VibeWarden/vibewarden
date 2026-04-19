@@ -55,10 +55,11 @@ func NewInitProjectService(renderer ports.TemplateRenderer, _ any) *InitProjectS
 // The generated structure is:
 //
 //	<project>/
-//	├── AGENTS.md                  (user-owned, references AGENTS-VIBEWARDEN.md)
-//	├── AGENTS-VIBEWARDEN.md       (vibew-owned, regenerated on updates)
-//	├── vibewarden.yaml
-//	├── Dockerfile                 (generic placeholder)
+//	├── AGENTS.md                       (user-owned, references AGENTS-VIBEWARDEN.md)
+//	├── AGENTS-VIBEWARDEN.md            (vibew-owned, regenerated on updates)
+//	├── vibewarden.yaml                 (local dev config)
+//	├── vibewarden.production.yaml      (production overrides)
+//	├── Dockerfile                      (generic placeholder)
 //	├── .dockerignore
 //	├── .gitignore
 //	└── .vibewarden-version
@@ -114,12 +115,20 @@ func (s *InitProjectService) InitProject(ctx context.Context, parentDir string, 
 		return fmt.Errorf("ensuring AGENTS.md: %w", err)
 	}
 
-	// Render vibewarden.yaml.
+	// Render vibewarden.yaml (local dev config).
 	if err := s.renderer.RenderToFile("init-vibewarden.yaml.tmpl", data, filepath.Join(projectDir, "vibewarden.yaml"), opts.Force); err != nil {
 		if !errors.Is(err, os.ErrExist) {
 			return fmt.Errorf("rendering vibewarden.yaml: %w", err)
 		}
 		return fmt.Errorf("vibewarden.yaml already exists; use --force to overwrite: %w", err)
+	}
+
+	// Render vibewarden.production.yaml (production overrides).
+	if err := s.renderer.RenderToFile("init-vibewarden.production.yaml.tmpl", data, filepath.Join(projectDir, "vibewarden.production.yaml"), opts.Force); err != nil {
+		if !errors.Is(err, os.ErrExist) {
+			return fmt.Errorf("rendering vibewarden.production.yaml: %w", err)
+		}
+		return fmt.Errorf("vibewarden.production.yaml already exists; use --force to overwrite: %w", err)
 	}
 
 	// Render generic Dockerfile.

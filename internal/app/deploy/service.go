@@ -85,6 +85,11 @@ type RunOptions struct {
 	// ConfigPath is the path to vibewarden.yaml on the local filesystem.
 	ConfigPath string
 
+	// ProdConfigPath is the optional path to the production override file
+	// (e.g. vibewarden.production.yaml). When set, its values are deep-merged
+	// on top of the base config before writing to the deploy bundle.
+	ProdConfigPath string
+
 	// ProjectName is used as the remote sub-directory name under remoteBaseDir.
 	// When empty it is derived from the basename of the directory containing
 	// ConfigPath.
@@ -93,6 +98,10 @@ type RunOptions struct {
 	// GeneratedDir is the local directory where generated files are written
 	// before transfer. Defaults to ".vibewarden/generated" when empty.
 	GeneratedDir string
+
+	// Env is the deployment environment name (e.g. "production", "staging").
+	// Defaults to "production" when empty.
+	Env string
 
 	// Force, when true, skips the drift detection warning and overwrites
 	// remote files unconditionally. When false (the default), a dry-run rsync
@@ -133,11 +142,13 @@ func (s *Service) Deploy(ctx context.Context, cfg *config.Config, opts RunOption
 		bundleDir = defaultBundleDir
 	}
 	if err := s.Bundle(ctx, BundleOptions{
-		Config:      cfg,
-		ConfigPath:  opts.ConfigPath,
-		ProjectName: projectName,
-		MultiSite:   false,
-		OutputDir:   bundleDir,
+		Config:         cfg,
+		ConfigPath:     opts.ConfigPath,
+		ProdConfigPath: opts.ProdConfigPath,
+		ProjectName:    projectName,
+		MultiSite:      false,
+		OutputDir:      bundleDir,
+		Env:            opts.Env,
 	}); err != nil {
 		return fmt.Errorf("creating deploy bundle: %w", err)
 	}

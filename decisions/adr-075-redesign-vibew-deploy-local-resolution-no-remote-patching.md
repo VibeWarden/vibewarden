@@ -440,6 +440,22 @@ If `gopkg.in/yaml.v3` is imported directly:
   `context: .`) use different relative paths. This is intentional -- the two
   environments have different filesystem layouts.
 
+#### Environment separation model
+
+- `vibewarden.yaml` = local dev config (self-signed TLS, port 8443).
+- `vibewarden.production.yaml` = production overrides (letsencrypt, port 443).
+- `vibew init` generates BOTH files.
+- `vibew deploy` reads both files, deep-merges the production override on top
+  of the base config, resolves upstream.host, and writes the merged result to
+  `.vibewarden/deploy/<env>/`.
+- `vibew dev` only reads `vibewarden.yaml` -- unaffected by production overrides.
+- `vibew add tls --domain` writes the domain to `vibewarden.production.yaml`
+  when the file exists.
+- The `--env` flag on `vibew deploy` controls which override file is loaded
+  (default: "production" reads `vibewarden.production.yaml`).
+- YAML serialisation uses `map[string]any` (not `yaml.Marshal(Config{})`) to
+  preserve underscore field names like `rate_limit` and `security_headers`.
+
 #### Supersedes
 
 - This ADR supersedes the remote `sed` patching introduced in the multi-app

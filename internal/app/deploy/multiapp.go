@@ -94,11 +94,13 @@ func (s *Service) BootstrapSidecar(ctx context.Context, cfg *config.Config, opts
 		return fmt.Errorf("bundling sidecar: %w", err)
 	}
 	if err := s.Bundle(ctx, BundleOptions{
-		Config:      cfg,
-		ConfigPath:  opts.ConfigPath,
-		ProjectName: projectName,
-		MultiSite:   true,
-		OutputDir:   bundleDir,
+		Config:         cfg,
+		ConfigPath:     opts.ConfigPath,
+		ProdConfigPath: opts.ProdConfigPath,
+		ProjectName:    projectName,
+		MultiSite:      true,
+		OutputDir:      bundleDir,
+		Env:            opts.Env,
 	}); err != nil {
 		return fmt.Errorf("bundling first site: %w", err)
 	}
@@ -199,11 +201,13 @@ func (s *Service) DeployMultiApp(ctx context.Context, cfg *config.Config, opts R
 	// Step 1: produce the local deploy bundle for this site.
 	fmt.Fprintf(out, "Bundling site %q locally...\n", projectName)
 	if err := s.Bundle(ctx, BundleOptions{
-		Config:      cfg,
-		ConfigPath:  opts.ConfigPath,
-		ProjectName: projectName,
-		MultiSite:   true,
-		OutputDir:   bundleDir,
+		Config:         cfg,
+		ConfigPath:     opts.ConfigPath,
+		ProdConfigPath: opts.ProdConfigPath,
+		ProjectName:    projectName,
+		MultiSite:      true,
+		OutputDir:      bundleDir,
+		Env:            opts.Env,
 	}); err != nil {
 		return fmt.Errorf("bundling site: %w", err)
 	}

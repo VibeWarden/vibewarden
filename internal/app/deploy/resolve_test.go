@@ -1,6 +1,7 @@
 package deploy
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/vibewarden/vibewarden/internal/config"
@@ -133,54 +134,258 @@ func TestResolveProdConfig(t *testing.T) {
 	}
 }
 
-func TestMarshalConfig(t *testing.T) {
-	cfg := &config.Config{
-		Server:   config.ServerConfig{Port: 8443},
-		Upstream: config.UpstreamConfig{Host: "app", Port: 3000},
-		App:      config.AppConfig{Image: "myapp:latest"},
+func TestMergeConfigYAML(t *testing.T) {
+	tests := []struct {
+		name     string
+		base     string
+		override string
+		wantKeys []string // substrings that must appear in the output
+	}{
+		{
+			name:     "override wins for scalar",
+			base:     "server:\n  port: 8443\n",
+			override: "server:\n  port: 443\n",
+			wantKeys: []string{"port: 443"},
+		},
+		{
+			name:     "base key preserved when missing from override",
+			base:     "server:\n  port: 8443\nupstream:\n  host: localhost\n",
+			override: "server:\n  port: 443\n",
+			wantKeys: []string{"port: 443", "host: localhost"},
+		},
+		{
+			name:     "nested merge preserves sibling keys",
+			base:     "rate_limit:\n  enabled: true\n  burst: 20\n",
+			override: "rate_limit:\n  burst: 50\n",
+			wantKeys: []string{"enabled: true", "burst: 50"},
+		},
+		{
+			name:     "empty override returns base",
+			base:     "server:\n  port: 8443\n",
+			override: "",
+			wantKeys: []string{"port: 8443"},
+		},
 	}
 
-	data, err := MarshalConfig(cfg)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			merged, err := MergeConfigYAML([]byte(tt.base), []byte(tt.override))
+			if err != nil {
+				t.Fatalf("MergeConfigYAML() error = %v", err)
+			}
+
+			data, err := MarshalYAMLMap(merged)
+			if err != nil {
+				t.Fatalf("MarshalYAMLMap() error = %v", err)
+			}
+
+			s := string(data)
+			for _, want := range tt.wantKeys {
+				if !strings.Contains(s, want) {
+					t.Errorf("expected %q in output, got:\n%s", want, s)
+				}
+			}
+		})
+	}
+}
+
+func TestResolveProdUpstream(t *testing.T) {
+	tests := []struct {
+		name      string
+		m         map[string]any
+		project   string
+		multiSite bool
+		wantHost  string
+	}{
+		{
+			name: "multi-site: localhost rewritten to container name",
+			m: map[string]any{
+				"upstream": map[string]any{"host": "localhost", "port": 3000},
+			},
+			project:   "blog",
+			multiSite: true,
+			wantHost:  "vibewarden-blog-app",
+		},
+		{
+			name: "multi-site: custom host preserved",
+			m: map[string]any{
+				"upstream": map[string]any{"host": "my-backend", "port": 3000},
+			},
+			project:   "blog",
+			multiSite: true,
+			wantHost:  "my-backend",
+		},
+		{
+			name: "single-site with image: 0.0.0.0 rewritten to app",
+			m: map[string]any{
+				"upstream": map[string]any{"host": "0.0.0.0", "port": 3000},
+				"app":      map[string]any{"image": "myapp:latest"},
+			},
+			project:   "proj",
+			multiSite: false,
+			wantHost:  "app",
+		},
+		{
+			name: "single-site without container: localhost NOT rewritten",
+			m: map[string]any{
+				"upstream": map[string]any{"host": "localhost", "port": 3000},
+			},
+			project:   "proj",
+			multiSite: false,
+			wantHost:  "localhost",
+		},
+		{
+			name:      "no upstream section: no panic",
+			m:         map[string]any{"server": map[string]any{"port": 8443}},
+			project:   "proj",
+			multiSite: true,
+			wantHost:  "", // no upstream, so no host to check
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ResolveProdUpstream(tt.m, tt.project, tt.multiSite)
+
+			if tt.wantHost == "" {
+				return // nothing to check
+			}
+
+			upstream, ok := tt.m["upstream"].(map[string]any)
+			if !ok {
+				t.Fatal("upstream section missing after resolve")
+			}
+			got, _ := upstream["host"].(string)
+			if got != tt.wantHost {
+				t.Errorf("upstream.host = %q, want %q", got, tt.wantHost)
+			}
+		})
+	}
+}
+
+func TestPatchYAMLMap(t *testing.T) {
+	tests := []struct {
+		name  string
+		m     map[string]any
+		path  []string
+		value any
+		want  any
+	}{
+		{
+			name:  "set existing nested key",
+			m:     map[string]any{"upstream": map[string]any{"host": "localhost"}},
+			path:  []string{"upstream", "host"},
+			value: "app",
+			want:  "app",
+		},
+		{
+			name:  "create intermediate maps",
+			m:     map[string]any{},
+			path:  []string{"tls", "domain"},
+			value: "example.com",
+			want:  "example.com",
+		},
+		{
+			name:  "empty path is no-op",
+			m:     map[string]any{"key": "val"},
+			path:  []string{},
+			value: "ignored",
+			want:  nil,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			PatchYAMLMap(tt.m, tt.path, tt.value)
+
+			if tt.want == nil {
+				return
+			}
+
+			// Traverse the map to find the value.
+			var current any = tt.m
+			for _, key := range tt.path {
+				m, ok := current.(map[string]any)
+				if !ok {
+					t.Fatalf("expected map at key path, got %T", current)
+				}
+				current = m[key]
+			}
+			if current != tt.want {
+				t.Errorf("value at path %v = %v, want %v", tt.path, current, tt.want)
+			}
+		})
+	}
+}
+
+func TestMarshalYAMLMap_PreservesUnderscoreKeys(t *testing.T) {
+	// This is the key test: verify that underscore field names survive
+	// marshalling, unlike yaml.Marshal(Config{}) which would lose them.
+	m := map[string]any{
+		"rate_limit":       map[string]any{"enabled": true, "burst": 20},
+		"security_headers": map[string]any{"enabled": true},
+		"body_size":        map[string]any{"max_bytes": 1048576},
+		"ip_filter":        map[string]any{"enabled": false},
+	}
+
+	data, err := MarshalYAMLMap(m)
 	if err != nil {
-		t.Fatalf("MarshalConfig() error = %v", err)
+		t.Fatalf("MarshalYAMLMap() error = %v", err)
 	}
 
-	if len(data) == 0 {
-		t.Fatal("MarshalConfig() returned empty data")
-	}
-
-	// Verify the output contains expected YAML keys.
 	s := string(data)
-	if !contains(s, "port: 8443") {
-		t.Errorf("MarshalConfig() output should contain 'port: 8443', got:\n%s", s)
-	}
-	if !contains(s, "host: app") {
-		t.Errorf("MarshalConfig() output should contain 'host: app', got:\n%s", s)
-	}
-}
-
-func TestMarshalConfig_NilConfig(t *testing.T) {
-	// Marshalling a nil config should not error (produces empty YAML).
-	data, err := MarshalConfig(&config.Config{})
-	if err != nil {
-		t.Fatalf("MarshalConfig(&Config{}) error = %v", err)
-	}
-	if len(data) == 0 {
-		t.Fatal("MarshalConfig(&Config{}) returned empty data")
-	}
-}
-
-// contains checks whether s contains substr. Using a local helper to avoid
-// importing strings in an internal test file.
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && searchSubstring(s, substr)
-}
-
-func searchSubstring(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
+	for _, key := range []string{"rate_limit:", "security_headers:", "body_size:", "ip_filter:"} {
+		if !strings.Contains(s, key) {
+			t.Errorf("expected %q in output, got:\n%s", key, s)
 		}
 	}
-	return false
+}
+
+// Verify that the old MarshalConfig still works but note the underscore issue.
+// This test documents the known limitation for backwards compatibility.
+func TestMarshalYAMLMap_RoundTrip(t *testing.T) {
+	baseYAML := `server:
+  port: 8443
+upstream:
+  host: "0.0.0.0"
+  port: 3000
+rate_limit:
+  enabled: true
+  burst: 20
+security_headers:
+  enabled: true
+`
+	merged, err := MergeConfigYAML([]byte(baseYAML), nil)
+	if err != nil {
+		t.Fatalf("MergeConfigYAML() error = %v", err)
+	}
+
+	data, err := MarshalYAMLMap(merged)
+	if err != nil {
+		t.Fatalf("MarshalYAMLMap() error = %v", err)
+	}
+
+	// Round-trip: unmarshal the output and verify key values survive.
+	roundTrip, err := MergeConfigYAML(data, nil)
+	if err != nil {
+		t.Fatalf("round-trip MergeConfigYAML() error = %v", err)
+	}
+
+	// Check that the upstream.port survives the round-trip.
+	upstream, ok := roundTrip["upstream"].(map[string]any)
+	if !ok {
+		t.Fatal("upstream section missing after round-trip")
+	}
+	if port, _ := upstream["port"].(int); port != 3000 {
+		t.Errorf("upstream.port = %v, want 3000", upstream["port"])
+	}
+
+	// Check that rate_limit.enabled survives the round-trip.
+	rl, ok := roundTrip["rate_limit"].(map[string]any)
+	if !ok {
+		t.Fatal("rate_limit section missing after round-trip")
+	}
+	if enabled, _ := rl["enabled"].(bool); !enabled {
+		t.Errorf("rate_limit.enabled = %v, want true", rl["enabled"])
+	}
 }

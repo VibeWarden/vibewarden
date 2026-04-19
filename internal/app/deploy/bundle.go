@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"text/template"
 
+	"gopkg.in/yaml.v3"
+
 	templateadapter "github.com/vibewarden/vibewarden/internal/adapters/template"
 	"github.com/vibewarden/vibewarden/internal/config"
 	"github.com/vibewarden/vibewarden/internal/config/templates"
@@ -15,11 +17,20 @@ import (
 
 // BundleOptions holds parameters for producing the deploy bundle.
 type BundleOptions struct {
-	// Config is the user's loaded configuration.
+	// Config is the user's loaded configuration (merged result of base +
+	// production override, loaded via config.Load). It is used for template
+	// rendering and generator input where a typed Config is needed.
 	Config *config.Config
 
-	// ConfigPath is the path to the original config file on disk.
+	// ConfigPath is the path to the base vibewarden.yaml on disk. The raw YAML
+	// is read from this file for map-based merging and marshalling to preserve
+	// original field names.
 	ConfigPath string
+
+	// ProdConfigPath is the optional path to the production override file
+	// (e.g. vibewarden.production.yaml). When set, its values are deep-merged
+	// on top of the base config before writing to the bundle.
+	ProdConfigPath string
 
 	// ProjectName is the DNS-safe project name used in directory and container
 	// naming.
@@ -29,15 +40,24 @@ type BundleOptions struct {
 	MultiSite bool
 
 	// OutputDir is the directory where bundle files are written. Defaults to
-	// ".vibewarden/deploy" when empty.
+	// ".vibewarden/deploy/<env>" when empty.
 	OutputDir string
+
+	// Env is the deployment environment name (e.g. "production", "staging").
+	// Defaults to "production" when empty. The output directory includes the
+	// environment name: .vibewarden/deploy/<env>/.
+	Env string
 }
 
 // defaultBundleDir is the default output directory for deploy bundles.
 const defaultBundleDir = ".vibewarden/deploy"
 
+// DefaultEnv is the default deployment environment name used when BundleOptions.Env
+// is empty. The output directory becomes .vibewarden/deploy/production/.
+const DefaultEnv = "production"
+
 // Bundle produces a complete deploy bundle under opts.OutputDir (or
-// .vibewarden/deploy/ by default).
+// .vibewarden/deploy/<env>/ by default).
 //
 // For single-site mode it generates docker-compose.yml, vibewarden.yaml,
 // credentials, and supporting files into the output directory.
@@ -49,13 +69,17 @@ const defaultBundleDir = ".vibewarden/deploy"
 func (s *Service) Bundle(ctx context.Context, opts BundleOptions) error {
 	outDir := opts.OutputDir
 	if outDir == "" {
-		outDir = defaultBundleDir
+		env := opts.Env
+		if env == "" {
+			env = DefaultEnv
+		}
+		outDir = filepath.Join(defaultBundleDir, env)
 	}
 
 	if opts.MultiSite {
-		return s.bundleMultiSiteSite(ctx, opts.Config, opts.ProjectName, outDir)
+		return s.bundleMultiSiteSite(ctx, opts.Config, opts.ConfigPath, opts.ProdConfigPath, opts.ProjectName, outDir)
 	}
-	return s.bundleSingleSite(ctx, opts.Config, opts.ProjectName, outDir)
+	return s.bundleSingleSite(ctx, opts.Config, opts.ConfigPath, opts.ProdConfigPath, opts.ProjectName, outDir)
 }
 
 // BundleSidecar produces the sidecar compose and global.yaml under
@@ -68,14 +92,15 @@ func (s *Service) BundleSidecar(_ context.Context, cfg *config.Config, outputDir
 }
 
 // bundleSingleSite generates the complete single-site deploy bundle.
-func (s *Service) bundleSingleSite(ctx context.Context, cfg *config.Config, projectName string, outputDir string) error {
-	// Resolve upstream.host for production Docker networking.
+func (s *Service) bundleSingleSite(ctx context.Context, cfg *config.Config, configPath, prodConfigPath, projectName string, outputDir string) error {
+	// Resolve upstream.host on the typed Config for template rendering.
 	resolved := ResolveProdConfig(cfg, projectName, false)
 
-	// Write resolved vibewarden.yaml into the bundle.
-	configData, err := MarshalConfig(resolved)
+	// Build the merged YAML map for writing vibewarden.yaml.
+	// This preserves original field names (rate_limit, security_headers, etc.).
+	configData, err := buildMergedConfigYAML(configPath, prodConfigPath, projectName, false, cfg)
 	if err != nil {
-		return fmt.Errorf("marshalling config: %w", err)
+		return fmt.Errorf("building merged config YAML: %w", err)
 	}
 	if err := writeFile(filepath.Join(outputDir, "vibewarden.yaml"), configData); err != nil {
 		return fmt.Errorf("writing vibewarden.yaml to bundle: %w", err)
@@ -92,16 +117,13 @@ func (s *Service) bundleSingleSite(ctx context.Context, cfg *config.Config, proj
 
 // bundleMultiSiteSite generates the per-site deploy bundle files under
 // <outputDir>/sites/<project>/.
-func (s *Service) bundleMultiSiteSite(_ context.Context, cfg *config.Config, projectName string, outputDir string) error {
+func (s *Service) bundleMultiSiteSite(_ context.Context, cfg *config.Config, configPath, prodConfigPath, projectName string, outputDir string) error {
 	siteDir := filepath.Join(outputDir, "sites", projectName)
 
-	// Resolve upstream.host for production Docker networking.
-	resolved := ResolveProdConfig(cfg, projectName, true)
-
-	// Write resolved vibewarden.yaml.
-	configData, err := MarshalConfig(resolved)
+	// Build the merged YAML map for writing vibewarden.yaml.
+	configData, err := buildMergedConfigYAML(configPath, prodConfigPath, projectName, true, cfg)
 	if err != nil {
-		return fmt.Errorf("marshalling config: %w", err)
+		return fmt.Errorf("building merged config YAML: %w", err)
 	}
 	if err := writeFile(filepath.Join(siteDir, "vibewarden.yaml"), configData); err != nil {
 		return fmt.Errorf("writing vibewarden.yaml to bundle: %w", err)
@@ -209,6 +231,57 @@ func renderAppCompose(cfg *config.Config, projectName string) (string, error) {
 	}
 
 	return buf.String(), nil
+}
+
+// buildMergedConfigYAML reads the base config YAML, optionally deep-merges a
+// production override YAML, resolves upstream.host for Docker networking, and
+// returns the result as marshalled YAML bytes. This approach avoids marshalling
+// the Config struct (which only has mapstructure tags, not yaml tags) so that
+// multi-word field names like rate_limit and security_headers are preserved.
+//
+// When configPath is empty or the file does not exist, cfg is used as a
+// fallback: it is marshalled to YAML via yaml.Marshal and used as the base.
+// This preserves backwards compatibility with callers that supply only a Config.
+func buildMergedConfigYAML(configPath, prodConfigPath, projectName string, multiSite bool, cfg *config.Config) ([]byte, error) {
+	var baseYAML []byte
+	var err error
+
+	if configPath != "" {
+		baseYAML, err = os.ReadFile(configPath) //nolint:gosec // configPath is the vibewarden.yaml resolved from project root
+		if err != nil && !os.IsNotExist(err) {
+			return nil, fmt.Errorf("reading base config %s: %w", configPath, err)
+		}
+	}
+
+	// Fallback: marshal the Config struct when no file is available.
+	if len(baseYAML) == 0 && cfg != nil {
+		baseYAML, err = yaml.Marshal(cfg)
+		if err != nil {
+			return nil, fmt.Errorf("marshalling config fallback: %w", err)
+		}
+	}
+
+	var overrideYAML []byte
+	if prodConfigPath != "" {
+		overrideYAML, err = os.ReadFile(prodConfigPath) //nolint:gosec // prodConfigPath is the production override resolved from project root
+		if err != nil {
+			return nil, fmt.Errorf("reading production config %s: %w", prodConfigPath, err)
+		}
+	}
+
+	merged, err := MergeConfigYAML(baseYAML, overrideYAML)
+	if err != nil {
+		return nil, fmt.Errorf("merging config YAML: %w", err)
+	}
+
+	ResolveProdUpstream(merged, projectName, multiSite)
+
+	data, err := MarshalYAMLMap(merged)
+	if err != nil {
+		return nil, fmt.Errorf("marshalling merged config: %w", err)
+	}
+
+	return data, nil
 }
 
 // writeFile writes data to the named file, creating parent directories as

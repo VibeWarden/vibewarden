@@ -275,8 +275,22 @@ func TestBundle_DefaultOutputDir(t *testing.T) {
 		App:      config.AppConfig{Image: "myapp:latest"},
 	}
 
-	// Call Bundle with empty OutputDir -- should default to .vibewarden/deploy.
-	err := svc.Bundle(context.Background(), deployapp.BundleOptions{
+	// Use t.TempDir() and chdir into it so the default output directory is
+	// created inside the temp dir, not the current working directory.
+	tmpDir := t.TempDir()
+	origDir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getting cwd: %v", err)
+	}
+	if err := os.Chdir(tmpDir); err != nil {
+		t.Fatalf("chdir to temp dir: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chdir(origDir)
+	})
+
+	// Call Bundle with empty OutputDir -- should default to .vibewarden/deploy/production/.
+	err = svc.Bundle(context.Background(), deployapp.BundleOptions{
 		Config:      cfg,
 		ConfigPath:  "/tmp/proj/vibewarden.yaml",
 		ProjectName: "myproject",
@@ -287,14 +301,137 @@ func TestBundle_DefaultOutputDir(t *testing.T) {
 		t.Fatalf("Bundle() error = %v", err)
 	}
 
-	// Verify the default directory was created.
-	if _, err := os.Stat(".vibewarden/deploy/vibewarden.yaml"); os.IsNotExist(err) {
-		t.Error("expected .vibewarden/deploy/vibewarden.yaml to exist with default OutputDir")
+	// Verify the default directory was created with the environment subdirectory.
+	defaultPath := filepath.Join(".vibewarden", "deploy", "production", "vibewarden.yaml")
+	if _, err := os.Stat(defaultPath); os.IsNotExist(err) {
+		t.Errorf("expected %s to exist with default OutputDir", defaultPath)
+	}
+}
+
+func TestBundle_WithProdOverride_MergesCorrectly(t *testing.T) {
+	generator := &fakeGenerator{}
+	svc := deployapp.NewService(&fakeExecutor{}, generator)
+
+	outputDir := t.TempDir()
+	projDir := t.TempDir()
+
+	// Write base config.
+	baseYAML := `server:
+  port: 8443
+upstream:
+  host: "0.0.0.0"
+  port: 3000
+tls:
+  enabled: true
+  provider: self-signed
+rate_limit:
+  enabled: true
+  burst: 20
+app:
+  image: "myapp:latest"
+`
+	basePath := filepath.Join(projDir, "vibewarden.yaml")
+	if err := os.WriteFile(basePath, []byte(baseYAML), 0o600); err != nil {
+		t.Fatalf("writing base config: %v", err)
 	}
 
-	// Clean up the default directory.
-	if err := os.RemoveAll(".vibewarden/deploy"); err != nil {
-		t.Logf("cleanup warning: %v", err)
+	// Write production override.
+	prodYAML := `server:
+  port: 443
+tls:
+  enabled: true
+  provider: letsencrypt
+  domain: "example.com"
+`
+	prodPath := filepath.Join(projDir, "vibewarden.production.yaml")
+	if err := os.WriteFile(prodPath, []byte(prodYAML), 0o600); err != nil {
+		t.Fatalf("writing prod config: %v", err)
+	}
+
+	cfg := &config.Config{
+		Server:   config.ServerConfig{Port: 443},
+		Upstream: config.UpstreamConfig{Host: "0.0.0.0", Port: 3000},
+		App:      config.AppConfig{Image: "myapp:latest"},
+		TLS:      config.TLSConfig{Enabled: true, Provider: "letsencrypt", Domain: "example.com"},
+	}
+
+	err := svc.Bundle(context.Background(), deployapp.BundleOptions{
+		Config:         cfg,
+		ConfigPath:     basePath,
+		ProdConfigPath: prodPath,
+		ProjectName:    "myproject",
+		MultiSite:      false,
+		OutputDir:      outputDir,
+	})
+	if err != nil {
+		t.Fatalf("Bundle() error = %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(outputDir, "vibewarden.yaml"))
+	if err != nil {
+		t.Fatalf("reading bundled config: %v", err)
+	}
+
+	s := string(data)
+
+	// Production override values should be present.
+	if !strings.Contains(s, "port: 443") {
+		t.Errorf("expected production port 443 in merged config, got:\n%s", s)
+	}
+	if !strings.Contains(s, "provider: letsencrypt") {
+		t.Errorf("expected letsencrypt provider in merged config, got:\n%s", s)
+	}
+	if !strings.Contains(s, "domain: example.com") {
+		t.Errorf("expected domain in merged config, got:\n%s", s)
+	}
+
+	// Base config values not overridden should survive.
+	if !strings.Contains(s, "rate_limit:") {
+		t.Errorf("expected rate_limit section preserved from base, got:\n%s", s)
+	}
+	if !strings.Contains(s, "burst: 20") {
+		t.Errorf("expected burst: 20 preserved from base, got:\n%s", s)
+	}
+
+	// upstream.host should be resolved (0.0.0.0 -> app for single-site with image).
+	if !strings.Contains(s, "host: app") {
+		t.Errorf("expected upstream.host resolved to 'app', got:\n%s", s)
+	}
+}
+
+func TestBundle_WithEnv_OutputsToEnvSubdir(t *testing.T) {
+	generator := &fakeGenerator{}
+	svc := deployapp.NewService(&fakeExecutor{}, generator)
+
+	tmpDir := t.TempDir()
+	origDir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getting cwd: %v", err)
+	}
+	if err := os.Chdir(tmpDir); err != nil {
+		t.Fatalf("chdir to temp dir: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(origDir) })
+
+	cfg := &config.Config{
+		Server:   config.ServerConfig{Port: 8443},
+		Upstream: config.UpstreamConfig{Port: 3000},
+		App:      config.AppConfig{Image: "myapp:latest"},
+	}
+
+	err = svc.Bundle(context.Background(), deployapp.BundleOptions{
+		Config:      cfg,
+		ProjectName: "myproject",
+		MultiSite:   false,
+		Env:         "staging",
+	})
+	if err != nil {
+		t.Fatalf("Bundle() error = %v", err)
+	}
+
+	stagingPath := filepath.Join(".vibewarden", "deploy", "staging", "vibewarden.yaml")
+	if _, err := os.Stat(stagingPath); os.IsNotExist(err) {
+		t.Errorf("expected %s to exist for env=staging", stagingPath)
 	}
 }
 
