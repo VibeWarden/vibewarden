@@ -81,9 +81,9 @@ func NewService(
 	}
 }
 
-// WithImageExporter returns a copy of the Service with the given ImageExporter
-// set. The exporter is used to save Docker images from the local daemon so they
-// can be transferred to the remote host when the image name has no registry
+// WithImageExporter sets the ImageExporter on the Service and returns it for
+// chaining. The exporter is used to save Docker images from the local daemon so
+// they can be transferred to the remote host when the image name has no registry
 // prefix (bare name like "myapp:latest").
 func (s *Service) WithImageExporter(exporter ports.ImageExporter) *Service {
 	s.imageExporter = exporter

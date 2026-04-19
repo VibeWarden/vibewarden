@@ -70,10 +70,14 @@ func (s *Service) transferLocalImage(ctx context.Context, imageName, remoteDir s
 	}
 
 	// Step 3: load the image on the remote and clean up the remote file.
+	// The load and cleanup are split into separate calls so that the temp file
+	// is always removed even when docker load fails.
 	fmt.Fprintln(out, "  Loading image on remote...")
-	loadCmd := fmt.Sprintf("docker load < %s && rm -f %s", remoteTmpPath, remoteTmpPath)
-	if _, err := s.executor.Run(ctx, loadCmd); err != nil {
-		return fmt.Errorf("loading image on remote: %w", err)
+	_, loadErr := s.executor.Run(ctx, fmt.Sprintf("docker load < %s", remoteTmpPath))
+	// Always clean up, even if load fails.
+	s.executor.Run(ctx, fmt.Sprintf("rm -f %s", remoteTmpPath)) //nolint:errcheck // best-effort cleanup
+	if loadErr != nil {
+		return fmt.Errorf("loading image on remote: %w", loadErr)
 	}
 
 	fmt.Fprintf(out, "  Image %s transferred successfully.\n", imageName)
