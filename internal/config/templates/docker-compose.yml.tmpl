@@ -450,6 +450,9 @@ volumes:
 {{- end }}
 {{- if .TLS.Enabled }}
   vibewarden-data:
+    # Named volume persists TLS certificates across deploys.
+    # Never use "docker compose down -v" in production — it deletes certs
+    # and may trigger ACME rate limits on re-issuance.
 {{- end }}
 {{- if and (eq .RateLimit.Store "redis") (not (.RateLimit.Redis.HasExternalURL)) }}
   redis-data:

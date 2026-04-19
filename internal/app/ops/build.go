@@ -39,6 +39,10 @@ type BuildOptions struct {
 	// NoCache passes --no-cache to docker build when true.
 	NoCache bool
 
+	// Platform specifies the target platform for the Docker build (e.g.
+	// "linux/amd64"). When empty, docker uses the local platform.
+	Platform string
+
 	// ConfigPath is the path to vibewarden.yaml. Empty means the default
 	// discovery logic (current directory) applies.
 	ConfigPath string
@@ -65,11 +69,14 @@ func (s *BuildService) Run(ctx context.Context, cfg *config.Config, opts BuildOp
 
 	fmt.Fprintf(out, "Building Docker image: %s\n", tag)
 	fmt.Fprintf(out, "Context: %s\n", workDir)
+	if opts.Platform != "" {
+		fmt.Fprintf(out, "Platform: %s\n", opts.Platform)
+	}
 	if opts.NoCache {
 		fmt.Fprintln(out, "Flags: --no-cache")
 	}
 
-	if err := s.builder.Build(ctx, tag, workDir, opts.NoCache); err != nil {
+	if err := s.builder.Build(ctx, tag, workDir, opts.NoCache, opts.Platform); err != nil {
 		return err
 	}
 

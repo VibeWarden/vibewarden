@@ -331,6 +331,12 @@ type TLSConfig struct {
 	// Uses the Caddy default when empty (applicable to TLSProviderLetsEncrypt only).
 	StoragePath string
 
+	// ACMECA is the ACME directory URL to use instead of the default
+	// (Let's Encrypt production). Only applicable when Provider is
+	// TLSProviderLetsEncrypt.
+	// Example: "https://acme-staging-v02.api.letsencrypt.org/directory"
+	ACMECA string
+
 	// CertMonitoring holds configuration for the background certificate
 	// expiry monitor. The monitor is only active when TLS is enabled.
 	CertMonitoring TLSCertMonitoringConfig

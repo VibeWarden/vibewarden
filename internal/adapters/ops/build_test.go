@@ -19,7 +19,7 @@ func TestBuildAdapter_CancelledContextReturnsError(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // cancel immediately so docker exits fast
 
-	err := adapter.Build(ctx, "test-image:latest", ".", false)
+	err := adapter.Build(ctx, "test-image:latest", ".", false, "")
 	if err == nil {
 		t.Fatal("expected an error because context was cancelled before run")
 	}
@@ -36,7 +36,7 @@ func TestBuildAdapter_CancelledContextNoCacheReturnsError(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	err := adapter.Build(ctx, "test-image:latest", ".", true)
+	err := adapter.Build(ctx, "test-image:latest", ".", true, "")
 	if err == nil {
 		t.Fatal("expected an error because context was cancelled before run")
 	}
@@ -50,7 +50,7 @@ func TestBuildAdapter_ReturnsErrorWhenDockerMissing(t *testing.T) {
 	}
 
 	adapter := opsadapter.NewBuildAdapter()
-	err := adapter.Build(context.Background(), "test-image:latest", ".", false)
+	err := adapter.Build(context.Background(), "test-image:latest", ".", false, "")
 	if err == nil {
 		t.Fatal("expected an error when docker is not available")
 	}
@@ -64,6 +64,7 @@ func TestBuildArgsConstruction(t *testing.T) {
 		tag        string
 		contextDir string
 		noCache    bool
+		platform   string
 		wantArgs   []string
 	}{
 		{
@@ -87,11 +88,27 @@ func TestBuildArgsConstruction(t *testing.T) {
 			noCache:    false,
 			wantArgs:   []string{"build", "-t", "webapp:v2", "/home/user/project"},
 		},
+		{
+			name:       "build with platform",
+			tag:        "myapp:latest",
+			contextDir: ".",
+			noCache:    false,
+			platform:   "linux/amd64",
+			wantArgs:   []string{"build", "--platform", "linux/amd64", "-t", "myapp:latest", "."},
+		},
+		{
+			name:       "build with platform and no-cache",
+			tag:        "myapp:latest",
+			contextDir: ".",
+			noCache:    true,
+			platform:   "linux/arm64",
+			wantArgs:   []string{"build", "--platform", "linux/arm64", "-t", "myapp:latest", "--no-cache", "."},
+		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := buildArgs(tt.tag, tt.contextDir, tt.noCache)
+			got := buildArgs(tt.tag, tt.contextDir, tt.noCache, tt.platform)
 			if len(got) != len(tt.wantArgs) {
 				t.Fatalf("len(args) = %d, want %d\ngot:  %v\nwant: %v",
 					len(got), len(tt.wantArgs), got, tt.wantArgs)
@@ -107,8 +124,12 @@ func TestBuildArgsConstruction(t *testing.T) {
 
 // buildArgs mirrors the logic in BuildAdapter.Build to allow table-driven
 // testing of the argument construction without executing docker.
-func buildArgs(tag, contextDir string, noCache bool) []string {
-	args := []string{"build", "-t", tag}
+func buildArgs(tag, contextDir string, noCache bool, platform string) []string {
+	args := []string{"build"}
+	if platform != "" {
+		args = append(args, "--platform", platform)
+	}
+	args = append(args, "-t", tag)
 	if noCache {
 		args = append(args, "--no-cache")
 	}

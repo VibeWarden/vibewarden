@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 
@@ -25,7 +26,8 @@ func NewCertCmd() *cobra.Command {
 Examples:
   vibew cert export
   vibew cert export > vibewarden-ca.pem
-  vibew cert export --path`,
+  vibew cert export --path
+  vibew cert trust`,
 		// Default: print help when no subcommand is given.
 		Run: func(cmd *cobra.Command, _ []string) {
 			cmd.Help() //nolint:errcheck
@@ -33,6 +35,7 @@ Examples:
 	}
 
 	cmd.AddCommand(newCertExportCmd())
+	cmd.AddCommand(newCertTrustCmd())
 
 	return cmd
 }
@@ -169,4 +172,121 @@ func caddyUserDataDir() string {
 		}
 		return filepath.Join(home, ".local", "share", "caddy")
 	}
+}
+
+// newCertTrustCmd creates the "vibew cert trust" subcommand.
+//
+// It locates Caddy's local CA root certificate, copies it to the OS trust
+// store, and runs the platform-specific command to make the OS trust it.
+//
+// macOS: security add-trusted-cert
+// Linux: copy to /usr/local/share/ca-certificates/ + update-ca-certificates
+func newCertTrustCmd() *cobra.Command {
+	var certPathFlag string
+
+	cmd := &cobra.Command{
+		Use:   "trust",
+		Short: "Install the local CA certificate into the OS trust store",
+		Long: `Export Caddy's local CA root certificate and install it into the
+operating system trust store so that browsers and other tools trust
+VibeWarden's self-signed certificates without warnings.
+
+This command requires elevated privileges (sudo on Linux).
+
+Supported platforms:
+  macOS:  Adds the certificate to the System keychain via "security add-trusted-cert".
+  Linux:  Copies the certificate to /usr/local/share/ca-certificates/ and
+          runs "update-ca-certificates".
+
+Examples:
+  vibew cert trust
+  vibew cert trust --cert-path /path/to/root.crt`,
+		RunE: func(cmd *cobra.Command, _ []string) error {
+			var certPath string
+			if certPathFlag != "" {
+				if _, err := os.Stat(certPathFlag); err != nil {
+					return fmt.Errorf(
+						"certificate not found at %s: start the VibeWarden sidecar first",
+						certPathFlag,
+					)
+				}
+				certPath = certPathFlag
+			} else {
+				var err error
+				certPath, err = findCaddyLocalCACert()
+				if err != nil {
+					return err
+				}
+			}
+
+			out := cmd.OutOrStdout()
+			fmt.Fprintf(out, "Installing certificate: %s\n", certPath)
+
+			if err := installCertToTrustStore(cmd, certPath); err != nil {
+				return fmt.Errorf("installing certificate: %w", err)
+			}
+
+			fmt.Fprintln(out, "Certificate installed successfully.")
+			fmt.Fprintln(out, "You may need to restart your browser for changes to take effect.")
+			return nil
+		},
+	}
+
+	cmd.Flags().StringVar(&certPathFlag, "cert-path", "", "override the automatic certificate path discovery")
+
+	return cmd
+}
+
+// installCertToTrustStore installs the given PEM certificate file into the
+// operating system trust store. The implementation is platform-specific.
+func installCertToTrustStore(cmd *cobra.Command, certPath string) error {
+	switch runtime.GOOS {
+	case "darwin":
+		return installCertDarwin(cmd, certPath)
+	case "linux":
+		return installCertLinux(cmd, certPath)
+	default:
+		return fmt.Errorf("unsupported platform %q; manually import %s into your trust store", runtime.GOOS, certPath)
+	}
+}
+
+// installCertDarwin installs a certificate into the macOS System keychain.
+func installCertDarwin(cmd *cobra.Command, certPath string) error {
+	fmt.Fprintln(cmd.OutOrStdout(), "Adding certificate to macOS System keychain...")
+	//nolint:gosec // certPath is validated above; "security" is a macOS system binary
+	c := exec.CommandContext(cmd.Context(), "sudo", "security", "add-trusted-cert",
+		"-d", "-r", "trustRoot",
+		"-k", "/Library/Keychains/System.keychain",
+		certPath,
+	)
+	c.Stdout = cmd.OutOrStdout()
+	c.Stderr = cmd.ErrOrStderr()
+	c.Stdin = os.Stdin // allow sudo password prompt
+	return c.Run()
+}
+
+// installCertLinux copies the certificate to the system CA directory and runs
+// update-ca-certificates.
+func installCertLinux(cmd *cobra.Command, certPath string) error {
+	const destDir = "/usr/local/share/ca-certificates"
+	destPath := filepath.Join(destDir, "vibewarden-local-ca.crt")
+
+	fmt.Fprintf(cmd.OutOrStdout(), "Copying certificate to %s...\n", destPath)
+
+	//nolint:gosec // certPath is validated above; "sudo" + "cp" are standard system binaries
+	cpCmd := exec.CommandContext(cmd.Context(), "sudo", "cp", certPath, destPath)
+	cpCmd.Stdout = cmd.OutOrStdout()
+	cpCmd.Stderr = cmd.ErrOrStderr()
+	cpCmd.Stdin = os.Stdin
+	if err := cpCmd.Run(); err != nil {
+		return fmt.Errorf("copying certificate to %s: %w", destPath, err)
+	}
+
+	fmt.Fprintln(cmd.OutOrStdout(), "Updating CA certificates...")
+	//nolint:gosec // "sudo" + "update-ca-certificates" are standard system binaries
+	updateCmd := exec.CommandContext(cmd.Context(), "sudo", "update-ca-certificates")
+	updateCmd.Stdout = cmd.OutOrStdout()
+	updateCmd.Stderr = cmd.ErrOrStderr()
+	updateCmd.Stdin = os.Stdin
+	return updateCmd.Run()
 }

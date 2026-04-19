@@ -152,6 +152,13 @@ tls:
   # Only applies when provider is "letsencrypt".
   storage_path: ""
 
+  # ACME directory URL to use instead of Let's Encrypt production.
+  # Only applies when provider is "letsencrypt".
+  # Use the staging URL for testing to avoid rate limits:
+  #   acme_ca: "https://acme-staging-v02.api.letsencrypt.org/directory"
+  # Other ACME CAs (ZeroSSL, Buypass, etc.) are also supported.
+  acme_ca: ""
+
 # Ory Kratos (identity/auth) settings
 kratos:
   # Kratos public API (user-facing flows). When set, VibeWarden automatically:

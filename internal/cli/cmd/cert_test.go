@@ -100,4 +100,56 @@ func TestCertCmd_HelpWhenNoSubcommand(t *testing.T) {
 	if !strings.Contains(out, "export") {
 		t.Errorf("help output does not mention 'export', got: %q", out)
 	}
+	if !strings.Contains(out, "trust") {
+		t.Errorf("help output does not mention 'trust', got: %q", out)
+	}
+}
+
+func TestCertTrust_Registered(t *testing.T) {
+	root := cmd.NewRootCmd("test")
+	trustCmd, _, err := root.Find([]string{"cert", "trust"})
+	if err != nil {
+		t.Fatalf("Find(cert trust) error: %v", err)
+	}
+	if trustCmd == nil || trustCmd.Use != "trust" {
+		t.Fatal("expected 'trust' subcommand to be registered on 'cert'")
+	}
+}
+
+func TestCertTrust_CertPathFlag(t *testing.T) {
+	root := cmd.NewRootCmd("test")
+	trustCmd, _, _ := root.Find([]string{"cert", "trust"})
+	if trustCmd.Flags().Lookup("cert-path") == nil {
+		t.Error("expected --cert-path flag on 'cert trust' command")
+	}
+}
+
+func TestCertTrust_NotFound(t *testing.T) {
+	root := cmd.NewRootCmd("test")
+	var errBuf bytes.Buffer
+	root.SetErr(&errBuf)
+	root.SetArgs([]string{"cert", "trust", "--cert-path", "/nonexistent/path/root.crt"})
+
+	err := root.Execute()
+	if err == nil {
+		t.Fatal("Execute() expected error for missing cert, got nil")
+	}
+}
+
+func TestCertTrust_HelpContainsExpectedContent(t *testing.T) {
+	root := cmd.NewRootCmd("test")
+	var outBuf bytes.Buffer
+	root.SetOut(&outBuf)
+	root.SetArgs([]string{"cert", "trust", "--help"})
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("Execute() unexpected error: %v", err)
+	}
+
+	out := outBuf.String()
+	for _, want := range []string{"trust", "macOS", "Linux", "update-ca-certificates"} {
+		if !strings.Contains(out, want) {
+			t.Errorf("help output missing %q, got: %q", want, out)
+		}
+	}
 }

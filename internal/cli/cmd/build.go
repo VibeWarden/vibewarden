@@ -18,6 +18,7 @@ import (
 func NewBuildCmd() *cobra.Command {
 	var (
 		noCache    bool
+		platform   string
 		configPath string
 	)
 
@@ -30,9 +31,13 @@ The image tag is resolved from vibewarden.yaml (app.image field). When
 vibewarden.yaml is absent or app.image is not set, the current directory
 name is used with the ":latest" suffix.
 
+Use --platform to cross-compile for a different target architecture (e.g.
+building on Apple Silicon for an amd64 server).
+
 Examples:
   vibew build
   vibew build --no-cache
+  vibew build --platform linux/amd64
   vibew build --config ./my-vibewarden.yaml`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			cfg, err := config.Load(configPath)
@@ -47,6 +52,7 @@ Examples:
 
 			opts := opsapp.BuildOptions{
 				NoCache:    noCache,
+				Platform:   platform,
 				ConfigPath: configPath,
 			}
 
@@ -58,6 +64,7 @@ Examples:
 	}
 
 	cmd.Flags().BoolVar(&noCache, "no-cache", false, "do not use Docker layer cache (passes --no-cache to docker build)")
+	cmd.Flags().StringVar(&platform, "platform", "", "target platform for the build (e.g. linux/amd64)")
 	cmd.Flags().StringVar(&configPath, "config", "", "path to vibewarden.yaml (default: ./vibewarden.yaml)")
 
 	return cmd

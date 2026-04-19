@@ -30,3 +30,6 @@ networks:
 
 volumes:
   vibewarden-data:
+    # Named volume persists Let's Encrypt certificates across deploys.
+    # Never use "docker compose down -v" in production — it deletes certs
+    # and may trigger ACME rate limits on re-issuance.

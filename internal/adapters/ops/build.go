@@ -14,11 +14,15 @@ func NewBuildAdapter() *BuildAdapter {
 	return &BuildAdapter{}
 }
 
-// Build runs "docker build -t <tag> [--no-cache] <contextDir>".
+// Build runs "docker build -t <tag> [--platform <platform>] [--no-cache] <contextDir>".
 // Output from the command is streamed directly to stdout/stderr so the user
 // sees progress in real time.
-func (b *BuildAdapter) Build(ctx context.Context, tag string, contextDir string, noCache bool) error {
-	args := []string{"build", "-t", tag}
+func (b *BuildAdapter) Build(ctx context.Context, tag string, contextDir string, noCache bool, platform string) error {
+	args := []string{"build"}
+	if platform != "" {
+		args = append(args, "--platform", platform)
+	}
+	args = append(args, "-t", tag)
 	if noCache {
 		args = append(args, "--no-cache")
 	}

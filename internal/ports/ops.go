@@ -56,9 +56,10 @@ type ComposeRunner interface {
 type DockerBuilder interface {
 	// Build runs "docker build -t <tag> <contextDir>".
 	// When noCache is true the --no-cache flag is passed to docker build.
+	// When platform is non-empty it is passed as --platform (e.g. "linux/amd64").
 	// Output from the command is streamed to stdout/stderr so the user sees
 	// progress in real time.
-	Build(ctx context.Context, tag string, contextDir string, noCache bool) error
+	Build(ctx context.Context, tag string, contextDir string, noCache bool, platform string) error
 }
 
 // HealthChecker performs HTTP health checks against VibeWarden endpoints.

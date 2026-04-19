@@ -23,6 +23,9 @@ func TestNewBuildCmd_RegisteredOnRoot(t *testing.T) {
 	if buildCmd.Flags().Lookup("no-cache") == nil {
 		t.Error("expected --no-cache flag to be registered on 'build' command")
 	}
+	if buildCmd.Flags().Lookup("platform") == nil {
+		t.Error("expected --platform flag to be registered on 'build' command")
+	}
 	if buildCmd.Flags().Lookup("config") == nil {
 		t.Error("expected --config flag to be registered on 'build' command")
 	}
@@ -49,7 +52,7 @@ func TestNewBuildCmd_Help(t *testing.T) {
 	}
 
 	out := outBuf.String()
-	for _, want := range []string{"build", "no-cache", "config", "app.image"} {
+	for _, want := range []string{"build", "no-cache", "platform", "config", "app.image"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("help output missing %q\ngot:\n%s", want, out)
 		}
@@ -68,6 +71,20 @@ func TestNewBuildCmd_NoCacheFlag(t *testing.T) {
 	}
 	if f.DefValue != "false" {
 		t.Errorf("--no-cache default = %q, want %q", f.DefValue, "false")
+	}
+}
+
+// TestNewBuildCmd_PlatformFlagDefault verifies that --platform defaults to empty string.
+func TestNewBuildCmd_PlatformFlagDefault(t *testing.T) {
+	root := cmd.NewRootCmd("test")
+	buildCmd, _, _ := root.Find([]string{"build"})
+
+	f := buildCmd.Flags().Lookup("platform")
+	if f == nil {
+		t.Fatal("--platform flag not found")
+	}
+	if f.DefValue != "" {
+		t.Errorf("--platform default = %q, want empty string", f.DefValue)
 	}
 }
 
