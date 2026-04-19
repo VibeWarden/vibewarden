@@ -118,20 +118,26 @@ Examples:
 // tls.domain to the given value, and writes the file back. If the file does
 // not exist, it is silently skipped (returns nil).
 func upsertDomainInProdConfig(path, domain string) error {
+	var m map[string]any
+
 	data, err := os.ReadFile(path) //nolint:gosec // path is the vibewarden.production.yaml resolved from project root
 	if err != nil {
 		if os.IsNotExist(err) {
-			return nil // no production override file — nothing to update
+			// File doesn't exist — create it with sensible production defaults.
+			m = map[string]any{
+				"server": map[string]any{"port": 443},
+				"tls":    map[string]any{"enabled": true, "provider": "letsencrypt"},
+			}
+		} else {
+			return fmt.Errorf("reading %s: %w", path, err)
 		}
-		return fmt.Errorf("reading %s: %w", path, err)
-	}
-
-	var m map[string]any
-	if err := yaml.Unmarshal(data, &m); err != nil {
-		return fmt.Errorf("parsing %s: %w", path, err)
-	}
-	if m == nil {
-		m = make(map[string]any)
+	} else {
+		if err := yaml.Unmarshal(data, &m); err != nil {
+			return fmt.Errorf("parsing %s: %w", path, err)
+		}
+		if m == nil {
+			m = make(map[string]any)
+		}
 	}
 
 	// Ensure tls section exists.
