@@ -160,3 +160,29 @@ func deepMerge(dst, src map[string]any) {
 		}
 	}
 }
+
+// overlayProdConfig creates a copy of base with non-zero values from prod
+// overlaid on top. Only fields relevant to deploy are checked: Server.Port,
+// TLS (Enabled, Provider, Domain), and Log.Level.
+func overlayProdConfig(base, prod *config.Config) *config.Config {
+	merged := *base
+	if prod.Server.Port != 0 {
+		merged.Server.Port = prod.Server.Port
+	}
+	if prod.TLS.Enabled {
+		merged.TLS.Enabled = prod.TLS.Enabled
+	}
+	if prod.TLS.Provider != "" {
+		merged.TLS.Provider = prod.TLS.Provider
+	}
+	if prod.TLS.Domain != "" {
+		merged.TLS.Domain = prod.TLS.Domain
+	}
+	if prod.Log.Level != "" {
+		merged.Log.Level = prod.Log.Level
+	}
+	if prod.WAF.Mode != "" {
+		merged.WAF.Mode = prod.WAF.Mode
+	}
+	return &merged
+}

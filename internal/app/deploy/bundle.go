@@ -93,27 +93,40 @@ func (s *Service) BundleSidecar(_ context.Context, cfg *config.Config, outputDir
 
 // bundleSingleSite generates the complete single-site deploy bundle.
 func (s *Service) bundleSingleSite(ctx context.Context, cfg *config.Config, configPath, prodConfigPath, projectName string, outputDir string) error {
-	// Resolve upstream.host on the typed Config for template rendering.
-	resolved := ResolveProdConfig(cfg, projectName, false)
+	// Load and overlay the production override into the Config struct so that
+	// the compose template uses production values (port 443, letsencrypt, etc.)
+	// for port bindings, TLS config, and other template-driven settings.
+	mergedCfg := cfg
+	if prodConfigPath != "" {
+		if prodCfg, err := config.Load(prodConfigPath); err == nil {
+			mergedCfg = overlayProdConfig(cfg, prodCfg)
+		}
+	}
+
+	// Resolve upstream.host on the merged Config for template rendering.
+	resolved := ResolveProdConfig(mergedCfg, projectName, false)
 
 	// Set deploy mode so the template uses build context paths relative to
 	// the deploy bundle directory (e.g. "." instead of "../../.").
 	resolved.DeployMode = true
 
+	// Use the generator to produce docker-compose.yml, kratos/, credentials,
+	// etc. The generator writes directly into outputDir. This must run BEFORE
+	// the merged config write because the generator copies the original
+	// vibewarden.yaml into outputDir — the merged write overwrites it.
+	if err := s.generator.Generate(ctx, resolved.ToGeneratorInput(), outputDir); err != nil {
+		return fmt.Errorf("generating config files: %w", err)
+	}
+
 	// Build the merged YAML map for writing vibewarden.yaml.
 	// This preserves original field names (rate_limit, security_headers, etc.).
+	// Written AFTER generator.Generate() to overwrite the unmerged copy.
 	configData, err := buildMergedConfigYAML(configPath, prodConfigPath, projectName, false, cfg)
 	if err != nil {
 		return fmt.Errorf("building merged config YAML: %w", err)
 	}
 	if err := writeFile(filepath.Join(outputDir, "vibewarden.yaml"), configData); err != nil {
 		return fmt.Errorf("writing vibewarden.yaml to bundle: %w", err)
-	}
-
-	// Use the generator to produce docker-compose.yml, kratos/, credentials,
-	// etc. The generator writes directly into outputDir.
-	if err := s.generator.Generate(ctx, resolved.ToGeneratorInput(), outputDir); err != nil {
-		return fmt.Errorf("generating config files: %w", err)
 	}
 
 	return nil
