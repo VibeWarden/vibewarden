@@ -14,6 +14,50 @@ This initial entry was written by hand to summarise the work leading up to v0.1.
 
 ---
 
+## [v0.13.1] — 2026-04-19
+
+### Features
+
+- **`vibew init --name`** (#959): set a project name for image tags, compose
+  project names, and deploy directories. Eliminates cross-project Docker image
+  cache collisions.
+- **`vibew deploy --dry-run`** (#958): generate the deploy bundle and inspect it
+  without SSH/rsync. Shows exactly what would land on the server.
+- **`vibew status` shows WAF** (#960): status output now lists WAF (with mode),
+  CORS, egress, and compression plugins when enabled.
+
+### Bug Fixes
+
+- **Deploy bundle merge order** (#953): the generator was overwriting the merged
+  `vibewarden.yaml` with the unmerged base config. Fixed by writing the merged
+  config after generation. Also: compose template now uses production port/TLS
+  via `overlayProdConfig`, and health check probes the correct port.
+- **Build context rsync excludes** (#953): `TransferExcluding` prevents the
+  app source rsync from overwriting bundle files (vibewarden.yaml, compose,
+  credentials).
+- **Deploy compose `context: .`** (#952): deploy mode uses `context: .` instead
+  of the dev-mode `../../.` relative path. Verified by artifact regression test.
+- **Drift detection false positive** (#962): first deploy to empty remote no
+  longer reports "files modified" for new-file entries.
+- **`vibew add tls --domain`** (#954): no longer modifies base `vibewarden.yaml`
+  — writes domain to production override only.
+- **Sidecar DNS** (#956): compose template includes `dns: [1.1.1.1, 8.8.8.8]`
+  for hosts with systemd-resolved.
+- **`vibew init` hidden dirs** (#957): `.claude/` and `.git/` directories no
+  longer trigger "not empty" error.
+- **Project-scoped Docker image tags** (#955): compose project name derives from
+  `--name` flag or directory name, preventing `vibewarden-app:latest` collision.
+- **Artifact regression tests** (#963): 10 tests that verify generated file
+  content — deploy compose context, production merge, upstream resolution, image
+  naming, build context exclusion, drift detection, YAML field preservation.
+
+### Documentation
+
+- AGENTS-VIBEWARDEN.md includes Dockerfile guidance: Alpine requirement, port
+  matching, Node.js and Go examples. (#961)
+
+---
+
 ## [v0.13.0] — 2026-04-19
 
 ### Breaking Changes
