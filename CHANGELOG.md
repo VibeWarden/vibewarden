@@ -14,6 +14,59 @@ This initial entry was written by hand to summarise the work leading up to v0.1.
 
 ---
 
+## [v0.13.0] — 2026-04-19
+
+### Breaking Changes
+
+- **Deploy redesign (ADR-075)**: `vibew deploy` now generates a complete deploy
+  bundle locally at `.vibewarden/deploy/<env>/` — no `sed` or runtime patching on
+  the remote. All config is resolved before transfer.
+- **Environment separation**: `vibew init` now generates two files:
+  `vibewarden.yaml` (local dev, self-signed TLS, port 8443) and
+  `vibewarden.production.yaml` (production overrides: letsencrypt, port 443).
+  `vibew deploy` merges the production override on top of the base config.
+  **Never put production-only config in `vibewarden.yaml`.**
+- **`vibew add tls --domain`** now writes to `vibewarden.production.yaml` instead
+  of the base config.
+- **`vibew restart`** now runs `docker compose up -d --force-recreate --build`
+  instead of `docker compose restart` — Dockerfile changes are picked up
+  automatically.
+
+### Features
+
+- **Local Docker image transfer** (#937): `vibew deploy` with a bare image name
+  (no registry prefix) automatically transfers the locally-built image via
+  `docker save | rsync | docker load`. No registry needed. (#950)
+- **Deploy bundles** (#938): `.vibewarden/deploy/production/` contains every file
+  needed to run on the remote — inspectable, portable, no magic. (#948)
+- **Self-documenting production overrides**: `vibewarden.production.yaml` shows
+  all config options as comments with default values. Uncomment what you need.
+- **`vibew deploy --env`** flag for environment-scoped bundles (default:
+  production).
+
+### Bug Fixes
+
+- **`vibew init` non-TTY** (#939): no longer dies with EOF when run without a
+  terminal — defaults to empty description. (#947)
+- **Healthcheck shell detection** (#940): `vibew build` warns when the app image
+  has no `/bin/sh` (distroless/scratch). (#946)
+- **`vibew status` diagnosis** (#942): shows container state, ACME errors, and
+  letsencrypt local-dev hint instead of bare "Proxy unreachable." (#946)
+- **`vibew dev` letsencrypt warning** (#943): warns when `tls.provider:
+  letsencrypt` is used locally (ACME challenges can't reach localhost). (#946)
+- **`vibew dev` sidecar verification** (#945): checks sidecar is running after
+  compose up, shows logs on failure instead of printing false success. (#947)
+- **Stale AGENTS-VIBEWARDEN.md** (#944): removed incorrect "vibew add waf does
+  not exist" note, updated doctor limitation. (#947)
+
+### Documentation
+
+- ADR-075: deploy redesign with environment separation model.
+- Updated getting-started, deploy-to-vps, llms-full.txt, AGENTS-VIBEWARDEN.md,
+  and reference yaml for two-file model.
+
+---
+
 ## [v0.12.1] — 2026-04-19
 
 ### Bug Fixes
