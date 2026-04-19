@@ -133,13 +133,15 @@ func (s *Service) BootstrapSidecar(ctx context.Context, cfg *config.Config, opts
 		return fmt.Errorf("transferring site bundle: %w", err)
 	}
 
-	// Step 4b: if app.build is set, rsync the build context to the remote site dir.
+	// Step 4b: if app.build is set, rsync the build context to the remote site
+	// dir. Use TransferExcluding to prevent the project's original config files
+	// from overwriting the merged bundle files deployed in the previous step.
 	if cfg.App.Build != "" {
 		projectRoot := filepath.Dir(filepath.Clean(opts.ConfigPath))
 		buildContextLocal := filepath.Join(projectRoot, cfg.App.Build)
 		buildContextRemote := siteDir + strings.TrimPrefix(strings.TrimSuffix(cfg.App.Build, "/"), "./") + "/"
 		fmt.Fprintf(out, "Transferring app build context (%s)...\n", cfg.App.Build)
-		if err := s.executor.Transfer(ctx, buildContextLocal, buildContextRemote, false); err != nil {
+		if err := s.executor.TransferExcluding(ctx, buildContextLocal, buildContextRemote, false, buildContextExcludes); err != nil {
 			return fmt.Errorf("transferring app build context: %w", err)
 		}
 	}
@@ -233,13 +235,15 @@ func (s *Service) DeployMultiApp(ctx context.Context, cfg *config.Config, opts R
 		return fmt.Errorf("transferring site bundle: %w", err)
 	}
 
-	// Step 3b: if app.build is set, rsync the build context to the remote site dir.
+	// Step 3b: if app.build is set, rsync the build context to the remote site
+	// dir. Use TransferExcluding to prevent the project's original config files
+	// from overwriting the merged bundle files deployed in the previous step.
 	if cfg.App.Build != "" {
 		projectRoot := filepath.Dir(filepath.Clean(opts.ConfigPath))
 		buildContextLocal := filepath.Join(projectRoot, cfg.App.Build)
 		buildContextRemote := siteDir + strings.TrimPrefix(strings.TrimSuffix(cfg.App.Build, "/"), "./") + "/"
 		fmt.Fprintf(out, "Transferring app build context (%s)...\n", cfg.App.Build)
-		if err := s.executor.Transfer(ctx, buildContextLocal, buildContextRemote, false); err != nil {
+		if err := s.executor.TransferExcluding(ctx, buildContextLocal, buildContextRemote, false, buildContextExcludes); err != nil {
 			return fmt.Errorf("transferring app build context: %w", err)
 		}
 	}

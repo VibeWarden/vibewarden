@@ -247,6 +247,209 @@ func TestArtifact_SidecarCompose_ContainsDNS(t *testing.T) {
 	}
 }
 
+// TestArtifact_BuildContextDoesNotOverwriteMergedConfig is a regression test
+// for #953. When app.build is "." the build context rsync was overwriting the
+// merged vibewarden.yaml (letsencrypt, port 443) with the original base config
+// (self-signed, port 8443) because both the bundle and the build context were
+// transferred to the same remote directory without excludes.
+//
+// The fix uses TransferExcluding for the build context transfer so that bundle
+// files (vibewarden.yaml, .vibewarden/, .credentials, etc.) are never
+// overwritten by the project source tree.
+func TestArtifact_BuildContextDoesNotOverwriteMergedConfig(t *testing.T) {
+	projDir := t.TempDir()
+
+	// Base config: self-signed TLS on port 8443 (local dev).
+	baseYAML := `server:
+  port: 8443
+upstream:
+  host: "0.0.0.0"
+  port: 3000
+tls:
+  enabled: true
+  provider: self-signed
+app:
+  build: "."
+`
+	basePath := filepath.Join(projDir, "vibewarden.yaml")
+	if err := os.WriteFile(basePath, []byte(baseYAML), 0o600); err != nil {
+		t.Fatalf("writing base config: %v", err)
+	}
+
+	// Production override: letsencrypt on port 443.
+	prodYAML := `server:
+  port: 443
+tls:
+  enabled: true
+  provider: letsencrypt
+  domain: app.example.com
+`
+	prodPath := filepath.Join(projDir, "vibewarden.production.yaml")
+	if err := os.WriteFile(prodPath, []byte(prodYAML), 0o600); err != nil {
+		t.Fatalf("writing prod config: %v", err)
+	}
+
+	// The merged config that config.Load would produce.
+	cfg := &config.Config{
+		Server:   config.ServerConfig{Port: 443},
+		Upstream: config.UpstreamConfig{Host: "0.0.0.0", Port: 3000},
+		App:      config.AppConfig{Build: "."},
+		TLS:      config.TLSConfig{Enabled: true, Provider: "letsencrypt", Domain: "app.example.com"},
+	}
+
+	executor := &fakeExecutor{}
+	generator := &fakeGenerator{}
+	svc := deployapp.NewService(executor, generator)
+
+	bundleDir := t.TempDir()
+
+	err := svc.Deploy(context.Background(), cfg, deployapp.RunOptions{
+		ConfigPath:     basePath,
+		ProdConfigPath: prodPath,
+		ProjectName:    "myapp",
+		GeneratedDir:   bundleDir,
+		Force:          true,
+	})
+	if err != nil {
+		t.Fatalf("Deploy() unexpected error: %v", err)
+	}
+
+	// 1. The bundled vibewarden.yaml must have the merged (production) values.
+	bundledConfig, err := os.ReadFile(filepath.Join(bundleDir, "vibewarden.yaml"))
+	if err != nil {
+		t.Fatalf("reading bundled config: %v", err)
+	}
+	s := string(bundledConfig)
+	if !strings.Contains(s, "provider: letsencrypt") {
+		t.Errorf("bundled config should contain 'provider: letsencrypt' (merged), got:\n%s", s)
+	}
+	if !strings.Contains(s, "port: 443") {
+		t.Errorf("bundled config should contain 'port: 443' (merged), got:\n%s", s)
+	}
+	if strings.Contains(s, "provider: self-signed") {
+		t.Errorf("bundled config must NOT contain 'provider: self-signed' (base), got:\n%s", s)
+	}
+
+	// 2. The build context must be transferred via TransferExcluding, not plain Transfer.
+	if len(executor.transferExcludingCalls) == 0 {
+		t.Fatal("expected TransferExcluding to be called for the build context, but it was not called")
+	}
+
+	// 3. The exclude list must contain vibewarden.yaml to prevent overwriting.
+	excludes := executor.transferExcludingCalls[0].excludes
+	foundVibewardenYAML := false
+	for _, pattern := range excludes {
+		if pattern == "vibewarden.yaml" {
+			foundVibewardenYAML = true
+		}
+	}
+	if !foundVibewardenYAML {
+		t.Errorf("TransferExcluding excludes should contain 'vibewarden.yaml', got: %v", excludes)
+	}
+
+	// 4. The exclude list should also protect other bundle artifacts.
+	requiredExcludes := []string{
+		"vibewarden.yaml",
+		"vibewarden.*.yaml",
+		".vibewarden",
+		".credentials",
+		".env",
+		"docker-compose.yml",
+	}
+	for _, required := range requiredExcludes {
+		found := false
+		for _, actual := range excludes {
+			if actual == required {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("TransferExcluding excludes should contain %q, got: %v", required, excludes)
+		}
+	}
+}
+
+// TestArtifact_BuildContextExcludes_MultiApp is a regression test for #953
+// in multi-app mode. Verifies that BootstrapSidecar and DeployMultiApp also
+// use TransferExcluding for the build context transfer.
+func TestArtifact_BuildContextExcludes_MultiApp(t *testing.T) {
+	projDir := t.TempDir()
+
+	baseYAML := `upstream:
+  host: "0.0.0.0"
+  port: 3000
+app:
+  build: "."
+`
+	basePath := filepath.Join(projDir, "vibewarden.yaml")
+	if err := os.WriteFile(basePath, []byte(baseYAML), 0o600); err != nil {
+		t.Fatalf("writing base config: %v", err)
+	}
+
+	cfg := &config.Config{
+		Server:   config.ServerConfig{Port: 443},
+		Upstream: config.UpstreamConfig{Host: "0.0.0.0", Port: 3000},
+		App:      config.AppConfig{Build: "."},
+	}
+
+	tests := []struct {
+		name   string
+		deploy func(svc *deployapp.Service, executor *fakeExecutor) error
+	}{
+		{
+			name: "BootstrapSidecar uses TransferExcluding for build context",
+			deploy: func(svc *deployapp.Service, _ *fakeExecutor) error {
+				return svc.BootstrapSidecar(context.Background(), cfg, deployapp.RunOptions{
+					ConfigPath:   basePath,
+					ProjectName:  "buildsite",
+					GeneratedDir: t.TempDir(),
+				})
+			},
+		},
+		{
+			name: "DeployMultiApp uses TransferExcluding for build context",
+			deploy: func(svc *deployapp.Service, _ *fakeExecutor) error {
+				return svc.DeployMultiApp(context.Background(), cfg, deployapp.RunOptions{
+					ConfigPath:   basePath,
+					ProjectName:  "buildsite",
+					GeneratedDir: t.TempDir(),
+				})
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			executor := &fakeExecutor{}
+			generator := &fakeGenerator{}
+			svc := deployapp.NewService(executor, generator)
+
+			if err := tt.deploy(svc, executor); err != nil {
+				t.Fatalf("deploy error: %v", err)
+			}
+
+			if len(executor.transferExcludingCalls) == 0 {
+				t.Fatal("expected TransferExcluding to be called for build context, but it was not")
+			}
+
+			excludes := executor.transferExcludingCalls[0].excludes
+			for _, required := range []string{"vibewarden.yaml", "docker-compose.yml"} {
+				found := false
+				for _, actual := range excludes {
+					if actual == required {
+						found = true
+						break
+					}
+				}
+				if !found {
+					t.Errorf("TransferExcluding excludes should contain %q, got: %v", required, excludes)
+				}
+			}
+		})
+	}
+}
+
 // TestArtifact_MergeYAML_PreservesFieldNames verifies that deep-merging YAML
 // configs preserves underscore field names like rate_limit and security_headers
 // instead of mangling them (e.g. "ratelimit").

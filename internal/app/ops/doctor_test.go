@@ -69,6 +69,10 @@ func (f *fakeRemoteExecutor) Transfer(_ context.Context, _, _ string, _ bool) er
 	return nil
 }
 
+func (f *fakeRemoteExecutor) TransferExcluding(_ context.Context, _, _ string, _ bool, _ []string) error {
+	return nil
+}
+
 func (f *fakeRemoteExecutor) TransferFile(_ context.Context, _, _ string) error {
 	return nil
 }

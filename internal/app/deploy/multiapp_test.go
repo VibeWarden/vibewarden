@@ -721,21 +721,26 @@ func TestDeploySite_BuildMode_RsyncsSource(t *testing.T) {
 		t.Fatalf("DeployMultiApp() unexpected error: %v", err)
 	}
 
-	// Transfer must be called for the build context (plus the site bundle).
-	if len(executor.transferCalls) < 2 {
-		t.Fatalf("expected at least 2 Transfer calls (site bundle + build context), got %d: %v",
+	// Transfer must be called for the site bundle; TransferExcluding for the
+	// build context.
+	if len(executor.transferCalls) < 1 {
+		t.Fatalf("expected at least 1 Transfer call (site bundle), got %d: %v",
 			len(executor.transferCalls), executor.transferCalls)
+	}
+	if len(executor.transferExcludingCalls) < 1 {
+		t.Fatalf("expected at least 1 TransferExcluding call (build context), got %d: %v",
+			len(executor.transferExcludingCalls), executor.transferExcludingCalls)
 	}
 
 	found := false
-	for _, call := range executor.transferCalls {
+	for _, call := range executor.transferExcludingCalls {
 		if strings.Contains(call.remoteDir, "sites/buildapp/") {
 			found = true
 			break
 		}
 	}
 	if !found {
-		t.Errorf("expected Transfer to site directory, got: %v", executor.transferCalls)
+		t.Errorf("expected TransferExcluding to site directory, got: %v", executor.transferExcludingCalls)
 	}
 }
 

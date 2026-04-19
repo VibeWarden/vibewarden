@@ -35,6 +35,14 @@ type RemoteExecutor interface {
 	// file rather than a directory.
 	TransferFile(ctx context.Context, localFile, remotePath string) error
 
+	// TransferExcluding syncs localDir to remoteDir on the remote host using
+	// rsync, excluding files or directories matching the given patterns. Each
+	// pattern is passed as an --exclude flag to rsync. This is used when the
+	// build context directory overlaps with the deploy bundle directory and
+	// certain files (e.g. vibewarden.yaml, .vibewarden/) must not be
+	// overwritten by the source project files.
+	TransferExcluding(ctx context.Context, localDir, remoteDir string, deleteExtra bool, excludes []string) error
+
 	// DryRunTransfer performs a dry-run rsync between localDir and remoteDir
 	// with --delete --itemize-changes to detect what would change without
 	// actually modifying any files. It returns a list of human-readable change

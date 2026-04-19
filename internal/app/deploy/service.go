@@ -59,6 +59,21 @@ const (
 	defaultHealthPort = 8443
 )
 
+// buildContextExcludes is the list of rsync --exclude patterns used when
+// transferring the app build context to the remote host. These patterns
+// prevent the project's original files from overwriting the deploy bundle's
+// merged versions (e.g. the merged vibewarden.yaml with production TLS
+// settings must not be clobbered by the base config from the source tree).
+var buildContextExcludes = []string{
+	"vibewarden.yaml",
+	"vibewarden.*.yaml",
+	".vibewarden",
+	".credentials",
+	".env",
+	".env.template",
+	"docker-compose.yml",
+}
+
 // Service orchestrates the "vibew deploy" use case.
 // It generates runtime config, transfers files to the remote, starts Docker
 // Compose, and verifies the sidecar health endpoint.
@@ -198,12 +213,18 @@ func (s *Service) Deploy(ctx context.Context, cfg *config.Config, opts RunOption
 	// When app.build is set the image must be built on the remote host.
 	// Transfer the app source (the build context directory) so that
 	// `docker compose up --build` can build the image remotely.
+	//
+	// Use TransferExcluding to prevent the project's original config files
+	// (vibewarden.yaml, docker-compose.yml, etc.) from overwriting the
+	// merged bundle files that were already deployed in the previous step.
+	// This is critical when app.build is "." because the build context
+	// directory overlaps with the deploy bundle directory on the remote.
 	if cfg.App.Build != "" {
 		projectRoot := filepath.Dir(filepath.Clean(opts.ConfigPath))
 		buildContextLocal := filepath.Join(projectRoot, cfg.App.Build)
 		buildContextRemote := remoteDir + strings.TrimPrefix(strings.TrimSuffix(cfg.App.Build, "/"), "./") + "/"
 		fmt.Fprintf(out, "Transferring app build context (%s) to remote...\n", cfg.App.Build)
-		if err := s.executor.Transfer(ctx, buildContextLocal, buildContextRemote, false); err != nil {
+		if err := s.executor.TransferExcluding(ctx, buildContextLocal, buildContextRemote, false, buildContextExcludes); err != nil {
 			return fmt.Errorf("transferring app build context: %w", err)
 		}
 	}
