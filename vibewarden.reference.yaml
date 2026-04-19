@@ -1,4 +1,8 @@
-# VibeWarden — full configuration reference.
+# VibeWarden — full configuration reference (base / dev config).
+#
+# This file is the reference for vibewarden.yaml, the LOCAL DEV config.
+# For production, use vibewarden.production.yaml as an override file —
+# vibew deploy deep-merges it on top of this file automatically.
 #
 # If you are getting started, open `vibewarden.example.yaml` instead. It
 # is a short, curated starter config that covers the common cases. Copy

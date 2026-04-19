@@ -127,116 +127,73 @@ files. Commit `vibewarden.yaml` and `Dockerfile` to version control. Do not comm
 
 ---
 
-## Step 5 — Create the production config
+## Step 5 — Configure production overrides
 
-Create `vibewarden.prod.yaml` in your project root (see the annotated example
-at `examples/vibewarden.prod.yaml` in this repository):
+`vibew init` generates two config files:
+
+- `vibewarden.yaml` -- local dev config (self-signed TLS, port 8443)
+- `vibewarden.production.yaml` -- production overrides (letsencrypt, port 443)
+
+Edit `vibewarden.production.yaml` to set your domain and any production-specific
+settings. Only uncommented values override the base config:
 
 ```yaml
-# vibewarden.prod.yaml
-profile: prod
-
-app:
-  image: ghcr.io/your-org/myapp:latest   # your production image
-
+# vibewarden.production.yaml
 server:
-  host: "0.0.0.0"
   port: 443
-
-upstream:
-  host: app
-  port: 3000
 
 tls:
   enabled: true
   provider: letsencrypt
-  domain: "demo.yourdomain.com"           # must match your DNS A record
+  domain: "demo.yourdomain.com"           # REQUIRED -- must match your DNS A record
 
-auth:
-  mode: jwt
-  jwt:
-    jwks_url: "https://your-idp/.well-known/jwks.json"
-    issuer:   "https://your-idp/"
-    audience: "https://api.yourdomain.com"
-  public_paths:
-    - /health
-    - /static/*
-
-rate_limit:
-  enabled: true
-  store: memory
-  per_ip:
-    requests_per_second: 20
-    burst: 40
-  per_user:
-    requests_per_second: 200
-    burst: 400
+app:
+  image: ghcr.io/your-org/myapp:latest   # your production image
 
 waf:
   enabled: true
-  mode: block
-
-security_headers:
-  enabled: true
-  hsts_max_age: 31536000
-  hsts_include_subdomains: true
-  content_type_nosniff: true
-  frame_option: "DENY"
-  content_security_policy: "default-src 'self'; style-src 'self' 'unsafe-inline'"
-  referrer_policy: "strict-origin-when-cross-origin"
-
-log:
-  level: "info"
-  format: "json"
-
-admin:
-  enabled: true
-  token: "${VIBEWARDEN_ADMIN_TOKEN}"
+  mode: block                             # "detect" in dev, "block" in production
 ```
 
-Generate the Docker Compose stack from this config:
+You can also set the domain using the CLI:
 
 ```bash
-./vibew generate --config vibewarden.prod.yaml
+vibew add tls --domain demo.yourdomain.com
 ```
 
-This writes `.vibewarden/generated/docker-compose.yml` (do not edit — regenerate
-after config changes).
+This writes the domain to both `vibewarden.yaml` and `vibewarden.production.yaml`.
+
+!!! note "Environment separation"
+    `vibew dev` reads only `vibewarden.yaml`. `vibew deploy` deep-merges
+    `vibewarden.production.yaml` on top of the base config automatically.
+    Never put production-only settings (domain, letsencrypt, port 443) in
+    `vibewarden.yaml`.
 
 ---
 
 ## Step 6 — Deploy
 
-### Copy files to the server
+Use `vibew deploy` to bundle and transfer everything in one command:
 
 ```bash
-rsync -av \
-  vibewarden.prod.yaml \
-  .vibewarden/generated/docker-compose.yml \
-  root@<server-ip>:/opt/myapp/
+vibew deploy --target ssh://root@<server-ip>
 ```
 
-Create the `.env` file on the server:
+This command:
 
-```bash
-ssh root@<server-ip> bash -s <<'EOF'
-mkdir -p /opt/myapp
-cat > /opt/myapp/.env <<ENV
-VIBEWARDEN_ADMIN_TOKEN=$(openssl rand -hex 32)
-ENV
-chmod 600 /opt/myapp/.env
-EOF
-```
+1. Deep-merges `vibewarden.production.yaml` on top of `vibewarden.yaml`.
+2. Resolves upstream.host for Docker networking.
+3. Produces a complete deploy bundle in `.vibewarden/deploy/production/`.
+4. Transfers the bundle to the remote via rsync.
+5. Runs `docker compose up -d` on the remote.
+6. Waits for the sidecar health check to pass.
 
-### Start the stack
-
-```bash
-ssh root@<server-ip> 'cd /opt/myapp && docker compose -f docker-compose.yml up -d'
-```
-
-Docker pulls the VibeWarden image and your app image, then starts the stack.
-On first boot Caddy contacts Let's Encrypt and obtains a certificate — this
+On first boot Caddy contacts Let's Encrypt and obtains a certificate -- this
 takes up to 30 seconds.
+
+!!! tip "Inspect before deploying"
+    The deploy bundle at `.vibewarden/deploy/production/` is a complete
+    snapshot of what will run on the remote. Review it before deploying.
 
 ---
 
@@ -290,19 +247,17 @@ After changing config or code:
    docker push ghcr.io/your-org/myapp:latest
    ```
 
-2. If `vibewarden.prod.yaml` changed, regenerate:
+2. Redeploy:
    ```bash
-   ./vibew generate --config vibewarden.prod.yaml
-   rsync -av .vibewarden/generated/docker-compose.yml root@<server-ip>:/opt/myapp/
+   vibew deploy --target ssh://root@<server-ip>
    ```
 
-3. Pull and restart on the server:
-   ```bash
-   ssh root@<server-ip> 'cd /opt/myapp && docker compose pull && docker compose up -d'
-   ```
+`vibew deploy` re-merges the config files, re-bundles, and transfers only
+changed files via rsync. Zero-downtime: Docker Compose replaces containers one
+at a time and waits for health checks to pass before stopping the old container.
 
-Zero-downtime: Docker Compose replaces containers one at a time and waits for
-health checks to pass before stopping the old container.
+If remote files have been modified since the last deploy, `vibew deploy` warns
+you and aborts. Use `--force` to overwrite.
 
 ---
 

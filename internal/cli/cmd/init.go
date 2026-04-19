@@ -76,13 +76,18 @@ func NewInitCmd() *cobra.Command {
 		Long: `Scaffold a new project with VibeWarden security pre-configured.
 
 The command scaffolds into the current working directory, creating:
-  - vibewarden.yaml (TLS self-signed, rate limiting enabled)
+  - vibewarden.yaml (local dev config: TLS self-signed, port 8443)
+  - vibewarden.production.yaml (production overrides: letsencrypt, port 443)
   - .vibewarden-version (pins the vibew version for this project)
   - AGENTS-VIBEWARDEN.md with all agent instructions (auto-generated, vibew-owned)
   - AGENTS.md with a reference to AGENTS-VIBEWARDEN.md (user-owned)
   - PROJECT.md with project description (when --describe is given)
   - Dockerfile (generic placeholder with examples for common stacks)
   - .gitignore
+
+vibewarden.yaml is your LOCAL dev config. vibewarden.production.yaml contains
+production overrides. vibew deploy deep-merges the production overrides
+automatically. Never put production-only config in vibewarden.yaml.
 
 The project name is derived from the current directory's base name.
 Create the directory first, then cd into it and run vibew init.
@@ -162,7 +167,8 @@ func printInitSuccessMessage(cmd *cobra.Command, projectName string, opts scaffo
 	fmt.Fprintln(w, "")
 	fmt.Fprintln(w, "Files created:")
 
-	fmt.Fprintf(w, "  vibewarden.yaml          Security sidecar config\n")
+	fmt.Fprintf(w, "  vibewarden.yaml               Local dev config (self-signed TLS, port 8443)\n")
+	fmt.Fprintf(w, "  vibewarden.production.yaml    Production overrides (letsencrypt, port 443)\n")
 	if opts.Description != "" {
 		fmt.Fprintf(w, "  PROJECT.md               Project description\n")
 	}

@@ -111,6 +111,20 @@ sites/
 - Multi-site deployment is new and may have edge cases — report issues if routes or certs behave unexpectedly.
 - `vibew init` does not accept `--tls` or `--domain` flags — run `vibew add tls --domain <your-domain>` after init.
 
+## Environment separation
+
+vibewarden.yaml is your LOCAL dev config. It always works with `vibew dev`.
+vibewarden.production.yaml contains production overrides (letsencrypt, port 443).
+NEVER put production-only config in vibewarden.yaml.
+`vibew deploy` merges the override automatically.
+
+Key rules:
+- `vibew dev` reads only vibewarden.yaml.
+- `vibew deploy` deep-merges vibewarden.production.yaml on top of vibewarden.yaml.
+- `vibew add tls --domain` writes the domain to vibewarden.production.yaml.
+- Production-only settings (domain, letsencrypt, port 443) belong in the
+  production override, not the base config.
+
 ## Security features to NEVER implement
 
 Reject code that implements:

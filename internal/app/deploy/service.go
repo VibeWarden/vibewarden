@@ -85,6 +85,11 @@ type RunOptions struct {
 	// ConfigPath is the path to vibewarden.yaml on the local filesystem.
 	ConfigPath string
 
+	// ProdConfigPath is the optional path to the production override file
+	// (e.g. vibewarden.production.yaml). When set, its values are deep-merged
+	// on top of the base config before writing to the deploy bundle.
+	ProdConfigPath string
+
 	// ProjectName is used as the remote sub-directory name under remoteBaseDir.
 	// When empty it is derived from the basename of the directory containing
 	// ConfigPath.
@@ -93,6 +98,10 @@ type RunOptions struct {
 	// GeneratedDir is the local directory where generated files are written
 	// before transfer. Defaults to ".vibewarden/generated" when empty.
 	GeneratedDir string
+
+	// Env is the deployment environment name (e.g. "production", "staging").
+	// Defaults to "production" when empty.
+	Env string
 
 	// Force, when true, skips the drift detection warning and overwrites
 	// remote files unconditionally. When false (the default), a dry-run rsync
@@ -106,15 +115,14 @@ type RunOptions struct {
 }
 
 // Deploy runs the full deployment flow:
-//  1. Load and validate config
-//  2. Generate runtime files
-//  3. Verify Docker + Docker Compose on the remote
-//  4. rsync generated files + vibewarden.yaml to the remote
+//  1. Bundle all deploy files locally into .vibewarden/deploy/
+//  2. Verify Docker + Docker Compose on the remote
+//  3. rsync .vibewarden/deploy/ to the remote
 //     When app.build is set, the app source directory is also transferred so
 //     that Docker can build the image remotely.
-//  5. docker compose up -d --build  (build mode) or
+//  4. docker compose up -d --build  (build mode) or
 //     docker compose pull && docker compose up -d  (image mode)
-//  6. Health check
+//  5. Health check
 func (s *Service) Deploy(ctx context.Context, cfg *config.Config, opts RunOptions) error {
 	out := opts.Out
 	if out == nil {
@@ -127,14 +135,22 @@ func (s *Service) Deploy(ctx context.Context, cfg *config.Config, opts RunOption
 	}
 	remoteDir := remoteBaseDir + "/" + projectName + "/"
 
-	// Step 1: generate runtime configuration files.
-	fmt.Fprintln(out, "Generating runtime configuration files...")
-	generatedDir := opts.GeneratedDir
-	if generatedDir == "" {
-		generatedDir = ".vibewarden/generated"
+	// Step 1: produce the local deploy bundle.
+	fmt.Fprintln(out, "Generating deploy bundle...")
+	bundleDir := opts.GeneratedDir
+	if bundleDir == "" {
+		bundleDir = defaultBundleDir
 	}
-	if err := s.generator.Generate(ctx, cfg.ToGeneratorInput(), generatedDir); err != nil {
-		return fmt.Errorf("generating config files: %w", err)
+	if err := s.Bundle(ctx, BundleOptions{
+		Config:         cfg,
+		ConfigPath:     opts.ConfigPath,
+		ProdConfigPath: opts.ProdConfigPath,
+		ProjectName:    projectName,
+		MultiSite:      false,
+		OutputDir:      bundleDir,
+		Env:            opts.Env,
+	}); err != nil {
+		return fmt.Errorf("creating deploy bundle: %w", err)
 	}
 
 	// Step 2: verify prerequisites on the remote.
@@ -154,27 +170,24 @@ func (s *Service) Deploy(ctx context.Context, cfg *config.Config, opts RunOption
 	// Drift detection: before overwriting remote files with --delete, check
 	// what would change and abort unless --force is set.
 	if !opts.Force {
-		changes, err := s.executor.DryRunTransfer(ctx, generatedDir, remoteDir)
+		changes, err := s.executor.DryRunTransfer(ctx, bundleDir, remoteDir)
 		if err != nil {
 			// If the dry-run fails (e.g. remote directory does not exist yet on
-			// first deploy), fall through — the real rsync will create it.
+			// first deploy), fall through -- the real rsync will create it.
 			fmt.Fprintf(out, "Note: drift detection skipped (%v)\n", err)
 		} else if len(changes) > 0 {
 			return &DriftError{Changes: changes}
 		}
 	}
 
-	// rsync generated files.
-	if err := s.executor.Transfer(ctx, generatedDir, remoteDir, true); err != nil {
-		return fmt.Errorf("transferring generated files: %w", err)
+	// rsync the deploy bundle.
+	if err := s.executor.Transfer(ctx, bundleDir, remoteDir, true); err != nil {
+		return fmt.Errorf("transferring deploy bundle: %w", err)
 	}
 
 	// When app.build is set the image must be built on the remote host.
 	// Transfer the app source (the build context directory) so that
 	// `docker compose up --build` can build the image remotely.
-	// This must happen BEFORE the config file transfer, because the build
-	// context may include a dev vibewarden.yaml that would overwrite the
-	// prod config.
 	if cfg.App.Build != "" {
 		projectRoot := filepath.Dir(filepath.Clean(opts.ConfigPath))
 		buildContextLocal := filepath.Join(projectRoot, cfg.App.Build)
@@ -183,18 +196,6 @@ func (s *Service) Deploy(ctx context.Context, cfg *config.Config, opts RunOption
 		if err := s.executor.Transfer(ctx, buildContextLocal, buildContextRemote, false); err != nil {
 			return fmt.Errorf("transferring app build context: %w", err)
 		}
-	}
-
-	// Transfer the config file as vibewarden.yaml on the remote regardless of
-	// the source filename. The docker-compose.yml always mounts ./vibewarden.yaml
-	// so the sidecar must find it under that name even when the user deployed
-	// with --config vibewarden.prod.yaml.
-	// This MUST happen AFTER the build context transfer because the build
-	// context (app source dir) may contain a dev vibewarden.yaml that would
-	// otherwise overwrite the prod config.
-	const remoteConfigName = "vibewarden.yaml"
-	if err := s.executor.TransferFile(ctx, opts.ConfigPath, remoteDir+remoteConfigName); err != nil {
-		return fmt.Errorf("transferring %s: %w", remoteConfigName, err)
 	}
 
 	// Step 4: start Docker Compose on the remote.
@@ -228,7 +229,7 @@ func (s *Service) Deploy(ctx context.Context, cfg *config.Config, opts RunOption
 		}
 	}
 
-	// Step 5: health check — run curl on the remote so the probe is independent
+	// Step 5: health check -- run curl on the remote so the probe is independent
 	// of DNS propagation, external port availability, and TLS certificate issuance.
 	port := cfg.Server.Port
 	if port == 0 {

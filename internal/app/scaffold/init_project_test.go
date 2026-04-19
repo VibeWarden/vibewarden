@@ -34,6 +34,7 @@ func TestInitProject_CreatesStructure(t *testing.T) {
 
 	// Verify core files.
 	mustExist(t, parent, "myapp", "vibewarden.yaml")
+	mustExist(t, parent, "myapp", "vibewarden.production.yaml")
 	mustExist(t, parent, "myapp", "Dockerfile")
 	mustExist(t, parent, "myapp", ".dockerignore")
 	mustExist(t, parent, "myapp", ".gitignore")

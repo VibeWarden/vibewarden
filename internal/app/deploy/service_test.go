@@ -113,8 +113,9 @@ func TestService_Deploy_HappyPath(t *testing.T) {
 
 	var buf bytes.Buffer
 	err := svc.Deploy(context.Background(), defaultConfig(), deployapp.RunOptions{
-		ConfigPath: "/tmp/myproject/vibewarden.yaml",
-		Out:        &buf,
+		ConfigPath:   "/tmp/myproject/vibewarden.yaml",
+		GeneratedDir: t.TempDir(),
+		Out:          &buf,
 	})
 	if err != nil {
 		t.Fatalf("Deploy() unexpected error: %v\noutput:\n%s", err, buf.String())
@@ -129,7 +130,7 @@ func TestService_Deploy_HappyPath(t *testing.T) {
 	assertRunCalled(t, executor.runCalls, "which docker")
 	assertRunCalled(t, executor.runCalls, "docker compose version")
 
-	// Verify transfer was called.
+	// Verify transfer was called (the deploy bundle rsync).
 	if len(executor.transferCalls) == 0 {
 		t.Error("expected Transfer to be called at least once")
 	}
@@ -138,14 +139,15 @@ func TestService_Deploy_HappyPath(t *testing.T) {
 	assertRunCalledContains(t, executor.runCalls, "docker compose up -d")
 }
 
-func TestService_Deploy_GenerateFails(t *testing.T) {
+func TestService_Deploy_BundleFails(t *testing.T) {
 	executor := &fakeExecutor{}
 	generator := &fakeGenerator{err: errors.New("template error")}
 
 	svc := deployapp.NewService(executor, generator)
 
 	err := svc.Deploy(context.Background(), defaultConfig(), deployapp.RunOptions{
-		ConfigPath: "/tmp/proj/vibewarden.yaml",
+		ConfigPath:   "/tmp/proj/vibewarden.yaml",
+		GeneratedDir: t.TempDir(),
 	})
 	if err == nil {
 		t.Fatal("expected error when generator fails")
@@ -166,7 +168,8 @@ func TestService_Deploy_MissingDocker(t *testing.T) {
 	svc := deployapp.NewService(executor, generator)
 
 	err := svc.Deploy(context.Background(), defaultConfig(), deployapp.RunOptions{
-		ConfigPath: "/tmp/proj/vibewarden.yaml",
+		ConfigPath:   "/tmp/proj/vibewarden.yaml",
+		GeneratedDir: t.TempDir(),
 	})
 	if err == nil {
 		t.Fatal("expected error when docker is missing")
@@ -185,7 +188,8 @@ func TestService_Deploy_TransferFails(t *testing.T) {
 	svc := deployapp.NewService(executor, generator)
 
 	err := svc.Deploy(context.Background(), defaultConfig(), deployapp.RunOptions{
-		ConfigPath: "/tmp/proj/vibewarden.yaml",
+		ConfigPath:   "/tmp/proj/vibewarden.yaml",
+		GeneratedDir: t.TempDir(),
 	})
 	if err == nil {
 		t.Fatal("expected error when transfer fails")
@@ -196,13 +200,13 @@ func TestService_Deploy_TransferFails(t *testing.T) {
 }
 
 // TestService_Deploy_HealthCheckTimeout verifies that a health-check timeout
-// DOES fail the deploy — it returns ErrHealthCheck and prints an actionable
+// DOES fail the deploy -- it returns ErrHealthCheck and prints an actionable
 // message. The operator can run "vibew deploy status" or "vibew doctor" to
 // diagnose.
 func TestService_Deploy_HealthCheckTimeout(t *testing.T) {
 	executor := &fakeExecutor{
 		runResponses: map[string]runResponse{
-			// curl exits non-zero → sidecar not yet healthy.
+			// curl exits non-zero -> sidecar not yet healthy.
 			"curl -sf http://localhost:8443/_vibewarden/health": {err: errors.New("exit status 7")},
 		},
 	}
@@ -220,8 +224,9 @@ func TestService_Deploy_HealthCheckTimeout(t *testing.T) {
 
 	var buf bytes.Buffer
 	err := svc.Deploy(ctx, defaultConfig(), deployapp.RunOptions{
-		ConfigPath: "/tmp/proj/vibewarden.yaml",
-		Out:        &buf,
+		ConfigPath:   "/tmp/proj/vibewarden.yaml",
+		GeneratedDir: t.TempDir(),
+		Out:          &buf,
 	})
 	// Health check timeout must now fail the deploy.
 	if !errors.Is(err, deployapp.ErrHealthCheck) {
@@ -480,8 +485,9 @@ func TestService_Deploy_RemoteDir(t *testing.T) {
 	svc := deployapp.NewService(executor, generator)
 
 	err := svc.Deploy(context.Background(), defaultConfig(), deployapp.RunOptions{
-		ConfigPath:  "/home/user/myproject/vibewarden.prod.yaml",
-		ProjectName: "myproject",
+		ConfigPath:   "/home/user/myproject/vibewarden.prod.yaml",
+		ProjectName:  "myproject",
+		GeneratedDir: t.TempDir(),
 	})
 	if err != nil {
 		t.Fatalf("Deploy() unexpected error: %v", err)
@@ -512,7 +518,8 @@ func TestService_Deploy_DockerComposeMissing(t *testing.T) {
 	svc := deployapp.NewService(executor, generator)
 
 	err := svc.Deploy(context.Background(), defaultConfig(), deployapp.RunOptions{
-		ConfigPath: "/tmp/proj/vibewarden.yaml",
+		ConfigPath:   "/tmp/proj/vibewarden.yaml",
+		GeneratedDir: t.TempDir(),
 	})
 	if err == nil {
 		t.Fatal("expected error when docker compose is missing")
@@ -573,8 +580,9 @@ func TestProjectNameFromConfig(t *testing.T) {
 			svc := deployapp.NewService(executor, generator)
 
 			_ = svc.Deploy(context.Background(), defaultConfig(), deployapp.RunOptions{
-				ConfigPath:  tt.configPath,
-				ProjectName: tt.projectName,
+				ConfigPath:   tt.configPath,
+				ProjectName:  tt.projectName,
+				GeneratedDir: t.TempDir(),
 			})
 
 			found := false
@@ -600,8 +608,9 @@ func TestService_Deploy_NilOut(t *testing.T) {
 
 	// Should not panic even with nil Out.
 	err := svc.Deploy(context.Background(), defaultConfig(), deployapp.RunOptions{
-		ConfigPath: "/tmp/proj/vibewarden.yaml",
-		Out:        nil,
+		ConfigPath:   "/tmp/proj/vibewarden.yaml",
+		GeneratedDir: t.TempDir(),
+		Out:          nil,
 	})
 	if err == nil {
 		t.Fatal("expected error")
@@ -610,16 +619,7 @@ func TestService_Deploy_NilOut(t *testing.T) {
 
 // TestService_Deploy_ComposeUpFails verifies that a compose up failure is surfaced.
 func TestService_Deploy_ComposeUpFails(t *testing.T) {
-	executor := &fakeExecutor{
-		runResponses: map[string]runResponse{},
-	}
-
-	// Set compose up to fail.
-	calls := 0
-	origRun := executor.runResponses
-	_ = origRun
-
-	executor2 := &mockRunExecutor{
+	executor := &mockRunExecutor{
 		runFn: func(cmd string) (string, error) {
 			if strings.Contains(cmd, "docker compose up -d") {
 				return "", errors.New("compose up failed")
@@ -630,11 +630,11 @@ func TestService_Deploy_ComposeUpFails(t *testing.T) {
 
 	generator := &fakeGenerator{}
 
-	svc := deployapp.NewService(executor2, generator)
-	_ = calls
+	svc := deployapp.NewService(executor, generator)
 
 	err := svc.Deploy(context.Background(), defaultConfig(), deployapp.RunOptions{
-		ConfigPath: "/tmp/proj/vibewarden.yaml",
+		ConfigPath:   "/tmp/proj/vibewarden.yaml",
+		GeneratedDir: t.TempDir(),
 	})
 	if err == nil {
 		t.Fatal("expected error when compose up fails")
@@ -676,118 +676,6 @@ func (m *mockRunExecutor) DryRunTransfer(_ context.Context, _, _ string) ([]stri
 	return nil, nil
 }
 
-// TestService_Deploy_TransferFileCalledForConfig verifies that Deploy uses
-// TransferFile (not Transfer) for the config file, passing the full local path
-// and the expected remote destination without a trailing slash.
-func TestService_Deploy_TransferFileCalledForConfig(t *testing.T) {
-	executor := &fakeExecutor{}
-	generator := &fakeGenerator{}
-
-	svc := deployapp.NewService(executor, generator)
-
-	err := svc.Deploy(context.Background(), defaultConfig(), deployapp.RunOptions{
-		ConfigPath:  "/tmp/myproject/vibewarden.yaml",
-		ProjectName: "myproject",
-	})
-	if err != nil {
-		t.Fatalf("Deploy() unexpected error: %v", err)
-	}
-
-	if len(executor.transferFileCalls) == 0 {
-		t.Fatal("expected TransferFile to be called for the config file")
-	}
-
-	call := executor.transferFileCalls[0]
-	if call.localFile != "/tmp/myproject/vibewarden.yaml" {
-		t.Errorf("TransferFile localFile = %q, want %q", call.localFile, "/tmp/myproject/vibewarden.yaml")
-	}
-	wantRemote := "~/vibewarden/myproject/vibewarden.yaml"
-	if call.remotePath != wantRemote {
-		t.Errorf("TransferFile remotePath = %q, want %q", call.remotePath, wantRemote)
-	}
-	if strings.HasSuffix(call.localFile, "/") {
-		t.Errorf("TransferFile localFile must not end with '/', got %q", call.localFile)
-	}
-}
-
-// TestService_Deploy_ConfigAlwaysTransferredAsVibewardenYAML verifies that the
-// config file is always written as vibewarden.yaml on the remote, regardless of
-// the source filename. This covers the case where --config vibewarden.prod.yaml
-// is used but the docker-compose.yml still mounts ./vibewarden.yaml.
-func TestService_Deploy_ConfigAlwaysTransferredAsVibewardenYAML(t *testing.T) {
-	tests := []struct {
-		name       string
-		configPath string
-		wantRemote string
-	}{
-		{
-			name:       "default name passes through unchanged",
-			configPath: "/tmp/myproject/vibewarden.yaml",
-			wantRemote: "~/vibewarden/myproject/vibewarden.yaml",
-		},
-		{
-			name:       "non-default name is normalised to vibewarden.yaml on remote",
-			configPath: "/tmp/myproject/vibewarden.prod.yaml",
-			wantRemote: "~/vibewarden/myproject/vibewarden.yaml",
-		},
-		{
-			name:       "staging config is normalised to vibewarden.yaml on remote",
-			configPath: "/tmp/myproject/vibewarden.staging.yaml",
-			wantRemote: "~/vibewarden/myproject/vibewarden.yaml",
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			executor := &fakeExecutor{}
-			generator := &fakeGenerator{}
-
-			svc := deployapp.NewService(executor, generator)
-
-			err := svc.Deploy(context.Background(), defaultConfig(), deployapp.RunOptions{
-				ConfigPath:  tt.configPath,
-				ProjectName: "myproject",
-			})
-			if err != nil {
-				t.Fatalf("Deploy() unexpected error: %v", err)
-			}
-
-			if len(executor.transferFileCalls) == 0 {
-				t.Fatal("expected TransferFile to be called for the config file")
-			}
-
-			call := executor.transferFileCalls[0]
-			if call.localFile != tt.configPath {
-				t.Errorf("TransferFile localFile = %q, want %q", call.localFile, tt.configPath)
-			}
-			if call.remotePath != tt.wantRemote {
-				t.Errorf("TransferFile remotePath = %q, want %q", call.remotePath, tt.wantRemote)
-			}
-		})
-	}
-}
-
-// TestService_Deploy_TransferFileFails verifies that a TransferFile error is
-// surfaced with the expected context message.
-func TestService_Deploy_TransferFileFails(t *testing.T) {
-	executor := &fakeExecutor{
-		transferFileErr: errors.New("rsync: file not found"),
-	}
-	generator := &fakeGenerator{}
-
-	svc := deployapp.NewService(executor, generator)
-
-	err := svc.Deploy(context.Background(), defaultConfig(), deployapp.RunOptions{
-		ConfigPath: "/tmp/proj/vibewarden.yaml",
-	})
-	if err == nil {
-		t.Fatal("expected error when TransferFile fails")
-	}
-	if !strings.Contains(err.Error(), "transferring") {
-		t.Errorf("error should mention 'transferring', got: %v", err)
-	}
-}
-
 // TestService_Deploy_ImageMode verifies that when cfg.App.Build is empty the
 // deploy flow runs docker compose pull followed by docker compose up -d.
 func TestService_Deploy_ImageMode(t *testing.T) {
@@ -800,7 +688,8 @@ func TestService_Deploy_ImageMode(t *testing.T) {
 	cfg.App.Image = "myapp:latest"
 
 	err := svc.Deploy(context.Background(), cfg, deployapp.RunOptions{
-		ConfigPath: "/tmp/proj/vibewarden.yaml",
+		ConfigPath:   "/tmp/proj/vibewarden.yaml",
+		GeneratedDir: t.TempDir(),
 	})
 	if err != nil {
 		t.Fatalf("Deploy() unexpected error: %v", err)
@@ -818,8 +707,7 @@ func TestService_Deploy_ImageMode(t *testing.T) {
 		}
 	}
 
-	// App build context must NOT be transferred when app.build is empty.
-	// Only the generated dir transfer is expected (transferCalls has exactly one entry).
+	// Only the bundle transfer is expected (one Transfer call).
 	if len(executor.transferCalls) != 1 {
 		t.Errorf("expected exactly 1 Transfer call in image mode, got %d: %v", len(executor.transferCalls), executor.transferCalls)
 	}
@@ -838,7 +726,8 @@ func TestService_Deploy_BuildMode(t *testing.T) {
 	cfg.App.Build = "."
 
 	err := svc.Deploy(context.Background(), cfg, deployapp.RunOptions{
-		ConfigPath: "/tmp/proj/vibewarden.yaml",
+		ConfigPath:   "/tmp/proj/vibewarden.yaml",
+		GeneratedDir: t.TempDir(),
 	})
 	if err != nil {
 		t.Fatalf("Deploy() unexpected error: %v", err)
@@ -851,7 +740,7 @@ func TestService_Deploy_BuildMode(t *testing.T) {
 	// in build mode, to ensure the sidecar is not running a stale cached image.
 	assertRunCalledContains(t, executor.runCalls, "docker compose pull vibewarden")
 
-	// But a full docker compose pull (all services) must NOT be called —
+	// But a full docker compose pull (all services) must NOT be called --
 	// only the targeted vibewarden pull should occur.
 	for _, c := range executor.runCalls {
 		if c != "" && strings.Contains(c, "docker compose pull") && !strings.Contains(c, "pull vibewarden") {
@@ -859,9 +748,9 @@ func TestService_Deploy_BuildMode(t *testing.T) {
 		}
 	}
 
-	// Two Transfer calls expected: generated dir + build context.
+	// Two Transfer calls expected: bundle + build context.
 	if len(executor.transferCalls) != 2 {
-		t.Errorf("expected 2 Transfer calls in build mode (generated + build context), got %d: %v",
+		t.Errorf("expected 2 Transfer calls in build mode (bundle + build context), got %d: %v",
 			len(executor.transferCalls), executor.transferCalls)
 	}
 }
@@ -888,7 +777,8 @@ func TestService_Deploy_BuildMode_TransferContextFails(t *testing.T) {
 	cfg.App.Build = "."
 
 	err := svc.Deploy(context.Background(), cfg, deployapp.RunOptions{
-		ConfigPath: "/tmp/proj/vibewarden.yaml",
+		ConfigPath:   "/tmp/proj/vibewarden.yaml",
+		GeneratedDir: t.TempDir(),
 	})
 	if err == nil {
 		t.Fatal("expected error when build context transfer fails")
@@ -965,7 +855,7 @@ func TestProjectNameFromConfig_Unit(t *testing.T) {
 			got := deployapp.ProjectNameFromConfig(tt.configPath)
 
 			if tt.want == "" {
-				// Relative/empty path — just assert we don't get "." or empty string.
+				// Relative/empty path -- just assert we don't get "." or empty string.
 				if got == "." || got == "" {
 					t.Errorf("ProjectNameFromConfig(%q) = %q, want a non-empty non-dot name", tt.configPath, got)
 				}
@@ -1222,7 +1112,8 @@ func TestService_Deploy_PullsSidecarBeforeBuild(t *testing.T) {
 	cfg.App.Build = "."
 
 	err := svc.Deploy(context.Background(), cfg, deployapp.RunOptions{
-		ConfigPath: "/tmp/proj/vibewarden.yaml",
+		ConfigPath:   "/tmp/proj/vibewarden.yaml",
+		GeneratedDir: t.TempDir(),
 	})
 	if err != nil {
 		t.Fatalf("Deploy() unexpected error: %v", err)
@@ -1264,7 +1155,8 @@ func TestService_Deploy_PullsSidecarInImageMode(t *testing.T) {
 	cfg.App.Image = "myapp:latest"
 
 	err := svc.Deploy(context.Background(), cfg, deployapp.RunOptions{
-		ConfigPath: "/tmp/proj/vibewarden.yaml",
+		ConfigPath:   "/tmp/proj/vibewarden.yaml",
+		GeneratedDir: t.TempDir(),
 	})
 	if err != nil {
 		t.Fatalf("Deploy() unexpected error: %v", err)
@@ -1289,8 +1181,9 @@ func TestService_Deploy_DriftDetected_AbortsWithoutForce(t *testing.T) {
 	svc := deployapp.NewService(executor, generator)
 
 	err := svc.Deploy(context.Background(), defaultConfig(), deployapp.RunOptions{
-		ConfigPath: "/tmp/proj/vibewarden.yaml",
-		Force:      false,
+		ConfigPath:   "/tmp/proj/vibewarden.yaml",
+		GeneratedDir: t.TempDir(),
+		Force:        false,
 	})
 	if err == nil {
 		t.Fatal("expected DriftError when drift is detected without --force")
@@ -1325,9 +1218,10 @@ func TestService_Deploy_DriftDetected_ProceedsWithForce(t *testing.T) {
 
 	var buf bytes.Buffer
 	err := svc.Deploy(context.Background(), defaultConfig(), deployapp.RunOptions{
-		ConfigPath: "/tmp/proj/vibewarden.yaml",
-		Force:      true,
-		Out:        &buf,
+		ConfigPath:   "/tmp/proj/vibewarden.yaml",
+		GeneratedDir: t.TempDir(),
+		Force:        true,
+		Out:          &buf,
 	})
 	if err != nil {
 		t.Fatalf("Deploy() with --force should succeed even with drift, got: %v", err)
@@ -1349,9 +1243,10 @@ func TestService_Deploy_NoDrift_ProceedsWithoutForce(t *testing.T) {
 
 	var buf bytes.Buffer
 	err := svc.Deploy(context.Background(), defaultConfig(), deployapp.RunOptions{
-		ConfigPath: "/tmp/proj/vibewarden.yaml",
-		Force:      false,
-		Out:        &buf,
+		ConfigPath:   "/tmp/proj/vibewarden.yaml",
+		GeneratedDir: t.TempDir(),
+		Force:        false,
+		Out:          &buf,
 	})
 	if err != nil {
 		t.Fatalf("Deploy() without drift should succeed, got: %v", err)
@@ -1374,9 +1269,10 @@ func TestService_Deploy_DryRunFails_FallsThrough(t *testing.T) {
 
 	var buf bytes.Buffer
 	err := svc.Deploy(context.Background(), defaultConfig(), deployapp.RunOptions{
-		ConfigPath: "/tmp/proj/vibewarden.yaml",
-		Force:      false,
-		Out:        &buf,
+		ConfigPath:   "/tmp/proj/vibewarden.yaml",
+		GeneratedDir: t.TempDir(),
+		Force:        false,
+		Out:          &buf,
 	})
 	if err != nil {
 		t.Fatalf("Deploy() should succeed when dry-run fails (first deploy), got: %v", err)
@@ -1418,7 +1314,7 @@ func TestDriftError_ErrorMessage(t *testing.T) {
 func TestService_Deploy_HealthCheckWarnOnTimeout(t *testing.T) {
 	executor := &fakeExecutor{
 		runResponses: map[string]runResponse{
-			// curl exits non-zero → sidecar not yet healthy.
+			// curl exits non-zero -> sidecar not yet healthy.
 			"curl -sf http://localhost:8443/_vibewarden/health": {err: errors.New("exit status 7")},
 		},
 	}
@@ -1431,8 +1327,9 @@ func TestService_Deploy_HealthCheckWarnOnTimeout(t *testing.T) {
 
 	var buf bytes.Buffer
 	err := svc.Deploy(ctx, defaultConfig(), deployapp.RunOptions{
-		ConfigPath: "/tmp/proj/vibewarden.yaml",
-		Out:        &buf,
+		ConfigPath:   "/tmp/proj/vibewarden.yaml",
+		GeneratedDir: t.TempDir(),
+		Out:          &buf,
 	})
 
 	if !errors.Is(err, deployapp.ErrHealthCheck) {
@@ -1504,8 +1401,9 @@ func TestService_Deploy_HealthCheckAlwaysUsesLocalhost(t *testing.T) {
 
 			var buf bytes.Buffer
 			err := svc.Deploy(context.Background(), tt.cfg, deployapp.RunOptions{
-				ConfigPath: "/tmp/proj/vibewarden.yaml",
-				Out:        &buf,
+				ConfigPath:   "/tmp/proj/vibewarden.yaml",
+				GeneratedDir: t.TempDir(),
+				Out:          &buf,
 			})
 			if err != nil {
 				t.Fatalf("Deploy() unexpected error: %v", err)
@@ -1513,5 +1411,59 @@ func TestService_Deploy_HealthCheckAlwaysUsesLocalhost(t *testing.T) {
 
 			assertRunCalled(t, executor.runCalls, tt.wantCurlCmd)
 		})
+	}
+}
+
+// TestService_Deploy_RsyncSourceIsAlwaysBundleDir verifies that the rsync
+// source is always the deploy bundle directory, never CWD or parent-of-CWD.
+func TestService_Deploy_RsyncSourceIsAlwaysBundleDir(t *testing.T) {
+	executor := &fakeExecutor{}
+	generator := &fakeGenerator{}
+
+	svc := deployapp.NewService(executor, generator)
+
+	bundleDir := t.TempDir()
+
+	err := svc.Deploy(context.Background(), defaultConfig(), deployapp.RunOptions{
+		ConfigPath:   "/tmp/proj/vibewarden.yaml",
+		ProjectName:  "myproject",
+		GeneratedDir: bundleDir,
+	})
+	if err != nil {
+		t.Fatalf("Deploy() unexpected error: %v", err)
+	}
+
+	if len(executor.transferCalls) == 0 {
+		t.Fatal("expected at least one Transfer call")
+	}
+
+	// The first Transfer call must use the bundle directory as the source.
+	firstTransfer := executor.transferCalls[0]
+	if firstTransfer.localDir != bundleDir {
+		t.Errorf("Transfer localDir = %q, want %q (the bundle directory)", firstTransfer.localDir, bundleDir)
+	}
+}
+
+// TestService_Deploy_NoTransferFileForConfig verifies that Deploy no longer
+// calls TransferFile for the config -- it is now inside the bundle.
+func TestService_Deploy_NoTransferFileForConfig(t *testing.T) {
+	executor := &fakeExecutor{}
+	generator := &fakeGenerator{}
+
+	svc := deployapp.NewService(executor, generator)
+
+	err := svc.Deploy(context.Background(), defaultConfig(), deployapp.RunOptions{
+		ConfigPath:   "/tmp/myproject/vibewarden.yaml",
+		ProjectName:  "myproject",
+		GeneratedDir: t.TempDir(),
+	})
+	if err != nil {
+		t.Fatalf("Deploy() unexpected error: %v", err)
+	}
+
+	// TransferFile should NOT be called -- config is bundled locally.
+	if len(executor.transferFileCalls) != 0 {
+		t.Errorf("expected no TransferFile calls (config is bundled), got %d: %v",
+			len(executor.transferFileCalls), executor.transferFileCalls)
 	}
 }
