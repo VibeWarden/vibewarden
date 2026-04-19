@@ -22,9 +22,9 @@ import (
 // File permission constants.
 const (
 	// permDir is the permission mode for directories created during rendering.
-	permDir = os.FileMode(0o750)
+	permDir = os.FileMode(0o755)
 	// permConfig is the permission mode for rendered config/template output files.
-	permConfig = os.FileMode(0o600)
+	permConfig = os.FileMode(0o644)
 )
 
 // Renderer implements ports.TemplateRenderer using an embed.FS.
