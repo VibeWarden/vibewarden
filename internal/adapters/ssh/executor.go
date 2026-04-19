@@ -218,8 +218,13 @@ func (e *Executor) DryRunTransfer(ctx context.Context, localDir, remoteDir strin
 
 // parseDryRunOutput extracts meaningful change lines from rsync --itemize-changes
 // dry-run output. Each non-empty line that starts with an itemize code (e.g.
-// ">f..T......", "*deleting") is included. Directory-only metadata changes and
-// blank lines are filtered out.
+// ">f..T......", "*deleting") is included. Directory-only metadata changes,
+// new-file creation entries, and blank lines are filtered out.
+//
+// New-file entries (e.g. ">f+++++++++ filename") are expected on first deploy
+// to an empty remote directory and are not considered drift. Only actual
+// modifications (changed timestamps, sizes, permissions, or deletions) are
+// reported as changes. See issue #962.
 func parseDryRunOutput(output string) []string {
 	var changes []string
 	for _, line := range strings.Split(output, "\n") {
@@ -228,17 +233,59 @@ func parseDryRunOutput(output string) []string {
 			continue
 		}
 		// rsync --itemize-changes prefixes each change with a code like:
-		//   >f..T...... filename   (file will be transferred)
+		//   >f..T...... filename   (file will be transferred — modification)
+		//   >f+++++++++ filename   (file will be created — new, not drift)
+		//   cd+++++++++ dirname/   (directory will be created — new, not drift)
 		//   *deleting   filename   (file will be deleted)
 		//   .d..t...... dirname/   (directory metadata change — skip)
-		// We include all lines except directory-only metadata changes
-		// (those starting with ".d").
+		//
+		// We skip:
+		//   - directory-only metadata changes (starting with ".d")
+		//   - new-file/new-directory creation entries where all attribute
+		//     positions after the type character are "+" (e.g. ">f+++++++++")
+
+		// Skip directory metadata changes.
 		if strings.HasPrefix(line, ".d") {
 			continue
 		}
+
+		// Skip new-item creation entries. The itemize code is the first
+		// space-delimited field. When all characters after position 1 (the
+		// type character) are "+", the item is being created for the first
+		// time — this is not drift.
+		if isNewItemEntry(line) {
+			continue
+		}
+
 		changes = append(changes, line)
 	}
 	return changes
+}
+
+// isNewItemEntry returns true when the rsync itemize line represents a
+// brand-new item (file or directory) being created on the remote. The itemize
+// code format is YXcstpoguax where Y is the update type, X is the file type,
+// and positions 2+ are attribute flags. When all attribute flags are "+", the
+// item is new. Examples: ">f+++++++++", "cd+++++++++", "<f++++++++++".
+func isNewItemEntry(line string) bool {
+	// The itemize code is the first space-delimited field.
+	code := line
+	if idx := strings.IndexByte(line, ' '); idx != -1 {
+		code = line[:idx]
+	}
+
+	// Need at least 3 characters: direction + type + at least one attribute.
+	if len(code) < 3 {
+		return false
+	}
+
+	// Check that all characters from position 2 onward are "+".
+	for i := 2; i < len(code); i++ {
+		if code[i] != '+' {
+			return false
+		}
+	}
+	return true
 }
 
 // sshArgs builds the ssh argument list for the given command.
