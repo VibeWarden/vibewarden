@@ -41,7 +41,7 @@ services:
     restart: unless-stopped
 {{- if .App.Build }}
     build:
-      context: {{ if .DeployMode }}{{ .App.Build }}{{ else }}{{ .ProjectRoot }}{{ end }}
+      context: {{ .ResolvedBuildContext }}
 {{- else if .App.Image }}
     image: ${VIBEWARDEN_APP_IMAGE:-{{ .App.Image }}}
 {{- end }}

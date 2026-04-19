@@ -599,13 +599,17 @@ func TestGenerate_AppService_BothSet_BuildTakesPrecedence(t *testing.T) {
 	if !bytes.Contains(compose, []byte("build:")) {
 		t.Error("expected 'build:' directive when both build and image are set")
 	}
-	// The build context should be an absolute path (ProjectRoot), not a
+	// The build context should be an absolute path (ProjectRoot/src), not a
 	// relative "../.././src" prefix.
 	if bytes.Contains(compose, []byte("context: ../../")) {
 		t.Error("build context must be an absolute path, not relative '../../'")
 	}
 	if !bytes.Contains(compose, []byte("context: /")) {
 		t.Error("expected build context to be an absolute path starting with '/'")
+	}
+	// The subdirectory "src" must be preserved in the build context path.
+	if !bytes.Contains(compose, []byte("/src")) {
+		t.Error("build context must include the 'src' subdirectory from App.Build")
 	}
 	// image: for the app service must not appear when build takes precedence.
 	// Note: "image:" still appears in vibewarden service itself so we check

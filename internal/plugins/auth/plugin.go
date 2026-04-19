@@ -23,13 +23,20 @@ var _ ports.DependencyChecker = (*Plugin)(nil)
 // These paths are the Kratos self-service browser flows and the Ory canonical
 // prefix (used by the Ory UI SDK).
 var kratosFlowPaths = []string{
+	"/self-service/login",
 	"/self-service/login/*",
+	"/self-service/registration",
 	"/self-service/registration/*",
+	"/self-service/logout",
 	"/self-service/logout/*",
+	"/self-service/settings",
 	"/self-service/settings/*",
+	"/self-service/recovery",
 	"/self-service/recovery/*",
+	"/self-service/verification",
 	"/self-service/verification/*",
 	"/.ory/kratos/public/*",
+	"/sessions/whoami",
 }
 
 // whoamiPath is the Kratos endpoint used for health-checking connectivity.

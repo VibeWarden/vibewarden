@@ -232,6 +232,23 @@ func (c *Config) EgressNoProxy() string {
 	return strings.Join(parts, ",")
 }
 
+// ResolvedBuildContext returns the Docker build context path for the app
+// service. In deploy mode it returns App.Build verbatim (a relative path
+// that Docker Compose resolves from the compose file directory). In
+// generate mode it returns the absolute build context by joining ProjectRoot
+// with the App.Build subdirectory (stripping a leading "./" prefix first).
+// When App.Build is "." (project root), ProjectRoot alone is returned.
+func (c *Config) ResolvedBuildContext() string {
+	if c.DeployMode {
+		return c.App.Build
+	}
+	if c.App.Build == "" || c.App.Build == "." {
+		return c.ProjectRoot
+	}
+	sub := strings.TrimPrefix(c.App.Build, "./")
+	return c.ProjectRoot + "/" + sub
+}
+
 // DatabasePoolConfig holds connection pool settings for PostgreSQL.
 type DatabasePoolConfig struct {
 	// MaxConns is the maximum number of open connections in the pool.
