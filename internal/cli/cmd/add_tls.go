@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -8,14 +9,21 @@ import (
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
 
+	yamlmodadapter "github.com/vibewarden/vibewarden/internal/adapters/yamlmod"
 	domainscaffold "github.com/vibewarden/vibewarden/internal/domain/scaffold"
 )
 
 // newAddTLSCmd creates the `vibew add tls` subcommand.
 //
 // This command enables TLS in vibewarden.yaml with a domain and provider.
-// When --domain is provided, the domain is also written to
-// vibewarden.production.yaml if that file exists.
+//
+// When TLS is already enabled in the base config, the command does NOT modify
+// vibewarden.yaml's tls section (preserving the existing provider, typically
+// "self-signed" for local dev). The --domain is written only to
+// vibewarden.production.yaml.
+//
+// When TLS is not yet enabled, the command enables it in vibewarden.yaml and
+// also writes the domain to vibewarden.production.yaml.
 func newAddTLSCmd() *cobra.Command {
 	var (
 		domain   string
@@ -27,9 +35,12 @@ func newAddTLSCmd() *cobra.Command {
 		Short: "Enable TLS termination",
 		Long: `Enable TLS termination in vibewarden.yaml.
 
-Updates the tls section with enabled: true plus domain and provider settings.
-When --domain is provided, the domain is also written to
-vibewarden.production.yaml if that file exists.
+When TLS is not yet enabled, updates the tls section with enabled: true plus
+provider settings. The --domain is written to vibewarden.production.yaml (not
+to vibewarden.yaml) so that the base config stays correct for local dev.
+
+When TLS is already enabled, vibewarden.yaml is left unchanged and the domain
+is written only to vibewarden.production.yaml.
 
 Supported providers:
   letsencrypt   Automatic certificate from Let's Encrypt (default, requires public domain)
@@ -53,25 +64,44 @@ Examples:
 				dir = args[0]
 			}
 
-			opts := domainscaffold.FeatureOptions{
-				TLSDomain:   domain,
-				TLSProvider: provider,
-			}
-			if err := runAddFeature(cmd, dir, domainscaffold.FeatureTLS, opts); err != nil {
-				return err
+			projDir := dir
+			if projDir == "" {
+				projDir = "."
 			}
 
-			// Also write the domain to vibewarden.production.yaml when it exists.
-			if domain != "" {
-				projDir := dir
-				if projDir == "" {
-					projDir = "."
+			configPath := filepath.Join(projDir, "vibewarden.yaml")
+
+			// Check if TLS is already enabled in the base config.
+			toggler := yamlmodadapter.NewToggler()
+			state, err := toggler.ReadFeatures(context.Background(), configPath)
+			if err != nil {
+				return fmt.Errorf("reading config: %w", err)
+			}
+
+			if state.TLSEnabled {
+				// TLS is already enabled in the base config. Do NOT modify
+				// vibewarden.yaml — the provider (typically "self-signed"
+				// for dev) must remain unchanged. Only write the domain to
+				// the production override file.
+				fmt.Fprintf(cmd.OutOrStdout(), "TLS is already enabled in vibewarden.yaml (provider unchanged).\n")
+			} else {
+				// TLS is not yet enabled — enable it in vibewarden.yaml
+				// WITHOUT the domain (domain belongs in the production file).
+				opts := domainscaffold.FeatureOptions{
+					TLSProvider: provider,
 				}
-				prodPath := filepath.Join(projDir, "vibewarden.production.yaml")
-				if err := upsertDomainInProdConfig(prodPath, domain); err != nil {
-					// Non-fatal: the production override file is optional.
-					fmt.Fprintf(cmd.OutOrStdout(), "Note: could not update %s: %v\n", prodPath, err)
+				if err := runAddFeature(cmd, dir, domainscaffold.FeatureTLS, opts); err != nil {
+					return err
 				}
+			}
+
+			// Write the domain to vibewarden.production.yaml.
+			prodPath := filepath.Join(projDir, "vibewarden.production.yaml")
+			if err := upsertDomainInProdConfig(prodPath, domain); err != nil {
+				// Non-fatal: the production override file is optional.
+				fmt.Fprintf(cmd.OutOrStdout(), "Note: could not update %s: %v\n", prodPath, err)
+			} else {
+				fmt.Fprintf(cmd.OutOrStdout(), "Domain %q written to %s\n", domain, prodPath)
 			}
 
 			return nil

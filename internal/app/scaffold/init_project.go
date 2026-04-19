@@ -281,7 +281,10 @@ func (s *InitProjectService) renderProjectMD(projectDir string, data any, overwr
 }
 
 // assertEmptyOrAbsent returns an error wrapping os.ErrExist when projectDir
-// exists and contains at least one entry.
+// exists and contains at least one visible (non-hidden) entry. Hidden entries
+// (names starting with ".") such as .git/, .claude/, .vscode/ are ignored
+// because they do not represent user project files and should not block
+// scaffolding.
 func assertEmptyOrAbsent(projectDir string) error {
 	entries, err := os.ReadDir(projectDir)
 	if errors.Is(err, os.ErrNotExist) {
@@ -290,11 +293,13 @@ func assertEmptyOrAbsent(projectDir string) error {
 	if err != nil {
 		return fmt.Errorf("checking project directory: %w", err)
 	}
-	if len(entries) > 0 {
-		return fmt.Errorf(
-			"directory %q already exists and is not empty: %w",
-			projectDir, os.ErrExist,
-		)
+	for _, e := range entries {
+		if !strings.HasPrefix(e.Name(), ".") {
+			return fmt.Errorf(
+				"directory %q already exists and is not empty: %w",
+				projectDir, os.ErrExist,
+			)
+		}
 	}
 	return nil
 }

@@ -170,14 +170,16 @@ func TestAddTLSCmd(t *testing.T) {
 		args            []string
 		wantErr         bool
 		wantOutContains string
-		wantInYAML      []string
+		wantInYAML      []string // expected in vibewarden.yaml (base config)
+		notInYAML       []string // must NOT be in vibewarden.yaml (base config)
 	}{
 		{
-			name:            "adds tls section with domain",
+			name:            "adds tls section without domain in base config",
 			initial:         minimalVibeWardenYAML,
 			args:            []string{"tls", "--domain", "example.com"},
 			wantOutContains: `"tls" enabled successfully`,
-			wantInYAML:      []string{"enabled: true", "example.com", "letsencrypt"},
+			wantInYAML:      []string{"enabled: true", "letsencrypt"},
+			notInYAML:       []string{"example.com"}, // domain goes to production file only
 		},
 		{
 			name:    "missing domain returns error",
@@ -190,14 +192,16 @@ func TestAddTLSCmd(t *testing.T) {
 			initial:         minimalVibeWardenYAML,
 			args:            []string{"tls", "--domain", "internal.corp", "--provider", "self-signed"},
 			wantOutContains: `"tls" enabled successfully`,
-			wantInYAML:      []string{"self-signed", "internal.corp"},
+			wantInYAML:      []string{"self-signed"},
+			notInYAML:       []string{"internal.corp"}, // domain goes to production file only
 		},
 		{
-			name:            "already enabled tls with new domain updates settings",
+			name:            "already enabled tls preserves base config provider",
 			initial:         "tls:\n  enabled: true\n  domain: foo.com\n  provider: self-signed\n",
 			args:            []string{"tls", "--domain", "bar.com", "--provider", "letsencrypt"},
-			wantOutContains: `"tls" enabled successfully`,
-			wantInYAML:      []string{"enabled: true", "bar.com", "letsencrypt"},
+			wantOutContains: "already enabled",
+			wantInYAML:      []string{"enabled: true", "self-signed"}, // provider NOT changed
+			notInYAML:       []string{"bar.com", "letsencrypt"},       // domain and new provider go to prod only
 		},
 	}
 
@@ -221,12 +225,17 @@ func TestAddTLSCmd(t *testing.T) {
 			if tt.wantOutContains != "" && !strings.Contains(out, tt.wantOutContains) {
 				t.Errorf("output %q does not contain %q", out, tt.wantOutContains)
 			}
-			if len(tt.wantInYAML) > 0 {
+			if len(tt.wantInYAML) > 0 || len(tt.notInYAML) > 0 {
 				content, _ := os.ReadFile(filepath.Join(dir, "vibewarden.yaml"))
 				str := string(content)
 				for _, want := range tt.wantInYAML {
 					if !strings.Contains(str, want) {
 						t.Errorf("vibewarden.yaml missing %q\n\n%s", want, str)
+					}
+				}
+				for _, notWant := range tt.notInYAML {
+					if strings.Contains(str, notWant) {
+						t.Errorf("vibewarden.yaml should NOT contain %q (domain belongs in production file)\n\n%s", notWant, str)
 					}
 				}
 			}

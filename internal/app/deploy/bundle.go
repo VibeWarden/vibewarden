@@ -96,6 +96,10 @@ func (s *Service) bundleSingleSite(ctx context.Context, cfg *config.Config, conf
 	// Resolve upstream.host on the typed Config for template rendering.
 	resolved := ResolveProdConfig(cfg, projectName, false)
 
+	// Set deploy mode so the template uses build context paths relative to
+	// the deploy bundle directory (e.g. "." instead of "../../.").
+	resolved.DeployMode = true
+
 	// Build the merged YAML map for writing vibewarden.yaml.
 	// This preserves original field names (rate_limit, security_headers, etc.).
 	configData, err := buildMergedConfigYAML(configPath, prodConfigPath, projectName, false, cfg)
