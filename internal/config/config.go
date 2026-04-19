@@ -130,9 +130,17 @@ type Config struct {
 
 	// DeployMode is set to true by the deploy service when generating files for
 	// a deploy bundle. Templates use this to adjust paths (e.g. build context
-	// is "." in deploy mode instead of "../../." in dev mode). This field is
-	// not loaded from YAML — it is set programmatically.
+	// is the original App.Build value in deploy mode instead of the resolved
+	// ProjectRoot in dev mode). This field is not loaded from YAML — it is set
+	// programmatically.
 	DeployMode bool `mapstructure:"-"`
+
+	// ProjectRoot is the absolute path to the project directory (i.e. the
+	// directory containing vibewarden.yaml). It is set programmatically at
+	// generation time so that the docker-compose.yml template can reference an
+	// absolute build context instead of fragile relative paths like "../../.".
+	// This field is not loaded from YAML.
+	ProjectRoot string `mapstructure:"-"`
 }
 
 // WatchConfig holds settings for the config file watcher.
@@ -222,6 +230,23 @@ func (c *Config) EgressNoProxy() string {
 	}
 
 	return strings.Join(parts, ",")
+}
+
+// ResolvedBuildContext returns the Docker build context path for the app
+// service. In deploy mode it returns App.Build verbatim (a relative path
+// that Docker Compose resolves from the compose file directory). In
+// generate mode it returns the absolute build context by joining ProjectRoot
+// with the App.Build subdirectory (stripping a leading "./" prefix first).
+// When App.Build is "." (project root), ProjectRoot alone is returned.
+func (c *Config) ResolvedBuildContext() string {
+	if c.DeployMode {
+		return c.App.Build
+	}
+	if c.App.Build == "" || c.App.Build == "." {
+		return c.ProjectRoot
+	}
+	sub := strings.TrimPrefix(c.App.Build, "./")
+	return c.ProjectRoot + "/" + sub
 }
 
 // DatabasePoolConfig holds connection pool settings for PostgreSQL.

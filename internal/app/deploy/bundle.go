@@ -104,8 +104,8 @@ func (s *Service) bundleSingleSite(ctx context.Context, cfg *config.Config, conf
 	// Resolve upstream.host on the merged Config for template rendering.
 	resolved := ResolveProdConfig(mergedCfg, projectName, false)
 
-	// Set deploy mode so the template uses build context paths relative to
-	// the deploy bundle directory (e.g. "." instead of "../../.").
+	// Set deploy mode so the template uses the original App.Build value as
+	// the build context (e.g. ".") instead of the resolved ProjectRoot.
 	resolved.DeployMode = true
 
 	// When app.build is set, the image is built locally by `vibew build` and

@@ -382,13 +382,20 @@ func TestPlugin_ContributeCaddyRoutes_HasKratosFlowPaths(t *testing.T) {
 	}
 
 	wantPaths := []string{
+		"/self-service/login",
 		"/self-service/login/*",
+		"/self-service/registration",
 		"/self-service/registration/*",
+		"/self-service/logout",
 		"/self-service/logout/*",
+		"/self-service/settings",
 		"/self-service/settings/*",
+		"/self-service/recovery",
 		"/self-service/recovery/*",
+		"/self-service/verification",
 		"/self-service/verification/*",
 		"/.ory/kratos/public/*",
+		"/sessions/whoami",
 	}
 
 	if len(paths) != len(wantPaths) {

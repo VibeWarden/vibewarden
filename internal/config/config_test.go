@@ -3172,3 +3172,35 @@ func TestComposeProjectName(t *testing.T) {
 		})
 	}
 }
+
+func TestResolvedBuildContext(t *testing.T) {
+	tests := []struct {
+		name        string
+		projectRoot string
+		appBuild    string
+		deployMode  bool
+		want        string
+	}{
+		{"dot build uses project root", "/home/user/myapp", ".", false, "/home/user/myapp"},
+		{"empty build uses project root", "/home/user/myapp", "", false, "/home/user/myapp"},
+		{"subdirectory is appended", "/home/user/myapp", "./src", false, "/home/user/myapp/src"},
+		{"subdirectory without dot-slash", "/home/user/myapp", "src", false, "/home/user/myapp/src"},
+		{"nested subdirectory", "/home/user/myapp", "./apps/web", false, "/home/user/myapp/apps/web"},
+		{"deploy mode returns build verbatim", "/home/user/myapp", "./src", true, "./src"},
+		{"deploy mode dot build", "/home/user/myapp", ".", true, "."},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &config.Config{
+				ProjectRoot: tt.projectRoot,
+				DeployMode:  tt.deployMode,
+			}
+			cfg.App.Build = tt.appBuild
+			got := cfg.ResolvedBuildContext()
+			if got != tt.want {
+				t.Errorf("ResolvedBuildContext() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}

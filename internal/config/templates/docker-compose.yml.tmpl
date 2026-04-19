@@ -41,7 +41,7 @@ services:
     restart: unless-stopped
 {{- if .App.Build }}
     build:
-      context: {{ if .DeployMode }}{{ .App.Build }}{{ else }}../../{{ .App.Build }}{{ end }}
+      context: {{ .ResolvedBuildContext }}
 {{- else if .App.Image }}
     image: ${VIBEWARDEN_APP_IMAGE:-{{ .App.Image }}}
 {{- end }}
@@ -275,7 +275,7 @@ services:
     environment:
       KRATOS_ADMIN_URL: http://kratos:4434
     volumes:
-      - ../../scripts/seed-users.sh:/seed-users.sh:ro
+      - {{ .ProjectRoot }}/scripts/seed-users.sh:/seed-users.sh:ro
     command: sh /seed-users.sh
     depends_on:
       kratos:

@@ -16,6 +16,24 @@ import (
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
 
+// resolveProjectRoot returns the absolute path to the project root directory.
+// When configSourcePath is set, the project root is the directory containing
+// the config file. Otherwise, the current working directory is used.
+func resolveProjectRoot(configSourcePath string) (string, error) {
+	if configSourcePath != "" {
+		abs, err := filepath.Abs(configSourcePath)
+		if err != nil {
+			return "", fmt.Errorf("resolving config source path: %w", err)
+		}
+		return filepath.Dir(abs), nil
+	}
+	wd, err := os.Getwd()
+	if err != nil {
+		return "", fmt.Errorf("resolving working directory: %w", err)
+	}
+	return wd, nil
+}
+
 const defaultOutputDir = ".vibewarden/generated"
 
 // File permission constants used throughout this package.
@@ -96,6 +114,16 @@ func (s *Service) Generate(ctx context.Context, input ports.GeneratorInput, outp
 
 	// Sanitise the caller-supplied output directory to prevent path traversal.
 	outputDir = filepath.Clean(outputDir)
+
+	// Resolve the project root so that the docker-compose.yml template can use
+	// an absolute build context path instead of fragile relative paths.
+	if cfg.ProjectRoot == "" {
+		root, err := resolveProjectRoot(s.configSourcePath)
+		if err != nil {
+			return fmt.Errorf("resolving project root: %w", err)
+		}
+		cfg.ProjectRoot = root
+	}
 
 	// Warn when prod profile is used without secrets enabled.
 	// OpenBao is strongly recommended for production but is no longer mandatory

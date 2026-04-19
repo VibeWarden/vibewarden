@@ -9,13 +9,20 @@ import (
 // the Kratos public API instead of the upstream application.
 // These paths are the Kratos self-service browser flows and the Ory canonical prefix.
 var kratosFlowPaths = []string{
+	"/self-service/login",
 	"/self-service/login/*",
+	"/self-service/registration",
 	"/self-service/registration/*",
+	"/self-service/logout",
 	"/self-service/logout/*",
+	"/self-service/settings",
 	"/self-service/settings/*",
+	"/self-service/recovery",
 	"/self-service/recovery/*",
+	"/self-service/verification",
 	"/self-service/verification/*",
 	"/.ory/kratos/public/*",
+	"/sessions/whoami",
 }
 
 // buildKratosFlowRoute constructs a Caddy route that transparently proxies all

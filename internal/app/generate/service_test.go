@@ -563,8 +563,14 @@ func TestGenerate_AppService_BuildMode(t *testing.T) {
 	if !bytes.Contains(compose, []byte("build:")) {
 		t.Error("expected 'build:' directive")
 	}
-	if !bytes.Contains(compose, []byte("context: ../../.")) {
-		t.Error("expected 'context: ../../.' (build path prefixed with ../../ for compose-file-relative resolution)")
+	// The build context should be an absolute path (ProjectRoot), not a
+	// relative "../../." prefix. The absolute path is resolved from cwd at
+	// generation time.
+	if bytes.Contains(compose, []byte("context: ../../.")) {
+		t.Error("build context must be an absolute path, not relative '../../.'")
+	}
+	if !bytes.Contains(compose, []byte("context: /")) {
+		t.Error("expected build context to be an absolute path starting with '/'")
 	}
 	if bytes.Contains(compose, []byte("image: ${VIBEWARDEN_APP_IMAGE")) {
 		t.Error("image: directive must not appear in build mode")
@@ -593,8 +599,17 @@ func TestGenerate_AppService_BothSet_BuildTakesPrecedence(t *testing.T) {
 	if !bytes.Contains(compose, []byte("build:")) {
 		t.Error("expected 'build:' directive when both build and image are set")
 	}
-	if !bytes.Contains(compose, []byte("context: ../.././src")) {
-		t.Error("expected 'context: ../.././src' (build path prefixed with ../../ for compose-file-relative resolution)")
+	// The build context should be an absolute path (ProjectRoot/src), not a
+	// relative "../.././src" prefix.
+	if bytes.Contains(compose, []byte("context: ../../")) {
+		t.Error("build context must be an absolute path, not relative '../../'")
+	}
+	if !bytes.Contains(compose, []byte("context: /")) {
+		t.Error("expected build context to be an absolute path starting with '/'")
+	}
+	// The subdirectory "src" must be preserved in the build context path.
+	if !bytes.Contains(compose, []byte("/src")) {
+		t.Error("build context must include the 'src' subdirectory from App.Build")
 	}
 	// image: for the app service must not appear when build takes precedence.
 	// Note: "image:" still appears in vibewarden service itself so we check
