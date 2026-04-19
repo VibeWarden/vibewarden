@@ -40,7 +40,7 @@ const defaultOutputDir = ".vibewarden/generated"
 const (
 	// permDir is the permission mode for generated directories.
 	// Group and world execute bits are omitted to prevent unintended access.
-	permDir = os.FileMode(0o750)
+	permDir = os.FileMode(0o755)
 	// permConfig is the permission mode for generated config/data files.
 	// Readable only by the owner to protect credentials embedded in kratos.yml.
 	permConfig = os.FileMode(0o644)

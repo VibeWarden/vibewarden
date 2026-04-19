@@ -404,11 +404,19 @@ Examples:
 				absConfig = configPath
 			}
 
+			// Load config to get the project name (cfg.Name).
+			logsCfg, loadErr := config.Load(absConfig)
+			var projectName string
+			if loadErr == nil && logsCfg.Name != "" {
+				projectName = logsCfg.Name
+			}
+
 			return svc.Logs(cmd.Context(), deployapp.LogsOptions{
-				ConfigPath: absConfig,
-				Lines:      lines,
-				Follow:     follow,
-				Out:        cmd.OutOrStdout(),
+				ConfigPath:  absConfig,
+				ProjectName: projectName,
+				Lines:       lines,
+				Follow:      follow,
+				Out:         cmd.OutOrStdout(),
 			})
 		},
 	}
