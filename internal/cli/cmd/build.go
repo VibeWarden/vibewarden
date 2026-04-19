@@ -42,7 +42,8 @@ Examples:
 			}
 
 			builder := opsadapter.NewBuildAdapter()
-			svc := opsapp.NewBuildService(builder)
+			svc := opsapp.NewBuildService(builder).
+				WithShellProber(opsadapter.NewShellProberAdapter())
 
 			opts := opsapp.BuildOptions{
 				NoCache:    noCache,

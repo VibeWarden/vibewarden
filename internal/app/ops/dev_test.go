@@ -527,3 +527,66 @@ func TestDevService_ImageCheck_CheckerError_ReturnsError(t *testing.T) {
 		t.Errorf("error should wrap checker error, got: %v", err)
 	}
 }
+
+func TestDevService_LetsencryptWarning(t *testing.T) {
+	fc := &fakeCompose{}
+	svc := ops.NewDevService(fc)
+	cfg := defaultConfig()
+	cfg.TLS.Enabled = true
+	cfg.TLS.Provider = "letsencrypt"
+	var buf bytes.Buffer
+
+	err := svc.Run(context.Background(), cfg, ops.DevOptions{}, &buf)
+	if err != nil {
+		t.Fatalf("Run() unexpected error: %v", err)
+	}
+
+	out := buf.String()
+	if !strings.Contains(out, "tls.provider is 'letsencrypt'") {
+		t.Errorf("expected letsencrypt warning in output, got:\n%s", out)
+	}
+	if !strings.Contains(out, "ACME HTTP-01") {
+		t.Errorf("expected ACME HTTP-01 mention in output, got:\n%s", out)
+	}
+	if !strings.Contains(out, "self-signed") {
+		t.Errorf("expected self-signed suggestion in output, got:\n%s", out)
+	}
+}
+
+func TestDevService_SelfSigned_NoLetsencryptWarning(t *testing.T) {
+	fc := &fakeCompose{}
+	svc := ops.NewDevService(fc)
+	cfg := defaultConfig()
+	cfg.TLS.Enabled = true
+	cfg.TLS.Provider = "self-signed"
+	var buf bytes.Buffer
+
+	err := svc.Run(context.Background(), cfg, ops.DevOptions{}, &buf)
+	if err != nil {
+		t.Fatalf("Run() unexpected error: %v", err)
+	}
+
+	out := buf.String()
+	if strings.Contains(out, "tls.provider is 'letsencrypt'") {
+		t.Errorf("unexpected letsencrypt warning when provider is self-signed:\n%s", out)
+	}
+}
+
+func TestDevService_TLSDisabled_NoLetsencryptWarning(t *testing.T) {
+	fc := &fakeCompose{}
+	svc := ops.NewDevService(fc)
+	cfg := defaultConfig()
+	cfg.TLS.Enabled = false
+	cfg.TLS.Provider = "letsencrypt"
+	var buf bytes.Buffer
+
+	err := svc.Run(context.Background(), cfg, ops.DevOptions{}, &buf)
+	if err != nil {
+		t.Fatalf("Run() unexpected error: %v", err)
+	}
+
+	out := buf.String()
+	if strings.Contains(out, "tls.provider is 'letsencrypt'") {
+		t.Errorf("unexpected letsencrypt warning when TLS is disabled:\n%s", out)
+	}
+}

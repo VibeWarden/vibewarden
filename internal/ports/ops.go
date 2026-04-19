@@ -25,11 +25,11 @@ type ComposeRunner interface {
 	// The output of the command is streamed to the caller via the returned channel.
 	Up(ctx context.Context, composeFile string, profiles []string) error
 
-	// Restart restarts services in the compose project.
-	// composeFile is the path to the docker-compose.yml; when empty the default
-	// discovery logic applies.
-	// services is the optional list of service names to restart; when empty all
-	// services are restarted.
+	// Restart rebuilds and recreates services in the compose project using
+	// docker compose up -d --force-recreate --build. This ensures Dockerfile
+	// changes are picked up. composeFile is the path to the docker-compose.yml;
+	// when empty the default discovery logic applies. services is the optional
+	// list of service names to restart; when empty all services are restarted.
 	Restart(ctx context.Context, composeFile string, services []string) error
 
 	// Version returns the docker compose version string.
@@ -78,4 +78,22 @@ type DockerImageChecker interface {
 	// Returns an error only for unexpected failures (e.g. docker daemon
 	// unreachable); a missing image is not an error — it returns (false, nil).
 	ImageExists(ctx context.Context, name string) (bool, error)
+}
+
+// DockerShellProber checks whether a Docker image contains /bin/sh.
+// Implementations shell out to the docker CLI.
+type DockerShellProber interface {
+	// HasShell returns true when the image contains a working /bin/sh.
+	// Returns an error only for unexpected failures (e.g. docker daemon
+	// unreachable); an image without a shell is not an error — it returns
+	// (false, nil).
+	HasShell(ctx context.Context, image string) (bool, error)
+}
+
+// ComposeLogs fetches recent log lines from a Docker Compose service.
+// Implementations shell out to the docker compose CLI.
+type ComposeLogs interface {
+	// Tail returns the last n lines of logs from the specified service in the
+	// given compose file. Returns an empty string when no logs are available.
+	Tail(ctx context.Context, composeFile string, service string, n int) (string, error)
 }
