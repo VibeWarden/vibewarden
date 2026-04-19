@@ -74,6 +74,36 @@ vibew status       # check sidecar health
 vibew logs         # pretty-print structured logs
 ```
 
+## Writing your Dockerfile
+
+Your Dockerfile MUST:
+- Expose the port matching `upstream.port` in vibewarden.yaml (default: 3000)
+- Use an Alpine-based image (not distroless/scratch) for the healthcheck to work
+- Be a production-quality multi-stage build
+
+Example (Node.js):
+```dockerfile
+FROM node:22-alpine
+WORKDIR /app
+COPY package*.json ./
+RUN npm ci --omit=dev
+COPY . .
+EXPOSE 3000
+CMD ["node", "server.js"]
+```
+
+Example (Go):
+```dockerfile
+FROM golang:1.24-alpine AS build
+WORKDIR /app
+COPY . .
+RUN CGO_ENABLED=0 go build -o server .
+FROM alpine:3.21
+COPY --from=build /app/server /app/server
+EXPOSE 3000
+CMD ["/app/server"]
+```
+
 ## Known limitations
 
 - WAF is in `detect` mode by default (logs but does not block). Set `waf.mode: block` in vibewarden.yaml to enforce blocking.

@@ -32,6 +32,12 @@ type InitProjectOptions struct {
 	// Description is an optional one-line description of what the project builds.
 	// When set it is included in PROJECT.md and injected into agent templates.
 	Description string
+
+	// Name is an explicit project name for Docker Compose project naming and
+	// deploy directories. When set, it is written to vibewarden.yaml as the
+	// top-level name: field. When empty, the project name is derived from the
+	// directory name.
+	Name string
 }
 
 // InitProjectService scaffolds a complete new project.
@@ -103,6 +109,7 @@ func (s *InitProjectService) InitProject(ctx context.Context, parentDir string, 
 		ProjectName: opts.ProjectName,
 		Port:        opts.Port,
 		Description: opts.Description,
+		Name:        opts.Name,
 	}
 
 	// Render AGENTS-VIBEWARDEN.md — always overwritten (vibew-owned file).

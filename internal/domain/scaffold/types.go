@@ -125,6 +125,11 @@ type InitProjectData struct {
 	// When set it is included in PROJECT.md and injected into agent files so that
 	// AI coding assistants have context about the project's purpose from the start.
 	Description string
+
+	// Name is the explicit project name set via --name flag. When set, it is
+	// written to vibewarden.yaml as the top-level name: field for project-scoped
+	// Docker Compose image naming and deploy directory derivation.
+	Name string
 }
 
 // AgentContextData is the data passed to agent context templates when rendering.

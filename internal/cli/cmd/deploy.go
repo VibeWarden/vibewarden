@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 
 	"github.com/spf13/cobra"
 
@@ -33,6 +34,7 @@ func NewDeployCmd() *cobra.Command {
 		unsealKey     string
 		force         bool
 		env           string
+		dryRun        bool
 	)
 
 	cmd := &cobra.Command{
@@ -60,23 +62,23 @@ The system ssh and rsync binaries are used so your SSH agent and
 
 Remote directory: ~/vibewarden/<project-name>/
 
+Use --dry-run to generate the deploy bundle and inspect its contents without
+transferring anything to the remote host. No SSH, rsync, or Docker commands
+are executed.
+
 Examples:
   vibew deploy --config vibewarden.prod.yaml --target ssh://ubuntu@203.0.113.10
   vibew deploy --config vibewarden.prod.yaml --target ssh://deploy@myserver.example.com:2222
   vibew deploy --config vibewarden.prod.yaml --target ssh://ubuntu@203.0.113.10 --secrets-from .env.prod
-  vibew deploy --config vibewarden.prod.yaml --target ssh://ubuntu@203.0.113.10 --rotate-secrets --secrets-from .env.prod`,
+  vibew deploy --config vibewarden.prod.yaml --target ssh://ubuntu@203.0.113.10 --rotate-secrets --secrets-from .env.prod
+  vibew deploy --dry-run --target ssh://ubuntu@203.0.113.10`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			if err := requireScaffolding(); err != nil {
 				return err
 			}
 
-			if target == "" {
+			if !dryRun && target == "" {
 				return fmt.Errorf("--target is required (e.g. ssh://user@host)")
-			}
-
-			t, err := sshadapter.ParseTarget(target)
-			if err != nil {
-				return fmt.Errorf("invalid --target: %w", err)
 			}
 
 			// Determine the deployment environment name.
@@ -90,31 +92,54 @@ Examples:
 				return fmt.Errorf("loading config: %w", err)
 			}
 
-			var executor *sshadapter.Executor
-			if sshKey != "" {
-				executor = sshadapter.NewExecutorWithKey(t, sshKey)
-			} else {
-				executor = sshadapter.NewExecutor(t)
+			// Resolve the config path to an absolute path. When --config is
+			// not provided, default to vibewarden.yaml in the current directory
+			// so that filepath.Dir returns the project directory (not ".").
+			resolvedConfig := configPath
+			if resolvedConfig == "" {
+				resolvedConfig = "vibewarden.yaml"
 			}
-			renderer := templateadapter.NewRenderer(configtemplates.FS)
-			generator := generateapp.NewServiceWithCredentials(
-				renderer,
-				credentialsadapter.NewGenerator(),
-				credentialsadapter.NewStore(),
-			).WithConfigSourcePath(configPath)
-			svc := deployapp.NewService(executor, generator).
-				WithImageExporter(opsadapter.NewImageExportAdapter())
-
-			absConfig, err := filepath.Abs(configPath)
+			absConfig, err := filepath.Abs(resolvedConfig)
 			if err != nil {
-				absConfig = configPath
+				absConfig = resolvedConfig
 			}
 
 			// Determine the production override file path after resolving the
 			// base config to an absolute path.
 			prodConfigPath := prodConfigPathForEnv(absConfig, envName)
 
-			projectName := deployapp.ProjectNameFromConfig(absConfig)
+			projectName := cfg.Name
+			if projectName == "" {
+				projectName = deployapp.ProjectNameFromConfig(absConfig)
+			}
+
+			renderer := templateadapter.NewRenderer(configtemplates.FS)
+			generator := generateapp.NewServiceWithCredentials(
+				renderer,
+				credentialsadapter.NewGenerator(),
+				credentialsadapter.NewStore(),
+			).WithConfigSourcePath(configPath)
+
+			// --dry-run: generate bundle, list contents, and exit.
+			if dryRun {
+				svc := deployapp.NewService(nil, generator)
+				return runDeployDryRun(cmd, svc, cfg, absConfig, prodConfigPath, projectName, envName)
+			}
+
+			t, err := sshadapter.ParseTarget(target)
+			if err != nil {
+				return fmt.Errorf("invalid --target: %w", err)
+			}
+
+			var executor *sshadapter.Executor
+			if sshKey != "" {
+				executor = sshadapter.NewExecutorWithKey(t, sshKey)
+			} else {
+				executor = sshadapter.NewExecutor(t)
+			}
+			svc := deployapp.NewService(executor, generator).
+				WithImageExporter(opsadapter.NewImageExportAdapter())
+
 			remoteDir := "~/vibewarden/" + projectName + "/"
 
 			opts := deployapp.RunOptions{
@@ -192,10 +217,9 @@ Examples:
 	cmd.Flags().StringVar(&unsealKey, "unseal-key", "", "OpenBao unseal key (required when redeploying a sealed instance); overrides stored key")
 	cmd.Flags().BoolVar(&force, "force", false, "overwrite remote files even if they have been modified since last deploy")
 	cmd.Flags().StringVar(&env, "env", "production", `deployment environment name; reads vibewarden.<env>.yaml as production override`)
+	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "generate the deploy bundle and list its contents without deploying")
 
-	if err := cmd.MarkFlagRequired("target"); err != nil {
-		fmt.Fprintln(os.Stderr, "warning: flag required registration failed:", err)
-	}
+	// --target is validated manually in RunE to allow --dry-run without a target.
 	if err := cmd.RegisterFlagCompletionFunc("config", func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
 		return []string{"yaml", "yml"}, cobra.ShellCompDirectiveFilterFileExt
 	}); err != nil {
@@ -388,6 +412,71 @@ Examples:
 	}
 
 	return cmd
+}
+
+// runDeployDryRun generates the deploy bundle and lists its contents without
+// performing any remote operations. It prints the bundle file listing and
+// key configuration values, then returns nil.
+func runDeployDryRun(
+	cmd *cobra.Command,
+	svc *deployapp.Service,
+	cfg *config.Config,
+	absConfig, prodConfigPath, projectName, envName string,
+) error {
+	out := cmd.OutOrStdout()
+
+	bundleDir, err := os.MkdirTemp("", "vibewarden-dry-run-*")
+	if err != nil {
+		return fmt.Errorf("creating temp bundle directory: %w", err)
+	}
+	defer func() { _ = os.RemoveAll(bundleDir) }()
+
+	fmt.Fprintln(out, "Dry run: generating deploy bundle...")
+	if err := svc.Bundle(cmd.Context(), deployapp.BundleOptions{
+		Config:         cfg,
+		ConfigPath:     absConfig,
+		ProdConfigPath: prodConfigPath,
+		ProjectName:    projectName,
+		OutputDir:      bundleDir,
+		Env:            envName,
+	}); err != nil {
+		return fmt.Errorf("creating deploy bundle: %w", err)
+	}
+
+	fmt.Fprintln(out, "")
+	fmt.Fprintf(out, "Project:     %s\n", projectName)
+	fmt.Fprintf(out, "Environment: %s\n", envName)
+	fmt.Fprintf(out, "Remote dir:  ~/vibewarden/%s/\n", projectName)
+	fmt.Fprintln(out, "")
+	fmt.Fprintln(out, "Bundle contents:")
+
+	var files []string
+	err = filepath.Walk(bundleDir, func(path string, info os.FileInfo, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if info.IsDir() {
+			return nil
+		}
+		rel, relErr := filepath.Rel(bundleDir, path)
+		if relErr != nil {
+			return relErr
+		}
+		files = append(files, rel)
+		return nil
+	})
+	if err != nil {
+		return fmt.Errorf("listing bundle contents: %w", err)
+	}
+
+	sort.Strings(files)
+	for _, f := range files {
+		fmt.Fprintf(out, "  %s\n", f)
+	}
+
+	fmt.Fprintln(out, "")
+	fmt.Fprintln(out, "Dry run complete. No files were transferred.")
+	return nil
 }
 
 // prodConfigPathForEnv returns the path to the environment-specific production

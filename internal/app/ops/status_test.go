@@ -184,7 +184,7 @@ func TestStatusService_PluginSectionShown(t *testing.T) {
 	}
 
 	// Each canonical plugin name must appear.
-	for _, name := range []string{"tls", "security-headers", "rate-limiting", "auth", "metrics", "user-management"} {
+	for _, name := range []string{"tls", "security-headers", "rate-limiting", "auth", "metrics", "user-management", "waf", "cors", "egress", "compression"} {
 		if !strings.Contains(out, name) {
 			t.Errorf("expected plugin %q in status output, got:\n%s", name, out)
 		}
@@ -379,5 +379,61 @@ func TestStatusService_ProxyUnreachable_DoctorSuggestion(t *testing.T) {
 	out := buf.String()
 	if !strings.Contains(out, "vibew doctor") {
 		t.Errorf("expected 'vibew doctor' suggestion in output, got:\n%s", out)
+	}
+}
+
+// TestStatusService_WAFPluginShown verifies that the WAF plugin appears in
+// status output with its mode detail when enabled.
+//
+// Artifact test for #960.
+func TestStatusService_WAFPluginShown(t *testing.T) {
+	cfg := defaultConfig()
+	cfg.WAF.Enabled = true
+	cfg.WAF.Mode = "block"
+
+	proxyBase := "https://localhost:8443"
+	checker := &fakeHealthChecker{responses: map[string]healthResponse{
+		proxyBase + "/_vibewarden/health":          {ok: true, statusCode: 200},
+		proxyBase + "/_vibewarden/metrics":         {ok: true, statusCode: 200},
+		"http://127.0.0.1:4434/admin/health/ready": {ok: true, statusCode: 200},
+	}}
+
+	svc := ops.NewStatusService(checker)
+	var buf bytes.Buffer
+	if err := svc.Run(context.Background(), cfg, &buf); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	out := buf.String()
+	if !strings.Contains(out, "waf") {
+		t.Errorf("expected 'waf' in plugin status output, got:\n%s", out)
+	}
+	if !strings.Contains(out, "mode: block") {
+		t.Errorf("expected 'mode: block' detail for WAF plugin, got:\n%s", out)
+	}
+}
+
+// TestStatusService_WAFPluginDisabledShown verifies that when WAF is disabled,
+// it still appears in the plugin list but shows as disabled.
+func TestStatusService_WAFPluginDisabledShown(t *testing.T) {
+	cfg := defaultConfig()
+	cfg.WAF.Enabled = false
+
+	proxyBase := "https://localhost:8443"
+	checker := &fakeHealthChecker{responses: map[string]healthResponse{
+		proxyBase + "/_vibewarden/health":          {ok: true, statusCode: 200},
+		proxyBase + "/_vibewarden/metrics":         {ok: true, statusCode: 200},
+		"http://127.0.0.1:4434/admin/health/ready": {ok: true, statusCode: 200},
+	}}
+
+	svc := ops.NewStatusService(checker)
+	var buf bytes.Buffer
+	if err := svc.Run(context.Background(), cfg, &buf); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	out := buf.String()
+	if !strings.Contains(out, "waf") {
+		t.Errorf("expected 'waf' in plugin status output even when disabled, got:\n%s", out)
 	}
 }

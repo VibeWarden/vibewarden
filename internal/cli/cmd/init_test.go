@@ -455,17 +455,15 @@ func TestInitCmd_NoGroupFlag(t *testing.T) {
 	}
 }
 
-// TestInitCmd_NoNameFlag verifies that the --name flag no longer exists.
-func TestInitCmd_NoNameFlag(t *testing.T) {
+// TestInitCmd_NameFlagRegistered verifies that the --name flag exists on init.
+func TestInitCmd_NameFlagRegistered(t *testing.T) {
 	root := cmd.NewRootCmd("test")
-	root.SetArgs([]string{"init", "--help"})
-	var out bytes.Buffer
-	root.SetOut(&out)
-
-	_ = root.Execute()
-	helpOutput := out.String()
-	if strings.Contains(helpOutput, "--name") {
-		t.Errorf("--name flag must not exist on init command, but appears in help:\n%s", helpOutput)
+	initCmd, _, err := root.Find([]string{"init"})
+	if err != nil {
+		t.Fatalf("Find(init) error: %v", err)
+	}
+	if initCmd.Flags().Lookup("name") == nil {
+		t.Error("expected --name flag on init command")
 	}
 }
 
@@ -500,5 +498,84 @@ func TestInitCmd_HelpOutput(t *testing.T) {
 	// Must mention current directory.
 	if !strings.Contains(helpOutput, "current") {
 		t.Errorf("help should mention 'current' (directory):\n%s", helpOutput)
+	}
+}
+
+// TestInitCmd_NameFlag_WritesNameToConfig verifies that --name sets the
+// top-level name: field in the generated vibewarden.yaml so that Docker Compose
+// uses a project-scoped image name instead of the generic "vibewarden-app".
+//
+// Artifact test for #955 and #959.
+func TestInitCmd_NameFlag_WritesNameToConfig(t *testing.T) {
+	parent := scaffoldTestDir(t, false)
+	projectDir := filepath.Join(parent, "testproj")
+	if err := os.MkdirAll(projectDir, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+
+	origDir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(projectDir); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(origDir) })
+
+	root := cmd.NewRootCmd("test")
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetArgs([]string{"init", "--name", "my-cool-project"})
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("init --name failed: %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(projectDir, "vibewarden.yaml"))
+	if err != nil {
+		t.Fatalf("reading vibewarden.yaml: %v", err)
+	}
+
+	if !strings.Contains(string(data), `name: "my-cool-project"`) {
+		t.Errorf("vibewarden.yaml should contain 'name: \"my-cool-project\"', got:\n%s", data)
+	}
+}
+
+// TestInitCmd_NoNameFlag_NoNameInConfig verifies that when --name is not set,
+// vibewarden.yaml does not contain a top-level name: field.
+//
+// Artifact test for #955.
+func TestInitCmd_NoNameFlag_NoNameInConfig(t *testing.T) {
+	parent := scaffoldTestDir(t, false)
+	projectDir := filepath.Join(parent, "testproj2")
+	if err := os.MkdirAll(projectDir, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+
+	origDir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(projectDir); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(origDir) })
+
+	root := cmd.NewRootCmd("test")
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetArgs([]string{"init"})
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("init without --name failed: %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(projectDir, "vibewarden.yaml"))
+	if err != nil {
+		t.Fatalf("reading vibewarden.yaml: %v", err)
+	}
+
+	if strings.Contains(string(data), "name:") {
+		t.Errorf("vibewarden.yaml should NOT contain 'name:' when --name is not set, got:\n%s", data)
 	}
 }
