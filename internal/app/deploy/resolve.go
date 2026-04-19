@@ -161,6 +161,22 @@ func deepMerge(dst, src map[string]any) {
 	}
 }
 
+// loadMergedConfig loads the production override file (if prodConfigPath is
+// non-empty) and overlays its values on top of base. When prodConfigPath is
+// empty the base config is returned unchanged. Errors from config.Load are
+// propagated so that syntax errors in the production YAML are never silently
+// ignored.
+func loadMergedConfig(base *config.Config, prodConfigPath string) (*config.Config, error) {
+	if prodConfigPath == "" {
+		return base, nil
+	}
+	prodCfg, err := config.Load(prodConfigPath)
+	if err != nil {
+		return nil, fmt.Errorf("loading production config %s: %w", prodConfigPath, err)
+	}
+	return overlayProdConfig(base, prodCfg), nil
+}
+
 // overlayProdConfig creates a copy of base with non-zero values from prod
 // overlaid on top. Only fields relevant to deploy are checked: Server.Port,
 // TLS (Enabled, Provider, Domain), and Log.Level.
