@@ -13,16 +13,18 @@ import (
 
 // fakeBuilder is a test double for ports.DockerBuilder.
 type fakeBuilder struct {
-	err             error
-	capturedTag     string
-	capturedDir     string
-	capturedNoCache bool
+	err              error
+	capturedTag      string
+	capturedDir      string
+	capturedNoCache  bool
+	capturedPlatform string
 }
 
-func (f *fakeBuilder) Build(_ context.Context, tag string, contextDir string, noCache bool) error {
+func (f *fakeBuilder) Build(_ context.Context, tag string, contextDir string, noCache bool, platform string) error {
 	f.capturedTag = tag
 	f.capturedDir = contextDir
 	f.capturedNoCache = noCache
+	f.capturedPlatform = platform
 	return f.err
 }
 
@@ -193,6 +195,61 @@ func TestBuildService_Run_PassesWorkDirToBuilder(t *testing.T) {
 
 	if fb.capturedDir != dir {
 		t.Errorf("contextDir = %q, want %q", fb.capturedDir, dir)
+	}
+}
+
+func TestBuildService_Run_PassesPlatformToBuilder(t *testing.T) {
+	tests := []struct {
+		name     string
+		platform string
+	}{
+		{"empty platform", ""},
+		{"linux/amd64", "linux/amd64"},
+		{"linux/arm64", "linux/arm64"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fb := &fakeBuilder{}
+			svc := ops.NewBuildService(fb)
+
+			cfg := &config.Config{}
+			cfg.App.Image = "img:latest"
+
+			var out bytes.Buffer
+			err := svc.Run(context.Background(), cfg, ops.BuildOptions{
+				Platform: tt.platform,
+				WorkDir:  ".",
+			}, &out)
+			if err != nil {
+				t.Fatalf("Run() unexpected error: %v", err)
+			}
+
+			if fb.capturedPlatform != tt.platform {
+				t.Errorf("platform = %q, want %q", fb.capturedPlatform, tt.platform)
+			}
+		})
+	}
+}
+
+func TestBuildService_Run_PlatformPrintedInOutput(t *testing.T) {
+	fb := &fakeBuilder{}
+	svc := ops.NewBuildService(fb)
+
+	cfg := &config.Config{}
+	cfg.App.Image = "myapp:latest"
+
+	var out bytes.Buffer
+	err := svc.Run(context.Background(), cfg, ops.BuildOptions{
+		Platform: "linux/amd64",
+		WorkDir:  ".",
+	}, &out)
+	if err != nil {
+		t.Fatalf("Run() unexpected error: %v", err)
+	}
+
+	if !strings.Contains(out.String(), "linux/amd64") {
+		t.Errorf("output missing platform indication: %s", out.String())
 	}
 }
 

@@ -73,6 +73,7 @@ func buildProxyConfig(cfg *config.Config, registry *plugins.Registry, version st
 			CertPath:    cfg.TLS.CertPath,
 			KeyPath:     cfg.TLS.KeyPath,
 			StoragePath: cfg.TLS.StoragePath,
+			ACMECA:      cfg.TLS.ACMECA,
 		},
 		SecurityHeaders: ports.SecurityHeadersConfig{
 			Enabled:               cfg.SecurityHeaders.Enabled,

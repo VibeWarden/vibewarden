@@ -487,6 +487,81 @@ func TestBuildCaddyConfig_LetsEncryptACMEIssuer(t *testing.T) {
 	}
 }
 
+// TestBuildCaddyConfig_LetsEncryptACMECA verifies that when ACMECA is set, the
+// ACME issuer includes a "ca" field pointing to the custom directory URL.
+func TestBuildCaddyConfig_LetsEncryptACMECA(t *testing.T) {
+	tests := []struct {
+		name   string
+		acmeCA string
+		wantCA bool
+	}{
+		{
+			name:   "default CA (empty)",
+			acmeCA: "",
+			wantCA: false,
+		},
+		{
+			name:   "staging CA",
+			acmeCA: "https://acme-staging-v02.api.letsencrypt.org/directory",
+			wantCA: true,
+		},
+		{
+			name:   "custom CA",
+			acmeCA: "https://acme.zerossl.com/v2/DV90",
+			wantCA: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &ports.ProxyConfig{
+				ListenAddr:   "0.0.0.0:443",
+				UpstreamAddr: "127.0.0.1:3000",
+				TLS: ports.TLSConfig{
+					Enabled:  true,
+					Provider: ports.TLSProviderLetsEncrypt,
+					Domain:   "example.com",
+					ACMECA:   tt.acmeCA,
+				},
+			}
+
+			result, err := BuildCaddyConfig(cfg)
+			if err != nil {
+				t.Fatalf("BuildCaddyConfig() unexpected error: %v", err)
+			}
+
+			apps := result["apps"].(map[string]any)
+			tlsApp := apps["tls"].(map[string]any)
+			automation := tlsApp["automation"].(map[string]any)
+			policies := automation["policies"].([]map[string]any)
+
+			if len(policies) == 0 {
+				t.Fatal("expected at least one automation policy")
+			}
+
+			issuers, ok := policies[0]["issuers"].([]map[string]any)
+			if !ok || len(issuers) == 0 {
+				t.Fatal("issuers not found in automation policy")
+			}
+
+			acmeIssuer := issuers[0]
+			caVal, hasCA := acmeIssuer["ca"]
+
+			if tt.wantCA {
+				if !hasCA {
+					t.Errorf("expected 'ca' field in ACME issuer for acme_ca=%q", tt.acmeCA)
+				} else if caVal != tt.acmeCA {
+					t.Errorf("ca = %q, want %q", caVal, tt.acmeCA)
+				}
+			} else {
+				if hasCA {
+					t.Errorf("unexpected 'ca' field in ACME issuer when acme_ca is empty: %v", caVal)
+				}
+			}
+		})
+	}
+}
+
 // TestBuildCaddyConfig_StorageAtTopLevel verifies that when StoragePath is set,
 // the storage module appears at the top level of the Caddy config (not inside
 // apps.tls). Placing storage inside apps.tls causes Caddy to reject the config

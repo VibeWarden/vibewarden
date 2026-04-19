@@ -447,13 +447,19 @@ func buildTLSApp(cfg ports.TLSConfig) (map[string]any, error) {
 // to reject the config with "unknown field: storage". Storage is set at the
 // top-level in BuildCaddyConfig when cfg.StoragePath is non-empty.
 func buildLetsEncryptTLSApp(cfg ports.TLSConfig) map[string]any {
+	acmeIssuer := map[string]any{
+		"module": "acme",
+	}
+	// When ACMECA is set, override the default ACME directory URL.
+	// This allows using Let's Encrypt staging, ZeroSSL, or any other
+	// ACME-compliant CA.
+	if cfg.ACMECA != "" {
+		acmeIssuer["ca"] = cfg.ACMECA
+	}
+
 	policy := map[string]any{
 		"subjects": []string{cfg.Domain},
-		"issuers": []map[string]any{
-			{
-				"module": "acme",
-			},
-		},
+		"issuers":  []map[string]any{acmeIssuer},
 	}
 
 	return map[string]any{

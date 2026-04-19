@@ -455,6 +455,10 @@ type TLSConfig struct {
 	// StoragePath is the directory where Caddy stores ACME certificates.
 	// Only applies when Provider is "letsencrypt".
 	StoragePath string `mapstructure:"storage_path"`
+	// ACMECA is the ACME directory URL to use instead of Let's Encrypt production.
+	// Only applies when Provider is "letsencrypt".
+	// Example: "https://acme-staging-v02.api.letsencrypt.org/directory"
+	ACMECA string `mapstructure:"acme_ca"`
 	// CertMonitoring holds configuration for the background certificate expiry monitor.
 	CertMonitoring TLSCertMonitoringConfig `mapstructure:"cert_monitoring"`
 }
