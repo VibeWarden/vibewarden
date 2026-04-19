@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"io"
 	"path/filepath"
-	"strings"
 
 	"github.com/vibewarden/vibewarden/internal/config"
 )
@@ -52,6 +51,10 @@ type AppComposeData struct {
 
 	// AppLanguage is the app's language/runtime for health check probe selection.
 	AppLanguage string
+
+	// AppEnvironment is a map of custom environment variables to inject into
+	// the app container.
+	AppEnvironment map[string]string
 }
 
 // BootstrapSidecar creates the full multi-app directory layout on the remote
@@ -133,23 +136,15 @@ func (s *Service) BootstrapSidecar(ctx context.Context, cfg *config.Config, opts
 		return fmt.Errorf("transferring site bundle: %w", err)
 	}
 
-	// Step 4b: if app.build is set, rsync the build context to the remote site
-	// dir. Use TransferExcluding to prevent the project's original config files
-	// from overwriting the merged bundle files deployed in the previous step.
+	// Step 4b: transfer local image if applicable.
+	// When app.build is set, the image was built locally by `vibew build`.
+	// Derive the image name and transfer via docker save/load.
+	imageName := cfg.App.Image
 	if cfg.App.Build != "" {
-		projectRoot := filepath.Dir(filepath.Clean(opts.ConfigPath))
-		buildContextLocal := filepath.Join(projectRoot, cfg.App.Build)
-		buildContextRemote := siteDir + strings.TrimPrefix(strings.TrimSuffix(cfg.App.Build, "/"), "./") + "/"
-		fmt.Fprintf(out, "Transferring app build context (%s)...\n", cfg.App.Build)
-		if err := s.executor.TransferExcluding(ctx, buildContextLocal, buildContextRemote, false, buildContextExcludes); err != nil {
-			return fmt.Errorf("transferring app build context: %w", err)
-		}
+		imageName = cfg.ComposeProjectName() + "-app:latest"
 	}
-
-	// Step 4c: transfer local image if using a bare image name (no registry prefix)
-	// and an image exporter is configured.
-	if cfg.App.Image != "" && isLocalImage(cfg.App.Image) && s.imageExporter != nil {
-		if err := s.transferLocalImage(ctx, cfg.App.Image, siteDir, out); err != nil {
+	if imageName != "" && isLocalImage(imageName) && s.imageExporter != nil {
+		if err := s.transferLocalImage(ctx, imageName, siteDir, out); err != nil {
 			return fmt.Errorf("transferring local image: %w", err)
 		}
 	}
@@ -157,9 +152,6 @@ func (s *Service) BootstrapSidecar(ctx context.Context, cfg *config.Config, opts
 	// Step 5: start the app container.
 	fmt.Fprintf(out, "Starting site %q...\n", projectName)
 	startCmd := fmt.Sprintf("cd %s && docker compose up -d", siteDir)
-	if cfg.App.Build != "" {
-		startCmd = fmt.Sprintf("cd %s && docker compose up -d --build", siteDir)
-	}
 	if _, err := s.executor.Run(ctx, startCmd); err != nil {
 		return fmt.Errorf("starting app container: %w", err)
 	}
@@ -235,23 +227,15 @@ func (s *Service) DeployMultiApp(ctx context.Context, cfg *config.Config, opts R
 		return fmt.Errorf("transferring site bundle: %w", err)
 	}
 
-	// Step 3b: if app.build is set, rsync the build context to the remote site
-	// dir. Use TransferExcluding to prevent the project's original config files
-	// from overwriting the merged bundle files deployed in the previous step.
+	// Step 3b: transfer local image if applicable.
+	// When app.build is set, the image was built locally by `vibew build`.
+	// Derive the image name and transfer via docker save/load.
+	imageName := cfg.App.Image
 	if cfg.App.Build != "" {
-		projectRoot := filepath.Dir(filepath.Clean(opts.ConfigPath))
-		buildContextLocal := filepath.Join(projectRoot, cfg.App.Build)
-		buildContextRemote := siteDir + strings.TrimPrefix(strings.TrimSuffix(cfg.App.Build, "/"), "./") + "/"
-		fmt.Fprintf(out, "Transferring app build context (%s)...\n", cfg.App.Build)
-		if err := s.executor.TransferExcluding(ctx, buildContextLocal, buildContextRemote, false, buildContextExcludes); err != nil {
-			return fmt.Errorf("transferring app build context: %w", err)
-		}
+		imageName = cfg.ComposeProjectName() + "-app:latest"
 	}
-
-	// Step 3c: transfer local image if using a bare image name (no registry prefix)
-	// and an image exporter is configured.
-	if cfg.App.Image != "" && isLocalImage(cfg.App.Image) && s.imageExporter != nil {
-		if err := s.transferLocalImage(ctx, cfg.App.Image, siteDir, out); err != nil {
+	if imageName != "" && isLocalImage(imageName) && s.imageExporter != nil {
+		if err := s.transferLocalImage(ctx, imageName, siteDir, out); err != nil {
 			return fmt.Errorf("transferring local image: %w", err)
 		}
 	}
@@ -259,9 +243,6 @@ func (s *Service) DeployMultiApp(ctx context.Context, cfg *config.Config, opts R
 	// Step 4: start the app container.
 	fmt.Fprintf(out, "Starting site %q...\n", projectName)
 	startCmd := fmt.Sprintf("cd %s && docker compose up -d", siteDir)
-	if cfg.App.Build != "" {
-		startCmd = fmt.Sprintf("cd %s && docker compose up -d --build", siteDir)
-	}
 	if _, err := s.executor.Run(ctx, startCmd); err != nil {
 		return fmt.Errorf("starting app container: %w", err)
 	}

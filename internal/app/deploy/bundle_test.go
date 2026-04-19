@@ -229,7 +229,7 @@ func TestBundleSidecar_DefaultPort(t *testing.T) {
 	}
 }
 
-func TestBundle_MultiSite_AppBuildInCompose(t *testing.T) {
+func TestBundle_MultiSite_AppBuildUsesImage(t *testing.T) {
 	generator := &fakeGenerator{}
 	svc := deployapp.NewService(&fakeExecutor{}, generator)
 
@@ -257,11 +257,16 @@ func TestBundle_MultiSite_AppBuildInCompose(t *testing.T) {
 		t.Fatalf("reading compose: %v", err)
 	}
 	content := string(data)
-	if !strings.Contains(content, "build:") {
-		t.Errorf("expected 'build:' in compose for build mode, got:\n%s", content)
+	// Deploy compose must use image: instead of build: because the image
+	// is built locally and transferred via docker save/load.
+	if strings.Contains(content, "build:") {
+		t.Errorf("expected no 'build:' in deploy compose (image transfer mode), got:\n%s", content)
 	}
-	if !strings.Contains(content, "context: .") {
-		t.Errorf("expected 'context: .' in compose for build mode, got:\n%s", content)
+	if !strings.Contains(content, "image:") {
+		t.Errorf("expected 'image:' in deploy compose, got:\n%s", content)
+	}
+	if !strings.Contains(content, "vibewarden-app:latest") {
+		t.Errorf("expected 'vibewarden-app:latest' in deploy compose, got:\n%s", content)
 	}
 }
 

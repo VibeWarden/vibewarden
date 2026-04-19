@@ -15,6 +15,12 @@ services:
 {{- else if .AppImage }}
     image: {{ .AppImage }}
 {{- end }}
+{{- if len .AppEnvironment }}
+    environment:
+{{- range $key, $value := .AppEnvironment }}
+      - {{ $key }}={{ $value }}
+{{- end }}
+{{- end }}
 {{- if ne .AppHealthcheck "none" }}
     healthcheck:
       test:

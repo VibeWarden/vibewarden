@@ -47,11 +47,16 @@ services:
 {{- end }}
     networks:
       - {{ .InternalNetworkName }}
-{{- if .Egress.Enabled }}
+{{- if or .Egress.Enabled (len .App.Environment) }}
     environment:
+{{- if .Egress.Enabled }}
       - HTTP_PROXY=http://vibewarden:{{ .Egress.ListenPort }}
       - HTTPS_PROXY=http://vibewarden:{{ .Egress.ListenPort }}
       - NO_PROXY={{ .EgressNoProxy }}
+{{- end }}
+{{- range $key, $value := .App.Environment }}
+      - {{ $key }}={{ $value }}
+{{- end }}
 {{- end }}
 {{- if ne .App.Healthcheck "none" }}
     healthcheck:

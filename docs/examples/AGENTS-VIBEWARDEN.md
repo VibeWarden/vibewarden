@@ -104,6 +104,31 @@ EXPOSE 3000
 CMD ["/app/server"]
 ```
 
+## Deploy model
+
+`vibew build` builds the Docker image locally from your Dockerfile. `vibew deploy`
+transfers the pre-built image to the server via `docker save | rsync | docker load`.
+No source code is ever copied to the production server -- the image must be
+production-ready (all dependencies installed, assets compiled, etc.).
+
+Use `app.environment` in vibewarden.yaml for runtime configuration:
+```yaml
+app:
+  build: "."
+  environment:
+    DATABASE_URL: "postgres://user:pass@db:5432/myapp"
+    REDIS_URL: "redis://redis:6379"
+```
+
+Do NOT bake secrets into the Docker image. Use environment variables or
+the secrets plugin (OpenBao) for sensitive values.
+
+## Extra services (database, cache, etc.)
+
+Create `docker-compose.override.yml` next to your `vibewarden.yaml` for additional
+services like PostgreSQL or Redis. Docker Compose auto-merges it with the
+generated compose. VibeWarden never overwrites this file.
+
 ## Known limitations
 
 - WAF is in `detect` mode by default (logs but does not block). Set `waf.mode: block` in vibewarden.yaml to enforce blocking.

@@ -114,6 +114,15 @@ func (f *fakeGenerator) Generate(_ context.Context, _ ports.GeneratorInput, _ st
 	return f.err
 }
 
+// fakeImageExporter is a test double for ports.ImageExporter.
+type fakeImageExporter struct {
+	err error
+}
+
+func (f *fakeImageExporter) Save(_ context.Context, _, _ string) error {
+	return f.err
+}
+
 // defaultConfig returns a minimal Config for testing.
 func defaultConfig() *config.Config {
 	return &config.Config{
@@ -740,8 +749,8 @@ func TestService_Deploy_ImageMode(t *testing.T) {
 }
 
 // TestService_Deploy_BuildMode verifies that when cfg.App.Build is set the
-// deploy flow transfers the build context and runs docker compose up -d --build
-// instead of docker compose pull && docker compose up -d.
+// deploy flow transfers the image (not source code) and runs docker compose
+// up -d without --build.
 func TestService_Deploy_BuildMode(t *testing.T) {
 	executor := &fakeExecutor{}
 	generator := &fakeGenerator{}
@@ -759,49 +768,42 @@ func TestService_Deploy_BuildMode(t *testing.T) {
 		t.Fatalf("Deploy() unexpected error: %v", err)
 	}
 
-	// docker compose up -d --build must be called.
-	assertRunCalledContains(t, executor.runCalls, "docker compose up -d --build")
+	// docker compose up -d must be called (without --build).
+	assertRunCalledContains(t, executor.runCalls, "docker compose up -d")
 
-	// docker compose pull vibewarden (sidecar image refresh) must be called even
-	// in build mode, to ensure the sidecar is not running a stale cached image.
-	assertRunCalledContains(t, executor.runCalls, "docker compose pull vibewarden")
-
-	// But a full docker compose pull (all services) must NOT be called --
-	// only the targeted vibewarden pull should occur.
+	// --build must NOT appear -- image is pre-built and transferred.
 	for _, c := range executor.runCalls {
-		if c != "" && strings.Contains(c, "docker compose pull") && !strings.Contains(c, "pull vibewarden") {
-			t.Errorf("unexpected broad 'docker compose pull' in build mode, got run call: %q", c)
+		if strings.Contains(c, "--build") {
+			t.Errorf("did not expect --build flag in image transfer mode, got: %q", c)
 		}
 	}
 
-	// One Transfer call (bundle) + one TransferExcluding call (build context).
+	// docker compose pull vibewarden (sidecar image refresh) must be called.
+	assertRunCalledContains(t, executor.runCalls, "docker compose pull vibewarden")
+
+	// Only the bundle transfer is expected (one Transfer call).
 	if len(executor.transferCalls) != 1 {
 		t.Errorf("expected 1 Transfer call in build mode (bundle only), got %d: %v",
 			len(executor.transferCalls), executor.transferCalls)
 	}
-	if len(executor.transferExcludingCalls) != 1 {
-		t.Errorf("expected 1 TransferExcluding call in build mode (build context), got %d: %v",
+
+	// No TransferExcluding -- no source code transfer.
+	if len(executor.transferExcludingCalls) != 0 {
+		t.Errorf("expected 0 TransferExcluding calls in build mode, got %d: %v",
 			len(executor.transferExcludingCalls), executor.transferExcludingCalls)
 	}
 }
 
-// TestService_Deploy_BuildMode_TransferContextFails verifies that a failure to
-// transfer the app build context is propagated correctly.
-func TestService_Deploy_BuildMode_TransferContextFails(t *testing.T) {
-	callCount := 0
-	executor := &mockRunExecutor{
-		runFn: func(_ string) (string, error) { return "", nil },
+// TestService_Deploy_BuildMode_ImageTransferFails verifies that a failure to
+// transfer the locally-built image is propagated correctly.
+func TestService_Deploy_BuildMode_ImageTransferFails(t *testing.T) {
+	executor := &fakeExecutor{
+		transferFileErr: fmt.Errorf("rsync failed"),
 	}
-	// Wrap in a custom executor that fails on the second Transfer call (build context).
-	failingTransfer := &buildContextFailExecutor{
-		mockRunExecutor: executor,
-		failOnTransfer:  2,
-		transferErr:     fmt.Errorf("rsync failed"),
-		callCount:       &callCount,
-	}
-
 	generator := &fakeGenerator{}
-	svc := deployapp.NewService(failingTransfer, generator)
+
+	exporter := &fakeImageExporter{}
+	svc := deployapp.NewService(executor, generator).WithImageExporter(exporter)
 
 	cfg := defaultConfig()
 	cfg.App.Build = "."
@@ -811,45 +813,11 @@ func TestService_Deploy_BuildMode_TransferContextFails(t *testing.T) {
 		GeneratedDir: t.TempDir(),
 	})
 	if err == nil {
-		t.Fatal("expected error when build context transfer fails")
+		t.Fatal("expected error when image transfer fails")
 	}
-	if !strings.Contains(err.Error(), "transferring app build context") {
-		t.Errorf("error should mention 'transferring app build context', got: %v", err)
+	if !strings.Contains(err.Error(), "transferring") {
+		t.Errorf("error should mention 'transferring', got: %v", err)
 	}
-}
-
-// buildContextFailExecutor wraps mockRunExecutor and fails on the nth Transfer call.
-type buildContextFailExecutor struct {
-	*mockRunExecutor
-	failOnTransfer int
-	transferErr    error
-	callCount      *int
-}
-
-func (b *buildContextFailExecutor) Transfer(_ context.Context, localDir, remoteDir string, deleteExtra bool) error {
-	*b.callCount++
-	if *b.callCount == b.failOnTransfer {
-		return b.transferErr
-	}
-	b.transferCalls = append(b.transferCalls,
-		transferCall{localDir: localDir, remoteDir: remoteDir, deleteExtra: deleteExtra})
-	return nil
-}
-
-func (b *buildContextFailExecutor) TransferExcluding(_ context.Context, localDir, remoteDir string, deleteExtra bool, excludes []string) error {
-	*b.callCount++
-	if *b.callCount == b.failOnTransfer {
-		return b.transferErr
-	}
-	b.transferExcludingCalls = append(b.transferExcludingCalls,
-		transferExcludingCall{localDir: localDir, remoteDir: remoteDir, deleteExtra: deleteExtra, excludes: excludes})
-	return nil
-}
-
-func (b *buildContextFailExecutor) TransferFile(_ context.Context, localFile, remotePath string) error {
-	b.transferFileCalls = append(b.transferFileCalls,
-		transferFileCall{localFile: localFile, remotePath: remotePath})
-	return nil
 }
 
 // TestProjectNameFromConfig_Unit directly exercises ProjectNameFromConfig with
@@ -1139,10 +1107,10 @@ func TestService_LogsMultiApp_Error(t *testing.T) {
 // Ensure fmt is used (used in assertRunCalledContains via Errorf).
 var _ = fmt.Sprintf
 
-// TestService_Deploy_PullsSidecarBeforeBuild verifies that "docker compose pull
-// vibewarden" is always executed before starting services in build mode, so that
+// TestService_Deploy_PullsSidecarBeforeUp verifies that "docker compose pull
+// vibewarden" is always executed before starting services, so that
 // the sidecar image is never served from a stale Docker layer cache.
-func TestService_Deploy_PullsSidecarBeforeBuild(t *testing.T) {
+func TestService_Deploy_PullsSidecarBeforeUp(t *testing.T) {
 	executor := &fakeExecutor{}
 	generator := &fakeGenerator{}
 
@@ -1162,13 +1130,13 @@ func TestService_Deploy_PullsSidecarBeforeBuild(t *testing.T) {
 	// "docker compose pull vibewarden" must appear in run calls.
 	assertRunCalledContains(t, executor.runCalls, "docker compose pull vibewarden")
 
-	// Verify ordering: pull vibewarden must come before compose up --build.
+	// Verify ordering: pull vibewarden must come before compose up.
 	pullIdx, upIdx := -1, -1
 	for i, c := range executor.runCalls {
 		if strings.Contains(c, "docker compose pull vibewarden") && pullIdx == -1 {
 			pullIdx = i
 		}
-		if strings.Contains(c, "docker compose up -d --build") && upIdx == -1 {
+		if strings.Contains(c, "docker compose up -d") && upIdx == -1 {
 			upIdx = i
 		}
 	}
@@ -1176,10 +1144,10 @@ func TestService_Deploy_PullsSidecarBeforeBuild(t *testing.T) {
 		t.Error("'docker compose pull vibewarden' was not found in run calls")
 	}
 	if upIdx == -1 {
-		t.Error("'docker compose up -d --build' was not found in run calls")
+		t.Error("'docker compose up -d' was not found in run calls")
 	}
 	if pullIdx != -1 && upIdx != -1 && pullIdx >= upIdx {
-		t.Errorf("expected 'docker compose pull vibewarden' (call %d) before 'docker compose up -d --build' (call %d)", pullIdx, upIdx)
+		t.Errorf("expected 'docker compose pull vibewarden' (call %d) before 'docker compose up -d' (call %d)", pullIdx, upIdx)
 	}
 }
 

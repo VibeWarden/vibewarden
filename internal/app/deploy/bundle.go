@@ -108,6 +108,14 @@ func (s *Service) bundleSingleSite(ctx context.Context, cfg *config.Config, conf
 	// the deploy bundle directory (e.g. "." instead of "../../.").
 	resolved.DeployMode = true
 
+	// When app.build is set, the image is built locally by `vibew build` and
+	// transferred via docker save/load. The deploy compose must use `image:`
+	// (not `build:`) because no source code is present on the server.
+	if resolved.App.Build != "" {
+		resolved.App.Image = mergedCfg.ComposeProjectName() + "-app:latest"
+		resolved.App.Build = ""
+	}
+
 	// Use the generator to produce docker-compose.yml, kratos/, credentials,
 	// etc. The generator writes directly into outputDir. This must run BEFORE
 	// the merged config write because the generator copies the original
@@ -144,8 +152,18 @@ func (s *Service) bundleMultiSiteSite(_ context.Context, cfg *config.Config, con
 		return fmt.Errorf("writing vibewarden.yaml to bundle: %w", err)
 	}
 
+	// When app.build is set, the image is built locally and transferred via
+	// docker save/load. The per-app compose must use image: instead of build:.
+	composeCfg := cfg
+	if cfg.App.Build != "" {
+		cfgCopy := *cfg
+		cfgCopy.App.Image = cfg.ComposeProjectName() + "-app:latest"
+		cfgCopy.App.Build = ""
+		composeCfg = &cfgCopy
+	}
+
 	// Render and write the per-app compose file.
-	appCompose, err := renderAppCompose(cfg, projectName)
+	appCompose, err := renderAppCompose(composeCfg, projectName)
 	if err != nil {
 		return fmt.Errorf("rendering app compose: %w", err)
 	}
@@ -238,6 +256,7 @@ func renderAppCompose(cfg *config.Config, projectName string) (string, error) {
 		AppHealthcheck: healthcheck,
 		UpstreamPort:   cfg.Upstream.Port,
 		AppLanguage:    cfg.App.Language,
+		AppEnvironment: cfg.App.Environment,
 	}
 
 	var buf bytes.Buffer
