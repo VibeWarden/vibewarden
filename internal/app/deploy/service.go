@@ -281,13 +281,18 @@ func (s *Service) Deploy(ctx context.Context, cfg *config.Config, opts RunOption
 
 	// Step 6: health check -- run curl on the remote so the probe is independent
 	// of DNS propagation, external port availability, and TLS certificate issuance.
-	port := cfg.Server.Port
+	// Use the merged config (base + prod overlay) for the correct port and TLS state.
+	healthCfg, err := loadMergedConfig(cfg, opts.ProdConfigPath)
+	if err != nil {
+		return err
+	}
+	port := healthCfg.Server.Port
 	if port == 0 {
 		port = defaultHealthPort
 	}
-	healthURL := healthCheckURL(port, cfg.TLS.Enabled)
+	healthURL := healthCheckURL(port, healthCfg.TLS.Enabled)
 	fmt.Fprintf(out, "Waiting for sidecar health check at %s (via SSH)...\n", healthURL)
-	if !s.waitHealthy(ctx, port, cfg.TLS.Enabled, out) {
+	if !s.waitHealthy(ctx, port, healthCfg.TLS.Enabled, out) {
 		fmt.Fprintln(out, "Deploy completed but health check failed — verify with: vibew deploy status")
 		return ErrHealthCheck
 	}

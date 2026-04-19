@@ -527,9 +527,105 @@ security_headers:
 	}
 }
 
-// TestArtifact_FirstDeploy_NoDriftWarning verifies that on first deploy to an
-// empty remote, the dry-run output containing only new-file entries (all "+"
-// attributes) does NOT trigger a DriftError. Only actual modifications should
-// be treated as drift.
+// TestArtifact_Bundle_GeneratorWriteOverwrittenByMerge is a regression test
+// for #953. It verifies that the merged vibewarden.yaml is written AFTER the
+// generator runs, so a generator that copies the unmerged base config into the
+// output directory does not clobber the production overlay.
 //
-// Regression test for #962.
+// The test uses a fake generator that writes a sentinel value to
+// vibewarden.yaml, then verifies the final file has the merged (production)
+// content, not the sentinel.
+func TestArtifact_Bundle_GeneratorWriteOverwrittenByMerge(t *testing.T) {
+	projDir := t.TempDir()
+	outputDir := t.TempDir()
+
+	baseYAML := `server:
+  port: 8443
+upstream:
+  host: "0.0.0.0"
+  port: 3000
+tls:
+  enabled: true
+  provider: self-signed
+app:
+  image: "myapp:latest"
+`
+	basePath := filepath.Join(projDir, "vibewarden.yaml")
+	if err := os.WriteFile(basePath, []byte(baseYAML), 0o600); err != nil {
+		t.Fatalf("writing base config: %v", err)
+	}
+
+	prodYAML := `server:
+  port: 443
+tls:
+  enabled: true
+  provider: letsencrypt
+  domain: app.example.com
+`
+	prodPath := filepath.Join(projDir, "vibewarden.production.yaml")
+	if err := os.WriteFile(prodPath, []byte(prodYAML), 0o600); err != nil {
+		t.Fatalf("writing prod config: %v", err)
+	}
+
+	cfg := &config.Config{
+		Server:   config.ServerConfig{Port: 443},
+		Upstream: config.UpstreamConfig{Host: "0.0.0.0", Port: 3000},
+		App:      config.AppConfig{Image: "myapp:latest"},
+		TLS:      config.TLSConfig{Enabled: true, Provider: "letsencrypt", Domain: "app.example.com"},
+	}
+
+	// sentinelGenerator writes a sentinel value to vibewarden.yaml in the output
+	// directory, simulating the real generator which copies the original config.
+	gen := &sentinelGenerator{sentinel: "provider: SENTINEL_NOT_MERGED"}
+	svc := deployapp.NewService(&fakeExecutor{}, gen)
+
+	err := svc.Bundle(context.Background(), deployapp.BundleOptions{
+		Config:         cfg,
+		ConfigPath:     basePath,
+		ProdConfigPath: prodPath,
+		ProjectName:    "myapp",
+		MultiSite:      false,
+		OutputDir:      outputDir,
+	})
+	if err != nil {
+		t.Fatalf("Bundle() error = %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(outputDir, "vibewarden.yaml"))
+	if err != nil {
+		t.Fatalf("reading bundled config: %v", err)
+	}
+
+	s := string(data)
+
+	// The sentinel must NOT appear -- the merged write must overwrite it.
+	if strings.Contains(s, "SENTINEL_NOT_MERGED") {
+		t.Errorf("bundled vibewarden.yaml contains sentinel from generator; merged write did not overwrite it:\n%s", s)
+	}
+
+	// The production values must be present.
+	if !strings.Contains(s, "provider: letsencrypt") {
+		t.Errorf("expected 'provider: letsencrypt' in merged config, got:\n%s", s)
+	}
+	if !strings.Contains(s, "port: 443") {
+		t.Errorf("expected 'port: 443' in merged config, got:\n%s", s)
+	}
+	if !strings.Contains(s, "domain: app.example.com") {
+		t.Errorf("expected 'domain: app.example.com' in merged config, got:\n%s", s)
+	}
+}
+
+// sentinelGenerator is a test double for ports.ConfigGenerator that writes a
+// sentinel value to vibewarden.yaml in the output directory, simulating the
+// real generator's behaviour of copying the base config into the output.
+type sentinelGenerator struct {
+	sentinel string
+}
+
+func (g *sentinelGenerator) Generate(_ context.Context, _ ports.GeneratorInput, outputDir string) error {
+	dir := outputDir
+	if err := os.MkdirAll(dir, 0o750); err != nil {
+		return err
+	}
+	return os.WriteFile(filepath.Join(dir, "vibewarden.yaml"), []byte(g.sentinel), 0o600)
+}

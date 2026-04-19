@@ -389,3 +389,132 @@ security_headers:
 		t.Errorf("rate_limit.enabled = %v, want true", rl["enabled"])
 	}
 }
+
+func TestOverlayProdConfig(t *testing.T) {
+	tests := []struct {
+		name         string
+		base         *config.Config
+		prod         *config.Config
+		wantPort     int
+		wantProvider string
+		wantDomain   string
+		wantTLS      bool
+		wantLogLevel string
+		wantWAFMode  string
+	}{
+		{
+			name: "prod overrides all fields",
+			base: &config.Config{
+				Server: config.ServerConfig{Port: 8443},
+				TLS:    config.TLSConfig{Enabled: true, Provider: "self-signed"},
+			},
+			prod: &config.Config{
+				Server: config.ServerConfig{Port: 443},
+				TLS:    config.TLSConfig{Enabled: true, Provider: "letsencrypt", Domain: "example.com"},
+				Log:    config.LogConfig{Level: "warn"},
+				WAF:    config.WAFConfig{Mode: "block"},
+			},
+			wantPort:     443,
+			wantProvider: "letsencrypt",
+			wantDomain:   "example.com",
+			wantTLS:      true,
+			wantLogLevel: "warn",
+			wantWAFMode:  "block",
+		},
+		{
+			name: "prod zero port keeps base port",
+			base: &config.Config{
+				Server: config.ServerConfig{Port: 8443},
+				TLS:    config.TLSConfig{Provider: "self-signed"},
+			},
+			prod: &config.Config{
+				Server: config.ServerConfig{Port: 0},
+			},
+			wantPort:     8443,
+			wantProvider: "self-signed",
+		},
+		{
+			name: "prod empty provider keeps base provider",
+			base: &config.Config{
+				TLS: config.TLSConfig{Provider: "self-signed"},
+			},
+			prod: &config.Config{
+				TLS: config.TLSConfig{Provider: ""},
+			},
+			wantProvider: "self-signed",
+		},
+		{
+			name: "prod WAF mode block overrides base",
+			base: &config.Config{
+				WAF: config.WAFConfig{Mode: "detect"},
+			},
+			prod: &config.Config{
+				WAF: config.WAFConfig{Mode: "block"},
+			},
+			wantWAFMode: "block",
+		},
+		{
+			name: "all zero prod returns base unchanged",
+			base: &config.Config{
+				Server: config.ServerConfig{Port: 8443},
+				TLS:    config.TLSConfig{Enabled: true, Provider: "self-signed", Domain: "dev.local"},
+				Log:    config.LogConfig{Level: "debug"},
+				WAF:    config.WAFConfig{Mode: "detect"},
+			},
+			prod:         &config.Config{},
+			wantPort:     8443,
+			wantProvider: "self-signed",
+			wantDomain:   "dev.local",
+			wantTLS:      true,
+			wantLogLevel: "debug",
+			wantWAFMode:  "detect",
+		},
+		{
+			name: "does not mutate base",
+			base: &config.Config{
+				Server: config.ServerConfig{Port: 8443},
+			},
+			prod: &config.Config{
+				Server: config.ServerConfig{Port: 443},
+			},
+			wantPort: 443,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			originalPort := tt.base.Server.Port
+
+			got := overlayProdConfig(tt.base, tt.prod)
+
+			if tt.wantPort != 0 && got.Server.Port != tt.wantPort {
+				t.Errorf("Server.Port = %d, want %d", got.Server.Port, tt.wantPort)
+			}
+			if tt.wantProvider != "" && got.TLS.Provider != tt.wantProvider {
+				t.Errorf("TLS.Provider = %q, want %q", got.TLS.Provider, tt.wantProvider)
+			}
+			if tt.wantDomain != "" && got.TLS.Domain != tt.wantDomain {
+				t.Errorf("TLS.Domain = %q, want %q", got.TLS.Domain, tt.wantDomain)
+			}
+			if tt.wantTLS && !got.TLS.Enabled {
+				t.Error("TLS.Enabled = false, want true")
+			}
+			if tt.wantLogLevel != "" && got.Log.Level != tt.wantLogLevel {
+				t.Errorf("Log.Level = %q, want %q", got.Log.Level, tt.wantLogLevel)
+			}
+			if tt.wantWAFMode != "" && got.WAF.Mode != tt.wantWAFMode {
+				t.Errorf("WAF.Mode = %q, want %q", got.WAF.Mode, tt.wantWAFMode)
+			}
+
+			// Verify the original base is not mutated.
+			if tt.name == "does not mutate base" && tt.base.Server.Port != originalPort {
+				t.Errorf("base.Server.Port was mutated: got %d, want %d", tt.base.Server.Port, originalPort)
+			}
+
+			// Verify the result is a distinct pointer from the input.
+			if got == tt.base {
+				t.Error("overlayProdConfig returned the same pointer as base, want a copy")
+			}
+		})
+	}
+}
