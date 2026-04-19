@@ -14,6 +14,9 @@ services:
     ports:
       - "{{ .ListenPort }}:{{ .ListenPort }}"
       - "80:80"
+    dns:
+      - "1.1.1.1"
+      - "8.8.8.8"
     volumes:
       - ./global.yaml:/etc/vibewarden/global.yaml:ro
       - ../sites:/etc/vibewarden/sites:ro

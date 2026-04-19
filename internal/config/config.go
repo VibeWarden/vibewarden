@@ -122,6 +122,12 @@ type Config struct {
 
 	// Watch configures the config file watcher for hot reload.
 	Watch WatchConfig `mapstructure:"watch"`
+
+	// DeployMode is set to true by the deploy service when generating files for
+	// a deploy bundle. Templates use this to adjust paths (e.g. build context
+	// is "." in deploy mode instead of "../../." in dev mode). This field is
+	// not loaded from YAML — it is set programmatically.
+	DeployMode bool `mapstructure:"-"`
 }
 
 // WatchConfig holds settings for the config file watcher.
