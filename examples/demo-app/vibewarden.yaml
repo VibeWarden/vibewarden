@@ -7,6 +7,8 @@
 #
 # Or simply: make demo
 
+name: demo-app
+
 # Deployment profile: dev | tls | prod
 profile: dev
 
