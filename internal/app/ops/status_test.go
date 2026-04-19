@@ -233,6 +233,9 @@ func (f *fakeStatusCompose) Info(_ context.Context) error              { return 
 func (f *fakeStatusCompose) PS(_ context.Context, _ string) ([]ports.ContainerInfo, error) {
 	return f.psResult, f.psErr
 }
+func (f *fakeStatusCompose) Logs(_ context.Context, _ string, _ string, _ int) (string, error) {
+	return "", nil
+}
 
 // fakeStatusLogs is a test double for ports.ComposeLogs used by status tests.
 type fakeStatusLogs struct {

@@ -132,6 +132,22 @@ func (a *ImageCheckerAdapter) ImageExists(ctx context.Context, name string) (boo
 	return true, nil
 }
 
+// Logs runs "docker compose [-f <composeFile>] logs --tail <tailLines> <service>"
+// and returns the combined stdout/stderr output as a string.
+func (c *ComposeAdapter) Logs(ctx context.Context, composeFile string, service string, tailLines int) (string, error) {
+	args := []string{"compose"}
+	if composeFile != "" {
+		args = append(args, "-f", composeFile)
+	}
+	args = append(args, "logs", "--tail", fmt.Sprintf("%d", tailLines), service)
+
+	out, err := exec.CommandContext(ctx, "docker", args...).CombinedOutput()
+	if err != nil {
+		return string(out), fmt.Errorf("docker compose logs: %w", err)
+	}
+	return string(out), nil
+}
+
 // PS runs "docker compose [-f <composeFile>] ps --format json" and returns one
 // ContainerInfo per container.  An empty slice is returned when no containers
 // are running (not an error).

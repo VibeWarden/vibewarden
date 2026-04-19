@@ -21,6 +21,8 @@ type fakeCompose struct {
 	infoErr    error
 	psResult   []ports.ContainerInfo
 	psErr      error
+	logsResult string
+	logsErr    error
 
 	capturedComposeFile string
 	capturedProfiles    []string
@@ -48,6 +50,13 @@ func (f *fakeCompose) Info(_ context.Context) error {
 
 func (f *fakeCompose) PS(_ context.Context, _ string) ([]ports.ContainerInfo, error) {
 	return f.psResult, f.psErr
+}
+
+func (f *fakeCompose) Logs(_ context.Context, _ string, service string, _ int) (string, error) {
+	if f.logsResult != "" {
+		return f.logsResult, f.logsErr
+	}
+	return "fake log output for " + service, f.logsErr
 }
 
 // fakeGenerator is a test double for ports.ConfigGenerator.
@@ -588,5 +597,143 @@ func TestDevService_TLSDisabled_NoLetsencryptWarning(t *testing.T) {
 	out := buf.String()
 	if strings.Contains(out, "tls.provider is 'letsencrypt'") {
 		t.Errorf("unexpected letsencrypt warning when TLS is disabled:\n%s", out)
+	}
+}
+
+func TestDevService_VerifySidecar_Running_PrintsSuccess(t *testing.T) {
+
+	fc := &fakeCompose{
+		psResult: []ports.ContainerInfo{
+			{Name: "proj-vibewarden-1", Service: "vibewarden", State: "running", Health: "healthy"},
+		},
+	}
+	svc := ops.NewDevService(fc)
+	cfg := defaultConfig()
+	var buf bytes.Buffer
+
+	err := svc.Run(context.Background(), cfg, ops.DevOptions{}, &buf)
+	if err != nil {
+		t.Fatalf("Run() unexpected error: %v", err)
+	}
+
+	out := buf.String()
+	if !strings.Contains(out, "Dev environment started") {
+		t.Errorf("expected success message when sidecar is running, got:\n%s", out)
+	}
+}
+
+func TestDevService_VerifySidecar_Exited_ReturnsError(t *testing.T) {
+
+	fc := &fakeCompose{
+		psResult: []ports.ContainerInfo{
+			{Name: "proj-vibewarden-1", Service: "vibewarden", State: "exited", Health: ""},
+		},
+		logsResult: "Error: config validation failed: upstream.host is required",
+	}
+	svc := ops.NewDevService(fc)
+	cfg := defaultConfig()
+	var buf bytes.Buffer
+
+	err := svc.Run(context.Background(), cfg, ops.DevOptions{}, &buf)
+	if err == nil {
+		t.Fatal("Run() expected error when sidecar exited, got nil")
+	}
+	if !strings.Contains(err.Error(), "sidecar failed to start") {
+		t.Errorf("error should mention sidecar failure, got: %v", err)
+	}
+
+	out := buf.String()
+	if !strings.Contains(out, "not running") {
+		t.Errorf("expected 'not running' in output, got:\n%s", out)
+	}
+	if !strings.Contains(out, "config validation failed") {
+		t.Errorf("expected sidecar logs in output, got:\n%s", out)
+	}
+	if !strings.Contains(out, "vibew logs or vibew doctor") {
+		t.Errorf("expected diagnostic hint in output, got:\n%s", out)
+	}
+	// Success message should NOT have been printed.
+	if strings.Contains(out, "Dev environment started") {
+		t.Errorf("success message should not appear when sidecar failed:\n%s", out)
+	}
+}
+
+func TestDevService_VerifySidecar_Restarting_ReturnsError(t *testing.T) {
+
+	fc := &fakeCompose{
+		psResult: []ports.ContainerInfo{
+			{Name: "proj-vibewarden-1", Service: "vibewarden", State: "restarting", Health: ""},
+		},
+		logsResult: "panic: runtime error",
+	}
+	svc := ops.NewDevService(fc)
+	cfg := defaultConfig()
+	var buf bytes.Buffer
+
+	err := svc.Run(context.Background(), cfg, ops.DevOptions{}, &buf)
+	if err == nil {
+		t.Fatal("Run() expected error when sidecar is restarting, got nil")
+	}
+	if !strings.Contains(err.Error(), "restarting") {
+		t.Errorf("error should mention state, got: %v", err)
+	}
+}
+
+func TestDevService_VerifySidecar_NoSidecarContainer_Succeeds(t *testing.T) {
+	// When the sidecar service is not in the compose project (e.g. user-managed
+	// compose file), the check should not fail.
+
+	fc := &fakeCompose{
+		psResult: []ports.ContainerInfo{
+			{Name: "proj-app-1", Service: "app", State: "running", Health: "healthy"},
+		},
+	}
+	svc := ops.NewDevService(fc)
+	cfg := defaultConfig()
+	var buf bytes.Buffer
+
+	err := svc.Run(context.Background(), cfg, ops.DevOptions{}, &buf)
+	if err != nil {
+		t.Fatalf("Run() unexpected error: %v", err)
+	}
+}
+
+func TestDevService_VerifySidecar_PSError_DoesNotFail(t *testing.T) {
+	// When PS fails (e.g. docker daemon issue), the verification is skipped
+	// gracefully — the command should not fail.
+
+	fc := &fakeCompose{
+		psErr: errors.New("docker daemon not responding"),
+	}
+	svc := ops.NewDevService(fc)
+	cfg := defaultConfig()
+	var buf bytes.Buffer
+
+	err := svc.Run(context.Background(), cfg, ops.DevOptions{}, &buf)
+	if err != nil {
+		t.Fatalf("Run() unexpected error when PS fails: %v", err)
+	}
+}
+
+func TestDevService_VerifySidecar_LogsError_StillReturnsError(t *testing.T) {
+	// When the sidecar exited but Logs() also fails, the command should still
+	// return an error about the sidecar failure (just without log output).
+
+	fc := &fakeCompose{
+		psResult: []ports.ContainerInfo{
+			{Name: "proj-vibewarden-1", Service: "vibewarden", State: "exited", Health: ""},
+		},
+		logsErr: errors.New("no such service"),
+	}
+	svc := ops.NewDevService(fc)
+	cfg := defaultConfig()
+	var buf bytes.Buffer
+
+	err := svc.Run(context.Background(), cfg, ops.DevOptions{}, &buf)
+	if err == nil {
+		t.Fatal("Run() expected error when sidecar exited, got nil")
+	}
+	if !strings.Contains(err.Error(), "sidecar failed to start") {
+		t.Errorf("error should mention sidecar failure, got: %v", err)
 	}
 }

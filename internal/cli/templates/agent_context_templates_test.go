@@ -42,11 +42,13 @@ func TestAgentContextTemplates_AgentsVibewardenMD(t *testing.T) {
 			wantContains: []string{
 				"Known limitations",
 				"detect",
-				"vibew add waf",
 				"vibew doctor",
 				"Multi-site",
 				"vibew init",
 				"vibew add tls --domain",
+			},
+			wantAbsent: []string{
+				"vibew add waf` does not exist",
 			},
 		},
 		{
