@@ -144,6 +144,14 @@ func (s *Service) BootstrapSidecar(ctx context.Context, cfg *config.Config, opts
 		}
 	}
 
+	// Step 4c: transfer local image if using a bare image name (no registry prefix)
+	// and an image exporter is configured.
+	if cfg.App.Image != "" && isLocalImage(cfg.App.Image) && s.imageExporter != nil {
+		if err := s.transferLocalImage(ctx, cfg.App.Image, siteDir, out); err != nil {
+			return fmt.Errorf("transferring local image: %w", err)
+		}
+	}
+
 	// Step 5: start the app container.
 	fmt.Fprintf(out, "Starting site %q...\n", projectName)
 	startCmd := fmt.Sprintf("cd %s && docker compose up -d", siteDir)
@@ -233,6 +241,14 @@ func (s *Service) DeployMultiApp(ctx context.Context, cfg *config.Config, opts R
 		fmt.Fprintf(out, "Transferring app build context (%s)...\n", cfg.App.Build)
 		if err := s.executor.Transfer(ctx, buildContextLocal, buildContextRemote, false); err != nil {
 			return fmt.Errorf("transferring app build context: %w", err)
+		}
+	}
+
+	// Step 3c: transfer local image if using a bare image name (no registry prefix)
+	// and an image exporter is configured.
+	if cfg.App.Image != "" && isLocalImage(cfg.App.Image) && s.imageExporter != nil {
+		if err := s.transferLocalImage(ctx, cfg.App.Image, siteDir, out); err != nil {
+			return fmt.Errorf("transferring local image: %w", err)
 		}
 	}
 

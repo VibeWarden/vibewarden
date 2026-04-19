@@ -102,3 +102,13 @@ type ComposeLogs interface {
 	// given compose file. Returns an empty string when no logs are available.
 	Tail(ctx context.Context, composeFile string, service string, n int) (string, error)
 }
+
+// ImageExporter saves a Docker image from the local daemon to a tar archive.
+// Implementations shell out to the docker CLI ("docker save").
+type ImageExporter interface {
+	// Save exports the named Docker image to the file at destPath using
+	// "docker save -o <destPath> <imageName>". The image must exist in the
+	// local Docker daemon. Returns an error when the image is not found or
+	// the docker CLI fails.
+	Save(ctx context.Context, imageName, destPath string) error
+}
