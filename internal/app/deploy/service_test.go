@@ -20,6 +20,8 @@ type fakeExecutor struct {
 	runResponses map[string]runResponse
 	// transferErr is returned by every Transfer call if set.
 	transferErr error
+	// transferExcludingErr is returned by every TransferExcluding call if set.
+	transferExcludingErr error
 	// transferFileErr is returned by every TransferFile call if set.
 	transferFileErr error
 	// dryRunChanges is returned by DryRunTransfer when non-nil.
@@ -30,6 +32,8 @@ type fakeExecutor struct {
 	runCalls []string
 	// transferCalls records every Transfer invocation for assertions.
 	transferCalls []transferCall
+	// transferExcludingCalls records every TransferExcluding invocation for assertions.
+	transferExcludingCalls []transferExcludingCall
 	// transferFileCalls records every TransferFile invocation for assertions.
 	transferFileCalls []transferFileCall
 }
@@ -43,6 +47,13 @@ type transferCall struct {
 	localDir    string
 	remoteDir   string
 	deleteExtra bool
+}
+
+type transferExcludingCall struct {
+	localDir    string
+	remoteDir   string
+	deleteExtra bool
+	excludes    []string
 }
 
 type transferFileCall struct {
@@ -73,6 +84,13 @@ func (f *fakeExecutor) RunStream(_ context.Context, cmd string, stdout, _ io.Wri
 func (f *fakeExecutor) Transfer(_ context.Context, localDir, remoteDir string, deleteExtra bool) error {
 	f.transferCalls = append(f.transferCalls, transferCall{localDir: localDir, remoteDir: remoteDir, deleteExtra: deleteExtra})
 	return f.transferErr
+}
+
+func (f *fakeExecutor) TransferExcluding(_ context.Context, localDir, remoteDir string, deleteExtra bool, excludes []string) error {
+	f.transferExcludingCalls = append(f.transferExcludingCalls, transferExcludingCall{
+		localDir: localDir, remoteDir: remoteDir, deleteExtra: deleteExtra, excludes: excludes,
+	})
+	return f.transferExcludingErr
 }
 
 func (f *fakeExecutor) TransferFile(_ context.Context, localFile, remotePath string) error {
@@ -646,9 +664,10 @@ func TestService_Deploy_ComposeUpFails(t *testing.T) {
 
 // mockRunExecutor is a flexible test double with a custom Run function.
 type mockRunExecutor struct {
-	runFn             func(cmd string) (string, error)
-	transferCalls     []transferCall
-	transferFileCalls []transferFileCall
+	runFn                  func(cmd string) (string, error)
+	transferCalls          []transferCall
+	transferExcludingCalls []transferExcludingCall
+	transferFileCalls      []transferFileCall
 }
 
 func (m *mockRunExecutor) Run(_ context.Context, cmd string) (string, error) {
@@ -664,6 +683,13 @@ func (m *mockRunExecutor) RunStream(_ context.Context, _ string, _ io.Writer, _ 
 
 func (m *mockRunExecutor) Transfer(_ context.Context, localDir, remoteDir string, deleteExtra bool) error {
 	m.transferCalls = append(m.transferCalls, transferCall{localDir: localDir, remoteDir: remoteDir, deleteExtra: deleteExtra})
+	return nil
+}
+
+func (m *mockRunExecutor) TransferExcluding(_ context.Context, localDir, remoteDir string, deleteExtra bool, excludes []string) error {
+	m.transferExcludingCalls = append(m.transferExcludingCalls, transferExcludingCall{
+		localDir: localDir, remoteDir: remoteDir, deleteExtra: deleteExtra, excludes: excludes,
+	})
 	return nil
 }
 
@@ -748,10 +774,14 @@ func TestService_Deploy_BuildMode(t *testing.T) {
 		}
 	}
 
-	// Two Transfer calls expected: bundle + build context.
-	if len(executor.transferCalls) != 2 {
-		t.Errorf("expected 2 Transfer calls in build mode (bundle + build context), got %d: %v",
+	// One Transfer call (bundle) + one TransferExcluding call (build context).
+	if len(executor.transferCalls) != 1 {
+		t.Errorf("expected 1 Transfer call in build mode (bundle only), got %d: %v",
 			len(executor.transferCalls), executor.transferCalls)
+	}
+	if len(executor.transferExcludingCalls) != 1 {
+		t.Errorf("expected 1 TransferExcluding call in build mode (build context), got %d: %v",
+			len(executor.transferExcludingCalls), executor.transferExcludingCalls)
 	}
 }
 
@@ -803,6 +833,16 @@ func (b *buildContextFailExecutor) Transfer(_ context.Context, localDir, remoteD
 	}
 	b.transferCalls = append(b.transferCalls,
 		transferCall{localDir: localDir, remoteDir: remoteDir, deleteExtra: deleteExtra})
+	return nil
+}
+
+func (b *buildContextFailExecutor) TransferExcluding(_ context.Context, localDir, remoteDir string, deleteExtra bool, excludes []string) error {
+	*b.callCount++
+	if *b.callCount == b.failOnTransfer {
+		return b.transferErr
+	}
+	b.transferExcludingCalls = append(b.transferExcludingCalls,
+		transferExcludingCall{localDir: localDir, remoteDir: remoteDir, deleteExtra: deleteExtra, excludes: excludes})
 	return nil
 }
 

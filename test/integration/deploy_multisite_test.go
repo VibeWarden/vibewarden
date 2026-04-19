@@ -435,6 +435,54 @@ func (e *sshExecutor) TransferFile(_ context.Context, localFile, remotePath stri
 	return e.writeRemoteFile(remotePath, content)
 }
 
+// TransferExcluding syncs a local directory to a remote path, excluding files
+// matching the given patterns. In integration tests this delegates to Transfer
+// with basic exclude filtering applied during the file walk.
+func (e *sshExecutor) TransferExcluding(_ context.Context, localDir, remoteDir string, _ bool, excludes []string) error {
+	if _, err := e.runCmd("mkdir -p " + remoteDir); err != nil {
+		return fmt.Errorf("creating remote dir %s: %w", remoteDir, err)
+	}
+
+	return filepath.Walk(localDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		if info.IsDir() {
+			return nil
+		}
+
+		relPath, relErr := filepath.Rel(localDir, path)
+		if relErr != nil {
+			return fmt.Errorf("computing relative path: %w", relErr)
+		}
+
+		// Check excludes against the relative path and its base name.
+		for _, pattern := range excludes {
+			matched, matchErr := filepath.Match(pattern, filepath.Base(relPath))
+			if matchErr == nil && matched {
+				return nil
+			}
+			matched, matchErr = filepath.Match(pattern, relPath)
+			if matchErr == nil && matched {
+				return nil
+			}
+		}
+
+		remotePath := remoteDir + relPath
+		remoteSubDir := filepath.Dir(remotePath)
+		if _, mkdirErr := e.runCmd("mkdir -p " + remoteSubDir); mkdirErr != nil {
+			return fmt.Errorf("creating remote subdir %s: %w", remoteSubDir, mkdirErr)
+		}
+
+		content, readErr := os.ReadFile(path)
+		if readErr != nil {
+			return fmt.Errorf("reading local file %s: %w", path, readErr)
+		}
+
+		return e.writeRemoteFile(remotePath, content)
+	})
+}
+
 // DryRunTransfer performs a dry-run comparison of localDir against remoteDir.
 // In integration tests this always returns no changes, since the test controls
 // the exact file content and drift detection is tested at the unit level.

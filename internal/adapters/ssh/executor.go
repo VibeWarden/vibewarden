@@ -152,6 +152,28 @@ func (e *Executor) Transfer(ctx context.Context, localDir, remoteDir string, del
 	return nil
 }
 
+// TransferExcluding syncs localDir to remoteDir on the remote host using rsync
+// over SSH, excluding files or directories matching the given patterns. Each
+// pattern is passed as an --exclude flag to rsync. When deleteExtra is true,
+// extraneous files in remoteDir are removed (but only those not matched by an
+// exclude pattern are considered).
+func (e *Executor) TransferExcluding(ctx context.Context, localDir, remoteDir string, deleteExtra bool, excludes []string) error {
+	args := e.rsyncExcludeArgs(localDir, remoteDir, deleteExtra, excludes)
+	//nolint:gosec // localDir is constructed internally from config paths; remoteDir
+	// is a fixed pattern (~/vibewarden/<project>/). Safe in this context.
+	c := exec.CommandContext(ctx, "rsync", args...)
+
+	var buf bytes.Buffer
+	c.Stdout = &buf
+	c.Stderr = &buf
+
+	if err := c.Run(); err != nil {
+		return fmt.Errorf("rsync %s → %s:%s: %w\noutput: %s",
+			localDir, e.target.Destination(), remoteDir, err, strings.TrimSpace(buf.String()))
+	}
+	return nil
+}
+
 // TransferFile copies a single local file to remotePath on the remote host
 // using rsync over SSH. Unlike Transfer, the source path is used as-is (no
 // trailing slash) so rsync treats it as a file, not a directory.
@@ -256,6 +278,34 @@ func (e *Executor) rsyncArgs(localDir, remoteDir string, deleteExtra bool) []str
 	}
 	// Ensure localDir ends with "/" so rsync syncs the contents, not the
 	// directory name itself.
+	src := strings.TrimSuffix(localDir, "/") + "/"
+	dst := e.target.Destination() + ":" + remoteDir
+	args = append(args, src, dst)
+	return args
+}
+
+// rsyncExcludeArgs builds the rsync argument list for a directory transfer
+// with --exclude patterns.
+func (e *Executor) rsyncExcludeArgs(localDir, remoteDir string, deleteExtra bool, excludes []string) []string {
+	sshCmd := "ssh -o StrictHostKeyChecking=accept-new -o BatchMode=yes"
+	if e.keyPath != "" {
+		sshCmd += " -i " + e.keyPath
+	}
+	if e.target.Port != 0 {
+		sshCmd += " -p " + strconv.Itoa(e.target.Port)
+	}
+
+	args := []string{
+		"-az",
+		"--progress",
+		"-e", sshCmd,
+	}
+	if deleteExtra {
+		args = append(args, "--delete")
+	}
+	for _, pattern := range excludes {
+		args = append(args, "--exclude", pattern)
+	}
 	src := strings.TrimSuffix(localDir, "/") + "/"
 	dst := e.target.Destination() + ":" + remoteDir
 	args = append(args, src, dst)

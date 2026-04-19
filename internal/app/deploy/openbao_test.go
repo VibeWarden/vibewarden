@@ -363,6 +363,10 @@ func (w *wildcardExecutor) Transfer(_ context.Context, _, _ string, _ bool) erro
 	return nil
 }
 
+func (w *wildcardExecutor) TransferExcluding(_ context.Context, _, _ string, _ bool, _ []string) error {
+	return nil
+}
+
 func (w *wildcardExecutor) TransferFile(_ context.Context, _, _ string) error {
 	return nil
 }
