@@ -250,9 +250,44 @@ func TestParseDryRunOutput(t *testing.T) {
 			want:   []string{">f..T...... file.txt"},
 		},
 		{
-			name:   "mixed content with blank lines",
+			name:   "new file entries are filtered out",
+			output: ">f+++++++++ new-file.yml\n>f..T...... modified.yml\n",
+			want:   []string{">f..T...... modified.yml"},
+		},
+		{
+			name:   "all new files on first deploy returns nil",
+			output: ">f+++++++++ docker-compose.yml\n>f+++++++++ vibewarden.yaml\ncd+++++++++ config/\n",
+			want:   nil,
+		},
+		{
+			name:   "new file with receiving direction filtered out",
+			output: "<f+++++++++ file.txt\n",
+			want:   nil,
+		},
+		{
+			name:   "new directory creation filtered out",
+			output: "cd+++++++++ newdir/\n>f+++++++++ newdir/file.txt\n",
+			want:   nil,
+		},
+		{
+			name:   "mixed new and modified files",
 			output: "\n>f+++++++++ new-file.yml\n\n*deleting   old-file.yml\n.d..t...... dir/\n\n",
-			want:   []string{">f+++++++++ new-file.yml", "*deleting   old-file.yml"},
+			want:   []string{"*deleting   old-file.yml"},
+		},
+		{
+			name:   "deletion is always reported as drift",
+			output: "*deleting   removed-file.yml\n>f+++++++++ added-file.yml\n",
+			want:   []string{"*deleting   removed-file.yml"},
+		},
+		{
+			name:   "size change is reported as drift",
+			output: ">f.s....... docker-compose.yml\n",
+			want:   []string{">f.s....... docker-compose.yml"},
+		},
+		{
+			name:   "longer itemize code with all plusses still filtered",
+			output: ">f++++++++++ docker-compose.yml\n",
+			want:   nil,
 		},
 	}
 
@@ -266,6 +301,35 @@ func TestParseDryRunOutput(t *testing.T) {
 				if g != tt.want[i] {
 					t.Errorf("parseDryRunOutput()[%d] = %q, want %q", i, g, tt.want[i])
 				}
+			}
+		})
+	}
+}
+
+func TestIsNewItemEntry(t *testing.T) {
+	tests := []struct {
+		name string
+		line string
+		want bool
+	}{
+		{"new file sending", ">f+++++++++ docker-compose.yml", true},
+		{"new file receiving", "<f+++++++++ file.txt", true},
+		{"new directory created", "cd+++++++++ newdir/", true},
+		{"modified file timestamp", ">f..T...... docker-compose.yml", false},
+		{"modified file size", ">f.s....... file.txt", false},
+		{"deletion entry", "*deleting   old-file.yml", false},
+		{"directory metadata", ".d..t...... somedir/", false},
+		{"short code", ">f", false},
+		{"empty line", "", false},
+		{"longer all-plus code", ">f++++++++++ file.txt", true},
+		{"mixed plus and dot", ">f+++.+++++ file.txt", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := isNewItemEntry(tt.line)
+			if got != tt.want {
+				t.Errorf("isNewItemEntry(%q) = %v, want %v", tt.line, got, tt.want)
 			}
 		})
 	}

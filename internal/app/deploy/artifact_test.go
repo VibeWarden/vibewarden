@@ -1,6 +1,7 @@
 package deploy_test
 
 import (
+	"bytes"
 	"context"
 	"os"
 	"path/filepath"
@@ -450,6 +451,44 @@ app:
 	}
 }
 
+// TestArtifact_FirstDeploy_NoDriftWarning verifies that on first deploy to an
+// empty remote, the dry-run output containing only new-file entries (all "+"
+// attributes) does NOT trigger a DriftError. Only actual modifications should
+// be treated as drift.
+//
+// Regression test for #962.
+func TestArtifact_FirstDeploy_NoDriftWarning(t *testing.T) {
+	// Simulate a first deploy where the dry-run reports only new files
+	// (all "+" attributes in the rsync itemize code).
+	executor := &fakeExecutor{
+		dryRunChanges: nil, // parseDryRunOutput now filters out new-file entries
+	}
+	generator := &fakeGenerator{}
+
+	svc := deployapp.NewService(executor, generator)
+
+	var buf bytes.Buffer
+	err := svc.Deploy(context.Background(), &config.Config{
+		Server: config.ServerConfig{Port: 8443},
+	}, deployapp.RunOptions{
+		ConfigPath:   "/tmp/firstproject/vibewarden.yaml",
+		GeneratedDir: t.TempDir(),
+		Force:        false,
+		Out:          &buf,
+	})
+	if err != nil {
+		t.Fatalf("Deploy() on first deploy should not return error, got: %v", err)
+	}
+
+	out := buf.String()
+	if strings.Contains(out, "remote files have been modified") {
+		t.Errorf("first deploy should not report drift, got:\n%s", out)
+	}
+	if !strings.Contains(out, "Deploy complete") {
+		t.Errorf("expected 'Deploy complete' in output, got:\n%s", out)
+	}
+}
+
 // TestArtifact_MergeYAML_PreservesFieldNames verifies that deep-merging YAML
 // configs preserves underscore field names like rate_limit and security_headers
 // instead of mangling them (e.g. "ratelimit").
@@ -487,3 +526,10 @@ security_headers:
 		t.Errorf("found 'securityheaders:' (without underscore) in output, got:\n%s", s)
 	}
 }
+
+// TestArtifact_FirstDeploy_NoDriftWarning verifies that on first deploy to an
+// empty remote, the dry-run output containing only new-file entries (all "+"
+// attributes) does NOT trigger a DriftError. Only actual modifications should
+// be treated as drift.
+//
+// Regression test for #962.
