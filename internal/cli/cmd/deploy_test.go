@@ -279,3 +279,80 @@ func TestDeployCmd_HelpContainsRotateSecretsExample(t *testing.T) {
 		t.Error("deploy command long description should mention --rotate-secrets")
 	}
 }
+
+func TestDeployCmd_DryRunFlagRegistered(t *testing.T) {
+	root := cmd.NewRootCmd("test")
+	deployCmd, _, err := root.Find([]string{"deploy"})
+	if err != nil {
+		t.Fatalf("Find(deploy) error: %v", err)
+	}
+	if deployCmd.Flags().Lookup("dry-run") == nil {
+		t.Error("expected --dry-run flag on deploy command")
+	}
+}
+
+func TestDeployCmd_DryRunDefaultIsFalse(t *testing.T) {
+	root := cmd.NewRootCmd("test")
+	deployCmd, _, err := root.Find([]string{"deploy"})
+	if err != nil {
+		t.Fatalf("Find(deploy) error: %v", err)
+	}
+	f := deployCmd.Flags().Lookup("dry-run")
+	if f == nil {
+		t.Fatal("--dry-run flag not found")
+	}
+	if f.DefValue != "false" {
+		t.Errorf("--dry-run default should be false, got %q", f.DefValue)
+	}
+}
+
+func TestDeployCmd_HelpContainsDryRun(t *testing.T) {
+	root := cmd.NewRootCmd("test")
+	deployCmd, _, err := root.Find([]string{"deploy"})
+	if err != nil {
+		t.Fatalf("Find(deploy) error: %v", err)
+	}
+	if !strings.Contains(deployCmd.Long, "--dry-run") {
+		t.Error("deploy command long description should mention --dry-run")
+	}
+}
+
+// TestDeployCmd_DryRunNoTarget verifies that --dry-run works without --target.
+func TestDeployCmd_DryRunNoTarget(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "AGENTS-VIBEWARDEN.md"), []byte("# ctx\n"), 0o644); err != nil {
+		t.Fatalf("writing scaffolding marker: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "vibewarden.yaml"), []byte("server:\n  port: 8443\nupstream:\n  port: 3000\n"), 0o644); err != nil {
+		t.Fatalf("writing config: %v", err)
+	}
+	origDir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(dir); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(origDir) })
+
+	root := cmd.NewRootCmd("test")
+	var out strings.Builder
+	root.SetOut(&out)
+	root.SetArgs([]string{"deploy", "--dry-run"})
+
+	err = root.Execute()
+	if err != nil {
+		t.Fatalf("expected no error for --dry-run without --target, got: %v", err)
+	}
+
+	output := out.String()
+	if !strings.Contains(output, "Dry run") {
+		t.Errorf("expected 'Dry run' in output, got:\n%s", output)
+	}
+	if !strings.Contains(output, "Bundle contents:") {
+		t.Errorf("expected 'Bundle contents:' in output, got:\n%s", output)
+	}
+	if !strings.Contains(output, "No files were transferred") {
+		t.Errorf("expected 'No files were transferred' in output, got:\n%s", output)
+	}
+}

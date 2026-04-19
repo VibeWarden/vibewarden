@@ -18,6 +18,11 @@ var hexColorRE = regexp.MustCompile(`^#([0-9A-Fa-f]{3}|[0-9A-Fa-f]{6})$`)
 // Config holds all configuration for VibeWarden.
 // Fields are loaded from vibewarden.yaml and can be overridden by environment variables.
 type Config struct {
+	// Name is the project name used to derive the Docker Compose project name
+	// and remote deploy directory. When empty, the project name is derived from
+	// the directory containing vibewarden.yaml.
+	Name string `mapstructure:"name"`
+
 	// Profile selects the deployment profile: "dev", "tls", or "prod".
 	// Affects TLS settings, credential handling, and validation rules.
 	// Defaults to "dev".
@@ -165,9 +170,13 @@ func (c *Config) IsProdProfile() bool {
 // under .vibewarden/generated/) and avoids stale image names like "generated-app".
 //
 // Derivation order:
-//  1. App.Image with the tag stripped (e.g. "myapp:latest" -> "myapp").
-//  2. "vibewarden" as a safe fallback.
+//  1. The explicit Name field (set via vibewarden.yaml name: or vibew init --name).
+//  2. App.Image with the tag stripped (e.g. "myapp:latest" -> "myapp").
+//  3. "vibewarden" as a safe fallback.
 func (c *Config) ComposeProjectName() string {
+	if c.Name != "" {
+		return c.Name
+	}
 	if c.App.Image != "" {
 		name := c.App.Image
 		// Strip registry prefix if present (e.g. "ghcr.io/org/myapp:latest" -> "myapp").
@@ -2200,6 +2209,7 @@ func Load(configPath string) (*Config, error) {
 	v := viper.New()
 
 	// Set defaults
+	v.SetDefault("name", "")
 	v.SetDefault("profile", "dev")
 	v.SetDefault("server.host", "127.0.0.1")
 	v.SetDefault("server.port", 8443)

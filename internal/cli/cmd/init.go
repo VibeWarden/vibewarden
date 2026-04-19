@@ -61,6 +61,7 @@ func promptString(w *os.File, r *bufio.Reader, prompt, defaultVal string) (strin
 //	mkdir myapp && cd myapp
 //	vibew init
 //	vibew init --port 8080
+//	vibew init --name myapp
 //	vibew init --describe "a task management API"
 func NewInitCmd() *cobra.Command {
 	var (
@@ -68,6 +69,7 @@ func NewInitCmd() *cobra.Command {
 		force    bool
 		version  string
 		describe string
+		name     string
 	)
 
 	cmd := &cobra.Command{
@@ -90,11 +92,13 @@ production overrides. vibew deploy deep-merges the production overrides
 automatically. Never put production-only config in vibewarden.yaml.
 
 The project name is derived from the current directory's base name.
-Create the directory first, then cd into it and run vibew init.
+Use --name to set an explicit project name for Docker Compose image
+naming and deploy directories.
 
 Examples:
   mkdir myapp && cd myapp && vibew init
   vibew init --port 8080
+  vibew init --name my-custom-project
   vibew init --describe "a task management API"
   vibew init --force`,
 		Args: cobra.NoArgs,
@@ -105,6 +109,9 @@ Examples:
 
 			// Always scaffold in the current directory. Derive project name
 			// from the directory's base name (same convention as vibew wrap).
+			// The --name flag only sets the name: field in vibewarden.yaml
+			// for Docker Compose project scoping; it does not change the
+			// scaffold directory.
 			cwd, err := os.Getwd()
 			if err != nil {
 				return fmt.Errorf("getting current directory: %w", err)
@@ -130,6 +137,7 @@ Examples:
 				Force:       force,
 				Version:     version,
 				Description: describe,
+				Name:        name,
 			}
 
 			if err := svc.InitProject(context.Background(), parentDir, opts); err != nil {
@@ -151,6 +159,7 @@ Examples:
 	cmd.Flags().BoolVar(&force, "force", false, "overwrite existing files")
 	cmd.Flags().StringVar(&version, "version", "", "VibeWarden version to pin in .vibewarden-version (default: latest)")
 	cmd.Flags().StringVar(&describe, "describe", "", "one-line description of what the project builds; written to PROJECT.md and injected into agent files")
+	cmd.Flags().StringVar(&name, "name", "", "project name for Docker Compose project naming and deploy directories (default: current directory name)")
 
 	return cmd
 }

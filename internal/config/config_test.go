@@ -3146,20 +3146,24 @@ this_key_does_not_exist:
 func TestComposeProjectName(t *testing.T) {
 	tests := []struct {
 		name     string
+		cfgName  string
 		appImage string
 		want     string
 	}{
-		{"empty image falls back to vibewarden", "", "vibewarden"},
-		{"simple image name", "myapp:latest", "myapp"},
-		{"image without tag", "myapp", "myapp"},
-		{"registry prefix stripped", "ghcr.io/org/myapp:latest", "myapp"},
-		{"deep registry path stripped", "registry.example.com/org/team/myapp:v2", "myapp"},
-		{"image with only tag", ":latest", "vibewarden"},
+		{"empty image falls back to vibewarden", "", "", "vibewarden"},
+		{"simple image name", "", "myapp:latest", "myapp"},
+		{"image without tag", "", "myapp", "myapp"},
+		{"registry prefix stripped", "", "ghcr.io/org/myapp:latest", "myapp"},
+		{"deep registry path stripped", "", "registry.example.com/org/team/myapp:v2", "myapp"},
+		{"image with only tag", "", ":latest", "vibewarden"},
+		{"explicit name takes precedence over image", "my-project", "myapp:latest", "my-project"},
+		{"explicit name takes precedence over empty image", "my-project", "", "my-project"},
+		{"explicit name used alone", "custom-name", "", "custom-name"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			cfg := &config.Config{}
+			cfg := &config.Config{Name: tt.cfgName}
 			cfg.App.Image = tt.appImage
 			got := cfg.ComposeProjectName()
 			if got != tt.want {

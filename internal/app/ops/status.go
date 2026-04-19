@@ -182,6 +182,22 @@ func gatherPluginStatuses(cfg *config.Config) []PluginStatus {
 	// User management
 	ps = append(ps, PluginStatus{Name: "user-management", Enabled: cfg.Admin.Enabled})
 
+	// WAF
+	wafDetail := ""
+	if cfg.WAF.Enabled {
+		wafDetail = fmt.Sprintf("mode: %s", cfg.WAF.Mode)
+	}
+	ps = append(ps, PluginStatus{Name: "waf", Enabled: cfg.WAF.Enabled, Detail: wafDetail})
+
+	// CORS
+	ps = append(ps, PluginStatus{Name: "cors", Enabled: cfg.CORS.Enabled})
+
+	// Egress
+	ps = append(ps, PluginStatus{Name: "egress", Enabled: cfg.Egress.Enabled})
+
+	// Compression
+	ps = append(ps, PluginStatus{Name: "compression", Enabled: cfg.Compression.Enabled})
+
 	return ps
 }
 
