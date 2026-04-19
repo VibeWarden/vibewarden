@@ -82,6 +82,39 @@ upstream:
   # Port of your application
   port: 3000
 
+# Application container configuration
+#
+# Controls how the app runs inside Docker Compose. `vibew build` builds
+# the image locally; `vibew deploy` transfers it via docker save/load
+# (no source code on the server). Use `environment` for runtime config
+# (database URLs, API keys, etc.) -- never bake secrets into the image.
+#
+# app:
+#   # Docker build context path (e.g., "." for the current directory).
+#   # When set, `vibew build` builds the image locally. `vibew deploy`
+#   # transfers the built image to the server, not the source code.
+#   build: "."
+#
+#   # Docker image reference. Default: derived from the project name.
+#   # For registry images, set to e.g. "ghcr.io/org/myapp:latest".
+#   image: "myapp:latest"
+#
+#   # Language/runtime for health check probe selection.
+#   # Values: "go", "python", "typescript", "kotlin", or empty (auto-detect).
+#   language: ""
+#
+#   # Custom Docker healthcheck command. Set to "none" to disable.
+#   healthcheck: ""
+#
+#   # Custom environment variables injected into the app container.
+#   # Use for runtime configuration (database URLs, feature flags, etc.).
+#   # Example:
+#   #   environment:
+#   #     DATABASE_URL: "postgres://user:pass@db:5432/myapp"
+#   #     REDIS_URL: "redis://redis:6379"
+#   #     LOG_LEVEL: "info"
+#   environment: {}
+
 # TLS configuration
 tls:
   # Enable TLS termination. Enabled by default — VibeWarden is secure by default.

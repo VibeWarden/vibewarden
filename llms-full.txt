@@ -178,6 +178,15 @@ Key commands:
 
 Full guide: https://vibewarden.dev/docs/multi-app/
 
+### Deploy model
+
+`vibew build` builds the Docker image locally from the app's Dockerfile.
+`vibew deploy` transfers the pre-built image to the server via
+`docker save | rsync | docker load`. No source code is ever sent to the
+production server -- the image must be production-ready.
+
+Use `app.environment` for runtime config (database URLs, API keys, etc.).
+
 ### deploy flags
 
 `vibew deploy` uses SSH to deploy the stack remotely. It reads both
@@ -229,6 +238,9 @@ Key sections:
 
 - `server.port` — port the sidecar listens on (default 8443)
 - `upstream.port` — port the upstream application listens on
+- `app.build` — Docker build context; `vibew build` builds locally, `vibew deploy` transfers the image (no source on server)
+- `app.image` — Docker image reference (used when `app.build` is empty)
+- `app.environment` — custom env vars injected into the app container (e.g. DATABASE_URL, REDIS_URL)
 - `tls.enabled`, `tls.provider` — TLS termination (letsencrypt, self-signed, external)
 - `auth.mode` — authentication strategy: `none`, `kratos`, `jwt`, or `api-key` (single source of truth; see ADR-065)
 - `rate_limit.enabled`, `rate_limit.per_ip` — per-IP rate limiting

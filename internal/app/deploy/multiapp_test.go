@@ -428,7 +428,7 @@ func TestRenderAppCompose_ImageMode(t *testing.T) {
 	}
 }
 
-func TestRenderAppCompose_BuildMode(t *testing.T) {
+func TestRenderAppCompose_BuildMode_UsesImage(t *testing.T) {
 	executor := &fakeExecutor{}
 	generator := &fakeGenerator{}
 
@@ -448,15 +448,19 @@ func TestRenderAppCompose_BuildMode(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	// Verify the app compose was written with build context.
+	// Verify the app compose was written with image (not build context).
+	// The image is built locally and transferred via docker save/load.
 	composePath := filepath.Join(bundleDir, "sites", "buildsite", "docker-compose.yml")
 	data, err := os.ReadFile(composePath)
 	if err != nil {
 		t.Fatalf("reading bundled compose: %v", err)
 	}
 	content := string(data)
-	if !strings.Contains(content, "build:") {
-		t.Errorf("expected compose to contain 'build:', got:\n%s", content)
+	if strings.Contains(content, "build:") {
+		t.Errorf("expected no 'build:' in deploy compose (image transfer mode), got:\n%s", content)
+	}
+	if !strings.Contains(content, "image:") {
+		t.Errorf("expected compose to contain 'image:', got:\n%s", content)
 	}
 	if !strings.Contains(content, "vibewarden-buildsite-app") {
 		t.Errorf("expected compose to contain 'vibewarden-buildsite-app', got:\n%s", content)
@@ -700,9 +704,9 @@ func TestDeployMultiApp_TLSHealthCheck(t *testing.T) {
 	}
 }
 
-// TestDeploySite_BuildMode_RsyncsSource verifies that when cfg.App.Build is set,
-// the app source directory is transferred to the remote site directory.
-func TestDeploySite_BuildMode_RsyncsSource(t *testing.T) {
+// TestDeploySite_BuildMode_NoSourceTransfer verifies that when cfg.App.Build is set,
+// no source code is transferred -- only the site bundle is transferred.
+func TestDeploySite_BuildMode_NoSourceTransfer(t *testing.T) {
 	executor := &fakeExecutor{}
 	generator := &fakeGenerator{}
 
@@ -721,32 +725,22 @@ func TestDeploySite_BuildMode_RsyncsSource(t *testing.T) {
 		t.Fatalf("DeployMultiApp() unexpected error: %v", err)
 	}
 
-	// Transfer must be called for the site bundle; TransferExcluding for the
-	// build context.
+	// Transfer must be called for the site bundle.
 	if len(executor.transferCalls) < 1 {
 		t.Fatalf("expected at least 1 Transfer call (site bundle), got %d: %v",
 			len(executor.transferCalls), executor.transferCalls)
 	}
-	if len(executor.transferExcludingCalls) < 1 {
-		t.Fatalf("expected at least 1 TransferExcluding call (build context), got %d: %v",
-			len(executor.transferExcludingCalls), executor.transferExcludingCalls)
-	}
 
-	found := false
-	for _, call := range executor.transferExcludingCalls {
-		if strings.Contains(call.remoteDir, "sites/buildapp/") {
-			found = true
-			break
-		}
-	}
-	if !found {
-		t.Errorf("expected TransferExcluding to site directory, got: %v", executor.transferExcludingCalls)
+	// No TransferExcluding -- no source code transfer.
+	if len(executor.transferExcludingCalls) != 0 {
+		t.Errorf("expected no TransferExcluding calls (no source transfer), got %d: %v",
+			len(executor.transferExcludingCalls), executor.transferExcludingCalls)
 	}
 }
 
-// TestDeploySite_BuildMode_UsesComposeUpBuild verifies that when cfg.App.Build
-// is set, docker compose up is called with --build.
-func TestDeploySite_BuildMode_UsesComposeUpBuild(t *testing.T) {
+// TestDeploySite_BuildMode_NoBuildFlag verifies that when cfg.App.Build is set,
+// docker compose up is called WITHOUT --build (image is pre-built and transferred).
+func TestDeploySite_BuildMode_NoBuildFlag(t *testing.T) {
 	executor := &fakeExecutor{}
 	generator := &fakeGenerator{}
 
@@ -765,7 +759,15 @@ func TestDeploySite_BuildMode_UsesComposeUpBuild(t *testing.T) {
 		t.Fatalf("DeployMultiApp() unexpected error: %v", err)
 	}
 
-	assertRunCalledContains(t, executor.runCalls, "docker compose up -d --build")
+	// docker compose up -d must be called (without --build).
+	assertRunCalledContains(t, executor.runCalls, "docker compose up -d")
+
+	// --build must NOT appear.
+	for _, c := range executor.runCalls {
+		if strings.Contains(c, "--build") {
+			t.Errorf("did not expect --build flag in image transfer mode, got: %q", c)
+		}
+	}
 }
 
 // TestDeploySite_ImageMode_NoBuildContext verifies that in image mode (no build),
@@ -804,23 +806,16 @@ func TestDeploySite_ImageMode_NoBuildContext(t *testing.T) {
 	}
 }
 
-// TestDeploySite_BuildMode_TransferFails verifies that a failure to rsync the
-// app build context is propagated as an error.
-func TestDeploySite_BuildMode_TransferFails(t *testing.T) {
-	callCount := 0
-	mockExec := &mockRunExecutor{
-		runFn: func(_ string) (string, error) { return "", nil },
+// TestDeploySite_BuildMode_ImageTransferFails verifies that a failure to
+// transfer the locally-built image is propagated as an error.
+func TestDeploySite_BuildMode_ImageTransferFails(t *testing.T) {
+	executor := &fakeExecutor{
+		transferFileErr: errors.New("rsync failed"),
 	}
-	// Fail on the second Transfer call (build context).
-	failingExec := &buildContextFailExecutor{
-		mockRunExecutor: mockExec,
-		failOnTransfer:  2,
-		transferErr:     errors.New("rsync failed"),
-		callCount:       &callCount,
-	}
-
 	generator := &fakeGenerator{}
-	svc := deployapp.NewService(failingExec, generator)
+
+	exporter := &fakeImageExporter{}
+	svc := deployapp.NewService(executor, generator).WithImageExporter(exporter)
 
 	cfg := multiappConfig()
 	cfg.App.Image = ""
@@ -832,10 +827,10 @@ func TestDeploySite_BuildMode_TransferFails(t *testing.T) {
 		GeneratedDir: t.TempDir(),
 	})
 	if err == nil {
-		t.Fatal("expected error when build context transfer fails")
+		t.Fatal("expected error when image transfer fails")
 	}
-	if !strings.Contains(err.Error(), "transferring app build context") {
-		t.Errorf("error should mention 'transferring app build context', got: %v", err)
+	if !strings.Contains(err.Error(), "transferring") {
+		t.Errorf("error should mention 'transferring', got: %v", err)
 	}
 }
 

@@ -59,21 +59,6 @@ const (
 	defaultHealthPort = 8443
 )
 
-// buildContextExcludes is the list of rsync --exclude patterns used when
-// transferring the app build context to the remote host. These patterns
-// prevent the project's original files from overwriting the deploy bundle's
-// merged versions (e.g. the merged vibewarden.yaml with production TLS
-// settings must not be clobbered by the base config from the source tree).
-var buildContextExcludes = []string{
-	"vibewarden.yaml",
-	"vibewarden.*.yaml",
-	".vibewarden",
-	".credentials",
-	".env",
-	".env.template",
-	"docker-compose.yml",
-}
-
 // Service orchestrates the "vibew deploy" use case.
 // It generates runtime config, transfers files to the remote, starts Docker
 // Compose, and verifies the sidecar health endpoint.
@@ -210,32 +195,17 @@ func (s *Service) Deploy(ctx context.Context, cfg *config.Config, opts RunOption
 		return fmt.Errorf("transferring deploy bundle: %w", err)
 	}
 
-	// When app.build is set the image must be built on the remote host.
-	// Transfer the app source (the build context directory) so that
-	// `docker compose up --build` can build the image remotely.
-	//
-	// Use TransferExcluding to prevent the project's original config files
-	// (vibewarden.yaml, docker-compose.yml, etc.) from overwriting the
-	// merged bundle files that were already deployed in the previous step.
-	// This is critical when app.build is "." because the build context
-	// directory overlaps with the deploy bundle directory on the remote.
-	if cfg.App.Build != "" {
-		projectRoot := filepath.Dir(filepath.Clean(opts.ConfigPath))
-		buildContextLocal := filepath.Join(projectRoot, cfg.App.Build)
-		buildContextRemote := remoteDir + strings.TrimPrefix(strings.TrimSuffix(cfg.App.Build, "/"), "./") + "/"
-		fmt.Fprintf(out, "Transferring app build context (%s) to remote...\n", cfg.App.Build)
-		if err := s.executor.TransferExcluding(ctx, buildContextLocal, buildContextRemote, false, buildContextExcludes); err != nil {
-			return fmt.Errorf("transferring app build context: %w", err)
-		}
-	}
-
-	// Step 4: transfer local image if using a bare image name (no registry prefix)
-	// and an image exporter is configured.
-	// This must happen before docker compose up so the image is available on the
-	// remote daemon.
+	// Step 4: transfer local image.
+	// When app.build is set the image was built locally by `vibew build`.
+	// Derive the image name (projectName-app:latest) and transfer it via
+	// docker save/load. No source code is transferred to the server.
 	localImageTransferred := false
-	if cfg.App.Image != "" && isLocalImage(cfg.App.Image) && s.imageExporter != nil {
-		if err := s.transferLocalImage(ctx, cfg.App.Image, remoteDir, out); err != nil {
+	imageName := cfg.App.Image
+	if cfg.App.Build != "" {
+		imageName = cfg.ComposeProjectName() + "-app:latest"
+	}
+	if imageName != "" && isLocalImage(imageName) && s.imageExporter != nil {
+		if err := s.transferLocalImage(ctx, imageName, remoteDir, out); err != nil {
 			return fmt.Errorf("transferring local image: %w", err)
 		}
 		localImageTransferred = true
@@ -243,22 +213,13 @@ func (s *Service) Deploy(ctx context.Context, cfg *config.Config, opts RunOption
 
 	// Step 5: start Docker Compose on the remote.
 	// Always pull the latest sidecar image before starting, regardless of mode.
-	// In build mode the app image is built locally, but the sidecar image may be
-	// cached from an older version, so we explicitly pull it first.
 	fmt.Fprintln(out, "Pulling latest sidecar image on remote...")
 	pullSidecarCmd := fmt.Sprintf("cd %s && docker compose pull vibewarden", remoteDir)
 	if _, err := s.executor.Run(ctx, pullSidecarCmd); err != nil {
 		return fmt.Errorf("docker compose pull vibewarden: %w", err)
 	}
 
-	// When app.build is set, build the image remotely instead of pulling the app image.
-	if cfg.App.Build != "" {
-		fmt.Fprintln(out, "Building and starting services on remote...")
-		upCmd := fmt.Sprintf("cd %s && docker compose up -d --build --force-recreate", remoteDir)
-		if _, err := s.executor.Run(ctx, upCmd); err != nil {
-			return fmt.Errorf("docker compose up: %w", err)
-		}
-	} else if localImageTransferred {
+	if localImageTransferred {
 		// Local image was already transferred -- skip pulling and just start.
 		fmt.Fprintln(out, "Starting services on remote...")
 		upCmd := fmt.Sprintf("cd %s && docker compose up -d --force-recreate", remoteDir)

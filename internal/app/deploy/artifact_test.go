@@ -25,13 +25,13 @@ func (g *captureGenerator) Generate(_ context.Context, input ports.GeneratorInpu
 	return g.err
 }
 
-// TestArtifact_DeployCompose_ContextIsLocal verifies that the generated
-// docker-compose.yml in a single-site deploy bundle uses build context "."
-// (relative to the bundle directory) instead of "../../." which only works
-// for the local dev layout (.vibewarden/generated/ is two levels deep).
+// TestArtifact_DeployCompose_UsesImageNotBuild verifies that the generated
+// docker-compose.yml in a single-site deploy bundle uses image: instead of
+// build: when app.build is set. The image is built locally by `vibew build`
+// and transferred via docker save/load -- no source code on the server.
 //
 // Regression test for #952.
-func TestArtifact_DeployCompose_ContextIsLocal(t *testing.T) {
+func TestArtifact_DeployCompose_UsesImageNotBuild(t *testing.T) {
 	projDir := t.TempDir()
 	outputDir := t.TempDir()
 
@@ -69,8 +69,7 @@ app:
 		t.Fatalf("Bundle() error = %v", err)
 	}
 
-	// The generator input's TemplateData must have DeployMode = true so the
-	// template renders build context as "." instead of "../../.".
+	// The generator input's TemplateData must have DeployMode = true.
 	if gen.lastInput.TemplateData == nil {
 		t.Fatal("generator was not called")
 	}
@@ -79,10 +78,14 @@ app:
 		t.Fatalf("TemplateData is %T, want *config.Config", gen.lastInput.TemplateData)
 	}
 	if !inputCfg.DeployMode {
-		t.Error("deploy bundle must set DeployMode = true so the template renders 'context: .' instead of 'context: ../../.'")
+		t.Error("deploy bundle must set DeployMode = true")
 	}
-	if inputCfg.App.Build != "." {
-		t.Errorf("deploy bundle App.Build = %q, want %q", inputCfg.App.Build, ".")
+	// App.Build must be cleared and App.Image set for deploy compose.
+	if inputCfg.App.Build != "" {
+		t.Errorf("deploy bundle App.Build = %q, want empty (image mode)", inputCfg.App.Build)
+	}
+	if inputCfg.App.Image != "vibewarden-app:latest" {
+		t.Errorf("deploy bundle App.Image = %q, want %q", inputCfg.App.Image, "vibewarden-app:latest")
 	}
 }
 
@@ -248,16 +251,13 @@ func TestArtifact_SidecarCompose_ContainsDNS(t *testing.T) {
 	}
 }
 
-// TestArtifact_BuildContextDoesNotOverwriteMergedConfig is a regression test
-// for #953. When app.build is "." the build context rsync was overwriting the
-// merged vibewarden.yaml (letsencrypt, port 443) with the original base config
-// (self-signed, port 8443) because both the bundle and the build context were
-// transferred to the same remote directory without excludes.
+// TestArtifact_BuildMode_TransfersImageNotSource verifies that when app.build
+// is set, Deploy transfers the locally-built image via docker save/load instead
+// of rsyncing source code. No TransferExcluding is used because no source code
+// is sent to the server.
 //
-// The fix uses TransferExcluding for the build context transfer so that bundle
-// files (vibewarden.yaml, .vibewarden/, .credentials, etc.) are never
-// overwritten by the project source tree.
-func TestArtifact_BuildContextDoesNotOverwriteMergedConfig(t *testing.T) {
+// Replaces #953 regression test (build context rsync is no longer used).
+func TestArtifact_BuildMode_TransfersImageNotSource(t *testing.T) {
 	projDir := t.TempDir()
 
 	// Base config: self-signed TLS on port 8443 (local dev).
@@ -331,63 +331,26 @@ tls:
 		t.Errorf("bundled config must NOT contain 'provider: self-signed' (base), got:\n%s", s)
 	}
 
-	// 2. The build context must be transferred via TransferExcluding, not plain Transfer.
-	if len(executor.transferExcludingCalls) == 0 {
-		t.Fatal("expected TransferExcluding to be called for the build context, but it was not called")
+	// 2. No TransferExcluding must be called -- no source code is transferred.
+	if len(executor.transferExcludingCalls) != 0 {
+		t.Errorf("expected no TransferExcluding calls (no source code transfer), got %d: %v",
+			len(executor.transferExcludingCalls), executor.transferExcludingCalls)
 	}
 
-	// 3. The exclude list must contain vibewarden.yaml to prevent overwriting.
-	excludes := executor.transferExcludingCalls[0].excludes
-	foundVibewardenYAML := false
-	for _, pattern := range excludes {
-		if pattern == "vibewarden.yaml" {
-			foundVibewardenYAML = true
-		}
-	}
-	if !foundVibewardenYAML {
-		t.Errorf("TransferExcluding excludes should contain 'vibewarden.yaml', got: %v", excludes)
-	}
-
-	// 4. The exclude list should also protect other bundle artifacts.
-	requiredExcludes := []string{
-		"vibewarden.yaml",
-		"vibewarden.*.yaml",
-		".vibewarden",
-		".credentials",
-		".env",
-		"docker-compose.yml",
-	}
-	for _, required := range requiredExcludes {
-		found := false
-		for _, actual := range excludes {
-			if actual == required {
-				found = true
-				break
-			}
-		}
-		if !found {
-			t.Errorf("TransferExcluding excludes should contain %q, got: %v", required, excludes)
+	// 3. No --build flag must be present in docker compose up.
+	for _, c := range executor.runCalls {
+		if strings.Contains(c, "--build") {
+			t.Errorf("did not expect --build flag (image transfer mode), got: %q", c)
 		}
 	}
 }
 
-// TestArtifact_BuildContextExcludes_MultiApp is a regression test for #953
-// in multi-app mode. Verifies that BootstrapSidecar and DeployMultiApp also
-// use TransferExcluding for the build context transfer.
-func TestArtifact_BuildContextExcludes_MultiApp(t *testing.T) {
-	projDir := t.TempDir()
-
-	baseYAML := `upstream:
-  host: "0.0.0.0"
-  port: 3000
-app:
-  build: "."
-`
-	basePath := filepath.Join(projDir, "vibewarden.yaml")
-	if err := os.WriteFile(basePath, []byte(baseYAML), 0o600); err != nil {
-		t.Fatalf("writing base config: %v", err)
-	}
-
+// TestArtifact_BuildMode_MultiApp_NoSourceTransfer verifies that in multi-app
+// mode, when app.build is set, no source code is transferred to the server.
+// The image is transferred via docker save/load instead.
+//
+// Replaces #953 multi-app regression test.
+func TestArtifact_BuildMode_MultiApp_NoSourceTransfer(t *testing.T) {
 	cfg := &config.Config{
 		Server:   config.ServerConfig{Port: 443},
 		Upstream: config.UpstreamConfig{Host: "0.0.0.0", Port: 3000},
@@ -399,20 +362,20 @@ app:
 		deploy func(svc *deployapp.Service, executor *fakeExecutor) error
 	}{
 		{
-			name: "BootstrapSidecar uses TransferExcluding for build context",
+			name: "BootstrapSidecar does not transfer source code",
 			deploy: func(svc *deployapp.Service, _ *fakeExecutor) error {
 				return svc.BootstrapSidecar(context.Background(), cfg, deployapp.RunOptions{
-					ConfigPath:   basePath,
+					ConfigPath:   "/tmp/buildsite/vibewarden.yaml",
 					ProjectName:  "buildsite",
 					GeneratedDir: t.TempDir(),
 				})
 			},
 		},
 		{
-			name: "DeployMultiApp uses TransferExcluding for build context",
+			name: "DeployMultiApp does not transfer source code",
 			deploy: func(svc *deployapp.Service, _ *fakeExecutor) error {
 				return svc.DeployMultiApp(context.Background(), cfg, deployapp.RunOptions{
-					ConfigPath:   basePath,
+					ConfigPath:   "/tmp/buildsite/vibewarden.yaml",
 					ProjectName:  "buildsite",
 					GeneratedDir: t.TempDir(),
 				})
@@ -430,21 +393,16 @@ app:
 				t.Fatalf("deploy error: %v", err)
 			}
 
-			if len(executor.transferExcludingCalls) == 0 {
-				t.Fatal("expected TransferExcluding to be called for build context, but it was not")
+			// No TransferExcluding must be called -- no source code transfer.
+			if len(executor.transferExcludingCalls) != 0 {
+				t.Errorf("expected no TransferExcluding calls (no source transfer), got %d: %v",
+					len(executor.transferExcludingCalls), executor.transferExcludingCalls)
 			}
 
-			excludes := executor.transferExcludingCalls[0].excludes
-			for _, required := range []string{"vibewarden.yaml", "docker-compose.yml"} {
-				found := false
-				for _, actual := range excludes {
-					if actual == required {
-						found = true
-						break
-					}
-				}
-				if !found {
-					t.Errorf("TransferExcluding excludes should contain %q, got: %v", required, excludes)
+			// No --build flag in docker compose up.
+			for _, c := range executor.runCalls {
+				if strings.Contains(c, "--build") {
+					t.Errorf("did not expect --build flag, got: %q", c)
 				}
 			}
 		})
@@ -612,6 +570,144 @@ tls:
 	}
 	if !strings.Contains(s, "domain: app.example.com") {
 		t.Errorf("expected 'domain: app.example.com' in merged config, got:\n%s", s)
+	}
+}
+
+// TestArtifact_AppEnvironment_RendersInCompose verifies that app.environment
+// variables are rendered in the generated docker-compose.yml for single-site mode.
+func TestArtifact_AppEnvironment_RendersInCompose(t *testing.T) {
+	gen := &captureGenerator{}
+	svc := deployapp.NewService(&fakeExecutor{}, gen)
+
+	outputDir := t.TempDir()
+
+	cfg := &config.Config{
+		Server:   config.ServerConfig{Port: 8443},
+		Upstream: config.UpstreamConfig{Host: "localhost", Port: 3000},
+		App: config.AppConfig{
+			Image: "myapp:latest",
+			Environment: map[string]string{
+				"DATABASE_URL": "postgres://user:pass@db:5432/myapp",
+				"LOG_LEVEL":    "info",
+			},
+		},
+	}
+
+	err := svc.Bundle(context.Background(), deployapp.BundleOptions{
+		Config:      cfg,
+		ConfigPath:  "/tmp/proj/vibewarden.yaml",
+		ProjectName: "myproject",
+		MultiSite:   false,
+		OutputDir:   outputDir,
+	})
+	if err != nil {
+		t.Fatalf("Bundle() error = %v", err)
+	}
+
+	// Verify the captured generator input has environment variables.
+	if gen.lastInput.TemplateData == nil {
+		t.Fatal("generator was not called")
+	}
+	inputCfg, ok := gen.lastInput.TemplateData.(*config.Config)
+	if !ok {
+		t.Fatalf("TemplateData is %T, want *config.Config", gen.lastInput.TemplateData)
+	}
+	if len(inputCfg.App.Environment) != 2 {
+		t.Errorf("expected 2 environment variables, got %d", len(inputCfg.App.Environment))
+	}
+	if inputCfg.App.Environment["DATABASE_URL"] != "postgres://user:pass@db:5432/myapp" {
+		t.Errorf("expected DATABASE_URL, got: %v", inputCfg.App.Environment)
+	}
+}
+
+// TestArtifact_AppEnvironment_RendersInAppCompose verifies that app.environment
+// variables are rendered in the per-app compose file for multi-site mode.
+func TestArtifact_AppEnvironment_RendersInAppCompose(t *testing.T) {
+	svc := deployapp.NewService(&fakeExecutor{}, &fakeGenerator{})
+
+	outputDir := t.TempDir()
+
+	cfg := &config.Config{
+		Server:   config.ServerConfig{Port: 443},
+		Upstream: config.UpstreamConfig{Host: "localhost", Port: 3000},
+		App: config.AppConfig{
+			Image: "myapp:latest",
+			Environment: map[string]string{
+				"DATABASE_URL": "postgres://user:pass@db:5432/myapp",
+				"REDIS_URL":    "redis://redis:6379",
+			},
+		},
+	}
+
+	err := svc.Bundle(context.Background(), deployapp.BundleOptions{
+		Config:      cfg,
+		ConfigPath:  "/tmp/proj/vibewarden.yaml",
+		ProjectName: "envsite",
+		MultiSite:   true,
+		OutputDir:   outputDir,
+	})
+	if err != nil {
+		t.Fatalf("Bundle() error = %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(outputDir, "sites", "envsite", "docker-compose.yml"))
+	if err != nil {
+		t.Fatalf("reading bundled compose: %v", err)
+	}
+	content := string(data)
+	if !strings.Contains(content, "environment:") {
+		t.Errorf("expected 'environment:' in compose, got:\n%s", content)
+	}
+	if !strings.Contains(content, "DATABASE_URL=postgres://user:pass@db:5432/myapp") {
+		t.Errorf("expected DATABASE_URL in compose, got:\n%s", content)
+	}
+	if !strings.Contains(content, "REDIS_URL=redis://redis:6379") {
+		t.Errorf("expected REDIS_URL in compose, got:\n%s", content)
+	}
+}
+
+// TestArtifact_DeployCompose_HasImageNotBuild verifies that when app.build is
+// set, the deploy compose file uses image: instead of build:. This ensures no
+// source code needs to exist on the production server.
+func TestArtifact_DeployCompose_HasImageNotBuild(t *testing.T) {
+	gen := &captureGenerator{}
+	svc := deployapp.NewService(&fakeExecutor{}, gen)
+
+	outputDir := t.TempDir()
+
+	cfg := &config.Config{
+		Name:     "myapp",
+		Server:   config.ServerConfig{Port: 8443},
+		Upstream: config.UpstreamConfig{Host: "localhost", Port: 3000},
+		App:      config.AppConfig{Build: "."},
+	}
+
+	err := svc.Bundle(context.Background(), deployapp.BundleOptions{
+		Config:      cfg,
+		ConfigPath:  "/tmp/proj/vibewarden.yaml",
+		ProjectName: "myapp",
+		MultiSite:   false,
+		OutputDir:   outputDir,
+	})
+	if err != nil {
+		t.Fatalf("Bundle() error = %v", err)
+	}
+
+	if gen.lastInput.TemplateData == nil {
+		t.Fatal("generator was not called")
+	}
+	inputCfg, ok := gen.lastInput.TemplateData.(*config.Config)
+	if !ok {
+		t.Fatalf("TemplateData is %T, want *config.Config", gen.lastInput.TemplateData)
+	}
+
+	// App.Build must be cleared for deploy.
+	if inputCfg.App.Build != "" {
+		t.Errorf("deploy bundle App.Build = %q, want empty", inputCfg.App.Build)
+	}
+	// App.Image must be set to the derived name.
+	if inputCfg.App.Image != "myapp-app:latest" {
+		t.Errorf("deploy bundle App.Image = %q, want %q", inputCfg.App.Image, "myapp-app:latest")
 	}
 }
 

@@ -418,6 +418,12 @@ type AppConfig struct {
 	// Values: "go", "python", "typescript", "kotlin", or empty (auto-detect
 	// at init/wrap time; falls back to wget).
 	Language string `mapstructure:"language"`
+
+	// Environment is a map of custom environment variables injected into the
+	// app container in the generated Docker Compose file. Use this for runtime
+	// configuration (e.g. DATABASE_URL, API keys). Values are rendered as
+	// KEY=VALUE entries in the environment list of the app service.
+	Environment map[string]string `mapstructure:"environment"`
 }
 
 // TLSCertMonitoringConfig holds configuration for the certificate expiry monitor.
