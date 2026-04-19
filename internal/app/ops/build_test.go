@@ -26,7 +26,7 @@ func (f *fakeBuilder) Build(_ context.Context, tag string, contextDir string, no
 	return f.err
 }
 
-func TestBuildService_Run_UsesAppImageFromConfig(t *testing.T) {
+func TestBuildService_Run_UsesComposeProjectNameFromConfig(t *testing.T) {
 	fb := &fakeBuilder{}
 	svc := ops.NewBuildService(fb)
 
@@ -39,11 +39,15 @@ func TestBuildService_Run_UsesAppImageFromConfig(t *testing.T) {
 		t.Fatalf("Run() unexpected error: %v", err)
 	}
 
-	if fb.capturedTag != "myapp:v1.2.3" {
-		t.Errorf("tag = %q, want %q", fb.capturedTag, "myapp:v1.2.3")
+	// ComposeProjectName() strips the tag from App.Image, giving "myapp".
+	// resolveImageTag uses that to produce "myapp-app:latest" which matches
+	// what docker-compose expects for the app service.
+	wantTag := "myapp-app:latest"
+	if fb.capturedTag != wantTag {
+		t.Errorf("tag = %q, want %q", fb.capturedTag, wantTag)
 	}
 
-	if !strings.Contains(out.String(), "myapp:v1.2.3") {
+	if !strings.Contains(out.String(), wantTag) {
 		t.Errorf("output missing image tag: %s", out.String())
 	}
 }
@@ -61,8 +65,8 @@ func TestBuildService_Run_FallsBackToDirectoryName(t *testing.T) {
 		t.Fatalf("Run() unexpected error: %v", err)
 	}
 
-	if !strings.HasSuffix(fb.capturedTag, ":latest") {
-		t.Errorf("tag %q should end with :latest when falling back to dir name", fb.capturedTag)
+	if !strings.HasSuffix(fb.capturedTag, "-app:latest") {
+		t.Errorf("tag %q should end with -app:latest when falling back to dir name", fb.capturedTag)
 	}
 }
 
@@ -96,8 +100,7 @@ func TestBuildService_Run_PassesNoCache(t *testing.T) {
 			fb := &fakeBuilder{}
 			svc := ops.NewBuildService(fb)
 
-			cfg := &config.Config{}
-			cfg.App.Image = "img:latest"
+			cfg := &config.Config{Name: "img"}
 
 			var out bytes.Buffer
 			err := svc.Run(context.Background(), cfg, ops.BuildOptions{
@@ -119,8 +122,7 @@ func TestBuildService_Run_NoCachePrintedInOutput(t *testing.T) {
 	fb := &fakeBuilder{}
 	svc := ops.NewBuildService(fb)
 
-	cfg := &config.Config{}
-	cfg.App.Image = "myapp:latest"
+	cfg := &config.Config{Name: "myapp"}
 
 	var out bytes.Buffer
 	err := svc.Run(context.Background(), cfg, ops.BuildOptions{
@@ -141,8 +143,7 @@ func TestBuildService_Run_ReturnsBuilderError(t *testing.T) {
 	fb := &fakeBuilder{err: want}
 	svc := ops.NewBuildService(fb)
 
-	cfg := &config.Config{}
-	cfg.App.Image = "myapp:latest"
+	cfg := &config.Config{Name: "myapp"}
 
 	var out bytes.Buffer
 	err := svc.Run(context.Background(), cfg, ops.BuildOptions{WorkDir: "."}, &out)
@@ -158,8 +159,7 @@ func TestBuildService_Run_SuccessOutputContainsTag(t *testing.T) {
 	fb := &fakeBuilder{}
 	svc := ops.NewBuildService(fb)
 
-	cfg := &config.Config{}
-	cfg.App.Image = "webapp:1.0"
+	cfg := &config.Config{Name: "webapp"}
 
 	var out bytes.Buffer
 	err := svc.Run(context.Background(), cfg, ops.BuildOptions{WorkDir: "."}, &out)
@@ -168,7 +168,7 @@ func TestBuildService_Run_SuccessOutputContainsTag(t *testing.T) {
 	}
 
 	output := out.String()
-	if !strings.Contains(output, "webapp:1.0") {
+	if !strings.Contains(output, "webapp-app:latest") {
 		t.Errorf("success output missing tag: %s", output)
 	}
 	if !strings.Contains(output, "Successfully built") {
@@ -180,8 +180,7 @@ func TestBuildService_Run_PassesWorkDirToBuilder(t *testing.T) {
 	fb := &fakeBuilder{}
 	svc := ops.NewBuildService(fb)
 
-	cfg := &config.Config{}
-	cfg.App.Image = "myapp:latest"
+	cfg := &config.Config{Name: "myapp"}
 
 	dir := t.TempDir()
 
@@ -211,8 +210,7 @@ func TestBuildService_ShellProber_NoShellWarning(t *testing.T) {
 	fp := &fakeShellProber{hasShell: false}
 	svc := ops.NewBuildService(fb).WithShellProber(fp)
 
-	cfg := &config.Config{}
-	cfg.App.Image = "myapp:latest"
+	cfg := &config.Config{Name: "myapp"}
 
 	var out bytes.Buffer
 	err := svc.Run(context.Background(), cfg, ops.BuildOptions{WorkDir: "."}, &out)
@@ -234,8 +232,7 @@ func TestBuildService_ShellProber_HasShell_NoWarning(t *testing.T) {
 	fp := &fakeShellProber{hasShell: true}
 	svc := ops.NewBuildService(fb).WithShellProber(fp)
 
-	cfg := &config.Config{}
-	cfg.App.Image = "myapp:latest"
+	cfg := &config.Config{Name: "myapp"}
 
 	var out bytes.Buffer
 	err := svc.Run(context.Background(), cfg, ops.BuildOptions{WorkDir: "."}, &out)
@@ -254,8 +251,7 @@ func TestBuildService_ShellProber_Error_NoWarning(t *testing.T) {
 	fp := &fakeShellProber{err: errors.New("docker daemon unreachable")}
 	svc := ops.NewBuildService(fb).WithShellProber(fp)
 
-	cfg := &config.Config{}
-	cfg.App.Image = "myapp:latest"
+	cfg := &config.Config{Name: "myapp"}
 
 	var out bytes.Buffer
 	err := svc.Run(context.Background(), cfg, ops.BuildOptions{WorkDir: "."}, &out)
@@ -273,8 +269,7 @@ func TestBuildService_ShellProber_NilProber_NoWarning(t *testing.T) {
 	fb := &fakeBuilder{}
 	svc := ops.NewBuildService(fb) // no prober wired
 
-	cfg := &config.Config{}
-	cfg.App.Image = "myapp:latest"
+	cfg := &config.Config{Name: "myapp"}
 
 	var out bytes.Buffer
 	err := svc.Run(context.Background(), cfg, ops.BuildOptions{WorkDir: "."}, &out)
@@ -285,5 +280,51 @@ func TestBuildService_ShellProber_NilProber_NoWarning(t *testing.T) {
 	output := out.String()
 	if strings.Contains(output, "Warning: your app image has no shell") {
 		t.Errorf("unexpected shell warning when no prober wired:\n%s", output)
+	}
+}
+
+// TestBuildService_Run_ImageNameMatchesComposeProjectName verifies that the
+// image tag produced by `vibew build` matches what docker-compose expects:
+// <ComposeProjectName>-app:latest.
+//
+// Regression test for #973.
+func TestBuildService_Run_ImageNameMatchesComposeProjectName(t *testing.T) {
+	tests := []struct {
+		name    string
+		cfg     *config.Config
+		wantTag string
+	}{
+		{
+			name:    "explicit name in config",
+			cfg:     &config.Config{Name: "myapp"},
+			wantTag: "myapp-app:latest",
+		},
+		{
+			name:    "image-derived name (tag stripped)",
+			cfg:     &config.Config{App: config.AppConfig{Image: "webapp:v2.0"}},
+			wantTag: "webapp-app:latest",
+		},
+		{
+			name:    "image with registry prefix",
+			cfg:     &config.Config{App: config.AppConfig{Image: "ghcr.io/org/service:latest"}},
+			wantTag: "service-app:latest",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fb := &fakeBuilder{}
+			svc := ops.NewBuildService(fb)
+
+			var out bytes.Buffer
+			err := svc.Run(context.Background(), tt.cfg, ops.BuildOptions{WorkDir: "."}, &out)
+			if err != nil {
+				t.Fatalf("Run() unexpected error: %v", err)
+			}
+
+			if fb.capturedTag != tt.wantTag {
+				t.Errorf("tag = %q, want %q", fb.capturedTag, tt.wantTag)
+			}
+		})
 	}
 }

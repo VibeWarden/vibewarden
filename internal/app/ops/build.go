@@ -105,13 +105,28 @@ func (s *BuildService) probeShell(ctx context.Context, image string, out io.Writ
 }
 
 // resolveImageTag returns the Docker image tag for the build.
+// The tag must match what docker-compose expects for the app service so that
+// `vibew build` followed by `vibew dev` or `vibew deploy` finds the image.
+//
+// Docker Compose names built images as "<project>-<service>:latest". Since the
+// app service is always called "app", the expected image name is
+// "<ComposeProjectName>-app:latest". This function uses the same derivation
+// logic as the deploy bundle to ensure consistency.
+//
 // Priority:
-//  1. cfg.App.Image when cfg is non-nil and non-empty.
+//  1. cfg.ComposeProjectName() + "-app:latest" when cfg is non-nil and has a
+//     project name or image. This matches Docker Compose's naming convention.
 //  2. Base name of workDir (directory name), normalised to lower-case with
-//     ":latest" appended.
+//     "-app:latest" appended.
 func resolveImageTag(cfg *config.Config, workDir string) (string, error) {
-	if cfg != nil && cfg.App.Image != "" {
-		return cfg.App.Image, nil
+	if cfg != nil {
+		name := cfg.ComposeProjectName()
+		if name != "" && name != "vibewarden" {
+			return name + "-app:latest", nil
+		}
+		// When ComposeProjectName() returns "vibewarden" (the fallback), it means
+		// neither name nor image is set. Fall through to directory-based derivation
+		// so the tag is project-specific rather than the generic fallback.
 	}
 
 	abs, err := filepath.Abs(workDir)
@@ -124,5 +139,5 @@ func resolveImageTag(cfg *config.Config, workDir string) (string, error) {
 		return "", fmt.Errorf("cannot derive image name from directory %q", workDir)
 	}
 
-	return name + ":latest", nil
+	return name + "-app:latest", nil
 }

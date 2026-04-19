@@ -58,11 +58,52 @@ func (AuthHandler) CaddyModule() gocaddy.ModuleInfo {
 	}
 }
 
+// kratosDefaultPublicPaths contains the URL path patterns that must be
+// exempted from authentication when auth.mode is "kratos". These paths
+// cover the Kratos self-service browser flows, auth UI routes, the whoami
+// endpoint, and error pages. They are automatically appended in Provision()
+// so the user does not need to list them in auth.public_paths.
+var kratosDefaultPublicPaths = []string{
+	"/auth/*",
+	"/self-service/*",
+	"/login",
+	"/registration",
+	"/recovery",
+	"/verification",
+	"/error",
+	"/sessions/whoami",
+}
+
 // Provision sets up the handler.
 func (h *AuthHandler) Provision(_ gocaddy.Context) error {
 	h.logger = slog.Default()
 	h.client = &http.Client{Timeout: 5 * time.Second}
+
+	// When a KratosURL is configured, automatically append the default Kratos
+	// public paths so that auth flows and UI routes are never blocked by the
+	// authentication check.
+	if h.Config.KratosURL != "" {
+		h.Config.PublicPaths = appendKratosPublicPaths(h.Config.PublicPaths)
+	}
+
 	return nil
+}
+
+// appendKratosPublicPaths appends kratosDefaultPublicPaths to the given paths,
+// skipping any entries that are already present.
+func appendKratosPublicPaths(existing []string) []string {
+	set := make(map[string]bool, len(existing))
+	for _, p := range existing {
+		set[p] = true
+	}
+	result := make([]string, len(existing))
+	copy(result, existing)
+	for _, p := range kratosDefaultPublicPaths {
+		if !set[p] {
+			result = append(result, p)
+		}
+	}
+	return result
 }
 
 // UnmarshalJSON implements custom unmarshalling to support both nested

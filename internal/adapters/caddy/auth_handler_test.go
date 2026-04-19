@@ -542,6 +542,129 @@ func TestAuthHandler_ServeHTTP_ForwardsCookieToKratos(t *testing.T) {
 	}
 }
 
+// TestAuthHandler_Provision_AppendKratosPublicPaths verifies that Provision
+// automatically appends kratosDefaultPublicPaths when KratosURL is set, and
+// does not duplicate paths that are already present.
+//
+// Regression test for #977 and #978.
+func TestAuthHandler_Provision_AppendKratosPublicPaths(t *testing.T) {
+	tests := []struct {
+		name       string
+		kratosURL  string
+		initial    []string
+		wantPaths  []string
+		wantAbsent []string
+	}{
+		{
+			name:      "appends all default paths when none present",
+			kratosURL: "http://kratos:4433",
+			initial:   []string{"/_vibewarden/*"},
+			wantPaths: []string{
+				"/_vibewarden/*",
+				"/auth/*",
+				"/self-service/*",
+				"/login",
+				"/registration",
+				"/recovery",
+				"/verification",
+				"/error",
+				"/sessions/whoami",
+			},
+		},
+		{
+			name:      "does not duplicate existing paths",
+			kratosURL: "http://kratos:4433",
+			initial:   []string{"/auth/*", "/self-service/*"},
+			wantPaths: []string{
+				"/auth/*",
+				"/self-service/*",
+				"/login",
+				"/registration",
+				"/recovery",
+				"/verification",
+				"/error",
+				"/sessions/whoami",
+			},
+		},
+		{
+			name:       "no append when KratosURL is empty",
+			kratosURL:  "",
+			initial:    []string{"/_vibewarden/*"},
+			wantPaths:  []string{"/_vibewarden/*"},
+			wantAbsent: []string{"/auth/*", "/self-service/*"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			h := &AuthHandler{Config: AuthHandlerConfig{
+				CookieName:  "ory_kratos_session",
+				LoginURL:    "/login",
+				KratosURL:   tt.kratosURL,
+				PublicPaths: tt.initial,
+			}}
+
+			err := h.Provision(gocaddy.Context{})
+			if err != nil {
+				t.Fatalf("Provision() error = %v", err)
+			}
+
+			pathSet := make(map[string]bool)
+			for _, p := range h.Config.PublicPaths {
+				pathSet[p] = true
+			}
+
+			for _, want := range tt.wantPaths {
+				if !pathSet[want] {
+					t.Errorf("PublicPaths missing %q, got %v", want, h.Config.PublicPaths)
+				}
+			}
+
+			for _, absent := range tt.wantAbsent {
+				if pathSet[absent] {
+					t.Errorf("PublicPaths should not contain %q, got %v", absent, h.Config.PublicPaths)
+				}
+			}
+		})
+	}
+}
+
+// TestAuthHandler_Provision_KratosPathsBypass verifies that after Provision
+// the automatically-added Kratos paths bypass authentication.
+//
+// Regression test for #978.
+func TestAuthHandler_Provision_KratosPathsBypass(t *testing.T) {
+	h := &AuthHandler{Config: AuthHandlerConfig{
+		CookieName: "ory_kratos_session",
+		LoginURL:   "/login",
+		KratosURL:  "http://kratos:4433",
+	}}
+	if err := h.Provision(gocaddy.Context{}); err != nil {
+		t.Fatalf("Provision() error = %v", err)
+	}
+
+	bypassPaths := []string{
+		"/auth/login",
+		"/auth/registration",
+		"/self-service/login/browser",
+		"/self-service/registration/flows",
+		"/login",
+		"/registration",
+		"/recovery",
+		"/verification",
+		"/error",
+		"/sessions/whoami",
+	}
+
+	for _, p := range bypassPaths {
+		t.Run(p, func(t *testing.T) {
+			if !h.isPublicPath(p) {
+				t.Errorf("isPublicPath(%q) = false after Provision(), want true", p)
+			}
+		})
+	}
+}
+
 // TestAuthHandler_ServeHTTP_KratosServerError verifies redirect when Kratos
 // returns a 5xx error.
 func TestAuthHandler_ServeHTTP_KratosServerError(t *testing.T) {

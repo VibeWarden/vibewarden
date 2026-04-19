@@ -272,7 +272,7 @@
 
       // Submit button.
       if (attrs.type === 'submit') {
-        return '<button type="submit" class="btn-primary">' + escapeHtml((node.meta && node.meta.label && node.meta.label.text) || 'Submit') + '</button>';
+        return '<button type="submit" class="btn-primary" name="' + escapeHtml(attrs.name || '') + '" value="' + escapeHtml(attrs.value || '') + '">' + escapeHtml((node.meta && node.meta.label && node.meta.label.text) || 'Submit') + '</button>';
       }
 
       // Other inputs (email, password, text).

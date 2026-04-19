@@ -290,3 +290,150 @@ func TestGenerate_Integration_KratosOIDCRendering(t *testing.T) {
 		})
 	}
 }
+
+// TestGenerate_Integration_KratosBaseURL verifies that the generated
+// kratos.yml uses the sidecar's public URL (http[s]://localhost:<port>) as
+// serve.public.base_url instead of the internal Docker hostname, because
+// browsers need to reach the sidecar, not the internal Kratos container.
+//
+// Regression test for #977.
+func TestGenerate_Integration_KratosBaseURL(t *testing.T) {
+	renderer := template.NewRenderer(templates.FS)
+	svc := generate.NewService(renderer)
+
+	tests := []struct {
+		name        string
+		tlsEnabled  bool
+		serverPort  int
+		wantBaseURL string
+		wantAbsent  string
+	}{
+		{
+			name:        "HTTP mode uses http://localhost:<port>",
+			tlsEnabled:  false,
+			serverPort:  8080,
+			wantBaseURL: "base_url: http://localhost:8080",
+			wantAbsent:  "base_url: http://127.0.0.1:4433",
+		},
+		{
+			name:        "TLS mode uses https://localhost:<port>",
+			tlsEnabled:  true,
+			serverPort:  8443,
+			wantBaseURL: "base_url: https://localhost:8443",
+			wantAbsent:  "base_url: http://127.0.0.1:4433",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			outputDir := t.TempDir()
+			cfg := minimalConfig()
+			cfg.TLS.Enabled = tt.tlsEnabled
+			cfg.Server.Port = tt.serverPort
+
+			if err := svc.Generate(context.Background(), cfg.ToGeneratorInput(), outputDir); err != nil {
+				t.Fatalf("Generate() unexpected error: %v", err)
+			}
+
+			kratosYML := filepath.Join(outputDir, "kratos", "kratos.yml")
+			data, err := os.ReadFile(kratosYML)
+			if err != nil {
+				t.Fatalf("reading kratos.yml: %v", err)
+			}
+
+			if !bytes.Contains(data, []byte(tt.wantBaseURL)) {
+				t.Errorf("kratos.yml missing expected base_url %q\n--- content ---\n%s", tt.wantBaseURL, data)
+			}
+			if bytes.Contains(data, []byte(tt.wantAbsent)) {
+				t.Errorf("kratos.yml contains unexpected base_url %q\n--- content ---\n%s", tt.wantAbsent, data)
+			}
+		})
+	}
+}
+
+// TestGenerate_Integration_KratosUIUrlsUseAuthPrefix verifies that the
+// generated kratos.yml uses /auth/ prefix for all ui_url entries so that
+// Kratos redirects to the sidecar's auth UI routes.
+//
+// Regression test for #977.
+func TestGenerate_Integration_KratosUIUrlsUseAuthPrefix(t *testing.T) {
+	renderer := template.NewRenderer(templates.FS)
+	svc := generate.NewService(renderer)
+
+	outputDir := t.TempDir()
+	cfg := minimalConfig()
+	cfg.Server.Port = 8080
+
+	if err := svc.Generate(context.Background(), cfg.ToGeneratorInput(), outputDir); err != nil {
+		t.Fatalf("Generate() unexpected error: %v", err)
+	}
+
+	kratosYML := filepath.Join(outputDir, "kratos", "kratos.yml")
+	data, err := os.ReadFile(kratosYML)
+	if err != nil {
+		t.Fatalf("reading kratos.yml: %v", err)
+	}
+
+	wantPaths := []string{
+		"ui_url: http://localhost:8080/auth/error",
+		"ui_url: http://localhost:8080/auth/settings",
+		"ui_url: http://localhost:8080/auth/recovery",
+		"ui_url: http://localhost:8080/auth/verification",
+		"ui_url: http://localhost:8080/auth/login",
+		"ui_url: http://localhost:8080/auth/registration",
+		"default_browser_return_url: http://localhost:8080/auth/login",
+	}
+
+	for _, want := range wantPaths {
+		if !bytes.Contains(data, []byte(want)) {
+			t.Errorf("kratos.yml missing expected path %q\n--- content ---\n%s", want, data)
+		}
+	}
+
+	// Ensure old paths without /auth/ prefix are NOT present.
+	unwantedPaths := []string{
+		"ui_url: http://localhost:8080/login",
+		"ui_url: http://localhost:8080/registration",
+		"ui_url: http://localhost:8080/recovery",
+		"ui_url: http://localhost:8080/verification",
+		"ui_url: http://localhost:8080/error\n",
+		"ui_url: http://localhost:8080/settings",
+	}
+
+	for _, unwanted := range unwantedPaths {
+		if bytes.Contains(data, []byte(unwanted)) {
+			t.Errorf("kratos.yml contains old path without /auth/ prefix: %q\n--- content ---\n%s", unwanted, data)
+		}
+	}
+}
+
+// TestGenerate_Integration_ComposeBuildContextIsAbsolutePath verifies that the
+// generated docker-compose.yml uses an absolute path for the build context
+// instead of fragile relative paths like "../../.".
+//
+// Regression test for #979.
+func TestGenerate_Integration_ComposeBuildContextIsAbsolutePath(t *testing.T) {
+	renderer := template.NewRenderer(templates.FS)
+	svc := generate.NewService(renderer)
+
+	outputDir := t.TempDir()
+	cfg := minimalConfig()
+	cfg.App.Build = "."
+
+	if err := svc.Generate(context.Background(), cfg.ToGeneratorInput(), outputDir); err != nil {
+		t.Fatalf("Generate() unexpected error: %v", err)
+	}
+
+	composePath := filepath.Join(outputDir, "docker-compose.yml")
+	data, err := os.ReadFile(composePath)
+	if err != nil {
+		t.Fatalf("reading docker-compose.yml: %v", err)
+	}
+
+	if bytes.Contains(data, []byte("context: ../../")) {
+		t.Error("docker-compose.yml must not use relative '../../' build context")
+	}
+	if !bytes.Contains(data, []byte("context: /")) {
+		t.Error("docker-compose.yml build context should be an absolute path starting with '/'")
+	}
+}
