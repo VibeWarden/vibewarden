@@ -119,7 +119,9 @@ func TestDiscoverProdOverride_UnreadableDir(t *testing.T) {
 	if err := os.Chmod(dir, 0o000); err != nil {
 		t.Fatalf("chmod dir: %v", err)
 	}
-	t.Cleanup(func() { _ = os.Chmod(dir, 0o700) })
+	// Restore directory permissions so t.TempDir's cleanup can recurse.
+	// 0o700 is required because directories need the execute bit to be traversable.
+	t.Cleanup(func() { _ = os.Chmod(dir, 0o700) }) //nolint:gosec // test-only dir perms
 
 	got := discoverProdOverride(basePath)
 	if got != "" {

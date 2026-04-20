@@ -524,7 +524,10 @@ func TestBundle_SingleSite_ConfigPathStatError(t *testing.T) {
 	if err := os.Chmod(lockedDir, 0o000); err != nil {
 		t.Fatalf("chmod locked: %v", err)
 	}
-	t.Cleanup(func() { _ = os.Chmod(lockedDir, 0o700) })
+	// Restore directory permissions at cleanup so t.TempDir's own cleanup can
+	// recursively remove files inside. 0o700 is required because directories
+	// need the execute bit to be traversable.
+	t.Cleanup(func() { _ = os.Chmod(lockedDir, 0o700) }) //nolint:gosec // test-only dir perms
 
 	outputDir := t.TempDir()
 	cfg := &config.Config{
