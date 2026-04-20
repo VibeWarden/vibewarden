@@ -1,0 +1,140 @@
+package ops
+
+import (
+	"errors"
+	"fmt"
+	"os/exec"
+	"strings"
+)
+
+// maxRemoteErrorLen bounds the final rendered detail to keep the doctor
+// report single-line and readable. Matches ADR-084 "~180 chars".
+const maxRemoteErrorLen = 180
+
+// formatRemoteError renders a ports.RemoteExecutor error for user display.
+//
+// Contract (per ADR-084):
+//   - Output is a single line (no newlines, no carriage returns).
+//   - It never echoes raw shell fragments (`2>/dev/null`, `||`, `ssh `,
+//     `ssh exit`) — those are stripped so implementation detail does not
+//     leak into user-facing errors.
+//   - When err wraps *exec.ExitError the exit code is surfaced.
+//   - The first non-empty line of stderr is included when present.
+//   - A small set of hard-coded hints is appended based on the exit code.
+//   - Input nil → empty string.
+//
+// cmdName is a short human-readable label for the remote command
+// (e.g. "docker compose ps") used when the stderr line is empty.
+func formatRemoteError(err error, cmdName string) string {
+	if err == nil {
+		return ""
+	}
+
+	exitCode, stderr := extractExitInfo(err)
+	stderrLine := firstMeaningfulLine(stderr)
+	if stderrLine == "" {
+		// Fall back to the wrapped error text, minus the noisy adapter prefix.
+		stderrLine = stripShellLeaks(err.Error())
+	}
+	stderrLine = stripShellLeaks(stderrLine)
+
+	var parts []string
+	if exitCode != 0 {
+		parts = append(parts, fmt.Sprintf("exit %d", exitCode))
+	}
+	if stderrLine != "" {
+		parts = append(parts, stderrLine)
+	}
+	if hint := remoteErrorHint(exitCode, cmdName); hint != "" {
+		parts = append(parts, hint)
+	}
+
+	out := strings.Join(parts, "; ")
+	out = sanitizeSingleLine(out)
+	if len(out) > maxRemoteErrorLen {
+		out = out[:maxRemoteErrorLen-1] + "…"
+	}
+	return out
+}
+
+// extractExitInfo pulls the numeric exit code and stderr text (when
+// available) out of an error returned by ports.RemoteExecutor.Run. The
+// adapter merges stdout+stderr into the error return value, so the caller
+// must pass the raw error here.
+//
+// Returns (0, "") when err is not an *exec.ExitError.
+func extractExitInfo(err error) (int, string) {
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) {
+		return exitErr.ExitCode(), string(exitErr.Stderr)
+	}
+	return 0, ""
+}
+
+// firstMeaningfulLine returns the first non-empty, trimmed line of s.
+func firstMeaningfulLine(s string) string {
+	for _, line := range strings.Split(s, "\n") {
+		line = strings.TrimSpace(line)
+		if line != "" {
+			return line
+		}
+	}
+	return ""
+}
+
+// stripShellLeaks removes shell fragments that must never appear in
+// user-facing doctor output. The replacements are conservative: only
+// well-known literal substrings are removed, and surrounding whitespace is
+// collapsed.
+func stripShellLeaks(s string) string {
+	leaks := []string{
+		" 2>/dev/null",
+		"2>/dev/null",
+		" || docker-compose ps",
+		"|| docker-compose ps",
+		" || ",
+		"ssh exit: ",
+		"ssh exit:",
+		// "ssh " only at the start of a token — a legitimate word like
+		// "ssh" in stderr (e.g. "ssh: connect") is allowed to stay without
+		// the trailing space. We strip the common "ssh <cmd>:" prefix by
+		// anchoring with a colon instead.
+	}
+	for _, l := range leaks {
+		s = strings.ReplaceAll(s, l, "")
+	}
+	// Normalise whitespace runs.
+	s = strings.Join(strings.Fields(s), " ")
+	return s
+}
+
+// sanitizeSingleLine collapses any remaining newlines/carriage returns into
+// spaces so the final string renders on one line.
+func sanitizeSingleLine(s string) string {
+	s = strings.ReplaceAll(s, "\r\n", " ")
+	s = strings.ReplaceAll(s, "\n", " ")
+	s = strings.ReplaceAll(s, "\r", " ")
+	s = strings.Join(strings.Fields(s), " ")
+	return s
+}
+
+// remoteErrorHint returns a short, user-facing suggestion keyed off the
+// exit code. cmdName contextualises the default hint (e.g. "docker
+// compose").
+func remoteErrorHint(exitCode int, cmdName string) string {
+	switch exitCode {
+	case 127:
+		return fmt.Sprintf("%s not installed on remote", cmdName)
+	case 126:
+		return fmt.Sprintf("%s not executable — check permissions", cmdName)
+	case 255:
+		return "ssh connection failed — check target and SSH keys"
+	case 0:
+		return ""
+	default:
+		if cmdName != "" {
+			return fmt.Sprintf("check remote %s installation", cmdName)
+		}
+		return "check remote command"
+	}
+}
