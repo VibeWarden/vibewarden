@@ -55,6 +55,7 @@ once accepted, they are not edited. If a decision is superseded, a new ADR refer
 | [081](adr-081-auto-detect-arch-mismatch-during-deploy-prerequisites.md) | Auto-detect arch mismatch during deploy prerequisites | — |
 | [082](adr-082-strict-config-merge-unknown-keys-fail-loudly.md) | Strict config merge — unknown keys fail loudly | #1053 |
 | [083](adr-083-acme-chain-hardening-email-preflight-buypass-removed.md) | ACME chain hardening — email preflight for ZeroSSL, Buypass removed from default chain | #1055 |
+| [084](adr-084-doctor-port-ownership-via-vibewarden-health-signature.md) | Doctor port ownership via VibeWarden health-signature probe | #1054 |
 | [497](adr-497-graceful-shutdown-connection-draining.md) | Graceful Shutdown / Connection Draining | — |
 
 ## Numbering
