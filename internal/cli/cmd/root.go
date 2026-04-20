@@ -49,6 +49,7 @@ Zero-to-secure in minutes.`,
 	root.AddCommand(NewRestartCmd())
 	root.AddCommand(NewMCPCmd())
 	root.AddCommand(NewDeployCmd())
+	root.AddCommand(NewTLSCmd())
 
 	return root
 }
