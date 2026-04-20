@@ -281,6 +281,36 @@ colons, or misaligned indentation.
 
 ---
 
+### Unknown configuration key(s)
+
+**Symptom**
+
+```
+Configuration invalid: config vibewarden.yaml: unknown key(s): tls.dmain
+Error: loading config: ...
+```
+
+**Cause**
+
+`vibew validate` and `vibew deploy` run the strict loader (ADR-082): every key in
+your `vibewarden.yaml` and sibling `vibewarden.production.yaml` must map to a field
+in the schema. A typo, a removed key, or a rename — such as `docker_compose`
+(the old name) instead of `compose_file` — is reported instead of silently dropped.
+
+**Fix**
+
+Open the offending file and correct the key. The authoritative schema lives in
+[`internal/config/config.go`](https://github.com/vibewarden/vibewarden/blob/main/internal/config/config.go);
+user-facing docs in [`docs/configuration.md`](configuration.md) and the fully
+annotated `vibewarden.reference.yaml` mirror it. Every `mapstructure:"..."` tag in
+`config.go` is a valid key.
+
+The runtime path (`vibewarden serve`) stays lenient per ADR-065 so existing
+deployments keep running across upgrades — strict rejection only fires at
+validate/deploy time.
+
+---
+
 ### Generated files missing
 
 **Symptom**
