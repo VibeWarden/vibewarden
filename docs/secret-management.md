@@ -320,6 +320,86 @@ secrets:
 
 ---
 
+## secret:// Config URI Resolution
+
+Any string field in `vibewarden.yaml` supports `secret://` URIs. At config load
+time, VibeWarden resolves each URI from the encrypted secret store and replaces
+it with the plaintext value before validation or use. This keeps plaintext
+secrets out of your YAML files entirely.
+
+### URI format
+
+```
+secret://path/key
+```
+
+The last segment is the key within the secret store path. Everything before it
+is the path. For example:
+
+```
+secret://auth/google/client_secret
+```
+
+Resolves path `auth/google`, key `client_secret`.
+
+### Storing secrets
+
+Use the `vibew secret set` command to write secrets into the encrypted store:
+
+```bash
+# Store Google OAuth credentials
+vibew secret set auth/google client_id=xxx client_secret=yyy
+
+# Store a database connection string
+vibew secret set infra/db connection_string="postgres://user:pass@host:5432/db"
+
+# Store an admin API token
+vibew secret set admin/api token=my-secure-token
+```
+
+### Referencing secrets in config
+
+Use `secret://` URIs wherever you would normally write a plaintext secret:
+
+```yaml
+# vibewarden.yaml
+admin:
+  token: secret://admin/api/token
+
+database:
+  external_url: secret://infra/db/connection_string
+```
+
+After resolution, these fields contain the plaintext values as if you had
+written them directly. All downstream consumers (template rendering, deploy
+bundling, sidecar startup) see resolved values.
+
+### Bootstrap constraint
+
+The `secrets.*` config section itself **cannot** use `secret://` URIs. The
+secret store is initialised from that section, so it must contain literal values
+or environment variable references (`${VAR}`). This prevents a circular
+dependency where the store would need to be available to configure itself.
+
+### Resolution order
+
+1. `config.LoadRaw()` reads and unmarshals the YAML (no validation).
+2. The secret store is constructed from `cfg.Secrets.*`.
+3. `config.ResolveSecrets()` walks all string fields and resolves `secret://` URIs.
+4. `cfg.Validate()` validates the fully-resolved config.
+
+### Error handling
+
+If a `secret://` URI cannot be resolved (missing path, missing key, or invalid
+format), VibeWarden fails immediately with a descriptive error message that
+includes the struct field path:
+
+```
+config field Config.Admin.Token: resolving secret://admin/api/token: secret path "admin/api" not found in store
+```
+
+---
+
 ## Dynamic Postgres Credentials
 
 **OpenBao only.** OpenBao's database engine generates short-lived Postgres credentials with a configurable TTL. When credentials are within 25% of their TTL, VibeWarden automatically renews (or regenerates) them.

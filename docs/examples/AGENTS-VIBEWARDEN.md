@@ -120,8 +120,17 @@ app:
     REDIS_URL: "redis://redis:6379"
 ```
 
-Do NOT bake secrets into the Docker image. Use environment variables or
-the secrets plugin (OpenBao) for sensitive values.
+Do NOT bake secrets into the Docker image. Use `secret://` URIs in
+vibewarden.yaml to reference secrets from the encrypted store:
+
+```yaml
+admin:
+  token: secret://admin/api/token
+```
+
+Store secrets with `vibew secret set <path> <key>=<value>`. The `secrets.*`
+config section itself cannot use `secret://` URIs (bootstrap constraint).
+See docs/secret-management.md for details.
 
 ## Extra services (database, cache, etc.)
 

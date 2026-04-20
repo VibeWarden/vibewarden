@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"reflect"
+	"sort"
 	"strings"
 
 	domainsecret "github.com/vibewarden/vibewarden/internal/domain/secret"
@@ -108,8 +109,7 @@ func resolveSlice(ctx context.Context, v reflect.Value, store ports.SecretKVRead
 }
 
 // resolveMap handles map[string]string fields by resolving secret URIs in
-// both keys and values. Other map types with string values are handled
-// similarly.
+// values. Other map types with string values are handled similarly.
 func resolveMap(ctx context.Context, v reflect.Value, store ports.SecretKVReader, fieldPath string) error {
 	if v.IsNil() {
 		return nil
@@ -170,6 +170,7 @@ func resolveURI(ctx context.Context, raw string, store ports.SecretKVReader, fie
 		for k := range data {
 			available = append(available, k)
 		}
+		sort.Strings(available)
 		return "", fmt.Errorf("config field %s: resolving %s: key %q not found at path %q (available keys: %s)",
 			fieldPath, raw, uri.Key(), uri.Path(), strings.Join(available, ", "))
 	}

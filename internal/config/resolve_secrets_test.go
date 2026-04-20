@@ -198,7 +198,7 @@ func TestResolveSecrets_FieldPathInError(t *testing.T) {
 	}
 
 	// The error message should include the struct field path.
-	if !strings.Contains(err.Error(), "Admin") && !strings.Contains(err.Error(), "Token") {
+	if !strings.Contains(err.Error(), "Admin") || !strings.Contains(err.Error(), "Token") {
 		t.Errorf("error should include field path like Admin.Token, got: %v", err)
 	}
 }
