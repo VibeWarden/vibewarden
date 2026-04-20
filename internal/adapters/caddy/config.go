@@ -241,7 +241,7 @@ func BuildCaddyConfig(cfg *ports.ProxyConfig) (map[string]any, error) {
 	// certificates for. Without this, Caddy won't proactively obtain or generate
 	// any server certificate. This is critical for letsencrypt (ACME) and
 	// self-signed (internal CA) providers.
-	if cfg.TLS.Enabled && (cfg.TLS.Provider == ports.TLSProviderSelfSigned || cfg.TLS.Provider == ports.TLSProviderLetsEncrypt) {
+	if cfg.TLS.Enabled && (cfg.TLS.Provider == ports.TLSProviderSelfSigned || isACMEProvider(cfg.TLS.Provider)) {
 		domain := cfg.TLS.Domain
 		if domain == "" {
 			domain = "localhost"
@@ -271,8 +271,8 @@ func BuildCaddyConfig(cfg *ports.ProxyConfig) (map[string]any, error) {
 	}
 
 	if cfg.TLS.Enabled {
-		if cfg.TLS.Provider == ports.TLSProviderLetsEncrypt {
-			// For Let's Encrypt, do NOT disable redirects. Caddy's built-in
+		if isACMEProvider(cfg.TLS.Provider) {
+			// For ACME providers, do NOT disable redirects. Caddy's built-in
 			// automatic HTTPS will:
 			//   1. Serve ACME HTTP-01 challenges on port 80
 			//   2. Redirect all other HTTP traffic to HTTPS
@@ -306,13 +306,13 @@ func BuildCaddyConfig(cfg *ports.ProxyConfig) (map[string]any, error) {
 		"vibewarden": server,
 	}
 
-	// When TLS is enabled and the provider is NOT Let's Encrypt, add a manual
+	// When TLS is enabled and the provider is NOT an ACME provider, add a manual
 	// HTTP→HTTPS redirect server on :80.
-	// For Let's Encrypt, Caddy's automatic HTTPS handles both ACME challenges and
+	// For ACME providers, Caddy's automatic HTTPS handles both ACME challenges and
 	// HTTP→HTTPS redirects on port 80 natively. Adding a manual redirect server
 	// would intercept /.well-known/acme-challenge/* before Caddy's ACME solver,
 	// causing certificate issuance to fail.
-	if cfg.TLS.Enabled && cfg.TLS.Provider != ports.TLSProviderLetsEncrypt {
+	if cfg.TLS.Enabled && !isACMEProvider(cfg.TLS.Provider) {
 		httpServers["vibewarden_redirect"] = buildHTTPRedirectServer()
 	}
 
@@ -368,9 +368,18 @@ func buildExtraRoute(r ports.CaddyRoute) map[string]any {
 // validateTLSConfig checks that the TLS configuration is self-consistent.
 func validateTLSConfig(cfg ports.TLSConfig) error {
 	switch cfg.Provider {
-	case ports.TLSProviderLetsEncrypt:
+	case ports.TLSProviderLetsEncrypt,
+		ports.TLSProviderBuypass,
+		ports.TLSProviderLetsEncryptStaging:
 		if cfg.Domain == "" {
 			return fmt.Errorf("domain is required for provider %q", cfg.Provider)
+		}
+	case ports.TLSProviderZeroSSL:
+		if cfg.Domain == "" {
+			return fmt.Errorf("domain is required for provider %q", cfg.Provider)
+		}
+		if cfg.Email == "" {
+			return fmt.Errorf("email is required for provider %q (ZeroSSL needs it for automatic EAB registration)", cfg.Provider)
 		}
 	case ports.TLSProviderExternal:
 		if cfg.CertPath == "" {
@@ -382,7 +391,7 @@ func validateTLSConfig(cfg ports.TLSConfig) error {
 	case ports.TLSProviderSelfSigned, "":
 		// No additional fields required.
 	default:
-		return fmt.Errorf("unknown tls provider %q; valid values: letsencrypt, self-signed, external", cfg.Provider)
+		return fmt.Errorf("unknown tls provider %q; valid values: letsencrypt, zerossl, buypass, letsencrypt-staging, self-signed, external", cfg.Provider)
 	}
 	return nil
 }
@@ -411,10 +420,10 @@ func buildTLSPolicy(cfg ports.TLSConfig) []map[string]any {
 		return []map[string]any{{"default_sni": domain}}
 	}
 
-	// For Let's Encrypt, include a match.sni entry for the domain.
+	// For ACME providers, include a match.sni entry for the domain.
 	// Without this, Caddy does not associate the TLS connection policy with the
 	// domain and will not trigger proactive ACME certificate issuance.
-	if cfg.Provider == ports.TLSProviderLetsEncrypt && cfg.Domain != "" {
+	if isACMEProvider(cfg.Provider) && cfg.Domain != "" {
 		return []map[string]any{{
 			"match": map[string]any{
 				"sni": []string{cfg.Domain},
@@ -429,9 +438,10 @@ func buildTLSPolicy(cfg ports.TLSConfig) []map[string]any {
 // buildTLSApp builds the Caddy "tls" app configuration for the chosen provider.
 // Returns nil when no TLS app section is needed.
 func buildTLSApp(cfg ports.TLSConfig) (map[string]any, error) {
+	if isACMEProvider(cfg.Provider) {
+		return buildACMETLSApp(cfg), nil
+	}
 	switch cfg.Provider {
-	case ports.TLSProviderLetsEncrypt:
-		return buildLetsEncryptTLSApp(cfg), nil
 	case ports.TLSProviderSelfSigned, "":
 		return buildSelfSignedTLSApp(cfg), nil
 	case ports.TLSProviderExternal:
@@ -442,37 +452,21 @@ func buildTLSApp(cfg ports.TLSConfig) (map[string]any, error) {
 	}
 }
 
-// buildLetsEncryptTLSApp returns a Caddy TLS app configuration that provisions
-// certificates automatically via ACME (Let's Encrypt).
-//
-// The ACME issuer is configured with explicit HTTP-01 challenge support.
-// The HTTP-01 challenge listener is bound to the same :80 port as the redirect
-// server — Caddy manages both from within the same embedded instance, so no
-// port conflict occurs.
+// buildACMETLSApp returns a Caddy TLS app configuration that provisions
+// certificates automatically via ACME. The issuer chain is determined by
+// buildACMEIssuers: for `provider: letsencrypt` without an acme_ca override
+// a 3-issuer fallback chain (LE -> ZeroSSL -> Buypass) is configured; for
+// specific providers (zerossl, buypass, letsencrypt-staging) a single issuer
+// targeting that CA is used.
 //
 // Note: storage is intentionally NOT set here. Caddy's storage backend is a
 // top-level field on the Config struct; placing it inside apps.tls causes Caddy
 // to reject the config with "unknown field: storage". Storage is set at the
 // top-level in BuildCaddyConfig when cfg.StoragePath is non-empty.
-func buildLetsEncryptTLSApp(cfg ports.TLSConfig) map[string]any {
-	acmeIssuer := map[string]any{
-		"module": "acme",
-	}
-	// When Email is set, include it in the ACME issuer for certificate expiry
-	// notifications and automatic EAB registration (required by ZeroSSL).
-	if cfg.Email != "" {
-		acmeIssuer["email"] = cfg.Email
-	}
-	// When ACMECA is set, override the default ACME directory URL.
-	// This allows using Let's Encrypt staging, ZeroSSL, or any other
-	// ACME-compliant CA.
-	if cfg.ACMECA != "" {
-		acmeIssuer["ca"] = cfg.ACMECA
-	}
-
+func buildACMETLSApp(cfg ports.TLSConfig) map[string]any {
 	policy := map[string]any{
 		"subjects": []string{cfg.Domain},
-		"issuers":  []map[string]any{acmeIssuer},
+		"issuers":  buildACMEIssuers(cfg),
 	}
 
 	return map[string]any{
@@ -486,7 +480,7 @@ func buildLetsEncryptTLSApp(cfg ports.TLSConfig) map[string]any {
 // Caddy to generate an internal self-signed certificate.
 // This is intended for local development and testing only.
 //
-// Note: storage is intentionally NOT set here. See buildLetsEncryptTLSApp for
+// Note: storage is intentionally NOT set here. See buildACMETLSApp for
 // the explanation of why storage belongs at the top-level Caddy config.
 func buildSelfSignedTLSApp(cfg ports.TLSConfig) map[string]any {
 	policy := map[string]any{

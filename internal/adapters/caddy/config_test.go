@@ -487,28 +487,33 @@ func TestBuildCaddyConfig_LetsEncryptACMEIssuer(t *testing.T) {
 	}
 }
 
-// TestBuildCaddyConfig_LetsEncryptACMECA verifies that when ACMECA is set, the
-// ACME issuer includes a "ca" field pointing to the custom directory URL.
+// TestBuildCaddyConfig_LetsEncryptACMECA verifies ACME CA URL behaviour:
+//   - When ACMECA is empty, a 3-issuer fallback chain (LE -> ZeroSSL -> Buypass) is configured.
+//   - When ACMECA is set, a single issuer with the custom CA URL is used (backward compat).
 func TestBuildCaddyConfig_LetsEncryptACMECA(t *testing.T) {
 	tests := []struct {
-		name   string
-		acmeCA string
-		wantCA bool
+		name        string
+		acmeCA      string
+		wantIssuers int
+		wantFirstCA string
 	}{
 		{
-			name:   "default CA (empty)",
-			acmeCA: "",
-			wantCA: false,
+			name:        "default — 3-issuer fallback chain",
+			acmeCA:      "",
+			wantIssuers: 3,
+			wantFirstCA: "https://acme-v02.api.letsencrypt.org/directory",
 		},
 		{
-			name:   "staging CA",
-			acmeCA: "https://acme-staging-v02.api.letsencrypt.org/directory",
-			wantCA: true,
+			name:        "staging CA override — single issuer",
+			acmeCA:      "https://acme-staging-v02.api.letsencrypt.org/directory",
+			wantIssuers: 1,
+			wantFirstCA: "https://acme-staging-v02.api.letsencrypt.org/directory",
 		},
 		{
-			name:   "custom CA",
-			acmeCA: "https://acme.zerossl.com/v2/DV90",
-			wantCA: true,
+			name:        "custom CA override — single issuer",
+			acmeCA:      "https://acme.zerossl.com/v2/DV90",
+			wantIssuers: 1,
+			wantFirstCA: "https://acme.zerossl.com/v2/DV90",
 		},
 	}
 
@@ -544,19 +549,16 @@ func TestBuildCaddyConfig_LetsEncryptACMECA(t *testing.T) {
 				t.Fatal("issuers not found in automation policy")
 			}
 
-			acmeIssuer := issuers[0]
-			caVal, hasCA := acmeIssuer["ca"]
+			if len(issuers) != tt.wantIssuers {
+				t.Errorf("got %d issuers, want %d", len(issuers), tt.wantIssuers)
+			}
 
-			if tt.wantCA {
-				if !hasCA {
-					t.Errorf("expected 'ca' field in ACME issuer for acme_ca=%q", tt.acmeCA)
-				} else if caVal != tt.acmeCA {
-					t.Errorf("ca = %q, want %q", caVal, tt.acmeCA)
-				}
-			} else {
-				if hasCA {
-					t.Errorf("unexpected 'ca' field in ACME issuer when acme_ca is empty: %v", caVal)
-				}
+			firstCA, hasCA := issuers[0]["ca"].(string)
+			if !hasCA {
+				t.Fatal("first issuer missing 'ca' field")
+			}
+			if firstCA != tt.wantFirstCA {
+				t.Errorf("first issuer ca = %q, want %q", firstCA, tt.wantFirstCA)
 			}
 		})
 	}

@@ -274,7 +274,20 @@ type TLSProvider string
 
 const (
 	// TLSProviderLetsEncrypt provisions certificates automatically via ACME (Let's Encrypt).
+	// When used without acme_ca override, a fallback chain of LE -> ZeroSSL -> Buypass
+	// is configured for automatic failover.
 	TLSProviderLetsEncrypt TLSProvider = "letsencrypt"
+
+	// TLSProviderZeroSSL provisions certificates via ZeroSSL's ACME endpoint.
+	// Requires tls.email for automatic EAB registration.
+	TLSProviderZeroSSL TLSProvider = "zerossl"
+
+	// TLSProviderBuypass provisions certificates via Buypass Go SSL's ACME endpoint.
+	TLSProviderBuypass TLSProvider = "buypass"
+
+	// TLSProviderLetsEncryptStaging provisions certificates via Let's Encrypt's
+	// staging environment. Useful for testing without hitting production rate limits.
+	TLSProviderLetsEncryptStaging TLSProvider = "letsencrypt-staging"
 
 	// TLSProviderSelfSigned instructs Caddy to generate a self-signed certificate.
 	// Intended for local development and testing only.

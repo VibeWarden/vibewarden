@@ -266,7 +266,8 @@ type multiSiteTLSEntry struct {
 // automation policies. Each domain gets its own policy entry. The issuer
 // module is chosen based on the site's TLS provider:
 //   - "self-signed" (or empty) uses Caddy's internal issuer (self-signed CA).
-//   - "letsencrypt" (or "acme") uses the ACME issuer for public certificates.
+//   - ACME providers use buildACMEIssuers() for the issuer chain.
+//   - "external" loads operator-supplied cert+key files.
 //
 // When acmeEmail is non-empty and the issuer is ACME, it is included in the
 // issuer configuration.
@@ -280,13 +281,17 @@ func buildMultiSiteTLSApp(entries []multiSiteTLSEntry, acmeEmail string) map[str
 		loadFiles []map[string]any
 	)
 	for _, entry := range entries {
-		var issuer map[string]any
-
 		switch entry.provider {
 		case string(ports.TLSProviderSelfSigned), "":
-			issuer = map[string]any{
+			issuer := map[string]any{
 				"module": "internal",
 			}
+			policy := map[string]any{
+				"subjects": []string{entry.domain},
+				"issuers":  []map[string]any{issuer},
+			}
+			policies = append(policies, policy)
+
 		case string(ports.TLSProviderExternal):
 			// External provider: operator supplies cert + key files.
 			// No issuer — certificates are loaded via the load_files block below.
@@ -298,22 +303,21 @@ func buildMultiSiteTLSApp(entries []multiSiteTLSEntry, acmeEmail string) map[str
 					"tags":        []string{"vibewarden_external_" + entry.domain},
 				})
 			}
-			continue // skip the issuer-based policy for this entry
-		default:
-			// letsencrypt / acme — use ACME issuer.
-			issuer = map[string]any{
-				"module": "acme",
-			}
-			if acmeEmail != "" {
-				issuer["email"] = acmeEmail
-			}
-		}
 
-		policy := map[string]any{
-			"subjects": []string{entry.domain},
-			"issuers":  []map[string]any{issuer},
+		default:
+			// ACME providers (letsencrypt, zerossl, buypass, letsencrypt-staging).
+			// Use buildACMEIssuers to get the correct issuer chain.
+			tlsCfg := ports.TLSConfig{
+				Provider: ports.TLSProvider(entry.provider),
+				Domain:   entry.domain,
+				Email:    acmeEmail,
+			}
+			policy := map[string]any{
+				"subjects": []string{entry.domain},
+				"issuers":  buildACMEIssuers(tlsCfg),
+			}
+			policies = append(policies, policy)
 		}
-		policies = append(policies, policy)
 	}
 
 	tlsApp := map[string]any{}
