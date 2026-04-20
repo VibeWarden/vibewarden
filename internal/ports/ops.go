@@ -1,7 +1,10 @@
 // Package ports defines the interfaces (ports) for VibeWarden's hexagonal architecture.
 package ports
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
 // ContainerInfo holds the status of a single container reported by docker compose ps.
 type ContainerInfo struct {
@@ -13,6 +16,12 @@ type ContainerInfo struct {
 	State string
 	// Health is the Docker health-check status ("healthy", "unhealthy", "starting", or empty).
 	Health string
+	// Image is the Docker image reference used by this container (e.g. "myapp:latest").
+	Image string
+	// Project is the Compose project name that owns this container.
+	Project string
+	// CreatedAt is the timestamp when the container was created. Zero value means unknown.
+	CreatedAt time.Time
 }
 
 // ComposeRunner runs Docker Compose commands.
