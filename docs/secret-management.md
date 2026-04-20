@@ -34,22 +34,15 @@ If you already deployed with `secrets.store: openbao` (or the deprecated `secret
 
 ## Architecture
 
-```
-vibewarden.yaml
-       |
-       v
-  VibeWarden (sidecar)
-       |
-       |--- Built-in store (AES-256-GCM encrypted file)
-       |        .vibewarden/secrets.enc
-       |
-       |--- OR: OpenBao (KV v2 + database engine)
-       |        |
-       |        v
-       |     Postgres (dynamic credentials, OpenBao only)
-       |
-       v
-  upstream app (receives secrets via headers or .env file)
+```mermaid
+flowchart TD
+    Config["vibewarden.yaml"] --> VW["VibeWarden (sidecar)"]
+    VW --> Builtin["Built-in store (AES-256-GCM)"]
+    Builtin --> Enc[".vibewarden/secrets.enc"]
+    VW --> OpenBao["OpenBao (KV v2 + database engine)"]
+    OpenBao --> PG["Postgres (dynamic credentials)"]
+    Builtin --> App["Upstream app (headers or .env file)"]
+    OpenBao --> App
 ```
 
 ---
@@ -145,21 +138,12 @@ Use OpenBao when you need dynamic credentials, lease rotation, or metadata-based
 
 The OpenBao path looks like this:
 
-```
-vibewarden.yaml
-       |
-       v
-  VibeWarden (sidecar)
-       |
-       | HTTP API (no SDK)
-       v
-    OpenBao (KV v2 + database engine)
-       |
-       v
-  Postgres (dynamic credentials)
-       |
-       v
-  upstream app (receives secrets via headers or .env file)
+```mermaid
+flowchart TD
+    Config["vibewarden.yaml"] --> VW["VibeWarden (sidecar)"]
+    VW -- "HTTP API (no SDK)" --> OpenBao["OpenBao (KV v2 + database engine)"]
+    OpenBao --> PG["Postgres (dynamic credentials)"]
+    PG --> App["Upstream app (headers or .env file)"]
 ```
 
 ### 1. Start the stack

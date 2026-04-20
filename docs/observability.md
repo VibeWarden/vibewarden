@@ -441,13 +441,14 @@ Prometheus collectors:
 
 ## Architecture
 
-```
-[Your App]  <---->  [VibeWarden :8080]  <--(scrape)--  [Prometheus :9090]
-                          |                                     |
-                          +---> /_vibewarden/metrics            v
-                                                         [Grafana :3000]
-                                                               ^
-[Docker container logs]  -->  [Promtail]  -->  [Loki :3100] --+
+```mermaid
+flowchart LR
+    App["Your App"] <--> VW["VibeWarden :8080"]
+    VW -. "scrape /_vibewarden/metrics" .-> Prom["Prometheus :9090"]
+    Prom --> Grafana["Grafana :3000"]
+    Logs["Docker container logs"] --> Promtail
+    Promtail --> Loki["Loki :3100"]
+    Loki --> Grafana
 ```
 
 Prometheus scrapes VibeWarden every 15 seconds. Promtail discovers all running Docker
