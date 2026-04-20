@@ -47,7 +47,7 @@ pre-flight scripts.
 | # | Check name | What it tests |
 |---|------------|---------------|
 | 9 | **Upstream reachable** | The configured upstream port is listening locally |
-| 10 | **TLS cert valid** | Local TLS certificate (when using `self-signed`) is not expired or expiring within 7 days |
+| 10 | **TLS cert valid** | Performs a live TLS handshake against the sidecar, reads the leaf certificate from the handshake, and verifies it is not expired or expiring within 7 days. Reports WARN (`sidecar not reachable — start 'vibew dev'`) when the handshake fails, so the check no longer depends on a file-on-disk at a hardcoded path (ADR-084) |
 
 #### Layer 3: Production (only with `--target`)
 
@@ -97,7 +97,28 @@ VibeWarden Doctor
   [WARN]          Container health       no containers found — run 'vibewarden dev' to start the stack
 ```
 
-### Port conflict + Docker not running
+### Proxy port already owned by a running `vibew dev`
+
+When `vibew dev` is already running locally, port 8443 is expected to be in use.
+`vibew doctor` probes `/_vibewarden/health` and recognises the sidecar as the owner,
+so the check is `[OK]` — not `[FAIL]` — per ADR-084.
+
+```
+VibeWarden Doctor
+─────────────────────────────────────────
+  [OK]            Config file            vibewarden.yaml — valid
+  [OK]            Docker daemon          running
+  [OK]            Docker Compose         Docker Compose version v2.27.0
+  [OK]            Proxy port             in use by local vibew dev (expected)
+  [OK]            Generated files        .vibewarden/generated/docker-compose.yml
+  [OK]            Container health       4 container(s) running
+```
+
+### Port conflict (foreign process) + Docker not running
+
+The `[FAIL] Proxy port` line only fires when the port is owned by a **non-VibeWarden**
+process (i.e., the health probe does not find a `vibewarden` signature on the port).
+A running `vibew dev` never triggers this FAIL — see the sample above.
 
 ```
 VibeWarden Doctor
@@ -162,9 +183,16 @@ needs to consume the results programmatically:
 [FAIL]  Proxy port  port 8443 is already in use
 ```
 
+> This `[FAIL]` no longer fires for a running `vibew dev`. Since ADR-084 the doctor
+> probes `/_vibewarden/health` and reports
+> `[OK] Proxy port  in use by local vibew dev (expected)` when the owner is the
+> local sidecar. The FAIL below only applies when a **foreign** process owns the
+> port.
+
 **Cause**
 
-Another process is listening on the port configured in `server.port` (default `8443`).
+A non-VibeWarden process is listening on the port configured in `server.port`
+(default `8443`).
 
 **Fix — option 1: change VibeWarden's port**
 
