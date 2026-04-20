@@ -331,6 +331,11 @@ type TLSConfig struct {
 	// Uses the Caddy default when empty (applicable to TLSProviderLetsEncrypt only).
 	StoragePath string
 
+	// Email is the ACME account email address used for certificate notifications
+	// and, for some CAs (e.g. ZeroSSL), automatic EAB registration.
+	// Optional for Let's Encrypt; required for ZeroSSL.
+	Email string
+
 	// ACMECA is the ACME directory URL to use instead of the default
 	// (Let's Encrypt production). Only applicable when Provider is
 	// TLSProviderLetsEncrypt.

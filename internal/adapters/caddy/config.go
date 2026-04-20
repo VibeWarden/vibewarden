@@ -450,6 +450,11 @@ func buildLetsEncryptTLSApp(cfg ports.TLSConfig) map[string]any {
 	acmeIssuer := map[string]any{
 		"module": "acme",
 	}
+	// When Email is set, include it in the ACME issuer for certificate expiry
+	// notifications and automatic EAB registration (required by ZeroSSL).
+	if cfg.Email != "" {
+		acmeIssuer["email"] = cfg.Email
+	}
 	// When ACMECA is set, override the default ACME directory URL.
 	// This allows using Let's Encrypt staging, ZeroSSL, or any other
 	// ACME-compliant CA.

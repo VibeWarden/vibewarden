@@ -504,6 +504,10 @@ type TLSConfig struct {
 	// StoragePath is the directory where Caddy stores ACME certificates.
 	// Only applies when Provider is "letsencrypt".
 	StoragePath string `mapstructure:"storage_path"`
+	// Email is the ACME account email address used for certificate expiry
+	// notifications and automatic EAB registration with CAs that require it
+	// (e.g. ZeroSSL). Optional for Let's Encrypt.
+	Email string `mapstructure:"email"`
 	// ACMECA is the ACME directory URL to use instead of Let's Encrypt production.
 	// Only applies when Provider is "letsencrypt".
 	// Example: "https://acme-staging-v02.api.letsencrypt.org/directory"
