@@ -156,7 +156,7 @@ Examples:
 			// to false" for booleans, so we read the raw YAML map.
 			secretsEnabled := cfg.Secrets.Enabled
 			if prodConfigPath != "" {
-				if data, readErr := os.ReadFile(prodConfigPath); readErr == nil {
+				if data, readErr := os.ReadFile(prodConfigPath); readErr == nil { //nolint:gosec // CLI-user-provided prod-config path
 					var m map[string]any
 					if yaml.Unmarshal(data, &m) == nil {
 						if secrets, ok := m["secrets"].(map[string]any); ok {
