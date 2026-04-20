@@ -596,7 +596,7 @@ func TestBootstrapSidecar_TLSHealthCheck(t *testing.T) {
 		{
 			name:        "TLS enabled uses HTTPS with -sfk",
 			cfg:         multiappTLSConfig(),
-			wantCurlCmd: "curl -sfk https://localhost:443/_vibewarden/health",
+			wantCurlCmd: "curl -sfk https://localhost:443/_vibewarden/health 2>/dev/null || curl -sf http://localhost:443/_vibewarden/health",
 			wantScheme:  "https://",
 		},
 		{
@@ -607,7 +607,7 @@ func TestBootstrapSidecar_TLSHealthCheck(t *testing.T) {
 				App:      config.AppConfig{Image: "myapp:latest"},
 				TLS:      config.TLSConfig{Enabled: true},
 			},
-			wantCurlCmd: "curl -sfk https://localhost:8443/_vibewarden/health",
+			wantCurlCmd: "curl -sfk https://localhost:8443/_vibewarden/health 2>/dev/null || curl -sf http://localhost:8443/_vibewarden/health",
 			wantScheme:  "https://",
 		},
 	}
@@ -658,7 +658,7 @@ func TestDeployMultiApp_TLSHealthCheck(t *testing.T) {
 		{
 			name:        "TLS enabled uses HTTPS with -sfk",
 			cfg:         multiappTLSConfig(),
-			wantCurlCmd: "curl -sfk https://localhost:443/_vibewarden/health",
+			wantCurlCmd: "curl -sfk https://localhost:443/_vibewarden/health 2>/dev/null || curl -sf http://localhost:443/_vibewarden/health",
 			wantScheme:  "https://",
 		},
 		{
@@ -669,7 +669,7 @@ func TestDeployMultiApp_TLSHealthCheck(t *testing.T) {
 				App:      config.AppConfig{Image: "myapp:latest"},
 				TLS:      config.TLSConfig{Enabled: true},
 			},
-			wantCurlCmd: "curl -sfk https://localhost:8443/_vibewarden/health",
+			wantCurlCmd: "curl -sfk https://localhost:8443/_vibewarden/health 2>/dev/null || curl -sf http://localhost:8443/_vibewarden/health",
 			wantScheme:  "https://",
 		},
 	}
