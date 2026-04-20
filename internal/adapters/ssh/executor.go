@@ -360,8 +360,11 @@ func (e *Executor) rsyncExcludeArgs(localDir, remoteDir string, deleteExtra bool
 }
 
 // rsyncDryRunArgs builds the rsync argument list for a dry-run transfer with
-// --delete and --itemize-changes. This shows what would change without
-// modifying any files on the remote.
+// --delete, --itemize-changes, and --checksum. The --checksum flag ensures
+// rsync compares file content (via checksums) rather than mtime+size, which
+// eliminates false-positive drift reports caused by timestamp differences on
+// files whose content has not actually changed (e.g. regenerated deploy
+// bundle files). See issue #1031.
 func (e *Executor) rsyncDryRunArgs(localDir, remoteDir string) []string {
 	sshCmd := "ssh -o StrictHostKeyChecking=accept-new -o BatchMode=yes"
 	if e.keyPath != "" {
@@ -379,6 +382,7 @@ func (e *Executor) rsyncDryRunArgs(localDir, remoteDir string) []string {
 		"--dry-run",
 		"--delete",
 		"--itemize-changes",
+		"--checksum",
 		"-e", sshCmd,
 		src,
 		dst,

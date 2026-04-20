@@ -674,6 +674,7 @@ func TestService_Deploy_ComposeUpFails(t *testing.T) {
 // mockRunExecutor is a flexible test double with a custom Run function.
 type mockRunExecutor struct {
 	runFn                  func(cmd string) (string, error)
+	dryRunFn               func(localDir, remoteDir string) ([]string, error)
 	transferCalls          []transferCall
 	transferExcludingCalls []transferExcludingCall
 	transferFileCalls      []transferFileCall
@@ -707,7 +708,10 @@ func (m *mockRunExecutor) TransferFile(_ context.Context, localFile, remotePath 
 	return nil
 }
 
-func (m *mockRunExecutor) DryRunTransfer(_ context.Context, _, _ string) ([]string, error) {
+func (m *mockRunExecutor) DryRunTransfer(_ context.Context, localDir, remoteDir string) ([]string, error) {
+	if m.dryRunFn != nil {
+		return m.dryRunFn(localDir, remoteDir)
+	}
 	return nil, nil
 }
 
@@ -1314,6 +1318,175 @@ func TestDriftError_ErrorMessage(t *testing.T) {
 	}
 	if !strings.Contains(msg, "vibew deploy --force") {
 		t.Errorf("expected '--force' suggestion in message, got: %s", msg)
+	}
+}
+
+// TestDriftError_CategorisesDeployOwnedAndUserFiles verifies that DriftError
+// separates deploy-owned files from user-modified files in the error message.
+func TestDriftError_CategorisesDeployOwnedAndUserFiles(t *testing.T) {
+	tests := []struct {
+		name           string
+		changes        []string
+		wantDeployOwn  []string // substrings that should appear under "Deploy-owned"
+		wantUserMod    []string // substrings that should appear under "User-modified"
+		wantNoDeployHd bool     // true if "Deploy-owned" header should be absent
+		wantNoUserHd   bool     // true if "User-modified" header should be absent
+	}{
+		{
+			name: "mixed deploy-owned and user files",
+			changes: []string{
+				">f..T...... docker-compose.yml",
+				">f.s....... vibewarden.yaml",
+				"*deleting   custom-config.yml",
+				">f..T...... kratos/kratos.yml",
+			},
+			wantDeployOwn: []string{"docker-compose.yml", "vibewarden.yaml", "kratos/kratos.yml"},
+			wantUserMod:   []string{"custom-config.yml"},
+		},
+		{
+			name: "only deploy-owned files",
+			changes: []string{
+				">f..T...... .credentials",
+				">f..T...... .env",
+			},
+			wantDeployOwn: []string{".credentials", ".env"},
+			wantNoUserHd:  true,
+		},
+		{
+			name: "only user files",
+			changes: []string{
+				"*deleting   my-custom-script.sh",
+			},
+			wantUserMod:    []string{"my-custom-script.sh"},
+			wantNoDeployHd: true,
+		},
+		{
+			name: "openbao prefix is deploy-owned",
+			changes: []string{
+				">f..T...... openbao/config.hcl",
+			},
+			wantDeployOwn: []string{"openbao/config.hcl"},
+			wantNoUserHd:  true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := &deployapp.DriftError{Changes: tt.changes}
+			msg := err.Error()
+
+			for _, s := range tt.wantDeployOwn {
+				if !strings.Contains(msg, s) {
+					t.Errorf("expected %q in deploy-owned section, got:\n%s", s, msg)
+				}
+			}
+			for _, s := range tt.wantUserMod {
+				if !strings.Contains(msg, s) {
+					t.Errorf("expected %q in user-modified section, got:\n%s", s, msg)
+				}
+			}
+
+			if !tt.wantNoDeployHd {
+				if len(tt.wantDeployOwn) > 0 && !strings.Contains(msg, "Deploy-owned") {
+					t.Errorf("expected 'Deploy-owned' header in message, got:\n%s", msg)
+				}
+			} else if strings.Contains(msg, "Deploy-owned") {
+				t.Errorf("did not expect 'Deploy-owned' header in message, got:\n%s", msg)
+			}
+
+			if !tt.wantNoUserHd {
+				if len(tt.wantUserMod) > 0 && !strings.Contains(msg, "User-modified") {
+					t.Errorf("expected 'User-modified' header in message, got:\n%s", msg)
+				}
+			} else if strings.Contains(msg, "User-modified") {
+				t.Errorf("did not expect 'User-modified' header in message, got:\n%s", msg)
+			}
+
+			if !strings.Contains(msg, "vibew deploy --force") {
+				t.Errorf("expected '--force' suggestion in message, got:\n%s", msg)
+			}
+		})
+	}
+}
+
+// TestService_Deploy_CredentialPreservationBeforeDriftDetection verifies that
+// credential files are fetched from the remote BEFORE drift detection runs.
+// This prevents false-positive drift caused by freshly generated credentials
+// in the bundle differing from existing remote credentials. (#1031)
+func TestService_Deploy_CredentialPreservationBeforeDriftDetection(t *testing.T) {
+	// Track the order of operations to verify credential fetch precedes dry-run.
+	var opOrder []string
+
+	executor := &mockRunExecutor{
+		runFn: func(cmd string) (string, error) {
+			if strings.Contains(cmd, "test -f") && strings.Contains(cmd, ".credentials") {
+				opOrder = append(opOrder, "cred-test-.credentials")
+				return "", nil // file exists
+			}
+			if strings.Contains(cmd, "cat") && strings.Contains(cmd, ".credentials") {
+				opOrder = append(opOrder, "cred-cat-.credentials")
+				return "POSTGRES_PASSWORD=existing_password", nil
+			}
+			if strings.Contains(cmd, "test -f") && strings.Contains(cmd, ".env") {
+				opOrder = append(opOrder, "cred-test-.env")
+				return "", nil // file exists
+			}
+			if strings.Contains(cmd, "cat") && strings.Contains(cmd, ".env") {
+				opOrder = append(opOrder, "cred-cat-.env")
+				return "APP_SECRET=existing_secret", nil
+			}
+			return "", nil
+		},
+	}
+
+	// Override DryRunTransfer to record when it is called.
+	dryRunCalled := false
+	origDryRun := executor.dryRunFn
+	_ = origDryRun
+	executor.dryRunFn = func(_, _ string) ([]string, error) {
+		dryRunCalled = true
+		opOrder = append(opOrder, "dry-run")
+		return nil, nil // no drift
+	}
+
+	generator := &fakeGenerator{}
+	svc := deployapp.NewService(executor, generator)
+
+	var buf bytes.Buffer
+	err := svc.Deploy(context.Background(), defaultConfig(), deployapp.RunOptions{
+		ConfigPath:   "/tmp/proj/vibewarden.yaml",
+		GeneratedDir: t.TempDir(),
+		Force:        false,
+		Out:          &buf,
+	})
+	if err != nil {
+		t.Fatalf("Deploy() unexpected error: %v", err)
+	}
+
+	if !dryRunCalled {
+		t.Fatal("expected DryRunTransfer to be called (Force=false)")
+	}
+
+	// Verify ordering: credential operations must come before dry-run.
+	dryRunIdx := -1
+	lastCredIdx := -1
+	for i, op := range opOrder {
+		if op == "dry-run" && dryRunIdx == -1 {
+			dryRunIdx = i
+		}
+		if strings.HasPrefix(op, "cred-") {
+			lastCredIdx = i
+		}
+	}
+	if lastCredIdx == -1 {
+		t.Fatal("expected credential fetch operations to be recorded")
+	}
+	if dryRunIdx == -1 {
+		t.Fatal("expected dry-run operation to be recorded")
+	}
+	if lastCredIdx >= dryRunIdx {
+		t.Errorf("credential fetch (index %d) must happen before dry-run (index %d); operation order: %v",
+			lastCredIdx, dryRunIdx, opOrder)
 	}
 }
 
