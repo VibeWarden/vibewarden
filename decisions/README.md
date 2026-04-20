@@ -50,6 +50,10 @@ once accepted, they are not edited. If a decision is superseded, a new ADR refer
 | [076](adr-076-secret-uri-resolution-in-config.md) | secret:// URI resolution in vibewarden.yaml config | #1008 |
 | [077](adr-077-placeholder-substitution-for-composite-secret-values.md) | Placeholder substitution for composite secret values | #994 |
 | [078](adr-078-wire-acme-email-to-single-site-caddy-issuer.md) | Wire acme_email to single-site Caddy ACME issuer | #1027 |
+| [079](adr-079-acme-fallback-chain-multi-issuer.md) | ACME fallback chain — multi-issuer automatic failover | #1026 |
+| [080](adr-080-deploy-health-check-diagnostic-classification.md) | Deploy health-check diagnostic classification | — |
+| [081](adr-081-auto-detect-arch-mismatch-during-deploy-prerequisites.md) | Auto-detect arch mismatch during deploy prerequisites | — |
+| [082](adr-082-strict-config-merge-unknown-keys-fail-loudly.md) | Strict config merge — unknown keys fail loudly | #1053 |
 | [497](adr-497-graceful-shutdown-connection-draining.md) | Graceful Shutdown / Connection Draining | — |
 
 ## Numbering

@@ -1,8 +1,10 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 
 	"github.com/spf13/cobra"
 
@@ -102,8 +104,18 @@ Examples:
 				}
 			}
 
-			cfg, err := config.Load(configPath)
+			// Strict mode: reject unknown keys in the base file and in the
+			// production override (when discovered) so typos like tls.dmain fail
+			// loudly at validate time instead of being silently dropped at merge
+			// time. The runtime loader (config.Load) stays lenient per ADR-065.
+			prodPath := discoverProdOverride(configPath)
+			cfg, err := config.LoadStrict(configPath, prodPath)
 			if err != nil {
+				var unknown *config.UnknownKeyError
+				if errors.As(err, &unknown) {
+					fmt.Fprintf(cmd.ErrOrStderr(), "Configuration invalid: %s\n", unknown.Error())
+					return fmt.Errorf("loading config: %w", err)
+				}
 				fmt.Fprintf(cmd.ErrOrStderr(), "Configuration invalid: %v\n", err)
 				return fmt.Errorf("loading config: %w", err)
 			}
@@ -134,6 +146,23 @@ Examples:
 	}
 
 	return cmd
+}
+
+// discoverProdOverride returns the path to vibewarden.production.yaml that
+// sits next to configPath, when it exists. The empty string is returned when
+// configPath is empty, the override file does not exist, or the directory
+// cannot be read. Strict validation still succeeds when no override is
+// present.
+func discoverProdOverride(configPath string) string {
+	if configPath == "" {
+		return ""
+	}
+	dir := filepath.Dir(configPath)
+	candidate := filepath.Join(dir, "vibewarden.production.yaml")
+	if _, err := os.Stat(candidate); err != nil {
+		return ""
+	}
+	return candidate
 }
 
 // validateConfig checks semantic constraints on cfg that cannot be expressed

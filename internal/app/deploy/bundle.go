@@ -3,7 +3,9 @@ package deploy
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"text/template"
@@ -96,9 +98,27 @@ func (s *Service) bundleSingleSite(ctx context.Context, cfg *config.Config, conf
 	// Load and overlay the production override into the Config struct so that
 	// the compose template uses production values (port 443, letsencrypt, etc.)
 	// for port bindings, TLS config, and other template-driven settings.
-	mergedCfg, err := LoadMergedConfig(cfg, prodConfigPath)
-	if err != nil {
-		return err
+	//
+	// When configPath is empty or the file does not exist on disk (unit tests
+	// that drive the service with an in-memory cfg), fall back to the
+	// caller-supplied cfg so the template still renders. Any other stat error
+	// (permission denied, I/O failure) surfaces so we never silently drop a
+	// user-supplied config — that was the class of bug behind #1053.
+	mergedCfg := cfg
+	if configPath != "" {
+		_, statErr := os.Stat(configPath)
+		switch {
+		case statErr == nil:
+			loaded, err := LoadMergedConfig(configPath, prodConfigPath)
+			if err != nil {
+				return err
+			}
+			mergedCfg = loaded
+		case errors.Is(statErr, fs.ErrNotExist):
+			// Intentional fall-through: in-memory cfg is the source of truth.
+		default:
+			return fmt.Errorf("stat config %s: %w", configPath, statErr)
+		}
 	}
 
 	// Resolve upstream.host on the merged Config for template rendering.

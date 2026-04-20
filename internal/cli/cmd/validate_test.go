@@ -561,3 +561,165 @@ func TestValidateCmd_ConfigFlagRegistered(t *testing.T) {
 		t.Error("expected --config flag to be registered on 'validate' command")
 	}
 }
+
+// TestValidateCmd_RejectsUnknownKeys covers the ADR-082 strict-loader CLI
+// surface: a typo or removed key at the top level of the base config must
+// produce the user-facing "Configuration invalid: … unknown key(s): …"
+// message and a non-zero exit. The library-level coverage lives in
+// internal/config/strict_test.go — this test pins the wiring through cobra.
+func TestValidateCmd_RejectsUnknownKeys(t *testing.T) {
+	tests := []struct {
+		name       string
+		yaml       string
+		wantKey    string
+		wantMsg    string
+		wantStderr []string
+	}{
+		{
+			name: "unknown top-level key",
+			yaml: `
+server:
+  port: 8080
+upstream:
+  port: 3000
+bogus_section:
+  foo: bar
+`,
+			wantKey: "bogus_section",
+			wantMsg: "Configuration invalid:",
+			wantStderr: []string{
+				"Configuration invalid:",
+				"unknown key(s):",
+				"bogus_section",
+			},
+		},
+		{
+			name: "nested unknown key (tls.dmain typo)",
+			yaml: `
+server:
+  port: 8080
+upstream:
+  port: 3000
+tls:
+  enabled: false
+  provider: self-signed
+  dmain: example.com
+`,
+			wantKey: "tls.dmain",
+			wantMsg: "Configuration invalid:",
+			wantStderr: []string{
+				"Configuration invalid:",
+				"tls.dmain",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			path := writeConfig(t, tt.yaml)
+
+			root := cmd.NewRootCmd("test")
+			var outBuf, errBuf bytes.Buffer
+			root.SetOut(&outBuf)
+			root.SetErr(&errBuf)
+			root.SetArgs([]string{"validate", path})
+
+			err := root.Execute()
+			if err == nil {
+				t.Fatalf("Execute() expected error for unknown key %q, got nil\nstderr: %s", tt.wantKey, errBuf.String())
+			}
+
+			errOut := errBuf.String()
+			for _, frag := range tt.wantStderr {
+				if !strings.Contains(errOut, frag) {
+					t.Errorf("expected %q in stderr, got: %q", frag, errOut)
+				}
+			}
+		})
+	}
+}
+
+// TestValidateCmd_RejectsUnknownKeysInProdOverride covers the auto-discovery
+// path: when a sibling vibewarden.production.yaml sits next to the base
+// config and contains an unknown key, `vibew validate <base>` must reject it
+// with a message naming the production-override file. This is the direct
+// user-facing contract promised by ADR-082 / PR #1056.
+func TestValidateCmd_RejectsUnknownKeysInProdOverride(t *testing.T) {
+	dir := t.TempDir()
+	basePath := filepath.Join(dir, "vibewarden.yaml")
+	baseYAML := `server:
+  port: 8080
+upstream:
+  port: 3000
+`
+	if err := os.WriteFile(basePath, []byte(baseYAML), 0o600); err != nil {
+		t.Fatalf("writing base config: %v", err)
+	}
+
+	// Prod override contains a typo that the old allow-list-based merge used
+	// to silently drop (#1053).
+	prodPath := filepath.Join(dir, "vibewarden.production.yaml")
+	prodYAML := `tls:
+  provider: letsencrypt
+  dmain: example.com
+`
+	if err := os.WriteFile(prodPath, []byte(prodYAML), 0o600); err != nil {
+		t.Fatalf("writing prod config: %v", err)
+	}
+
+	root := cmd.NewRootCmd("test")
+	var outBuf, errBuf bytes.Buffer
+	root.SetOut(&outBuf)
+	root.SetErr(&errBuf)
+	root.SetArgs([]string{"validate", basePath})
+
+	err := root.Execute()
+	if err == nil {
+		t.Fatalf("Execute() expected error for prod-override typo, got nil\nstderr: %s", errBuf.String())
+	}
+
+	errOut := errBuf.String()
+	for _, frag := range []string{"Configuration invalid:", "tls.dmain", "vibewarden.production.yaml"} {
+		if !strings.Contains(errOut, frag) {
+			t.Errorf("expected %q in stderr, got: %q", frag, errOut)
+		}
+	}
+}
+
+// TestValidateCmd_AcceptsValidProdOverride guards the happy path of
+// auto-discovery: a sibling vibewarden.production.yaml with only known keys
+// must not cause `vibew validate` to fail.
+func TestValidateCmd_AcceptsValidProdOverride(t *testing.T) {
+	dir := t.TempDir()
+	basePath := filepath.Join(dir, "vibewarden.yaml")
+	baseYAML := `server:
+  port: 8080
+upstream:
+  port: 3000
+tls:
+  enabled: false
+  provider: self-signed
+`
+	if err := os.WriteFile(basePath, []byte(baseYAML), 0o600); err != nil {
+		t.Fatalf("writing base: %v", err)
+	}
+	prodPath := filepath.Join(dir, "vibewarden.production.yaml")
+	prodYAML := `tls:
+  provider: letsencrypt
+  domain: example.com
+  email: ops@example.com
+`
+	if err := os.WriteFile(prodPath, []byte(prodYAML), 0o600); err != nil {
+		t.Fatalf("writing prod: %v", err)
+	}
+
+	root := cmd.NewRootCmd("test")
+	var outBuf, errBuf bytes.Buffer
+	root.SetOut(&outBuf)
+	root.SetErr(&errBuf)
+	root.SetArgs([]string{"validate", basePath})
+
+	if err := root.Execute(); err != nil {
+		t.Errorf("Execute() expected success with valid prod override, got: %v\nstderr: %s", err, errBuf.String())
+	}
+}

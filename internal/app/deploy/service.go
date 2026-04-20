@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -345,9 +346,24 @@ func (s *Service) Deploy(ctx context.Context, cfg *config.Config, opts RunOption
 	// Step 6: health check -- run curl on the remote so the probe is independent
 	// of DNS propagation, external port availability, and TLS certificate issuance.
 	// Use the merged config (base + prod overlay) for the correct port and TLS state.
-	healthCfg, err := LoadMergedConfig(cfg, opts.ProdConfigPath)
-	if err != nil {
-		return err
+	// When opts.ConfigPath is empty (programmatic callers that build cfg in-memory)
+	// or when the file is not on disk (unit tests), fall back to the supplied cfg.
+	healthCfg := cfg
+	if opts.ConfigPath != "" {
+		_, statErr := os.Stat(opts.ConfigPath)
+		switch {
+		case statErr == nil:
+			loaded, err := LoadMergedConfig(opts.ConfigPath, opts.ProdConfigPath)
+			if err != nil {
+				return err
+			}
+			healthCfg = loaded
+		case errors.Is(statErr, fs.ErrNotExist):
+			// Intentional fall-through: caller supplied an in-memory cfg
+			// (programmatic or unit-test entrypoint); no disk file to merge.
+		default:
+			return fmt.Errorf("stat config %s: %w", opts.ConfigPath, statErr)
+		}
 	}
 	port := healthCfg.Server.Port
 	if port == 0 {

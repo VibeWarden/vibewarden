@@ -340,13 +340,17 @@ app:
 		t.Fatalf("writing base config: %v", err)
 	}
 
-	// Write production override.
+	// Write production override. tls.email and tls.acme_ca are the ADR-082
+	// regression guards — fields added by ADR-078/ADR-079 that the old
+	// hand-written allow-list silently dropped (#1053).
 	prodYAML := `server:
   port: 443
 tls:
   enabled: true
   provider: letsencrypt
   domain: "example.com"
+  email: "ops@example.com"
+  acme_ca: "https://acme.zerossl.com/v2/DV90"
 `
 	prodPath := filepath.Join(projDir, "vibewarden.production.yaml")
 	if err := os.WriteFile(prodPath, []byte(prodYAML), 0o600); err != nil {
@@ -389,6 +393,12 @@ tls:
 	if !strings.Contains(s, "domain: example.com") {
 		t.Errorf("expected domain in merged config, got:\n%s", s)
 	}
+	if !strings.Contains(s, "email: ops@example.com") {
+		t.Errorf("expected tls.email preserved from prod override (ADR-082 regression), got:\n%s", s)
+	}
+	if !strings.Contains(s, "https://acme.zerossl.com/v2/DV90") {
+		t.Errorf("expected tls.acme_ca preserved from prod override (ADR-082 regression), got:\n%s", s)
+	}
 
 	// Base config values not overridden should survive.
 	if !strings.Contains(s, "rate_limit:") {
@@ -401,6 +411,21 @@ tls:
 	// upstream.host should be resolved (0.0.0.0 -> app for single-site with image).
 	if !strings.Contains(s, "host: app") {
 		t.Errorf("expected upstream.host resolved to 'app', got:\n%s", s)
+	}
+
+	// Runtime parity: LoadMergedConfig must return the same values in the
+	// typed Config that the bundle YAML now carries. This is the core #1053
+	// regression — the struct overlay was dropping these fields even though
+	// the YAML overlay carried them.
+	mergedCfg, err := deployapp.LoadMergedConfig(basePath, prodPath)
+	if err != nil {
+		t.Fatalf("LoadMergedConfig() error = %v", err)
+	}
+	if mergedCfg.TLS.Email != "ops@example.com" {
+		t.Errorf("merged cfg TLS.Email = %q, want %q", mergedCfg.TLS.Email, "ops@example.com")
+	}
+	if mergedCfg.TLS.ACMECA != "https://acme.zerossl.com/v2/DV90" {
+		t.Errorf("merged cfg TLS.ACMECA = %q, want %q", mergedCfg.TLS.ACMECA, "https://acme.zerossl.com/v2/DV90")
 	}
 }
 
@@ -469,5 +494,58 @@ func TestBundle_PreservesNonLocalUpstreamHost(t *testing.T) {
 	}
 	if !strings.Contains(string(data), "host: my-backend-service") {
 		t.Errorf("expected non-local host to be preserved, got:\n%s", string(data))
+	}
+}
+
+// TestBundle_SingleSite_ConfigPathStatError verifies that a non-ErrNotExist
+// stat failure on ConfigPath surfaces as an error instead of silently falling
+// back to the in-memory cfg. This is the guard for the reviewer finding on
+// PR #1056: a permission-denied base file in production used to be
+// indistinguishable from a missing file.
+func TestBundle_SingleSite_ConfigPathStatError(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("cannot simulate permission denied when running as root")
+	}
+
+	generator := &fakeGenerator{}
+	svc := deployapp.NewService(&fakeExecutor{}, generator)
+
+	projDir := t.TempDir()
+	// Place a real config file inside an unreadable directory so os.Stat
+	// fails with permission-denied (not IsNotExist).
+	lockedDir := filepath.Join(projDir, "locked")
+	if err := os.Mkdir(lockedDir, 0o700); err != nil {
+		t.Fatalf("mkdir locked: %v", err)
+	}
+	configPath := filepath.Join(lockedDir, "vibewarden.yaml")
+	if err := os.WriteFile(configPath, []byte("server:\n  port: 8443\n"), 0o600); err != nil {
+		t.Fatalf("writing config: %v", err)
+	}
+	if err := os.Chmod(lockedDir, 0o000); err != nil {
+		t.Fatalf("chmod locked: %v", err)
+	}
+	// Restore directory permissions at cleanup so t.TempDir's own cleanup can
+	// recursively remove files inside. 0o700 is required because directories
+	// need the execute bit to be traversable.
+	t.Cleanup(func() { _ = os.Chmod(lockedDir, 0o700) }) //nolint:gosec // test-only dir perms
+
+	outputDir := t.TempDir()
+	cfg := &config.Config{
+		Server:   config.ServerConfig{Port: 8443},
+		Upstream: config.UpstreamConfig{Port: 3000},
+		App:      config.AppConfig{Image: "myapp:latest"},
+	}
+	err := svc.Bundle(context.Background(), deployapp.BundleOptions{
+		Config:      cfg,
+		ConfigPath:  configPath,
+		ProjectName: "myproject",
+		MultiSite:   false,
+		OutputDir:   outputDir,
+	})
+	if err == nil {
+		t.Fatal("Bundle() expected error for unreadable config path, got nil")
+	}
+	if !strings.Contains(err.Error(), "stat config") {
+		t.Errorf("expected 'stat config' in error, got: %v", err)
 	}
 }
