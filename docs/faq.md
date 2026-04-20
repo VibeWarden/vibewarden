@@ -46,8 +46,9 @@ internet required), and `auth.mode: jwt` in production to validate tokens from
 your cloud IAM (Cognito, Auth0, Azure AD, etc.).
 
 Your application code does not change between environments. VibeWarden injects
-the same `X-User-Id`, `X-User-Email`, and `X-User-Verified` headers in both
-modes. Only the VibeWarden config differs.
+`X-User-Id`, `X-User-Email`, and `X-User-Verified` headers in both modes.
+Kratos mode additionally sets `X-User-Role` from the identity traits.
+Only the VibeWarden config differs.
 
 Switch between them with `vibewarden start --config vibewarden.dev.yaml` or
 via environment variable interpolation in a single shared config file.

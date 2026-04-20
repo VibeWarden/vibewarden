@@ -254,6 +254,7 @@ export default async function DashboardPage() {
   const userId    = headersList.get("x-user-id");
   const userEmail = headersList.get("x-user-email");
   const verified  = headersList.get("x-user-verified") === "true";
+  const userRole  = headersList.get("x-user-role") ?? "user";
 
   if (!userId) {
     // VibeWarden should have redirected unauthenticated requests to /login.
@@ -265,6 +266,7 @@ export default async function DashboardPage() {
     <main>
       <h1>Welcome, {userEmail}</h1>
       {!verified && <p>Please verify your email address.</p>}
+      {userRole === "admin" && <a href="/admin">Admin Dashboard</a>}
     </main>
   );
 }

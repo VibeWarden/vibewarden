@@ -234,6 +234,7 @@ Your app receives authenticated user info via headers:
 | `X-User-Id` | `sub` | Subject identifier |
 | `X-User-Email` | `email` | Primary email address |
 | `X-User-Verified` | `email_verified` | Email verification status (`true`/`false`) |
+| `X-User-Role` | `traits.role` | User role (Kratos only; defaults to `user`) |
 
 See [docs/identity-providers.md](docs/identity-providers.md) for Auth0, Keycloak,
 Firebase, Cognito, Okta, Supabase, and Kratos step-by-step guides.

@@ -837,6 +837,61 @@ func TestAuthHandler_PublicPath_NoCookie_NoHeaders(t *testing.T) {
 	}
 }
 
+// TestAuthHandler_PublicPath_WithValidSession_SetsRoleHeader verifies that a
+// public path with a valid session also sets the X-User-Role header.
+//
+// Regression test: the public path code path called setIdentityHeaders but not
+// extractRole, so X-User-Role was missing on authenticated public paths.
+func TestAuthHandler_PublicPath_WithValidSession_SetsRoleHeader(t *testing.T) {
+	kratosServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"active": true,
+			"identity": {
+				"id": "admin-1",
+				"traits": {"email": "admin@example.com", "role": "admin"},
+				"verifiable_addresses": [
+					{"value": "admin@example.com", "via": "email", "verified": true}
+				]
+			}
+		}`))
+	}))
+	defer kratosServer.Close()
+
+	h := &AuthHandler{Config: AuthHandlerConfig{
+		CookieName:  "ory_kratos_session",
+		LoginURL:    "/login",
+		PublicPaths: []string{"/public"},
+		KratosURL:   kratosServer.URL,
+	}}
+	if err := h.Provision(gocaddy.Context{}); err != nil {
+		t.Fatalf("Provision() error = %v", err)
+	}
+
+	var capturedHeaders http.Header
+	next := caddyhttp.HandlerFunc(func(w http.ResponseWriter, r *http.Request) error {
+		capturedHeaders = r.Header.Clone()
+		w.WriteHeader(http.StatusOK)
+		return nil
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/public", nil)
+	req.AddCookie(&http.Cookie{Name: "ory_kratos_session", Value: "valid-token"})
+	w := httptest.NewRecorder()
+
+	err := h.ServeHTTP(w, req, next)
+	if err != nil {
+		t.Fatalf("ServeHTTP() error = %v", err)
+	}
+
+	if capturedHeaders == nil {
+		t.Fatal("next handler was not called")
+	}
+	if got := capturedHeaders.Get("X-User-Role"); got != "admin" {
+		t.Errorf("X-User-Role = %q, want %q", got, "admin")
+	}
+}
+
 // TestAuthHandler_RoleHeader_Set verifies that the X-User-Role header is set
 // from the Kratos identity traits.role field.
 func TestAuthHandler_RoleHeader_Set(t *testing.T) {
@@ -1315,6 +1370,39 @@ func TestMatchRequiredRole(t *testing.T) {
 			}
 			if gotOK && gotRole != tt.wantRole {
 				t.Errorf("matchRequiredRole(%q) role = %q, want %q", tt.reqPath, gotRole, tt.wantRole)
+			}
+		})
+	}
+}
+
+// TestMatchRequiredRole_PrefixBoundary verifies that /admin/* does not match
+// /administrator or /admins — only paths under /admin/.
+//
+// Regression test: TrimSuffix(p, "/*") produced "/admin" which matched
+// "/administrator". Fixed to TrimSuffix(p, "*") to preserve the trailing slash.
+func TestMatchRequiredRole_PrefixBoundary(t *testing.T) {
+	h := &AuthHandler{Config: AuthHandlerConfig{
+		RolePaths: map[string][]string{
+			"admin": {"/admin/*"},
+		},
+	}}
+
+	tests := []struct {
+		path   string
+		wantOK bool
+	}{
+		{"/admin/dashboard", true},
+		{"/admin/users/edit", true},
+		{"/administrator", false},
+		{"/admins/list", false},
+		{"/admin-panel", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.path, func(t *testing.T) {
+			_, ok := h.matchRequiredRole(tt.path)
+			if ok != tt.wantOK {
+				t.Errorf("matchRequiredRole(%q) ok = %v, want %v", tt.path, ok, tt.wantOK)
 			}
 		})
 	}

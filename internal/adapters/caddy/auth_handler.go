@@ -285,7 +285,7 @@ func (h *AuthHandler) matchRequiredRole(reqPath string) (string, bool) {
 	for role, patterns := range h.Config.RolePaths {
 		for _, p := range patterns {
 			if strings.HasSuffix(p, "/*") {
-				prefix := strings.TrimSuffix(p, "/*")
+				prefix := strings.TrimSuffix(p, "*")
 				if strings.HasPrefix(reqPath, prefix) {
 					return role, true
 				}
@@ -310,6 +310,8 @@ func (h *AuthHandler) ServeHTTP(w http.ResponseWriter, r *http.Request, next cad
 		if cookie, err := r.Cookie(h.Config.CookieName); err == nil {
 			if whoami, err := h.callWhoami(r.Context(), cookie.Value); err == nil {
 				setIdentityHeaders(r, whoami)
+				role := extractRole(whoami, h.logger)
+				r.Header.Set("X-User-Role", role.String())
 			}
 			// If whoami fails, proceed without headers (don't redirect, don't error).
 		}

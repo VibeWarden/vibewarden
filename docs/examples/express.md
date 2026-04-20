@@ -252,6 +252,7 @@ function vibewardenAuth(req, res, next) {
   const userId    = req.headers["x-user-id"];
   const userEmail = req.headers["x-user-email"];
   const verified  = req.headers["x-user-verified"] === "true";
+  const userRole  = req.headers["x-user-role"] || "user";
   const sessionId = req.headers["x-session-id"];
 
   if (!userId) {
@@ -260,7 +261,7 @@ function vibewardenAuth(req, res, next) {
     return res.status(401).json({ error: "unauthorized" });
   }
 
-  req.user = { id: userId, email: userEmail, verified, sessionId };
+  req.user = { id: userId, email: userEmail, verified, role: userRole, sessionId };
   next();
 }
 
@@ -296,6 +297,7 @@ export function vibewardenAuth(
   const id        = req.headers["x-user-id"] as string | undefined;
   const email     = (req.headers["x-user-email"] as string) ?? "";
   const verified  = req.headers["x-user-verified"] === "true";
+  const role      = (req.headers["x-user-role"] as string) ?? "user";
   const sessionId = (req.headers["x-session-id"] as string) ?? "";
 
   if (!id) {
@@ -303,7 +305,7 @@ export function vibewardenAuth(
     return;
   }
 
-  req.user = { id, email, verified, sessionId };
+  req.user = { id, email, verified, role, sessionId };
   next();
 }
 ```
