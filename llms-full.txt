@@ -246,6 +246,7 @@ Key sections:
 - `app.image` — Docker image reference (used when `app.build` is empty)
 - `app.environment` — custom env vars injected into the app container (e.g. DATABASE_URL, REDIS_URL)
 - `tls.enabled`, `tls.provider` — TLS termination (letsencrypt, self-signed, external)
+- `tls.email` — ACME account email (required for ZeroSSL, recommended for Let's Encrypt)
 - `tls.acme_ca` — override ACME directory URL (e.g. ZeroSSL, Let's Encrypt staging). Use this
   when Let's Encrypt is rate-limited: `acme_ca: "https://acme.zerossl.com/v2/DV90"`
 - `auth.mode` — authentication strategy: `none`, `kratos`, `jwt`, or `api-key` (single source of truth; see ADR-065)

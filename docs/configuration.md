@@ -103,6 +103,8 @@ app:
 | `tls.provider` | string | `""` | Certificate provider: `letsencrypt` (or `acme`), `self-signed`, or `external` |
 | `tls.cert_path` | string | `""` | Path to PEM certificate. Required when `provider` is `external` |
 | `tls.key_path` | string | `""` | Path to PEM private key. Required when `provider` is `external` |
+| `tls.email` | string | `""` | ACME account email. Required for ZeroSSL, recommended for Let's Encrypt (cert expiry notifications) |
+| `tls.acme_ca` | string | `""` | Override ACME directory URL (e.g. ZeroSSL: `https://acme.zerossl.com/v2/DV90`) |
 | `tls.storage_path` | string | `""` | Directory for ACME certificate storage. Applies to `letsencrypt` only |
 
 ```yaml
