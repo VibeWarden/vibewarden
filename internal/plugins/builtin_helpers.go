@@ -70,18 +70,20 @@ func buildSecretsPlugin(cfg *config.Config, eventLogger ports.EventLogger, logge
 	// Map header injections.
 	for _, inj := range cfg.Secrets.Inject.Headers {
 		secretsCfg.Inject.Headers = append(secretsCfg.Inject.Headers, secretsplugin.HeaderInjection{
-			SecretPath: inj.SecretPath,
-			SecretKey:  inj.SecretKey,
-			Header:     inj.Header,
+			SecretPath:    inj.SecretPath,
+			SecretKey:     inj.SecretKey,
+			Header:        inj.Header,
+			ValueTemplate: inj.ValueTemplate,
 		})
 	}
 
 	// Map env injections.
 	for _, inj := range cfg.Secrets.Inject.Env {
 		secretsCfg.Inject.Env = append(secretsCfg.Inject.Env, secretsplugin.EnvInjection{
-			SecretPath: inj.SecretPath,
-			SecretKey:  inj.SecretKey,
-			EnvVar:     inj.EnvVar,
+			SecretPath:    inj.SecretPath,
+			SecretKey:     inj.SecretKey,
+			EnvVar:        inj.EnvVar,
+			ValueTemplate: inj.ValueTemplate,
 		})
 	}
 

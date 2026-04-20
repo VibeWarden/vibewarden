@@ -13,10 +13,16 @@ import (
 
 // ResolveSecrets walks all string fields in cfg using reflection and replaces
 // any value starting with "secret://" with the resolved plaintext from store.
+// It also resolves ${secret://path/key} placeholders embedded inside strings
+// (composite secret values).
 //
 // The URI format is secret://path/key where the last segment is the key and
 // everything before it is the store path. For example,
 // secret://auth/google/client_id resolves path "auth/google", key "client_id".
+//
+// For composite values, ${secret://path/key} placeholders are resolved and
+// replaced inline. Escaped placeholders ($${secret://...}) are converted to
+// their literal ${secret://...} form without resolution.
 //
 // Fields under cfg.Secrets (the bootstrap config section) are skipped because
 // the secret store itself is initialised from that section -- it cannot
@@ -108,8 +114,9 @@ func resolveSlice(ctx context.Context, v reflect.Value, store ports.SecretKVRead
 	return nil
 }
 
-// resolveMap handles map[string]string fields by resolving secret URIs in
-// values. Other map types with string values are handled similarly.
+// resolveMap handles map[string]string fields by resolving secret URIs and
+// ${secret://...} placeholders in values. Other map types with string values
+// are handled similarly.
 func resolveMap(ctx context.Context, v reflect.Value, store ports.SecretKVReader, fieldPath string) error {
 	if v.IsNil() {
 		return nil
@@ -118,36 +125,98 @@ func resolveMap(ctx context.Context, v reflect.Value, store ports.SecretKVReader
 	for _, key := range v.MapKeys() {
 		val := v.MapIndex(key)
 
-		if val.Kind() == reflect.String {
-			raw := val.String()
-			if domainsecret.IsURI(raw) {
-				entryPath := fmt.Sprintf("%s[%s]", fieldPath, key.String())
-				resolved, err := resolveURI(ctx, raw, store, entryPath)
-				if err != nil {
-					return err
-				}
-				v.SetMapIndex(key, reflect.ValueOf(resolved))
+		if val.Kind() != reflect.String {
+			continue
+		}
+
+		raw := val.String()
+		entryPath := fmt.Sprintf("%s[%s]", fieldPath, key.String())
+
+		// Full-field secret URI.
+		if domainsecret.IsURI(raw) {
+			resolved, err := resolveURI(ctx, raw, store, entryPath)
+			if err != nil {
+				return err
 			}
+			v.SetMapIndex(key, reflect.ValueOf(resolved))
+			continue
+		}
+
+		// Composite value with ${secret://...} placeholders.
+		placeholders := domainsecret.FindPlaceholders(raw)
+		if len(placeholders) > 0 {
+			resolved, err := resolvePlaceholders(ctx, raw, placeholders, store, entryPath)
+			if err != nil {
+				return err
+			}
+			v.SetMapIndex(key, reflect.ValueOf(resolved))
+			continue
+		}
+
+		// Escaped-only placeholders: unescape $${...} to literal ${...}.
+		if domainsecret.ContainsEscapedPlaceholder(raw) {
+			v.SetMapIndex(key, reflect.ValueOf(domainsecret.UnescapePlaceholders(raw)))
 		}
 	}
 	return nil
 }
 
-// resolveStringField checks whether a string field value is a secret:// URI
-// and, if so, resolves it from the store and replaces the field value.
+// resolveStringField checks whether a string field value is a full-field
+// secret:// URI or contains ${secret://...} placeholders, and resolves
+// accordingly.
+//
+// Resolution priority:
+//  1. Full-field: string starts with "secret://" -- resolve the entire value.
+//  2. Composite: string contains ${secret://...} -- resolve each placeholder
+//     inline, then unescape any $${...} occurrences.
+//  3. Otherwise: no-op.
 func resolveStringField(ctx context.Context, fv reflect.Value, store ports.SecretKVReader, fieldPath string) error {
 	raw := fv.String()
-	if !domainsecret.IsURI(raw) {
+
+	// Case 1: full-field secret URI (existing ADR-076 behavior).
+	if domainsecret.IsURI(raw) {
+		resolved, err := resolveURI(ctx, raw, store, fieldPath)
+		if err != nil {
+			return err
+		}
+		fv.SetString(resolved)
 		return nil
 	}
 
-	resolved, err := resolveURI(ctx, raw, store, fieldPath)
-	if err != nil {
-		return err
+	// Case 2: composite value with ${secret://...} placeholders.
+	placeholders := domainsecret.FindPlaceholders(raw)
+	if len(placeholders) > 0 {
+		resolved, err := resolvePlaceholders(ctx, raw, placeholders, store, fieldPath)
+		if err != nil {
+			return err
+		}
+		fv.SetString(resolved)
+		return nil
 	}
 
-	fv.SetString(resolved)
+	// Case 3: string contains only escaped placeholders ($${secret://...}).
+	// Unescape them to their literal ${secret://...} form.
+	if domainsecret.ContainsEscapedPlaceholder(raw) {
+		fv.SetString(domainsecret.UnescapePlaceholders(raw))
+	}
+
 	return nil
+}
+
+// resolvePlaceholders replaces all ${secret://...} placeholders in s with
+// their resolved values from the store, then unescapes any $${...} sequences.
+func resolvePlaceholders(ctx context.Context, s string, placeholders []domainsecret.Placeholder, store ports.SecretKVReader, fieldPath string) (string, error) {
+	result := s
+	for _, p := range placeholders {
+		resolved, err := resolveURI(ctx, p.URI.String(), store, fieldPath)
+		if err != nil {
+			return "", err
+		}
+		result = strings.Replace(result, p.Raw, resolved, 1)
+	}
+	// Unescape any $${secret://...} to literal ${secret://...}.
+	result = domainsecret.UnescapePlaceholders(result)
+	return result, nil
 }
 
 // resolveURI parses a secret:// URI, fetches the data from the store, extracts

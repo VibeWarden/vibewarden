@@ -1485,6 +1485,11 @@ type SecretsHeaderInjection struct {
 
 	// Header is the HTTP header name to set.
 	Header string `mapstructure:"header"`
+
+	// ValueTemplate is an optional template string containing ${secret://path/key}
+	// placeholders. When set, the resolved template is used as the header value
+	// instead of the raw secret. When empty, the secret value is used directly.
+	ValueTemplate string `mapstructure:"value_template"`
 }
 
 // SecretsEnvInjection maps a secret key to an environment variable name.
@@ -1497,6 +1502,11 @@ type SecretsEnvInjection struct {
 
 	// EnvVar is the environment variable name to write in the env file.
 	EnvVar string `mapstructure:"env_var"`
+
+	// ValueTemplate is an optional template string containing ${secret://path/key}
+	// placeholders. When set, the resolved template is used as the env var value
+	// instead of the raw secret. When empty, the secret value is used directly.
+	ValueTemplate string `mapstructure:"value_template"`
 }
 
 // SecretsDynamicConfig holds settings for dynamic credential generation.

@@ -26,7 +26,7 @@
 #   - path:  the secret store path (everything before the last segment)
 #   - key:   the individual key within that path (the last segment)
 #
-# Examples:
+# Full-field resolution (entire value is a secret):
 #   admin:
 #     token: secret://admin/api/token
 #   auth:
@@ -34,6 +34,17 @@
 #       audience: secret://auth/jwt/audience
 #   database:
 #     external_url: secret://infra/db/connection_string
+#
+# Composite values -- embed secrets inside larger strings with ${secret://...}:
+#   app:
+#     environment:
+#       DATABASE_URL: "postgres://user:${secret://db/password}@host:5432/db"
+#       AUTH_HEADER: "Bearer ${secret://auth/api/token}"
+#
+# Escape with $${secret://...} to produce a literal ${secret://...} string:
+#   app:
+#     environment:
+#       EXAMPLE: "literal $${secret://not/resolved}"
 #
 # Store secrets with:
 #   vibew secret set auth/google client_id=xxx client_secret=xxx
@@ -867,11 +878,19 @@ secrets:
   inject:
     # Inject secrets as HTTP request headers on every proxied request.
     # The upstream app receives these headers like any other request header.
-    # Example:
+    #
+    # Simple example (secret value used directly):
     #   headers:
     #     - secret_path: app/internal-api
     #       secret_key: token
     #       header: X-Internal-Token
+    #
+    # Composite example (secret embedded in a larger string via value_template):
+    #   headers:
+    #     - secret_path: app/auth
+    #       secret_key: token
+    #       header: Authorization
+    #       value_template: "Bearer ${secret://app/auth/token}"
     headers: []
 
     # Write secrets to a .env file that the upstream app reads at startup.
@@ -880,11 +899,19 @@ secrets:
     env_file: ""
 
     # Secrets to write into the env file.
-    # Example:
+    #
+    # Simple example (secret value used directly):
     #   env:
     #     - secret_path: app/database
     #       secret_key: password
     #       env_var: DATABASE_PASSWORD
+    #
+    # Composite example (secret embedded in a connection string):
+    #   env:
+    #     - secret_path: app/database
+    #       secret_key: password
+    #       env_var: DATABASE_URL
+    #       value_template: "postgres://user:${secret://app/database/password}@host:5432/db"
     env: []
 
   # Dynamic Postgres credentials via OpenBao's database engine.

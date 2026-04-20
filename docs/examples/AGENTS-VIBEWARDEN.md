@@ -128,6 +128,14 @@ admin:
   token: secret://admin/api/token
 ```
 
+For composite values (secrets embedded in larger strings), use `${secret://...}`:
+
+```yaml
+app:
+  environment:
+    DATABASE_URL: "postgres://user:${secret://db/password}@host:5432/db"
+```
+
 Store secrets with `vibew secret set <path> <key>=<value>`. The `secrets.*`
 config section itself cannot use `secret://` URIs (bootstrap constraint).
 See docs/secret-management.md for details.

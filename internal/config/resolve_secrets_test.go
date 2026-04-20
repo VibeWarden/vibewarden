@@ -241,3 +241,157 @@ func TestResolveSecrets_StringSliceField(t *testing.T) {
 		t.Errorf("PublicPaths[2] = %q, want %q", cfg.Auth.PublicPaths[2], "/ready")
 	}
 }
+
+func TestResolveSecrets_CompositeSinglePlaceholder(t *testing.T) {
+	store := &fakeSecretReader{
+		data: map[string]map[string]string{
+			"infra/db": {
+				"password": "s3cr3t!",
+			},
+		},
+	}
+
+	cfg := &config.Config{}
+	cfg.Database.URL = "postgres://user:${secret://infra/db/password}@host:5432/db"
+
+	err := config.ResolveSecrets(context.Background(), cfg, store)
+	if err != nil {
+		t.Fatalf("ResolveSecrets() error = %v", err)
+	}
+
+	want := "postgres://user:s3cr3t!@host:5432/db"
+	if cfg.Database.URL != want {
+		t.Errorf("Database.URL = %q, want %q", cfg.Database.URL, want)
+	}
+}
+
+func TestResolveSecrets_CompositeMultiplePlaceholders(t *testing.T) {
+	store := &fakeSecretReader{
+		data: map[string]map[string]string{
+			"infra/db": {
+				"user":     "admin",
+				"password": "s3cr3t!",
+			},
+		},
+	}
+
+	cfg := &config.Config{}
+	cfg.Database.URL = "postgres://${secret://infra/db/user}:${secret://infra/db/password}@host:5432/db"
+
+	err := config.ResolveSecrets(context.Background(), cfg, store)
+	if err != nil {
+		t.Fatalf("ResolveSecrets() error = %v", err)
+	}
+
+	want := "postgres://admin:s3cr3t!@host:5432/db"
+	if cfg.Database.URL != want {
+		t.Errorf("Database.URL = %q, want %q", cfg.Database.URL, want)
+	}
+}
+
+func TestResolveSecrets_CompositeEscapedPlaceholder(t *testing.T) {
+	store := &fakeSecretReader{data: map[string]map[string]string{}}
+
+	cfg := &config.Config{}
+	cfg.Admin.Token = "literal $${secret://admin/api/token} text"
+
+	err := config.ResolveSecrets(context.Background(), cfg, store)
+	if err != nil {
+		t.Fatalf("ResolveSecrets() error = %v", err)
+	}
+
+	want := "literal ${secret://admin/api/token} text"
+	if cfg.Admin.Token != want {
+		t.Errorf("Admin.Token = %q, want %q", cfg.Admin.Token, want)
+	}
+}
+
+func TestResolveSecrets_CompositeMixedEscapedAndUnescaped(t *testing.T) {
+	store := &fakeSecretReader{
+		data: map[string]map[string]string{
+			"infra/db": {
+				"password": "s3cr3t!",
+			},
+		},
+	}
+
+	cfg := &config.Config{}
+	cfg.Database.URL = "postgres://user:${secret://infra/db/password}@host $${secret://literal/example}"
+
+	err := config.ResolveSecrets(context.Background(), cfg, store)
+	if err != nil {
+		t.Fatalf("ResolveSecrets() error = %v", err)
+	}
+
+	want := "postgres://user:s3cr3t!@host ${secret://literal/example}"
+	if cfg.Database.URL != want {
+		t.Errorf("Database.URL = %q, want %q", cfg.Database.URL, want)
+	}
+}
+
+func TestResolveSecrets_CompositeFullFieldStillWorks(t *testing.T) {
+	store := &fakeSecretReader{
+		data: map[string]map[string]string{
+			"admin/api": {
+				"token": "my-secure-token",
+			},
+		},
+	}
+
+	cfg := &config.Config{}
+	cfg.Admin.Token = "secret://admin/api/token"
+
+	err := config.ResolveSecrets(context.Background(), cfg, store)
+	if err != nil {
+		t.Fatalf("ResolveSecrets() error = %v", err)
+	}
+
+	if cfg.Admin.Token != "my-secure-token" {
+		t.Errorf("Admin.Token = %q, want %q", cfg.Admin.Token, "my-secure-token")
+	}
+}
+
+func TestResolveSecrets_CompositeFailsOnMissingSecret(t *testing.T) {
+	store := &fakeSecretReader{data: map[string]map[string]string{}}
+
+	cfg := &config.Config{}
+	cfg.Database.URL = "postgres://user:${secret://missing/path/key}@host:5432/db"
+
+	err := config.ResolveSecrets(context.Background(), cfg, store)
+	if err == nil {
+		t.Fatal("ResolveSecrets() expected error for missing placeholder secret, got nil")
+	}
+
+	if !strings.Contains(err.Error(), "missing/path") {
+		t.Errorf("error should mention the missing path, got: %v", err)
+	}
+}
+
+func TestResolveSecrets_CompositeInMapField(t *testing.T) {
+	store := &fakeSecretReader{
+		data: map[string]map[string]string{
+			"infra/db": {
+				"password": "s3cr3t!",
+			},
+		},
+	}
+
+	cfg := &config.Config{}
+	cfg.App.Environment = map[string]string{
+		"DATABASE_URL": "postgres://user:${secret://infra/db/password}@host:5432/db",
+		"PLAIN_VAR":    "no-secret-here",
+	}
+
+	err := config.ResolveSecrets(context.Background(), cfg, store)
+	if err != nil {
+		t.Fatalf("ResolveSecrets() error = %v", err)
+	}
+
+	want := "postgres://user:s3cr3t!@host:5432/db"
+	if cfg.App.Environment["DATABASE_URL"] != want {
+		t.Errorf("App.Environment[DATABASE_URL] = %q, want %q", cfg.App.Environment["DATABASE_URL"], want)
+	}
+	if cfg.App.Environment["PLAIN_VAR"] != "no-secret-here" {
+		t.Errorf("App.Environment[PLAIN_VAR] = %q, want %q", cfg.App.Environment["PLAIN_VAR"], "no-secret-here")
+	}
+}
