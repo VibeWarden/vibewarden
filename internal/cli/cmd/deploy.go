@@ -74,153 +74,12 @@ Examples:
   vibew deploy --config vibewarden.prod.yaml --target ssh://ubuntu@203.0.113.10 --rotate-secrets --secrets-from .env.prod
   vibew deploy --dry-run --target ssh://ubuntu@203.0.113.10`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			if err := requireScaffolding(); err != nil {
-				return err
-			}
-
-			if !dryRun && target == "" {
-				return fmt.Errorf("--target is required (e.g. ssh://user@host)")
-			}
-
-			// Determine the deployment environment name.
-			envName := env
-			if envName == "" {
-				envName = "production"
-			}
-
-			cfg, err := loadAndResolve(cmd.Context(), configPath)
+			err := runDeploy(cmd, configPath, target, sshKey, secretsFrom, unsealKey, env, force, dryRun, rotateSecrets)
 			if err != nil {
-				return err
+				fmt.Fprintln(cmd.ErrOrStderr(), "")
+				fmt.Fprintln(cmd.ErrOrStderr(), "Hint: Run 'vibew doctor' to diagnose common issues.")
 			}
-
-			// Resolve the config path to an absolute path. When --config is
-			// not provided, default to vibewarden.yaml in the current directory
-			// so that filepath.Dir returns the project directory (not ".").
-			resolvedConfig := configPath
-			if resolvedConfig == "" {
-				resolvedConfig = "vibewarden.yaml"
-			}
-			absConfig, err := filepath.Abs(resolvedConfig)
-			if err != nil {
-				absConfig = resolvedConfig
-			}
-
-			// Determine the production override file path after resolving the
-			// base config to an absolute path.
-			prodConfigPath := prodConfigPathForEnv(absConfig, envName)
-
-			projectName := cfg.Name
-			if projectName == "" {
-				projectName = deployapp.ProjectNameFromConfig(absConfig)
-			}
-
-			renderer := templateadapter.NewRenderer(configtemplates.FS)
-			generator := generateapp.NewServiceWithCredentials(
-				renderer,
-				credentialsadapter.NewGenerator(),
-				credentialsadapter.NewStore(),
-			).WithConfigSourcePath(configPath)
-
-			// --dry-run: generate bundle, list contents, and exit.
-			if dryRun {
-				svc := deployapp.NewService(nil, generator)
-				return runDeployDryRun(cmd, svc, cfg, absConfig, prodConfigPath, projectName, envName)
-			}
-
-			t, err := sshadapter.ParseTarget(target)
-			if err != nil {
-				return fmt.Errorf("invalid --target: %w", err)
-			}
-
-			var executor *sshadapter.Executor
-			if sshKey != "" {
-				executor = sshadapter.NewExecutorWithKey(t, sshKey)
-			} else {
-				executor = sshadapter.NewExecutor(t)
-			}
-			svc := deployapp.NewService(executor, generator).
-				WithImageExporter(opsadapter.NewImageExportAdapter())
-
-			remoteDir := "~/vibewarden/" + projectName + "/"
-
-			opts := deployapp.RunOptions{
-				ConfigPath:     absConfig,
-				ProdConfigPath: prodConfigPath,
-				Env:            envName,
-				Force:          force,
-				Out:            cmd.OutOrStdout(),
-			}
-
-			// Check if the production overlay explicitly disables secrets.
-			// The typed Config overlay can't distinguish "not set" from "set
-			// to false" for booleans, so we read the raw YAML map.
-			secretsEnabled := cfg.Secrets.Enabled
-			if prodConfigPath != "" {
-				if data, readErr := os.ReadFile(prodConfigPath); readErr == nil { //nolint:gosec // prodConfigPath is derived from trusted config
-					var m map[string]any
-					if yaml.Unmarshal(data, &m) == nil {
-						if secrets, ok := m["secrets"].(map[string]any); ok {
-							if enabled, ok := secrets["enabled"].(bool); ok {
-								secretsEnabled = enabled
-							}
-						}
-					}
-				}
-			}
-
-			// Bootstrap OpenBao when the secrets plugin is enabled.
-			if secretsEnabled {
-				bootstrapper := deployapp.NewOpenBaoBootstrapper(executor)
-				result, err := bootstrapper.Bootstrap(cmd.Context(), deployapp.BootstrapOptions{
-					SecretsFile:   secretsFrom,
-					RotateSecrets: rotateSecrets,
-					UnsealKey:     unsealKey,
-					RemoteDir:     remoteDir,
-					Out:           cmd.OutOrStdout(),
-				})
-				if err != nil {
-					return fmt.Errorf("openbao bootstrap: %w", err)
-				}
-				if result.UnsealKey != "" {
-					fmt.Fprintln(cmd.OutOrStdout())
-					fmt.Fprintln(cmd.OutOrStdout(), "  IMPORTANT: Save your OpenBao unseal key now!")
-					fmt.Fprintln(cmd.OutOrStdout(), "  You will need it to unseal OpenBao after a restart.")
-					fmt.Fprintln(cmd.OutOrStdout(), "  This key will NOT be shown again.")
-					fmt.Fprintf(cmd.OutOrStdout(), "  Unseal Key : %s\n", result.UnsealKey)
-					fmt.Fprintf(cmd.OutOrStdout(), "  Root Token : %s\n", result.RootToken)
-					fmt.Fprintf(cmd.OutOrStdout(), "  Role ID    : %s\n", result.RoleID)
-					fmt.Fprintf(cmd.OutOrStdout(), "  Secret ID  : %s\n", result.SecretID)
-					fmt.Fprintln(cmd.OutOrStdout())
-				}
-			}
-
-			// Detect deploy mode: fresh install or add-site.
-			hasDomain := cfg.TLS.Domain != ""
-
-			mode, err := deployapp.Detect(cmd.Context(), executor)
-			if err != nil {
-				return fmt.Errorf("detecting deploy mode: %w", err)
-			}
-
-			switch mode {
-			case deployapp.ModeFreshInstall:
-				if hasDomain {
-					// Multi-app bootstrap: create sidecar + first site.
-					return svc.BootstrapSidecar(cmd.Context(), cfg, opts)
-				}
-				// Legacy single-app deploy (backward compatible).
-				return svc.Deploy(cmd.Context(), cfg, opts)
-
-			case deployapp.ModeAddSite:
-				if hasDomain {
-					// Add a new site to existing sidecar.
-					return svc.DeployMultiApp(cmd.Context(), cfg, opts)
-				}
-				return fmt.Errorf("cannot add a site without a TLS domain; set tls.domain in %s", absConfig)
-
-			default:
-				return fmt.Errorf("unexpected deploy mode: %v", mode)
-			}
+			return err
 		},
 	}
 
@@ -251,6 +110,158 @@ Examples:
 	cmd.AddCommand(newDeployLogsCmd())
 
 	return cmd
+}
+
+// runDeploy implements the core deploy logic, extracted so the caller can add
+// a hint message on failure.
+func runDeploy(cmd *cobra.Command, configPath, target, sshKey, secretsFrom, unsealKey, env string, force, dryRun, rotateSecrets bool) error {
+	if err := requireScaffolding(); err != nil {
+		return err
+	}
+
+	if !dryRun && target == "" {
+		return fmt.Errorf("--target is required (e.g. ssh://user@host)")
+	}
+
+	// Determine the deployment environment name.
+	envName := env
+	if envName == "" {
+		envName = "production"
+	}
+
+	cfg, err := loadAndResolve(cmd.Context(), configPath)
+	if err != nil {
+		return err
+	}
+
+	// Resolve the config path to an absolute path. When --config is
+	// not provided, default to vibewarden.yaml in the current directory
+	// so that filepath.Dir returns the project directory (not ".").
+	resolvedConfig := configPath
+	if resolvedConfig == "" {
+		resolvedConfig = "vibewarden.yaml"
+	}
+	absConfig, err := filepath.Abs(resolvedConfig)
+	if err != nil {
+		absConfig = resolvedConfig
+	}
+
+	// Determine the production override file path after resolving the
+	// base config to an absolute path.
+	prodConfigPath := prodConfigPathForEnv(absConfig, envName)
+
+	projectName := cfg.Name
+	if projectName == "" {
+		projectName = deployapp.ProjectNameFromConfig(absConfig)
+	}
+
+	renderer := templateadapter.NewRenderer(configtemplates.FS)
+	generator := generateapp.NewServiceWithCredentials(
+		renderer,
+		credentialsadapter.NewGenerator(),
+		credentialsadapter.NewStore(),
+	).WithConfigSourcePath(configPath)
+
+	// --dry-run: generate bundle, list contents, and exit.
+	if dryRun {
+		svc := deployapp.NewService(nil, generator)
+		return runDeployDryRun(cmd, svc, cfg, absConfig, prodConfigPath, projectName, envName)
+	}
+
+	t, err := sshadapter.ParseTarget(target)
+	if err != nil {
+		return fmt.Errorf("invalid --target: %w", err)
+	}
+
+	var executor *sshadapter.Executor
+	if sshKey != "" {
+		executor = sshadapter.NewExecutorWithKey(t, sshKey)
+	} else {
+		executor = sshadapter.NewExecutor(t)
+	}
+	svc := deployapp.NewService(executor, generator).
+		WithImageExporter(opsadapter.NewImageExportAdapter())
+
+	remoteDir := "~/vibewarden/" + projectName + "/"
+
+	opts := deployapp.RunOptions{
+		ConfigPath:     absConfig,
+		ProdConfigPath: prodConfigPath,
+		Env:            envName,
+		Force:          force,
+		Out:            cmd.OutOrStdout(),
+	}
+
+	// Check if the production overlay explicitly disables secrets.
+	// The typed Config overlay can't distinguish "not set" from "set
+	// to false" for booleans, so we read the raw YAML map.
+	secretsEnabled := cfg.Secrets.Enabled
+	if prodConfigPath != "" {
+		if data, readErr := os.ReadFile(prodConfigPath); readErr == nil { //nolint:gosec // prodConfigPath is derived from trusted config
+			var m map[string]any
+			if yaml.Unmarshal(data, &m) == nil {
+				if secrets, ok := m["secrets"].(map[string]any); ok {
+					if enabled, ok := secrets["enabled"].(bool); ok {
+						secretsEnabled = enabled
+					}
+				}
+			}
+		}
+	}
+
+	// Bootstrap OpenBao when the secrets plugin is enabled.
+	if secretsEnabled {
+		bootstrapper := deployapp.NewOpenBaoBootstrapper(executor)
+		result, err := bootstrapper.Bootstrap(cmd.Context(), deployapp.BootstrapOptions{
+			SecretsFile:   secretsFrom,
+			RotateSecrets: rotateSecrets,
+			UnsealKey:     unsealKey,
+			RemoteDir:     remoteDir,
+			Out:           cmd.OutOrStdout(),
+		})
+		if err != nil {
+			return fmt.Errorf("openbao bootstrap: %w", err)
+		}
+		if result.UnsealKey != "" {
+			fmt.Fprintln(cmd.OutOrStdout())
+			fmt.Fprintln(cmd.OutOrStdout(), "  IMPORTANT: Save your OpenBao unseal key now!")
+			fmt.Fprintln(cmd.OutOrStdout(), "  You will need it to unseal OpenBao after a restart.")
+			fmt.Fprintln(cmd.OutOrStdout(), "  This key will NOT be shown again.")
+			fmt.Fprintf(cmd.OutOrStdout(), "  Unseal Key : %s\n", result.UnsealKey)
+			fmt.Fprintf(cmd.OutOrStdout(), "  Root Token : %s\n", result.RootToken)
+			fmt.Fprintf(cmd.OutOrStdout(), "  Role ID    : %s\n", result.RoleID)
+			fmt.Fprintf(cmd.OutOrStdout(), "  Secret ID  : %s\n", result.SecretID)
+			fmt.Fprintln(cmd.OutOrStdout())
+		}
+	}
+
+	// Detect deploy mode: fresh install or add-site.
+	hasDomain := cfg.TLS.Domain != ""
+
+	mode, err := deployapp.Detect(cmd.Context(), executor)
+	if err != nil {
+		return fmt.Errorf("detecting deploy mode: %w", err)
+	}
+
+	switch mode {
+	case deployapp.ModeFreshInstall:
+		if hasDomain {
+			// Multi-app bootstrap: create sidecar + first site.
+			return svc.BootstrapSidecar(cmd.Context(), cfg, opts)
+		}
+		// Legacy single-app deploy (backward compatible).
+		return svc.Deploy(cmd.Context(), cfg, opts)
+
+	case deployapp.ModeAddSite:
+		if hasDomain {
+			// Add a new site to existing sidecar.
+			return svc.DeployMultiApp(cmd.Context(), cfg, opts)
+		}
+		return fmt.Errorf("cannot add a site without a TLS domain; set tls.domain in %s", absConfig)
+
+	default:
+		return fmt.Errorf("unexpected deploy mode: %v", mode)
+	}
 }
 
 // newDeployStatusCmd creates the "vibew deploy status" subcommand.

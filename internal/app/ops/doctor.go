@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -56,6 +57,7 @@ type DoctorService struct {
 	portChecker    ports.PortChecker
 	healthChecker  ports.HealthChecker
 	remoteExecutor ports.RemoteExecutor
+	imageChecker   ports.DockerImageChecker
 }
 
 // NewDoctorService creates a new DoctorService.
@@ -73,6 +75,15 @@ func NewDoctorService(compose ports.ComposeRunner, portChecker ports.PortChecker
 func (s *DoctorService) WithRemoteExecutor(executor ports.RemoteExecutor) *DoctorService {
 	cp := *s
 	cp.remoteExecutor = executor
+	return &cp
+}
+
+// WithImageChecker returns a copy of the DoctorService with the given
+// DockerImageChecker set for image tag consistency checks. When nil, the
+// image tag check is skipped.
+func (s *DoctorService) WithImageChecker(checker ports.DockerImageChecker) *DoctorService {
+	cp := *s
+	cp.imageChecker = checker
 	return &cp
 }
 
@@ -158,6 +169,10 @@ func (s *DoctorService) runChecks(ctx context.Context, cfg *config.Config, opts 
 	generatedCompose := filepath.Join(workDir, ".vibewarden", "generated", "docker-compose.yml")
 	results = append(results, withSection(checkGeneratedFiles(generatedCompose), sectionConfigDocker))
 	results = append(results, withSection(s.checkContainerHealth(ctx, generatedCompose), sectionConfigDocker))
+	results = append(results, withSection(checkACMEEmail(cfg), sectionConfigDocker))
+	if s.imageChecker != nil && cfg.App.Image != "" {
+		results = append(results, withSection(s.checkImageTagConsistency(ctx, cfg.App.Image), sectionConfigDocker))
+	}
 
 	// --- Layer 2: Local Runtime ---
 	results = append(results, withSection(s.checkUpstreamReachable(ctx, cfg), sectionLocalRuntime))
@@ -166,6 +181,7 @@ func (s *DoctorService) runChecks(ctx context.Context, cfg *config.Config, opts 
 	// --- Layer 3: Production (only when target is set and executor is available) ---
 	if opts.Target != "" && s.remoteExecutor != nil {
 		results = append(results, withSection(s.checkSSHConnectivity(ctx), sectionProduction))
+		results = append(results, withSection(s.checkArchCompatibility(ctx), sectionProduction))
 		results = append(results, withSection(s.checkRemoteContainerHealth(ctx), sectionProduction))
 		if cfg.TLS.Domain != "" {
 			results = append(results, withSection(checkDomainDNS(ctx, cfg.TLS.Domain, opts.Target), sectionProduction))
@@ -650,6 +666,110 @@ func checkRemoteTLSCert(ctx context.Context, domain string) CheckResult {
 		Name:     "Remote TLS cert",
 		Severity: SeverityOK,
 		Detail:   fmt.Sprintf("valid until %s (%d days)", leaf.NotAfter.Format(time.DateOnly), daysUntilExpiry),
+	}
+}
+
+// checkACMEEmail verifies that an ACME account email is configured when the
+// ACME CA URL contains "zerossl". ZeroSSL requires an email address for
+// External Account Binding (EAB) registration.
+func checkACMEEmail(cfg *config.Config) CheckResult {
+	acmeCA := strings.ToLower(cfg.TLS.ACMECA)
+	if !strings.Contains(acmeCA, "zerossl") {
+		return CheckResult{
+			Name:     "ACME email",
+			Severity: SeverityOK,
+			Detail:   "not using ZeroSSL — email not required",
+		}
+	}
+	if cfg.TLS.Email == "" {
+		return CheckResult{
+			Name:     "ACME email",
+			Severity: SeverityFail,
+			Detail:   "ZeroSSL requires tls.email for EAB registration",
+		}
+	}
+	return CheckResult{
+		Name:     "ACME email",
+		Severity: SeverityOK,
+		Detail:   fmt.Sprintf("email configured: %s", cfg.TLS.Email),
+	}
+}
+
+// checkImageTagConsistency verifies that the configured app.image exists in
+// the local Docker daemon. A missing image often causes deploy failures because
+// docker save cannot export an image that does not exist locally.
+func (s *DoctorService) checkImageTagConsistency(ctx context.Context, image string) CheckResult {
+	checkCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	exists, err := s.imageChecker.ImageExists(checkCtx, image)
+	if err != nil {
+		return CheckResult{
+			Name:     "Image tag",
+			Severity: SeverityWarn,
+			Detail:   fmt.Sprintf("could not check image %q: %v", image, err),
+		}
+	}
+	if !exists {
+		return CheckResult{
+			Name:     "Image tag",
+			Severity: SeverityFail,
+			Detail:   fmt.Sprintf("image %q not found locally — build it before deploying", image),
+		}
+	}
+	return CheckResult{
+		Name:     "Image tag",
+		Severity: SeverityOK,
+		Detail:   fmt.Sprintf("image %q exists locally", image),
+	}
+}
+
+// normalizeArch maps the output of "uname -m" to Go's runtime.GOARCH naming
+// convention so that local and remote architectures can be compared.
+func normalizeArch(unameMachine string) string {
+	s := strings.TrimSpace(strings.ToLower(unameMachine))
+	switch s {
+	case "x86_64":
+		return "amd64"
+	case "aarch64", "arm64":
+		return "arm64"
+	case "armv7l":
+		return "arm"
+	default:
+		return s
+	}
+}
+
+// checkArchCompatibility compares the local runtime.GOARCH with the remote
+// host's architecture (via "uname -m"). A mismatch means Docker images built
+// locally may not run on the remote without emulation.
+func (s *DoctorService) checkArchCompatibility(ctx context.Context) CheckResult {
+	checkCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	output, err := s.remoteExecutor.Run(checkCtx, "uname -m")
+	if err != nil {
+		return CheckResult{
+			Name:     "Arch compatibility",
+			Severity: SeverityWarn,
+			Detail:   fmt.Sprintf("could not determine remote architecture: %v", err),
+		}
+	}
+
+	remoteArch := normalizeArch(output)
+	localArch := runtime.GOARCH
+
+	if localArch != remoteArch {
+		return CheckResult{
+			Name:     "Arch compatibility",
+			Severity: SeverityWarn,
+			Detail:   fmt.Sprintf("local=%s remote=%s — use --platform linux/%s when building images", localArch, remoteArch, remoteArch),
+		}
+	}
+	return CheckResult{
+		Name:     "Arch compatibility",
+		Severity: SeverityOK,
+		Detail:   fmt.Sprintf("local=%s remote=%s", localArch, remoteArch),
 	}
 }
 

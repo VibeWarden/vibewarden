@@ -41,6 +41,8 @@ Checks are organised into three layers:
     - Required ports are available (proxy port)
     - Generated files are present (.vibewarden/generated/docker-compose.yml)
     - If the stack is running: containers are healthy (docker compose ps)
+    - ACME email configured when using ZeroSSL
+    - Expected app image exists locally (image tag consistency)
 
   Local Runtime (always runs):
     - Upstream application is reachable (HTTP GET)
@@ -51,6 +53,7 @@ Checks are organised into three layers:
     - Remote container health
     - Domain DNS resolves to target IP
     - Remote TLS certificate expiry
+    - Architecture compatibility (local build arch vs remote server arch)
 
 Each check runs independently — a failure does not stop subsequent checks.
 Exit code is 1 when any check fails.
@@ -84,7 +87,8 @@ Examples:
 			portChecker := opsadapter.NewNetPortChecker()
 			httpClient := &http.Client{Timeout: 5 * time.Second}
 			healthChecker := opsadapter.NewHTTPHealthChecker(httpClient)
-			svc := opsapp.NewDoctorService(compose, portChecker, healthChecker)
+			svc := opsapp.NewDoctorService(compose, portChecker, healthChecker).
+				WithImageChecker(opsadapter.NewImageCheckerAdapter())
 
 			// When --target is provided, create an SSH executor for production checks.
 			if target != "" {
