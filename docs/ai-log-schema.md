@@ -240,6 +240,87 @@ To stream events in real-time from a running sidecar, use the MCP tool
 | `tls.certificate_issued` | TLS certificate obtained or renewed. |
 | `tls.cert_expiry_warning` | Certificate expires within 30 days. |
 | `tls.cert_expiry_critical` | Certificate expires within 7 days. |
+| `tls.acme.chain_skipped` | An ACME issuer was evaluated and excluded from the default fallback chain at plugin Init (see ADR-083). |
+| `tls.acme.chain_configured` | Resolved ACME fallback chain for a domain, emitted once per plugin Init (see ADR-083). |
+| `tls.acme.provider_deprecated` | An explicitly-selected ACME provider is known to be unhealthy (currently emitted for `provider: buypass`; see ADR-083). |
+| `tls.acme.chain_fallback` | Caddy transitioned between issuers in an active fallback chain. Reserved in the v1 schema; emitted only once Caddy/certmagic exposes a stable issuer-transition hook. |
+
+#### `tls.acme.chain_skipped`
+
+Emitted once at plugin Init for every issuer that was evaluated and excluded
+from the default chain.
+
+`severity`: `info` · `category`: `network`
+
+`ai_summary` template:
+`"ACME issuer %s skipped in fallback chain for %s: %s — set tls.email in your config to enable it"`
+
+| Payload field | Type | Example |
+|---|---|---|
+| `provider` | `string` | `"zerossl"` |
+| `reason` | `string` | `"email_not_configured"` |
+| `primary_provider` | `string` | `"letsencrypt"` |
+
+Allowed `reason` values (v1 frozen set; new values require an ADR):
+
+- `email_not_configured` — skipped because `tls.email` is empty.
+
+#### `tls.acme.chain_configured`
+
+Emitted once per plugin Init, regardless of whether any issuers were skipped.
+Captures the resolved chain so operators and log aggregators can see what was
+actually wired up.
+
+`severity`: `info` · `category`: `network`
+
+`ai_summary` template:
+`"ACME fallback chain configured for %s (primary=%s): %s"`
+
+| Payload field | Type | Example |
+|---|---|---|
+| `primary_provider` | `string` | `"letsencrypt"` |
+| `resolved_chain` | `[]string` | `["letsencrypt","zerossl"]` |
+| `domain` | `string` | `"app.example.com"` |
+
+#### `tls.acme.provider_deprecated`
+
+Emitted once at plugin Init when an explicitly-selected ACME provider is known
+to be unhealthy. Currently only emitted for `provider: buypass` per ADR-083.
+
+`severity`: `medium` · `category`: `network`
+
+`ai_summary` template:
+`"ACME provider %s is deprecated: %s — %s"`
+
+| Payload field | Type | Example |
+|---|---|---|
+| `provider` | `string` | `"buypass"` |
+| `reason` | `string` | `"directory_returns_403"` |
+| `guidance` | `string` | `"consider provider: letsencrypt with tls.email"` |
+
+#### `tls.acme.chain_fallback`
+
+Emitted whenever Caddy transitions between issuers in an active fallback chain.
+Reserved in the v1 schema; emitted only once Caddy/certmagic exposes a stable
+issuer-transition hook (see ADR-083 §3b).
+
+`severity`: `medium` · `category`: `network`
+
+`ai_summary` template:
+`"ACME issuer failover for %s: %s → %s (%s)"`
+
+| Payload field | Type | Example |
+|---|---|---|
+| `from_provider` | `string` | `"letsencrypt"` |
+| `to_provider` | `string` | `"zerossl"` |
+| `reason` | `string` | `"upstream_unreachable"` |
+| `domain` | `string` | `"app.example.com"` |
+
+Allowed `reason` values (v1 frozen set):
+
+- `upstream_unreachable` — previous issuer's ACME directory could not be reached (DNS, TCP, TLS, HTTP 5xx).
+- `rate_limited` — previous issuer returned a rate-limit response (HTTP 429 or ACME `rateLimited` problem type).
+- `unknown` — Caddy signalled a transition but the cause was not classifiable.
 
 ### User management
 
