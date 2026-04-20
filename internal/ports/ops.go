@@ -122,3 +122,32 @@ type ImageExporter interface {
 	// the docker CLI fails.
 	Save(ctx context.Context, imageName, destPath string) error
 }
+
+// PortOwner identifies who is listening on a TCP port. It is a value object
+// returned by PortOwnerProbe implementations and consumed by diagnostic
+// services that need to distinguish the sidecar from foreign processes.
+type PortOwner string
+
+const (
+	// OwnerUnknown means the port is free or the owner could not be
+	// determined (e.g. probe error on a reachable host).
+	OwnerUnknown PortOwner = "unknown"
+	// OwnerVibeWarden means a VibeWarden sidecar is listening and
+	// responded on /_vibewarden/health with the expected JSON signature.
+	OwnerVibeWarden PortOwner = "vibewarden"
+	// OwnerForeign means some other process is listening — either the TLS
+	// handshake failed, the HTTP status was non-2xx, or the response body
+	// did not start with the VibeWarden health signature.
+	OwnerForeign PortOwner = "foreign"
+)
+
+// PortOwnerProbe identifies the owner of a listener on host:port by probing
+// the /_vibewarden/health endpoint over TLS. Implementations must be safe to
+// call against self-signed certificates because those are the norm in local
+// development.
+type PortOwnerProbe interface {
+	// ProbeOwner returns the identity of the process bound to host:port.
+	// It never returns an error: ambiguous results are reported as
+	// OwnerForeign (safe default) or OwnerUnknown (port free).
+	ProbeOwner(ctx context.Context, host string, port int) PortOwner
+}

@@ -87,8 +87,10 @@ Examples:
 			portChecker := opsadapter.NewNetPortChecker()
 			httpClient := &http.Client{Timeout: 5 * time.Second}
 			healthChecker := opsadapter.NewHTTPHealthChecker(httpClient)
+			ownerProbe := opsadapter.NewVibeWardenHealthProbe(nil)
 			svc := opsapp.NewDoctorService(compose, portChecker, healthChecker).
-				WithImageChecker(opsadapter.NewImageCheckerAdapter())
+				WithImageChecker(opsadapter.NewImageCheckerAdapter()).
+				WithPortOwnerProbe(ownerProbe)
 
 			// When --target is provided, create an SSH executor for production checks.
 			if target != "" {

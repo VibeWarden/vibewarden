@@ -77,7 +77,9 @@ func buildMCPToolDeps() mcp.ToolDeps {
 
 	compose := opsadapter.NewComposeAdapter()
 	portChecker := opsadapter.NewNetPortChecker()
-	doctorSvc := opsapp.NewDoctorService(compose, portChecker, healthChecker)
+	ownerProbe := opsadapter.NewVibeWardenHealthProbe(nil)
+	doctorSvc := opsapp.NewDoctorService(compose, portChecker, healthChecker).
+		WithPortOwnerProbe(ownerProbe)
 
 	return mcp.ToolDeps{
 		HealthChecker: healthChecker,
