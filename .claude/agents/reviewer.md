@@ -99,6 +99,17 @@ become technical debt.
 - [ ] SQL queries use parameterized statements (no string concatenation)
 - [ ] Sensitive fields (passwords, tokens) never logged
 
+### Documentation consistency
+When the PR touches any of these paths, verify docs were updated in the same PR:
+- `internal/cli/cmd/` (CLI commands/flags) → check `llms-full.txt`, `AGENTS-VIBEWARDEN.md` template, `docs/getting-started.md`
+- `internal/config/config.go` (config fields) → check `vibewarden.reference.yaml`, `llms-full.txt`
+- `internal/config/templates/` (compose/kratos templates) → check `docs/deploy-to-vps.md`, `docs/multi-app.md`
+- `internal/cli/templates/` (scaffold templates) → check `docs/getting-started.md`
+
+If documented features changed but docs weren't updated, request changes with:
+> **Documentation drift**: this PR changes `<what>` but does not update `<doc file>`. 
+> Docs-runtime drift is our #1 source of agent failures — update docs in the same PR.
+
 ### Licenses
 - [ ] Any new `go.mod` dependency verified as Apache 2.0, MIT, BSD-2, or BSD-3
 - [ ] No GPL/AGPL/LGPL dependencies added
