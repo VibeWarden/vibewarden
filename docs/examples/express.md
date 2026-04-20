@@ -356,8 +356,7 @@ app.use("/api", apiRouter);
 ### Health check route
 
 Add a `/health` endpoint that does not require authentication. Register it in
-`auth.public_paths` in `vibewarden.yaml` so VibeWarden passes it through without a
-session check:
+`auth.public_paths` in `vibewarden.yaml` so VibeWarden does not require authentication:
 
 ```javascript
 app.get("/health", (req, res) => {

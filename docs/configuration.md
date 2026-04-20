@@ -121,7 +121,7 @@ tls:
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `auth.mode` | string | `none` | Auth strategy and single source of truth for whether auth is on. Set to `none` to disable, or `kratos`, `jwt`, or `api-key` to enable. See ADR-065 |
-| `auth.public_paths` | list | `[]` | Glob patterns that bypass auth. `/_vibewarden/*` is always public |
+| `auth.public_paths` | list | `[]` | Paths that do not require authentication. If a valid session cookie is present, identity headers are still set (optional auth). `/_vibewarden/*` is always public |
 | `auth.session_cookie_name` | string | `ory_kratos_session` | Kratos session cookie name |
 | `auth.login_url` | string | `/self-service/login/browser` | Redirect for unauthenticated users |
 | `auth.on_kratos_unavailable` | string | `503` | Behavior when Kratos is unreachable: `503` or `allow_public` |

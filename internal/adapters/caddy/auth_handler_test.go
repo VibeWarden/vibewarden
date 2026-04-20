@@ -665,6 +665,175 @@ func TestAuthHandler_Provision_KratosPathsBypass(t *testing.T) {
 	}
 }
 
+// TestAuthHandler_PublicPath_WithValidSession_SetsHeaders verifies that a
+// public path with a valid Kratos session cookie sets identity headers on
+// the request without blocking or redirecting.
+func TestAuthHandler_PublicPath_WithValidSession_SetsHeaders(t *testing.T) {
+	kratosServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/sessions/whoami" {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"active": true,
+			"identity": {
+				"id": "user-pub-123",
+				"traits": {"email": "pub@example.com"},
+				"verifiable_addresses": [
+					{"value": "pub@example.com", "via": "email", "verified": true}
+				]
+			}
+		}`))
+	}))
+	defer kratosServer.Close()
+
+	h := &AuthHandler{Config: AuthHandlerConfig{
+		CookieName:  "ory_kratos_session",
+		LoginURL:    "/login",
+		PublicPaths: []string{"/public", "/home"},
+		KratosURL:   kratosServer.URL,
+	}}
+	if err := h.Provision(gocaddy.Context{}); err != nil {
+		t.Fatalf("Provision() error = %v", err)
+	}
+
+	var capturedHeaders http.Header
+	next := caddyhttp.HandlerFunc(func(w http.ResponseWriter, r *http.Request) error {
+		capturedHeaders = r.Header.Clone()
+		w.WriteHeader(http.StatusOK)
+		return nil
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/public", nil)
+	req.AddCookie(&http.Cookie{Name: "ory_kratos_session", Value: "valid-token"})
+	w := httptest.NewRecorder()
+
+	err := h.ServeHTTP(w, req, next)
+	if err != nil {
+		t.Fatalf("ServeHTTP() error = %v", err)
+	}
+
+	if capturedHeaders == nil {
+		t.Fatal("next handler was not called")
+	}
+	if w.Code == http.StatusFound {
+		t.Error("public path should not redirect even with session check")
+	}
+	if got := capturedHeaders.Get("X-User-Id"); got != "user-pub-123" {
+		t.Errorf("X-User-Id = %q, want %q", got, "user-pub-123")
+	}
+	if got := capturedHeaders.Get("X-User-Email"); got != "pub@example.com" {
+		t.Errorf("X-User-Email = %q, want %q", got, "pub@example.com")
+	}
+	if got := capturedHeaders.Get("X-User-Verified"); got != "true" {
+		t.Errorf("X-User-Verified = %q, want %q", got, "true")
+	}
+}
+
+// TestAuthHandler_PublicPath_WithInvalidSession_NoHeaders verifies that a
+// public path with an expired/invalid session cookie still passes through
+// without setting identity headers and without redirecting.
+func TestAuthHandler_PublicPath_WithInvalidSession_NoHeaders(t *testing.T) {
+	kratosServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	defer kratosServer.Close()
+
+	h := &AuthHandler{Config: AuthHandlerConfig{
+		CookieName:  "ory_kratos_session",
+		LoginURL:    "/login",
+		PublicPaths: []string{"/public"},
+		KratosURL:   kratosServer.URL,
+	}}
+	if err := h.Provision(gocaddy.Context{}); err != nil {
+		t.Fatalf("Provision() error = %v", err)
+	}
+
+	var capturedHeaders http.Header
+	nextCalled := false
+	next := caddyhttp.HandlerFunc(func(w http.ResponseWriter, r *http.Request) error {
+		nextCalled = true
+		capturedHeaders = r.Header.Clone()
+		w.WriteHeader(http.StatusOK)
+		return nil
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/public", nil)
+	req.AddCookie(&http.Cookie{Name: "ory_kratos_session", Value: "expired-token"})
+	w := httptest.NewRecorder()
+
+	err := h.ServeHTTP(w, req, next)
+	if err != nil {
+		t.Fatalf("ServeHTTP() error = %v", err)
+	}
+
+	if !nextCalled {
+		t.Error("next handler should be called for public path even with invalid session")
+	}
+	if w.Code == http.StatusFound {
+		t.Error("public path should not redirect even with invalid session")
+	}
+	if got := capturedHeaders.Get("X-User-Id"); got != "" {
+		t.Errorf("X-User-Id = %q, want empty", got)
+	}
+	if got := capturedHeaders.Get("X-User-Email"); got != "" {
+		t.Errorf("X-User-Email = %q, want empty", got)
+	}
+	if got := capturedHeaders.Get("X-User-Verified"); got != "" {
+		t.Errorf("X-User-Verified = %q, want empty", got)
+	}
+}
+
+// TestAuthHandler_PublicPath_NoCookie_NoHeaders verifies that a public path
+// without any session cookie passes through without identity headers and
+// without redirecting.
+func TestAuthHandler_PublicPath_NoCookie_NoHeaders(t *testing.T) {
+	h := &AuthHandler{Config: AuthHandlerConfig{
+		CookieName:  "ory_kratos_session",
+		LoginURL:    "/login",
+		PublicPaths: []string{"/public"},
+		KratosURL:   "http://unreachable:4433", // should not be called
+	}}
+	if err := h.Provision(gocaddy.Context{}); err != nil {
+		t.Fatalf("Provision() error = %v", err)
+	}
+
+	var capturedHeaders http.Header
+	nextCalled := false
+	next := caddyhttp.HandlerFunc(func(w http.ResponseWriter, r *http.Request) error {
+		nextCalled = true
+		capturedHeaders = r.Header.Clone()
+		w.WriteHeader(http.StatusOK)
+		return nil
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/public", nil)
+	// No cookie added.
+	w := httptest.NewRecorder()
+
+	err := h.ServeHTTP(w, req, next)
+	if err != nil {
+		t.Fatalf("ServeHTTP() error = %v", err)
+	}
+
+	if !nextCalled {
+		t.Error("next handler should be called for public path without cookie")
+	}
+	if w.Code == http.StatusFound {
+		t.Error("public path should not redirect without cookie")
+	}
+	if got := capturedHeaders.Get("X-User-Id"); got != "" {
+		t.Errorf("X-User-Id = %q, want empty", got)
+	}
+	if got := capturedHeaders.Get("X-User-Email"); got != "" {
+		t.Errorf("X-User-Email = %q, want empty", got)
+	}
+	if got := capturedHeaders.Get("X-User-Verified"); got != "" {
+		t.Errorf("X-User-Verified = %q, want empty", got)
+	}
+}
+
 // TestAuthHandler_ServeHTTP_KratosServerError verifies redirect when Kratos
 // returns a 5xx error.
 func TestAuthHandler_ServeHTTP_KratosServerError(t *testing.T) {
