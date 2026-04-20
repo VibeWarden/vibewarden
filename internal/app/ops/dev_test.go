@@ -6,6 +6,7 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/vibewarden/vibewarden/internal/app/ops"
 	"github.com/vibewarden/vibewarden/internal/config"
@@ -735,5 +736,236 @@ func TestDevService_VerifySidecar_LogsError_StillReturnsError(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "sidecar failed to start") {
 		t.Errorf("error should mention sidecar failure, got: %v", err)
+	}
+}
+
+// --- Container freshness detection tests ---
+
+func TestDevService_Freshness_SkippedWhenNoAppConfigured(t *testing.T) {
+	// When neither app.image nor app.build is set, the freshness check is skipped.
+	fc := &fakeCompose{
+		psResult: []ports.ContainerInfo{
+			{Name: "proj-app-1", Service: "app", State: "running", Image: "old:v1", Project: "wrong"},
+		},
+	}
+	svc := ops.NewDevService(fc)
+	cfg := defaultConfig()
+	cfg.App.Image = ""
+	cfg.App.Build = ""
+	var buf bytes.Buffer
+
+	err := svc.Run(context.Background(), cfg, ops.DevOptions{}, &buf)
+	if err != nil {
+		t.Fatalf("Run() unexpected error: %v", err)
+	}
+	// Restart should NOT have been called.
+	if fc.restartCalled != 0 {
+		t.Errorf("expected Restart not to be called when no app configured, got %d calls", fc.restartCalled)
+	}
+}
+
+func TestDevService_Freshness_SkippedWhenPSFails(t *testing.T) {
+	// When PS fails, the freshness check is skipped gracefully (same as verifySidecar).
+	fc := &fakeCompose{
+		psErr: errors.New("daemon not responding"),
+	}
+	svc := ops.NewDevService(fc)
+	cfg := defaultConfig()
+	cfg.App.Image = "myapp:latest"
+	cfg.App.Build = "."
+	var buf bytes.Buffer
+
+	err := svc.Run(context.Background(), cfg, ops.DevOptions{}, &buf)
+	if err != nil {
+		t.Fatalf("Run() unexpected error when PS fails: %v", err)
+	}
+}
+
+func TestDevService_Freshness_FreshContainer_NoRestart(t *testing.T) {
+	// A container with matching project, image, and recent creation time is fresh.
+	now := time.Now()
+	ops.NowFunc = func() time.Time { return now }
+	t.Cleanup(func() { ops.NowFunc = time.Now })
+
+	fc := &fakeCompose{
+		psResult: []ports.ContainerInfo{
+			{
+				Name:      "myapp-app-1",
+				Service:   "app",
+				State:     "running",
+				Image:     "myapp:latest",
+				Project:   "myapp",
+				CreatedAt: now.Add(-1 * time.Hour),
+			},
+		},
+	}
+	svc := ops.NewDevService(fc)
+	cfg := defaultConfig()
+	cfg.App.Image = "myapp:latest"
+	cfg.Name = "myapp"
+	var buf bytes.Buffer
+
+	err := svc.Run(context.Background(), cfg, ops.DevOptions{}, &buf)
+	if err != nil {
+		t.Fatalf("Run() unexpected error: %v", err)
+	}
+	if fc.restartCalled != 0 {
+		t.Errorf("expected no Restart for fresh container, got %d calls", fc.restartCalled)
+	}
+}
+
+func TestDevService_Freshness_ProjectMismatch_TriggersRestart(t *testing.T) {
+	// A container from a different project triggers a rebuild.
+	fc := &fakeCompose{
+		psResult: []ports.ContainerInfo{
+			{
+				Name:      "oldproj-app-1",
+				Service:   "app",
+				State:     "running",
+				Image:     "myapp:latest",
+				Project:   "oldproj",
+				CreatedAt: time.Now().Add(-1 * time.Hour),
+			},
+		},
+	}
+	svc := ops.NewDevService(fc)
+	cfg := defaultConfig()
+	cfg.App.Image = "myapp:latest"
+	cfg.Name = "myapp"
+	var buf bytes.Buffer
+
+	err := svc.Run(context.Background(), cfg, ops.DevOptions{}, &buf)
+	if err != nil {
+		t.Fatalf("Run() unexpected error: %v", err)
+	}
+	if fc.restartCalled == 0 {
+		t.Error("expected Restart to be called for project mismatch")
+	}
+	out := buf.String()
+	if !strings.Contains(out, "project name mismatch") {
+		t.Errorf("expected project mismatch diagnostic, got:\n%s", out)
+	}
+}
+
+func TestDevService_Freshness_ImageMismatch_TriggersRestart(t *testing.T) {
+	// A container with a different image triggers a rebuild.
+	fc := &fakeCompose{
+		psResult: []ports.ContainerInfo{
+			{
+				Name:      "myapp-app-1",
+				Service:   "app",
+				State:     "running",
+				Image:     "myapp:v1",
+				Project:   "myapp",
+				CreatedAt: time.Now().Add(-1 * time.Hour),
+			},
+		},
+	}
+	svc := ops.NewDevService(fc)
+	cfg := defaultConfig()
+	cfg.App.Image = "myapp:v2"
+	cfg.Name = "myapp"
+	var buf bytes.Buffer
+
+	err := svc.Run(context.Background(), cfg, ops.DevOptions{}, &buf)
+	if err != nil {
+		t.Fatalf("Run() unexpected error: %v", err)
+	}
+	if fc.restartCalled == 0 {
+		t.Error("expected Restart to be called for image mismatch")
+	}
+	out := buf.String()
+	if !strings.Contains(out, "image mismatch") {
+		t.Errorf("expected image mismatch diagnostic, got:\n%s", out)
+	}
+}
+
+func TestDevService_Freshness_AgeExceeded_TriggersRestart(t *testing.T) {
+	// A container older than MaxContainerAge triggers a rebuild.
+	now := time.Now()
+	ops.NowFunc = func() time.Time { return now }
+	t.Cleanup(func() { ops.NowFunc = time.Now })
+
+	fc := &fakeCompose{
+		psResult: []ports.ContainerInfo{
+			{
+				Name:      "myapp-app-1",
+				Service:   "app",
+				State:     "running",
+				Image:     "myapp:latest",
+				Project:   "myapp",
+				CreatedAt: now.Add(-13 * time.Hour),
+			},
+		},
+	}
+	svc := ops.NewDevService(fc)
+	cfg := defaultConfig()
+	cfg.App.Image = "myapp:latest"
+	cfg.Name = "myapp"
+	var buf bytes.Buffer
+
+	err := svc.Run(context.Background(), cfg, ops.DevOptions{}, &buf)
+	if err != nil {
+		t.Fatalf("Run() unexpected error: %v", err)
+	}
+	if fc.restartCalled == 0 {
+		t.Error("expected Restart to be called for stale container")
+	}
+	out := buf.String()
+	if !strings.Contains(out, "container age") {
+		t.Errorf("expected age exceeded diagnostic, got:\n%s", out)
+	}
+}
+
+func TestDevService_Freshness_RestartFails_ReturnsError(t *testing.T) {
+	// When Restart fails during freshness rebuild, the error is propagated.
+	fc := &fakeCompose{
+		psResult: []ports.ContainerInfo{
+			{
+				Name:      "oldproj-app-1",
+				Service:   "app",
+				State:     "running",
+				Image:     "myapp:latest",
+				Project:   "oldproj",
+				CreatedAt: time.Now().Add(-1 * time.Hour),
+			},
+		},
+		restartErr: errors.New("build context missing"),
+	}
+	svc := ops.NewDevService(fc)
+	cfg := defaultConfig()
+	cfg.App.Image = "myapp:latest"
+	cfg.Name = "myapp"
+	var buf bytes.Buffer
+
+	err := svc.Run(context.Background(), cfg, ops.DevOptions{}, &buf)
+	if err == nil {
+		t.Fatal("Run() expected error when Restart fails, got nil")
+	}
+	if !strings.Contains(err.Error(), "rebuilding stale app container") {
+		t.Errorf("error should mention rebuilding, got: %v", err)
+	}
+}
+
+func TestDevService_Freshness_NoAppContainer_Proceeds(t *testing.T) {
+	// When no "app" service container exists in PS output, the check does not
+	// block the compose up flow.
+	fc := &fakeCompose{
+		psResult: []ports.ContainerInfo{
+			{Name: "myapp-vibewarden-1", Service: "vibewarden", State: "running", Image: "vibewarden:latest", Project: "myapp"},
+		},
+	}
+	svc := ops.NewDevService(fc)
+	cfg := defaultConfig()
+	cfg.App.Image = "myapp:latest"
+	cfg.Name = "myapp"
+	var buf bytes.Buffer
+
+	err := svc.Run(context.Background(), cfg, ops.DevOptions{}, &buf)
+	if err != nil {
+		t.Fatalf("Run() unexpected error: %v", err)
+	}
+	if fc.restartCalled != 0 {
+		t.Errorf("expected no Restart when app container is absent, got %d calls", fc.restartCalled)
 	}
 }

@@ -36,6 +36,19 @@ const sidecarServiceName = "vibewarden"
 // variable so that tests can override it to avoid real delays.
 var SidecarSettleDuration = 5 * time.Second
 
+// MaxContainerAge is the maximum allowed age of an app container before it is
+// considered stale and automatically rebuilt. It is a package-level variable so
+// that tests can override it without real delays.
+var MaxContainerAge = 12 * time.Hour
+
+// NowFunc is the clock function used by freshness checks. It is a package-level
+// variable so that tests can inject a deterministic time without real delays.
+var NowFunc = time.Now
+
+// appServiceName is the Compose service name for the user's app as defined in
+// the generated docker-compose.yml template.
+const appServiceName = "app"
+
 // DevService orchestrates the "vibew dev" use case.
 // It optionally generates runtime configuration files from vibewarden.yaml
 // before starting the Docker Compose stack and can watch the config file for
@@ -131,6 +144,11 @@ func (s *DevService) Run(ctx context.Context, cfg *config.Config, opts DevOption
 
 	// Pre-flight: verify the app image exists when using a pre-built image.
 	if err := s.checkAppImage(ctx, cfg, opts, out); err != nil {
+		return err
+	}
+
+	// Pre-flight: detect and rebuild stale/mismatched app containers.
+	if err := s.checkContainerFreshness(ctx, cfg, composeFile, out); err != nil {
 		return err
 	}
 
@@ -255,6 +273,82 @@ func (s *DevService) checkAppImage(ctx context.Context, cfg *config.Config, opts
 	}
 
 	return buildMissingImageError(image, opts.DetectedLang)
+}
+
+// checkContainerFreshness inspects running app containers for staleness.
+// It detects three conditions that indicate a stale container:
+//  1. Project name mismatch — the container belongs to a different compose project.
+//  2. Image mismatch — the container was built from a different image than configured.
+//  3. Age exceeded — the container was created more than MaxContainerAge ago.
+//
+// When any mismatch is detected, it prints a diagnostic message and calls
+// compose.Restart with --force-recreate --build to rebuild the app container.
+//
+// The check is skipped when:
+//   - cfg.App.Image is empty (no image configured).
+//   - PS fails (graceful degradation, same pattern as verifySidecar).
+//   - No app container is found in PS output.
+func (s *DevService) checkContainerFreshness(ctx context.Context, cfg *config.Config, composeFile string, out io.Writer) error {
+	if cfg.App.Image == "" && cfg.App.Build == "" {
+		// Nothing to check when no app service is configured.
+		return nil
+	}
+
+	containers, err := s.compose.PS(ctx, composeFile)
+	if err != nil {
+		// PS failure is not fatal — skip the freshness check gracefully.
+		slog.Warn("could not check container freshness", "error", err)
+		return nil
+	}
+
+	expectedProject := cfg.ComposeProjectName()
+	expectedImage := cfg.App.Image
+
+	for _, c := range containers {
+		if c.Service != appServiceName {
+			continue
+		}
+
+		reason := s.detectStaleness(c, expectedProject, expectedImage)
+		if reason == "" {
+			return nil
+		}
+
+		fmt.Fprintf(out, "Stale app container detected: %s\n", reason)
+		fmt.Fprintln(out, "Rebuilding app container (--force-recreate --build)...")
+
+		if err := s.compose.Restart(ctx, composeFile, []string{appServiceName}); err != nil {
+			return fmt.Errorf("rebuilding stale app container: %w", err)
+		}
+		return nil
+	}
+
+	// No app container found — nothing to check.
+	return nil
+}
+
+// detectStaleness returns a non-empty reason string when the container is
+// considered stale. Returns an empty string when the container is fresh.
+func (s *DevService) detectStaleness(c ports.ContainerInfo, expectedProject, expectedImage string) string {
+	// Check project name mismatch.
+	if c.Project != "" && expectedProject != "" && c.Project != expectedProject {
+		return fmt.Sprintf("project name mismatch (container: %q, expected: %q)", c.Project, expectedProject)
+	}
+
+	// Check image mismatch.
+	if c.Image != "" && expectedImage != "" && c.Image != expectedImage {
+		return fmt.Sprintf("image mismatch (container: %q, expected: %q)", c.Image, expectedImage)
+	}
+
+	// Check container age.
+	if !c.CreatedAt.IsZero() {
+		age := NowFunc().Sub(c.CreatedAt)
+		if age > MaxContainerAge {
+			return fmt.Sprintf("container age %s exceeds maximum %s", age.Truncate(time.Minute), MaxContainerAge)
+		}
+	}
+
+	return ""
 }
 
 // verifySidecar waits briefly after compose up, then checks whether the

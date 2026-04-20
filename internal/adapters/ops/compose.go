@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os/exec"
 	"strings"
+	"time"
 
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
@@ -103,6 +104,10 @@ type composeContainer struct {
 	Service string `json:"Service"`
 	State   string `json:"State"`
 	Health  string `json:"Health"`
+	Image   string `json:"Image"`
+	Project string `json:"Project"`
+	// CreatedAt is a Unix timestamp (seconds since epoch) as reported by docker compose.
+	CreatedAt int64 `json:"CreatedAt"`
 }
 
 // ImageCheckerAdapter implements ports.DockerImageChecker by shelling out to
@@ -172,11 +177,18 @@ func (c *ComposeAdapter) PS(ctx context.Context, composeFile string) ([]ports.Co
 			// Ignore malformed lines; best-effort parsing.
 			continue
 		}
+		var createdAt time.Time
+		if ct.CreatedAt != 0 {
+			createdAt = time.Unix(ct.CreatedAt, 0)
+		}
 		results = append(results, ports.ContainerInfo{
-			Name:    ct.Name,
-			Service: ct.Service,
-			State:   ct.State,
-			Health:  ct.Health,
+			Name:      ct.Name,
+			Service:   ct.Service,
+			State:     ct.State,
+			Health:    ct.Health,
+			Image:     ct.Image,
+			Project:   ct.Project,
+			CreatedAt: createdAt,
 		})
 	}
 	return results, nil
