@@ -11,8 +11,32 @@ permissions:
   security-events: write  # required for SARIF upload to GitHub Security tab
 
 jobs:
+  changes:
+    name: Detect changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Detect changed paths
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            code:
+              - '**/*.go'
+              - 'go.mod'
+              - 'go.sum'
+              - 'Dockerfile'
+              - '.github/workflows/**'
+
   semgrep:
     name: Semgrep SAST
+    needs: [changes]
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     container:
@@ -43,6 +67,8 @@ jobs:
 
   trivy:
     name: Trivy Vulnerability Scan
+    needs: [changes]
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -103,6 +129,8 @@ jobs:
 
   govulncheck:
     name: Go Vulnerability Check
+    needs: [changes]
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:

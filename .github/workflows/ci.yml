@@ -6,9 +6,40 @@ on:
   pull_request:
     branches: [main]
 
+# Detect if only docs/config files changed (no Go code)
+# Used to skip heavy jobs on docs-only PRs.
+
 jobs:
+  changes:
+    name: Detect changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    outputs:
+      code: ${{ steps.filter.outputs.code }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Detect changed paths
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            code:
+              - '**/*.go'
+              - 'go.mod'
+              - 'go.sum'
+              - 'Dockerfile'
+              - '.github/workflows/**'
+              - 'internal/**'
+              - 'cmd/**'
+              - 'test/**'
+              - 'examples/**/*.go'
+
   lint:
     name: Lint
+    needs: [changes]
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -26,8 +57,10 @@ jobs:
         with:
           version: latest
 
-  build:
-    name: Build
+  build-and-test:
+    name: Build & Test
+    needs: [changes]
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -46,64 +79,13 @@ jobs:
       - name: Build demo-app
         run: cd examples/demo-app && go build ./...
 
-  test:
-    name: Test
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-
-      - name: Set up Go
-        uses: actions/setup-go@v6
-        with:
-          go-version: "1.26"
-          cache: true
-
       - name: Run tests
         run: go test -race ./...
 
       - name: Run demo-app tests
         run: cd examples/demo-app && go test -race ./...
 
-  integration:
-    name: Integration Tests
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    needs: [test]
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-
-      - name: Set up Go
-        uses: actions/setup-go@v6
-        with:
-          go-version: "1.26"
-          cache: true
-
-      - name: Build VibeWarden Docker image (local test tag — never pushed)
-        run: docker build --tag vibewarden:local-test .
-
-      - name: Run integration tests
-        run: go test -race -tags integration ./test/integration/ -v -timeout 300s
-
-  coverage:
-    name: Coverage
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-
-      - name: Set up Go
-        uses: actions/setup-go@v6
-        with:
-          go-version: "1.26"
-          cache: true
-
       - name: Run coverage
-        # Composition-root wiring now lives in cmd/vibewarden/ (moved in #809),
-        # which is outside the coverage scope. No exclusion filter needed.
         run: |
           PKGS=$(go list ./internal/domain/... ./internal/app/...)
           go test -coverprofile=coverage.out -covermode=atomic $PKGS
@@ -124,3 +106,25 @@ jobs:
           name: coverage-report
           path: coverage.out
           retention-days: 7
+
+  integration:
+    name: Integration Tests
+    needs: [changes]
+    if: needs.changes.outputs.code == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version: "1.26"
+          cache: true
+
+      - name: Build VibeWarden Docker image (local test tag — never pushed)
+        run: docker build --tag vibewarden:local-test .
+
+      - name: Run integration tests
+        run: go test -race -tags integration ./test/integration/ -v -timeout 300s
