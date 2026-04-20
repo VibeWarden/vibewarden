@@ -99,17 +99,24 @@ app:
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `tls.enabled` | bool | `true` | Enable TLS |
-| `tls.domain` | string | `""` | Domain for the TLS certificate. Required when `provider` is `letsencrypt` |
-| `tls.provider` | string | `""` | Certificate provider: `letsencrypt` (or `acme`), `self-signed`, or `external` |
+| `tls.domain` | string | `""` | Domain for the TLS certificate. Required for all ACME providers |
+| `tls.provider` | string | `""` | Certificate provider: `letsencrypt` (or `acme`), `zerossl`, `buypass`, `letsencrypt-staging`, `self-signed`, or `external` |
+| `tls.email` | string | `""` | ACME account email. Required for `zerossl`. Recommended for others (cert expiry warnings) |
 | `tls.cert_path` | string | `""` | Path to PEM certificate. Required when `provider` is `external` |
 | `tls.key_path` | string | `""` | Path to PEM private key. Required when `provider` is `external` |
-| `tls.storage_path` | string | `""` | Directory for ACME certificate storage. Applies to `letsencrypt` only |
+| `tls.storage_path` | string | `""` | Directory for ACME certificate storage. Applies to all ACME providers |
+| `tls.acme_ca` | string | `""` | Custom ACME directory URL. Only for `letsencrypt` provider. When set, disables the fallback chain |
+
+When `provider: letsencrypt` (the default) and `acme_ca` is not set, VibeWarden
+configures a 3-issuer fallback chain: Let's Encrypt -> ZeroSSL -> Buypass.
+If one CA is down, Caddy automatically tries the next.
 
 ```yaml
 tls:
   enabled: true
   provider: letsencrypt
   domain: myapp.example.com
+  email: admin@example.com   # optional but recommended
 ```
 
 ---

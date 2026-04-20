@@ -43,15 +43,19 @@ When TLS is already enabled, vibewarden.yaml is left unchanged and the domain
 is written only to vibewarden.production.yaml.
 
 Supported providers:
-  letsencrypt   Automatic certificate from Let's Encrypt (default, requires public domain)
-  self-signed   Self-signed certificate for local/internal use
-  external      You manage the certificate (Cloudflare, registrar, AWS ACM, etc.)
+  letsencrypt          Automatic certificate with fallback chain: LE -> ZeroSSL -> Buypass (default)
+  zerossl              ZeroSSL only (requires --email for EAB registration)
+  buypass              Buypass Go SSL only
+  letsencrypt-staging  Let's Encrypt staging (for testing, certs not publicly trusted)
+  self-signed          Self-signed certificate for local/internal use
+  external             You manage the certificate (Cloudflare, registrar, AWS ACM, etc.)
 
 Run 'vibew wrap' first if vibewarden.yaml does not exist.
 
 Examples:
   vibew add tls --domain example.com
   vibew add tls --domain example.com --provider letsencrypt
+  vibew add tls --domain example.com --provider zerossl --email admin@example.com
   vibew add tls --domain internal.corp --provider self-signed`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -109,7 +113,7 @@ Examples:
 	}
 
 	cmd.Flags().StringVar(&domain, "domain", "", "domain for TLS certificate (required)")
-	cmd.Flags().StringVar(&provider, "provider", "letsencrypt", `TLS provider: "letsencrypt", "self-signed", or "external"`)
+	cmd.Flags().StringVar(&provider, "provider", "letsencrypt", `TLS provider: "letsencrypt", "zerossl", "buypass", "letsencrypt-staging", "self-signed", or "external"`)
 
 	return cmd
 }

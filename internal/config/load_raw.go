@@ -68,7 +68,12 @@ func loadInternal(configPath string, validate bool) (*Config, error) {
 		cfg.TLS.Provider = "letsencrypt"
 	}
 
-	if cfg.TLS.Provider == "letsencrypt" && cfg.TLS.StoragePath == "" {
+	// Set default storage path for all ACME providers when not explicitly configured.
+	acmeProviders := map[string]bool{
+		"letsencrypt": true, "zerossl": true,
+		"buypass": true, "letsencrypt-staging": true,
+	}
+	if acmeProviders[cfg.TLS.Provider] && cfg.TLS.StoragePath == "" {
 		cfg.TLS.StoragePath = "/root/.local/share/caddy"
 	}
 

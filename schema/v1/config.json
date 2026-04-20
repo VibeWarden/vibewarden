@@ -230,12 +230,16 @@
         },
         "domain": {
           "type": "string",
-          "description": "Domain for TLS certificate. Required when provider is 'letsencrypt'."
+          "description": "Domain for TLS certificate. Required for all ACME providers (letsencrypt, zerossl, buypass, letsencrypt-staging)."
         },
         "provider": {
           "type": "string",
-          "enum": ["letsencrypt", "self-signed", "external"],
-          "description": "TLS provider. 'letsencrypt': automatic ACME certificate. 'self-signed': generated self-signed certificate for local dev. 'external': bring your own certificate (requires cert_path and key_path)."
+          "enum": ["letsencrypt", "zerossl", "buypass", "letsencrypt-staging", "self-signed", "external"],
+          "description": "TLS provider. 'letsencrypt': automatic ACME with fallback chain (LE -> ZeroSSL -> Buypass). 'zerossl': ZeroSSL only (requires email). 'buypass': Buypass Go SSL only. 'letsencrypt-staging': LE staging for testing. 'self-signed': generated self-signed certificate for local dev. 'external': bring your own certificate (requires cert_path and key_path)."
+        },
+        "email": {
+          "type": "string",
+          "description": "ACME account registration email. Required for 'zerossl' (EAB registration). Recommended for other ACME providers (cert expiry warnings)."
         },
         "cert_path": {
           "type": "string",
@@ -247,7 +251,7 @@
         },
         "storage_path": {
           "type": "string",
-          "description": "Directory where Caddy stores ACME certificates. Only applies when provider is 'letsencrypt'."
+          "description": "Directory where Caddy stores ACME certificates. Applies to all ACME providers."
         },
         "cert_monitoring": {
           "$ref": "#/$defs/TLSCertMonitoringConfig"

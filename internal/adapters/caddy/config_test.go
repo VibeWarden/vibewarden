@@ -445,8 +445,8 @@ func TestBuildCaddyConfig_LetsEncryptDomainInPolicy(t *testing.T) {
 	}
 }
 
-// TestBuildCaddyConfig_LetsEncryptACMEIssuer verifies the ACME issuer is configured
-// without explicit challenge settings so Caddy uses TLS-ALPN-01 automatically.
+// TestBuildCaddyConfig_LetsEncryptACMEIssuer verifies the fallback chain
+// produces 3 ACME issuers with explicit CA URLs and no challenge overrides.
 func TestBuildCaddyConfig_LetsEncryptACMEIssuer(t *testing.T) {
 	cfg := &ports.ProxyConfig{
 		ListenAddr:   "0.0.0.0:443",
@@ -477,38 +477,62 @@ func TestBuildCaddyConfig_LetsEncryptACMEIssuer(t *testing.T) {
 		t.Fatal("issuers not found in automation policy")
 	}
 
-	acmeIssuer := issuers[0]
-	if acmeIssuer["module"] != "acme" {
-		t.Fatalf("expected acme issuer module, got %q", acmeIssuer["module"])
+	// Default letsencrypt provider produces 3-issuer fallback chain.
+	if len(issuers) != 3 {
+		t.Fatalf("expected 3 issuers in fallback chain, got %d", len(issuers))
 	}
-	// No explicit challenges — Caddy uses TLS-ALPN-01 automatically.
-	if _, hasChallenge := acmeIssuer["challenges"]; hasChallenge {
-		t.Error("ACME issuer should not have explicit challenges config")
+
+	// All issuers must be ACME modules.
+	for i, issuer := range issuers {
+		if issuer["module"] != "acme" {
+			t.Errorf("issuer[%d].module = %q, want %q", i, issuer["module"], "acme")
+		}
+		// No explicit challenges — Caddy uses TLS-ALPN-01 automatically.
+		if _, hasChallenge := issuer["challenges"]; hasChallenge {
+			t.Errorf("issuer[%d] should not have explicit challenges config", i)
+		}
+	}
+
+	// Verify the fallback order: LE, ZeroSSL, Buypass.
+	wantCAs := []string{
+		"https://acme-v02.api.letsencrypt.org/directory",
+		"https://acme.zerossl.com/v2/DV90",
+		"https://api.buypass.com/acme/directory",
+	}
+	for i, wantCA := range wantCAs {
+		if issuers[i]["ca"] != wantCA {
+			t.Errorf("issuer[%d].ca = %q, want %q", i, issuers[i]["ca"], wantCA)
+		}
 	}
 }
 
 // TestBuildCaddyConfig_LetsEncryptACMECA verifies that when ACMECA is set, the
-// ACME issuer includes a "ca" field pointing to the custom directory URL.
+// fallback chain is disabled and a single issuer with the specified CA is used.
+// When ACMECA is empty, the 3-issuer fallback chain is produced.
 func TestBuildCaddyConfig_LetsEncryptACMECA(t *testing.T) {
 	tests := []struct {
-		name   string
-		acmeCA string
-		wantCA bool
+		name        string
+		acmeCA      string
+		wantIssuers int
+		wantFirstCA string
 	}{
 		{
-			name:   "default CA (empty)",
-			acmeCA: "",
-			wantCA: false,
+			name:        "default CA (empty) produces 3-issuer fallback chain",
+			acmeCA:      "",
+			wantIssuers: 3,
+			wantFirstCA: "https://acme-v02.api.letsencrypt.org/directory",
 		},
 		{
-			name:   "staging CA",
-			acmeCA: "https://acme-staging-v02.api.letsencrypt.org/directory",
-			wantCA: true,
+			name:        "staging CA override produces single issuer",
+			acmeCA:      "https://acme-staging-v02.api.letsencrypt.org/directory",
+			wantIssuers: 1,
+			wantFirstCA: "https://acme-staging-v02.api.letsencrypt.org/directory",
 		},
 		{
-			name:   "custom CA",
-			acmeCA: "https://acme.zerossl.com/v2/DV90",
-			wantCA: true,
+			name:        "custom CA override produces single issuer",
+			acmeCA:      "https://acme.zerossl.com/v2/DV90",
+			wantIssuers: 1,
+			wantFirstCA: "https://acme.zerossl.com/v2/DV90",
 		},
 	}
 
@@ -544,19 +568,17 @@ func TestBuildCaddyConfig_LetsEncryptACMECA(t *testing.T) {
 				t.Fatal("issuers not found in automation policy")
 			}
 
-			acmeIssuer := issuers[0]
-			caVal, hasCA := acmeIssuer["ca"]
+			if len(issuers) != tt.wantIssuers {
+				t.Errorf("got %d issuers, want %d", len(issuers), tt.wantIssuers)
+			}
 
-			if tt.wantCA {
-				if !hasCA {
-					t.Errorf("expected 'ca' field in ACME issuer for acme_ca=%q", tt.acmeCA)
-				} else if caVal != tt.acmeCA {
-					t.Errorf("ca = %q, want %q", caVal, tt.acmeCA)
-				}
-			} else {
-				if hasCA {
-					t.Errorf("unexpected 'ca' field in ACME issuer when acme_ca is empty: %v", caVal)
-				}
+			firstIssuer := issuers[0]
+			caVal, hasCA := firstIssuer["ca"]
+			if !hasCA {
+				t.Fatal("expected 'ca' field in first ACME issuer")
+			}
+			if caVal != tt.wantFirstCA {
+				t.Errorf("first issuer ca = %q, want %q", caVal, tt.wantFirstCA)
 			}
 		})
 	}
@@ -2659,4 +2681,173 @@ func TestBuildCaddyConfig_LetsEncryptFullJSON(t *testing.T) {
 
 	// Log the full JSON for debugging if any assertions fail.
 	t.Logf("full letsencrypt Caddy JSON:\n%s", jsonStr)
+}
+
+// TestBuildCaddyConfig_NewACMEProviders verifies that the new ACME providers
+// (zerossl, buypass, letsencrypt-staging) produce valid Caddy configs with
+// correct issuers and no redirect server (Caddy handles port 80 for ACME).
+func TestBuildCaddyConfig_NewACMEProviders(t *testing.T) {
+	tests := []struct {
+		name            string
+		provider        ports.TLSProvider
+		email           string
+		wantCA          string
+		wantIssuerCount int
+		wantEmail       bool
+		wantRedirect    bool
+	}{
+		{
+			name:            "zerossl provider",
+			provider:        ports.TLSProviderZeroSSL,
+			email:           "admin@example.com",
+			wantCA:          "https://acme.zerossl.com/v2/DV90",
+			wantIssuerCount: 1,
+			wantEmail:       true,
+			wantRedirect:    false,
+		},
+		{
+			name:            "buypass provider",
+			provider:        ports.TLSProviderBuypass,
+			email:           "",
+			wantCA:          "https://api.buypass.com/acme/directory",
+			wantIssuerCount: 1,
+			wantEmail:       false,
+			wantRedirect:    false,
+		},
+		{
+			name:            "letsencrypt-staging provider",
+			provider:        ports.TLSProviderLetsEncryptStaging,
+			email:           "dev@example.com",
+			wantCA:          "https://acme-staging-v02.api.letsencrypt.org/directory",
+			wantIssuerCount: 1,
+			wantEmail:       true,
+			wantRedirect:    false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &ports.ProxyConfig{
+				ListenAddr:   "0.0.0.0:443",
+				UpstreamAddr: "127.0.0.1:3000",
+				TLS: ports.TLSConfig{
+					Enabled:  true,
+					Provider: tt.provider,
+					Domain:   "example.com",
+					Email:    tt.email,
+				},
+			}
+
+			result, err := BuildCaddyConfig(cfg)
+			if err != nil {
+				t.Fatalf("BuildCaddyConfig() unexpected error: %v", err)
+			}
+
+			apps := result["apps"].(map[string]any)
+
+			// Verify TLS app with correct issuers.
+			tlsApp, ok := apps["tls"].(map[string]any)
+			if !ok {
+				t.Fatal("tls app not found")
+			}
+			automation := tlsApp["automation"].(map[string]any)
+			policies := automation["policies"].([]map[string]any)
+			if len(policies) == 0 {
+				t.Fatal("expected at least one automation policy")
+			}
+
+			issuers := policies[0]["issuers"].([]map[string]any)
+			if len(issuers) != tt.wantIssuerCount {
+				t.Fatalf("got %d issuers, want %d", len(issuers), tt.wantIssuerCount)
+			}
+
+			firstIssuer := issuers[0]
+			if firstIssuer["ca"] != tt.wantCA {
+				t.Errorf("first issuer ca = %q, want %q", firstIssuer["ca"], tt.wantCA)
+			}
+
+			_, hasEmail := firstIssuer["email"]
+			if tt.wantEmail && !hasEmail {
+				t.Error("expected email in issuer")
+			}
+			if !tt.wantEmail && hasEmail {
+				t.Error("unexpected email in issuer")
+			}
+
+			// Verify no redirect server (Caddy handles port 80 for ACME).
+			httpApp := apps["http"].(map[string]any)
+			servers := httpApp["servers"].(map[string]any)
+			_, hasRedirect := servers["vibewarden_redirect"]
+			if hasRedirect != tt.wantRedirect {
+				t.Errorf("redirect server present = %v, want %v", hasRedirect, tt.wantRedirect)
+			}
+
+			// Verify automatic_https is not set (Caddy owns port 80 for ACME).
+			server := servers["vibewarden"].(map[string]any)
+			if _, hasAutoHTTPS := server["automatic_https"]; hasAutoHTTPS {
+				t.Error("automatic_https should not be set for ACME providers")
+			}
+		})
+	}
+}
+
+// TestBuildCaddyConfig_ZeroSSLRequiresEmail verifies that the zerossl provider
+// fails validation when email is not provided.
+func TestBuildCaddyConfig_ZeroSSLRequiresEmail(t *testing.T) {
+	cfg := &ports.ProxyConfig{
+		ListenAddr:   "0.0.0.0:443",
+		UpstreamAddr: "127.0.0.1:3000",
+		TLS: ports.TLSConfig{
+			Enabled:  true,
+			Provider: ports.TLSProviderZeroSSL,
+			Domain:   "example.com",
+			Email:    "", // missing — should fail
+		},
+	}
+
+	_, err := BuildCaddyConfig(cfg)
+	if err == nil {
+		t.Fatal("expected error for zerossl without email, got nil")
+	}
+	if !strings.Contains(err.Error(), "email is required") {
+		t.Errorf("error = %q, want it to contain %q", err.Error(), "email is required")
+	}
+}
+
+// TestBuildCaddyConfig_LetsEncryptFallbackChainWithEmail verifies that when
+// email is set with the default letsencrypt provider, all 3 issuers in the
+// fallback chain include the email field.
+func TestBuildCaddyConfig_LetsEncryptFallbackChainWithEmail(t *testing.T) {
+	cfg := &ports.ProxyConfig{
+		ListenAddr:   "0.0.0.0:443",
+		UpstreamAddr: "127.0.0.1:3000",
+		TLS: ports.TLSConfig{
+			Enabled:  true,
+			Provider: ports.TLSProviderLetsEncrypt,
+			Domain:   "example.com",
+			Email:    "ops@example.com",
+		},
+	}
+
+	result, err := BuildCaddyConfig(cfg)
+	if err != nil {
+		t.Fatalf("BuildCaddyConfig() unexpected error: %v", err)
+	}
+
+	apps := result["apps"].(map[string]any)
+	tlsApp := apps["tls"].(map[string]any)
+	automation := tlsApp["automation"].(map[string]any)
+	policies := automation["policies"].([]map[string]any)
+	issuers := policies[0]["issuers"].([]map[string]any)
+
+	if len(issuers) != 3 {
+		t.Fatalf("expected 3 issuers, got %d", len(issuers))
+	}
+
+	for i, issuer := range issuers {
+		email, ok := issuer["email"].(string)
+		if !ok || email != "ops@example.com" {
+			t.Errorf("issuer[%d].email = %q, want %q", i, email, "ops@example.com")
+		}
+	}
 }

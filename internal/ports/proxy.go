@@ -274,7 +274,21 @@ type TLSProvider string
 
 const (
 	// TLSProviderLetsEncrypt provisions certificates automatically via ACME (Let's Encrypt).
+	// When no acme_ca override is set, this provider configures a 3-issuer fallback
+	// chain: Let's Encrypt -> ZeroSSL -> Buypass for maximum availability.
 	TLSProviderLetsEncrypt TLSProvider = "letsencrypt"
+
+	// TLSProviderZeroSSL provisions certificates via ZeroSSL's ACME endpoint.
+	// Requires an email address for EAB credential auto-registration.
+	TLSProviderZeroSSL TLSProvider = "zerossl"
+
+	// TLSProviderBuypass provisions certificates via Buypass Go SSL's ACME endpoint.
+	TLSProviderBuypass TLSProvider = "buypass"
+
+	// TLSProviderLetsEncryptStaging provisions certificates via Let's Encrypt's
+	// staging environment. Useful for testing ACME flows without hitting production
+	// rate limits. Certificates issued are not publicly trusted.
+	TLSProviderLetsEncryptStaging TLSProvider = "letsencrypt-staging"
 
 	// TLSProviderSelfSigned instructs Caddy to generate a self-signed certificate.
 	// Intended for local development and testing only.
@@ -311,13 +325,20 @@ type TLSConfig struct {
 	Enabled bool
 
 	// Provider selects how certificates are provisioned.
-	// Valid values: "letsencrypt", "self-signed", "external".
+	// Valid values: "letsencrypt", "zerossl", "buypass", "letsencrypt-staging",
+	// "self-signed", "external".
 	// Defaults to "self-signed" when empty and Enabled is true.
 	Provider TLSProvider
 
 	// Domain is the hostname for certificate provisioning.
-	// Required when Provider is TLSProviderLetsEncrypt.
+	// Required when Provider is an ACME provider (letsencrypt, zerossl, buypass,
+	// letsencrypt-staging).
 	Domain string
+
+	// Email is the ACME account registration email address.
+	// Required for ZeroSSL (used for EAB credential auto-registration).
+	// Recommended for Let's Encrypt and Buypass (cert expiry warnings).
+	Email string
 
 	// CertPath is the path to a PEM-encoded certificate file.
 	// Required when Provider is TLSProviderExternal.
@@ -328,12 +349,13 @@ type TLSConfig struct {
 	KeyPath string
 
 	// StoragePath is where Caddy stores ACME certificates on disk.
-	// Uses the Caddy default when empty (applicable to TLSProviderLetsEncrypt only).
+	// Uses the Caddy default when empty (applicable to ACME providers only).
 	StoragePath string
 
-	// ACMECA is the ACME directory URL to use instead of the default
-	// (Let's Encrypt production). Only applicable when Provider is
-	// TLSProviderLetsEncrypt.
+	// ACMECA is the ACME directory URL to use instead of the default.
+	// Only applicable when Provider is TLSProviderLetsEncrypt.
+	// When set, disables the automatic 3-issuer fallback chain and uses
+	// a single issuer with the specified CA URL.
 	// Example: "https://acme-staging-v02.api.letsencrypt.org/directory"
 	ACMECA string
 

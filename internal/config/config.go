@@ -491,10 +491,15 @@ type TLSCertMonitoringConfig struct {
 type TLSConfig struct {
 	// Enabled toggles TLS (default: false for local dev)
 	Enabled bool `mapstructure:"enabled"`
-	// Domain for TLS certificate (required if enabled with provider "letsencrypt")
+	// Domain for TLS certificate (required for all ACME providers)
 	Domain string `mapstructure:"domain"`
-	// Provider: "letsencrypt" (or alias "acme"), "self-signed", or "external"
+	// Provider: "letsencrypt" (or alias "acme"), "zerossl", "buypass",
+	// "letsencrypt-staging", "self-signed", or "external"
 	Provider string `mapstructure:"provider"`
+	// Email is the ACME account registration email address.
+	// Required for ZeroSSL (used for EAB credential auto-registration).
+	// Recommended for Let's Encrypt and Buypass (cert expiry warnings).
+	Email string `mapstructure:"email"`
 	// CertPath is the path to a PEM-encoded certificate file.
 	// Required when Provider is "external".
 	CertPath string `mapstructure:"cert_path"`
@@ -502,10 +507,11 @@ type TLSConfig struct {
 	// Required when Provider is "external".
 	KeyPath string `mapstructure:"key_path"`
 	// StoragePath is the directory where Caddy stores ACME certificates.
-	// Only applies when Provider is "letsencrypt".
+	// Only applies when ACME providers.
 	StoragePath string `mapstructure:"storage_path"`
-	// ACMECA is the ACME directory URL to use instead of Let's Encrypt production.
-	// Only applies when Provider is "letsencrypt".
+	// ACMECA is the ACME directory URL to use instead of the default.
+	// Only applies when Provider is "letsencrypt". When set, disables
+	// the automatic 3-issuer fallback chain and uses a single issuer.
 	// Example: "https://acme-staging-v02.api.letsencrypt.org/directory"
 	ACMECA string `mapstructure:"acme_ca"`
 	// CertMonitoring holds configuration for the background certificate expiry monitor.
@@ -1718,23 +1724,35 @@ func (c *Config) Validate() error {
 	// "acme" is accepted as an alias for "letsencrypt"; Load() normalises it
 	// before Validate() runs, but direct callers of Validate() may still pass
 	// it, so we permit it here as well.
+	acmeProviders := map[string]bool{
+		"letsencrypt": true, "acme": true, "zerossl": true,
+		"buypass": true, "letsencrypt-staging": true,
+	}
 	switch c.TLS.Provider {
-	case "", "self-signed", "letsencrypt", "acme", "external":
+	case "", "self-signed", "letsencrypt", "acme", "zerossl", "buypass", "letsencrypt-staging", "external":
 		// valid — empty string is accepted (defaults to "self-signed" via Load)
 	default:
 		errs = append(errs, fmt.Sprintf(
-			"tls.provider %q is invalid; accepted values: \"self-signed\", \"letsencrypt\" (or alias \"acme\"), \"external\" — "+
+			"tls.provider %q is invalid; accepted values: \"self-signed\", \"letsencrypt\" (or alias \"acme\"), "+
+				"\"zerossl\", \"buypass\", \"letsencrypt-staging\", \"external\" — "+
 				"set tls.provider to one of those values",
 			c.TLS.Provider,
 		))
 	}
 
-	// TLS letsencrypt provider requires domain.
-	// Also checked for "acme" — the alias — in case Validate() is called
-	// before Load() has had a chance to normalise the value.
-	if c.TLS.Enabled && (c.TLS.Provider == "letsencrypt" || c.TLS.Provider == "acme") && c.TLS.Domain == "" {
-		errs = append(errs, "tls.domain is required when tls.provider is \"letsencrypt\" — "+
-			"set tls.domain to your domain name (e.g., myapp.example.com)")
+	// ACME providers require domain.
+	if c.TLS.Enabled && acmeProviders[c.TLS.Provider] && c.TLS.Domain == "" {
+		errs = append(errs, fmt.Sprintf(
+			"tls.domain is required when tls.provider is %q — "+
+				"set tls.domain to your domain name (e.g., myapp.example.com)",
+			c.TLS.Provider,
+		))
+	}
+
+	// ZeroSSL requires email for EAB credential auto-registration.
+	if c.TLS.Enabled && c.TLS.Provider == "zerossl" && c.TLS.Email == "" {
+		errs = append(errs, "tls.email is required when tls.provider is \"zerossl\" — "+
+			"set tls.email to your ACME account email (needed for EAB credential registration)")
 	}
 
 	// TLS external provider requires cert_path and key_path.

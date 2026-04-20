@@ -470,8 +470,9 @@ All `vibewarden.yaml` settings can be overridden via environment variables using
 | `VIBEWARDEN_UPSTREAM_HOST` | `upstream.host` | Upstream app hostname |
 | `VIBEWARDEN_UPSTREAM_PORT` | `upstream.port` | Upstream app port |
 | `VIBEWARDEN_TLS_ENABLED` | `tls.enabled` | Enable TLS termination |
-| `VIBEWARDEN_TLS_PROVIDER` | `tls.provider` | `letsencrypt`, `self-signed`, or `external` |
+| `VIBEWARDEN_TLS_PROVIDER` | `tls.provider` | `letsencrypt`, `zerossl`, `buypass`, `letsencrypt-staging`, `self-signed`, or `external` |
 | `VIBEWARDEN_TLS_DOMAIN` | `tls.domain` | Domain for ACME certificate |
+| `VIBEWARDEN_TLS_EMAIL` | `tls.email` | ACME account email (required for zerossl) |
 | `VIBEWARDEN_TLS_CERT_PATH` | `tls.cert_path` | Path to certificate file (external provider) |
 | `VIBEWARDEN_TLS_KEY_PATH` | `tls.key_path` | Path to private key file (external provider) |
 | `VIBEWARDEN_KRATOS_PUBLIC_URL` | `kratos.public_url` | Kratos public API URL |

@@ -2518,13 +2518,52 @@ func TestValidate_TLSProvider(t *testing.T) {
 			name:        "unknown provider cloudflare is rejected with actionable message",
 			cfg:         config.Config{TLS: config.TLSConfig{Provider: "cloudflare"}},
 			wantErr:     true,
-			wantContain: "accepted values: \"self-signed\", \"letsencrypt\" (or alias \"acme\"), \"external\"",
+			wantContain: "accepted values: \"self-signed\", \"letsencrypt\" (or alias \"acme\"), \"zerossl\", \"buypass\", \"letsencrypt-staging\", \"external\"",
 		},
 		{
 			name:        "error message suggests fix",
 			cfg:         config.Config{TLS: config.TLSConfig{Provider: "cloudflare"}},
 			wantErr:     true,
 			wantContain: "set tls.provider to one of those values",
+		},
+		{
+			name:    "zerossl is valid with domain and email",
+			cfg:     config.Config{TLS: config.TLSConfig{Enabled: true, Provider: "zerossl", Domain: "example.com", Email: "admin@example.com"}},
+			wantErr: false,
+		},
+		{
+			name:        "zerossl enabled without email is invalid",
+			cfg:         config.Config{TLS: config.TLSConfig{Enabled: true, Provider: "zerossl", Domain: "example.com"}},
+			wantErr:     true,
+			wantContain: "tls.email is required when tls.provider is \"zerossl\"",
+		},
+		{
+			name:        "zerossl enabled without domain is invalid",
+			cfg:         config.Config{TLS: config.TLSConfig{Enabled: true, Provider: "zerossl", Email: "admin@example.com"}},
+			wantErr:     true,
+			wantContain: "tls.domain is required",
+		},
+		{
+			name:    "buypass is valid with domain",
+			cfg:     config.Config{TLS: config.TLSConfig{Enabled: true, Provider: "buypass", Domain: "example.com"}},
+			wantErr: false,
+		},
+		{
+			name:        "buypass enabled without domain is invalid",
+			cfg:         config.Config{TLS: config.TLSConfig{Enabled: true, Provider: "buypass"}},
+			wantErr:     true,
+			wantContain: "tls.domain is required",
+		},
+		{
+			name:    "letsencrypt-staging is valid with domain",
+			cfg:     config.Config{TLS: config.TLSConfig{Enabled: true, Provider: "letsencrypt-staging", Domain: "example.com"}},
+			wantErr: false,
+		},
+		{
+			name:        "letsencrypt-staging enabled without domain is invalid",
+			cfg:         config.Config{TLS: config.TLSConfig{Enabled: true, Provider: "letsencrypt-staging"}},
+			wantErr:     true,
+			wantContain: "tls.domain is required",
 		},
 	}
 

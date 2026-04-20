@@ -170,10 +170,24 @@ tls:
 
   # Provider selects how TLS certificates are obtained. Valid values:
   #
-  #   letsencrypt  — Automatic ACME certificate via Let's Encrypt.
+  #   letsencrypt  — Automatic ACME certificate with a 3-issuer fallback chain:
+  #                  Let's Encrypt -> ZeroSSL -> Buypass. If one CA is down,
+  #                  Caddy tries the next automatically.
   #                  (Alias: "acme". Both values select the same behaviour.)
   #                  Requires a public domain and open port 443.
   #                  Also requires the "domain" field to be set.
+  #
+  #   zerossl      — ZeroSSL ACME endpoint only (no fallback chain).
+  #                  Requires "email" for EAB credential auto-registration.
+  #                  Requires "domain".
+  #
+  #   buypass      — Buypass Go SSL ACME endpoint only (no fallback chain).
+  #                  Requires "domain".
+  #
+  #   letsencrypt-staging — Let's Encrypt staging environment.
+  #                  Useful for testing ACME flows without hitting production
+  #                  rate limits. Certificates are not publicly trusted.
+  #                  Requires "domain".
   #
   #   self-signed  — Caddy generates an internal self-signed certificate.
   #                  Suitable for local development and internal services.
@@ -186,9 +200,14 @@ tls:
   provider: "self-signed"
 
   # Domain for certificate provisioning.
-  # Required when provider is "letsencrypt".
+  # Required for all ACME providers (letsencrypt, zerossl, buypass, letsencrypt-staging).
   # Optional for "self-signed" (scopes the certificate to that hostname).
   domain: ""
+
+  # ACME account registration email.
+  # Required for "zerossl" (needed for EAB credential auto-registration).
+  # Recommended for "letsencrypt" and "buypass" (cert expiry warnings).
+  email: ""
 
   # Certificate and key paths — required when provider is "external".
   cert_path: ""
@@ -196,14 +215,12 @@ tls:
 
   # Directory where Caddy stores ACME certificates.
   # Uses the Caddy default (~/.local/share/caddy) when empty.
-  # Only applies when provider is "letsencrypt".
+  # Applies to all ACME providers.
   storage_path: ""
 
-  # ACME directory URL to use instead of Let's Encrypt production.
-  # Only applies when provider is "letsencrypt".
-  # Use the staging URL for testing to avoid rate limits:
-  #   acme_ca: "https://acme-staging-v02.api.letsencrypt.org/directory"
-  # Other ACME CAs (ZeroSSL, Buypass, etc.) are also supported.
+  # ACME directory URL override. Only applies when provider is "letsencrypt".
+  # When set, disables the 3-issuer fallback chain and uses a single issuer
+  # with this CA URL. Use letsencrypt-staging provider instead for testing.
   acme_ca: ""
 
 # Ory Kratos (identity/auth) settings

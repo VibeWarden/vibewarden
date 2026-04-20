@@ -935,3 +935,54 @@ func verifyUpstreamInRoutes(t *testing.T, routes []any, upstream string) {
 	}
 	t.Errorf("no route found with upstream %q", upstream)
 }
+
+// TestBuildMultiSiteConfig_FallbackChain verifies that the letsencrypt provider
+// produces a 3-issuer fallback chain in the multisite TLS app.
+func TestBuildMultiSiteConfig_FallbackChain(t *testing.T) {
+	cfg := helperMinimalConfig("app.example.com", 3000)
+	s := helperNewSite(t, "app", cfg)
+
+	global := site.DefaultGlobalConfig()
+	global.ACMEEmail = "ops@example.com"
+	result, err := BuildMultiSiteConfig([]*site.Site{s}, global, nil, slog.Default())
+	if err != nil {
+		t.Fatalf("BuildMultiSiteConfig() error = %v", err)
+	}
+
+	data, _ := json.Marshal(result)
+	var parsed map[string]any
+	_ = json.Unmarshal(data, &parsed)
+
+	apps := parsed["apps"].(map[string]any)
+	tlsApp := apps["tls"].(map[string]any)
+	automation := tlsApp["automation"].(map[string]any)
+	policies := automation["policies"].([]any)
+
+	if len(policies) != 1 {
+		t.Fatalf("expected 1 TLS policy, got %d", len(policies))
+	}
+
+	policy := policies[0].(map[string]any)
+	issuers := policy["issuers"].([]any)
+
+	// Default letsencrypt provider should produce 3-issuer fallback chain.
+	if len(issuers) != 3 {
+		t.Fatalf("expected 3 issuers in fallback chain, got %d", len(issuers))
+	}
+
+	wantCAs := []string{
+		"https://acme-v02.api.letsencrypt.org/directory",
+		"https://acme.zerossl.com/v2/DV90",
+		"https://api.buypass.com/acme/directory",
+	}
+	for i, wantCA := range wantCAs {
+		issuer := issuers[i].(map[string]any)
+		if issuer["ca"] != wantCA {
+			t.Errorf("issuer[%d].ca = %q, want %q", i, issuer["ca"], wantCA)
+		}
+		// All issuers in the chain should have the global email.
+		if issuer["email"] != "ops@example.com" {
+			t.Errorf("issuer[%d].email = %q, want %q", i, issuer["email"], "ops@example.com")
+		}
+	}
+}

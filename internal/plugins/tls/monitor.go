@@ -58,10 +58,10 @@ type caddyCertReader struct {
 // For letsencrypt/self-signed it scans the storage directory for PEM files.
 // For external it reads cfg.CertPath and cfg.KeyPath directly.
 func (r *caddyCertReader) ReadCert() (*x509.Certificate, error) {
-	switch r.cfg.Provider {
-	case ports.TLSProviderExternal:
+	switch {
+	case r.cfg.Provider == ports.TLSProviderExternal:
 		return r.reader.ReadCert(r.cfg.CertPath, r.cfg.KeyPath)
-	case ports.TLSProviderLetsEncrypt, ports.TLSProviderSelfSigned, "":
+	case isACMEProvider(r.cfg.Provider) || r.cfg.Provider == ports.TLSProviderSelfSigned || r.cfg.Provider == "":
 		return r.readCaddyStoredCert()
 	default:
 		return nil, fmt.Errorf("unsupported provider %q for certificate monitoring", r.cfg.Provider)

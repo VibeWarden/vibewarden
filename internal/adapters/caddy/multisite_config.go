@@ -87,6 +87,7 @@ func BuildMultiSiteConfig(sites []*site.Site, globalCfg site.GlobalConfig, perSi
 		tlsEntries = append(tlsEntries, multiSiteTLSEntry{
 			domain:   domain,
 			provider: cfg.TLS.Provider,
+			email:    cfg.TLS.Email,
 			certPath: cfg.TLS.CertPath,
 			keyPath:  cfg.TLS.KeyPath,
 		})
@@ -254,10 +255,12 @@ func buildSiteRoutes(s *site.Site, domain string, extraHandlers []ports.CaddyHan
 
 // multiSiteTLSEntry pairs a domain with its TLS provider so that
 // buildMultiSiteTLSApp can generate the correct issuer configuration
-// (ACME for letsencrypt, internal for self-signed, load_files for external).
+// (ACME for letsencrypt/zerossl/buypass/letsencrypt-staging, internal for
+// self-signed, load_files for external).
 type multiSiteTLSEntry struct {
 	domain   string
 	provider string
+	email    string // used for ACME account registration (required for ZeroSSL)
 	certPath string // only used when provider is "external"
 	keyPath  string // only used when provider is "external"
 }
@@ -266,10 +269,12 @@ type multiSiteTLSEntry struct {
 // automation policies. Each domain gets its own policy entry. The issuer
 // module is chosen based on the site's TLS provider:
 //   - "self-signed" (or empty) uses Caddy's internal issuer (self-signed CA).
-//   - "letsencrypt" (or "acme") uses the ACME issuer for public certificates.
+//   - ACME providers (letsencrypt, zerossl, buypass, letsencrypt-staging) use
+//     buildACMEIssuers for the issuer chain.
+//   - "external" loads cert files via the load_files block.
 //
-// When acmeEmail is non-empty and the issuer is ACME, it is included in the
-// issuer configuration.
+// When acmeEmail is non-empty and the site entry does not have its own email,
+// acmeEmail is used as fallback for ACME account registration.
 func buildMultiSiteTLSApp(entries []multiSiteTLSEntry, acmeEmail string) map[string]any {
 	if len(entries) == 0 {
 		return nil
@@ -280,17 +285,17 @@ func buildMultiSiteTLSApp(entries []multiSiteTLSEntry, acmeEmail string) map[str
 		loadFiles []map[string]any
 	)
 	for _, entry := range entries {
-		var issuer map[string]any
-
 		switch entry.provider {
 		case string(ports.TLSProviderSelfSigned), "":
-			issuer = map[string]any{
-				"module": "internal",
+			policy := map[string]any{
+				"subjects": []string{entry.domain},
+				"issuers":  []map[string]any{{"module": "internal"}},
 			}
+			policies = append(policies, policy)
+
 		case string(ports.TLSProviderExternal):
 			// External provider: operator supplies cert + key files.
 			// No issuer — certificates are loaded via the load_files block below.
-			// Skip adding an issuer-based policy; add a load_files entry instead.
 			if entry.certPath != "" && entry.keyPath != "" {
 				loadFiles = append(loadFiles, map[string]any{
 					"certificate": entry.certPath,
@@ -298,22 +303,25 @@ func buildMultiSiteTLSApp(entries []multiSiteTLSEntry, acmeEmail string) map[str
 					"tags":        []string{"vibewarden_external_" + entry.domain},
 				})
 			}
-			continue // skip the issuer-based policy for this entry
-		default:
-			// letsencrypt / acme — use ACME issuer.
-			issuer = map[string]any{
-				"module": "acme",
-			}
-			if acmeEmail != "" {
-				issuer["email"] = acmeEmail
-			}
-		}
 
-		policy := map[string]any{
-			"subjects": []string{entry.domain},
-			"issuers":  []map[string]any{issuer},
+		default:
+			// ACME provider — use buildACMEIssuers for the issuer chain.
+			// Prefer the per-site email; fall back to the global acmeEmail.
+			email := entry.email
+			if email == "" {
+				email = acmeEmail
+			}
+			tlsCfg := ports.TLSConfig{
+				Provider: ports.TLSProvider(entry.provider),
+				Domain:   entry.domain,
+				Email:    email,
+			}
+			policy := map[string]any{
+				"subjects": []string{entry.domain},
+				"issuers":  buildACMEIssuers(tlsCfg),
+			}
+			policies = append(policies, policy)
 		}
-		policies = append(policies, policy)
 	}
 
 	tlsApp := map[string]any{}

@@ -87,9 +87,11 @@ func buildProxyConfig(cfg *config.Config, extraHandlers []ports.CaddyHandler) *p
 			Enabled:     cfg.TLS.Enabled,
 			Provider:    ports.TLSProvider(cfg.TLS.Provider),
 			Domain:      cfg.TLS.Domain,
+			Email:       cfg.TLS.Email,
 			CertPath:    cfg.TLS.CertPath,
 			KeyPath:     cfg.TLS.KeyPath,
 			StoragePath: cfg.TLS.StoragePath,
+			ACMECA:      cfg.TLS.ACMECA,
 		},
 		SecurityHeaders: ports.SecurityHeadersConfig{
 			Enabled:                      cfg.SecurityHeaders.Enabled,
