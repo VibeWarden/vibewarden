@@ -100,15 +100,10 @@ become technical debt.
 - [ ] Sensitive fields (passwords, tokens) never logged
 
 ### Documentation consistency
-When the PR touches any of these paths, verify docs were updated in the same PR:
-- `internal/cli/cmd/` (CLI commands/flags) → check `llms-full.txt`, `AGENTS-VIBEWARDEN.md` template, `docs/getting-started.md`
-- `internal/config/config.go` (config fields) → check `vibewarden.reference.yaml`, `llms-full.txt`
-- `internal/config/templates/` (compose/kratos templates) → check `docs/deploy-to-vps.md`, `docs/multi-app.md`
-- `internal/cli/templates/` (scaffold templates) → check `docs/getting-started.md`
-
-If documented features changed but docs weren't updated, request changes with:
-> **Documentation drift**: this PR changes `<what>` but does not update `<doc file>`. 
-> Docs-runtime drift is our #1 source of agent failures — update docs in the same PR.
+The **writer agent** runs as a second reviewer on every PR to verify doc accuracy.
+You do NOT need to check docs yourself. Focus on code quality, architecture, and tests.
+If you notice an obvious doc issue while reading the diff, mention it, but the writer
+agent is the authority on documentation consistency.
 
 ### Licenses
 - [ ] Any new `go.mod` dependency verified as Apache 2.0, MIT, BSD-2, or BSD-3
