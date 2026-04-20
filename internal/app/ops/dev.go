@@ -285,7 +285,7 @@ func (s *DevService) checkAppImage(ctx context.Context, cfg *config.Config, opts
 // compose.Restart with --force-recreate --build to rebuild the app container.
 //
 // The check is skipped when:
-//   - cfg.App.Image is empty (no image configured).
+//   - Neither cfg.App.Image nor cfg.App.Build is set (no app service configured).
 //   - PS fails (graceful degradation, same pattern as verifySidecar).
 //   - No app container is found in PS output.
 func (s *DevService) checkContainerFreshness(ctx context.Context, cfg *config.Config, composeFile string, out io.Writer) error {

@@ -106,8 +106,9 @@ type composeContainer struct {
 	Health  string `json:"Health"`
 	Image   string `json:"Image"`
 	Project string `json:"Project"`
-	// CreatedAt is a Unix timestamp (seconds since epoch) as reported by docker compose.
-	CreatedAt int64 `json:"CreatedAt"`
+	// CreatedAt is a human-readable timestamp as reported by docker compose
+	// (e.g. "2026-04-20 17:21:43 +0300 EEST").
+	CreatedAt string `json:"CreatedAt"`
 }
 
 // ImageCheckerAdapter implements ports.DockerImageChecker by shelling out to
@@ -178,8 +179,11 @@ func (c *ComposeAdapter) PS(ctx context.Context, composeFile string) ([]ports.Co
 			continue
 		}
 		var createdAt time.Time
-		if ct.CreatedAt != 0 {
-			createdAt = time.Unix(ct.CreatedAt, 0)
+		if ct.CreatedAt != "" {
+			// Docker Compose emits CreatedAt as "2006-01-02 15:04:05 -0700 MST".
+			if parsed, err := time.Parse("2006-01-02 15:04:05 -0700 MST", ct.CreatedAt); err == nil {
+				createdAt = parsed
+			}
 		}
 		results = append(results, ports.ContainerInfo{
 			Name:      ct.Name,
