@@ -143,6 +143,25 @@ Your app reads `DB_PASSWORD` from `.env.secrets` at startup.
 
 Use OpenBao when you need dynamic credentials, lease rotation, or metadata-based staleness checks.
 
+The OpenBao path looks like this:
+
+```
+vibewarden.yaml
+       |
+       v
+  VibeWarden (sidecar)
+       |
+       | HTTP API (no SDK)
+       v
+    OpenBao (KV v2 + database engine)
+       |
+       v
+  Postgres (dynamic credentials)
+       |
+       v
+  upstream app (receives secrets via headers or .env file)
+```
+
 ### 1. Start the stack
 
 ```bash
