@@ -496,3 +496,53 @@ func TestBundle_PreservesNonLocalUpstreamHost(t *testing.T) {
 		t.Errorf("expected non-local host to be preserved, got:\n%s", string(data))
 	}
 }
+
+// TestBundle_SingleSite_ConfigPathStatError verifies that a non-ErrNotExist
+// stat failure on ConfigPath surfaces as an error instead of silently falling
+// back to the in-memory cfg. This is the guard for the reviewer finding on
+// PR #1056: a permission-denied base file in production used to be
+// indistinguishable from a missing file.
+func TestBundle_SingleSite_ConfigPathStatError(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("cannot simulate permission denied when running as root")
+	}
+
+	generator := &fakeGenerator{}
+	svc := deployapp.NewService(&fakeExecutor{}, generator)
+
+	projDir := t.TempDir()
+	// Place a real config file inside an unreadable directory so os.Stat
+	// fails with permission-denied (not IsNotExist).
+	lockedDir := filepath.Join(projDir, "locked")
+	if err := os.Mkdir(lockedDir, 0o700); err != nil {
+		t.Fatalf("mkdir locked: %v", err)
+	}
+	configPath := filepath.Join(lockedDir, "vibewarden.yaml")
+	if err := os.WriteFile(configPath, []byte("server:\n  port: 8443\n"), 0o600); err != nil {
+		t.Fatalf("writing config: %v", err)
+	}
+	if err := os.Chmod(lockedDir, 0o000); err != nil {
+		t.Fatalf("chmod locked: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(lockedDir, 0o700) })
+
+	outputDir := t.TempDir()
+	cfg := &config.Config{
+		Server:   config.ServerConfig{Port: 8443},
+		Upstream: config.UpstreamConfig{Port: 3000},
+		App:      config.AppConfig{Image: "myapp:latest"},
+	}
+	err := svc.Bundle(context.Background(), deployapp.BundleOptions{
+		Config:      cfg,
+		ConfigPath:  configPath,
+		ProjectName: "myproject",
+		MultiSite:   false,
+		OutputDir:   outputDir,
+	})
+	if err == nil {
+		t.Fatal("Bundle() expected error for unreadable config path, got nil")
+	}
+	if !strings.Contains(err.Error(), "stat config") {
+		t.Errorf("expected 'stat config' in error, got: %v", err)
+	}
+}

@@ -3,7 +3,9 @@ package deploy
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"text/template"
@@ -99,15 +101,23 @@ func (s *Service) bundleSingleSite(ctx context.Context, cfg *config.Config, conf
 	//
 	// When configPath is empty or the file does not exist on disk (unit tests
 	// that drive the service with an in-memory cfg), fall back to the
-	// caller-supplied cfg so the template still renders.
+	// caller-supplied cfg so the template still renders. Any other stat error
+	// (permission denied, I/O failure) surfaces so we never silently drop a
+	// user-supplied config — that was the class of bug behind #1053.
 	mergedCfg := cfg
 	if configPath != "" {
-		if _, statErr := os.Stat(configPath); statErr == nil {
+		_, statErr := os.Stat(configPath)
+		switch {
+		case statErr == nil:
 			loaded, err := LoadMergedConfig(configPath, prodConfigPath)
 			if err != nil {
 				return err
 			}
 			mergedCfg = loaded
+		case errors.Is(statErr, fs.ErrNotExist):
+			// Intentional fall-through: in-memory cfg is the source of truth.
+		default:
+			return fmt.Errorf("stat config %s: %w", configPath, statErr)
 		}
 	}
 

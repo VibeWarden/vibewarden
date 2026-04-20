@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"strings"
@@ -349,12 +350,19 @@ func (s *Service) Deploy(ctx context.Context, cfg *config.Config, opts RunOption
 	// or when the file is not on disk (unit tests), fall back to the supplied cfg.
 	healthCfg := cfg
 	if opts.ConfigPath != "" {
-		if _, statErr := os.Stat(opts.ConfigPath); statErr == nil {
+		_, statErr := os.Stat(opts.ConfigPath)
+		switch {
+		case statErr == nil:
 			loaded, err := LoadMergedConfig(opts.ConfigPath, opts.ProdConfigPath)
 			if err != nil {
 				return err
 			}
 			healthCfg = loaded
+		case errors.Is(statErr, fs.ErrNotExist):
+			// Intentional fall-through: caller supplied an in-memory cfg
+			// (programmatic or unit-test entrypoint); no disk file to merge.
+		default:
+			return fmt.Errorf("stat config %s: %w", opts.ConfigPath, statErr)
 		}
 	}
 	port := healthCfg.Server.Port
