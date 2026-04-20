@@ -192,14 +192,16 @@ func (s *Service) Deploy(ctx context.Context, cfg *config.Config, opts RunOption
 
 	// On redeploy, preserve existing credentials. The bundle generates fresh
 	// random passwords, but the DB volume retains the originals. Downloading
-	// the remote .credentials into the bundle before rsync ensures the passwords
-	// stay in sync. (#991)
-	remoteCredentials := remoteDir + ".credentials"
-	localCredentials := filepath.Join(bundleDir, ".credentials")
-	if _, fetchErr := s.executor.Run(ctx, "test -f "+remoteCredentials+" && cat "+remoteCredentials); fetchErr == nil {
-		credData, _ := s.executor.Run(ctx, "cat "+remoteCredentials)
-		if credData != "" {
-			_ = os.WriteFile(localCredentials, []byte(credData), 0o600) //nolint:gosec
+	// the remote credential files into the bundle before rsync ensures the
+	// passwords stay in sync. (#991)
+	for _, credFile := range []string{".credentials", ".env"} {
+		remotePath := remoteDir + credFile
+		localPath := filepath.Join(bundleDir, credFile)
+		if _, fetchErr := s.executor.Run(ctx, "test -f "+remotePath); fetchErr == nil {
+			credData, _ := s.executor.Run(ctx, "cat "+remotePath)
+			if credData != "" {
+				_ = os.WriteFile(localPath, []byte(credData), 0o600) //nolint:gosec
+			}
 		}
 	}
 
