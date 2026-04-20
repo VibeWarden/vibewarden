@@ -130,11 +130,11 @@ var Catalog = []PluginDescriptor{
 	},
 	{
 		Name:        "tls",
-		Description: "TLS termination with Let's Encrypt, self-signed, or external certificates",
+		Description: "TLS termination with ACME (Let's Encrypt, ZeroSSL, Buypass), self-signed, or external certificates",
 		ConfigSchema: map[string]string{
 			"enabled":      "Enable TLS (default: false)",
-			"provider":     "Certificate provider: letsencrypt, self-signed, external",
-			"domain":       "Domain for certificate (required for letsencrypt)",
+			"provider":     "Certificate provider: letsencrypt (with LE→ZeroSSL→Buypass fallback), zerossl, buypass, letsencrypt-staging, self-signed, external",
+			"domain":       "Domain for certificate (required for ACME providers)",
 			"cert_path":    "Path to certificate file (external provider)",
 			"key_path":     "Path to key file (external provider)",
 			"storage_path": "Directory for certificate storage",

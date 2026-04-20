@@ -11,9 +11,13 @@ import (
 
 // validTLSProviders is the set of accepted TLS provider values.
 var validTLSProviders = map[string]bool{
-	"letsencrypt": true,
-	"self-signed": true,
-	"external":    true,
+	"letsencrypt":         true,
+	"acme":                true,
+	"zerossl":             true,
+	"buypass":             true,
+	"letsencrypt-staging": true,
+	"self-signed":         true,
+	"external":            true,
 }
 
 // validLogLevels is the set of accepted log level values.
@@ -58,8 +62,8 @@ Checks performed:
   - File exists and is valid YAML
   - server.port is in the range 1-65535
   - upstream.port is in the range 1-65535
-  - tls.provider is one of: letsencrypt, self-signed, external
-  - tls.domain is required when provider is letsencrypt
+  - tls.provider is one of: letsencrypt, acme, zerossl, buypass, letsencrypt-staging, self-signed, external
+  - tls.domain is required when provider is an ACME provider
   - tls.cert_path and tls.key_path are required when provider is external
   - log.level is one of: debug, info, warn, error
   - log.format is one of: json, text
@@ -150,12 +154,18 @@ func validateConfig(cfg *config.Config) []string {
 
 	// tls.provider
 	if !validTLSProviders[cfg.TLS.Provider] {
-		errs = append(errs, fmt.Sprintf("tls.provider must be one of letsencrypt, self-signed, external; got %q", cfg.TLS.Provider))
+		errs = append(errs, fmt.Sprintf("tls.provider must be one of letsencrypt, acme, zerossl, buypass, letsencrypt-staging, self-signed, external; got %q", cfg.TLS.Provider))
 	}
 
-	// tls: letsencrypt requires a domain
-	if cfg.TLS.Enabled && cfg.TLS.Provider == "letsencrypt" && cfg.TLS.Domain == "" {
-		errs = append(errs, "tls.domain is required when tls.provider is letsencrypt")
+	// tls: ACME providers require a domain
+	acmeProviders := map[string]bool{"letsencrypt": true, "acme": true, "zerossl": true, "buypass": true, "letsencrypt-staging": true}
+	if cfg.TLS.Enabled && acmeProviders[cfg.TLS.Provider] && cfg.TLS.Domain == "" {
+		errs = append(errs, fmt.Sprintf("tls.domain is required when tls.provider is %q", cfg.TLS.Provider))
+	}
+
+	// tls: zerossl requires email for EAB auto-registration
+	if cfg.TLS.Enabled && cfg.TLS.Provider == "zerossl" && cfg.TLS.Email == "" {
+		errs = append(errs, "tls.email is required when tls.provider is zerossl (needed for EAB auto-registration)")
 	}
 
 	// tls: external requires cert_path and key_path
