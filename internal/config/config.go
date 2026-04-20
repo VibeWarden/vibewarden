@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/spf13/viper"
+
+	"github.com/vibewarden/vibewarden/internal/domain/identity"
 )
 
 // hexColorRE matches valid CSS hex color values: #RGB or #RRGGBB.
@@ -791,6 +793,19 @@ type AuthConfig struct {
 	// SocialProviders is a list of OAuth2/OIDC social login providers to enable.
 	// Each entry requires at minimum a provider name, client_id, and client_secret.
 	SocialProviders []SocialProviderConfig `mapstructure:"social_providers"`
+
+	// RolePaths maps role names to URL path patterns that require that role.
+	// When configured, authenticated users whose Kratos identity trait "role"
+	// does not match the required role for a path receive HTTP 403 Forbidden.
+	// Only valid when Mode is "kratos".
+	//
+	// Example:
+	//   role_paths:
+	//     admin:
+	//       - /admin/*
+	//     moderator:
+	//       - /admin/moderation/*
+	RolePaths map[string][]string `mapstructure:"role_paths"`
 
 	// UI holds theme and URL settings for the built-in or custom auth pages.
 	UI AuthUIConfig `mapstructure:"ui"`
@@ -1788,6 +1803,24 @@ func (c *Config) Validate() error {
 			"auth.on_kratos_unavailable %q is invalid; accepted values: \"503\", \"allow_public\"",
 			c.Auth.OnKratosUnavailable,
 		))
+	}
+
+	// auth.role_paths validation: only valid when mode is "kratos".
+	if len(c.Auth.RolePaths) > 0 && c.Auth.Mode != AuthModeKratos {
+		errs = append(errs, "auth.role_paths is only valid when auth.mode is \"kratos\"")
+	}
+	// Validate that role names in role_paths are recognised values.
+	// Delegates to identity.NewRole to keep the valid-role list in one place.
+	for roleName, paths := range c.Auth.RolePaths {
+		if _, err := identity.NewRole(roleName); err != nil {
+			errs = append(errs, fmt.Sprintf(
+				"auth.role_paths: role %q is invalid; accepted values: user, admin, moderator",
+				roleName,
+			))
+		}
+		if len(paths) == 0 {
+			errs = append(errs, fmt.Sprintf("auth.role_paths.%s: must have at least one path", roleName))
+		}
 	}
 
 	// Auth UI validation.

@@ -988,7 +988,7 @@ func TestBuildCaddyConfig_UserHeaderStripIsFirst(t *testing.T) {
 }
 
 // TestBuildCaddyConfig_UserHeaderStripDeletesCorrectHeaders verifies that the
-// strip handler targets exactly X-User-Id, X-User-Email, and X-User-Verified.
+// strip handler targets exactly X-User-Id, X-User-Email, X-User-Verified, and X-User-Role.
 func TestBuildCaddyConfig_UserHeaderStripDeletesCorrectHeaders(t *testing.T) {
 	cfg := &ports.ProxyConfig{
 		ListenAddr:   "127.0.0.1:8080",
@@ -1026,6 +1026,7 @@ func TestBuildCaddyConfig_UserHeaderStripDeletesCorrectHeaders(t *testing.T) {
 		"X-User-Id":       true,
 		"X-User-Email":    true,
 		"X-User-Verified": true,
+		"X-User-Role":     true,
 	}
 	for _, h := range deleted {
 		delete(wantDeleted, h)

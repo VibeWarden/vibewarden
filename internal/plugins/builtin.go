@@ -240,6 +240,7 @@ func RegisterBuiltinPlugins(
 		LoginURL:          cfg.Auth.LoginURL,
 		PublicPaths:       cfg.Auth.PublicPaths,
 		IdentitySchema:    cfg.Auth.IdentitySchema,
+		RolePaths:         cfg.Auth.RolePaths,
 		JWT: authplugin.JWTPluginConfig{
 			JWKSURL:   cfg.Auth.JWT.JWKSURL,
 			IssuerURL: cfg.Auth.JWT.IssuerURL,

@@ -231,6 +231,7 @@ without making any additional auth calls.
 | `X-User-ID` | Kratos identity UUID |
 | `X-User-Email` | Primary email address from the identity traits |
 | `X-User-Verified` | `"true"` if the email address has been verified |
+| `X-User-Role` | User role from the identity traits (`user`, `admin`, or `moderator`). Defaults to `user` when the trait is absent |
 | `X-Session-ID` | Kratos session UUID |
 
 ### Middleware to extract user identity
@@ -251,6 +252,7 @@ function vibewardenAuth(req, res, next) {
   const userId    = req.headers["x-user-id"];
   const userEmail = req.headers["x-user-email"];
   const verified  = req.headers["x-user-verified"] === "true";
+  const userRole  = req.headers["x-user-role"] || "user";
   const sessionId = req.headers["x-session-id"];
 
   if (!userId) {
@@ -259,7 +261,7 @@ function vibewardenAuth(req, res, next) {
     return res.status(401).json({ error: "unauthorized" });
   }
 
-  req.user = { id: userId, email: userEmail, verified, sessionId };
+  req.user = { id: userId, email: userEmail, verified, role: userRole, sessionId };
   next();
 }
 
@@ -295,6 +297,7 @@ export function vibewardenAuth(
   const id        = req.headers["x-user-id"] as string | undefined;
   const email     = (req.headers["x-user-email"] as string) ?? "";
   const verified  = req.headers["x-user-verified"] === "true";
+  const role      = (req.headers["x-user-role"] as string) ?? "user";
   const sessionId = (req.headers["x-session-id"] as string) ?? "";
 
   if (!id) {
@@ -302,7 +305,7 @@ export function vibewardenAuth(
     return;
   }
 
-  req.user = { id, email, verified, sessionId };
+  req.user = { id, email, verified, role, sessionId };
   next();
 }
 ```

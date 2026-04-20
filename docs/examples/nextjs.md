@@ -238,6 +238,7 @@ without making any additional auth calls.
 | `X-User-ID` | Kratos identity UUID |
 | `X-User-Email` | Primary email address from the identity traits |
 | `X-User-Verified` | `"true"` if the email address has been verified |
+| `X-User-Role` | User role from the identity traits (`user`, `admin`, or `moderator`). Defaults to `user` when the trait is absent |
 | `X-Session-ID` | Kratos session UUID |
 
 ### App Router (Next.js 13+)
@@ -253,6 +254,7 @@ export default async function DashboardPage() {
   const userId    = headersList.get("x-user-id");
   const userEmail = headersList.get("x-user-email");
   const verified  = headersList.get("x-user-verified") === "true";
+  const userRole  = headersList.get("x-user-role") ?? "user";
 
   if (!userId) {
     // VibeWarden should have redirected unauthenticated requests to /login.
@@ -264,6 +266,7 @@ export default async function DashboardPage() {
     <main>
       <h1>Welcome, {userEmail}</h1>
       {!verified && <p>Please verify your email address.</p>}
+      {userRole === "admin" && <a href="/admin">Admin Dashboard</a>}
     </main>
   );
 }

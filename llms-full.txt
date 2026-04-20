@@ -244,6 +244,7 @@ Key sections:
 - `app.environment` — custom env vars injected into the app container (e.g. DATABASE_URL, REDIS_URL)
 - `tls.enabled`, `tls.provider` — TLS termination (letsencrypt, self-signed, external)
 - `auth.mode` — authentication strategy: `none`, `kratos`, `jwt`, or `api-key` (single source of truth; see ADR-065)
+- `auth.role_paths` — role-based access control via Kratos identity traits (maps role names to URL path patterns; only valid when `auth.mode` is `kratos`)
 - `rate_limit.enabled`, `rate_limit.per_ip` — per-IP rate limiting
 - `security_headers.enabled` — HSTS, X-Frame-Options, X-Content-Type-Options, etc.
 - `secrets.store` — secret store backend: `builtin` (default, AES-256-GCM encrypted file) or `openbao` (opt-in for dynamic creds)

@@ -290,6 +290,12 @@ Create `config/kratos/identity.schema.json`:
             "recovery": { "via": "email" },
             "verification": { "via": "email" }
           }
+        },
+        "role": {
+          "type": "string",
+          "title": "Role",
+          "enum": ["user", "admin", "moderator"],
+          "default": "user"
         }
       },
       "required": ["email"],

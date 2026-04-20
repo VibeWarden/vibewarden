@@ -100,6 +100,25 @@ func (i Identity) HasClaim(name string) bool {
 	return ok
 }
 
+// Role extracts the user's role from the claims map. It looks for a "role"
+// key in claims and attempts to parse it as a valid Role. If the claim is
+// absent or not a valid role string, DefaultRole ("user") is returned.
+func (i Identity) Role() Role {
+	raw, ok := i.claims["role"]
+	if !ok {
+		return DefaultRole()
+	}
+	s, ok := raw.(string)
+	if !ok {
+		return DefaultRole()
+	}
+	r, err := NewRole(s)
+	if err != nil {
+		return DefaultRole()
+	}
+	return r
+}
+
 // IsZero reports whether this is the zero value (no identity).
 func (i Identity) IsZero() bool {
 	return i.id == ""

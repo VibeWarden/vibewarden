@@ -1538,3 +1538,84 @@ func TestPlugin_Health_NonKratosModes(t *testing.T) {
 		})
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Wiring test: RolePaths flows into Caddy handler JSON
+// ---------------------------------------------------------------------------
+
+// TestPlugin_ContributeCaddyHandlers_RolePaths_Wiring verifies that
+// cfg.RolePaths flows through ContributeCaddyHandlers into the Caddy handler
+// JSON output. This ensures the plugin correctly wires role configuration
+// from the config layer to the Caddy auth handler.
+func TestPlugin_ContributeCaddyHandlers_RolePaths_Wiring(t *testing.T) {
+	tests := []struct {
+		name          string
+		rolePaths     map[string][]string
+		wantRolePaths bool
+	}{
+		{
+			name: "role_paths flows into handler JSON",
+			rolePaths: map[string][]string{
+				"admin":     {"/admin/*"},
+				"moderator": {"/mod/*"},
+			},
+			wantRolePaths: true,
+		},
+		{
+			name:          "empty role_paths omitted from handler JSON",
+			rolePaths:     nil,
+			wantRolePaths: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := defaultConfig()
+			cfg.RolePaths = tt.rolePaths
+			p := newPlugin(cfg)
+			if err := p.Init(context.Background()); err != nil {
+				t.Fatalf("Init() error: %v", err)
+			}
+			defer p.Stop(context.Background()) //nolint:errcheck
+
+			handlers := p.ContributeCaddyHandlers()
+			if len(handlers) < 1 {
+				t.Fatal("ContributeCaddyHandlers() returned no handlers")
+			}
+
+			authHandler := handlers[0].Handler
+			rpRaw, hasRP := authHandler["role_paths"]
+
+			if tt.wantRolePaths {
+				if !hasRP {
+					t.Fatal("auth handler JSON missing role_paths field")
+				}
+				rp, ok := rpRaw.(map[string][]string)
+				if !ok {
+					t.Fatalf("role_paths is %T, want map[string][]string", rpRaw)
+				}
+				// Verify each configured role is present with correct paths.
+				for wantRole, wantPaths := range tt.rolePaths {
+					gotPaths, found := rp[wantRole]
+					if !found {
+						t.Errorf("role_paths missing role %q", wantRole)
+						continue
+					}
+					if len(gotPaths) != len(wantPaths) {
+						t.Errorf("role_paths[%q] has %d paths, want %d", wantRole, len(gotPaths), len(wantPaths))
+						continue
+					}
+					for i, want := range wantPaths {
+						if gotPaths[i] != want {
+							t.Errorf("role_paths[%q][%d] = %q, want %q", wantRole, i, gotPaths[i], want)
+						}
+					}
+				}
+			} else {
+				if hasRP {
+					t.Errorf("auth handler JSON has role_paths when none were configured: %v", rpRaw)
+				}
+			}
+		})
+	}
+}

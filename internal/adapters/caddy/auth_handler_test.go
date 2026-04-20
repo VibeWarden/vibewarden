@@ -3,12 +3,15 @@ package caddy
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
 	gocaddy "github.com/caddyserver/caddy/v2"
 	"github.com/caddyserver/caddy/v2/modules/caddyhttp"
+
+	"github.com/vibewarden/vibewarden/internal/domain/identity"
 )
 
 // TestAuthHandler_CaddyModule verifies the Caddy module metadata.
@@ -834,6 +837,344 @@ func TestAuthHandler_PublicPath_NoCookie_NoHeaders(t *testing.T) {
 	}
 }
 
+// TestAuthHandler_PublicPath_WithValidSession_SetsRoleHeader verifies that a
+// public path with a valid session also sets the X-User-Role header.
+//
+// Regression test: the public path code path called setIdentityHeaders but not
+// extractRole, so X-User-Role was missing on authenticated public paths.
+func TestAuthHandler_PublicPath_WithValidSession_SetsRoleHeader(t *testing.T) {
+	kratosServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"active": true,
+			"identity": {
+				"id": "admin-1",
+				"traits": {"email": "admin@example.com", "role": "admin"},
+				"verifiable_addresses": [
+					{"value": "admin@example.com", "via": "email", "verified": true}
+				]
+			}
+		}`))
+	}))
+	defer kratosServer.Close()
+
+	h := &AuthHandler{Config: AuthHandlerConfig{
+		CookieName:  "ory_kratos_session",
+		LoginURL:    "/login",
+		PublicPaths: []string{"/public"},
+		KratosURL:   kratosServer.URL,
+	}}
+	if err := h.Provision(gocaddy.Context{}); err != nil {
+		t.Fatalf("Provision() error = %v", err)
+	}
+
+	var capturedHeaders http.Header
+	next := caddyhttp.HandlerFunc(func(w http.ResponseWriter, r *http.Request) error {
+		capturedHeaders = r.Header.Clone()
+		w.WriteHeader(http.StatusOK)
+		return nil
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/public", nil)
+	req.AddCookie(&http.Cookie{Name: "ory_kratos_session", Value: "valid-token"})
+	w := httptest.NewRecorder()
+
+	err := h.ServeHTTP(w, req, next)
+	if err != nil {
+		t.Fatalf("ServeHTTP() error = %v", err)
+	}
+
+	if capturedHeaders == nil {
+		t.Fatal("next handler was not called")
+	}
+	if got := capturedHeaders.Get("X-User-Role"); got != "admin" {
+		t.Errorf("X-User-Role = %q, want %q", got, "admin")
+	}
+}
+
+// TestAuthHandler_RoleHeader_Set verifies that the X-User-Role header is set
+// from the Kratos identity traits.role field.
+func TestAuthHandler_RoleHeader_Set(t *testing.T) {
+	tests := []struct {
+		name     string
+		traits   string
+		wantRole string
+	}{
+		{
+			name:     "admin role",
+			traits:   `{"email":"u@e.com","role":"admin"}`,
+			wantRole: "admin",
+		},
+		{
+			name:     "moderator role",
+			traits:   `{"email":"u@e.com","role":"moderator"}`,
+			wantRole: "moderator",
+		},
+		{
+			name:     "user role explicit",
+			traits:   `{"email":"u@e.com","role":"user"}`,
+			wantRole: "user",
+		},
+		{
+			name:     "missing role defaults to user",
+			traits:   `{"email":"u@e.com"}`,
+			wantRole: "user",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			kratosServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "application/json")
+				_, _ = fmt.Fprintf(w, `{
+					"active": true,
+					"identity": {
+						"id": "user-123",
+						"traits": %s,
+						"verifiable_addresses": [
+							{"value": "u@e.com", "via": "email", "verified": true}
+						]
+					}
+				}`, tt.traits)
+			}))
+			defer kratosServer.Close()
+
+			h := &AuthHandler{Config: AuthHandlerConfig{
+				CookieName: "ory_kratos_session",
+				LoginURL:   "/login",
+				KratosURL:  kratosServer.URL,
+			}}
+			if err := h.Provision(gocaddy.Context{}); err != nil {
+				t.Fatalf("Provision() error = %v", err)
+			}
+
+			var capturedHeaders http.Header
+			next := caddyhttp.HandlerFunc(func(w http.ResponseWriter, r *http.Request) error {
+				capturedHeaders = r.Header.Clone()
+				w.WriteHeader(http.StatusOK)
+				return nil
+			})
+
+			req := httptest.NewRequest(http.MethodGet, "/protected", nil)
+			req.AddCookie(&http.Cookie{Name: "ory_kratos_session", Value: "valid-token"})
+			w := httptest.NewRecorder()
+
+			err := h.ServeHTTP(w, req, next)
+			if err != nil {
+				t.Fatalf("ServeHTTP() error = %v", err)
+			}
+
+			if capturedHeaders == nil {
+				t.Fatal("next handler was not called")
+			}
+			if got := capturedHeaders.Get("X-User-Role"); got != tt.wantRole {
+				t.Errorf("X-User-Role = %q, want %q", got, tt.wantRole)
+			}
+		})
+	}
+}
+
+// TestAuthHandler_RolePath_Allowed verifies that a user with the required role
+// can access a role-restricted path.
+func TestAuthHandler_RolePath_Allowed(t *testing.T) {
+	kratosServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"active": true,
+			"identity": {
+				"id": "admin-1",
+				"traits": {"email": "admin@e.com", "role": "admin"},
+				"verifiable_addresses": [
+					{"value": "admin@e.com", "via": "email", "verified": true}
+				]
+			}
+		}`))
+	}))
+	defer kratosServer.Close()
+
+	h := &AuthHandler{Config: AuthHandlerConfig{
+		CookieName: "ory_kratos_session",
+		LoginURL:   "/login",
+		KratosURL:  kratosServer.URL,
+		RolePaths: map[string][]string{
+			"admin": {"/admin/*"},
+		},
+	}}
+	if err := h.Provision(gocaddy.Context{}); err != nil {
+		t.Fatalf("Provision() error = %v", err)
+	}
+
+	nextCalled := false
+	next := caddyhttp.HandlerFunc(func(w http.ResponseWriter, r *http.Request) error {
+		nextCalled = true
+		w.WriteHeader(http.StatusOK)
+		return nil
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/dashboard", nil)
+	req.AddCookie(&http.Cookie{Name: "ory_kratos_session", Value: "valid-token"})
+	w := httptest.NewRecorder()
+
+	err := h.ServeHTTP(w, req, next)
+	if err != nil {
+		t.Fatalf("ServeHTTP() error = %v", err)
+	}
+	if !nextCalled {
+		t.Error("expected next handler to be called for admin user on /admin/*")
+	}
+}
+
+// TestAuthHandler_RolePath_Denied verifies that a user without the required role
+// receives HTTP 403 with the correct JSON body.
+func TestAuthHandler_RolePath_Denied(t *testing.T) {
+	kratosServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"active": true,
+			"identity": {
+				"id": "user-1",
+				"traits": {"email": "user@e.com", "role": "user"},
+				"verifiable_addresses": [
+					{"value": "user@e.com", "via": "email", "verified": true}
+				]
+			}
+		}`))
+	}))
+	defer kratosServer.Close()
+
+	h := &AuthHandler{Config: AuthHandlerConfig{
+		CookieName: "ory_kratos_session",
+		LoginURL:   "/login",
+		KratosURL:  kratosServer.URL,
+		RolePaths: map[string][]string{
+			"admin": {"/admin/*"},
+		},
+	}}
+	if err := h.Provision(gocaddy.Context{}); err != nil {
+		t.Fatalf("Provision() error = %v", err)
+	}
+
+	nextCalled := false
+	next := caddyhttp.HandlerFunc(func(w http.ResponseWriter, r *http.Request) error {
+		nextCalled = true
+		return nil
+	})
+
+	req := httptest.NewRequest(http.MethodGet, "/admin/dashboard", nil)
+	req.AddCookie(&http.Cookie{Name: "ory_kratos_session", Value: "valid-token"})
+	w := httptest.NewRecorder()
+
+	err := h.ServeHTTP(w, req, next)
+	if err != nil {
+		t.Fatalf("ServeHTTP() error = %v", err)
+	}
+	if nextCalled {
+		t.Error("next handler should not be called for user role on /admin/*")
+	}
+	if w.Code != http.StatusForbidden {
+		t.Errorf("status = %d, want %d", w.Code, http.StatusForbidden)
+	}
+	wantBody := `{"error":"forbidden","message":"insufficient role for this path"}`
+	if got := w.Body.String(); got != wantBody {
+		t.Errorf("body = %q, want %q", got, wantBody)
+	}
+	if ct := w.Header().Get("Content-Type"); ct != "application/json" {
+		t.Errorf("Content-Type = %q, want %q", ct, "application/json")
+	}
+}
+
+// TestAuthHandler_RolePath_PublicPath_Skipped verifies that public paths bypass
+// role enforcement entirely.
+func TestAuthHandler_RolePath_PublicPath_Skipped(t *testing.T) {
+	h := &AuthHandler{Config: AuthHandlerConfig{
+		CookieName:  "ory_kratos_session",
+		LoginURL:    "/login",
+		PublicPaths: []string{"/admin/public/*"},
+		KratosURL:   "http://unreachable:4433",
+		RolePaths: map[string][]string{
+			"admin": {"/admin/*"},
+		},
+	}}
+	if err := h.Provision(gocaddy.Context{}); err != nil {
+		t.Fatalf("Provision() error = %v", err)
+	}
+
+	nextCalled := false
+	next := caddyhttp.HandlerFunc(func(w http.ResponseWriter, r *http.Request) error {
+		nextCalled = true
+		w.WriteHeader(http.StatusOK)
+		return nil
+	})
+
+	// /admin/public/info should bypass auth (and therefore role checks)
+	req := httptest.NewRequest(http.MethodGet, "/admin/public/info", nil)
+	w := httptest.NewRecorder()
+
+	err := h.ServeHTTP(w, req, next)
+	if err != nil {
+		t.Fatalf("ServeHTTP() error = %v", err)
+	}
+	if !nextCalled {
+		t.Error("expected next handler to be called for public path")
+	}
+}
+
+// TestAuthHandler_NoRolePaths_HeaderOnly verifies that when no role_paths are
+// configured, the X-User-Role header is still set but no role enforcement occurs.
+func TestAuthHandler_NoRolePaths_HeaderOnly(t *testing.T) {
+	kratosServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"active": true,
+			"identity": {
+				"id": "user-1",
+				"traits": {"email": "user@e.com", "role": "user"},
+				"verifiable_addresses": [
+					{"value": "user@e.com", "via": "email", "verified": true}
+				]
+			}
+		}`))
+	}))
+	defer kratosServer.Close()
+
+	h := &AuthHandler{Config: AuthHandlerConfig{
+		CookieName: "ory_kratos_session",
+		LoginURL:   "/login",
+		KratosURL:  kratosServer.URL,
+		// No RolePaths configured
+	}}
+	if err := h.Provision(gocaddy.Context{}); err != nil {
+		t.Fatalf("Provision() error = %v", err)
+	}
+
+	var capturedHeaders http.Header
+	next := caddyhttp.HandlerFunc(func(w http.ResponseWriter, r *http.Request) error {
+		capturedHeaders = r.Header.Clone()
+		w.WriteHeader(http.StatusOK)
+		return nil
+	})
+
+	// Request to /admin/* should pass through since no role_paths are configured
+	req := httptest.NewRequest(http.MethodGet, "/admin/dashboard", nil)
+	req.AddCookie(&http.Cookie{Name: "ory_kratos_session", Value: "valid-token"})
+	w := httptest.NewRecorder()
+
+	err := h.ServeHTTP(w, req, next)
+	if err != nil {
+		t.Fatalf("ServeHTTP() error = %v", err)
+	}
+
+	if capturedHeaders == nil {
+		t.Fatal("next handler was not called")
+	}
+	if got := capturedHeaders.Get("X-User-Role"); got != "user" {
+		t.Errorf("X-User-Role = %q, want %q", got, "user")
+	}
+	if w.Code != http.StatusOK {
+		t.Errorf("status = %d, want %d (no role enforcement expected)", w.Code, http.StatusOK)
+	}
+}
+
 // TestAuthHandler_ServeHTTP_KratosServerError verifies redirect when Kratos
 // returns a 5xx error.
 func TestAuthHandler_ServeHTTP_KratosServerError(t *testing.T) {
@@ -874,5 +1215,206 @@ func TestAuthHandler_ServeHTTP_KratosServerError(t *testing.T) {
 				t.Errorf("status = %d, want %d", w.Code, http.StatusFound)
 			}
 		})
+	}
+}
+
+// discardLogger returns a logger that discards all output.
+func discardLogger() *slog.Logger {
+	return slog.New(slog.NewTextHandler(noopWriter{}, nil))
+}
+
+type noopWriter struct{}
+
+func (noopWriter) Write(p []byte) (int, error) { return len(p), nil }
+
+// ---------------------------------------------------------------------------
+// Direct unit tests for extractRole
+// ---------------------------------------------------------------------------
+
+// TestExtractRole verifies the extractRole function in isolation.
+func TestExtractRole(t *testing.T) {
+	tests := []struct {
+		name     string
+		traits   map[string]any
+		wantRole string
+	}{
+		{
+			name:     "valid admin role",
+			traits:   map[string]any{"email": "u@e.com", "role": "admin"},
+			wantRole: "admin",
+		},
+		{
+			name:     "valid moderator role",
+			traits:   map[string]any{"email": "u@e.com", "role": "moderator"},
+			wantRole: "moderator",
+		},
+		{
+			name:     "valid user role",
+			traits:   map[string]any{"email": "u@e.com", "role": "user"},
+			wantRole: "user",
+		},
+		{
+			name:     "missing role defaults to user",
+			traits:   map[string]any{"email": "u@e.com"},
+			wantRole: "user",
+		},
+		{
+			name:     "empty string role defaults to user",
+			traits:   map[string]any{"email": "u@e.com", "role": ""},
+			wantRole: "user",
+		},
+		{
+			name:     "non-string role defaults to user",
+			traits:   map[string]any{"email": "u@e.com", "role": 42},
+			wantRole: "user",
+		},
+		{
+			name:     "invalid role value defaults to user and logs warning",
+			traits:   map[string]any{"email": "u@e.com", "role": "superadmin"},
+			wantRole: "user",
+		},
+		{
+			name:     "nil traits defaults to user",
+			traits:   nil,
+			wantRole: "user",
+		},
+	}
+
+	logger := discardLogger()
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			whoami := &kratosWhoamiResponse{}
+			whoami.Identity.Traits = tt.traits
+			got := extractRole(whoami, logger)
+			if got.String() != tt.wantRole {
+				t.Errorf("extractRole() = %q, want %q", got.String(), tt.wantRole)
+			}
+		})
+	}
+}
+
+// TestExtractRole_InvalidValue_ReturnsDefaultRole verifies that an unrecognised
+// role value is rejected and the default role is returned.
+func TestExtractRole_InvalidValue_ReturnsDefaultRole(t *testing.T) {
+	logger := discardLogger()
+	whoami := &kratosWhoamiResponse{}
+	whoami.Identity.Traits = map[string]any{"role": "superadmin"}
+	whoami.Identity.ID = "user-123"
+
+	got := extractRole(whoami, logger)
+	if got != identity.DefaultRole() {
+		t.Errorf("extractRole() = %q for invalid role, want default %q", got.String(), identity.DefaultRole().String())
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Direct unit tests for matchRequiredRole
+// ---------------------------------------------------------------------------
+
+// TestMatchRequiredRole verifies the matchRequiredRole function in isolation.
+func TestMatchRequiredRole(t *testing.T) {
+	h := &AuthHandler{Config: AuthHandlerConfig{
+		RolePaths: map[string][]string{
+			"admin":     {"/admin/*"},
+			"moderator": {"/mod/queue", "/mod/reports/*"},
+		},
+	}}
+
+	tests := []struct {
+		name     string
+		reqPath  string
+		wantRole string
+		wantOK   bool
+	}{
+		{
+			name:     "admin prefix match",
+			reqPath:  "/admin/dashboard",
+			wantRole: "admin",
+			wantOK:   true,
+		},
+		{
+			name:     "admin nested path",
+			reqPath:  "/admin/users/edit",
+			wantRole: "admin",
+			wantOK:   true,
+		},
+		{
+			name:     "moderator exact match",
+			reqPath:  "/mod/queue",
+			wantRole: "moderator",
+			wantOK:   true,
+		},
+		{
+			name:     "moderator prefix match",
+			reqPath:  "/mod/reports/123",
+			wantRole: "moderator",
+			wantOK:   true,
+		},
+		{
+			name:    "unmatched path",
+			reqPath: "/public/info",
+			wantOK:  false,
+		},
+		{
+			name:    "root path",
+			reqPath: "/",
+			wantOK:  false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			gotRole, gotOK := h.matchRequiredRole(tt.reqPath)
+			if gotOK != tt.wantOK {
+				t.Errorf("matchRequiredRole(%q) ok = %v, want %v", tt.reqPath, gotOK, tt.wantOK)
+			}
+			if gotOK && gotRole != tt.wantRole {
+				t.Errorf("matchRequiredRole(%q) role = %q, want %q", tt.reqPath, gotRole, tt.wantRole)
+			}
+		})
+	}
+}
+
+// TestMatchRequiredRole_PrefixBoundary verifies that /admin/* does not match
+// /administrator or /admins — only paths under /admin/.
+//
+// Regression test: TrimSuffix(p, "/*") produced "/admin" which matched
+// "/administrator". Fixed to TrimSuffix(p, "*") to preserve the trailing slash.
+func TestMatchRequiredRole_PrefixBoundary(t *testing.T) {
+	h := &AuthHandler{Config: AuthHandlerConfig{
+		RolePaths: map[string][]string{
+			"admin": {"/admin/*"},
+		},
+	}}
+
+	tests := []struct {
+		path   string
+		wantOK bool
+	}{
+		{"/admin/dashboard", true},
+		{"/admin/users/edit", true},
+		{"/administrator", false},
+		{"/admins/list", false},
+		{"/admin-panel", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.path, func(t *testing.T) {
+			_, ok := h.matchRequiredRole(tt.path)
+			if ok != tt.wantOK {
+				t.Errorf("matchRequiredRole(%q) ok = %v, want %v", tt.path, ok, tt.wantOK)
+			}
+		})
+	}
+}
+
+// TestMatchRequiredRole_NoRolePaths verifies that when RolePaths is empty,
+// no role is required for any path.
+func TestMatchRequiredRole_NoRolePaths(t *testing.T) {
+	h := &AuthHandler{Config: AuthHandlerConfig{}}
+
+	_, ok := h.matchRequiredRole("/admin/dashboard")
+	if ok {
+		t.Error("matchRequiredRole() ok = true with empty RolePaths, want false")
 	}
 }

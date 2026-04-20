@@ -3204,3 +3204,102 @@ func TestResolvedBuildContext(t *testing.T) {
 		})
 	}
 }
+
+// TestValidate_RolePaths verifies validation of auth.role_paths.
+func TestValidate_RolePaths(t *testing.T) {
+	tests := []struct {
+		name        string
+		cfg         config.Config
+		wantErr     bool
+		wantContain string
+	}{
+		{
+			name: "role_paths valid with kratos mode",
+			cfg: config.Config{
+				Auth: config.AuthConfig{
+					Mode: "kratos",
+					RolePaths: map[string][]string{
+						"admin": {"/admin/*"},
+					},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "role_paths rejected with jwt mode",
+			cfg: config.Config{
+				Auth: config.AuthConfig{
+					Mode: "jwt",
+					RolePaths: map[string][]string{
+						"admin": {"/admin/*"},
+					},
+				},
+			},
+			wantErr:     true,
+			wantContain: "auth.role_paths is only valid when auth.mode is \"kratos\"",
+		},
+		{
+			name: "role_paths rejected with none mode",
+			cfg: config.Config{
+				Auth: config.AuthConfig{
+					Mode: "none",
+					RolePaths: map[string][]string{
+						"admin": {"/admin/*"},
+					},
+				},
+			},
+			wantErr:     true,
+			wantContain: "auth.role_paths is only valid when auth.mode is \"kratos\"",
+		},
+		{
+			name: "invalid role name rejected",
+			cfg: config.Config{
+				Auth: config.AuthConfig{
+					Mode: "kratos",
+					RolePaths: map[string][]string{
+						"superadmin": {"/admin/*"},
+					},
+				},
+			},
+			wantErr:     true,
+			wantContain: "role \"superadmin\" is invalid",
+		},
+		{
+			name: "empty paths for role rejected",
+			cfg: config.Config{
+				Auth: config.AuthConfig{
+					Mode: "kratos",
+					RolePaths: map[string][]string{
+						"admin": {},
+					},
+				},
+			},
+			wantErr:     true,
+			wantContain: "must have at least one path",
+		},
+		{
+			name: "empty role_paths is valid (no enforcement)",
+			cfg: config.Config{
+				Auth: config.AuthConfig{
+					Mode: "kratos",
+				},
+			},
+			wantErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := tt.cfg.Validate()
+			if (err != nil) != tt.wantErr {
+				t.Errorf("Validate() error = %v, wantErr %v", err, tt.wantErr)
+				return
+			}
+			if tt.wantErr && tt.wantContain != "" && err != nil {
+				if !strings.Contains(err.Error(), tt.wantContain) {
+					t.Errorf("Validate() error = %q, want it to contain %q", err.Error(), tt.wantContain)
+				}
+			}
+		})
+	}
+}
