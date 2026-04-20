@@ -124,6 +124,10 @@ transfers the pre-built image to the server via `docker save | rsync | docker lo
 No source code is ever copied to the production server -- the image must be
 production-ready (all dependencies installed, assets compiled, etc.).
 
+**Cross-architecture builds:** If deploying from Apple Silicon (arm64) to an amd64
+server, use `vibew build --platform linux/amd64`. Deploy auto-detects the mismatch
+and errors with a fix-it message if you forget.
+
 Use `app.environment` in vibewarden.yaml for runtime configuration:
 ```yaml
 app:
