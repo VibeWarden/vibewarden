@@ -14,6 +14,47 @@ This initial entry was written by hand to summarise the work leading up to v0.1.
 
 ---
 
+## [v0.15.0] — 2026-04-20
+
+### Features
+
+- **ACME fallback chain** (#1026). `tls.provider: letsencrypt` now configures three
+  ACME issuers (Let's Encrypt → ZeroSSL → Buypass). If one CA is rate-limited, Caddy
+  tries the next automatically. New providers: `zerossl`, `buypass`, `letsencrypt-staging`.
+- **`/_vibewarden/me` endpoint** (#1021). When `auth.mode: kratos`, the sidecar serves
+  session info as JSON at `/_vibewarden/me`. Frontend JS can fetch user ID, email,
+  verified status, and role without calling Kratos directly.
+- **`vibew tls status`** (#1034). New CLI command inspects the remote TLS certificate
+  via SSH — shows domain, issuer, validity dates, and days remaining.
+- **`vibew doctor` improvements** (#1033). Suggests `vibew doctor` on deploy failure.
+  New checks: architecture compatibility, ACME email for ZeroSSL, image tag consistency.
+- **Architecture mismatch detection** (#1032). Deploy detects when the local build arch
+  doesn't match the remote server and errors with a fix-it message.
+
+### Fixes
+
+- **`tls.email` wired to Caddy** (#1027). The ACME account email was accepted in config
+  but silently dropped in single-site mode. Now properly passed to the Caddy issuer.
+- **`vibew dev` stale container detection** (#1028). Detects and rebuilds stale or
+  wrong-project containers instead of silently reusing them.
+- **Deploy health check diagnostics** (#1029). Classifies failures into container
+  unhealthy, TLS error, upstream unreachable, timeout, or unknown — with relevant
+  Caddy log excerpts.
+- **Deploy status/logs correct directory** (#1030). `vibew deploy status` and
+  `vibew deploy logs` now derive the remote directory consistently with `vibew deploy`.
+- **Deploy drift false positives** (#1031). Credential preservation runs before drift
+  detection, and rsync uses `--checksum` instead of mtime. Deploy-owned files are
+  categorized separately from user modifications.
+
+### Documentation
+
+- AGENTS-VIBEWARDEN.md: image tag convention, TLS config keys table, VPS deploy
+  section with manual fallback, cross-architecture build guidance.
+- Updated deploy-reference.md, troubleshooting.md, configuration.md, llms-full.txt.
+- Added reply style guidelines to CLAUDE.md for briefer agent responses.
+
+---
+
 ## [v0.14.0] — 2026-04-20
 
 ### Features
