@@ -15,6 +15,7 @@ import (
 	"math/big"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -907,5 +908,328 @@ func TestDoctorService_Run_JSONOutput_IncludesSection(t *testing.T) {
 		if r.Section == "" {
 			t.Errorf("check %q has empty section in JSON output", r.Name)
 		}
+	}
+}
+
+// --- Tests for ACME email check ---
+
+func TestDoctorService_Run_ACMEEmail_ZeroSSLWithoutEmail(t *testing.T) {
+	fc := noContainersCompose()
+	pc := &fakePortChecker{available: map[int]bool{8443: true}}
+	hc := reachableHealthChecker()
+	svc := ops.NewDoctorService(fc, pc, hc)
+	cfg := defaultConfig()
+	cfg.TLS.Provider = "letsencrypt"
+	cfg.TLS.ACMECA = "https://acme.zerossl.com/v2/DV90"
+	cfg.TLS.Email = ""
+
+	var buf bytes.Buffer
+	allOK, err := svc.Run(context.Background(), cfg, defaultOpts(t), &buf)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if allOK {
+		t.Error("expected allOK = false when ZeroSSL is configured without email")
+	}
+
+	out := buf.String()
+	if !strings.Contains(out, "ACME email") {
+		t.Errorf("expected 'ACME email' check in output, got:\n%s", out)
+	}
+	if !strings.Contains(out, "ZeroSSL requires") {
+		t.Errorf("expected 'ZeroSSL requires' in detail, got:\n%s", out)
+	}
+}
+
+func TestDoctorService_Run_ACMEEmail_ZeroSSLWithEmail(t *testing.T) {
+	fc := noContainersCompose()
+	pc := &fakePortChecker{available: map[int]bool{8443: true}}
+	hc := reachableHealthChecker()
+	svc := ops.NewDoctorService(fc, pc, hc)
+	cfg := defaultConfig()
+	cfg.TLS.Provider = "letsencrypt"
+	cfg.TLS.ACMECA = "https://acme.zerossl.com/v2/DV90"
+	cfg.TLS.Email = "admin@example.com"
+
+	var buf bytes.Buffer
+	allOK, err := svc.Run(context.Background(), cfg, defaultOpts(t), &buf)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !allOK {
+		t.Errorf("expected allOK = true when ZeroSSL has email set\noutput:\n%s", buf.String())
+	}
+
+	out := buf.String()
+	if !strings.Contains(out, "ACME email") {
+		t.Errorf("expected 'ACME email' check in output, got:\n%s", out)
+	}
+	if !strings.Contains(out, "admin@example.com") {
+		t.Errorf("expected email in detail, got:\n%s", out)
+	}
+}
+
+func TestDoctorService_Run_ACMEEmail_NonZeroSSL(t *testing.T) {
+	fc := noContainersCompose()
+	pc := &fakePortChecker{available: map[int]bool{8443: true}}
+	hc := reachableHealthChecker()
+	svc := ops.NewDoctorService(fc, pc, hc)
+	cfg := defaultConfig()
+	cfg.TLS.Provider = "letsencrypt"
+	cfg.TLS.ACMECA = "" // default Let's Encrypt
+	cfg.TLS.Email = ""
+
+	var buf bytes.Buffer
+	allOK, err := svc.Run(context.Background(), cfg, defaultOpts(t), &buf)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !allOK {
+		t.Errorf("expected allOK = true when not using ZeroSSL\noutput:\n%s", buf.String())
+	}
+
+	out := buf.String()
+	if !strings.Contains(out, "ACME email") {
+		t.Errorf("expected 'ACME email' check in output, got:\n%s", out)
+	}
+	if !strings.Contains(out, "not using ZeroSSL") {
+		t.Errorf("expected 'not using ZeroSSL' in detail, got:\n%s", out)
+	}
+}
+
+// --- Tests for image tag consistency check ---
+
+func TestDoctorService_Run_ImageTag_Exists(t *testing.T) {
+	fc := noContainersCompose()
+	pc := &fakePortChecker{available: map[int]bool{8443: true}}
+	hc := reachableHealthChecker()
+	ic := &fakeImageChecker{exists: true}
+	svc := ops.NewDoctorService(fc, pc, hc).WithImageChecker(ic)
+	cfg := defaultConfig()
+	cfg.App.Image = "myapp:latest"
+
+	var buf bytes.Buffer
+	allOK, err := svc.Run(context.Background(), cfg, defaultOpts(t), &buf)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !allOK {
+		t.Errorf("expected allOK = true when image exists\noutput:\n%s", buf.String())
+	}
+
+	out := buf.String()
+	if !strings.Contains(out, "Image tag") {
+		t.Errorf("expected 'Image tag' check in output, got:\n%s", out)
+	}
+	if !strings.Contains(out, "exists locally") {
+		t.Errorf("expected 'exists locally' in detail, got:\n%s", out)
+	}
+}
+
+func TestDoctorService_Run_ImageTag_Missing(t *testing.T) {
+	fc := noContainersCompose()
+	pc := &fakePortChecker{available: map[int]bool{8443: true}}
+	hc := reachableHealthChecker()
+	ic := &fakeImageChecker{exists: false}
+	svc := ops.NewDoctorService(fc, pc, hc).WithImageChecker(ic)
+	cfg := defaultConfig()
+	cfg.App.Image = "myapp:latest"
+
+	var buf bytes.Buffer
+	allOK, err := svc.Run(context.Background(), cfg, defaultOpts(t), &buf)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if allOK {
+		t.Error("expected allOK = false when image does not exist locally")
+	}
+
+	out := buf.String()
+	if !strings.Contains(out, "Image tag") {
+		t.Errorf("expected 'Image tag' check in output, got:\n%s", out)
+	}
+	if !strings.Contains(out, "not found locally") {
+		t.Errorf("expected 'not found locally' in detail, got:\n%s", out)
+	}
+}
+
+func TestDoctorService_Run_ImageTag_CheckerError(t *testing.T) {
+	fc := noContainersCompose()
+	pc := &fakePortChecker{available: map[int]bool{8443: true}}
+	hc := reachableHealthChecker()
+	ic := &fakeImageChecker{err: errors.New("docker daemon unavailable")}
+	svc := ops.NewDoctorService(fc, pc, hc).WithImageChecker(ic)
+	cfg := defaultConfig()
+	cfg.App.Image = "myapp:latest"
+
+	var buf bytes.Buffer
+	allOK, err := svc.Run(context.Background(), cfg, defaultOpts(t), &buf)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// WARN does not cause allOK = false.
+	if !allOK {
+		t.Errorf("expected allOK = true because image checker error is WARN\noutput:\n%s", buf.String())
+	}
+
+	out := buf.String()
+	if !strings.Contains(out, "Image tag") {
+		t.Errorf("expected 'Image tag' check in output, got:\n%s", out)
+	}
+	if !strings.Contains(out, "could not check image") {
+		t.Errorf("expected 'could not check image' in detail, got:\n%s", out)
+	}
+}
+
+func TestDoctorService_Run_ImageTag_NoImage_Skipped(t *testing.T) {
+	fc := noContainersCompose()
+	pc := &fakePortChecker{available: map[int]bool{8443: true}}
+	hc := reachableHealthChecker()
+	ic := &fakeImageChecker{exists: false} // Should not be called.
+	svc := ops.NewDoctorService(fc, pc, hc).WithImageChecker(ic)
+	cfg := defaultConfig()
+	cfg.App.Image = "" // No image configured.
+
+	var buf bytes.Buffer
+	_, err := svc.Run(context.Background(), cfg, defaultOpts(t), &buf)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	out := buf.String()
+	if strings.Contains(out, "Image tag") {
+		t.Errorf("expected 'Image tag' check to be skipped when no image is configured, got:\n%s", out)
+	}
+}
+
+// --- Tests for arch compatibility check ---
+
+func TestDoctorService_Run_ArchCompatibility_Match(t *testing.T) {
+	fc := noContainersCompose()
+	pc := &fakePortChecker{available: map[int]bool{8443: true}}
+	hc := reachableHealthChecker()
+
+	// Simulate remote returning the same arch as local (mapped via normalizeArch).
+	var remoteUname string
+	switch runtime.GOARCH {
+	case "amd64":
+		remoteUname = "x86_64"
+	case "arm64":
+		remoteUname = "aarch64"
+	default:
+		remoteUname = runtime.GOARCH
+	}
+
+	executor := &fakeRemoteExecutor{
+		runResponses: map[string]runResult{
+			"echo ok":  {output: "ok", err: nil},
+			"uname -m": {output: remoteUname, err: nil},
+			"docker compose ps --format json 2>/dev/null || docker-compose ps 2>/dev/null": {
+				output: "", err: nil,
+			},
+		},
+	}
+	svc := ops.NewDoctorService(fc, pc, hc).WithRemoteExecutor(executor)
+	cfg := defaultConfig()
+
+	opts := defaultOpts(t)
+	opts.Target = "ssh://user@192.0.2.1"
+
+	var buf bytes.Buffer
+	_, err := svc.Run(context.Background(), cfg, opts, &buf)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	out := buf.String()
+	if !strings.Contains(out, "Arch compatibility") {
+		t.Errorf("expected 'Arch compatibility' check in output, got:\n%s", out)
+	}
+	if !strings.Contains(out, "[OK]") || !strings.Contains(out, "local=") {
+		t.Errorf("expected arch match to show OK with local= detail, got:\n%s", out)
+	}
+}
+
+func TestDoctorService_Run_ArchCompatibility_Mismatch(t *testing.T) {
+	fc := noContainersCompose()
+	pc := &fakePortChecker{available: map[int]bool{8443: true}}
+	hc := reachableHealthChecker()
+
+	// Simulate remote arch different from local. Pick an arch that won't
+	// match the CI runner.
+	remoteUname := "aarch64"
+	if runtime.GOARCH == "arm64" {
+		remoteUname = "x86_64"
+	}
+
+	executor := &fakeRemoteExecutor{
+		runResponses: map[string]runResult{
+			"echo ok":  {output: "ok", err: nil},
+			"uname -m": {output: remoteUname, err: nil},
+			"docker compose ps --format json 2>/dev/null || docker-compose ps 2>/dev/null": {
+				output: "", err: nil,
+			},
+		},
+	}
+	svc := ops.NewDoctorService(fc, pc, hc).WithRemoteExecutor(executor)
+	cfg := defaultConfig()
+
+	opts := defaultOpts(t)
+	opts.Target = "ssh://user@192.0.2.1"
+
+	var buf bytes.Buffer
+	allOK, err := svc.Run(context.Background(), cfg, opts, &buf)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// Arch mismatch is WARN, so allOK should still be true.
+	if !allOK {
+		t.Errorf("expected allOK = true because arch mismatch is WARN\noutput:\n%s", buf.String())
+	}
+
+	out := buf.String()
+	if !strings.Contains(out, "Arch compatibility") {
+		t.Errorf("expected 'Arch compatibility' check in output, got:\n%s", out)
+	}
+	if !strings.Contains(out, "--platform") {
+		t.Errorf("expected '--platform' hint in arch mismatch detail, got:\n%s", out)
+	}
+}
+
+func TestDoctorService_Run_ArchCompatibility_RemoteError(t *testing.T) {
+	fc := noContainersCompose()
+	pc := &fakePortChecker{available: map[int]bool{8443: true}}
+	hc := reachableHealthChecker()
+	executor := &fakeRemoteExecutor{
+		runResponses: map[string]runResult{
+			"echo ok":  {output: "ok", err: nil},
+			"uname -m": {output: "", err: errors.New("command not found")},
+			"docker compose ps --format json 2>/dev/null || docker-compose ps 2>/dev/null": {
+				output: "", err: nil,
+			},
+		},
+	}
+	svc := ops.NewDoctorService(fc, pc, hc).WithRemoteExecutor(executor)
+	cfg := defaultConfig()
+
+	opts := defaultOpts(t)
+	opts.Target = "ssh://user@192.0.2.1"
+
+	var buf bytes.Buffer
+	allOK, err := svc.Run(context.Background(), cfg, opts, &buf)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// WARN does not cause allOK = false.
+	if !allOK {
+		t.Errorf("expected allOK = true because arch check error is WARN\noutput:\n%s", buf.String())
+	}
+
+	out := buf.String()
+	if !strings.Contains(out, "Arch compatibility") {
+		t.Errorf("expected 'Arch compatibility' check in output, got:\n%s", out)
+	}
+	if !strings.Contains(out, "could not determine") {
+		t.Errorf("expected 'could not determine' in arch detail, got:\n%s", out)
 	}
 }

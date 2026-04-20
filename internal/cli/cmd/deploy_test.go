@@ -280,6 +280,25 @@ func TestDeployCmd_HelpContainsRotateSecretsExample(t *testing.T) {
 	}
 }
 
+func TestDeployCmd_FailureHintPrintsDoctor(t *testing.T) {
+	// When deploy fails (e.g. missing --target), stderr should contain
+	// the doctor hint message.
+	root := cmd.NewRootCmd("test")
+	var stderr strings.Builder
+	root.SetErr(&stderr)
+	root.SetArgs([]string{"deploy"})
+
+	err := root.Execute()
+	if err == nil {
+		t.Fatal("expected error when --target is not provided")
+	}
+
+	errOut := stderr.String()
+	if !strings.Contains(errOut, "vibew doctor") {
+		t.Errorf("expected 'vibew doctor' hint in stderr on deploy failure, got:\n%s", errOut)
+	}
+}
+
 func TestDeployCmd_DryRunFlagRegistered(t *testing.T) {
 	root := cmd.NewRootCmd("test")
 	deployCmd, _, err := root.Find([]string{"deploy"})
