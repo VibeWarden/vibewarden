@@ -39,7 +39,7 @@ pre-flight scripts.
 | 4 | **Proxy port** | The port configured in `server.port` (default `8443`) is not already bound |
 | 5 | **Generated files** | `.vibewarden/generated/docker-compose.yml` is present on disk |
 | 6 | **Container health** | `docker compose ps` shows all containers in `running` / `healthy` state |
-| 7 | **ACME email** | `tls.email` is set when using `letsencrypt` provider (warns if missing) |
+| 7 | **ACME email** | `tls.email` is set when `tls.acme_ca` contains "zerossl" (fails if missing) |
 | 8 | **Image tag** | `app.image` matches a locally available Docker image (skipped when unset) |
 
 #### Layer 2: Local Runtime
@@ -47,7 +47,7 @@ pre-flight scripts.
 | # | Check name | What it tests |
 |---|------------|---------------|
 | 9 | **Upstream reachable** | The configured upstream port is listening locally |
-| 10 | **TLS cert valid** | Local TLS certificate (when using `self-signed` or `external`) is not expired or expiring within 7 days |
+| 10 | **TLS cert valid** | Local TLS certificate (when using `self-signed`) is not expired or expiring within 7 days |
 
 #### Layer 3: Production (only with `--target`)
 
@@ -397,7 +397,7 @@ Save the master key somewhere safe -- if you lose it, your secrets are unrecover
 **Symptom**
 
 ```
-[FAIL]  Arch compatibility  image is arm64, remote is amd64
+[WARN]  Arch compatibility  local build is arm64 but remote server is amd64
 ```
 
 **Cause**

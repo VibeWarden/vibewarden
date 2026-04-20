@@ -148,7 +148,7 @@ Key rules:
 resolved in this order:
 
 1. `name` field in vibewarden.yaml (explicit)
-2. `app.image` field in vibewarden.yaml (if set, used as-is)
+2. `app.image` with registry prefix and tag stripped (e.g. `ghcr.io/org/myapp:latest` → `myapp`)
 3. Directory name containing vibewarden.yaml (fallback)
 
 For example, a project in `~/code/mysite` with no explicit `name` produces the
@@ -193,7 +193,7 @@ vibew build --platform linux/amd64
 docker save <project>-app:latest | ssh user@host docker load
 
 # 3. Copy the deploy bundle (config, compose files)
-rsync -az .vibewarden/generated/ user@host:~/vibewarden/<project>/
+rsync -az .vibewarden/deploy/production/ user@host:~/vibewarden/<project>/
 
 # 4. Start the stack on the remote
 ssh user@host 'cd ~/vibewarden/<project> && docker compose up -d'

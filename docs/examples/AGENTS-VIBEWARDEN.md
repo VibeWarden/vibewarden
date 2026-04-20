@@ -135,7 +135,7 @@ CMD ["/app/server"]
 resolved in this order:
 
 1. `name` field in vibewarden.yaml (explicit)
-2. `app.image` field in vibewarden.yaml (if set, used as-is)
+2. `app.image` with registry prefix and tag stripped (e.g. `ghcr.io/org/myapp:latest` → `myapp`)
 3. Directory name containing vibewarden.yaml (fallback)
 
 For example, a project in `~/code/mysite` with no explicit `name` produces the
