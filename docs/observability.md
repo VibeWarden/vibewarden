@@ -444,7 +444,7 @@ Prometheus collectors:
 ```mermaid
 flowchart LR
     App["Your App"] <--> VW["VibeWarden :8080"]
-    VW -. "scrape /_vibewarden/metrics" .-> Prom["Prometheus :9090"]
+    Prom["Prometheus :9090"] -. "scrape /_vibewarden/metrics" .-> VW
     Prom --> Grafana["Grafana :3000"]
     Logs["Docker container logs"] --> Promtail
     Promtail --> Loki["Loki :3100"]
