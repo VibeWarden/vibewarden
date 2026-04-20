@@ -531,10 +531,15 @@ func (s *DoctorService) checkRemoteContainerHealth(ctx context.Context) CheckRes
 	// of ADR-084 so stderr surfaces naturally for the error formatter.
 	output, err := s.remoteExecutor.Run(checkCtx, "docker compose ps --format json")
 	if err != nil {
+		// ssh.Executor.Run merges stdout+stderr into `output` and never
+		// populates *exec.ExitError.Stderr, so we must forward `output`
+		// to the formatter — otherwise the real stderr line (e.g.
+		// "docker: command not found") is discarded and the user only
+		// sees the canned exit-code hint.
 		return CheckResult{
 			Name:     "Remote containers",
 			Severity: SeverityFail,
-			Detail:   formatRemoteError(err, "docker compose"),
+			Detail:   formatRemoteError(err, output, "docker compose"),
 		}
 	}
 

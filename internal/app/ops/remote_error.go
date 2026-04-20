@@ -19,21 +19,34 @@ const maxRemoteErrorLen = 180
 //     `ssh exit`) — those are stripped so implementation detail does not
 //     leak into user-facing errors.
 //   - When err wraps *exec.ExitError the exit code is surfaced.
-//   - The first non-empty line of stderr is included when present.
+//   - The first non-empty line of output is included when present.
 //   - A small set of hard-coded hints is appended based on the exit code.
-//   - Input nil → empty string.
+//   - Input nil error → empty string.
+//
+// output is the merged stdout+stderr returned alongside err by
+// ports.RemoteExecutor.Run. The ssh adapter uses `cmd.Run()` with a shared
+// buffer, so *exec.ExitError.Stderr is never populated — the real stderr
+// only lives in this string. Pass it in verbatim.
 //
 // cmdName is a short human-readable label for the remote command
-// (e.g. "docker compose ps") used when the stderr line is empty.
-func formatRemoteError(err error, cmdName string) string {
+// (e.g. "docker compose ps") used when the output is empty.
+func formatRemoteError(err error, output string, cmdName string) string {
 	if err == nil {
 		return ""
 	}
 
-	exitCode, stderr := extractExitInfo(err)
-	stderrLine := firstMeaningfulLine(stderr)
+	exitCode := extractExitCode(err)
+	// Prefer the merged output stream from the adapter: that is where the
+	// real stderr lives. Fall back to *exec.ExitError.Stderr (populated only
+	// when callers use cmd.Output(); kept for defence in depth) and finally
+	// to the wrapped error text.
+	stderrLine := firstMeaningfulLine(output)
 	if stderrLine == "" {
-		// Fall back to the wrapped error text, minus the noisy adapter prefix.
+		if _, stderr := extractExitInfo(err); stderr != "" {
+			stderrLine = firstMeaningfulLine(stderr)
+		}
+	}
+	if stderrLine == "" {
 		stderrLine = stripShellLeaks(err.Error())
 	}
 	stderrLine = stripShellLeaks(stderrLine)
@@ -57,10 +70,21 @@ func formatRemoteError(err error, cmdName string) string {
 	return out
 }
 
-// extractExitInfo pulls the numeric exit code and stderr text (when
-// available) out of an error returned by ports.RemoteExecutor.Run. The
-// adapter merges stdout+stderr into the error return value, so the caller
-// must pass the raw error here.
+// extractExitCode returns the numeric exit code from an error that wraps
+// *exec.ExitError. Returns 0 when err does not wrap one.
+func extractExitCode(err error) int {
+	var exitErr *exec.ExitError
+	if errors.As(err, &exitErr) {
+		return exitErr.ExitCode()
+	}
+	return 0
+}
+
+// extractExitInfo pulls the numeric exit code and *exec.ExitError.Stderr out
+// of an error. Stderr is only populated by Go when callers use cmd.Output();
+// the ssh adapter uses cmd.Run() with a shared stdout+stderr buffer, so in
+// production this always returns ("", 0). Kept as a defence-in-depth
+// fallback for callers that do use Output-style execution.
 //
 // Returns (0, "") when err is not an *exec.ExitError.
 func extractExitInfo(err error) (int, string) {
