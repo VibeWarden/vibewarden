@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"net/url"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"time"
@@ -174,6 +175,21 @@ func (c *Config) IsProdProfile() bool {
 	return c.Profile == "prod"
 }
 
+// sanitizeProjectName lowercases and replaces non-alphanumeric characters with
+// hyphens, matching Docker Compose's project name rules.
+func sanitizeProjectName(name string) string {
+	name = strings.ToLower(name)
+	var b strings.Builder
+	for _, r := range name {
+		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '-' {
+			b.WriteRune(r)
+		} else {
+			b.WriteRune('-')
+		}
+	}
+	return strings.Trim(b.String(), "-")
+}
+
 // ComposeProjectName returns the Docker Compose project name to use in the
 // generated docker-compose.yml. This prevents Docker Compose from deriving the
 // project name from the directory name (which would be "generated" for files
@@ -182,7 +198,8 @@ func (c *Config) IsProdProfile() bool {
 // Derivation order:
 //  1. The explicit Name field (set via vibewarden.yaml name: or vibew init --name).
 //  2. App.Image with the tag stripped (e.g. "myapp:latest" -> "myapp").
-//  3. "vibewarden" as a safe fallback.
+//  3. The project directory name (from ProjectRoot), lowercased and sanitized.
+//  4. "vibewarden" as a last-resort fallback (should not happen in practice).
 func (c *Config) ComposeProjectName() string {
 	if c.Name != "" {
 		return c.Name
@@ -198,6 +215,11 @@ func (c *Config) ComposeProjectName() string {
 			name = name[:idx]
 		}
 		if name != "" {
+			return name
+		}
+	}
+	if c.ProjectRoot != "" {
+		if name := sanitizeProjectName(filepath.Base(c.ProjectRoot)); name != "" {
 			return name
 		}
 	}

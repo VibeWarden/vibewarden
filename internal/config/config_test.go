@@ -3145,31 +3145,62 @@ this_key_does_not_exist:
 
 func TestComposeProjectName(t *testing.T) {
 	tests := []struct {
-		name     string
-		cfgName  string
-		appImage string
-		want     string
+		name        string
+		cfgName     string
+		appImage    string
+		projectRoot string
+		want        string
 	}{
-		{"empty image falls back to vibewarden", "", "", "vibewarden"},
-		{"simple image name", "", "myapp:latest", "myapp"},
-		{"image without tag", "", "myapp", "myapp"},
-		{"registry prefix stripped", "", "ghcr.io/org/myapp:latest", "myapp"},
-		{"deep registry path stripped", "", "registry.example.com/org/team/myapp:v2", "myapp"},
-		{"image with only tag", "", ":latest", "vibewarden"},
-		{"explicit name takes precedence over image", "my-project", "myapp:latest", "my-project"},
-		{"explicit name takes precedence over empty image", "my-project", "", "my-project"},
-		{"explicit name used alone", "custom-name", "", "custom-name"},
+		{"directory name used when name and image empty", "", "", "/home/user/my-cool-app", "my-cool-app"},
+		{"directory name lowercased", "", "", "/home/user/MyCoolApp", "mycoolapp"},
+		{"directory name sanitized", "", "", "/home/user/My Cool App!", "my-cool-app"},
+		{"simple image name", "", "myapp:latest", "", "myapp"},
+		{"image without tag", "", "myapp", "", "myapp"},
+		{"registry prefix stripped", "", "ghcr.io/org/myapp:latest", "", "myapp"},
+		{"deep registry path stripped", "", "registry.example.com/org/team/myapp:v2", "", "myapp"},
+		{"image with only tag falls to directory", "", ":latest", "/home/user/webapp", "webapp"},
+		{"explicit name takes precedence over image", "my-project", "myapp:latest", "", "my-project"},
+		{"explicit name takes precedence over directory", "my-project", "", "/home/user/other", "my-project"},
+		{"explicit name used alone", "custom-name", "", "", "custom-name"},
+		{"fallback to vibewarden when all empty", "", "", "", "vibewarden"},
+		{"different directories produce different names", "", "", "/projects/app-a", "app-a"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := &config.Config{Name: tt.cfgName}
 			cfg.App.Image = tt.appImage
+			cfg.ProjectRoot = tt.projectRoot
 			got := cfg.ComposeProjectName()
 			if got != tt.want {
 				t.Errorf("ComposeProjectName() = %q, want %q", got, tt.want)
 			}
 		})
+	}
+}
+
+// TestComposeProjectName_DifferentDirs verifies two projects in different
+// directories produce different image names, preventing conflicts.
+//
+// Regression test for #1023.
+func TestComposeProjectName_DifferentDirs(t *testing.T) {
+	cfgA := &config.Config{}
+	cfgA.ProjectRoot = "/home/user/project-alpha"
+
+	cfgB := &config.Config{}
+	cfgB.ProjectRoot = "/home/user/project-beta"
+
+	nameA := cfgA.ComposeProjectName()
+	nameB := cfgB.ComposeProjectName()
+
+	if nameA == nameB {
+		t.Errorf("two different directories produced the same project name: %q", nameA)
+	}
+	if nameA != "project-alpha" {
+		t.Errorf("project-alpha: ComposeProjectName() = %q, want %q", nameA, "project-alpha")
+	}
+	if nameB != "project-beta" {
+		t.Errorf("project-beta: ComposeProjectName() = %q, want %q", nameB, "project-beta")
 	}
 }
 

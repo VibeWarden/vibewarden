@@ -131,9 +131,9 @@ func resolveImageTag(cfg *config.Config, workDir string) (string, error) {
 		if name != "" && name != "vibewarden" {
 			return name + "-app:latest", nil
 		}
-		// When ComposeProjectName() returns "vibewarden" (the fallback), it means
-		// neither name nor image is set. Fall through to directory-based derivation
-		// so the tag is project-specific rather than the generic fallback.
+		// When ComposeProjectName() returns "vibewarden" (the last-resort fallback),
+		// all three sources (name, image, and project directory) are empty. Fall
+		// through to workDir-based derivation.
 	}
 
 	abs, err := filepath.Abs(workDir)
