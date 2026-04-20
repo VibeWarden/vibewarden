@@ -95,6 +95,11 @@ type HeaderInjection struct {
 
 	// Header is the HTTP header name to set (e.g. "X-Internal-Token").
 	Header string
+
+	// ValueTemplate is an optional template string containing ${secret://path/key}
+	// placeholders. When set, the resolved template is used as the header value
+	// instead of the raw secret. When empty, the secret value is used directly.
+	ValueTemplate string
 }
 
 // EnvInjection maps a secret key to an environment variable name.
@@ -107,6 +112,11 @@ type EnvInjection struct {
 
 	// EnvVar is the environment variable name to write in the env file.
 	EnvVar string
+
+	// ValueTemplate is an optional template string containing ${secret://path/key}
+	// placeholders. When set, the resolved template is used as the env var value
+	// instead of the raw secret. When empty, the secret value is used directly.
+	ValueTemplate string
 }
 
 // DynamicConfig holds settings for dynamic credential generation.

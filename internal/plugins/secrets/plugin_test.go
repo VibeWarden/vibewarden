@@ -397,3 +397,102 @@ func TestPlugin_Meta(t *testing.T) {
 		t.Errorf("Example() does not mention openbao; got:\n%s", example)
 	}
 }
+
+func TestPlugin_ContributeCaddyHandlers_WithValueTemplate(t *testing.T) {
+	srv := newOpenBaoTestServer(t, map[string]map[string]string{
+		"app/auth": {"token": "my-secret-token"},
+	})
+	defer srv.Close()
+
+	p := secrets.New(secrets.Config{
+		Enabled: true,
+		Store:   "openbao",
+		OpenBao: secrets.OpenBaoConfig{
+			Address: srv.URL,
+			Auth:    secrets.OpenBaoAuthConfig{Method: "token", Token: "root"},
+		},
+		Inject: secrets.InjectConfig{
+			Headers: []secrets.HeaderInjection{
+				{
+					SecretPath:    "app/auth",
+					SecretKey:     "token",
+					Header:        "Authorization",
+					ValueTemplate: "Bearer ${secret://app/auth/token}",
+				},
+			},
+		},
+	}, nil, slog.Default())
+
+	if err := p.Init(context.Background()); err != nil {
+		t.Fatalf("Init() error = %v", err)
+	}
+
+	handlers := p.ContributeCaddyHandlers()
+	if len(handlers) != 1 {
+		t.Fatalf("ContributeCaddyHandlers() returned %d handlers, want 1", len(handlers))
+	}
+
+	h := handlers[0].Handler
+	req, ok := h["request"].(map[string]any)
+	if !ok {
+		t.Fatal("handler missing request field")
+	}
+	setMap, ok := req["set"].(map[string][]string)
+	if !ok {
+		t.Fatal("handler missing set field")
+	}
+
+	authValues, ok := setMap["Authorization"]
+	if !ok || len(authValues) != 1 {
+		t.Fatalf("Authorization header not set; set map = %v", setMap)
+	}
+
+	want := "Bearer my-secret-token"
+	if authValues[0] != want {
+		t.Errorf("Authorization header value = %q, want %q", authValues[0], want)
+	}
+}
+
+func TestPlugin_WriteEnvFile_WithValueTemplate(t *testing.T) {
+	envFile := filepath.Join(t.TempDir(), "secrets", ".env.secrets")
+
+	srv := newOpenBaoTestServer(t, map[string]map[string]string{
+		"app/db": {"password": "s3cr3t!", "user": "admin"},
+	})
+	defer srv.Close()
+
+	p := secrets.New(secrets.Config{
+		Enabled: true,
+		Store:   "openbao",
+		OpenBao: secrets.OpenBaoConfig{
+			Address: srv.URL,
+			Auth:    secrets.OpenBaoAuthConfig{Method: "token", Token: "root"},
+		},
+		Inject: secrets.InjectConfig{
+			EnvFile: envFile,
+			Env: []secrets.EnvInjection{
+				{
+					SecretPath:    "app/db",
+					SecretKey:     "password",
+					EnvVar:        "DATABASE_URL",
+					ValueTemplate: "postgres://${secret://app/db/user}:${secret://app/db/password}@host:5432/db",
+				},
+			},
+		},
+	}, nil, slog.Default())
+
+	if err := p.Init(context.Background()); err != nil {
+		t.Fatalf("Init() error = %v", err)
+	}
+
+	content, err := os.ReadFile(envFile)
+	if err != nil {
+		t.Fatalf("ReadFile(%q) error = %v", envFile, err)
+	}
+
+	envContent := string(content)
+	want := "DATABASE_URL=postgres://admin:s3cr3t!@host:5432/db"
+	if !strings.Contains(envContent, want) {
+		t.Errorf("env file does not contain %q; content:\n%s", want, envContent)
+	}
+}

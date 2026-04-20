@@ -13,6 +13,7 @@ import (
 	"github.com/vibewarden/vibewarden/internal/adapters/builtin"
 	"github.com/vibewarden/vibewarden/internal/adapters/openbao"
 	"github.com/vibewarden/vibewarden/internal/domain/events"
+	domainsecret "github.com/vibewarden/vibewarden/internal/domain/secret"
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
 
@@ -309,14 +310,17 @@ func (p *Plugin) ContributeCaddyHandlers() []ports.CaddyHandler {
 
 // buildRequestHeadersHandler creates a Caddy headers handler that injects
 // the current cached secret values as request headers.
+// When a header injection has a ValueTemplate, ${secret://...} placeholders
+// in the template are resolved from the cache and the result is used as the
+// header value. When ValueTemplate is empty, the direct secret value is used.
 func (p *Plugin) buildRequestHeadersHandler() map[string]any {
 	p.cacheMu.RLock()
 	defer p.cacheMu.RUnlock()
 
 	set := map[string][]string{}
 	for _, inj := range p.cfg.Inject.Headers {
-		cacheKey := cacheKeyFor(inj.SecretPath, inj.SecretKey)
-		if val, ok := p.cache[cacheKey]; ok && val != "" {
+		val := p.resolveInjectionValue(inj.SecretPath, inj.SecretKey, inj.ValueTemplate)
+		if val != "" {
 			set[inj.Header] = []string{val}
 		}
 	}
@@ -327,6 +331,37 @@ func (p *Plugin) buildRequestHeadersHandler() map[string]any {
 			"set": set,
 		},
 	}
+}
+
+// resolveInjectionValue returns the value to inject for a given secret
+// injection entry. When valueTemplate is non-empty, ${secret://...}
+// placeholders in the template are resolved from the cache. When empty,
+// the direct cached value for secretPath/secretKey is returned.
+//
+// Must be called with cacheMu held (at least RLock).
+func (p *Plugin) resolveInjectionValue(secretPath, secretKey, valueTemplate string) string {
+	if valueTemplate == "" {
+		cacheKey := cacheKeyFor(secretPath, secretKey)
+		val, ok := p.cache[cacheKey]
+		if !ok {
+			return ""
+		}
+		return val
+	}
+
+	// Resolve ${secret://...} placeholders in the template.
+	result := valueTemplate
+	placeholders := domainsecret.FindPlaceholders(valueTemplate)
+	for _, ph := range placeholders {
+		cacheKey := cacheKeyFor(ph.URI.Path(), ph.URI.Key())
+		val, ok := p.cache[cacheKey]
+		if !ok {
+			return "" // unresolvable placeholder — return empty
+		}
+		result = strings.Replace(result, ph.Raw, val, 1)
+	}
+	result = domainsecret.UnescapePlaceholders(result)
+	return result
 }
 
 // GetCachedSecret returns the cached value for the given path/key combination.
@@ -340,16 +375,23 @@ func (p *Plugin) GetCachedSecret(path, key string) (string, bool) {
 }
 
 // refreshCache fetches all secrets referenced by inject.headers and inject.env
-// and stores them in the in-memory cache. Non-fatal: missing secrets are logged
-// but do not block the refresh.
+// (including paths from ValueTemplate placeholders) and stores them in the
+// in-memory cache. Non-fatal: missing secrets are logged but do not block the
+// refresh.
 func (p *Plugin) refreshCache(ctx context.Context) error {
 	// Collect all unique paths to fetch.
 	paths := make(map[string]struct{})
 	for _, inj := range p.cfg.Inject.Headers {
 		paths[inj.SecretPath] = struct{}{}
+		for _, ph := range domainsecret.FindPlaceholders(inj.ValueTemplate) {
+			paths[ph.URI.Path()] = struct{}{}
+		}
 	}
 	for _, inj := range p.cfg.Inject.Env {
 		paths[inj.SecretPath] = struct{}{}
+		for _, ph := range domainsecret.FindPlaceholders(inj.ValueTemplate) {
+			paths[ph.URI.Path()] = struct{}{}
+		}
 	}
 
 	p.cacheMu.Lock()
@@ -433,8 +475,8 @@ func (p *Plugin) writeEnvFile() error {
 	// Static env injections.
 	p.cacheMu.RLock()
 	for _, inj := range p.cfg.Inject.Env {
-		cacheKey := cacheKeyFor(inj.SecretPath, inj.SecretKey)
-		if val, ok := p.cache[cacheKey]; ok {
+		val := p.resolveInjectionValue(inj.SecretPath, inj.SecretKey, inj.ValueTemplate)
+		if val != "" {
 			sb.WriteString(inj.EnvVar)
 			sb.WriteString("=")
 			sb.WriteString(val)

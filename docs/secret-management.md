@@ -369,7 +369,8 @@ dependency where the store would need to be available to configure itself.
 
 1. `config.LoadRaw()` reads and unmarshals the YAML (no validation).
 2. The secret store is constructed from `cfg.Secrets.*`.
-3. `config.ResolveSecrets()` walks all string fields and resolves `secret://` URIs.
+3. `config.ResolveSecrets()` walks all string fields and resolves `secret://` URIs,
+   `${secret://...}` composite placeholders, and unescapes `$${...}` sequences.
 4. `cfg.Validate()` validates the fully-resolved config.
 
 ### Error handling
@@ -381,6 +382,58 @@ includes the struct field path:
 ```
 config field Config.Admin.Token: resolving secret://admin/api/token: secret path "admin/api" not found in store
 ```
+
+### Composite values -- embedding secrets in strings
+
+Sometimes a secret is only part of a larger value, such as a database connection
+string or an authorization header. Use `${secret://path/key}` placeholders to
+embed secrets inside strings:
+
+```yaml
+app:
+  environment:
+    DATABASE_URL: "postgres://user:${secret://db/password}@host:5432/db"
+    AUTH_HEADER: "Bearer ${secret://auth/api/token}"
+```
+
+Multiple placeholders can appear in a single value:
+
+```yaml
+app:
+  environment:
+    DATABASE_URL: "postgres://${secret://db/user}:${secret://db/password}@host:5432/db"
+```
+
+The `secrets.inject` section also supports composite values via `value_template`:
+
+```yaml
+secrets:
+  inject:
+    headers:
+      - secret_path: app/auth
+        secret_key: token
+        header: Authorization
+        value_template: "Bearer ${secret://app/auth/token}"
+    env:
+      - secret_path: app/database
+        secret_key: password
+        env_var: DATABASE_URL
+        value_template: "postgres://user:${secret://app/database/password}@host:5432/db"
+```
+
+To include a literal `${secret://...}` string without resolution, escape it
+with a double dollar sign:
+
+```yaml
+app:
+  environment:
+    EXAMPLE: "literal $${secret://not/resolved}"
+    # Resolves to: literal ${secret://not/resolved}
+```
+
+Composite resolution follows the same fail-fast behavior as full-field
+resolution: if any placeholder cannot be resolved, VibeWarden refuses to start
+with a descriptive error.
 
 ---
 

@@ -252,6 +252,11 @@ Key sections:
 - `plugins.fleet` — opt-in telemetry to the Pro fleet dashboard
 - Any string field supports `secret://` URIs (e.g. `admin.token: secret://admin/api/token`).
   At load time, URIs are resolved from the encrypted secret store before validation.
+  For composite values, use `${secret://path/key}` placeholders inside strings
+  (e.g. `DATABASE_URL: "postgres://user:${secret://db/password}@host:5432/db"`).
+  Escape with `$${secret://...}` to produce a literal placeholder string.
+  The `secrets.inject.headers` and `secrets.inject.env` entries support a `value_template`
+  field for composite values (e.g. `value_template: "Bearer ${secret://app/auth/token}"`).
   Store secrets with `vibew secret set <path> <key>=<value>`.
   The `secrets.*` section itself cannot use `secret://` (bootstrap constraint).
 

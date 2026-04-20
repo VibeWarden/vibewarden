@@ -3,6 +3,7 @@ package secret
 import (
 	"errors"
 	"fmt"
+	"regexp"
 	"strings"
 )
 
@@ -73,4 +74,76 @@ func (u URI) Key() string { return u.key }
 // String returns the canonical string representation of the URI.
 func (u URI) String() string {
 	return secretURIPrefix + u.path + "/" + u.key
+}
+
+// placeholderRe matches ${secret://...} placeholders that are NOT preceded by
+// an extra $. A negative lookbehind is not available in Go's RE2, so
+// FindPlaceholders filters escaped matches manually.
+//
+// The regex captures the inner secret:// URI (everything between ${ and }).
+var placeholderRe = regexp.MustCompile(`\$\{(secret://[^}]+)\}`)
+
+// escapedPlaceholderRe matches $${secret://...} — escaped placeholders that
+// should be converted to their literal ${secret://...} form.
+var escapedPlaceholderRe = regexp.MustCompile(`\$\$\{(secret://[^}]+)\}`)
+
+// Placeholder represents a single ${secret://path/key} occurrence in a string.
+type Placeholder struct {
+	// Raw is the full matched text including the ${} delimiters.
+	Raw string
+
+	// URI is the parsed secret URI extracted from the placeholder.
+	URI URI
+}
+
+// ContainsPlaceholder reports whether s contains at least one
+// ${secret://...} placeholder that is not escaped with $${...}.
+func ContainsPlaceholder(s string) bool {
+	return len(FindPlaceholders(s)) > 0
+}
+
+// FindPlaceholders extracts all ${secret://...} placeholders from s.
+// Escaped placeholders ($${secret://...}) are not included in the result.
+// Returns nil when no unescaped placeholders are found.
+func FindPlaceholders(s string) []Placeholder {
+	matches := placeholderRe.FindAllStringSubmatchIndex(s, -1)
+	if len(matches) == 0 {
+		return nil
+	}
+
+	var result []Placeholder
+	for _, loc := range matches {
+		// loc[0] is the start of the full match (${secret://...})
+		// Check whether it is preceded by an extra $ (escaped).
+		if loc[0] > 0 && s[loc[0]-1] == '$' {
+			continue
+		}
+
+		raw := s[loc[0]:loc[1]]
+		inner := s[loc[2]:loc[3]]
+
+		uri, err := ParseURI(inner)
+		if err != nil {
+			// Malformed URI inside placeholder — skip silently so callers
+			// can validate later or report the error.
+			continue
+		}
+
+		result = append(result, Placeholder{Raw: raw, URI: uri})
+	}
+
+	return result
+}
+
+// ContainsEscapedPlaceholder reports whether s contains at least one
+// $${secret://...} escaped placeholder.
+func ContainsEscapedPlaceholder(s string) bool {
+	return escapedPlaceholderRe.MatchString(s)
+}
+
+// UnescapePlaceholders converts all $${secret://...} occurrences in s to
+// their literal ${secret://...} form. This allows users to include literal
+// placeholder text in config values without triggering resolution.
+func UnescapePlaceholders(s string) string {
+	return escapedPlaceholderRe.ReplaceAllString(s, `${$1}`)
 }
