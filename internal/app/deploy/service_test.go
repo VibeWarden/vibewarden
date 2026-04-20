@@ -1384,7 +1384,7 @@ func TestService_Deploy_HealthCheckAlwaysUsesLocalhost(t *testing.T) {
 				Server: config.ServerConfig{Port: 8443},
 				TLS:    config.TLSConfig{Enabled: true},
 			},
-			wantCurlCmd: "curl -sfk https://localhost:8443/_vibewarden/health",
+			wantCurlCmd: "curl -sfk https://localhost:8443/_vibewarden/health 2>/dev/null || curl -sf http://localhost:8443/_vibewarden/health",
 		},
 		{
 			name: "TLS enabled with domain uses HTTPS with -k on localhost",
@@ -1396,7 +1396,7 @@ func TestService_Deploy_HealthCheckAlwaysUsesLocalhost(t *testing.T) {
 					Domain:   "app.example.com",
 				},
 			},
-			wantCurlCmd: "curl -sfk https://localhost:443/_vibewarden/health",
+			wantCurlCmd: "curl -sfk https://localhost:443/_vibewarden/health 2>/dev/null || curl -sf http://localhost:443/_vibewarden/health",
 		},
 	}
 
