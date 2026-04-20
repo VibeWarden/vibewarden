@@ -141,6 +141,22 @@ make observability-down   # Tear down
 
 See [`docs/observability.md`](docs/observability.md) for details.
 
+## Diagram Conventions
+
+Use **Mermaid** fenced code blocks (` ```mermaid `) for branching or
+multi-component diagrams (architecture overviews, fan-out routing, data flows
+with multiple paths).
+
+Keep **ASCII** for:
+
+- Linear flows (single vertical or horizontal pipe)
+- Directory trees
+- CLI output samples and terminal snippets
+
+When adding a Mermaid diagram, use default styling (no custom colors or themes)
+unless the context explicitly requires it. Verify the diagram renders correctly
+with `mkdocs serve` or a Mermaid preview tool before submitting.
+
 ## Makefile Targets
 
 | Target | Description |

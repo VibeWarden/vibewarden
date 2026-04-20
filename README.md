@@ -131,31 +131,37 @@ Do not edit generated files — re-run `vibew generate` after changing `vibeward
 
 ## How It Works
 
+**Ingress (inbound traffic):**
+
+```mermaid
+flowchart LR
+    Internet --> VW
+    subgraph VW["VibeWarden :8443"]
+        TLS["TLS termination"]
+        Auth["Auth (JWT / Kratos)"]
+        RL["Rate limiting"]
+        WAF["WAF"]
+        SH["Security headers"]
+        Audit["Audit trail"]
+    end
+    VW --> App["Your App :3000"]
 ```
-                          INGRESS (inbound traffic)
 
-  Internet ──────►  VibeWarden  :8443 (HTTPS)  ──────►  Your App  :3000
-                    │                         │
-                    │  TLS termination        │
-                    │  Auth (JWT / Kratos)    │
-                    │  Rate limiting          │
-                    │  WAF                    │
-                    │  Security headers       │
-                    │  Audit trail            │
-                    └─────────────────────────┘
+**Egress (outbound traffic):**
 
-                          EGRESS (outbound traffic)
-
-  Your App  :3000  ──────►  VibeWarden  :8081  ──────►  External APIs
-                            │                         │
-                            │  Route allowlist        │
-                            │  SSRF protection        │
-                            │  Secret injection       │
-                            │  TLS enforcement        │
-                            │  Circuit breaker        │
-                            │  Rate limiting          │
-                            │  PII redaction          │
-                            └─────────────────────────┘
+```mermaid
+flowchart LR
+    App["Your App :3000"] --> VW
+    subgraph VW["VibeWarden :8081"]
+        Allow["Route allowlist"]
+        SSRF["SSRF protection"]
+        Secret["Secret injection"]
+        TLS["TLS enforcement"]
+        CB["Circuit breaker"]
+        RL["Rate limiting"]
+        PII["PII redaction"]
+    end
+    VW --> APIs["External APIs"]
 ```
 
 VibeWarden is a local sidecar — it always runs on the same machine as your app.

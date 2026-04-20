@@ -28,12 +28,17 @@ There is no config merging. Each app's `vibewarden.yaml` is copied as-is to a
 per-site directory on the server. The sidecar reads all site configs and
 generates one Caddy route block per app, with host-based routing.
 
-```
-                    +----------------------------------+
-  app1.example.com -->|                                  |--> app1 container :3000
-  app2.example.com -->|  Single VibeWarden sidecar       |--> app2 container :8080
-  app3.example.com -->|  TLS + routing + per-app config  |--> app3 container :3000
-                    +----------------------------------+
+```mermaid
+flowchart LR
+    A1["app1.example.com"] --> VW
+    A2["app2.example.com"] --> VW
+    A3["app3.example.com"] --> VW
+    subgraph VW["VibeWarden sidecar"]
+        TLS["TLS + routing + per-app config"]
+    end
+    VW --> C1["app1 container :3000"]
+    VW --> C2["app2 container :8080"]
+    VW --> C3["app3 container :3000"]
 ```
 
 ---
