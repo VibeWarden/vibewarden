@@ -269,8 +269,11 @@ func (s *Service) Deploy(ctx context.Context, cfg *config.Config, opts RunOption
 	healthURL := healthCheckURL(port, healthCfg.TLS.Enabled)
 	fmt.Fprintf(out, "Waiting for sidecar health check at %s (via SSH)...\n", healthURL)
 	if !s.waitHealthy(ctx, port, healthCfg.TLS.Enabled, out) {
-		fmt.Fprintln(out, "Deploy completed but health check failed — verify with: vibew deploy status")
-		return ErrHealthCheck
+		fmt.Fprintln(out, "Deploy completed but health check failed — running diagnostics...")
+		diagnostic := s.diagnoseHealthFailure(ctx, remoteDir, port, healthCfg.TLS.Enabled)
+		fmt.Fprint(out, "\n")
+		fmt.Fprint(out, FormatDiagnostic(diagnostic))
+		return &HealthCheckError{Diagnostic: diagnostic}
 	}
 
 	fmt.Fprintln(out, "Deploy complete.")
