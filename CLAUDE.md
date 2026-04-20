@@ -137,15 +137,29 @@ decisions/              # ADRs — one file per decision (see decisions/README.m
 The standard flow for any GitHub issue:
 
 ```
-PM Agent → Architect Agent → Dev Agent → Reviewer Agent → (your PR review) → repeat until merged
+PM Agent → Architect Agent → Dev Agent → Reviewer Agent + Writer Agent → (your PR review) → merge
 ```
 
-Status values used in `DECISIONS.md` and issue comments:
+### BLOCKING: Dual review on every PR
+
+Every PR MUST be reviewed by BOTH agents before merge:
+- **Reviewer Agent** — code quality, architecture, tests, security, licenses
+- **Writer Agent** (PR review mode) — documentation consistency with code changes
+
+Run both in parallel after the dev agent opens the PR. A PR cannot be merged
+until both approve. If either requests changes, the dev agent fixes and both
+re-review.
+
+This is NOT optional. Docs-runtime drift is the #1 source of agent failures.
+Three retrospectives confirmed this. The writer agent is the enforcement mechanism.
+
+### Status values
+
 - `READY_FOR_ARCH` — PM done, architect should pick up
 - `READY_FOR_DEV` — Architect done, dev should pick up
-- `READY_FOR_REVIEW` — Dev done, reviewer should pick up
-- `CHANGES_REQUESTED` — Reviewer or human requested changes
-- `APPROVED` — Ready to merge
+- `READY_FOR_REVIEW` — Dev done, reviewer + writer should pick up
+- `CHANGES_REQUESTED` — Reviewer or writer requested changes
+- `APPROVED` — Both reviewer and writer approved, ready to merge
 
 ---
 
