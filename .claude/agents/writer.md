@@ -141,6 +141,26 @@ gh pr review <number> --repo vibewarden/vibewarden \
   --body "Documentation review: docs consistent with code changes."
 ```
 
+When re-reviewing after fixes, **resolve all open review threads** that were
+addressed by the new commits before approving:
+
+```bash
+# List unresolved threads
+gh api graphql -f query='
+{
+  repository(owner: "vibewarden", name: "vibewarden") {
+    pullRequest(number: <number>) {
+      reviewThreads(first: 50) {
+        nodes { id isResolved }
+      }
+    }
+  }
+}' --jq '.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved == false) | .id'
+
+# Resolve each thread
+gh api graphql -f query='mutation { resolveReviewThread(input: {threadId: "<id>"}) { thread { isResolved } } }'
+```
+
 ## What you must NOT do
 
 - Do not read internal Go code — you document the user-facing surface

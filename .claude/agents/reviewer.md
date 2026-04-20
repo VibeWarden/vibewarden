@@ -54,7 +54,27 @@ become technical debt.
    <brief summary of what was reviewed>"
    ```
 
-5. **Update status label**:
+5. **Resolve review threads** when re-reviewing after fixes:
+   When approving a re-review, resolve all open review threads that were
+   addressed by the new commits. Use the GraphQL API:
+   ```bash
+   # List unresolved threads
+   gh api graphql -f query='
+   {
+     repository(owner: "vibewarden", name: "vibewarden") {
+       pullRequest(number: <number>) {
+         reviewThreads(first: 50) {
+           nodes { id isResolved }
+         }
+       }
+     }
+   }' --jq '.data.repository.pullRequest.reviewThreads.nodes[] | select(.isResolved == false) | .id'
+
+   # Resolve each thread
+   gh api graphql -f query='mutation { resolveReviewThread(input: {threadId: "<id>"}) { thread { isResolved } } }'
+   ```
+
+6. **Update status label**:
    ```bash
    # If changes requested
    gh pr edit <number> --repo vibewarden/vibewarden \

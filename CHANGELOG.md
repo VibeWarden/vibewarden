@@ -14,6 +14,49 @@ This initial entry was written by hand to summarise the work leading up to v0.1.
 
 ---
 
+## [v0.14.0] — 2026-04-20
+
+### Features
+
+- **Role-based access control (RBAC)** via Kratos identity traits (#985, #1019).
+  `X-User-Role` header set on all authenticated requests. Optional `auth.role_paths`
+  config for path-based enforcement with HTTP 403 JSON responses.
+- **Optional auth on public paths** (#984, #1017). Public paths now check session
+  cookies and inject identity headers (`X-User-Id`, `X-User-Email`, `X-User-Verified`,
+  `X-User-Role`) when a valid session exists — without blocking or redirecting.
+- **Composite secret placeholders** (#994, #1020). Embed secrets in strings with
+  `${secret://path/key}` syntax. Supports multiple placeholders per value,
+  `value_template` on inject entries, and `$${...}` escaping for literal output.
+- **`secret://` URI resolution in config** (#1008, #1014). Any string field in
+  `vibewarden.yaml` supports `secret://path/key` URIs, resolved from the encrypted
+  store at config load time.
+
+### Improvements
+
+- Consolidated CI: Build, Test, and Coverage merged into single "Build & Test" job (#1015).
+- Pipeline status tracked via GitHub labels instead of comments (#1013).
+- Dual review pipeline enforced: Reviewer + Writer agents review every PR (#1010, #1011, #1012).
+- Reviewer and writer agents post inline PR comments and resolve threads on re-approval.
+- Documentation diagrams migrated from ASCII to Mermaid (#1004, #1016).
+
+### Fixes
+
+- CSP inline styles and health check HTTP fallback during ACME cert acquisition (#1007).
+- Preserve `.env` and `.credentials` on redeploy (#991, #992, #1005).
+- Kratos URLs use `tls.domain` instead of localhost in production (#990).
+- Kratos `ui_url` uses HTTPS when TLS is enabled (#982).
+- File/directory permissions fixed to 644/755 for container readability (#988, #989).
+- Deploy config merge order and OpenBao bootstrap check (#986, #987).
+- `vibew add tls --domain` creates production YAML when missing (#986).
+
+### Dependencies
+
+- Bump `golang.org/x/crypto` to 0.50.0
+- Bump `pgx/v5` to 5.9.2
+- Bump `go-viper/mapstructure/v2` to 2.5.0
+
+---
+
 ## [v0.13.1] — 2026-04-19
 
 ### Features
