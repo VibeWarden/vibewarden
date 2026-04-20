@@ -230,10 +230,33 @@ func extractVerified(whoami *kratosWhoamiResponse) bool {
 	return false
 }
 
+// setIdentityHeaders injects X-User-Id, X-User-Email, and X-User-Verified
+// headers into the request based on the Kratos whoami response.
+func setIdentityHeaders(r *http.Request, whoami *kratosWhoamiResponse) {
+	if whoami.Identity.ID != "" {
+		r.Header.Set("X-User-Id", whoami.Identity.ID)
+	}
+	if email := extractEmail(whoami); email != "" {
+		r.Header.Set("X-User-Email", email)
+	}
+	if extractVerified(whoami) {
+		r.Header.Set("X-User-Verified", "true")
+	} else {
+		r.Header.Set("X-User-Verified", "false")
+	}
+}
+
 // ServeHTTP implements caddyhttp.MiddlewareHandler.
 func (h *AuthHandler) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddyhttp.Handler) error {
-	// Skip public paths.
+	// Public paths: optional auth — check session if cookie present, set
+	// headers if valid, but never redirect or block the request.
 	if h.isPublicPath(r.URL.Path) {
+		if cookie, err := r.Cookie(h.Config.CookieName); err == nil {
+			if whoami, err := h.callWhoami(r.Context(), cookie.Value); err == nil {
+				setIdentityHeaders(r, whoami)
+			}
+			// If whoami fails, proceed without headers (don't redirect, don't error).
+		}
 		return next.ServeHTTP(w, r)
 	}
 
@@ -257,17 +280,7 @@ func (h *AuthHandler) ServeHTTP(w http.ResponseWriter, r *http.Request, next cad
 	}
 
 	// Set identity headers for the upstream app.
-	if whoami.Identity.ID != "" {
-		r.Header.Set("X-User-Id", whoami.Identity.ID)
-	}
-	if email := extractEmail(whoami); email != "" {
-		r.Header.Set("X-User-Email", email)
-	}
-	if extractVerified(whoami) {
-		r.Header.Set("X-User-Verified", "true")
-	} else {
-		r.Header.Set("X-User-Verified", "false")
-	}
+	setIdentityHeaders(r, whoami)
 
 	return next.ServeHTTP(w, r)
 }
