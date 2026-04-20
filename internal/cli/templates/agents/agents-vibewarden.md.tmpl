@@ -35,6 +35,10 @@ When auth is enabled, read user identity from these headers:
 - `X-User-Email` — user email
 - `X-User-Verified` — email verification status ("true"/"false")
 
+On public paths (`auth.public_paths`), these headers are set when a valid session
+cookie is present but are absent for anonymous visitors. Your app code should
+treat them as optional on public paths and required on protected paths.
+
 ## Architecture
 
 This project follows hexagonal architecture (ports and adapters):
