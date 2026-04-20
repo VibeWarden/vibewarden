@@ -13,6 +13,8 @@ import (
 
 	gocaddy "github.com/caddyserver/caddy/v2"
 	"github.com/caddyserver/caddy/v2/modules/caddyhttp"
+
+	"github.com/vibewarden/vibewarden/internal/domain/identity"
 )
 
 func init() {
@@ -251,17 +253,27 @@ func setIdentityHeaders(r *http.Request, whoami *kratosWhoamiResponse) {
 	}
 }
 
-// extractRole extracts the role string from the Kratos whoami response.
-// It looks for traits.role and returns "user" as the default when the trait
-// is absent or not a string.
-func extractRole(whoami *kratosWhoamiResponse) string {
+// extractRole extracts the role string from the Kratos whoami response and
+// validates it via identity.NewRole. It returns identity.DefaultRole ("user")
+// when the trait is absent, not a string, or not a recognised role value.
+// When an unrecognised role value is encountered, a warning is logged.
+func extractRole(whoami *kratosWhoamiResponse, logger *slog.Logger) identity.Role {
 	raw, ok := whoami.Identity.Traits["role"]
 	if !ok {
-		return "user"
+		return identity.DefaultRole()
 	}
-	role, ok := raw.(string)
-	if !ok || role == "" {
-		return "user"
+	roleStr, ok := raw.(string)
+	if !ok || roleStr == "" {
+		return identity.DefaultRole()
+	}
+	role, err := identity.NewRole(roleStr)
+	if err != nil {
+		logger.Warn("authentication: ignoring invalid role from identity traits",
+			slog.String("role", roleStr),
+			slog.String("identity_id", whoami.Identity.ID),
+			slog.String("error", err.Error()),
+		)
+		return identity.DefaultRole()
 	}
 	return role
 }
@@ -326,14 +338,16 @@ func (h *AuthHandler) ServeHTTP(w http.ResponseWriter, r *http.Request, next cad
 	// Set identity headers for the upstream app.
 	setIdentityHeaders(r, whoami)
 
-	// Always set the role header from traits.
-	role := extractRole(whoami)
-	r.Header.Set("X-User-Role", role)
+	// Always set the role header from traits. extractRole validates the
+	// role value through the domain layer; invalid values are logged as
+	// warnings and the default ("user") is used instead.
+	role := extractRole(whoami, h.logger)
+	r.Header.Set("X-User-Role", role.String())
 
 	// Enforce role-based path restrictions when configured.
 	if len(h.Config.RolePaths) > 0 {
 		if requiredRole, ok := h.matchRequiredRole(r.URL.Path); ok {
-			if role != requiredRole {
+			if role.String() != requiredRole {
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(http.StatusForbidden)
 				_, _ = w.Write([]byte(`{"error":"forbidden","message":"insufficient role for this path"}`))

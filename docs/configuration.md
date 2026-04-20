@@ -126,6 +126,7 @@ tls:
 | `auth.login_url` | string | `/self-service/login/browser` | Redirect for unauthenticated users |
 | `auth.on_kratos_unavailable` | string | `503` | Behavior when Kratos is unreachable: `503` or `allow_public` |
 | `auth.identity_schema` | string | `email_password` | Identity schema: `email_password`, `email_only`, `username_password`, `social`, or a file path |
+| `auth.role_paths` | map | `{}` | Maps role names (`user`, `admin`, `moderator`) to URL path patterns requiring that role. Users whose Kratos `role` trait does not match receive HTTP 403. Only valid when `auth.mode` is `kratos`. When empty, no role enforcement is performed but `X-User-Role` is still set |
 
 ### `auth.jwt`
 

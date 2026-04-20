@@ -344,7 +344,7 @@ auth:
 
   # List of URL path glob patterns that bypass authentication entirely.
   # The /_vibewarden/* prefix is always public (health check etc.).
-  # Add your app's public routes here; supports * for single-segment wildcards.
+  # Add your app's public routes here. A trailing /* does prefix matching (e.g. /static/* matches /static/foo/bar).
   # Example:
   #   public_paths:
   #     - "/static/*"
@@ -373,7 +373,7 @@ auth:
   # the X-User-Role header is still set for the upstream app to use.
   #
   # Accepted roles: user, admin, moderator (matches the identity schema trait).
-  # Supports * for single-segment wildcards.
+  # A trailing /* does prefix matching (e.g. /admin/* matches /admin/users/edit).
   #
   # Example:
   #   role_paths:
@@ -507,7 +507,7 @@ rate_limit:
 
   # URL path glob patterns that bypass rate limiting entirely.
   # The /_vibewarden/* prefix (health check etc.) is always exempt.
-  # Supports * for single-segment wildcards (e.g. "/static/*").
+  # A trailing /* does prefix matching (e.g. "/static/*" matches "/static/css/main.css").
   # Example:
   #   exempt_paths:
   #     - "/public/*"

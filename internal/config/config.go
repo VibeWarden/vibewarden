@@ -10,6 +10,8 @@ import (
 	"time"
 
 	"github.com/spf13/viper"
+
+	"github.com/vibewarden/vibewarden/internal/domain/identity"
 )
 
 // hexColorRE matches valid CSS hex color values: #RGB or #RRGGBB.
@@ -1808,9 +1810,9 @@ func (c *Config) Validate() error {
 		errs = append(errs, "auth.role_paths is only valid when auth.mode is \"kratos\"")
 	}
 	// Validate that role names in role_paths are recognised values.
-	validRoleNames := map[string]bool{"user": true, "admin": true, "moderator": true}
+	// Delegates to identity.NewRole to keep the valid-role list in one place.
 	for roleName, paths := range c.Auth.RolePaths {
-		if !validRoleNames[roleName] {
+		if _, err := identity.NewRole(roleName); err != nil {
 			errs = append(errs, fmt.Sprintf(
 				"auth.role_paths: role %q is invalid; accepted values: user, admin, moderator",
 				roleName,
