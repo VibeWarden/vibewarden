@@ -52,9 +52,9 @@ Examples:
 				return err
 			}
 
-			cfg, err := config.Load(configPath)
+			cfg, err := loadAndResolve(cmd.Context(), configPath)
 			if err != nil {
-				return fmt.Errorf("loading config: %w", err)
+				return err
 			}
 
 			renderer := templateadapter.NewRenderer(configtemplates.FS)

@@ -2241,9 +2241,12 @@ func validateRedisURL(s string) error {
 // Environment variables override file values using VIBEWARDEN_ prefix.
 // Example: VIBEWARDEN_SERVER_PORT=9090 overrides server.port.
 func Load(configPath string) (*Config, error) {
-	v := viper.New()
+	return loadInternal(configPath, true)
+}
 
-	// Set defaults
+// setDefaults applies all viper defaults for every config key. This function
+// is called by loadInternal and shared between Load and LoadRaw.
+func setDefaults(v *viper.Viper) {
 	v.SetDefault("name", "")
 	v.SetDefault("profile", "dev")
 	v.SetDefault("server.host", "127.0.0.1")
@@ -2413,70 +2416,6 @@ func Load(configPath string) (*Config, error) {
 	v.SetDefault("compression.algorithms", []string{"zstd", "gzip"})
 	v.SetDefault("watch.enabled", true)
 	v.SetDefault("watch.debounce", "500ms")
-
-	// Config file
-	if configPath != "" {
-		v.SetConfigFile(configPath)
-	} else {
-		v.SetConfigName("vibewarden")
-		v.SetConfigType("yaml")
-		v.AddConfigPath(".")
-		v.AddConfigPath("/etc/vibewarden")
-	}
-
-	// Environment variables
-	v.SetEnvPrefix("VIBEWARDEN")
-	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
-	v.AutomaticEnv()
-
-	// Read config file (ignore "not found" error — env vars may be sufficient)
-	if err := v.ReadInConfig(); err != nil {
-		if _, ok := err.(viper.ConfigFileNotFoundError); !ok {
-			return nil, fmt.Errorf("reading config file: %w", err)
-		}
-	}
-
-	// Reject removed keys before unmarshal. auth.enabled was removed in
-	// v0.11.0 per ADR-065; any presence of the key — even auth.enabled:
-	// false — must fail loading with a message that names the replacement
-	// inline. The raw YAML map is inspected here rather than on the
-	// unmarshalled struct because once AuthConfig.Enabled is gone the
-	// struct cannot distinguish "user set false" from "user omitted".
-	if err := rejectRemovedAuthEnabled(v); err != nil {
-		return nil, err
-	}
-
-	var cfg Config
-	if err := v.Unmarshal(&cfg); err != nil {
-		return nil, fmt.Errorf("unmarshaling config: %w", err)
-	}
-
-	// Apply conditional defaults that depend on the values of other fields.
-	// These cannot be expressed via viper.SetDefault because they depend on
-	// the final resolved value of another key.
-
-	// Normalise "acme" to "letsencrypt". "acme" is a user-friendly alias that
-	// matches the underlying protocol name; both refer to the same behaviour.
-	// Normalising here means all downstream code (Caddy adapter, cert monitor,
-	// etc.) only needs to handle the canonical value "letsencrypt".
-	if cfg.TLS.Provider == "acme" {
-		cfg.TLS.Provider = "letsencrypt"
-	}
-
-	// When the TLS provider is letsencrypt and storage_path is not set by the
-	// user, default to Caddy's standard storage path when running as root
-	// inside Docker (/root/.local/share/caddy). This suppresses the
-	// "storage_path is required for certificate monitoring" warning for the
-	// common deployment case.
-	if cfg.TLS.Provider == "letsencrypt" && cfg.TLS.StoragePath == "" {
-		cfg.TLS.StoragePath = "/root/.local/share/caddy"
-	}
-
-	if err := cfg.Validate(); err != nil {
-		return nil, fmt.Errorf("invalid config: %w", err)
-	}
-
-	return &cfg, nil
 }
 
 // rejectRemovedAuthEnabled returns a load-time error when the user's YAML

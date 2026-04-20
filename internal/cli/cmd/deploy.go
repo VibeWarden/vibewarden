@@ -88,9 +88,9 @@ Examples:
 				envName = "production"
 			}
 
-			cfg, err := config.Load(configPath)
+			cfg, err := loadAndResolve(cmd.Context(), configPath)
 			if err != nil {
-				return fmt.Errorf("loading config: %w", err)
+				return err
 			}
 
 			// Resolve the config path to an absolute path. When --config is
@@ -156,7 +156,7 @@ Examples:
 			// to false" for booleans, so we read the raw YAML map.
 			secretsEnabled := cfg.Secrets.Enabled
 			if prodConfigPath != "" {
-				if data, readErr := os.ReadFile(prodConfigPath); readErr == nil { //nolint:gosec // CLI-user-provided prod-config path
+				if data, readErr := os.ReadFile(prodConfigPath); readErr == nil { //nolint:gosec // prodConfigPath is derived from trusted config
 					var m map[string]any
 					if yaml.Unmarshal(data, &m) == nil {
 						if secrets, ok := m["secrets"].(map[string]any); ok {
@@ -183,16 +183,13 @@ Examples:
 				}
 				if result.UnsealKey != "" {
 					fmt.Fprintln(cmd.OutOrStdout())
-					fmt.Fprintln(cmd.OutOrStdout(), "=======================================================")
 					fmt.Fprintln(cmd.OutOrStdout(), "  IMPORTANT: Save your OpenBao unseal key now!")
 					fmt.Fprintln(cmd.OutOrStdout(), "  You will need it to unseal OpenBao after a restart.")
 					fmt.Fprintln(cmd.OutOrStdout(), "  This key will NOT be shown again.")
-					fmt.Fprintln(cmd.OutOrStdout(), "=======================================================")
 					fmt.Fprintf(cmd.OutOrStdout(), "  Unseal Key : %s\n", result.UnsealKey)
 					fmt.Fprintf(cmd.OutOrStdout(), "  Root Token : %s\n", result.RootToken)
 					fmt.Fprintf(cmd.OutOrStdout(), "  Role ID    : %s\n", result.RoleID)
 					fmt.Fprintf(cmd.OutOrStdout(), "  Secret ID  : %s\n", result.SecretID)
-					fmt.Fprintln(cmd.OutOrStdout(), "=======================================================")
 					fmt.Fprintln(cmd.OutOrStdout())
 				}
 			}

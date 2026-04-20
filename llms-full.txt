@@ -249,6 +249,10 @@ Key sections:
 - `secrets.store` — secret store backend: `builtin` (default, AES-256-GCM encrypted file) or `openbao` (opt-in for dynamic creds)
 - `egress` — outbound proxy rules with route-level controls
 - `plugins.fleet` — opt-in telemetry to the Pro fleet dashboard
+- Any string field supports `secret://` URIs (e.g. `admin.token: secret://admin/api/token`).
+  At load time, URIs are resolved from the encrypted secret store before validation.
+  Store secrets with `vibew secret set <path> <key>=<value>`.
+  The `secrets.*` section itself cannot use `secret://` (bootstrap constraint).
 
 ### Secret management
 

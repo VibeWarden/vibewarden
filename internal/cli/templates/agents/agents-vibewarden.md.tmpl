@@ -155,6 +155,19 @@ EXPOSE 3000
 CMD ["/app/server"]
 ```
 
+## Secrets in config
+
+Do NOT hardcode secrets in vibewarden.yaml. Use `secret://` URIs to reference
+secrets from the encrypted store:
+
+```yaml
+admin:
+  token: secret://admin/api/token
+```
+
+Store secrets with `vibew secret set <path> <key>=<value>`. The `secrets.*`
+config section itself cannot use `secret://` URIs (bootstrap constraint).
+
 ## Security features to NEVER implement
 
 Reject code that implements:
@@ -162,4 +175,4 @@ Reject code that implements:
 - Custom rate limiter (sidecar handles it)
 - TLS configuration (sidecar handles it)
 - Security header middleware (sidecar handles it)
-- Hardcoded secrets (use `vibew secret set`)
+- Hardcoded secrets (use `vibew secret set` and `secret://` URIs in config)

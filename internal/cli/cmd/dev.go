@@ -12,7 +12,6 @@ import (
 	templateadapter "github.com/vibewarden/vibewarden/internal/adapters/template"
 	generateapp "github.com/vibewarden/vibewarden/internal/app/generate"
 	opsapp "github.com/vibewarden/vibewarden/internal/app/ops"
-	"github.com/vibewarden/vibewarden/internal/config"
 	configtemplates "github.com/vibewarden/vibewarden/internal/config/templates"
 	"github.com/vibewarden/vibewarden/internal/domain/scaffold"
 )
@@ -62,9 +61,9 @@ Examples:
 				return err
 			}
 
-			cfg, err := config.Load(configPath)
+			cfg, err := loadAndResolve(cmd.Context(), configPath)
 			if err != nil {
-				return fmt.Errorf("loading config: %w", err)
+				return err
 			}
 
 			compose := opsadapter.NewComposeAdapter()

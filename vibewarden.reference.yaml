@@ -18,6 +18,28 @@
 # server.port.
 #
 # Full reference docs: https://vibewarden.dev/docs/vibewarden/configuration/
+#
+# Any string field supports secret:// URIs that resolve from the encrypted
+# secret store at config load time. This keeps plaintext secrets out of YAML.
+#
+# URI format: secret://path/key
+#   - path:  the secret store path (everything before the last segment)
+#   - key:   the individual key within that path (the last segment)
+#
+# Examples:
+#   admin:
+#     token: secret://admin/api/token
+#   auth:
+#     jwt:
+#       audience: secret://auth/jwt/audience
+#   database:
+#     external_url: secret://infra/db/connection_string
+#
+# Store secrets with:
+#   vibew secret set auth/google client_id=xxx client_secret=xxx
+#
+# The secrets.* config section itself cannot use secret:// URIs because the
+# secret store is bootstrapped from that section (see ADR-076).
 
 # Database configuration
 #
