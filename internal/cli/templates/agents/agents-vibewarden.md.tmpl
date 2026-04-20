@@ -63,6 +63,8 @@ vibew dev --watch  # Start with hot reload
 vibew restart      # Restart without full rebuild
 vibew status       # Check component health
 vibew doctor       # Diagnose issues
+vibew doctor --target ssh://user@host  # Include production checks
+vibew tls status --domain example.com --target ssh://user@host  # Inspect remote TLS cert
 ```
 
 Access the app at https://localhost:8443 (through the sidecar). Never expose the
@@ -75,10 +77,14 @@ app port directly — it has no security.
 | `vibew dev` | Start dev environment |
 | `vibew dev --watch` | Start with file watching |
 | `vibew build` | Build Docker image |
+| `vibew build --platform linux/amd64` | Build for a specific architecture |
+| `vibew deploy --target ssh://user@host` | Deploy to remote server |
 | `vibew restart` | Restart containers |
 | `vibew status` | Show component health |
 | `vibew logs` | Tail logs |
 | `vibew doctor` | Diagnose issues |
+| `vibew doctor --target ssh://user@host` | Diagnose including production checks |
+| `vibew tls status --domain x --target y` | Inspect remote TLS certificate |
 | `vibew token` | Generate dev JWT |
 | `vibew secret get/set/list` | Manage secrets |
 | `vibew cert export` | Export TLS certificate |
@@ -135,6 +141,66 @@ Key rules:
   production override, not the base config.
 - If Let's Encrypt is rate-limited, set `tls.acme_ca` to use an alternative CA:
   `acme_ca: "https://acme.zerossl.com/v2/DV90"` (ZeroSSL, free, separate rate limits).
+
+## Image tag convention
+
+`vibew build` tags the image as `<project>-app:latest`. The project name is
+resolved in this order:
+
+1. `name` field in vibewarden.yaml (explicit)
+2. `app.image` with registry prefix and tag stripped (e.g. `ghcr.io/org/myapp:latest` → `myapp`)
+3. Directory name containing vibewarden.yaml (fallback)
+
+For example, a project in `~/code/mysite` with no explicit `name` produces the
+image `mysite-app:latest`. This tag must match what Docker Compose expects for
+the app service.
+
+## TLS configuration keys
+
+These keys live under the `tls` section in vibewarden.yaml (or
+vibewarden.production.yaml for prod-only values):
+
+| Key | Values | What vibew does with it |
+|-----|--------|------------------------|
+| `tls.provider` | `letsencrypt` (alias: `acme`), `self-signed`, `external` | Selects the TLS provisioning strategy. `letsencrypt` uses ACME automation; `self-signed` generates a dev cert; `external` expects you to supply cert files. |
+| `tls.email` | ACME account email | Registered with the CA for expiry warnings. Required by ZeroSSL; optional for Let's Encrypt. |
+| `tls.acme_ca` | ACME directory URL | Overrides the default Let's Encrypt production CA. Use `https://acme.zerossl.com/v2/DV90` for ZeroSSL or the LE staging URL for testing. |
+| `tls.domain` | FQDN (e.g. `app.example.com`) | The domain for the TLS certificate. Required when provider is `letsencrypt`. Used for DNS checks by `vibew doctor`. |
+| `tls.cert_path` | File path to PEM certificate | Only used when provider is `external`. The sidecar reads this file on startup. |
+| `tls.key_path` | File path to PEM private key | Only used when provider is `external`. Must match `cert_path`. |
+
+## Deploying to a VPS
+
+### Automated (recommended)
+
+```bash
+vibew build --platform linux/amd64   # build for the target architecture
+vibew deploy --target ssh://user@host --config vibewarden.prod.yaml
+```
+
+`vibew deploy` handles image transfer, config generation, and container startup
+in a single command.
+
+### Manual fallback
+
+When `vibew deploy` fails or you need more control, use standard commands:
+
+```bash
+# 1. Build for the target architecture
+vibew build --platform linux/amd64
+
+# 2. Transfer the image via SSH
+docker save <project>-app:latest | ssh user@host docker load
+
+# 3. Copy the deploy bundle (config, compose files)
+rsync -az .vibewarden/deploy/production/ user@host:~/vibewarden/<project>/
+
+# 4. Start the stack on the remote
+ssh user@host 'cd ~/vibewarden/<project> && docker compose up -d'
+```
+
+Each of these commands produces standard error messages that are searchable --
+use them as a plan B when debugging deploy issues.
 
 ## Writing your Dockerfile
 

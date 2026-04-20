@@ -81,11 +81,23 @@ vibew add tls --domain example.com
 ## Troubleshooting
 
 ```bash
-vibew doctor       # diagnose common issues
-vibew doctor --json  # machine-readable output for AI agents
-vibew status       # check sidecar health
-vibew logs         # pretty-print structured logs
+vibew doctor             # diagnose common issues
+vibew doctor --json      # machine-readable output for AI agents
+vibew doctor --target ssh://user@host  # include production reachability checks
+vibew tls status --domain example.com --target ssh://user@host  # inspect remote TLS cert
+vibew status             # check sidecar health
+vibew logs               # pretty-print structured logs
 ```
+
+`vibew doctor` checks (in order): config validity, Docker daemon, Docker Compose,
+proxy port availability, generated files, container health, ACME email, image tag
+consistency, upstream reachability, local TLS cert validity. When `--target` is
+provided it also checks SSH connectivity, architecture compatibility, remote
+container health, DNS resolution, and remote TLS certificate expiry.
+
+`vibew tls status` connects to the remote host via SSH, inspects the TLS
+certificate with openssl, and reports subject, issuer, validity, SANs, and
+expiry status (OK / WARNING / CRITICAL / EXPIRED).
 
 ## Writing your Dockerfile
 
@@ -117,6 +129,33 @@ EXPOSE 3000
 CMD ["/app/server"]
 ```
 
+## Image tag convention
+
+`vibew build` tags the image as `<project>-app:latest`. The project name is
+resolved in this order:
+
+1. `name` field in vibewarden.yaml (explicit)
+2. `app.image` with registry prefix and tag stripped (e.g. `ghcr.io/org/myapp:latest` → `myapp`)
+3. Directory name containing vibewarden.yaml (fallback)
+
+For example, a project in `~/code/mysite` with no explicit `name` produces the
+image `mysite-app:latest`. This tag must match what Docker Compose expects for
+the app service.
+
+## TLS configuration keys
+
+These keys live under the `tls` section in vibewarden.yaml (or
+vibewarden.production.yaml for prod-only values):
+
+| Key | Values | What vibew does with it |
+|-----|--------|------------------------|
+| `tls.provider` | `letsencrypt` (alias: `acme`), `self-signed`, `external` | Selects the TLS provisioning strategy. `letsencrypt` uses ACME automation; `self-signed` generates a dev cert; `external` expects you to supply cert files. |
+| `tls.email` | ACME account email | Registered with the CA for expiry warnings. Required by ZeroSSL; optional for Let's Encrypt. |
+| `tls.acme_ca` | ACME directory URL | Overrides the default Let's Encrypt production CA. Use `https://acme.zerossl.com/v2/DV90` for ZeroSSL or the LE staging URL for testing. |
+| `tls.domain` | FQDN (e.g. `app.example.com`) | The domain for the TLS certificate. Required when provider is `letsencrypt`. Used for DNS checks by `vibew doctor`. |
+| `tls.cert_path` | File path to PEM certificate | Only used when provider is `external`. The sidecar reads this file on startup. |
+| `tls.key_path` | File path to PEM private key | Only used when provider is `external`. Must match `cert_path`. |
+
 ## Deploy model
 
 `vibew build` builds the Docker image locally from your Dockerfile. `vibew deploy`
@@ -127,6 +166,39 @@ production-ready (all dependencies installed, assets compiled, etc.).
 **Cross-architecture builds:** If deploying from Apple Silicon (arm64) to an amd64
 server, use `vibew build --platform linux/amd64`. Deploy auto-detects the mismatch
 and errors with a fix-it message if you forget.
+
+## Deploying to a VPS
+
+### Automated (recommended)
+
+```bash
+vibew build --platform linux/amd64   # build for the target architecture
+vibew deploy --target ssh://user@host --config vibewarden.prod.yaml
+```
+
+`vibew deploy` handles image transfer, config generation, and container startup
+in a single command.
+
+### Manual fallback
+
+When `vibew deploy` fails or you need more control, use standard commands:
+
+```bash
+# 1. Build for the target architecture
+vibew build --platform linux/amd64
+
+# 2. Transfer the image via SSH
+docker save <project>-app:latest | ssh user@host docker load
+
+# 3. Copy the deploy bundle (config, compose files)
+rsync -az .vibewarden/deploy/production/ user@host:~/vibewarden/<project>/
+
+# 4. Start the stack on the remote
+ssh user@host 'cd ~/vibewarden/<project> && docker compose up -d'
+```
+
+Each of these commands produces standard error messages that are searchable --
+use them as a plan B when debugging deploy issues.
 
 Use `app.environment` in vibewarden.yaml for runtime configuration:
 ```yaml

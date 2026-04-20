@@ -42,6 +42,9 @@ vibew deploy --target ssh://user@host --config vibewarden.prod.yaml
 | `--secrets-from` | No | -- | Path to a `.env`-format file whose KEY=VALUE pairs are seeded into OpenBao |
 | `--rotate-secrets` | No | `false` | Re-seed secrets from `--secrets-from` on subsequent deploys |
 | `--unseal-key` | No | stored key | OpenBao unseal key; overrides the key stored in `~/vibewarden/<project>/.openbao-credentials` on the remote |
+| `--force` | No | `false` | Overwrite remote files even if they have been modified since last deploy (skips drift detection) |
+| `--env` | No | `production` | Deployment environment name; reads `vibewarden.<env>.yaml` as the production override |
+| `--dry-run` | No | `false` | Generate the deploy bundle and list its contents without actually deploying (does not require `--target`) |
 
 #### Deploy mode detection
 
@@ -250,6 +253,10 @@ vibew deploy logs --target ssh://ubuntu@203.0.113.10 --app blog --follow
 | `loading config: ...` | Invalid or missing vibewarden.yaml | Run `vibew validate --config <path>` locally |
 | `cannot add a site without a TLS domain` | Adding a site to a multi-app host without `tls.domain` | Set `tls.domain` in vibewarden.yaml |
 | `rsync: connection refused` | SSH not reachable | Verify `ssh user@host echo OK` works first |
+| `remote files modified since last deploy` | Files on remote were edited manually (drift detected) | Use `--force` to overwrite, or inspect with `vibew deploy status` first |
+| `architecture mismatch: image is arm64, remote is amd64` | Image built for the wrong platform | Rebuild with `vibew build --platform linux/amd64` |
+| `health check failed after deploy` | App container did not become healthy in time | Check `vibew deploy logs --target ...`; ensure `/health` returns 200 |
+| `docker load: no such file` | Image not built before deploy | Run `vibew build` before `vibew deploy` |
 
 ---
 
