@@ -66,6 +66,10 @@ type Service struct {
 	executor      ports.RemoteExecutor
 	generator     ports.ConfigGenerator
 	imageExporter ports.ImageExporter
+
+	// localArch overrides runtime.GOARCH for testing. When empty, the real
+	// runtime.GOARCH is used. Set via WithLocalArch.
+	localArch string
 }
 
 // NewService creates a Service.
@@ -87,6 +91,14 @@ func NewService(
 // prefix (bare name like "myapp:latest").
 func (s *Service) WithImageExporter(exporter ports.ImageExporter) *Service {
 	s.imageExporter = exporter
+	return s
+}
+
+// WithLocalArch overrides the local architecture used for arch mismatch
+// detection. This is intended for testing — in production the real
+// runtime.GOARCH is used. Returns the Service for chaining.
+func (s *Service) WithLocalArch(arch string) *Service {
+	s.localArch = arch
 	return s
 }
 
@@ -163,9 +175,17 @@ func (s *Service) Deploy(ctx context.Context, cfg *config.Config, opts RunOption
 		return fmt.Errorf("creating deploy bundle: %w", err)
 	}
 
+	// Determine whether a locally-built image will be transferred to the
+	// remote. This is needed for the arch mismatch check in prerequisites.
+	imageName := cfg.App.Image
+	if cfg.App.Build != "" {
+		imageName = cfg.ComposeProjectName() + "-app:latest"
+	}
+	willTransferLocalImage := imageName != "" && isLocalImage(imageName) && s.imageExporter != nil
+
 	// Step 2: verify prerequisites on the remote.
 	fmt.Fprintln(out, "Verifying remote prerequisites...")
-	if err := s.checkRemotePrerequisites(ctx); err != nil {
+	if err := s.checkRemotePrerequisites(ctx, willTransferLocalImage); err != nil {
 		return fmt.Errorf("remote prerequisites check failed: %w", err)
 	}
 
@@ -215,11 +235,7 @@ func (s *Service) Deploy(ctx context.Context, cfg *config.Config, opts RunOption
 	// Derive the image name (projectName-app:latest) and transfer it via
 	// docker save/load. No source code is transferred to the server.
 	localImageTransferred := false
-	imageName := cfg.App.Image
-	if cfg.App.Build != "" {
-		imageName = cfg.ComposeProjectName() + "-app:latest"
-	}
-	if imageName != "" && isLocalImage(imageName) && s.imageExporter != nil {
+	if willTransferLocalImage {
 		if err := s.transferLocalImage(ctx, imageName, remoteDir, out); err != nil {
 			return fmt.Errorf("transferring local image: %w", err)
 		}
@@ -472,13 +488,21 @@ func (s *Service) LogsMultiApp(ctx context.Context, app string, opts LogsOptions
 }
 
 // checkRemotePrerequisites verifies that docker and docker compose are available
-// on the remote host.
-func (s *Service) checkRemotePrerequisites(ctx context.Context) error {
+// on the remote host. When willTransferLocalImage is true, it additionally
+// checks that the local build architecture matches the remote server
+// architecture, returning an ArchMismatchError with a fix-it suggestion if they
+// differ.
+func (s *Service) checkRemotePrerequisites(ctx context.Context, willTransferLocalImage bool) error {
 	if _, err := s.executor.Run(ctx, "which docker"); err != nil {
 		return fmt.Errorf("docker not found on remote: %w", err)
 	}
 	if _, err := s.executor.Run(ctx, "docker compose version"); err != nil {
 		return fmt.Errorf("docker compose not found on remote: %w", err)
+	}
+	if willTransferLocalImage {
+		if err := s.checkArchCompatibility(ctx); err != nil {
+			return err
+		}
 	}
 	return nil
 }

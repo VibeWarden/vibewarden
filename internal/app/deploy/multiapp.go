@@ -91,6 +91,13 @@ func (s *Service) BootstrapSidecar(ctx context.Context, cfg *config.Config, opts
 		bundleDir = defaultBundleDir
 	}
 
+	// Determine whether a locally-built image will be transferred.
+	imageName := cfg.App.Image
+	if cfg.App.Build != "" {
+		imageName = cfg.ComposeProjectName() + "-app:latest"
+	}
+	willTransferLocalImage := imageName != "" && isLocalImage(imageName) && s.imageExporter != nil
+
 	// Step 1: produce the local deploy bundle.
 	fmt.Fprintln(out, "Bundling sidecar and first site locally...")
 	if err := s.BundleSidecar(ctx, cfg, bundleDir); err != nil {
@@ -106,6 +113,12 @@ func (s *Service) BootstrapSidecar(ctx context.Context, cfg *config.Config, opts
 		Env:            opts.Env,
 	}); err != nil {
 		return fmt.Errorf("bundling first site: %w", err)
+	}
+
+	// Step 1b: verify remote prerequisites.
+	fmt.Fprintln(out, "Verifying remote prerequisites...")
+	if err := s.checkRemotePrerequisites(ctx, willTransferLocalImage); err != nil {
+		return fmt.Errorf("remote prerequisites check failed: %w", err)
 	}
 
 	// Step 2: create remote directories and shared Docker network.
@@ -137,13 +150,7 @@ func (s *Service) BootstrapSidecar(ctx context.Context, cfg *config.Config, opts
 	}
 
 	// Step 4b: transfer local image if applicable.
-	// When app.build is set, the image was built locally by `vibew build`.
-	// Derive the image name and transfer via docker save/load.
-	imageName := cfg.App.Image
-	if cfg.App.Build != "" {
-		imageName = cfg.ComposeProjectName() + "-app:latest"
-	}
-	if imageName != "" && isLocalImage(imageName) && s.imageExporter != nil {
+	if willTransferLocalImage {
 		if err := s.transferLocalImage(ctx, imageName, siteDir, out); err != nil {
 			return fmt.Errorf("transferring local image: %w", err)
 		}
@@ -200,6 +207,13 @@ func (s *Service) DeployMultiApp(ctx context.Context, cfg *config.Config, opts R
 		bundleDir = defaultBundleDir
 	}
 
+	// Determine whether a locally-built image will be transferred.
+	imageName := cfg.App.Image
+	if cfg.App.Build != "" {
+		imageName = cfg.ComposeProjectName() + "-app:latest"
+	}
+	willTransferLocalImage := imageName != "" && isLocalImage(imageName) && s.imageExporter != nil
+
 	// Step 1: produce the local deploy bundle for this site.
 	fmt.Fprintf(out, "Bundling site %q locally...\n", projectName)
 	if err := s.Bundle(ctx, BundleOptions{
@@ -212,6 +226,12 @@ func (s *Service) DeployMultiApp(ctx context.Context, cfg *config.Config, opts R
 		Env:            opts.Env,
 	}); err != nil {
 		return fmt.Errorf("bundling site: %w", err)
+	}
+
+	// Step 1b: verify remote prerequisites.
+	fmt.Fprintln(out, "Verifying remote prerequisites...")
+	if err := s.checkRemotePrerequisites(ctx, willTransferLocalImage); err != nil {
+		return fmt.Errorf("remote prerequisites check failed: %w", err)
 	}
 
 	// Step 2: ensure remote site directory exists.
@@ -228,13 +248,7 @@ func (s *Service) DeployMultiApp(ctx context.Context, cfg *config.Config, opts R
 	}
 
 	// Step 3b: transfer local image if applicable.
-	// When app.build is set, the image was built locally by `vibew build`.
-	// Derive the image name and transfer via docker save/load.
-	imageName := cfg.App.Image
-	if cfg.App.Build != "" {
-		imageName = cfg.ComposeProjectName() + "-app:latest"
-	}
-	if imageName != "" && isLocalImage(imageName) && s.imageExporter != nil {
+	if willTransferLocalImage {
 		if err := s.transferLocalImage(ctx, imageName, siteDir, out); err != nil {
 			return fmt.Errorf("transferring local image: %w", err)
 		}
