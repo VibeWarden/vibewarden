@@ -49,6 +49,7 @@ once accepted, they are not edited. If a decision is superseded, a new ADR refer
 | [075](adr-075-redesign-vibew-deploy-local-resolution-no-remote-patching.md) | Redesign vibew deploy -- local resolution, no remote patching | #948 |
 | [076](adr-076-secret-uri-resolution-in-config.md) | secret:// URI resolution in vibewarden.yaml config | #1008 |
 | [077](adr-077-placeholder-substitution-for-composite-secret-values.md) | Placeholder substitution for composite secret values | #994 |
+| [078](adr-078-wire-acme-email-to-single-site-caddy-issuer.md) | Wire acme_email to single-site Caddy ACME issuer | #1027 |
 | [497](adr-497-graceful-shutdown-connection-draining.md) | Graceful Shutdown / Connection Draining | — |
 
 ## Numbering

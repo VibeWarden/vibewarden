@@ -562,6 +562,78 @@ func TestBuildCaddyConfig_LetsEncryptACMECA(t *testing.T) {
 	}
 }
 
+// TestBuildCaddyConfig_LetsEncryptACMEEmail verifies that when Email is set on
+// the TLS config, the ACME issuer includes an "email" field. When empty, no
+// "email" field is present — this maintains backward compatibility with Let's
+// Encrypt which does not require an email, while enabling ZeroSSL which does.
+func TestBuildCaddyConfig_LetsEncryptACMEEmail(t *testing.T) {
+	tests := []struct {
+		name      string
+		email     string
+		wantEmail bool
+	}{
+		{
+			name:      "no email (empty)",
+			email:     "",
+			wantEmail: false,
+		},
+		{
+			name:      "email set",
+			email:     "admin@example.com",
+			wantEmail: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &ports.ProxyConfig{
+				ListenAddr:   "0.0.0.0:443",
+				UpstreamAddr: "127.0.0.1:3000",
+				TLS: ports.TLSConfig{
+					Enabled:  true,
+					Provider: ports.TLSProviderLetsEncrypt,
+					Domain:   "example.com",
+					Email:    tt.email,
+				},
+			}
+
+			result, err := BuildCaddyConfig(cfg)
+			if err != nil {
+				t.Fatalf("BuildCaddyConfig() unexpected error: %v", err)
+			}
+
+			apps := result["apps"].(map[string]any)
+			tlsApp := apps["tls"].(map[string]any)
+			automation := tlsApp["automation"].(map[string]any)
+			policies := automation["policies"].([]map[string]any)
+
+			if len(policies) == 0 {
+				t.Fatal("expected at least one automation policy")
+			}
+
+			issuers, ok := policies[0]["issuers"].([]map[string]any)
+			if !ok || len(issuers) == 0 {
+				t.Fatal("issuers not found in automation policy")
+			}
+
+			acmeIssuer := issuers[0]
+			emailVal, hasEmail := acmeIssuer["email"]
+
+			if tt.wantEmail {
+				if !hasEmail {
+					t.Errorf("expected 'email' field in ACME issuer for email=%q", tt.email)
+				} else if emailVal != tt.email {
+					t.Errorf("email = %q, want %q", emailVal, tt.email)
+				}
+			} else {
+				if hasEmail {
+					t.Errorf("unexpected 'email' field in ACME issuer when email is empty: %v", emailVal)
+				}
+			}
+		})
+	}
+}
+
 // TestBuildCaddyConfig_StorageAtTopLevel verifies that when StoragePath is set,
 // the storage module appears at the top level of the Caddy config (not inside
 // apps.tls). Placing storage inside apps.tls causes Caddy to reject the config

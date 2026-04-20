@@ -199,6 +199,11 @@ tls:
   # Only applies when provider is "letsencrypt".
   storage_path: ""
 
+  # Email address for ACME account registration.
+  # Required for ZeroSSL (used for EAB auto-registration).
+  # Recommended for Let's Encrypt (receives cert expiry notifications).
+  email: ""
+
   # ACME directory URL to use instead of Let's Encrypt production.
   # Only applies when provider is "letsencrypt".
   # Use the staging URL for testing to avoid rate limits:

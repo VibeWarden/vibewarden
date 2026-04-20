@@ -70,6 +70,7 @@ func buildProxyConfig(cfg *config.Config, registry *plugins.Registry, version st
 			Enabled:     cfg.TLS.Enabled,
 			Provider:    ports.TLSProvider(cfg.TLS.Provider),
 			Domain:      cfg.TLS.Domain,
+			Email:       cfg.TLS.Email,
 			CertPath:    cfg.TLS.CertPath,
 			KeyPath:     cfg.TLS.KeyPath,
 			StoragePath: cfg.TLS.StoragePath,
