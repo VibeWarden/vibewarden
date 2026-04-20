@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
@@ -151,6 +152,20 @@ func runDeploy(cmd *cobra.Command, configPath, target, sshKey, secretsFrom, unse
 	prodConfigPath := prodConfigPathForEnv(absConfig, envName)
 
 	projectName := cfg.Name
+	if projectName == "" && cfg.App.Image != "" {
+		// Strip the ":tag" suffix (e.g. "myapp:latest" → "myapp").
+		image := cfg.App.Image
+		if idx := strings.LastIndex(image, ":"); idx > 0 {
+			image = image[:idx]
+		}
+		// Strip any registry prefix (e.g. "ghcr.io/org/myapp" → "myapp").
+		if idx := strings.LastIndex(image, "/"); idx >= 0 {
+			image = image[idx+1:]
+		}
+		if image != "" {
+			projectName = image
+		}
+	}
 	if projectName == "" {
 		projectName = deployapp.ProjectNameFromConfig(absConfig)
 	}
@@ -317,14 +332,11 @@ Examples:
 				return svc.StatusMultiApp(cmd.Context(), app, cmd.OutOrStdout())
 			}
 
-			absConfig, err := filepath.Abs(configPath)
-			if err != nil {
-				absConfig = configPath
-			}
+			projectName := resolveProjectName(configPath)
 
 			return svc.Status(cmd.Context(), deployapp.StatusOptions{
-				ConfigPath: absConfig,
-				Out:        cmd.OutOrStdout(),
+				ProjectName: projectName,
+				Out:         cmd.OutOrStdout(),
 			})
 		},
 	}
@@ -407,20 +419,9 @@ Examples:
 				})
 			}
 
-			absConfig, err := filepath.Abs(configPath)
-			if err != nil {
-				absConfig = configPath
-			}
-
-			// Load config to get the project name (cfg.Name).
-			logsCfg, loadErr := config.Load(absConfig)
-			var projectName string
-			if loadErr == nil && logsCfg.Name != "" {
-				projectName = logsCfg.Name
-			}
+			projectName := resolveProjectName(configPath)
 
 			return svc.Logs(cmd.Context(), deployapp.LogsOptions{
-				ConfigPath:  absConfig,
 				ProjectName: projectName,
 				Lines:       lines,
 				Follow:      follow,
@@ -524,4 +525,50 @@ func prodConfigPathForEnv(configPath, envName string) string {
 		return prodFile
 	}
 	return ""
+}
+
+// resolveProjectName derives the project name from configPath using the same
+// chain used by `vibew deploy`:
+//
+//  1. cfg.Name (explicit name in vibewarden.yaml)
+//  2. cfg.App.Image (strip the ":tag" suffix if present)
+//  3. directory name fallback (via ProjectNameFromConfig)
+//
+// When the config file cannot be loaded (e.g. missing or malformed), the
+// function falls back directly to the directory-based derivation. This ensures
+// that `vibew deploy status` and `vibew deploy logs` always target the same
+// remote directory as the original `vibew deploy`.
+func resolveProjectName(configPath string) string {
+	// Normalise path: default to vibewarden.yaml in the cwd.
+	resolved := configPath
+	if resolved == "" {
+		resolved = "vibewarden.yaml"
+	}
+	absConfig, err := filepath.Abs(resolved)
+	if err != nil {
+		absConfig = resolved
+	}
+
+	cfg, loadErr := config.Load(absConfig)
+	if loadErr == nil {
+		if cfg.Name != "" {
+			return cfg.Name
+		}
+		if cfg.App.Image != "" {
+			// Strip the ":tag" suffix (e.g. "myapp:latest" → "myapp").
+			image := cfg.App.Image
+			if idx := strings.LastIndex(image, ":"); idx > 0 {
+				image = image[:idx]
+			}
+			// Strip any registry prefix (e.g. "ghcr.io/org/myapp" → "myapp").
+			if idx := strings.LastIndex(image, "/"); idx >= 0 {
+				image = image[idx+1:]
+			}
+			if image != "" {
+				return image
+			}
+		}
+	}
+
+	return deployapp.ProjectNameFromConfig(absConfig)
 }
