@@ -537,11 +537,13 @@ func healthCheckURL(port int, tlsEnabled bool) string {
 }
 
 // healthCheckCmd returns the curl command used to probe the health endpoint.
-// When TLS is enabled it adds the -k flag to skip certificate verification,
-// since the probe targets localhost rather than the public domain.
+// When TLS is enabled it tries HTTPS first (with -k to skip cert verification),
+// falling back to HTTP if the TLS handshake fails (e.g., during ACME cert
+// acquisition). This prevents false health check failures during the first
+// minute of a deploy when the cert hasn't been issued yet.
 func healthCheckCmd(port int, tlsEnabled bool) string {
 	if tlsEnabled {
-		return fmt.Sprintf("curl -sfk https://localhost:%d/_vibewarden/health", port)
+		return fmt.Sprintf("curl -sfk https://localhost:%d/_vibewarden/health 2>/dev/null || curl -sf http://localhost:%d/_vibewarden/health", port, port)
 	}
 	return fmt.Sprintf("curl -sf http://localhost:%d/_vibewarden/health", port)
 }
