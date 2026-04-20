@@ -2,6 +2,12 @@ package caddy
 
 import "github.com/vibewarden/vibewarden/internal/ports"
 
+// NOTE: The ACME issuer helpers and constants in this file are intentionally
+// duplicated in internal/plugins/tls/plugin.go. The duplication exists because
+// adapters (caddy/) and plugins (plugins/tls/) cannot import each other without
+// breaking the hexagonal architecture boundary. If you change ACME URLs or
+// issuer logic here, update the plugin copy as well.
+
 // ACME directory URLs for supported certificate authorities.
 const (
 	// acmeCALetsEncrypt is the Let's Encrypt production ACME directory.

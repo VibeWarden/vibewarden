@@ -472,7 +472,7 @@ func buildACMETLSApp(cfg ports.TLSConfig) map[string]any {
 // Caddy to generate an internal self-signed certificate.
 // This is intended for local development and testing only.
 //
-// Note: storage is intentionally NOT set here. See buildLetsEncryptTLSApp for
+// Note: storage is intentionally NOT set here. See buildACMETLSApp for
 // the explanation of why storage belongs at the top-level Caddy config.
 func buildSelfSignedTLSApp(cfg ports.TLSConfig) map[string]any {
 	policy := map[string]any{
