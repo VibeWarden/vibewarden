@@ -335,6 +335,41 @@ vibew dev
 
 ---
 
+### Secrets plugin fails to start -- missing master key
+
+**Symptom**
+
+```
+secrets plugin: builtin store: master key not configured
+```
+
+**Cause**
+
+The `VIBEWARDEN_SECRETS_MASTER_KEY` environment variable is not set and
+`secrets.builtin.key_file` is not configured in `vibewarden.yaml`. The built-in
+encrypted secret store requires a 32-byte master key to encrypt and decrypt secrets.
+
+**Fix**
+
+```bash
+export VIBEWARDEN_SECRETS_MASTER_KEY=$(openssl rand -hex 32)
+```
+
+Or set `secrets.builtin.key_file` in `vibewarden.yaml` pointing to a file that contains the
+hex-encoded 32-byte key:
+
+```yaml
+secrets:
+  enabled: true
+  store: builtin
+  builtin:
+    key_file: /path/to/master.key
+```
+
+Save the master key somewhere safe -- if you lose it, your secrets are unrecoverable.
+
+---
+
 ## Exit codes
 
 | Code | Meaning |
