@@ -3,9 +3,7 @@ package ops
 import (
 	"context"
 	"crypto/tls"
-	"crypto/x509"
 	"encoding/json"
-	"encoding/pem"
 	"fmt"
 	"io"
 	"net"
@@ -59,6 +57,7 @@ type DoctorService struct {
 	healthChecker  ports.HealthChecker
 	remoteExecutor ports.RemoteExecutor
 	imageChecker   ports.DockerImageChecker
+	ownerProbe     ports.PortOwnerProbe
 }
 
 // NewDoctorService creates a new DoctorService.
@@ -85,6 +84,17 @@ func (s *DoctorService) WithRemoteExecutor(executor ports.RemoteExecutor) *Docto
 func (s *DoctorService) WithImageChecker(checker ports.DockerImageChecker) *DoctorService {
 	cp := *s
 	cp.imageChecker = checker
+	return &cp
+}
+
+// WithPortOwnerProbe returns a copy of the DoctorService with the given
+// PortOwnerProbe wired for port-ownership detection. When nil (or no probe
+// is supplied) the proxy-port check falls back to "busy = FAIL" semantics —
+// this preserves back-compat with existing tests that do not set a probe.
+// See ADR-084.
+func (s *DoctorService) WithPortOwnerProbe(probe ports.PortOwnerProbe) *DoctorService {
+	cp := *s
+	cp.ownerProbe = probe
 	return &cp
 }
 
@@ -177,7 +187,7 @@ func (s *DoctorService) runChecks(ctx context.Context, cfg *config.Config, opts 
 
 	// --- Layer 2: Local Runtime ---
 	results = append(results, withSection(s.checkUpstreamReachable(ctx, cfg), sectionLocalRuntime))
-	results = append(results, withSection(checkTLSCertValid(cfg, workDir), sectionLocalRuntime))
+	results = append(results, withSection(checkTLSCertValid(ctx, cfg, proxyHost, proxyPort), sectionLocalRuntime))
 
 	// --- Layer 3: Production (only when target is set and executor is available) ---
 	if opts.Target != "" && s.remoteExecutor != nil {
@@ -257,6 +267,10 @@ func checkConfigFile(cfg *config.Config, configPath string) CheckResult {
 	}
 }
 
+// checkPort combines the TCP-bind probe (PortChecker) with the optional
+// ownership probe (PortOwnerProbe) to distinguish the expected "sibling
+// vibew dev is running" state from a real foreign-process conflict. See
+// ADR-084 for the decision table.
 func (s *DoctorService) checkPort(ctx context.Context, label, host string, port int) CheckResult {
 	checkCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
 	defer cancel()
@@ -269,17 +283,29 @@ func (s *DoctorService) checkPort(ctx context.Context, label, host string, port 
 			Detail:   fmt.Sprintf("port %d check failed: %v", port, err),
 		}
 	}
-	if !available {
+	if available {
 		return CheckResult{
 			Name:     label,
-			Severity: SeverityFail,
-			Detail:   fmt.Sprintf("port %d is already in use", port),
+			Severity: SeverityOK,
+			Detail:   fmt.Sprintf("port %d is available", port),
 		}
 	}
+
+	// Port is bound. Ask the owner probe who is there.
+	if s.ownerProbe != nil {
+		if s.ownerProbe.ProbeOwner(checkCtx, host, port) == ports.OwnerVibeWarden {
+			return CheckResult{
+				Name:     label,
+				Severity: SeverityOK,
+				Detail:   fmt.Sprintf("port %d in use by local vibew dev (expected)", port),
+			}
+		}
+	}
+
 	return CheckResult{
 		Name:     label,
-		Severity: SeverityOK,
-		Detail:   fmt.Sprintf("port %d is available", port),
+		Severity: SeverityFail,
+		Detail:   fmt.Sprintf("port %d is already in use", port),
 	}
 }
 
@@ -383,10 +409,16 @@ func (s *DoctorService) checkUpstreamReachable(ctx context.Context, cfg *config.
 	}
 }
 
-// checkTLSCertValid checks the local self-signed TLS certificate for expiry.
-// It only runs when the TLS provider is "self-signed" and cert files exist in
-// the generated certs directory.
-func checkTLSCertValid(cfg *config.Config, workDir string) CheckResult {
+// checkTLSCertValid inspects the local self-signed TLS certificate by doing
+// a live TLS handshake against the running sidecar. When the sidecar is not
+// reachable the check degrades to WARN with a "start vibew dev" hint.
+//
+// Self-signed cert storage is owned by the embedded Caddy instance
+// (internal/adapters/caddy) and the only reliable way to see which cert the
+// sidecar is actually serving is to handshake with it — which is exactly
+// what we do here. See ADR-084 for the rationale and the rejected
+// filesystem-scan approach.
+func checkTLSCertValid(ctx context.Context, cfg *config.Config, host string, port int) CheckResult {
 	if cfg.TLS.Provider != "self-signed" {
 		return CheckResult{
 			Name:     "TLS certificate",
@@ -395,56 +427,73 @@ func checkTLSCertValid(cfg *config.Config, workDir string) CheckResult {
 		}
 	}
 
-	certPath := filepath.Join(workDir, ".vibewarden", "generated", "certs", "server.crt")
-	certPEM, err := os.ReadFile(certPath) //nolint:gosec // path is built from workDir + fixed relative path
+	handshakeCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+	defer cancel()
+
+	dialHost := host
+	if dialHost == "0.0.0.0" || dialHost == "::" {
+		dialHost = "127.0.0.1"
+	}
+	addr := fmt.Sprintf("%s:%d", dialHost, port)
+
+	dialer := tls.Dialer{
+		Config: &tls.Config{
+			// Self-signed cert in dev is expected — we only need to
+			// inspect the leaf, not validate trust.
+			InsecureSkipVerify: true, //nolint:gosec
+		},
+	}
+	conn, err := dialer.DialContext(handshakeCtx, "tcp", addr)
 	if err != nil {
 		return CheckResult{
 			Name:     "TLS certificate",
 			Severity: SeverityWarn,
-			Detail:   fmt.Sprintf("%s not found — run 'vibew generate' to create certs", certPath),
+			Detail:   fmt.Sprintf("sidecar not reachable on %s — start 'vibew dev'", addr),
 		}
 	}
+	defer conn.Close() //nolint:errcheck
 
-	block, _ := pem.Decode(certPEM)
-	if block == nil {
+	tlsConn, ok := conn.(*tls.Conn)
+	if !ok {
 		return CheckResult{
 			Name:     "TLS certificate",
-			Severity: SeverityFail,
-			Detail:   fmt.Sprintf("%s — failed to decode PEM block", certPath),
+			Severity: SeverityWarn,
+			Detail:   fmt.Sprintf("unexpected connection type from %s", addr),
 		}
 	}
 
-	cert, err := x509.ParseCertificate(block.Bytes)
-	if err != nil {
+	certs := tlsConn.ConnectionState().PeerCertificates
+	if len(certs) == 0 {
 		return CheckResult{
 			Name:     "TLS certificate",
-			Severity: SeverityFail,
-			Detail:   fmt.Sprintf("%s — failed to parse certificate: %v", certPath, err),
+			Severity: SeverityWarn,
+			Detail:   fmt.Sprintf("no certificate presented by %s", addr),
 		}
 	}
 
+	leaf := certs[0]
 	now := time.Now()
-	if now.After(cert.NotAfter) {
+	if now.After(leaf.NotAfter) {
 		return CheckResult{
 			Name:     "TLS certificate",
 			Severity: SeverityFail,
-			Detail:   fmt.Sprintf("expired on %s", cert.NotAfter.Format(time.DateOnly)),
+			Detail:   fmt.Sprintf("expired on %s", leaf.NotAfter.Format(time.DateOnly)),
 		}
 	}
 
-	daysUntilExpiry := int(time.Until(cert.NotAfter).Hours() / 24)
+	daysUntilExpiry := int(time.Until(leaf.NotAfter).Hours() / 24)
 	if daysUntilExpiry <= localTLSCertExpiryWarnDays {
 		return CheckResult{
 			Name:     "TLS certificate",
 			Severity: SeverityWarn,
-			Detail:   fmt.Sprintf("expires in %d day(s) on %s", daysUntilExpiry, cert.NotAfter.Format(time.DateOnly)),
+			Detail:   fmt.Sprintf("expires in %d day(s) on %s", daysUntilExpiry, leaf.NotAfter.Format(time.DateOnly)),
 		}
 	}
 
 	return CheckResult{
 		Name:     "TLS certificate",
 		Severity: SeverityOK,
-		Detail:   fmt.Sprintf("valid until %s (%d days)", cert.NotAfter.Format(time.DateOnly), daysUntilExpiry),
+		Detail:   fmt.Sprintf("valid until %s (%d days)", leaf.NotAfter.Format(time.DateOnly), daysUntilExpiry),
 	}
 }
 
@@ -470,17 +519,22 @@ func (s *DoctorService) checkSSHConnectivity(ctx context.Context) CheckResult {
 }
 
 // checkRemoteContainerHealth runs "docker compose ps" on the remote host via
-// SSH and reports the health of each container.
+// SSH and reports the health of each container. Error rendering goes through
+// formatRemoteError so the user-facing detail never contains raw shell
+// fragments (see ADR-084).
 func (s *DoctorService) checkRemoteContainerHealth(ctx context.Context) CheckResult {
 	checkCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
 	defer cancel()
 
-	output, err := s.remoteExecutor.Run(checkCtx, "docker compose ps --format json 2>/dev/null || docker-compose ps 2>/dev/null")
+	// Docker Compose v1 reached end-of-life in June 2023; the fallback
+	// ("|| docker-compose ps") and 2>/dev/null shims were dropped as part
+	// of ADR-084 so stderr surfaces naturally for the error formatter.
+	output, err := s.remoteExecutor.Run(checkCtx, "docker compose ps --format json")
 	if err != nil {
 		return CheckResult{
 			Name:     "Remote containers",
 			Severity: SeverityFail,
-			Detail:   fmt.Sprintf("could not query remote containers: %v", err),
+			Detail:   formatRemoteError(err, "docker compose"),
 		}
 	}
 
