@@ -112,6 +112,12 @@ decisions/              # ADRs — one file per decision (see decisions/README.m
 
 ---
 
+## Reply style
+
+Keep prose replies maximally brief without losing technical substance. No pleasantries, preamble, or trailing summaries. Use line breaks and short paragraphs so replies are easily scannable. Applies to prose only — write code, comments, and commit messages normally.
+
+---
+
 ## Code style
 
 - Go standard formatting (`gofmt`, `goimports`)
