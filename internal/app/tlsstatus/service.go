@@ -3,6 +3,7 @@ package tlsstatus
 import (
 	"context"
 	"fmt"
+	"regexp"
 
 	"github.com/vibewarden/vibewarden/internal/domain/tls"
 	"github.com/vibewarden/vibewarden/internal/ports"
@@ -30,12 +31,18 @@ func opensslCmd(domain string, port int) string {
 	)
 }
 
+// validDomain matches safe domain names and wildcards (no shell metacharacters).
+var validDomain = regexp.MustCompile(`^[a-zA-Z0-9*][a-zA-Z0-9.*-]*$`)
+
 // Inspect runs openssl on the remote host to retrieve the TLS certificate for
 // the given domain and port, parses the output, and returns the certificate
 // information as a domain value object.
 func (s *Service) Inspect(ctx context.Context, domain string, port int) (tls.CertInfo, error) {
 	if domain == "" {
 		return tls.CertInfo{}, fmt.Errorf("domain cannot be empty")
+	}
+	if !validDomain.MatchString(domain) {
+		return tls.CertInfo{}, fmt.Errorf("invalid domain %q: contains unsafe characters", domain)
 	}
 	if port < 1 || port > 65535 {
 		return tls.CertInfo{}, fmt.Errorf("port %d is out of range (1-65535)", port)
