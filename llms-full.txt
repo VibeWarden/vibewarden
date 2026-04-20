@@ -104,7 +104,8 @@ VibeWarden is operated via the `vibew` CLI. Below is the complete command list.
 | `vibew secret generate` | Generate a cryptographically secure random secret (hex) |
 | `vibew secret generate --admin-token` | Generate an admin API token (outputs VIBEWARDEN_ADMIN_TOKEN=...) |
 | `vibew secret generate --fleet-key` | Generate a fleet dashboard key (outputs VIBEWARDEN_FLEET_KEY=...) |
-| `vibew secret get <alias-or-path>` | Read a secret from OpenBao |
+| `vibew secret get <alias-or-path>` | Read a secret from the configured store |
+| `vibew secret set <path> <key=value>...` | Write a secret to the secret store |
 | `vibew secret list` | List all managed secret paths |
 | `vibew token` | Generate a signed dev JWT for local testing |
 | `vibew cert export` | Export the local CA certificate |
@@ -245,8 +246,20 @@ Key sections:
 - `auth.mode` — authentication strategy: `none`, `kratos`, `jwt`, or `api-key` (single source of truth; see ADR-065)
 - `rate_limit.enabled`, `rate_limit.per_ip` — per-IP rate limiting
 - `security_headers.enabled` — HSTS, X-Frame-Options, X-Content-Type-Options, etc.
+- `secrets.store` — secret store backend: `builtin` (default, AES-256-GCM encrypted file) or `openbao` (opt-in for dynamic creds)
 - `egress` — outbound proxy rules with route-level controls
 - `plugins.fleet` — opt-in telemetry to the Pro fleet dashboard
+
+### Secret management
+
+VibeWarden ships a built-in AES-256-GCM encrypted secret store that requires no
+external containers. Secrets are stored in `.vibewarden/secrets.enc` and encrypted
+with a 32-byte master key provided via the `VIBEWARDEN_SECRETS_MASTER_KEY`
+environment variable or `secrets.builtin.key_file`. For advanced use cases
+(dynamic Postgres credentials, lease rotation), set `secrets.store: openbao` to
+use an OpenBao server instead. Both backends support the same injection modes
+(HTTP headers and env file) and the same CLI commands (`vibew secret set`,
+`vibew secret get`, `vibew secret list`).
 
 ---
 

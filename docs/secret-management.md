@@ -1,16 +1,34 @@
 # Secret Management
 
-VibeWarden integrates with [OpenBao](https://openbao.org/) — an open-source, community-maintained fork of HashiCorp Vault — to manage secrets for your app. You never touch OpenBao directly: VibeWarden handles connection, authentication, caching, rotation, and injection.
+VibeWarden provides built-in encrypted secret storage by default. No external containers needed -- secrets are stored locally in an AES-256-GCM encrypted file. For advanced use cases (dynamic credentials, lease rotation), you can opt into [OpenBao](https://openbao.org/).
 
 **What this gives you:**
-- Store API keys, database passwords, and other secrets in OpenBao instead of `.env` files.
+- Store API keys, database passwords, and other secrets encrypted at rest instead of `.env` files.
 - Inject secrets as HTTP request headers or as a `.env` file the app reads at startup.
-- Short-lived, auto-rotating Postgres credentials via OpenBao's database engine.
+- Short-lived, auto-rotating Postgres credentials via OpenBao's database engine (opt-in).
 - Periodic health checks: detects weak, short, and stale secrets.
 
 **What this does not do:**
-- VibeWarden does not manage OpenBao's seal/unseal process (you do that).
-- VibeWarden does not replace a full secrets management policy — it is a sidecar integration layer.
+- VibeWarden does not replace a full secrets management policy -- it is a sidecar integration layer.
+- The built-in store does not support dynamic credentials (use OpenBao for that).
+
+---
+
+## Choosing a Backend
+
+| | Built-in (default) | OpenBao (opt-in) |
+|--|--|--|
+| External dependencies | None | OpenBao container |
+| Encryption | AES-256-GCM | OpenBao seal/unseal |
+| Static secrets | Yes | Yes |
+| Dynamic Postgres credentials | No | Yes |
+| Lease rotation | No | Yes |
+| Secret metadata/staleness checks | No | Yes |
+| Config key | `secrets.store: builtin` | `secrets.store: openbao` |
+
+### Migration note for existing OpenBao users
+
+If you already deployed with `secrets.store: openbao` (or the deprecated `secrets.provider: openbao`), nothing changes -- your configuration continues to work as before. Migrating secrets from OpenBao to the built-in store is a manual process: re-set each secret using `vibew secret set`. There is no automated migration tool. You can run both backends in different environments if needed (e.g. builtin for dev, OpenBao for production).
 
 ---
 
@@ -22,12 +40,13 @@ vibewarden.yaml
        v
   VibeWarden (sidecar)
        |
-       | HTTP API (no SDK)
-       v
-    OpenBao (KV v2 + database engine)
+       |--- Built-in store (AES-256-GCM encrypted file)
+       |        .vibewarden/secrets.enc
        |
-       v
-  Postgres (dynamic credentials)
+       |--- OR: OpenBao (KV v2 + database engine)
+       |        |
+       |        v
+       |     Postgres (dynamic credentials, OpenBao only)
        |
        v
   upstream app (receives secrets via headers or .env file)
@@ -35,7 +54,94 @@ vibewarden.yaml
 
 ---
 
-## Quick Start
+## Quick Start -- Built-in (default)
+
+The built-in store requires a 32-byte master key. Provide it via environment variable or key file.
+
+### 1. Generate and set the master key
+
+```bash
+export VIBEWARDEN_SECRETS_MASTER_KEY=$(openssl rand -hex 32)
+```
+
+Save this key somewhere safe -- you need it every time VibeWarden starts. Alternatively, write the hex key to a file and reference it in config:
+
+```yaml
+secrets:
+  enabled: true
+  store: builtin
+  builtin:
+    key_file: /path/to/master.key
+```
+
+### 2. Store a secret
+
+```bash
+vibew secret set app/stripe api_key=sk_live_abc123
+```
+
+Store multiple keys at once:
+
+```bash
+vibew secret set app/database password=s3cr3t! host=db.example.com
+```
+
+### 3. Configure injection
+
+```yaml
+# vibewarden.yaml
+secrets:
+  enabled: true
+  store: builtin
+  inject:
+    headers:
+      - secret_path: app/stripe
+        secret_key: api_key
+        header: X-Stripe-Key
+    env_file: /run/secrets/.env.secrets
+    env:
+      - secret_path: app/database
+        secret_key: password
+        env_var: DATABASE_PASSWORD
+```
+
+### 4. Start VibeWarden
+
+```bash
+vibew dev
+```
+
+VibeWarden decrypts the secrets file, writes `/run/secrets/.env.secrets`, and injects the header on every proxied request.
+
+### Worked example: DB_PASSWORD
+
+```bash
+export VIBEWARDEN_SECRETS_MASTER_KEY=$(openssl rand -hex 32)
+
+vibew secret set app/database password=my-secure-db-password
+
+cat <<'EOF' >> vibewarden.yaml
+secrets:
+  enabled: true
+  store: builtin
+  inject:
+    env_file: .env.secrets
+    env:
+      - secret_path: app/database
+        secret_key: password
+        env_var: DB_PASSWORD
+EOF
+
+vibew dev
+```
+
+Your app reads `DB_PASSWORD` from `.env.secrets` at startup.
+
+---
+
+## Quick Start -- OpenBao (opt-in)
+
+Use OpenBao when you need dynamic credentials, lease rotation, or metadata-based staleness checks.
 
 ### 1. Start the stack
 
@@ -69,7 +175,7 @@ bao kv put secret/app/internal token=bearer-xyz
 # vibewarden.yaml
 secrets:
   enabled: true
-  provider: openbao
+  store: openbao
   openbao:
     address: http://openbao:8200
     auth:
@@ -102,12 +208,23 @@ VibeWarden fetches the secrets, writes `/run/secrets/.env.secrets`, and injects 
 
 ## Static Secrets
 
-Static secrets are key/value pairs stored in OpenBao KV v2 and refreshed on a configurable interval.
+Static secrets are key/value pairs stored in the configured backend and refreshed on a configurable interval.
 
 ### Storing secrets
 
-Use the OpenBao CLI (`bao`) to write secrets to OpenBao directly. VibeWarden reads
-them at runtime — it does not provide a write command.
+**Built-in store:**
+
+```bash
+# Single key
+vibew secret set app/database password=s3cr3t!
+
+# Multiple keys at once
+vibew secret set app/stripe \
+  api_key=sk_live_abc \
+  webhook_secret=whsec_xyz
+```
+
+**OpenBao:**
 
 ```bash
 # Single key
@@ -135,7 +252,7 @@ vibew secret get app/stripe --env        # export KEY=value lines
 
 ### Injection modes
 
-**Header injection** — VibeWarden adds a header to every proxied request. The upstream app reads it like any other HTTP header. Best for API tokens that the app needs per-request.
+**Header injection** -- VibeWarden adds a header to every proxied request. The upstream app reads it like any other HTTP header. Best for API tokens that the app needs per-request.
 
 ```yaml
 inject:
@@ -145,7 +262,7 @@ inject:
       header: X-Internal-Token
 ```
 
-**Env file injection** — VibeWarden writes a `.env` file. The upstream reads it at startup. Best for connection strings and other startup-time config.
+**Env file injection** -- VibeWarden writes a `.env` file. The upstream reads it at startup. Best for connection strings and other startup-time config.
 
 ```yaml
 inject:
@@ -175,18 +292,20 @@ source /run/secrets/.env.secrets
 
 ### Cache TTL
 
-Secrets are cached in memory. The default TTL is 5 minutes — VibeWarden re-fetches in the background and serves the stale value if the refresh fails.
+Secrets are cached in memory. The default TTL is 5 minutes -- VibeWarden re-fetches in the background and serves the stale value if the refresh fails.
 
 ```yaml
 secrets:
-  cache_ttl: "10m"   # increase to reduce OpenBao load
+  cache_ttl: "10m"   # increase to reduce store load
 ```
 
 ---
 
 ## Dynamic Postgres Credentials
 
-OpenBao's database engine generates short-lived Postgres credentials with a configurable TTL. When credentials are within 25% of their TTL, VibeWarden automatically renews (or regenerates) them.
+**OpenBao only.** OpenBao's database engine generates short-lived Postgres credentials with a configurable TTL. When credentials are within 25% of their TTL, VibeWarden automatically renews (or regenerates) them.
+
+The built-in store does not support dynamic credentials. Use OpenBao if you need this feature.
 
 ### Setup
 
@@ -225,7 +344,7 @@ curl -X POST http://openbao:8200/v1/database/roles/app-readwrite \
 ```yaml
 secrets:
   enabled: true
-  provider: openbao
+  store: openbao
   openbao:
     address: http://openbao:8200
     auth:
@@ -259,7 +378,7 @@ For apps that cannot handle rotation, set a very long `max_ttl` in the OpenBao r
 "max_ttl": "8760h"
 ```
 
-**This is a security trade-off** — a one-year TTL is significantly better than a static password, but you lose the rotation benefit. VibeWarden logs a health warning when TTL > 24 hours.
+**This is a security trade-off** -- a one-year TTL is significantly better than a static password, but you lose the rotation benefit. VibeWarden logs a health warning when TTL > 24 hours.
 
 ### Rotation events
 
@@ -291,9 +410,9 @@ VibeWarden periodically checks secret hygiene and emits structured `secret.healt
 |-------|----------|-----------|
 | Weak secret | critical | Value matches a known default (`password`, `changeme`, `secret`, `123456`, `admin`, `letmein`) |
 | Short secret | warning | Value is shorter than 16 characters |
-| Stale secret | warning | Not updated in longer than `max_static_age` (default: 90 days) |
-| Expiring lease | warning | Dynamic credential TTL is less than 10% remaining |
-| Missing creds | critical | No dynamic credentials available for a configured role |
+| Stale secret | warning | Not updated in longer than `max_static_age` (default: 90 days) -- OpenBao only |
+| Expiring lease | warning | Dynamic credential TTL is less than 10% remaining -- OpenBao only |
+| Missing creds | critical | No dynamic credentials available for a configured role -- OpenBao only |
 
 ### Configuration
 
@@ -349,7 +468,13 @@ Health events are also delivered to configured webhooks (Slack, Discord, etc.) w
 ## CLI Commands
 
 ```bash
-# Read a secret (human-readable, JSON, or shell-sourceable env output)
+# Write a secret to the secret store
+vibew secret set <path> <key=value>...
+# Examples:
+#   vibew secret set app/stripe api_key=sk_live_abc123
+#   vibew secret set app/db password=s3cret host=db.example.com
+
+# Read a secret from the configured store (human-readable, JSON, or shell-sourceable env output)
 vibew secret get <alias-or-path>
 vibew secret get <alias-or-path> --json
 vibew secret get <alias-or-path> --env
@@ -362,15 +487,17 @@ vibew secret generate
 vibew secret generate --length 64
 ```
 
-To write secrets to OpenBao, use the `bao` CLI directly:
-
-```bash
-bao kv put secret/<path> <key>=<value> [<key>=<value>...]
-```
-
 ---
 
 ## Production Considerations
+
+### Built-in store
+
+**Master key backup.** The `VIBEWARDEN_SECRETS_MASTER_KEY` (or the contents of `secrets.builtin.key_file`) is the only way to decrypt your secrets. If you lose it, your secrets are unrecoverable. Store it in a password manager or a separate key management system.
+
+**File permissions.** The encrypted secrets file at `.vibewarden/secrets.enc` is written with `0600` permissions. Ensure the directory `.vibewarden/` is not world-readable on your server. VibeWarden creates the directory with `0700` permissions.
+
+**No dynamic credentials.** The built-in store provides only static secrets. If you need short-lived, auto-rotating database credentials, use OpenBao.
 
 ### OpenBao seal/unseal
 
@@ -410,14 +537,14 @@ The root token generated during `bao operator init` is extremely powerful. After
 
 ### AppRole secret_id rotation
 
-The AppRole `secret_id` is a credential — rotate it periodically:
+The AppRole `secret_id` is a credential -- rotate it periodically:
 
 ```bash
 # Generate a new secret_id
 bao write -f auth/approle/role/vibewarden/secret-id
 
 # Update OPENBAO_SECRET_ID in your environment and restart VibeWarden
-# Revoke the old secret_id (optional — it expires automatically after secret_id_ttl)
+# Revoke the old secret_id (optional -- it expires automatically after secret_id_ttl)
 bao write auth/approle/role/vibewarden/secret-id/destroy secret_id=<old-id>
 ```
 
@@ -434,6 +561,16 @@ OpenBao supports Raft HA out of the box. For a single VibeWarden sidecar, a sing
 ---
 
 ## Troubleshooting
+
+### Missing master key (built-in store)
+
+**Symptom:** `secrets plugin: builtin store: master key not configured`
+
+**Fix:** Set the `VIBEWARDEN_SECRETS_MASTER_KEY` environment variable or configure `secrets.builtin.key_file` in `vibewarden.yaml`:
+
+```bash
+export VIBEWARDEN_SECRETS_MASTER_KEY=$(openssl rand -hex 32)
+```
 
 ### OpenBao sealed
 
@@ -471,11 +608,15 @@ EOF
 
 ### Secret not found
 
-**Symptom:** `openbao: secret not found at "app/stripe"`
+**Symptom:** `builtin: secret not found at "app/stripe"` or `openbao: secret not found at "app/stripe"`
 
-**Fix:** The secret does not exist in OpenBao yet. Write it using the `bao` CLI:
+**Fix:** The secret does not exist in the store yet. Write it:
 
 ```bash
+# Built-in store
+vibew secret set app/stripe api_key=your-api-key
+
+# OpenBao
 bao kv put secret/app/stripe api_key=your-api-key
 ```
 
@@ -483,12 +624,57 @@ bao kv put secret/app/stripe api_key=your-api-key
 
 ## Full Example Configuration
 
+### Built-in store (default)
+
 ```yaml
-# vibewarden.yaml — full secrets plugin configuration example
+# vibewarden.yaml -- built-in encrypted secret store
 
 secrets:
   enabled: true
-  provider: openbao
+  store: builtin
+
+  # Master key: set VIBEWARDEN_SECRETS_MASTER_KEY env var,
+  # or provide a key file:
+  # builtin:
+  #   key_file: /path/to/master.key
+
+  inject:
+    headers:
+      - secret_path: app/internal-api
+        secret_key: token
+        header: X-Internal-Token
+
+    env_file: /run/secrets/.env.secrets
+    env:
+      - secret_path: app/database
+        secret_key: password
+        env_var: DATABASE_PASSWORD
+      - secret_path: app/stripe
+        secret_key: api_key
+        env_var: STRIPE_API_KEY
+
+  cache_ttl: "5m"
+
+  health:
+    check_interval: "6h"
+    max_static_age: "2160h"   # 90 days
+    weak_patterns:
+      - "password"
+      - "changeme"
+      - "secret"
+      - "123456"
+      - "admin"
+      - "letmein"
+```
+
+### OpenBao (opt-in)
+
+```yaml
+# vibewarden.yaml -- OpenBao secret store with dynamic credentials
+
+secrets:
+  enabled: true
+  store: openbao
 
   openbao:
     address: http://openbao:8200
@@ -500,13 +686,11 @@ secrets:
     mount_path: secret    # default KV v2 mount path
 
   inject:
-    # Secrets injected as HTTP request headers on every proxied request.
     headers:
       - secret_path: app/internal-api
         secret_key: token
         header: X-Internal-Token
 
-    # Secrets written to a .env file the upstream reads at startup.
     env_file: /run/secrets/.env.secrets
     env:
       - secret_path: app/database

@@ -25,6 +25,7 @@ cd my-app && vibew wrap --upstream 3000 && vibew dev
 - WAF (SQLi, XSS, path traversal detection)
 - Webhook signature verification (Stripe, GitHub, Slack, Twilio)
 - Security headers (HSTS, CSP, CORP, COOP, etc.)
+- Secrets: built-in AES-256-GCM encrypted store (default), OpenBao opt-in for dynamic creds
 - Egress proxy with SSRF protection
 - Hot config reload (file watcher + admin API)
 - AI-readable structured logs with published JSON schema

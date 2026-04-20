@@ -174,7 +174,7 @@ It never holds external secrets or connects directly to third-party APIs.
 | Rate limiting | Token-bucket, per-IP and per-user; in-memory or Redis-backed |
 | WAF | Pattern detection for SQLi, XSS, path traversal; `block` or `detect` mode — enabled by default in `detect` mode |
 | Security headers | HSTS, CSP, X-Frame-Options, Referrer-Policy, Permissions-Policy, CORS |
-| Secrets management | OpenBao (Apache 2.0 Vault fork) — inject secrets as headers or env vars |
+| Secrets management | Built-in AES-256-GCM store (default) or OpenBao -- inject secrets as headers or env vars |
 | Egress proxy | Outbound HTTP with mTLS, circuit breaker, retry, SSRF protection, PII redaction |
 | Resilience | Circuit breaker, retry with jitter, timeout middleware, aggregate health endpoint |
 | Observability | Prometheus metrics, OpenTelemetry traces + logs, Grafana dashboards, Jaeger/Tempo |
@@ -242,7 +242,7 @@ Firebase, Cognito, Okta, Supabase, and Kratos step-by-step guides.
 | Setup time | 3 commands | Hours of config | Moderate | Minutes |
 | Auth out of the box | Yes (OIDC, Kratos, API key) | No | Partial (forward auth only) | No |
 | WAF | Yes | Paid (NGINX Plus) | No | Paid (Cloudflare WAF) |
-| Secrets management | Yes (OpenBao) | No | No | No |
+| Secrets management | Yes (built-in + OpenBao) | No | No | No |
 | AI-readable audit logs | Yes (versioned schema) | No | No | No |
 | Egress proxy + SSRF guard | Yes | No | No | No |
 | Self-hosted | Yes | Yes | Yes | No |
@@ -297,7 +297,8 @@ add VibeWarden. Use `vibew add` to enable individual features after the initial 
 | `vibew plugins` | List available plugins and their enabled/disabled status |
 | `vibew plugins show <name>` | Show detailed configuration options for a plugin |
 | `vibew secret generate` | Generate a cryptographically secure random secret |
-| `vibew secret get <alias-or-path>` | Read a secret from OpenBao |
+| `vibew secret set <path> <key=value>...` | Write a secret to the secret store |
+| `vibew secret get <alias-or-path>` | Read a secret from the configured store |
 | `vibew secret list` | List all managed secret paths |
 | `vibew token` | Generate a signed dev JWT for local testing |
 | `vibew cert export` | Export the local CA certificate (for curl, Postman, …) |
@@ -368,7 +369,7 @@ cmd/vibewarden/     — CLI entrypoint
 internal/
   domain/           — Pure domain logic (zero external deps)
   ports/            — Interface definitions (inbound + outbound)
-  adapters/         — Implementations (Caddy, Kratos, Postgres, OpenBao, …)
+  adapters/         — Implementations (Caddy, Kratos, Postgres, Builtin secrets, OpenBao, ...)
   app/              — Application services (use cases)
   config/           — Config loading and validation
   plugins/          — Plugin registry and lifecycle
