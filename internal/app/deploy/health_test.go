@@ -106,9 +106,14 @@ func TestDetectTLSError(t *testing.T) {
 			wantDetail: "TLS handshake error",
 		},
 		{
-			name:       "certificate keyword",
-			logs:       "ERROR loading certificate: file not found",
-			wantDetail: "Certificate error",
+			name:       "certificate verify failed",
+			logs:       "ERROR certificate verify failed: expired",
+			wantDetail: "Certificate verification failed",
+		},
+		{
+			name:       "no certificate available",
+			logs:       "ERROR no certificate available for domain",
+			wantDetail: "No certificate available",
 		},
 		{
 			name:       "no certificates available",

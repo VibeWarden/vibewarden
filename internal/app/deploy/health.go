@@ -120,7 +120,8 @@ func detectTLSError(logs string) string {
 		{"no certificates available", "No TLS certificates available. ACME provisioning may still be in progress or has failed."},
 		{"unable to obtain certificate", "Unable to obtain TLS certificate. Check domain DNS records and firewall rules."},
 		{"dns problem", "DNS problem during certificate provisioning. Verify DNS records point to this server."},
-		{"certificate", "Certificate error detected. Check TLS configuration and ACME provider settings."},
+		{"certificate verify failed", "Certificate verification failed. Check TLS configuration and ACME provider settings."},
+		{"no certificate available", "No certificate available. Check ACME provider and tls.email configuration."},
 	}
 
 	for _, p := range tlsPatterns {
@@ -139,7 +140,10 @@ func (s *Service) detectUpstreamUnreachable(ctx context.Context, remoteDir strin
 	// the issue is with the sidecar, not the upstream. We check by looking
 	// for "Up" in the vibewarden container status.
 	statusCmd := fmt.Sprintf("cd %s && docker compose ps vibewarden --format '{{.Status}}' 2>/dev/null", remoteDir)
-	sidecarStatus, _ := s.executor.Run(ctx, statusCmd)
+	sidecarStatus, err := s.executor.Run(ctx, statusCmd)
+	if err != nil {
+		return ""
+	}
 
 	if !strings.Contains(strings.ToLower(sidecarStatus), "up") {
 		// Sidecar itself is not running — this is a container issue, not upstream.
@@ -153,7 +157,10 @@ func (s *Service) detectUpstreamUnreachable(ctx context.Context, remoteDir strin
 		scheme = "https"
 	}
 	probeCmd := fmt.Sprintf("curl -sk -o /dev/null -w '%%{http_code}' %s://localhost:%d/_vibewarden/health 2>/dev/null || echo 000", scheme, port)
-	httpCode, _ := s.executor.Run(ctx, probeCmd)
+	httpCode, err := s.executor.Run(ctx, probeCmd)
+	if err != nil {
+		return ""
+	}
 	httpCode = strings.TrimSpace(httpCode)
 
 	switch httpCode {
