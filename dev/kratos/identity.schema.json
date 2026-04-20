@@ -24,6 +24,12 @@
               "via": "email"
             }
           }
+        },
+        "role": {
+          "type": "string",
+          "title": "Role",
+          "default": "user",
+          "enum": ["user", "admin", "moderator"]
         }
       },
       "required": ["email"],

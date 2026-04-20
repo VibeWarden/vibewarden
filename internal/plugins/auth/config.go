@@ -97,6 +97,12 @@ type Config struct {
 	// "username_password", or a filesystem path to a custom JSON file.
 	IdentitySchema string
 
+	// RolePaths maps role names to URL path patterns that require that role.
+	// When configured, the auth handler checks the user's Kratos identity
+	// trait "role" against these patterns and returns 403 for mismatches.
+	// Only valid when Mode is ModeKratos.
+	RolePaths map[string][]string
+
 	// UI holds configuration for the built-in auth UI pages.
 	// When UI.Mode is "built-in" (the default), VibeWarden serves its own
 	// login, registration, recovery, and verification pages.

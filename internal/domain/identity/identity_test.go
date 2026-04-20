@@ -172,3 +172,31 @@ func TestIdentity_ClaimReturnsNilForMissing(t *testing.T) {
 		t.Errorf("Claim(missing) = %v, want nil", got)
 	}
 }
+
+func TestIdentity_Role(t *testing.T) {
+	tests := []struct {
+		name   string
+		claims map[string]any
+		want   string
+	}{
+		{"admin role from claims", map[string]any{"role": "admin"}, "admin"},
+		{"moderator role from claims", map[string]any{"role": "moderator"}, "moderator"},
+		{"user role from claims", map[string]any{"role": "user"}, "user"},
+		{"missing role defaults to user", map[string]any{}, "user"},
+		{"nil claims defaults to user", nil, "user"},
+		{"invalid role defaults to user", map[string]any{"role": "superadmin"}, "user"},
+		{"non-string role defaults to user", map[string]any{"role": 42}, "user"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ident, err := NewIdentity("id-1", "a@b.com", "kratos", false, tt.claims)
+			if err != nil {
+				t.Fatalf("NewIdentity() error = %v", err)
+			}
+			got := ident.Role()
+			if got.String() != tt.want {
+				t.Errorf("Role() = %q, want %q", got.String(), tt.want)
+			}
+		})
+	}
+}

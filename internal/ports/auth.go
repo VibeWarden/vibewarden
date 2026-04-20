@@ -90,4 +90,9 @@ type AuthConfig struct {
 	// be reached. Accepted values: "503" (default, fail-closed) or
 	// "allow_public" (serve public paths, block protected paths with 503).
 	OnKratosUnavailable KratosUnavailableBehavior
+
+	// RolePaths maps role names to URL path patterns that require that role.
+	// When configured, authenticated users whose Kratos identity trait "role"
+	// does not match the required role for a path receive HTTP 403 Forbidden.
+	RolePaths map[string][]string
 }

@@ -33,12 +33,17 @@ type AuthHandlerConfig struct {
 
 	// KratosURL is the base URL of the Kratos public API (e.g. "http://kratos:4433").
 	KratosURL string `json:"kratos_url"`
+
+	// RolePaths maps role names (e.g. "admin") to URL path patterns that
+	// require that role. When set, authenticated users whose role does not
+	// match receive HTTP 403. When empty, no role enforcement is performed.
+	RolePaths map[string][]string `json:"role_paths,omitempty"`
 }
 
 // AuthHandler is a Caddy HTTP handler module that validates Kratos session
 // cookies and enforces authentication. Unauthenticated requests are redirected
 // to the configured login URL. Authenticated requests have identity headers
-// (X-User-Id, X-User-Email, X-User-Verified) injected for the upstream app.
+// (X-User-Id, X-User-Email, X-User-Verified, X-User-Role) injected for the upstream app.
 //
 // The module is registered under the name "vibewarden_authentication" and referenced from
 // the Caddy JSON configuration as:
@@ -246,6 +251,45 @@ func setIdentityHeaders(r *http.Request, whoami *kratosWhoamiResponse) {
 	}
 }
 
+// extractRole extracts the role string from the Kratos whoami response.
+// It looks for traits.role and returns "user" as the default when the trait
+// is absent or not a string.
+func extractRole(whoami *kratosWhoamiResponse) string {
+	raw, ok := whoami.Identity.Traits["role"]
+	if !ok {
+		return "user"
+	}
+	role, ok := raw.(string)
+	if !ok || role == "" {
+		return "user"
+	}
+	return role
+}
+
+// matchRequiredRole checks whether the request path requires a specific role
+// according to the configured RolePaths map. It returns the required role name
+// and true if a match is found, or ("", false) if no role restriction applies.
+func (h *AuthHandler) matchRequiredRole(reqPath string) (string, bool) {
+	for role, patterns := range h.Config.RolePaths {
+		for _, p := range patterns {
+			if strings.HasSuffix(p, "/*") {
+				prefix := strings.TrimSuffix(p, "/*")
+				if strings.HasPrefix(reqPath, prefix) {
+					return role, true
+				}
+			}
+			matched, _ := path.Match(p, reqPath)
+			if matched {
+				return role, true
+			}
+			if p == reqPath {
+				return role, true
+			}
+		}
+	}
+	return "", false
+}
+
 // ServeHTTP implements caddyhttp.MiddlewareHandler.
 func (h *AuthHandler) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddyhttp.Handler) error {
 	// Public paths: optional auth — check session if cookie present, set
@@ -281,6 +325,22 @@ func (h *AuthHandler) ServeHTTP(w http.ResponseWriter, r *http.Request, next cad
 
 	// Set identity headers for the upstream app.
 	setIdentityHeaders(r, whoami)
+
+	// Always set the role header from traits.
+	role := extractRole(whoami)
+	r.Header.Set("X-User-Role", role)
+
+	// Enforce role-based path restrictions when configured.
+	if len(h.Config.RolePaths) > 0 {
+		if requiredRole, ok := h.matchRequiredRole(r.URL.Path); ok {
+			if role != requiredRole {
+				w.Header().Set("Content-Type", "application/json")
+				w.WriteHeader(http.StatusForbidden)
+				_, _ = w.Write([]byte(`{"error":"forbidden","message":"insufficient role for this path"}`))
+				return nil
+			}
+		}
+	}
 
 	return next.ServeHTTP(w, r)
 }

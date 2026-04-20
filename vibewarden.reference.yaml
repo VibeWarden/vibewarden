@@ -362,6 +362,27 @@ auth:
   # Only relevant when mode is "kratos".
   login_url: ""
 
+  # Role-based path restrictions (only valid when mode is "kratos").
+  #
+  # Maps role names to URL path patterns. Authenticated users whose Kratos
+  # identity trait "role" does not match the required role for a path receive
+  # HTTP 403 Forbidden with JSON body:
+  #   {"error":"forbidden","message":"insufficient role for this path"}
+  #
+  # When role_paths is omitted or empty, no role enforcement is performed —
+  # the X-User-Role header is still set for the upstream app to use.
+  #
+  # Accepted roles: user, admin, moderator (matches the identity schema trait).
+  # Supports * for single-segment wildcards.
+  #
+  # Example:
+  #   role_paths:
+  #     admin:
+  #       - /admin/*
+  #     moderator:
+  #       - /admin/moderation/*
+  # role_paths: {}
+
 # Request body size limiting
 # VibeWarden can reject oversized request bodies before they reach the upstream.
 # This protects against payload-based denial-of-service attacks and enforces

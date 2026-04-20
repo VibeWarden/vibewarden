@@ -44,6 +44,12 @@
           "type": "string",
           "format": "uri",
           "title": "Profile Picture URL"
+        },
+        "role": {
+          "type": "string",
+          "title": "Role",
+          "default": "user",
+          "enum": ["user", "admin", "moderator"]
         }
       },
       "required": ["email"],

@@ -638,7 +638,7 @@ func (p *Plugin) ContributeCaddyHandlers() []ports.CaddyHandler {
 	// For the Caddy JSON config we use the auth cookie validation approach:
 	// inject a handler that checks for the session cookie and redirects
 	// missing sessions to the login URL.
-	authHandler := buildAuthHandler(cookieName, loginURL, publicPaths, p.cfg.KratosPublicURL)
+	authHandler := buildAuthHandler(cookieName, loginURL, publicPaths, p.cfg.KratosPublicURL, p.cfg.RolePaths)
 
 	// Identity-headers handler: sets upstream request headers from Kratos
 	// session data. These headers are consumed by the upstream application.
@@ -700,14 +700,18 @@ func validateKratosConfig(cfg Config) error {
 // In the Caddy JSON config the auth enforcement is represented as a
 // forward_auth handler that delegates session validation to the Kratos
 // whoami endpoint. Public paths bypass auth via a path matcher.
-func buildAuthHandler(cookieName, loginURL string, publicPaths []string, kratosURL string) map[string]any {
-	return map[string]any{
+func buildAuthHandler(cookieName, loginURL string, publicPaths []string, kratosURL string, rolePaths map[string][]string) map[string]any {
+	h := map[string]any{
 		"handler":      "vibewarden_authentication",
 		"cookie_name":  cookieName,
 		"login_url":    loginURL,
 		"public_paths": publicPaths,
 		"kratos_url":   kratosURL,
 	}
+	if len(rolePaths) > 0 {
+		h["role_paths"] = rolePaths
+	}
+	return h
 }
 
 // buildIdentityHeadersHandler creates the Caddy handler configuration that

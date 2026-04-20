@@ -11,7 +11,7 @@ import (
 var defaultCompressionAlgorithms = []string{"zstd", "gzip"}
 
 // buildUserHeaderStripHandler creates a Caddy headers handler that deletes the
-// X-User-Id, X-User-Email, and X-User-Verified request headers.
+// X-User-Id, X-User-Email, X-User-Verified, and X-User-Role request headers.
 //
 // This handler must be placed as the very first handler in every route's chain.
 // Removing these headers on every inbound request prevents a client from
@@ -21,7 +21,7 @@ func buildUserHeaderStripHandler() map[string]any {
 	return map[string]any{
 		"handler": "headers",
 		"request": map[string]any{
-			"delete": []string{"X-User-Id", "X-User-Email", "X-User-Verified"},
+			"delete": []string{"X-User-Id", "X-User-Email", "X-User-Verified", "X-User-Role"},
 		},
 	}
 }
