@@ -18,6 +18,7 @@ import (
 
 	"github.com/fatih/color"
 
+	"github.com/vibewarden/vibewarden/internal/archutil"
 	"github.com/vibewarden/vibewarden/internal/config"
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
@@ -724,20 +725,10 @@ func (s *DoctorService) checkImageTagConsistency(ctx context.Context, image stri
 	}
 }
 
-// normalizeArch maps the output of "uname -m" to Go's runtime.GOARCH naming
-// convention so that local and remote architectures can be compared.
+// normalizeArch delegates to archutil.Normalize for shared architecture
+// normalization logic.
 func normalizeArch(unameMachine string) string {
-	s := strings.TrimSpace(strings.ToLower(unameMachine))
-	switch s {
-	case "x86_64":
-		return "amd64"
-	case "aarch64", "arm64":
-		return "arm64"
-	case "armv7l":
-		return "arm"
-	default:
-		return s
-	}
+	return archutil.Normalize(unameMachine)
 }
 
 // checkArchCompatibility compares the local runtime.GOARCH with the remote
