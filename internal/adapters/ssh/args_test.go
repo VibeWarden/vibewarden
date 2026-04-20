@@ -172,8 +172,11 @@ func TestRsyncDryRunArgs_ContainsDryRunAndItemize(t *testing.T) {
 
 	args := e.rsyncDryRunArgs("/home/user/generated", "~/vibewarden/project/")
 
-	// Must contain --dry-run, --delete, --itemize-changes.
-	wantFlags := []string{"--dry-run", "--delete", "--itemize-changes"}
+	// Must contain --dry-run, --delete, --itemize-changes, --checksum.
+	// The --checksum flag ensures content-based comparison rather than
+	// mtime+size, which eliminates false-positive drift from timestamp
+	// differences on regenerated files (#1031).
+	wantFlags := []string{"--dry-run", "--delete", "--itemize-changes", "--checksum"}
 	for _, flag := range wantFlags {
 		found := false
 		for _, a := range args {
