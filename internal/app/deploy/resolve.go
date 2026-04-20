@@ -2,6 +2,7 @@ package deploy
 
 import (
 	"fmt"
+	"os"
 
 	"gopkg.in/yaml.v3"
 
@@ -161,44 +162,73 @@ func deepMerge(dst, src map[string]any) {
 	}
 }
 
-// LoadMergedConfig loads the production override file (if prodConfigPath is
-// non-empty) and overlays its values on top of base. When prodConfigPath is
-// empty the base config is returned unchanged. Errors from config.Load are
-// propagated so that syntax errors in the production YAML are never silently
-// ignored.
-func LoadMergedConfig(base *config.Config, prodConfigPath string) (*config.Config, error) {
+// LoadMergedConfig loads the base vibewarden.yaml at configPath, deep-merges
+// the production override at prodConfigPath on top of it, and returns the
+// resulting *config.Config.
+//
+// The merge routes through MergeConfigYAML — the same deep-merge used to
+// produce the on-disk bundle YAML — so every schema field set in the override
+// reaches the returned struct (including newer fields like tls.email,
+// tls.acme_ca, and any future plugin key). This replaces the previous
+// hand-written field allow-list that silently dropped unknown fields
+// (ADR-082, #1053).
+//
+// When prodConfigPath is empty, configPath is loaded as-is via config.Load
+// (with defaults and env-var overrides applied). When configPath is also empty
+// (or the file does not exist), config.Load falls back to defaults plus
+// environment variables, matching its standard behaviour.
+//
+// The merged YAML is written to a tempfile inside os.TempDir() and removed
+// before return. This is acceptable for a one-shot deploy/bundle command and
+// is never called from the serve hot path.
+func LoadMergedConfig(configPath, prodConfigPath string) (*config.Config, error) {
 	if prodConfigPath == "" {
-		return base, nil
+		return config.Load(configPath)
 	}
-	prodCfg, err := config.Load(prodConfigPath)
-	if err != nil {
-		return nil, fmt.Errorf("loading production config %s: %w", prodConfigPath, err)
-	}
-	return overlayProdConfig(base, prodCfg), nil
-}
 
-// overlayProdConfig creates a copy of base with non-zero values from prod
-// overlaid on top. Only fields relevant to deploy are checked: Server.Port,
-// TLS (Enabled, Provider, Domain), and Log.Level.
-func overlayProdConfig(base, prod *config.Config) *config.Config {
-	merged := *base
-	if prod.Server.Port != 0 {
-		merged.Server.Port = prod.Server.Port
+	var baseYAML []byte
+	if configPath != "" {
+		data, err := os.ReadFile(configPath) //nolint:gosec // configPath is the vibewarden.yaml resolved by the caller
+		if err != nil && !os.IsNotExist(err) {
+			return nil, fmt.Errorf("reading base config %s: %w", configPath, err)
+		}
+		baseYAML = data
 	}
-	if prod.TLS.Enabled {
-		merged.TLS.Enabled = prod.TLS.Enabled
+
+	overrideYAML, err := os.ReadFile(prodConfigPath) //nolint:gosec // prodConfigPath is the production override resolved by the caller
+	if err != nil {
+		return nil, fmt.Errorf("reading production config %s: %w", prodConfigPath, err)
 	}
-	if prod.TLS.Provider != "" {
-		merged.TLS.Provider = prod.TLS.Provider
+
+	merged, err := MergeConfigYAML(baseYAML, overrideYAML)
+	if err != nil {
+		return nil, fmt.Errorf("merging config YAML: %w", err)
 	}
-	if prod.TLS.Domain != "" {
-		merged.TLS.Domain = prod.TLS.Domain
+
+	mergedYAML, err := MarshalYAMLMap(merged)
+	if err != nil {
+		return nil, fmt.Errorf("marshalling merged config: %w", err)
 	}
-	if prod.Log.Level != "" {
-		merged.Log.Level = prod.Log.Level
+
+	tmp, err := os.CreateTemp("", "vibewarden-merged-*.yaml")
+	if err != nil {
+		return nil, fmt.Errorf("creating temp file for merged config: %w", err)
 	}
-	if prod.WAF.Mode != "" {
-		merged.WAF.Mode = prod.WAF.Mode
+	tmpPath := tmp.Name()
+	// Ensure the tempfile is always removed, even on error paths.
+	defer func() { _ = os.Remove(tmpPath) }()
+
+	if _, err := tmp.Write(mergedYAML); err != nil {
+		_ = tmp.Close()
+		return nil, fmt.Errorf("writing merged config to %s: %w", tmpPath, err)
 	}
-	return &merged
+	if err := tmp.Close(); err != nil {
+		return nil, fmt.Errorf("closing merged config %s: %w", tmpPath, err)
+	}
+
+	cfg, err := config.Load(tmpPath)
+	if err != nil {
+		return nil, fmt.Errorf("loading merged config: %w", err)
+	}
+	return cfg, nil
 }

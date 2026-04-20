@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -150,6 +151,18 @@ func runDeploy(cmd *cobra.Command, configPath, target, sshKey, secretsFrom, unse
 	// Determine the production override file path after resolving the
 	// base config to an absolute path.
 	prodConfigPath := prodConfigPathForEnv(absConfig, envName)
+
+	// Strict schema check: reject unknown keys in either the base config or
+	// the production override before writing any bundle files. Typos like
+	// tls.dmain: example.com would otherwise be silently dropped during the
+	// merge and cause runtime TLS failures. ADR-082 / #1053.
+	if _, err := config.LoadStrict(absConfig, prodConfigPath); err != nil {
+		var unknown *config.UnknownKeyError
+		if errors.As(err, &unknown) {
+			fmt.Fprintf(cmd.ErrOrStderr(), "Configuration invalid: %s\n", unknown.Error())
+		}
+		return fmt.Errorf("validating config: %w", err)
+	}
 
 	projectName := cfg.Name
 	if projectName == "" && cfg.App.Image != "" {

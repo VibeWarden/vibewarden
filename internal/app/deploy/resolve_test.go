@@ -1,6 +1,8 @@
 package deploy
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -390,131 +392,166 @@ security_headers:
 	}
 }
 
-func TestOverlayProdConfig(t *testing.T) {
+// TestLoadMergedConfig_PreservesAllProdFields is the regression guard for
+// #1053 and ADR-082. The previous hand-written allow-list silently dropped
+// fields such as tls.email and tls.acme_ca when they were only set in the
+// production override. The YAML round-trip implementation now preserves every
+// schema-valid field.
+func TestLoadMergedConfig_PreservesAllProdFields(t *testing.T) {
 	tests := []struct {
-		name         string
-		base         *config.Config
-		prod         *config.Config
-		wantPort     int
-		wantProvider string
-		wantDomain   string
-		wantTLS      bool
-		wantLogLevel string
-		wantWAFMode  string
+		name   string
+		base   string
+		prod   string
+		assert func(t *testing.T, cfg *config.Config)
 	}{
 		{
-			name: "prod overrides all fields",
-			base: &config.Config{
-				Server: config.ServerConfig{Port: 8443},
-				TLS:    config.TLSConfig{Enabled: true, Provider: "self-signed"},
+			name: "tls.email only in prod",
+			base: "tls:\n  provider: self-signed\n",
+			prod: "tls:\n  email: ops@example.com\n",
+			assert: func(t *testing.T, cfg *config.Config) {
+				t.Helper()
+				if cfg.TLS.Email != "ops@example.com" {
+					t.Errorf("TLS.Email = %q, want %q", cfg.TLS.Email, "ops@example.com")
+				}
+				if cfg.TLS.Provider != "self-signed" {
+					t.Errorf("TLS.Provider = %q, want %q", cfg.TLS.Provider, "self-signed")
+				}
 			},
-			prod: &config.Config{
-				Server: config.ServerConfig{Port: 443},
-				TLS:    config.TLSConfig{Enabled: true, Provider: "letsencrypt", Domain: "example.com"},
-				Log:    config.LogConfig{Level: "warn"},
-				WAF:    config.WAFConfig{Mode: "block"},
-			},
-			wantPort:     443,
-			wantProvider: "letsencrypt",
-			wantDomain:   "example.com",
-			wantTLS:      true,
-			wantLogLevel: "warn",
-			wantWAFMode:  "block",
 		},
 		{
-			name: "prod zero port keeps base port",
-			base: &config.Config{
-				Server: config.ServerConfig{Port: 8443},
-				TLS:    config.TLSConfig{Provider: "self-signed"},
+			name: "tls.acme_ca only in prod",
+			base: "tls:\n  provider: letsencrypt\n  domain: example.com\n",
+			prod: "tls:\n  acme_ca: https://acme.zerossl.com/v2/DV90\n",
+			assert: func(t *testing.T, cfg *config.Config) {
+				t.Helper()
+				if cfg.TLS.ACMECA != "https://acme.zerossl.com/v2/DV90" {
+					t.Errorf("TLS.ACMECA = %q, want %q", cfg.TLS.ACMECA, "https://acme.zerossl.com/v2/DV90")
+				}
 			},
-			prod: &config.Config{
-				Server: config.ServerConfig{Port: 0},
-			},
-			wantPort:     8443,
-			wantProvider: "self-signed",
 		},
 		{
-			name: "prod empty provider keeps base provider",
-			base: &config.Config{
-				TLS: config.TLSConfig{Provider: "self-signed"},
+			name: "tls.email + tls.acme_ca both applied",
+			base: "tls:\n  provider: letsencrypt\n  domain: example.com\n",
+			prod: "tls:\n  email: ops@example.com\n  acme_ca: https://acme.zerossl.com/v2/DV90\n",
+			assert: func(t *testing.T, cfg *config.Config) {
+				t.Helper()
+				if cfg.TLS.Email != "ops@example.com" {
+					t.Errorf("TLS.Email = %q, want %q", cfg.TLS.Email, "ops@example.com")
+				}
+				if cfg.TLS.ACMECA != "https://acme.zerossl.com/v2/DV90" {
+					t.Errorf("TLS.ACMECA = %q, want %q", cfg.TLS.ACMECA, "https://acme.zerossl.com/v2/DV90")
+				}
 			},
-			prod: &config.Config{
-				TLS: config.TLSConfig{Provider: ""},
-			},
-			wantProvider: "self-signed",
 		},
 		{
-			name: "prod WAF mode block overrides base",
-			base: &config.Config{
-				WAF: config.WAFConfig{Mode: "detect"},
+			name: "prod overrides base scalar",
+			base: "tls:\n  provider: self-signed\n",
+			prod: "tls:\n  provider: letsencrypt\n  domain: example.com\n",
+			assert: func(t *testing.T, cfg *config.Config) {
+				t.Helper()
+				if cfg.TLS.Provider != "letsencrypt" {
+					t.Errorf("TLS.Provider = %q, want %q", cfg.TLS.Provider, "letsencrypt")
+				}
 			},
-			prod: &config.Config{
-				WAF: config.WAFConfig{Mode: "block"},
-			},
-			wantWAFMode: "block",
 		},
 		{
-			name: "all zero prod returns base unchanged",
-			base: &config.Config{
-				Server: config.ServerConfig{Port: 8443},
-				TLS:    config.TLSConfig{Enabled: true, Provider: "self-signed", Domain: "dev.local"},
-				Log:    config.LogConfig{Level: "debug"},
-				WAF:    config.WAFConfig{Mode: "detect"},
+			name: "tls.cert_monitoring.enabled = false in prod",
+			base: "tls:\n  provider: letsencrypt\n  domain: example.com\n",
+			prod: "tls:\n  cert_monitoring:\n    enabled: false\n",
+			assert: func(t *testing.T, cfg *config.Config) {
+				t.Helper()
+				if cfg.TLS.CertMonitoring.Enabled {
+					t.Error("TLS.CertMonitoring.Enabled = true, want false")
+				}
 			},
-			prod:         &config.Config{},
-			wantPort:     8443,
-			wantProvider: "self-signed",
-			wantDomain:   "dev.local",
-			wantTLS:      true,
-			wantLogLevel: "debug",
-			wantWAFMode:  "detect",
 		},
 		{
-			name: "does not mutate base",
-			base: &config.Config{
-				Server: config.ServerConfig{Port: 8443},
+			name: "server.host only in prod keeps base port",
+			base: "server:\n  port: 8443\n",
+			prod: "server:\n  host: 0.0.0.0\n",
+			assert: func(t *testing.T, cfg *config.Config) {
+				t.Helper()
+				if cfg.Server.Host != "0.0.0.0" {
+					t.Errorf("Server.Host = %q, want %q", cfg.Server.Host, "0.0.0.0")
+				}
+				if cfg.Server.Port != 8443 {
+					t.Errorf("Server.Port = %d, want %d", cfg.Server.Port, 8443)
+				}
 			},
-			prod: &config.Config{
-				Server: config.ServerConfig{Port: 443},
+		},
+		{
+			name: "rate_limit.enabled outside TLS section",
+			base: "tls:\n  provider: self-signed\n",
+			prod: "rate_limit:\n  enabled: true\n",
+			assert: func(t *testing.T, cfg *config.Config) {
+				t.Helper()
+				if !cfg.RateLimit.Enabled {
+					t.Error("RateLimit.Enabled = false, want true")
+				}
 			},
-			wantPort: 443,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			originalPort := tt.base.Server.Port
-
-			got := overlayProdConfig(tt.base, tt.prod)
-
-			if tt.wantPort != 0 && got.Server.Port != tt.wantPort {
-				t.Errorf("Server.Port = %d, want %d", got.Server.Port, tt.wantPort)
+			dir := t.TempDir()
+			basePath := filepath.Join(dir, "vibewarden.yaml")
+			if err := os.WriteFile(basePath, []byte(tt.base), 0o600); err != nil {
+				t.Fatalf("writing base: %v", err)
 			}
-			if tt.wantProvider != "" && got.TLS.Provider != tt.wantProvider {
-				t.Errorf("TLS.Provider = %q, want %q", got.TLS.Provider, tt.wantProvider)
-			}
-			if tt.wantDomain != "" && got.TLS.Domain != tt.wantDomain {
-				t.Errorf("TLS.Domain = %q, want %q", got.TLS.Domain, tt.wantDomain)
-			}
-			if tt.wantTLS && !got.TLS.Enabled {
-				t.Error("TLS.Enabled = false, want true")
-			}
-			if tt.wantLogLevel != "" && got.Log.Level != tt.wantLogLevel {
-				t.Errorf("Log.Level = %q, want %q", got.Log.Level, tt.wantLogLevel)
-			}
-			if tt.wantWAFMode != "" && got.WAF.Mode != tt.wantWAFMode {
-				t.Errorf("WAF.Mode = %q, want %q", got.WAF.Mode, tt.wantWAFMode)
+			prodPath := filepath.Join(dir, "vibewarden.production.yaml")
+			if err := os.WriteFile(prodPath, []byte(tt.prod), 0o600); err != nil {
+				t.Fatalf("writing prod: %v", err)
 			}
 
-			// Verify the original base is not mutated.
-			if tt.name == "does not mutate base" && tt.base.Server.Port != originalPort {
-				t.Errorf("base.Server.Port was mutated: got %d, want %d", tt.base.Server.Port, originalPort)
+			cfg, err := LoadMergedConfig(basePath, prodPath)
+			if err != nil {
+				t.Fatalf("LoadMergedConfig() error = %v", err)
 			}
-
-			// Verify the result is a distinct pointer from the input.
-			if got == tt.base {
-				t.Error("overlayProdConfig returned the same pointer as base, want a copy")
-			}
+			tt.assert(t, cfg)
 		})
+	}
+}
+
+// TestLoadMergedConfig_EnvVarWinsOverProd confirms the YAML round-trip path
+// still honours VIBEWARDEN_* env-var precedence. Env vars must win over both
+// the base file and the production override (viper applies env last).
+func TestLoadMergedConfig_EnvVarWinsOverProd(t *testing.T) {
+	dir := t.TempDir()
+	basePath := filepath.Join(dir, "vibewarden.yaml")
+	if err := os.WriteFile(basePath, []byte("tls:\n  provider: letsencrypt\n  domain: example.com\n"), 0o600); err != nil {
+		t.Fatalf("writing base: %v", err)
+	}
+	prodPath := filepath.Join(dir, "vibewarden.production.yaml")
+	if err := os.WriteFile(prodPath, []byte("tls:\n  email: ops@example.com\n"), 0o600); err != nil {
+		t.Fatalf("writing prod: %v", err)
+	}
+
+	t.Setenv("VIBEWARDEN_TLS_EMAIL", "env@example.com")
+
+	cfg, err := LoadMergedConfig(basePath, prodPath)
+	if err != nil {
+		t.Fatalf("LoadMergedConfig() error = %v", err)
+	}
+	if cfg.TLS.Email != "env@example.com" {
+		t.Errorf("TLS.Email = %q, want env override %q", cfg.TLS.Email, "env@example.com")
+	}
+}
+
+// TestLoadMergedConfig_NoProdOverride ensures the function is a straight
+// config.Load when prodConfigPath is empty (preserving the v0.15.0 contract
+// for callers that pass no override).
+func TestLoadMergedConfig_NoProdOverride(t *testing.T) {
+	dir := t.TempDir()
+	basePath := filepath.Join(dir, "vibewarden.yaml")
+	if err := os.WriteFile(basePath, []byte("server:\n  port: 8443\n"), 0o600); err != nil {
+		t.Fatalf("writing base: %v", err)
+	}
+	cfg, err := LoadMergedConfig(basePath, "")
+	if err != nil {
+		t.Fatalf("LoadMergedConfig() error = %v", err)
+	}
+	if cfg.Server.Port != 8443 {
+		t.Errorf("Server.Port = %d, want %d", cfg.Server.Port, 8443)
 	}
 }

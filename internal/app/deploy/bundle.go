@@ -96,9 +96,19 @@ func (s *Service) bundleSingleSite(ctx context.Context, cfg *config.Config, conf
 	// Load and overlay the production override into the Config struct so that
 	// the compose template uses production values (port 443, letsencrypt, etc.)
 	// for port bindings, TLS config, and other template-driven settings.
-	mergedCfg, err := LoadMergedConfig(cfg, prodConfigPath)
-	if err != nil {
-		return err
+	//
+	// When configPath is empty or the file does not exist on disk (unit tests
+	// that drive the service with an in-memory cfg), fall back to the
+	// caller-supplied cfg so the template still renders.
+	mergedCfg := cfg
+	if configPath != "" {
+		if _, statErr := os.Stat(configPath); statErr == nil {
+			loaded, err := LoadMergedConfig(configPath, prodConfigPath)
+			if err != nil {
+				return err
+			}
+			mergedCfg = loaded
+		}
 	}
 
 	// Resolve upstream.host on the merged Config for template rendering.

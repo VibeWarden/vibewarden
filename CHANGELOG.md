@@ -12,6 +12,29 @@ This initial entry was written by hand to summarise the work leading up to v0.1.
 
 ## [Unreleased]
 
+### Breaking
+
+- **`vibew validate` / `vibew deploy` reject unknown keys** (#1053, ADR-082).
+  Typos or removed keys in `vibewarden.yaml` or `vibewarden.production.yaml`
+  (e.g. `tls.dmain: example.com`) now fail loudly with an error naming the
+  file and the offending key. Previously such keys were silently dropped,
+  which masked typos and caused silent misconfiguration in production. The
+  runtime loader (`vibewarden serve`) is unchanged — it still accepts unknown
+  keys for forward-compat per ADR-065. If you used the silent-drop behaviour
+  to keep scratch annotations inside the YAML, move them to YAML comments
+  (`# staging cutover 2026-04-18`).
+
+### Fixes
+
+- **Production override preserves every schema field** (#1053). `tls.email`,
+  `tls.acme_ca`, `tls.cert_monitoring.*`, `server.host`, and any other field
+  set only in `vibewarden.production.yaml` now reach the runtime
+  `*config.Config`. Previously a hand-written allow-list silently dropped
+  fields beyond `server.port`, `tls.enabled/provider/domain`, `log.level`,
+  and `waf.mode`, which broke the ADR-078 promise that `tls.email` wires to
+  the Caddy ACME issuer. The struct overlay now routes through the same YAML
+  deep-merge that feeds the on-disk bundle.
+
 ---
 
 ## [v0.15.0] — 2026-04-20

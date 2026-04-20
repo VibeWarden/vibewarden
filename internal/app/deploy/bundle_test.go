@@ -340,13 +340,17 @@ app:
 		t.Fatalf("writing base config: %v", err)
 	}
 
-	// Write production override.
+	// Write production override. tls.email and tls.acme_ca are the ADR-082
+	// regression guards — fields added by ADR-078/ADR-079 that the old
+	// hand-written allow-list silently dropped (#1053).
 	prodYAML := `server:
   port: 443
 tls:
   enabled: true
   provider: letsencrypt
   domain: "example.com"
+  email: "ops@example.com"
+  acme_ca: "https://acme.zerossl.com/v2/DV90"
 `
 	prodPath := filepath.Join(projDir, "vibewarden.production.yaml")
 	if err := os.WriteFile(prodPath, []byte(prodYAML), 0o600); err != nil {
@@ -389,6 +393,12 @@ tls:
 	if !strings.Contains(s, "domain: example.com") {
 		t.Errorf("expected domain in merged config, got:\n%s", s)
 	}
+	if !strings.Contains(s, "email: ops@example.com") {
+		t.Errorf("expected tls.email preserved from prod override (ADR-082 regression), got:\n%s", s)
+	}
+	if !strings.Contains(s, "https://acme.zerossl.com/v2/DV90") {
+		t.Errorf("expected tls.acme_ca preserved from prod override (ADR-082 regression), got:\n%s", s)
+	}
 
 	// Base config values not overridden should survive.
 	if !strings.Contains(s, "rate_limit:") {
@@ -401,6 +411,21 @@ tls:
 	// upstream.host should be resolved (0.0.0.0 -> app for single-site with image).
 	if !strings.Contains(s, "host: app") {
 		t.Errorf("expected upstream.host resolved to 'app', got:\n%s", s)
+	}
+
+	// Runtime parity: LoadMergedConfig must return the same values in the
+	// typed Config that the bundle YAML now carries. This is the core #1053
+	// regression — the struct overlay was dropping these fields even though
+	// the YAML overlay carried them.
+	mergedCfg, err := deployapp.LoadMergedConfig(basePath, prodPath)
+	if err != nil {
+		t.Fatalf("LoadMergedConfig() error = %v", err)
+	}
+	if mergedCfg.TLS.Email != "ops@example.com" {
+		t.Errorf("merged cfg TLS.Email = %q, want %q", mergedCfg.TLS.Email, "ops@example.com")
+	}
+	if mergedCfg.TLS.ACMECA != "https://acme.zerossl.com/v2/DV90" {
+		t.Errorf("merged cfg TLS.ACMECA = %q, want %q", mergedCfg.TLS.ACMECA, "https://acme.zerossl.com/v2/DV90")
 	}
 }
 
