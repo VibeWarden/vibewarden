@@ -136,7 +136,8 @@ app:
     DATABASE_URL: "postgres://user:${secret://db/password}@host:5432/db"
 ```
 
-Store secrets with `vibew secret set <path> <key>=<value>`. The `secrets.*`
+Store secrets with `vibew secret set <path> <key>=<value>`. The `secrets.inject`
+entries also support a `value_template` field for composite values. The `secrets.*`
 config section itself cannot use `secret://` URIs (bootstrap constraint).
 See docs/secret-management.md for details.
 

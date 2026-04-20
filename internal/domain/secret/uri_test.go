@@ -275,6 +275,30 @@ func TestFindPlaceholders(t *testing.T) {
 	}
 }
 
+func TestContainsEscapedPlaceholder(t *testing.T) {
+	tests := []struct {
+		name  string
+		input string
+		want  bool
+	}{
+		{"escaped placeholder present", "$${secret://db/password}", true},
+		{"unescaped placeholder only", "${secret://db/password}", false},
+		{"plain string", "no secrets here", false},
+		{"empty string", "", false},
+		{"escaped among text", "prefix $${secret://a/b} suffix", true},
+		{"multiple escaped", "$${secret://a/b} and $${secret://c/d}", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := secret.ContainsEscapedPlaceholder(tt.input)
+			if got != tt.want {
+				t.Errorf("ContainsEscapedPlaceholder(%q) = %v, want %v", tt.input, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestUnescapePlaceholders(t *testing.T) {
 	tests := []struct {
 		name  string

@@ -369,7 +369,8 @@ dependency where the store would need to be available to configure itself.
 
 1. `config.LoadRaw()` reads and unmarshals the YAML (no validation).
 2. The secret store is constructed from `cfg.Secrets.*`.
-3. `config.ResolveSecrets()` walks all string fields and resolves `secret://` URIs.
+3. `config.ResolveSecrets()` walks all string fields and resolves `secret://` URIs,
+   `${secret://...}` composite placeholders, and unescapes `$${...}` sequences.
 4. `cfg.Validate()` validates the fully-resolved config.
 
 ### Error handling

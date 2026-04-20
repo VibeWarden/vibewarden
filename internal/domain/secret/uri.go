@@ -77,7 +77,7 @@ func (u URI) String() string {
 }
 
 // placeholderRe matches ${secret://...} placeholders that are NOT preceded by
-// an extra $. It uses a negative lookbehind is not available in Go's RE2, so
+// an extra $. A negative lookbehind is not available in Go's RE2, so
 // FindPlaceholders filters escaped matches manually.
 //
 // The regex captures the inner secret:// URI (everything between ${ and }).
