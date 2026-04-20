@@ -488,8 +488,10 @@ func TestBuildCaddyConfig_LetsEncryptACMEIssuer(t *testing.T) {
 }
 
 // TestBuildCaddyConfig_LetsEncryptACMECA verifies ACME CA URL behaviour:
-//   - When ACMECA is empty, a 3-issuer fallback chain (LE -> ZeroSSL -> Buypass) is configured.
-//   - When ACMECA is set, a single issuer with the custom CA URL is used (backward compat).
+//   - When ACMECA is empty and tls.email is unset, the chain is single-issuer
+//     LE (ZeroSSL requires an email, Buypass is removed per ADR-083).
+//   - When ACMECA is set, a single issuer with the custom CA URL is used
+//     (backward compat).
 func TestBuildCaddyConfig_LetsEncryptACMECA(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -498,9 +500,9 @@ func TestBuildCaddyConfig_LetsEncryptACMECA(t *testing.T) {
 		wantFirstCA string
 	}{
 		{
-			name:        "default — 3-issuer fallback chain",
+			name:        "default — single-issuer LE (no email)",
 			acmeCA:      "",
-			wantIssuers: 3,
+			wantIssuers: 1,
 			wantFirstCA: "https://acme-v02.api.letsencrypt.org/directory",
 		},
 		{

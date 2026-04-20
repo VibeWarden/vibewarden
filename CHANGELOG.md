@@ -23,6 +23,26 @@ This initial entry was written by hand to summarise the work leading up to v0.1.
   keys for forward-compat per ADR-065. If you used the silent-drop behaviour
   to keep scratch annotations inside the YAML, move them to YAML comments
   (`# staging cutover 2026-04-18`).
+- **Buypass removed from the default `letsencrypt` fallback chain**
+  (#1055, ADR-083). `provider: letsencrypt` no longer falls back to Buypass.
+  Buypass's ACME directory currently returns `403 Forbidden`, so keeping it
+  in the chain only wasted recovery time. Buypass remains available as an
+  explicit opt-in via `provider: buypass`; a `tls.acme.provider_deprecated`
+  event is emitted at Init when that path is selected. Anyone who relied on
+  the silent Buypass fallback should set `provider: buypass` explicitly or
+  keep the default `letsencrypt` (which now falls through to ZeroSSL only
+  when `tls.email` is set).
+
+### Changed
+
+- **ZeroSSL is skipped from the default chain when `tls.email` is empty**
+  (#1055, ADR-083). Previously `provider: letsencrypt` wired ZeroSSL into
+  the chain unconditionally; ZeroSSL then rejected the order because EAB
+  requires an email, surfacing as a transient issuance error. The default
+  chain now degrades to single-issuer Let's Encrypt when email is absent,
+  and emits a `tls.acme.chain_skipped` event naming `zerossl` +
+  `reason=email_not_configured` so operators see why. Set `tls.email` to
+  opt back into the two-issuer chain.
 
 ### Fixes
 
@@ -34,6 +54,21 @@ This initial entry was written by hand to summarise the work leading up to v0.1.
   and `waf.mode`, which broke the ADR-078 promise that `tls.email` wires to
   the Caddy ACME issuer. The struct overlay now routes through the same YAML
   deep-merge that feeds the on-disk bundle.
+
+### Added
+
+- **Four new v1 structured log events for ACME chain observability**
+  (#1055, ADR-083):
+  - `tls.acme.chain_skipped` — emitted at plugin Init for every issuer
+    evaluated and excluded from the default chain (payload:
+    `provider`, `reason`, `primary_provider`).
+  - `tls.acme.chain_configured` — emitted once at plugin Init with the
+    resolved chain (payload: `primary_provider`, `resolved_chain`, `domain`).
+  - `tls.acme.provider_deprecated` — emitted when `provider: buypass` is
+    resolved (payload: `provider`, `reason`, `guidance`).
+  - `tls.acme.chain_fallback` — reserved in the v1 schema for future use;
+    emitted only once Caddy/certmagic exposes a stable issuer-transition
+    hook (payload: `from_provider`, `to_provider`, `reason`, `domain`).
 
 ---
 

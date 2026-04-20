@@ -492,6 +492,82 @@
       "if": {
         "properties": {
           "event_type": {
+            "const": "tls.acme.chain_skipped"
+          }
+        },
+        "required": [
+          "event_type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/payload_tls_acme_chain_skipped"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "event_type": {
+            "const": "tls.acme.chain_fallback"
+          }
+        },
+        "required": [
+          "event_type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/payload_tls_acme_chain_fallback"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "event_type": {
+            "const": "tls.acme.chain_configured"
+          }
+        },
+        "required": [
+          "event_type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/payload_tls_acme_chain_configured"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "event_type": {
+            "const": "tls.acme.provider_deprecated"
+          }
+        },
+        "required": [
+          "event_type"
+        ]
+      },
+      "then": {
+        "properties": {
+          "payload": {
+            "$ref": "#/$defs/payload_tls_acme_provider_deprecated"
+          }
+        }
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "event_type": {
             "const": "user.created"
           }
         },
@@ -1561,6 +1637,110 @@
         "expires_at": {
           "type": "string",
           "description": "Certificate expiry time in RFC 3339 format."
+        }
+      }
+    },
+    "payload_tls_acme_chain_skipped": {
+      "description": "Payload for tls.acme.chain_skipped \u2014 emitted once at TLS plugin Init for every ACME issuer evaluated for the default fallback chain but excluded. See ADR-083.",
+      "type": "object",
+      "required": [
+        "provider",
+        "reason",
+        "primary_provider"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "provider": {
+          "type": "string",
+          "description": "Short identifier of the skipped issuer (e.g. 'zerossl')."
+        },
+        "reason": {
+          "type": "string",
+          "description": "Machine-readable skip reason. v1-frozen values: 'email_not_configured'."
+        },
+        "primary_provider": {
+          "type": "string",
+          "description": "Primary ACME provider whose default chain was being built (e.g. 'letsencrypt')."
+        }
+      }
+    },
+    "payload_tls_acme_chain_fallback": {
+      "description": "Payload for tls.acme.chain_fallback \u2014 emitted when Caddy transitions between issuers in an active fallback chain. Reserved in v1 pending a stable Caddy/certmagic/acmez hook; see ADR-083 \u00a73b.",
+      "type": "object",
+      "required": [
+        "from_provider",
+        "to_provider",
+        "reason",
+        "domain"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "from_provider": {
+          "type": "string",
+          "description": "Issuer that failed (e.g. 'letsencrypt')."
+        },
+        "to_provider": {
+          "type": "string",
+          "description": "Issuer the chain fell back to (e.g. 'zerossl')."
+        },
+        "reason": {
+          "type": "string",
+          "description": "Machine-readable transition reason. v1-frozen values: 'upstream_unreachable', 'rate_limited', 'unknown'."
+        },
+        "domain": {
+          "type": "string",
+          "description": "Certificate subject the fallback was for."
+        }
+      }
+    },
+    "payload_tls_acme_chain_configured": {
+      "description": "Payload for tls.acme.chain_configured \u2014 emitted once per TLS plugin Init with the resolved ACME issuer chain.",
+      "type": "object",
+      "required": [
+        "primary_provider",
+        "resolved_chain",
+        "domain"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "primary_provider": {
+          "type": "string",
+          "description": "Configured primary ACME provider (e.g. 'letsencrypt')."
+        },
+        "resolved_chain": {
+          "type": "array",
+          "description": "Ordered list of issuer identifiers Caddy will try.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "domain": {
+          "type": "string",
+          "description": "Certificate subject the chain will provision for."
+        }
+      }
+    },
+    "payload_tls_acme_provider_deprecated": {
+      "description": "Payload for tls.acme.provider_deprecated \u2014 emitted at TLS plugin Init when the operator explicitly selects a deprecated ACME provider.",
+      "type": "object",
+      "required": [
+        "provider",
+        "reason",
+        "guidance"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "provider": {
+          "type": "string",
+          "description": "Deprecated provider identifier (e.g. 'buypass')."
+        },
+        "reason": {
+          "type": "string",
+          "description": "Machine-readable reason the provider is deprecated (e.g. 'directory_returns_403')."
+        },
+        "guidance": {
+          "type": "string",
+          "description": "Short human-readable suggestion pointing the operator at a supported alternative."
         }
       }
     },

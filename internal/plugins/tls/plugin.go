@@ -19,6 +19,7 @@ import (
 	"fmt"
 	"log/slog"
 
+	"github.com/vibewarden/vibewarden/internal/domain/events"
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
 
@@ -26,16 +27,18 @@ import (
 // It implements ports.Plugin and ports.CaddyContributor.
 // The TLS plugin has priority 10 so it is configured before other plugins.
 type Plugin struct {
-	cfg     ports.TLSConfig
-	logger  *slog.Logger
-	monitor *CertMonitor
+	cfg      ports.TLSConfig
+	logger   *slog.Logger
+	monitor  *CertMonitor
+	eventLog ports.EventLogger
 }
 
 // New creates a new TLS Plugin with the given configuration and logger.
-// eventLog may be nil; when non-nil, certificate expiry events are emitted through it.
+// eventLog may be nil; when non-nil, certificate expiry and ACME chain
+// configuration events are emitted through it.
 // The metrics collector may be set later with SetMetricsCollector before Start is called.
 func New(cfg ports.TLSConfig, eventLog ports.EventLogger, logger *slog.Logger) *Plugin {
-	p := &Plugin{cfg: cfg, logger: logger}
+	p := &Plugin{cfg: cfg, logger: logger, eventLog: eventLog}
 	if cfg.Enabled && cfg.CertMonitoring.Enabled {
 		p.monitor = NewCertMonitor(cfg, eventLog, nil, logger)
 	}
@@ -59,11 +62,27 @@ func (p *Plugin) Name() string { return "tls" }
 // TLS is assigned priority 10 so it is configured before other plugins.
 func (p *Plugin) Priority() int { return 10 }
 
-// Init validates the TLS configuration. It returns an error if the
-// configuration is inconsistent (e.g. domain missing for letsencrypt).
-// Init must be called before ContributeCaddyRoutes, ContributeCaddyHandlers,
-// TLSConnectionPolicies, TLSApp, and RedirectServer.
-func (p *Plugin) Init(_ context.Context) error {
+// Init validates the TLS configuration and emits ACME chain observability
+// events. It returns an error if the configuration is inconsistent (e.g.
+// domain missing for letsencrypt). Init must be called before
+// ContributeCaddyRoutes, ContributeCaddyHandlers, TLSConnectionPolicies,
+// TLSApp, and RedirectServer.
+//
+// ACME observability (per ADR-083):
+//   - One tls.acme.chain_skipped event is emitted per issuer evaluated for
+//     the default chain but excluded (e.g. ZeroSSL when tls.email is empty).
+//   - A tls.acme.provider_deprecated event is emitted when provider=buypass
+//     is explicitly selected (Buypass's ACME directory currently returns 403).
+//   - A tls.acme.chain_configured event is always emitted for ACME providers
+//     with the resolved chain, so operators have a single grepable signal.
+//
+// tls.acme.chain_fallback (runtime issuer transitions) is reserved in the
+// schema but not emitted here: Caddy/certmagic/acmez does not expose a
+// stable hook for issuer transitions at the time of writing. See ADR-083 §3b.
+//
+// Init does not panic when p.eventLog is nil; event emission is skipped and
+// the structured logger captures the same information.
+func (p *Plugin) Init(ctx context.Context) error {
 	if !p.cfg.Enabled {
 		return nil
 	}
@@ -74,7 +93,117 @@ func (p *Plugin) Init(_ context.Context) error {
 		slog.String("provider", string(p.cfg.Provider)),
 		slog.String("domain", p.cfg.Domain),
 	)
+
+	// Emit ACME chain events only for ACME providers. For self-signed and
+	// external providers the chain concept does not apply.
+	if isACMEProvider(p.cfg.Provider) {
+		p.emitACMEChainEvents(ctx)
+	}
 	return nil
+}
+
+// emitACMEChainEvents resolves the ACME fallback chain for the plugin's
+// configuration and emits the three observability events described in
+// ADR-083 §3 (chain_skipped, provider_deprecated, chain_configured).
+//
+// Nil p.eventLog is safe: event emission is skipped and the slog logger
+// captures a Warn record with the same classification so the operator is
+// still notified at debug-level log channels.
+func (p *Plugin) emitACMEChainEvents(ctx context.Context) {
+	issuers, skipped := buildACMEIssuers(p.cfg)
+
+	// Emit one chain_skipped event per excluded issuer.
+	for _, sk := range skipped {
+		evt := events.NewTLSACMEChainSkipped(events.TLSACMEChainSkippedParams{
+			Provider:        sk.Provider,
+			Reason:          sk.Reason,
+			PrimaryProvider: string(p.cfg.Provider),
+		})
+		p.logEvent(ctx, evt, "acme issuer skipped from fallback chain",
+			slog.String("provider", sk.Provider),
+			slog.String("reason", sk.Reason),
+		)
+	}
+
+	// Warn operators when they explicitly opted in to a deprecated provider.
+	if p.cfg.Provider == ports.TLSProviderBuypass {
+		evt := events.NewTLSACMEProviderDeprecated(events.TLSACMEProviderDeprecatedParams{
+			Provider: string(ports.TLSProviderBuypass),
+			Reason:   "directory_returns_403",
+			Guidance: "consider provider: letsencrypt with tls.email",
+		})
+		p.logEvent(ctx, evt, "acme provider deprecated",
+			slog.String("provider", string(ports.TLSProviderBuypass)),
+		)
+	}
+
+	// Always publish the resolved chain. This is the grepable single-
+	// source-of-truth signal for operators and log aggregators.
+	evt := events.NewTLSACMEChainConfigured(events.TLSACMEChainConfiguredParams{
+		PrimaryProvider: string(p.cfg.Provider),
+		ResolvedChain:   resolvedChainProviders(p.cfg, issuers),
+		Domain:          p.cfg.Domain,
+	})
+	p.logEvent(ctx, evt, "acme fallback chain configured",
+		slog.String("primary_provider", string(p.cfg.Provider)),
+		slog.String("domain", p.cfg.Domain),
+	)
+}
+
+// logEvent forwards an event to the EventLogger when configured, falling
+// back to a slog.Warn with the same structured fields when no logger is
+// attached. Emission failures are logged but do not bubble up — event
+// emission is best-effort per ports.EventLogger's contract.
+func (p *Plugin) logEvent(ctx context.Context, evt events.Event, fallbackMsg string, fallbackAttrs ...slog.Attr) {
+	if p.eventLog == nil {
+		args := make([]any, 0, len(fallbackAttrs))
+		for _, a := range fallbackAttrs {
+			args = append(args, a)
+		}
+		p.logger.Warn(fallbackMsg, args...)
+		return
+	}
+	if err := p.eventLog.Log(ctx, evt); err != nil {
+		p.logger.Warn("failed to emit acme chain event",
+			slog.String("event_type", evt.EventType),
+			slog.String("error", err.Error()),
+		)
+	}
+}
+
+// resolvedChainProviders maps the Caddy-shaped issuer list back to short
+// provider identifiers (e.g. "letsencrypt", "zerossl") for the
+// tls.acme.chain_configured payload. For provider=letsencrypt with an
+// acme_ca override, a single "custom" entry is used to avoid leaking the
+// raw URL into structured logs.
+func resolvedChainProviders(cfg ports.TLSConfig, issuers []map[string]any) []string {
+	out := make([]string, 0, len(issuers))
+	for _, iss := range issuers {
+		caStr, _ := iss["ca"].(string)
+		out = append(out, providerFromCA(cfg, caStr))
+	}
+	return out
+}
+
+// providerFromCA returns the short provider identifier corresponding to a
+// Caddy ACME issuer's ca URL. An acme_ca override collapses to "custom"
+// so the operator's private directory URL does not end up in log events.
+func providerFromCA(cfg ports.TLSConfig, ca string) string {
+	if cfg.ACMECA != "" && ca == cfg.ACMECA {
+		return "custom"
+	}
+	switch ca {
+	case acmeCALetsEncrypt:
+		return string(ports.TLSProviderLetsEncrypt)
+	case acmeCALetsEncryptStaging:
+		return string(ports.TLSProviderLetsEncryptStaging)
+	case acmeCAZeroSSL:
+		return string(ports.TLSProviderZeroSSL)
+	case acmeCABuypass:
+		return string(ports.TLSProviderBuypass)
+	default:
+		return "custom"
+	}
 }
 
 // Start launches the certificate expiry monitor when monitoring is enabled.
@@ -255,29 +384,61 @@ func buildTLSApp(cfg ports.TLSConfig) (map[string]any, error) {
 	}
 }
 
+// MUST MIRROR: internal/adapters/caddy/acme_issuers.go
+//
+// The constants, SkippedIssuer struct, and buildACMEIssuers function below
+// are intentionally duplicated from the caddy adapter because the adapter
+// package and the plugin package cannot import each other without breaking
+// the hexagonal boundary. Any change here must be mirrored byte-for-byte in
+// internal/adapters/caddy/acme_issuers.go (the primary source of truth).
+// De-duplication is tracked as a follow-up per ADR-083 §4.
+
 // ACME directory URLs for supported certificate authorities.
 const (
 	acmeCALetsEncrypt        = "https://acme-v02.api.letsencrypt.org/directory"
 	acmeCALetsEncryptStaging = "https://acme-staging-v02.api.letsencrypt.org/directory"
 	acmeCAZeroSSL            = "https://acme.zerossl.com/v2/DV90"
-	acmeCABuypass            = "https://api.buypass.com/acme/directory"
+	// acmeCABuypass — Buypass's ACME directory currently returns 403
+	// Forbidden in production (#1055) and has therefore been removed from
+	// the default fallback chain. It remains selectable as an explicit
+	// provider opt-in.
+	acmeCABuypass = "https://api.buypass.com/acme/directory"
 )
 
+// Machine-readable reason codes for skipped issuers. The v1 schema freezes
+// the set of allowed values; see ADR-083 §3a.
+const (
+	skipReasonEmailNotConfigured = "email_not_configured"
+)
+
+// SkippedIssuer records an issuer that was evaluated for the default ACME
+// fallback chain but excluded (e.g. ZeroSSL skipped because tls.email is
+// empty). Callers emit one tls.acme.chain_skipped event per entry.
+type SkippedIssuer struct {
+	// Provider is the short identifier of the skipped issuer (e.g. "zerossl").
+	Provider string
+
+	// Reason is a machine-readable skip reason (e.g. "email_not_configured").
+	Reason string
+}
+
 // buildACMETLSApp returns a Caddy TLS app configuration that provisions
-// certificates automatically via ACME. The issuer chain provides automatic
-// failover: for `provider: letsencrypt` without an acme_ca override a 3-issuer
-// chain (LE -> ZeroSSL -> Buypass) is configured; for specific providers
+// certificates automatically via ACME. For `provider: letsencrypt` without
+// an acme_ca override the chain is [letsencrypt] (empty tls.email) or
+// [letsencrypt, zerossl] (with tls.email); for specific providers
 // (zerossl, buypass, letsencrypt-staging) a single issuer targeting that CA
-// is used.
+// is used. See ADR-083 for the rationale behind the Buypass removal and
+// ZeroSSL email-preflight.
 //
 // Note: storage is intentionally NOT set here. Caddy's storage backend is a
 // top-level field on the Config struct; placing it inside apps.tls causes Caddy
 // to reject the config with "unknown field: storage". Storage is set at the
 // top-level in BuildCaddyConfig when cfg.StoragePath is non-empty.
 func buildACMETLSApp(cfg ports.TLSConfig) map[string]any {
+	issuers, _ := buildACMEIssuers(cfg)
 	policy := map[string]any{
 		"subjects": []string{cfg.Domain},
-		"issuers":  buildACMEIssuers(cfg),
+		"issuers":  issuers,
 	}
 
 	return map[string]any{
@@ -287,28 +448,36 @@ func buildACMETLSApp(cfg ports.TLSConfig) map[string]any {
 	}
 }
 
-// buildACMEIssuers constructs the ordered list of ACME issuer configurations.
-func buildACMEIssuers(cfg ports.TLSConfig) []map[string]any {
+// buildACMEIssuers constructs the ordered list of ACME issuer configurations
+// and reports any issuers that were evaluated but excluded from the default
+// chain. See the primary copy in internal/adapters/caddy/acme_issuers.go for
+// full behavioural documentation.
+func buildACMEIssuers(cfg ports.TLSConfig) (issuers []map[string]any, skipped []SkippedIssuer) {
 	email := cfg.Email
 
 	switch cfg.Provider {
 	case ports.TLSProviderLetsEncrypt:
 		if cfg.ACMECA != "" {
-			return []map[string]any{buildSingleACMEIssuer(cfg.ACMECA, email)}
+			return []map[string]any{buildSingleACMEIssuer(cfg.ACMECA, email)}, nil
 		}
-		return []map[string]any{
+		chain := []map[string]any{
 			buildSingleACMEIssuer(acmeCALetsEncrypt, email),
-			buildSingleACMEIssuer(acmeCAZeroSSL, email),
-			buildSingleACMEIssuer(acmeCABuypass, email),
 		}
+		if email == "" {
+			return chain, []SkippedIssuer{
+				{Provider: string(ports.TLSProviderZeroSSL), Reason: skipReasonEmailNotConfigured},
+			}
+		}
+		chain = append(chain, buildSingleACMEIssuer(acmeCAZeroSSL, email))
+		return chain, nil
 	case ports.TLSProviderZeroSSL:
-		return []map[string]any{buildSingleACMEIssuer(acmeCAZeroSSL, email)}
+		return []map[string]any{buildSingleACMEIssuer(acmeCAZeroSSL, email)}, nil
 	case ports.TLSProviderBuypass:
-		return []map[string]any{buildSingleACMEIssuer(acmeCABuypass, email)}
+		return []map[string]any{buildSingleACMEIssuer(acmeCABuypass, email)}, nil
 	case ports.TLSProviderLetsEncryptStaging:
-		return []map[string]any{buildSingleACMEIssuer(acmeCALetsEncryptStaging, email)}
+		return []map[string]any{buildSingleACMEIssuer(acmeCALetsEncryptStaging, email)}, nil
 	default:
-		return []map[string]any{buildSingleACMEIssuer(acmeCALetsEncrypt, email)}
+		return []map[string]any{buildSingleACMEIssuer(acmeCALetsEncrypt, email)}, nil
 	}
 }
 

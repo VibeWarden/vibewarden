@@ -312,9 +312,13 @@ func buildMultiSiteTLSApp(entries []multiSiteTLSEntry, acmeEmail string) map[str
 				Domain:   entry.domain,
 				Email:    acmeEmail,
 			}
+			// Multisite builds per-domain policies and does not surface
+			// skipped-issuer events directly; the TLS plugin Init path
+			// owns the observability for the default chain.
+			issuers, _ := buildACMEIssuers(tlsCfg)
 			policy := map[string]any{
 				"subjects": []string{entry.domain},
-				"issuers":  buildACMEIssuers(tlsCfg),
+				"issuers":  issuers,
 			}
 			policies = append(policies, policy)
 		}

@@ -170,17 +170,22 @@ tls:
 
   # Provider selects how TLS certificates are obtained. Valid values:
   #
-  #   letsencrypt  — ACME with automatic fallback chain: Let's Encrypt → ZeroSSL → Buypass.
+  #   letsencrypt  — ACME with Let's Encrypt (primary). When "email" is set,
+  #                  ZeroSSL is appended as a secondary issuer; when "email"
+  #                  is empty, the chain degrades to single-issuer LE and a
+  #                  tls.acme.chain_skipped event is emitted at startup.
   #                  (Alias: "acme". Both values select the same behaviour.)
-  #                  If one CA is rate-limited, Caddy tries the next automatically.
   #                  Requires a public domain and open port 443.
   #                  Also requires the "domain" field to be set.
+  #                  Buypass is no longer part of the default chain — see
+  #                  ADR-083; use "provider: buypass" below to opt in.
   #
   #   zerossl      — ACME via ZeroSSL only (no fallback chain).
   #                  Requires "email" for EAB auto-registration.
   #
-  #   buypass      — ACME via Buypass Go SSL only (no fallback chain).
-  #                  180-day certificates, no signup required.
+  #   buypass      — ACME via Buypass Go SSL only (explicit opt-in; upstream
+  #                  currently returns 403 per ADR-083). 180-day certificates,
+  #                  no signup required.
   #
   #   letsencrypt-staging — ACME via Let's Encrypt staging (not browser-trusted).
   #                  Use for testing to avoid rate limits.
