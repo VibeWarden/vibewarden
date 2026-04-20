@@ -133,6 +133,8 @@ Key rules:
 - `vibew add tls --domain` writes the domain to vibewarden.production.yaml.
 - Production-only settings (domain, letsencrypt, port 443) belong in the
   production override, not the base config.
+- If Let's Encrypt is rate-limited, set `tls.acme_ca` to use an alternative CA:
+  `acme_ca: "https://acme.zerossl.com/v2/DV90"` (ZeroSSL, free, separate rate limits).
 
 ## Writing your Dockerfile
 
