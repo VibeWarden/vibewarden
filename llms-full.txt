@@ -144,7 +144,8 @@ support `--tls` or `--domain` — use `vibew add tls` after init for TLS.
 or `vibew wrap`.
 
 - `vibew add tls --domain <domain>` -- enable TLS (--domain is required)
-  - `--provider` (default letsencrypt) -- letsencrypt, self-signed, or external
+  - `--provider` (default letsencrypt) -- letsencrypt (with LE→ZeroSSL→Buypass fallback), zerossl, buypass, letsencrypt-staging, self-signed, or external
+  - `--email` -- ACME account email (required for zerossl, recommended for letsencrypt)
 - `vibew cert trust` -- install Caddy's local CA certificate into the OS trust store (macOS/Linux)
 - `vibew add auth` -- enable Ory Kratos authentication (no extra flags)
 - `vibew add rate-limiting` -- enable rate limiting (no extra flags)
@@ -245,7 +246,7 @@ Key sections:
 - `app.build` — Docker build context; `vibew build` builds locally, `vibew deploy` transfers the image (no source on server)
 - `app.image` — Docker image reference (used when `app.build` is empty)
 - `app.environment` — custom env vars injected into the app container (e.g. DATABASE_URL, REDIS_URL)
-- `tls.enabled`, `tls.provider` — TLS termination (letsencrypt, self-signed, external)
+- `tls.enabled`, `tls.provider` — TLS termination (letsencrypt with LE→ZeroSSL→Buypass fallback, zerossl, buypass, letsencrypt-staging, self-signed, external)
 - `tls.email` — ACME account email (required for ZeroSSL, recommended for Let's Encrypt)
 - `tls.acme_ca` — override ACME directory URL (e.g. ZeroSSL, Let's Encrypt staging). Use this
   when Let's Encrypt is rate-limited: `acme_ca: "https://acme.zerossl.com/v2/DV90"`

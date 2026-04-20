@@ -99,8 +99,8 @@ app:
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `tls.enabled` | bool | `true` | Enable TLS |
-| `tls.domain` | string | `""` | Domain for the TLS certificate. Required when `provider` is `letsencrypt` |
-| `tls.provider` | string | `""` | Certificate provider: `letsencrypt` (or `acme`), `self-signed`, or `external` |
+| `tls.domain` | string | `""` | Domain for the TLS certificate. Required for all ACME providers |
+| `tls.provider` | string | `""` | Certificate provider: `letsencrypt` (with LE→ZeroSSL→Buypass fallback), `zerossl`, `buypass`, `letsencrypt-staging`, `self-signed`, or `external` |
 | `tls.cert_path` | string | `""` | Path to PEM certificate. Required when `provider` is `external` |
 | `tls.key_path` | string | `""` | Path to PEM private key. Required when `provider` is `external` |
 | `tls.email` | string | `""` | ACME account email. Required for ZeroSSL, recommended for Let's Encrypt (cert expiry notifications) |
