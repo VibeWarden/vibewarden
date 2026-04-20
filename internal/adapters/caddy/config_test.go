@@ -1485,9 +1485,9 @@ func TestBuildCaddyConfig_KratosFlowRoutes_Present(t *testing.T) {
 		t.Fatal("routes not found in server config")
 	}
 
-	// Expect: health (index 0), ready (index 1), Kratos flow route (index 2), catch-all proxy (index 3).
-	if len(routes) != 4 {
-		t.Fatalf("expected 4 routes (health + ready + kratos + proxy), got %d", len(routes))
+	// Expect: health (index 0), ready (index 1), Kratos flow route (index 2), me route (index 3), catch-all proxy (index 4).
+	if len(routes) != 5 {
+		t.Fatalf("expected 5 routes (health + ready + kratos + me + proxy), got %d", len(routes))
 	}
 
 	kratosRoute := routes[2]
@@ -1636,10 +1636,16 @@ func TestBuildCaddyConfig_KratosRouteBeforeCatchAll(t *testing.T) {
 		t.Error("routes[2] (Kratos flow) must have a path matcher")
 	}
 
-	// Index 3 — catch-all proxy: no path matcher (matches everything).
-	catchAll := routes[3]
+	// Index 3 — me route: has a path matcher for /_vibewarden/me.
+	meRoute := routes[3]
+	if _, hasMatcher := meRoute["match"]; !hasMatcher {
+		t.Error("routes[3] (me) must have a path matcher")
+	}
+
+	// Index 4 — catch-all proxy: no path matcher (matches everything).
+	catchAll := routes[4]
 	if _, hasMatcher := catchAll["match"]; hasMatcher {
-		t.Error("routes[3] (catch-all) must not have a path matcher")
+		t.Error("routes[4] (catch-all) must not have a path matcher")
 	}
 }
 

@@ -181,6 +181,29 @@ func buildStaticReadyRoute() map[string]any {
 	}
 }
 
+// buildMeRoute constructs a Caddy route that serves the /_vibewarden/me
+// endpoint via the vibewarden_me handler module. The handler reads the Kratos
+// session cookie, validates it via the Kratos whoami endpoint, and returns a
+// JSON response with the authenticated user's session information.
+//
+// This route must be placed before the catch-all proxy route so that requests
+// to /_vibewarden/me are handled by the dedicated handler instead of being
+// forwarded to the upstream application.
+func buildMeRoute(kratosPublicURL, cookieName string) map[string]any {
+	return map[string]any{
+		"match": []map[string]any{
+			{"path": []string{"/_vibewarden/me"}},
+		},
+		"handle": []map[string]any{
+			{
+				"handler":     "vibewarden_me",
+				"cookie_name": cookieName,
+				"kratos_url":  kratosPublicURL,
+			},
+		},
+	}
+}
+
 // buildDynamicReadyRoute constructs a Caddy route that reverse-proxies
 // /_vibewarden/ready to the internal readiness HTTP server at internalAddr.
 // The internal server runs ReadyHandler which performs live plugin health and

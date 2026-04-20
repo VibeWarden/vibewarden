@@ -209,6 +209,14 @@ func BuildCaddyConfig(cfg *ports.ProxyConfig) (map[string]any, error) {
 	if cfg.Auth.Enabled && cfg.Auth.KratosPublicURL != "" {
 		kratosRoute := buildKratosFlowRoute(cfg.Auth.KratosPublicURL)
 		routes = append(routes, kratosRoute)
+
+		// Add /_vibewarden/me route when Kratos auth is active.
+		cookieName := cfg.Auth.SessionCookieName
+		if cookieName == "" {
+			cookieName = "ory_kratos_session"
+		}
+		meRoute := buildMeRoute(cfg.Auth.KratosPublicURL, cookieName)
+		routes = append(routes, meRoute)
 	}
 
 	if cfg.Admin.Enabled && cfg.Admin.InternalAddr != "" {

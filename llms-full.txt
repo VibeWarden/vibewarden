@@ -251,6 +251,9 @@ Key sections:
   when Let's Encrypt is rate-limited: `acme_ca: "https://acme.zerossl.com/v2/DV90"`
 - `auth.mode` — authentication strategy: `none`, `kratos`, `jwt`, or `api-key` (single source of truth; see ADR-065)
 - `auth.role_paths` — role-based access control via Kratos identity traits (maps role names to URL path patterns; only valid when `auth.mode` is `kratos`)
+- When `auth.mode: kratos`, the sidecar serves `GET /_vibewarden/me` returning the current
+  user's session info as JSON (`{"id","email","verified","role"}`). Returns 401 when
+  unauthenticated. Use this from frontend JS instead of calling Kratos directly.
 - `rate_limit.enabled`, `rate_limit.per_ip` — per-IP rate limiting
 - `security_headers.enabled` — HSTS, X-Frame-Options, X-Content-Type-Options, etc.
 - `secrets.store` — secret store backend: `builtin` (default, AES-256-GCM encrypted file) or `openbao` (opt-in for dynamic creds)
