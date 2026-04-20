@@ -38,17 +38,20 @@ become technical debt.
      -F line=<line-number>
    ```
 
-4. **Submit review** — approve or request changes:
+4. **Submit review** — always post as a PR **comment** (not `gh pr review`)
+   since the PR author often matches the authenticated user:
    ```bash
    # Request changes
-   gh pr review <number> --repo vibewarden/vibewarden \
-     --request-changes \
-     --body "<summary of issues found>"
+   gh pr comment <number> --repo vibewarden/vibewarden \
+     --body "**Reviewer Agent: CHANGES REQUESTED**
+
+   <summary of issues found>"
 
    # Approve
-   gh pr review <number> --repo vibewarden/vibewarden \
-     --approve \
-     --body "LGTM. <brief summary of what was reviewed>"
+   gh pr comment <number> --repo vibewarden/vibewarden \
+     --body "**Reviewer Agent: APPROVED**
+
+   <brief summary of what was reviewed>"
    ```
 
 5. **Update status label**:
