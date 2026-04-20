@@ -162,6 +162,7 @@ Common flags:
 | Flag | Description |
 |------|-------------|
 | `--port <port>` | Port your app will listen on (default: `3000`) |
+| `--name <name>` | Project name for Docker Compose and image tags (default: directory name) |
 | `--describe "<text>"` | One-line project description; written to `PROJECT.md` and injected into agent files |
 | `--version <vN.N.N>` | Pin a specific VibeWarden version in `.vibewarden-version` |
 | `--force` | Overwrite existing files |

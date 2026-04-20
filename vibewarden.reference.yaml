@@ -52,6 +52,20 @@
 # The secrets.* config section itself cannot use secret:// URIs because the
 # secret store is bootstrapped from that section (see ADR-076).
 
+# Project name — controls Docker Compose project name, image tags (<name>-app),
+# and deploy directory names. Derivation order when omitted:
+#   1. This field (name:)
+#   2. app.image with tag stripped (e.g. "myapp:latest" -> "myapp")
+#   3. Current directory name (lowercased, sanitized)
+#   4. "vibewarden" (last-resort fallback)
+#
+# Set explicitly when running multiple VibeWarden projects on the same machine
+# to prevent Docker image name collisions.
+#
+# Can also be set via: vibew init --name <name>
+#
+# name: my-project
+
 # Database configuration
 #
 # By default, VibeWarden uses the local Postgres container started by the
