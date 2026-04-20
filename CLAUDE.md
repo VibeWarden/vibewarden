@@ -153,13 +153,26 @@ re-review.
 This is NOT optional. Docs-runtime drift is the #1 source of agent failures.
 Three retrospectives confirmed this. The writer agent is the enforcement mechanism.
 
-### Status values
+### Status tracking via GitHub labels
 
-- `READY_FOR_ARCH` — PM done, architect should pick up
-- `READY_FOR_DEV` — Architect done, dev should pick up
-- `READY_FOR_REVIEW` — Dev done, reviewer + writer should pick up
-- `CHANGES_REQUESTED` — Reviewer or writer requested changes
-- `APPROVED` — Both reviewer and writer approved, ready to merge
+Pipeline status is tracked with labels on issues/PRs, not comments:
+
+| Label | Meaning |
+|-------|---------|
+| `status:ready-for-arch` | PM done, architect picks up |
+| `status:ready-for-dev` | Architect done, dev picks up |
+| `status:ready-for-review` | Dev done, reviewer + writer pick up |
+| `status:changes-requested` | Reviewer or writer requested changes |
+| `status:approved` | Both reviewer and writer approved |
+
+**Rules:**
+- Each agent REMOVES the previous status label and ADDS the next one
+- Only one `status:*` label at a time
+- On PR merge, ALL `status:*` labels are removed:
+  ```bash
+  gh pr edit <number> --remove-label "status:ready-for-review,status:approved,status:changes-requested"
+  ```
+- Never use status comments — labels are the source of truth
 
 ---
 

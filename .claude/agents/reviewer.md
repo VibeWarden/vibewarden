@@ -51,15 +51,17 @@ become technical debt.
      --body "LGTM. <brief summary of what was reviewed>"
    ```
 
-5. **Set issue status**:
+5. **Update status label**:
    ```bash
    # If changes requested
-   gh issue comment <issue-number> --repo vibewarden/vibewarden \
-     --body "Status: CHANGES_REQUESTED\n<summary>"
+   gh pr edit <number> --repo vibewarden/vibewarden \
+     --remove-label "status:ready-for-review" \
+     --add-label "status:changes-requested"
 
-   # If approved
-   gh issue comment <issue-number> --repo vibewarden/vibewarden \
-     --body "Status: APPROVED — ready for human review"
+   # If approved (only set approved when BOTH reviewer and writer approve)
+   gh pr edit <number> --repo vibewarden/vibewarden \
+     --remove-label "status:ready-for-review,status:changes-requested" \
+     --add-label "status:approved"
    ```
 
 ## Review checklist
