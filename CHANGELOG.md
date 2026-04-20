@@ -46,6 +46,27 @@ This initial entry was written by hand to summarise the work leading up to v0.1.
 
 ### Fixes
 
+- **`vibew doctor` no longer flags a running sidecar as a port conflict**
+  (#1054, ADR-084). When `vibew dev` is already running on the proxy port,
+  doctor probes `/_vibewarden/health` and reports
+  `[OK] Proxy port  in use by local vibew dev (expected)` instead of
+  `[FAIL] Proxy port  port 8443 is already in use`. Foreign processes
+  continue to FAIL as before.
+- **`vibew doctor` TLS cert check now inspects the live sidecar**
+  (#1054, ADR-084). The self-signed cert check performs a live TLS
+  handshake against the proxy and reads the leaf certificate from
+  `tls.Conn.ConnectionState().PeerCertificates`, instead of looking for a
+  hardcoded `server.crt` path on disk. This fixes the false-positive
+  "certificate file not found" reported when the self-signed cert lived
+  under Caddy's PKI storage path. When the sidecar is not reachable the
+  check is WARN with `sidecar not reachable on <addr> — start 'vibew dev'`.
+- **`vibew doctor` remote-containers errors no longer leak raw shell
+  fragments** (#1054, ADR-084). `checkRemoteContainerHealth` previously
+  surfaced errors containing literal `2>/dev/null` and
+  `|| docker-compose ps`. Errors are now rendered as a single clean line
+  of the form `exit <code>: <first stderr line> (<hint>)` — for example
+  `exit 127: docker: command not found; docker compose not installed on
+  remote`.
 - **Production override preserves every schema field** (#1053). `tls.email`,
   `tls.acme_ca`, `tls.cert_monitoring.*`, `server.host`, and any other field
   set only in `vibewarden.production.yaml` now reach the runtime
