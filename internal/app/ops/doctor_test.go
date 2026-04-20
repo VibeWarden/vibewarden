@@ -6,21 +6,27 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
 	"encoding/json"
-	"encoding/pem"
 	"errors"
 	"io"
 	"math/big"
+	"net"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/vibewarden/vibewarden/internal/app/ops"
+	"github.com/vibewarden/vibewarden/internal/config"
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
 
@@ -35,6 +41,16 @@ func (f *fakePortChecker) IsPortAvailable(_ context.Context, _ string, port int)
 		return v, nil
 	}
 	return true, nil
+}
+
+// fakePortOwnerProbe is a test double for ports.PortOwnerProbe that returns
+// a fixed owner regardless of input.
+type fakePortOwnerProbe struct {
+	owner ports.PortOwner
+}
+
+func (f *fakePortOwnerProbe) ProbeOwner(_ context.Context, _ string, _ int) ports.PortOwner {
+	return f.owner
 }
 
 // fakeRemoteExecutor is a test double for ports.RemoteExecutor.
@@ -144,36 +160,58 @@ func optsWithGeneratedFile(t *testing.T) ops.DoctorOptions {
 	}
 }
 
-// writeSelfSignedCert creates a self-signed certificate in the generated certs
-// directory under workDir with the given validity window.
-func writeSelfSignedCert(t *testing.T, workDir string, notBefore, notAfter time.Time) {
-	t.Helper()
-	certDir := filepath.Join(workDir, ".vibewarden", "generated", "certs")
-	if err := os.MkdirAll(certDir, 0o755); err != nil {
-		t.Fatalf("create certs dir: %v", err)
-	}
+// doctorConfig returns a defaultConfig() override with TLS.Provider set to
+// "external" so the live-TLS cert check is skipped for doctor tests that
+// do not specifically exercise it. Tests that do exercise the TLS check
+// set Provider to "self-signed" and point Server.Host/Port at a local
+// httptest.NewTLSServer (see startTLSTestSidecar).
+func doctorConfig() *config.Config {
+	cfg := defaultConfig()
+	cfg.TLS.Provider = "external"
+	return cfg
+}
 
+// startTLSTestSidecar boots a local TLS server that mimics the VibeWarden
+// sidecar on /_vibewarden/health. The server uses a short-lived self-signed
+// certificate whose NotAfter is controlled by notAfter. It returns the host
+// and port the test should point cfg.Server.Host/Port at, plus the port
+// already registered as "available=false" on the supplied portChecker so
+// the proxy-port check mirrors a real sidecar-in-use state.
+func startTLSTestSidecar(t *testing.T, notBefore, notAfter time.Time) (host string, port int, cleanup func()) {
+	t.Helper()
 	key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		t.Fatalf("generate key: %v", err)
 	}
-
 	template := &x509.Certificate{
-		SerialNumber: big.NewInt(1),
+		SerialNumber: big.NewInt(time.Now().UnixNano()),
 		Subject:      pkix.Name{CommonName: "localhost"},
 		NotBefore:    notBefore,
 		NotAfter:     notAfter,
+		IPAddresses:  []net.IP{net.ParseIP("127.0.0.1")},
+		DNSNames:     []string{"localhost"},
 	}
-
 	certDER, err := x509.CreateCertificate(rand.Reader, template, template, &key.PublicKey, key)
 	if err != nil {
 		t.Fatalf("create certificate: %v", err)
 	}
+	tlsCert := tls.Certificate{Certificate: [][]byte{certDER}, PrivateKey: key}
 
-	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: certDER})
-	if err := os.WriteFile(filepath.Join(certDir, "server.crt"), certPEM, 0o644); err != nil {
-		t.Fatalf("write cert file: %v", err)
+	srv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = w.Write([]byte(`{"status":"ok","version":"test"}`))
+	}))
+	srv.TLS = &tls.Config{Certificates: []tls.Certificate{tlsCert}}
+	srv.StartTLS()
+
+	u, err := url.Parse(srv.URL)
+	if err != nil {
+		t.Fatalf("parse server url: %v", err)
 	}
+	p, err := strconv.Atoi(u.Port())
+	if err != nil {
+		t.Fatalf("parse port: %v", err)
+	}
+	return u.Hostname(), p, srv.Close
 }
 
 func TestDoctorService_Run_AllPassing(t *testing.T) {
@@ -182,7 +220,7 @@ func TestDoctorService_Run_AllPassing(t *testing.T) {
 	hc := reachableHealthChecker()
 
 	svc := ops.NewDoctorService(fc, pc, hc)
-	cfg := defaultConfig()
+	cfg := doctorConfig()
 	var buf bytes.Buffer
 
 	opts := optsWithGeneratedFile(t)
@@ -218,7 +256,7 @@ func TestDoctorService_Run_DockerNotRunning(t *testing.T) {
 	pc := &fakePortChecker{}
 	hc := reachableHealthChecker()
 	svc := ops.NewDoctorService(fc, pc, hc)
-	cfg := defaultConfig()
+	cfg := doctorConfig()
 	var buf bytes.Buffer
 
 	allOK, err := svc.Run(context.Background(), cfg, defaultOpts(t), &buf)
@@ -243,7 +281,7 @@ func TestDoctorService_Run_DockerComposeNotAvailable(t *testing.T) {
 	pc := &fakePortChecker{}
 	hc := reachableHealthChecker()
 	svc := ops.NewDoctorService(fc, pc, hc)
-	cfg := defaultConfig()
+	cfg := doctorConfig()
 	var buf bytes.Buffer
 
 	allOK, err := svc.Run(context.Background(), cfg, defaultOpts(t), &buf)
@@ -265,7 +303,7 @@ func TestDoctorService_Run_PortInUse(t *testing.T) {
 	pc := &fakePortChecker{available: map[int]bool{8443: false}}
 	hc := reachableHealthChecker()
 	svc := ops.NewDoctorService(fc, pc, hc)
-	cfg := defaultConfig()
+	cfg := doctorConfig()
 	var buf bytes.Buffer
 
 	allOK, err := svc.Run(context.Background(), cfg, defaultOpts(t), &buf)
@@ -282,12 +320,95 @@ func TestDoctorService_Run_PortInUse(t *testing.T) {
 	}
 }
 
+// TestDoctorService_CheckPort_OwnershipMatrix exercises the port ownership
+// decision table from ADR-084.
+func TestDoctorService_CheckPort_OwnershipMatrix(t *testing.T) {
+	tests := []struct {
+		name         string
+		available    bool
+		probe        ports.PortOwnerProbe
+		wantSeverity ops.Severity
+		wantDetail   string
+	}{
+		{
+			name:         "port free (probe not consulted)",
+			available:    true,
+			probe:        &fakePortOwnerProbe{owner: ports.OwnerForeign},
+			wantSeverity: ops.SeverityOK,
+			wantDetail:   "is available",
+		},
+		{
+			name:         "port bound + probe returns OwnerVibeWarden → OK",
+			available:    false,
+			probe:        &fakePortOwnerProbe{owner: ports.OwnerVibeWarden},
+			wantSeverity: ops.SeverityOK,
+			wantDetail:   "in use by local vibew dev (expected)",
+		},
+		{
+			name:         "port bound + probe returns OwnerForeign → FAIL",
+			available:    false,
+			probe:        &fakePortOwnerProbe{owner: ports.OwnerForeign},
+			wantSeverity: ops.SeverityFail,
+			wantDetail:   "already in use",
+		},
+		{
+			name:         "port bound + no probe wired → FAIL (back-compat)",
+			available:    false,
+			probe:        nil,
+			wantSeverity: ops.SeverityFail,
+			wantDetail:   "already in use",
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			fc := noContainersCompose()
+			pc := &fakePortChecker{available: map[int]bool{8443: tt.available}}
+			hc := reachableHealthChecker()
+			svc := ops.NewDoctorService(fc, pc, hc)
+			if tt.probe != nil {
+				svc = svc.WithPortOwnerProbe(tt.probe)
+			}
+			cfg := doctorConfig()
+
+			var buf bytes.Buffer
+			opts := defaultOpts(t)
+			opts.JSON = true
+			if _, err := svc.Run(context.Background(), cfg, opts, &buf); err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			var results []ops.CheckResult
+			if err := json.Unmarshal(buf.Bytes(), &results); err != nil {
+				t.Fatalf("parse json output: %v\nbody:\n%s", err, buf.String())
+			}
+			var got ops.CheckResult
+			for _, r := range results {
+				if r.Name == "Proxy port" {
+					got = r
+					break
+				}
+			}
+			if got.Name == "" {
+				t.Fatalf("Proxy port check missing from results")
+			}
+			if got.Severity != tt.wantSeverity {
+				t.Errorf("severity = %q, want %q (detail=%q)", got.Severity, tt.wantSeverity, got.Detail)
+			}
+			if !strings.Contains(got.Detail, tt.wantDetail) {
+				t.Errorf("detail %q missing substring %q", got.Detail, tt.wantDetail)
+			}
+		})
+	}
+}
+
 func TestDoctorService_Run_ConfigPathInOutput(t *testing.T) {
 	fc := noContainersCompose()
 	pc := &fakePortChecker{}
 	hc := reachableHealthChecker()
 	svc := ops.NewDoctorService(fc, pc, hc)
-	cfg := defaultConfig()
+	cfg := doctorConfig()
 	var buf bytes.Buffer
 
 	opts := defaultOpts(t)
@@ -313,7 +434,7 @@ func TestDoctorService_ChecksAreIndependent(t *testing.T) {
 	pc := &fakePortChecker{available: map[int]bool{8443: false}}
 	hc := reachableHealthChecker()
 	svc := ops.NewDoctorService(fc, pc, hc)
-	cfg := defaultConfig()
+	cfg := doctorConfig()
 	var buf bytes.Buffer
 
 	_, err := svc.Run(context.Background(), cfg, defaultOpts(t), &buf)
@@ -341,7 +462,7 @@ func TestDoctorService_Run_GeneratedFileMissing_IsWarn(t *testing.T) {
 	pc := &fakePortChecker{available: map[int]bool{8443: true}}
 	hc := reachableHealthChecker()
 	svc := ops.NewDoctorService(fc, pc, hc)
-	cfg := defaultConfig()
+	cfg := doctorConfig()
 	var buf bytes.Buffer
 
 	// defaultOpts uses an empty temp dir — no generated file present.
@@ -373,7 +494,7 @@ func TestDoctorService_Run_UnhealthyContainer_IsFail(t *testing.T) {
 	pc := &fakePortChecker{available: map[int]bool{8443: true}}
 	hc := reachableHealthChecker()
 	svc := ops.NewDoctorService(fc, pc, hc)
-	cfg := defaultConfig()
+	cfg := doctorConfig()
 	var buf bytes.Buffer
 
 	allOK, err := svc.Run(context.Background(), cfg, optsWithGeneratedFile(t), &buf)
@@ -395,7 +516,7 @@ func TestDoctorService_Run_JSONOutput(t *testing.T) {
 	pc := &fakePortChecker{available: map[int]bool{8443: true}}
 	hc := reachableHealthChecker()
 	svc := ops.NewDoctorService(fc, pc, hc)
-	cfg := defaultConfig()
+	cfg := doctorConfig()
 	var buf bytes.Buffer
 
 	opts := optsWithGeneratedFile(t)
@@ -431,7 +552,7 @@ func TestDoctorService_Run_OKFAILBadgesInOutput(t *testing.T) {
 	pc := &fakePortChecker{available: map[int]bool{8443: true}}
 	hc := reachableHealthChecker()
 	svc := ops.NewDoctorService(fc, pc, hc)
-	cfg := defaultConfig()
+	cfg := doctorConfig()
 	var buf bytes.Buffer
 
 	_, err := svc.Run(context.Background(), cfg, defaultOpts(t), &buf)
@@ -453,7 +574,7 @@ func TestDoctorService_Run_ContainersHealthy_AllOK(t *testing.T) {
 	pc := &fakePortChecker{available: map[int]bool{8443: true}}
 	hc := reachableHealthChecker()
 	svc := ops.NewDoctorService(fc, pc, hc)
-	cfg := defaultConfig()
+	cfg := doctorConfig()
 	var buf bytes.Buffer
 
 	opts := optsWithGeneratedFile(t)
@@ -481,7 +602,7 @@ func TestDoctorService_Run_UpstreamReachable(t *testing.T) {
 	pc := &fakePortChecker{available: map[int]bool{8443: true}}
 	hc := reachableHealthChecker()
 	svc := ops.NewDoctorService(fc, pc, hc)
-	cfg := defaultConfig()
+	cfg := doctorConfig()
 	var buf bytes.Buffer
 
 	allOK, err := svc.Run(context.Background(), cfg, defaultOpts(t), &buf)
@@ -506,7 +627,7 @@ func TestDoctorService_Run_UpstreamUnreachable(t *testing.T) {
 	pc := &fakePortChecker{available: map[int]bool{8443: true}}
 	hc := unreachableHealthChecker()
 	svc := ops.NewDoctorService(fc, pc, hc)
-	cfg := defaultConfig()
+	cfg := doctorConfig()
 	var buf bytes.Buffer
 
 	// Upstream unreachable is WARN, not FAIL, so allOK should still be true.
@@ -528,16 +649,19 @@ func TestDoctorService_Run_UpstreamUnreachable(t *testing.T) {
 }
 
 func TestDoctorService_Run_TLSCertValid(t *testing.T) {
+	host, port, cleanup := startTLSTestSidecar(t, time.Now().Add(-24*time.Hour), time.Now().Add(90*24*time.Hour))
+	defer cleanup()
+
 	fc := noContainersCompose()
-	pc := &fakePortChecker{available: map[int]bool{8443: true}}
+	pc := &fakePortChecker{available: map[int]bool{port: true}}
 	hc := reachableHealthChecker()
 	svc := ops.NewDoctorService(fc, pc, hc)
 	cfg := defaultConfig()
+	cfg.TLS.Provider = "self-signed"
+	cfg.Server.Host = host
+	cfg.Server.Port = port
 
 	opts := defaultOpts(t)
-
-	// Write a valid cert that expires in 90 days.
-	writeSelfSignedCert(t, opts.WorkDir, time.Now().Add(-24*time.Hour), time.Now().Add(90*24*time.Hour))
 
 	var buf bytes.Buffer
 	allOK, err := svc.Run(context.Background(), cfg, opts, &buf)
@@ -558,16 +682,19 @@ func TestDoctorService_Run_TLSCertValid(t *testing.T) {
 }
 
 func TestDoctorService_Run_TLSCertExpired(t *testing.T) {
+	host, port, cleanup := startTLSTestSidecar(t, time.Now().Add(-48*time.Hour), time.Now().Add(-24*time.Hour))
+	defer cleanup()
+
 	fc := noContainersCompose()
-	pc := &fakePortChecker{available: map[int]bool{8443: true}}
+	pc := &fakePortChecker{available: map[int]bool{port: true}}
 	hc := reachableHealthChecker()
 	svc := ops.NewDoctorService(fc, pc, hc)
 	cfg := defaultConfig()
+	cfg.TLS.Provider = "self-signed"
+	cfg.Server.Host = host
+	cfg.Server.Port = port
 
 	opts := defaultOpts(t)
-
-	// Write an expired cert.
-	writeSelfSignedCert(t, opts.WorkDir, time.Now().Add(-48*time.Hour), time.Now().Add(-24*time.Hour))
 
 	var buf bytes.Buffer
 	allOK, err := svc.Run(context.Background(), cfg, opts, &buf)
@@ -585,16 +712,19 @@ func TestDoctorService_Run_TLSCertExpired(t *testing.T) {
 }
 
 func TestDoctorService_Run_TLSCertExpiringSoon(t *testing.T) {
+	host, port, cleanup := startTLSTestSidecar(t, time.Now().Add(-24*time.Hour), time.Now().Add(3*24*time.Hour))
+	defer cleanup()
+
 	fc := noContainersCompose()
-	pc := &fakePortChecker{available: map[int]bool{8443: true}}
+	pc := &fakePortChecker{available: map[int]bool{port: true}}
 	hc := reachableHealthChecker()
 	svc := ops.NewDoctorService(fc, pc, hc)
 	cfg := defaultConfig()
+	cfg.TLS.Provider = "self-signed"
+	cfg.Server.Host = host
+	cfg.Server.Port = port
 
 	opts := defaultOpts(t)
-
-	// Write a cert that expires in 3 days (within 7-day warning window).
-	writeSelfSignedCert(t, opts.WorkDir, time.Now().Add(-24*time.Hour), time.Now().Add(3*24*time.Hour))
 
 	var buf bytes.Buffer
 	allOK, err := svc.Run(context.Background(), cfg, opts, &buf)
@@ -612,32 +742,42 @@ func TestDoctorService_Run_TLSCertExpiringSoon(t *testing.T) {
 	}
 }
 
-func TestDoctorService_Run_TLSCertMissing(t *testing.T) {
+func TestDoctorService_Run_TLSCertSidecarUnreachable(t *testing.T) {
+	// Bind and release a port so we know it is closed for the duration of the test.
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("listen: %v", err)
+	}
+	addr := ln.Addr().(*net.TCPAddr)
+	if err := ln.Close(); err != nil {
+		t.Fatalf("close listener: %v", err)
+	}
+
 	fc := noContainersCompose()
-	pc := &fakePortChecker{available: map[int]bool{8443: true}}
+	pc := &fakePortChecker{available: map[int]bool{addr.Port: true}}
 	hc := reachableHealthChecker()
 	svc := ops.NewDoctorService(fc, pc, hc)
 	cfg := defaultConfig()
-
-	// defaultOpts has no cert files at all.
-	opts := defaultOpts(t)
+	cfg.TLS.Provider = "self-signed"
+	cfg.Server.Host = "127.0.0.1"
+	cfg.Server.Port = addr.Port
 
 	var buf bytes.Buffer
-	allOK, err := svc.Run(context.Background(), cfg, opts, &buf)
+	allOK, err := svc.Run(context.Background(), cfg, defaultOpts(t), &buf)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	// Cert missing is WARN.
+	// Unreachable sidecar is WARN, not FAIL.
 	if !allOK {
-		t.Errorf("expected allOK = true because missing cert is WARN\noutput:\n%s", buf.String())
+		t.Errorf("expected allOK = true because sidecar-unreachable is WARN\noutput:\n%s", buf.String())
 	}
 
 	out := buf.String()
 	if !strings.Contains(out, "TLS certificate") {
 		t.Errorf("expected 'TLS certificate' check in output, got:\n%s", out)
 	}
-	if !strings.Contains(out, "not found") {
-		t.Errorf("expected 'not found' in cert detail, got:\n%s", out)
+	if !strings.Contains(out, "start 'vibew dev'") {
+		t.Errorf("expected sidecar-unreachable hint in detail, got:\n%s", out)
 	}
 }
 
@@ -646,7 +786,7 @@ func TestDoctorService_Run_TLSCertNonSelfSigned_Skipped(t *testing.T) {
 	pc := &fakePortChecker{available: map[int]bool{8443: true}}
 	hc := reachableHealthChecker()
 	svc := ops.NewDoctorService(fc, pc, hc)
-	cfg := defaultConfig()
+	cfg := doctorConfig()
 	cfg.TLS.Provider = "letsencrypt"
 	cfg.TLS.Domain = "example.com"
 
@@ -674,13 +814,13 @@ func TestDoctorService_Run_SSHConnectivity_Success(t *testing.T) {
 	executor := &fakeRemoteExecutor{
 		runResponses: map[string]runResult{
 			"echo ok": {output: "ok", err: nil},
-			"docker compose ps --format json 2>/dev/null || docker-compose ps 2>/dev/null": {
+			"docker compose ps --format json": {
 				output: "", err: nil,
 			},
 		},
 	}
 	svc := ops.NewDoctorService(fc, pc, hc).WithRemoteExecutor(executor)
-	cfg := defaultConfig()
+	cfg := doctorConfig()
 
 	opts := defaultOpts(t)
 	opts.Target = "ssh://user@192.0.2.1"
@@ -708,7 +848,7 @@ func TestDoctorService_Run_SSHConnectivity_Failure(t *testing.T) {
 		runErr: errors.New("connection refused"),
 	}
 	svc := ops.NewDoctorService(fc, pc, hc).WithRemoteExecutor(executor)
-	cfg := defaultConfig()
+	cfg := doctorConfig()
 
 	opts := defaultOpts(t)
 	opts.Target = "ssh://user@192.0.2.1"
@@ -736,7 +876,7 @@ func TestDoctorService_Run_NoTarget_NoRemoteChecks(t *testing.T) {
 	pc := &fakePortChecker{available: map[int]bool{8443: true}}
 	hc := reachableHealthChecker()
 	svc := ops.NewDoctorService(fc, pc, hc)
-	cfg := defaultConfig()
+	cfg := doctorConfig()
 
 	// No --target flag, no remote executor.
 	opts := defaultOpts(t)
@@ -756,6 +896,55 @@ func TestDoctorService_Run_NoTarget_NoRemoteChecks(t *testing.T) {
 	}
 }
 
+// TestDoctorService_Run_RemoteContainerHealth_ErrorFormattedNoRawShell ensures
+// that when the remote docker compose command fails the user-facing detail
+// never leaks shell fragments (`2>/dev/null`, `||`, raw ssh command, or the
+// adapter's "ssh exit:" wrapper). This is the end-to-end guarantee described
+// in ADR-084.
+func TestDoctorService_Run_RemoteContainerHealth_ErrorFormattedNoRawShell(t *testing.T) {
+	fc := noContainersCompose()
+	pc := &fakePortChecker{available: map[int]bool{8443: true}}
+	hc := reachableHealthChecker()
+
+	// Simulate the historical leak: stderr containing every fragment.
+	leakErr := errors.New("ssh exit: docker compose ps --format json 2>/dev/null || docker-compose ps 2>/dev/null: exit status 127")
+	executor := &fakeRemoteExecutor{
+		runResponses: map[string]runResult{
+			"echo ok":                         {output: "ok", err: nil},
+			"docker compose ps --format json": {output: "", err: leakErr},
+			"uname -m":                        {output: "x86_64", err: nil},
+		},
+	}
+	svc := ops.NewDoctorService(fc, pc, hc).WithRemoteExecutor(executor)
+	cfg := doctorConfig()
+
+	opts := defaultOpts(t)
+	opts.Target = "ssh://user@192.0.2.1"
+
+	var buf bytes.Buffer
+	if _, err := svc.Run(context.Background(), cfg, opts, &buf); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	out := buf.String()
+	// Find the Remote containers line.
+	var remoteLine string
+	for _, line := range strings.Split(out, "\n") {
+		if strings.Contains(line, "Remote containers") {
+			remoteLine = line
+			break
+		}
+	}
+	if remoteLine == "" {
+		t.Fatalf("Remote containers line missing from output:\n%s", out)
+	}
+	for _, leak := range []string{"2>/dev/null", "||", "ssh exit"} {
+		if strings.Contains(remoteLine, leak) {
+			t.Errorf("remote-containers detail leaks %q:\n%s", leak, remoteLine)
+		}
+	}
+}
+
 func TestDoctorService_Run_RemoteContainerHealth_Unhealthy(t *testing.T) {
 	fc := noContainersCompose()
 	pc := &fakePortChecker{available: map[int]bool{8443: true}}
@@ -768,13 +957,13 @@ func TestDoctorService_Run_RemoteContainerHealth_Unhealthy(t *testing.T) {
 	executor := &fakeRemoteExecutor{
 		runResponses: map[string]runResult{
 			"echo ok": {output: "ok", err: nil},
-			"docker compose ps --format json 2>/dev/null || docker-compose ps 2>/dev/null": {
+			"docker compose ps --format json": {
 				output: unhealthyJSON, err: nil,
 			},
 		},
 	}
 	svc := ops.NewDoctorService(fc, pc, hc).WithRemoteExecutor(executor)
-	cfg := defaultConfig()
+	cfg := doctorConfig()
 
 	opts := defaultOpts(t)
 	opts.Target = "ssh://user@192.0.2.1"
@@ -808,13 +997,13 @@ func TestDoctorService_Run_RemoteContainerHealth_AllHealthy(t *testing.T) {
 	executor := &fakeRemoteExecutor{
 		runResponses: map[string]runResult{
 			"echo ok": {output: "ok", err: nil},
-			"docker compose ps --format json 2>/dev/null || docker-compose ps 2>/dev/null": {
+			"docker compose ps --format json": {
 				output: healthyJSON, err: nil,
 			},
 		},
 	}
 	svc := ops.NewDoctorService(fc, pc, hc).WithRemoteExecutor(executor)
-	cfg := defaultConfig()
+	cfg := doctorConfig()
 
 	opts := defaultOpts(t)
 	opts.Target = "ssh://user@192.0.2.1"
@@ -836,7 +1025,7 @@ func TestDoctorService_Run_SectionHeaders(t *testing.T) {
 	pc := &fakePortChecker{available: map[int]bool{8443: true}}
 	hc := reachableHealthChecker()
 	svc := ops.NewDoctorService(fc, pc, hc)
-	cfg := defaultConfig()
+	cfg := doctorConfig()
 	var buf bytes.Buffer
 
 	_, err := svc.Run(context.Background(), cfg, defaultOpts(t), &buf)
@@ -860,13 +1049,13 @@ func TestDoctorService_Run_ProductionSectionHeaders(t *testing.T) {
 	executor := &fakeRemoteExecutor{
 		runResponses: map[string]runResult{
 			"echo ok": {output: "ok", err: nil},
-			"docker compose ps --format json 2>/dev/null || docker-compose ps 2>/dev/null": {
+			"docker compose ps --format json": {
 				output: "", err: nil,
 			},
 		},
 	}
 	svc := ops.NewDoctorService(fc, pc, hc).WithRemoteExecutor(executor)
-	cfg := defaultConfig()
+	cfg := doctorConfig()
 
 	opts := defaultOpts(t)
 	opts.Target = "ssh://user@192.0.2.1"
@@ -888,7 +1077,7 @@ func TestDoctorService_Run_JSONOutput_IncludesSection(t *testing.T) {
 	pc := &fakePortChecker{available: map[int]bool{8443: true}}
 	hc := reachableHealthChecker()
 	svc := ops.NewDoctorService(fc, pc, hc)
-	cfg := defaultConfig()
+	cfg := doctorConfig()
 	var buf bytes.Buffer
 
 	opts := defaultOpts(t)
@@ -918,7 +1107,7 @@ func TestDoctorService_Run_ACMEEmail_ZeroSSLWithoutEmail(t *testing.T) {
 	pc := &fakePortChecker{available: map[int]bool{8443: true}}
 	hc := reachableHealthChecker()
 	svc := ops.NewDoctorService(fc, pc, hc)
-	cfg := defaultConfig()
+	cfg := doctorConfig()
 	cfg.TLS.Provider = "letsencrypt"
 	cfg.TLS.ACMECA = "https://acme.zerossl.com/v2/DV90"
 	cfg.TLS.Email = ""
@@ -946,7 +1135,7 @@ func TestDoctorService_Run_ACMEEmail_ZeroSSLWithEmail(t *testing.T) {
 	pc := &fakePortChecker{available: map[int]bool{8443: true}}
 	hc := reachableHealthChecker()
 	svc := ops.NewDoctorService(fc, pc, hc)
-	cfg := defaultConfig()
+	cfg := doctorConfig()
 	cfg.TLS.Provider = "letsencrypt"
 	cfg.TLS.ACMECA = "https://acme.zerossl.com/v2/DV90"
 	cfg.TLS.Email = "admin@example.com"
@@ -974,7 +1163,7 @@ func TestDoctorService_Run_ACMEEmail_NonZeroSSL(t *testing.T) {
 	pc := &fakePortChecker{available: map[int]bool{8443: true}}
 	hc := reachableHealthChecker()
 	svc := ops.NewDoctorService(fc, pc, hc)
-	cfg := defaultConfig()
+	cfg := doctorConfig()
 	cfg.TLS.Provider = "letsencrypt"
 	cfg.TLS.ACMECA = "" // default Let's Encrypt
 	cfg.TLS.Email = ""
@@ -1005,7 +1194,7 @@ func TestDoctorService_Run_ImageTag_Exists(t *testing.T) {
 	hc := reachableHealthChecker()
 	ic := &fakeImageChecker{exists: true}
 	svc := ops.NewDoctorService(fc, pc, hc).WithImageChecker(ic)
-	cfg := defaultConfig()
+	cfg := doctorConfig()
 	cfg.App.Image = "myapp:latest"
 
 	var buf bytes.Buffer
@@ -1032,7 +1221,7 @@ func TestDoctorService_Run_ImageTag_Missing(t *testing.T) {
 	hc := reachableHealthChecker()
 	ic := &fakeImageChecker{exists: false}
 	svc := ops.NewDoctorService(fc, pc, hc).WithImageChecker(ic)
-	cfg := defaultConfig()
+	cfg := doctorConfig()
 	cfg.App.Image = "myapp:latest"
 
 	var buf bytes.Buffer
@@ -1059,7 +1248,7 @@ func TestDoctorService_Run_ImageTag_CheckerError(t *testing.T) {
 	hc := reachableHealthChecker()
 	ic := &fakeImageChecker{err: errors.New("docker daemon unavailable")}
 	svc := ops.NewDoctorService(fc, pc, hc).WithImageChecker(ic)
-	cfg := defaultConfig()
+	cfg := doctorConfig()
 	cfg.App.Image = "myapp:latest"
 
 	var buf bytes.Buffer
@@ -1087,7 +1276,7 @@ func TestDoctorService_Run_ImageTag_NoImage_Skipped(t *testing.T) {
 	hc := reachableHealthChecker()
 	ic := &fakeImageChecker{exists: false} // Should not be called.
 	svc := ops.NewDoctorService(fc, pc, hc).WithImageChecker(ic)
-	cfg := defaultConfig()
+	cfg := doctorConfig()
 	cfg.App.Image = "" // No image configured.
 
 	var buf bytes.Buffer
@@ -1124,13 +1313,13 @@ func TestDoctorService_Run_ArchCompatibility_Match(t *testing.T) {
 		runResponses: map[string]runResult{
 			"echo ok":  {output: "ok", err: nil},
 			"uname -m": {output: remoteUname, err: nil},
-			"docker compose ps --format json 2>/dev/null || docker-compose ps 2>/dev/null": {
+			"docker compose ps --format json": {
 				output: "", err: nil,
 			},
 		},
 	}
 	svc := ops.NewDoctorService(fc, pc, hc).WithRemoteExecutor(executor)
-	cfg := defaultConfig()
+	cfg := doctorConfig()
 
 	opts := defaultOpts(t)
 	opts.Target = "ssh://user@192.0.2.1"
@@ -1166,13 +1355,13 @@ func TestDoctorService_Run_ArchCompatibility_Mismatch(t *testing.T) {
 		runResponses: map[string]runResult{
 			"echo ok":  {output: "ok", err: nil},
 			"uname -m": {output: remoteUname, err: nil},
-			"docker compose ps --format json 2>/dev/null || docker-compose ps 2>/dev/null": {
+			"docker compose ps --format json": {
 				output: "", err: nil,
 			},
 		},
 	}
 	svc := ops.NewDoctorService(fc, pc, hc).WithRemoteExecutor(executor)
-	cfg := defaultConfig()
+	cfg := doctorConfig()
 
 	opts := defaultOpts(t)
 	opts.Target = "ssh://user@192.0.2.1"
@@ -1204,13 +1393,13 @@ func TestDoctorService_Run_ArchCompatibility_RemoteError(t *testing.T) {
 		runResponses: map[string]runResult{
 			"echo ok":  {output: "ok", err: nil},
 			"uname -m": {output: "", err: errors.New("command not found")},
-			"docker compose ps --format json 2>/dev/null || docker-compose ps 2>/dev/null": {
+			"docker compose ps --format json": {
 				output: "", err: nil,
 			},
 		},
 	}
 	svc := ops.NewDoctorService(fc, pc, hc).WithRemoteExecutor(executor)
-	cfg := defaultConfig()
+	cfg := doctorConfig()
 
 	opts := defaultOpts(t)
 	opts.Target = "ssh://user@192.0.2.1"

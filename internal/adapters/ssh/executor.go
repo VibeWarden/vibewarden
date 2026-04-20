@@ -89,8 +89,11 @@ func NewExecutorWithKey(target Target, keyPath string) *Executor {
 }
 
 // Run executes cmd on the remote host via ssh and returns the combined
-// stdout+stderr output. A non-zero exit code is wrapped and returned as an
-// error that includes the captured output for diagnosis.
+// stdout+stderr output. A non-zero exit code is wrapped with a short
+// "ssh exit: <err>" prefix; the raw command is deliberately NOT
+// interpolated into the error so doctor/CLI output does not leak shell
+// fragments (see ADR-084). Callers that need the raw output already get
+// it via the first return value.
 func (e *Executor) Run(ctx context.Context, cmd string) (string, error) {
 	args := e.sshArgs(cmd)
 	//nolint:gosec // cmd is caller-supplied; callers in this codebase use only
@@ -103,7 +106,7 @@ func (e *Executor) Run(ctx context.Context, cmd string) (string, error) {
 	c.Stderr = &buf
 
 	if err := c.Run(); err != nil {
-		return buf.String(), fmt.Errorf("ssh %s: %w\noutput: %s", cmd, err, strings.TrimSpace(buf.String()))
+		return buf.String(), fmt.Errorf("ssh exit: %w", err)
 	}
 	return strings.TrimSpace(buf.String()), nil
 }
