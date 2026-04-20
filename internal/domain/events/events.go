@@ -49,6 +49,27 @@ const (
 	// successfully obtained or renewed.
 	EventTypeTLSCertificateIssued = "tls.certificate_issued"
 
+	// EventTypeTLSACMEChainSkipped is emitted once at TLS plugin Init for every
+	// issuer that was evaluated for the default ACME fallback chain but excluded
+	// (e.g. ZeroSSL skipped because tls.email is empty).
+	EventTypeTLSACMEChainSkipped = "tls.acme.chain_skipped"
+
+	// EventTypeTLSACMEChainFallback is emitted whenever Caddy transitions
+	// between issuers in an active fallback chain. Emitted only when the
+	// underlying Caddy/certmagic/acmez library exposes a stable hook for
+	// runtime issuer transitions. See ADR-083 for the reserved schema.
+	EventTypeTLSACMEChainFallback = "tls.acme.chain_fallback"
+
+	// EventTypeTLSACMEChainConfigured is emitted once per TLS plugin Init with
+	// the resolved ACME issuer chain. Always emitted for ACME providers, so
+	// operators and log aggregators can see what was actually wired up.
+	EventTypeTLSACMEChainConfigured = "tls.acme.chain_configured"
+
+	// EventTypeTLSACMEProviderDeprecated is emitted at TLS plugin Init when
+	// the operator explicitly selects a deprecated ACME provider (currently
+	// "buypass", whose directory returns 403 Forbidden per #1055).
+	EventTypeTLSACMEProviderDeprecated = "tls.acme.provider_deprecated"
+
 	// EventTypeUserCreated is emitted when a new user identity is created in
 	// the identity provider.
 	EventTypeUserCreated = "user.created"

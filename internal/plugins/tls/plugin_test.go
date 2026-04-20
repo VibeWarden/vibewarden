@@ -3,8 +3,10 @@ package tls_test
 import (
 	"context"
 	"log/slog"
+	"sync"
 	"testing"
 
+	"github.com/vibewarden/vibewarden/internal/domain/events"
 	tlsplugin "github.com/vibewarden/vibewarden/internal/plugins/tls"
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
@@ -487,43 +489,70 @@ func TestPlugin_TLSApp_LetsEncryptStaging(t *testing.T) {
 	}
 }
 
+// TestPlugin_TLSApp_LetsEncrypt_FallbackChain verifies the default chain
+// after ADR-083: Buypass is removed; ZeroSSL joins only when tls.email is set.
 func TestPlugin_TLSApp_LetsEncrypt_FallbackChain(t *testing.T) {
-	cfg := ports.TLSConfig{
-		Enabled:  true,
-		Provider: ports.TLSProviderLetsEncrypt,
-		Domain:   "myapp.example.com",
+	tests := []struct {
+		name    string
+		email   string
+		wantCAs []string
+	}{
+		{
+			name:  "no email — single-issuer LE",
+			email: "",
+			wantCAs: []string{
+				"https://acme-v02.api.letsencrypt.org/directory",
+			},
+		},
+		{
+			name:  "with email — LE then ZeroSSL (no Buypass)",
+			email: "admin@example.com",
+			wantCAs: []string{
+				"https://acme-v02.api.letsencrypt.org/directory",
+				"https://acme.zerossl.com/v2/DV90",
+			},
+		},
 	}
-	p := newPlugin(cfg)
-	got, err := p.TLSApp()
-	if err != nil {
-		t.Fatalf("TLSApp() unexpected error: %v", err)
-	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := ports.TLSConfig{
+				Enabled:  true,
+				Provider: ports.TLSProviderLetsEncrypt,
+				Domain:   "myapp.example.com",
+				Email:    tt.email,
+			}
+			p := newPlugin(cfg)
+			got, err := p.TLSApp()
+			if err != nil {
+				t.Fatalf("TLSApp() unexpected error: %v", err)
+			}
 
-	automation, ok := got["automation"].(map[string]any)
-	if !ok {
-		t.Fatal("expected automation key")
-	}
-	policies, ok := automation["policies"].([]map[string]any)
-	if !ok || len(policies) == 0 {
-		t.Fatal("expected at least one policy")
-	}
-	issuers, ok := policies[0]["issuers"].([]map[string]any)
-	if !ok {
-		t.Fatal("expected issuers key")
-	}
-	if len(issuers) != 3 {
-		t.Fatalf("expected 3 issuers in fallback chain, got %d", len(issuers))
-	}
-	// Verify chain order: LE -> ZeroSSL -> Buypass
-	wantCAs := []string{
-		"https://acme-v02.api.letsencrypt.org/directory",
-		"https://acme.zerossl.com/v2/DV90",
-		"https://api.buypass.com/acme/directory",
-	}
-	for i, issuer := range issuers {
-		if issuer["ca"] != wantCAs[i] {
-			t.Errorf("issuer[%d].ca = %q, want %q", i, issuer["ca"], wantCAs[i])
-		}
+			automation, ok := got["automation"].(map[string]any)
+			if !ok {
+				t.Fatal("expected automation key")
+			}
+			policies, ok := automation["policies"].([]map[string]any)
+			if !ok || len(policies) == 0 {
+				t.Fatal("expected at least one policy")
+			}
+			issuers, ok := policies[0]["issuers"].([]map[string]any)
+			if !ok {
+				t.Fatal("expected issuers key")
+			}
+			if len(issuers) != len(tt.wantCAs) {
+				t.Fatalf("got %d issuers, want %d", len(issuers), len(tt.wantCAs))
+			}
+			for i, issuer := range issuers {
+				if issuer["ca"] != tt.wantCAs[i] {
+					t.Errorf("issuer[%d].ca = %q, want %q", i, issuer["ca"], tt.wantCAs[i])
+				}
+				// Regression guard: Buypass must never appear in the default
+				// chain per ADR-083.
+				if issuer["ca"] == "https://api.buypass.com/acme/directory" {
+					t.Errorf("issuer[%d] is Buypass — must not appear in default chain", i)
+				}
+			}
+		})
 	}
 }
 
@@ -799,6 +828,247 @@ func TestPlugin_RedirectServer_AutomaticHTTPSDisabled(t *testing.T) {
 	}
 	if autoHTTPS["disable"] != true {
 		t.Errorf("automatic_https.disable = %v, want true", autoHTTPS["disable"])
+	}
+}
+
+// ---------------------------------------------------------------------------
+// ACME chain — Init observability events (ADR-083)
+// ---------------------------------------------------------------------------
+
+// fakeEventLogger is a minimal in-memory ports.EventLogger for tests. It
+// records every event emitted by the plugin so assertions can inspect the
+// event_type, severity, and payload shape.
+type fakeEventLogger struct {
+	mu     sync.Mutex
+	events []events.Event
+}
+
+func (f *fakeEventLogger) Log(_ context.Context, e events.Event) error {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.events = append(f.events, e)
+	return nil
+}
+
+func (f *fakeEventLogger) snapshot() []events.Event {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := make([]events.Event, len(f.events))
+	copy(out, f.events)
+	return out
+}
+
+func (f *fakeEventLogger) byType(t string) []events.Event {
+	var out []events.Event
+	for _, e := range f.snapshot() {
+		if e.EventType == t {
+			out = append(out, e)
+		}
+	}
+	return out
+}
+
+// TestPlugin_Init_EmitsChainConfigured asserts that every ACME provider
+// configuration produces exactly one tls.acme.chain_configured event at Init,
+// carrying the resolved chain and primary provider.
+func TestPlugin_Init_EmitsChainConfigured(t *testing.T) {
+	tests := []struct {
+		name            string
+		cfg             ports.TLSConfig
+		wantChain       []string
+		wantSkipZeroSSL bool
+		wantDeprecation bool
+		wantPrimary     string
+	}{
+		{
+			name: "letsencrypt default without email — LE only, zerossl skipped",
+			cfg: ports.TLSConfig{
+				Enabled:  true,
+				Provider: ports.TLSProviderLetsEncrypt,
+				Domain:   "app.example.com",
+			},
+			wantChain:       []string{"letsencrypt"},
+			wantSkipZeroSSL: true,
+			wantPrimary:     "letsencrypt",
+		},
+		{
+			name: "letsencrypt default with email — LE + zerossl",
+			cfg: ports.TLSConfig{
+				Enabled:  true,
+				Provider: ports.TLSProviderLetsEncrypt,
+				Domain:   "app.example.com",
+				Email:    "admin@example.com",
+			},
+			wantChain:   []string{"letsencrypt", "zerossl"},
+			wantPrimary: "letsencrypt",
+		},
+		{
+			name: "letsencrypt with acme_ca override — custom single issuer",
+			cfg: ports.TLSConfig{
+				Enabled:  true,
+				Provider: ports.TLSProviderLetsEncrypt,
+				Domain:   "app.example.com",
+				ACMECA:   "https://internal-ca.example.com/directory",
+			},
+			wantChain:   []string{"custom"},
+			wantPrimary: "letsencrypt",
+		},
+		{
+			name: "zerossl explicit with email — single-issuer chain",
+			cfg: ports.TLSConfig{
+				Enabled:  true,
+				Provider: ports.TLSProviderZeroSSL,
+				Domain:   "app.example.com",
+				Email:    "admin@example.com",
+			},
+			wantChain:   []string{"zerossl"},
+			wantPrimary: "zerossl",
+		},
+		{
+			name: "buypass explicit — single-issuer chain + deprecation event",
+			cfg: ports.TLSConfig{
+				Enabled:  true,
+				Provider: ports.TLSProviderBuypass,
+				Domain:   "app.example.com",
+			},
+			wantChain:       []string{"buypass"},
+			wantDeprecation: true,
+			wantPrimary:     "buypass",
+		},
+		{
+			name: "letsencrypt-staging — single-issuer chain",
+			cfg: ports.TLSConfig{
+				Enabled:  true,
+				Provider: ports.TLSProviderLetsEncryptStaging,
+				Domain:   "app.example.com",
+			},
+			wantChain:   []string{"letsencrypt-staging"},
+			wantPrimary: "letsencrypt-staging",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fake := &fakeEventLogger{}
+			p := tlsplugin.New(tt.cfg, fake, discardLogger())
+			if err := p.Init(context.Background()); err != nil {
+				t.Fatalf("Init() unexpected error: %v", err)
+			}
+
+			// chain_configured must be emitted exactly once with the resolved chain.
+			configured := fake.byType(events.EventTypeTLSACMEChainConfigured)
+			if len(configured) != 1 {
+				t.Fatalf("chain_configured count = %d, want 1; all events: %+v", len(configured), fake.snapshot())
+			}
+			primary, _ := configured[0].Payload["primary_provider"].(string)
+			if primary != tt.wantPrimary {
+				t.Errorf("chain_configured.primary_provider = %q, want %q", primary, tt.wantPrimary)
+			}
+			chain, ok := configured[0].Payload["resolved_chain"].([]string)
+			if !ok {
+				t.Fatalf("chain_configured.resolved_chain type = %T, want []string", configured[0].Payload["resolved_chain"])
+			}
+			if len(chain) != len(tt.wantChain) {
+				t.Fatalf("resolved_chain len = %d, want %d (got %v)", len(chain), len(tt.wantChain), chain)
+			}
+			for i, got := range chain {
+				if got != tt.wantChain[i] {
+					t.Errorf("resolved_chain[%d] = %q, want %q", i, got, tt.wantChain[i])
+				}
+			}
+
+			// chain_skipped presence matches the expectation for this row.
+			skipped := fake.byType(events.EventTypeTLSACMEChainSkipped)
+			if tt.wantSkipZeroSSL {
+				if len(skipped) != 1 {
+					t.Fatalf("chain_skipped count = %d, want 1", len(skipped))
+				}
+				if skipped[0].Payload["provider"] != "zerossl" {
+					t.Errorf("chain_skipped.provider = %v, want %q", skipped[0].Payload["provider"], "zerossl")
+				}
+				if skipped[0].Payload["reason"] != "email_not_configured" {
+					t.Errorf("chain_skipped.reason = %v, want %q", skipped[0].Payload["reason"], "email_not_configured")
+				}
+				if skipped[0].Payload["primary_provider"] != "letsencrypt" {
+					t.Errorf("chain_skipped.primary_provider = %v, want %q", skipped[0].Payload["primary_provider"], "letsencrypt")
+				}
+			} else {
+				if len(skipped) != 0 {
+					t.Errorf("expected no chain_skipped events, got %+v", skipped)
+				}
+			}
+
+			// provider_deprecated only emitted when buypass is explicitly chosen.
+			dep := fake.byType(events.EventTypeTLSACMEProviderDeprecated)
+			if tt.wantDeprecation {
+				if len(dep) != 1 {
+					t.Fatalf("provider_deprecated count = %d, want 1", len(dep))
+				}
+				if dep[0].Payload["provider"] != "buypass" {
+					t.Errorf("provider_deprecated.provider = %v, want %q", dep[0].Payload["provider"], "buypass")
+				}
+			} else {
+				if len(dep) != 0 {
+					t.Errorf("expected no provider_deprecated events, got %+v", dep)
+				}
+			}
+		})
+	}
+}
+
+// TestPlugin_Init_NilEventLogger_DoesNotPanic asserts the ADR-083 §9
+// requirement that Init is safe when no EventLogger is configured.
+func TestPlugin_Init_NilEventLogger_DoesNotPanic(t *testing.T) {
+	cfg := ports.TLSConfig{
+		Enabled:  true,
+		Provider: ports.TLSProviderLetsEncrypt,
+		Domain:   "app.example.com",
+	}
+	p := tlsplugin.New(cfg, nil, discardLogger())
+	if err := p.Init(context.Background()); err != nil {
+		t.Fatalf("Init() with nil EventLogger unexpected error: %v", err)
+	}
+}
+
+// TestPlugin_Init_NonACMEProvider_EmitsNoACMEEvents ensures self-signed and
+// external providers do not produce chain events (the chain concept does
+// not apply).
+func TestPlugin_Init_NonACMEProvider_EmitsNoACMEEvents(t *testing.T) {
+	tests := []struct {
+		name string
+		cfg  ports.TLSConfig
+	}{
+		{
+			name: "self-signed",
+			cfg:  ports.TLSConfig{Enabled: true, Provider: ports.TLSProviderSelfSigned},
+		},
+		{
+			name: "external",
+			cfg: ports.TLSConfig{
+				Enabled:  true,
+				Provider: ports.TLSProviderExternal,
+				CertPath: "/tls/cert.pem",
+				KeyPath:  "/tls/key.pem",
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fake := &fakeEventLogger{}
+			p := tlsplugin.New(tt.cfg, fake, discardLogger())
+			if err := p.Init(context.Background()); err != nil {
+				t.Fatalf("Init() unexpected error: %v", err)
+			}
+			for _, e := range fake.snapshot() {
+				switch e.EventType {
+				case events.EventTypeTLSACMEChainSkipped,
+					events.EventTypeTLSACMEChainConfigured,
+					events.EventTypeTLSACMEProviderDeprecated,
+					events.EventTypeTLSACMEChainFallback:
+					t.Errorf("unexpected acme event for non-acme provider: %q", e.EventType)
+				}
+			}
+		})
 	}
 }
 

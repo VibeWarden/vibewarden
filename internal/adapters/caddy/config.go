@@ -464,9 +464,13 @@ func buildTLSApp(cfg ports.TLSConfig) (map[string]any, error) {
 // to reject the config with "unknown field: storage". Storage is set at the
 // top-level in BuildCaddyConfig when cfg.StoragePath is non-empty.
 func buildACMETLSApp(cfg ports.TLSConfig) map[string]any {
+	// The caddy adapter's buildACMETLSApp is only invoked for legacy
+	// single-site code paths; the TLS plugin Init owns observability for the
+	// default chain and therefore emits the skipped-issuer events.
+	issuers, _ := buildACMEIssuers(cfg)
 	policy := map[string]any{
 		"subjects": []string{cfg.Domain},
-		"issuers":  buildACMEIssuers(cfg),
+		"issuers":  issuers,
 	}
 
 	return map[string]any{

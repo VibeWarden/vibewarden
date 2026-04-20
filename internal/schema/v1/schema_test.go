@@ -533,6 +533,133 @@ func TestSchemaUserDeleted(t *testing.T) {
 	}
 }
 
+// --- tls.acme.chain_skipped ---
+
+func TestSchemaTLSACMEChainSkipped(t *testing.T) {
+	tests := []struct {
+		name   string
+		params events.TLSACMEChainSkippedParams
+	}{
+		{
+			name: "zerossl skipped because email missing",
+			params: events.TLSACMEChainSkippedParams{
+				Provider:        "zerossl",
+				Reason:          "email_not_configured",
+				PrimaryProvider: "letsencrypt",
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			je := marshalEvent(t, events.NewTLSACMEChainSkipped(tt.params))
+			assertBaseFields(t, je, "tls.acme.chain_skipped")
+			requireString(t, je.Payload, "provider", tt.params.Provider)
+			requireString(t, je.Payload, "reason", tt.params.Reason)
+			requireString(t, je.Payload, "primary_provider", tt.params.PrimaryProvider)
+		})
+	}
+}
+
+// --- tls.acme.chain_fallback ---
+
+func TestSchemaTLSACMEChainFallback(t *testing.T) {
+	tests := []struct {
+		name   string
+		params events.TLSACMEChainFallbackParams
+	}{
+		{
+			name: "letsencrypt -> zerossl upstream unreachable",
+			params: events.TLSACMEChainFallbackParams{
+				FromProvider: "letsencrypt",
+				ToProvider:   "zerossl",
+				Reason:       "upstream_unreachable",
+				Domain:       "app.example.com",
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			je := marshalEvent(t, events.NewTLSACMEChainFallback(tt.params))
+			assertBaseFields(t, je, "tls.acme.chain_fallback")
+			requireString(t, je.Payload, "from_provider", tt.params.FromProvider)
+			requireString(t, je.Payload, "to_provider", tt.params.ToProvider)
+			requireString(t, je.Payload, "reason", tt.params.Reason)
+			requireString(t, je.Payload, "domain", tt.params.Domain)
+		})
+	}
+}
+
+// --- tls.acme.chain_configured ---
+
+func TestSchemaTLSACMEChainConfigured(t *testing.T) {
+	tests := []struct {
+		name   string
+		params events.TLSACMEChainConfiguredParams
+	}{
+		{
+			name: "letsencrypt + zerossl resolved",
+			params: events.TLSACMEChainConfiguredParams{
+				PrimaryProvider: "letsencrypt",
+				ResolvedChain:   []string{"letsencrypt", "zerossl"},
+				Domain:          "app.example.com",
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			je := marshalEvent(t, events.NewTLSACMEChainConfigured(tt.params))
+			assertBaseFields(t, je, "tls.acme.chain_configured")
+			requireString(t, je.Payload, "primary_provider", tt.params.PrimaryProvider)
+			requireString(t, je.Payload, "domain", tt.params.Domain)
+
+			chain, ok := je.Payload["resolved_chain"].([]any)
+			if !ok {
+				t.Fatalf("resolved_chain type = %T, want []any", je.Payload["resolved_chain"])
+			}
+			if len(chain) != len(tt.params.ResolvedChain) {
+				t.Fatalf("resolved_chain len = %d, want %d", len(chain), len(tt.params.ResolvedChain))
+			}
+			for i, v := range chain {
+				got, ok := v.(string)
+				if !ok {
+					t.Errorf("resolved_chain[%d] type = %T, want string", i, v)
+					continue
+				}
+				if got != tt.params.ResolvedChain[i] {
+					t.Errorf("resolved_chain[%d] = %q, want %q", i, got, tt.params.ResolvedChain[i])
+				}
+			}
+		})
+	}
+}
+
+// --- tls.acme.provider_deprecated ---
+
+func TestSchemaTLSACMEProviderDeprecated(t *testing.T) {
+	tests := []struct {
+		name   string
+		params events.TLSACMEProviderDeprecatedParams
+	}{
+		{
+			name: "buypass deprecated",
+			params: events.TLSACMEProviderDeprecatedParams{
+				Provider: "buypass",
+				Reason:   "directory_returns_403",
+				Guidance: "consider provider: letsencrypt with tls.email",
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			je := marshalEvent(t, events.NewTLSACMEProviderDeprecated(tt.params))
+			assertBaseFields(t, je, "tls.acme.provider_deprecated")
+			requireString(t, je.Payload, "provider", tt.params.Provider)
+			requireString(t, je.Payload, "reason", tt.params.Reason)
+			requireString(t, je.Payload, "guidance", tt.params.Guidance)
+		})
+	}
+}
+
 // TestCoreEventTypeConstantsAreNonEmpty verifies that the set of well-known
 // event type constants defined in the domain/events package are non-empty
 // strings. It does NOT assert a fixed count because the schema is
@@ -548,6 +675,10 @@ func TestCoreEventTypeConstantsAreNonEmpty(t *testing.T) {
 		events.EventTypeRateLimitUnidentified,
 		events.EventTypeRequestBlocked,
 		events.EventTypeTLSCertificateIssued,
+		events.EventTypeTLSACMEChainSkipped,
+		events.EventTypeTLSACMEChainFallback,
+		events.EventTypeTLSACMEChainConfigured,
+		events.EventTypeTLSACMEProviderDeprecated,
 		events.EventTypeUserCreated,
 		events.EventTypeUserDeleted,
 	}

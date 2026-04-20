@@ -303,6 +303,43 @@ var eventTypeRegistry = map[string]EventTypeInfo{
 		},
 	},
 
+	"tls.acme.chain_skipped": {
+		Description: "Emitted once at TLS plugin Init for every ACME issuer evaluated for the default fallback chain but excluded (e.g. ZeroSSL skipped because tls.email is empty). See ADR-083.",
+		Fields: []FieldInfo{
+			{Name: "provider", Type: "string", Description: "Short identifier of the skipped issuer (e.g. \"zerossl\")."},
+			{Name: "reason", Type: "string", Description: "Machine-readable skip reason (v1 values: \"email_not_configured\")."},
+			{Name: "primary_provider", Type: "string", Description: "The primary ACME provider whose default chain was being built."},
+		},
+	},
+
+	"tls.acme.chain_fallback": {
+		Description: "Reserved: emitted whenever Caddy transitions between issuers in an active fallback chain. Emission requires a stable Caddy/certmagic/acmez hook; see ADR-083 §3b.",
+		Fields: []FieldInfo{
+			{Name: "from_provider", Type: "string", Description: "Issuer that failed."},
+			{Name: "to_provider", Type: "string", Description: "Issuer the chain fell back to."},
+			{Name: "reason", Type: "string", Description: "Machine-readable transition reason (v1 values: \"upstream_unreachable\", \"rate_limited\", \"unknown\")."},
+			{Name: "domain", Type: "string", Description: "Certificate subject the fallback was for."},
+		},
+	},
+
+	"tls.acme.chain_configured": {
+		Description: "Emitted once per TLS plugin Init with the resolved ACME issuer chain. Always emitted for ACME providers, so the resolved chain is grepable from a single event type.",
+		Fields: []FieldInfo{
+			{Name: "primary_provider", Type: "string", Description: "Configured primary ACME provider (e.g. \"letsencrypt\")."},
+			{Name: "resolved_chain", Type: "[]string", Description: "Ordered list of issuer identifiers Caddy will try (e.g. [\"letsencrypt\", \"zerossl\"])."},
+			{Name: "domain", Type: "string", Description: "Certificate subject the chain will provision for."},
+		},
+	},
+
+	"tls.acme.provider_deprecated": {
+		Description: "Emitted at TLS plugin Init when the operator explicitly selects a deprecated ACME provider (currently buypass; see #1055).",
+		Fields: []FieldInfo{
+			{Name: "provider", Type: "string", Description: "Deprecated provider identifier (e.g. \"buypass\")."},
+			{Name: "reason", Type: "string", Description: "Machine-readable reason (e.g. \"directory_returns_403\")."},
+			{Name: "guidance", Type: "string", Description: "Human-readable suggestion pointing at a supported alternative."},
+		},
+	},
+
 	// -----------------------------------------------------------------------
 	// user
 	// -----------------------------------------------------------------------

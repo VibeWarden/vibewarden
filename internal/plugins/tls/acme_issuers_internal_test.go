@@ -1,4 +1,4 @@
-package caddy
+package tls
 
 import (
 	"testing"
@@ -6,39 +6,15 @@ import (
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
 
-func TestIsACMEProvider(t *testing.T) {
-	tests := []struct {
-		name     string
-		provider ports.TLSProvider
-		want     bool
-	}{
-		{"letsencrypt", ports.TLSProviderLetsEncrypt, true},
-		{"zerossl", ports.TLSProviderZeroSSL, true},
-		{"buypass", ports.TLSProviderBuypass, true},
-		{"letsencrypt-staging", ports.TLSProviderLetsEncryptStaging, true},
-		{"self-signed", ports.TLSProviderSelfSigned, false},
-		{"external", ports.TLSProviderExternal, false},
-		{"empty string", "", false},
-		{"unknown", ports.TLSProvider("cloudflare"), false},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			got := isACMEProvider(tt.provider)
-			if got != tt.want {
-				t.Errorf("isACMEProvider(%q) = %v, want %v", tt.provider, got, tt.want)
-			}
-		})
-	}
-}
-
-// TestBuildACMEIssuers covers the default-chain table defined in ADR-083 §10.
-// Every row asserts both the returned issuer list AND the skipped slice.
-func TestBuildACMEIssuers(t *testing.T) {
+// TestBuildACMEIssuers_Mirror mirrors the table-driven test in
+// internal/adapters/caddy/acme_issuers_test.go to guarantee the duplicated
+// copies stay in lockstep per ADR-083 §4.
+func TestBuildACMEIssuers_Mirror(t *testing.T) {
 	tests := []struct {
 		name        string
 		cfg         ports.TLSConfig
 		wantCAs     []string
-		wantEmails  []string // expected email per issuer; empty means no email field
+		wantEmails  []string
 		wantSkipped []SkippedIssuer
 	}{
 		{
@@ -121,17 +97,6 @@ func TestBuildACMEIssuers(t *testing.T) {
 			wantEmails:  []string{""},
 			wantSkipped: nil,
 		},
-		{
-			name: "letsencrypt-staging with email",
-			cfg: ports.TLSConfig{
-				Provider: ports.TLSProviderLetsEncryptStaging,
-				Domain:   "example.com",
-				Email:    "dev@example.com",
-			},
-			wantCAs:     []string{acmeCALetsEncryptStaging},
-			wantEmails:  []string{"dev@example.com"},
-			wantSkipped: nil,
-		},
 	}
 
 	for _, tt := range tests {
@@ -141,20 +106,13 @@ func TestBuildACMEIssuers(t *testing.T) {
 			if len(issuers) != len(tt.wantCAs) {
 				t.Fatalf("buildACMEIssuers() returned %d issuers, want %d", len(issuers), len(tt.wantCAs))
 			}
-
 			for i, issuer := range issuers {
-				// Check module.
 				if issuer["module"] != "acme" {
 					t.Errorf("issuer[%d].module = %q, want %q", i, issuer["module"], "acme")
 				}
-
-				// Check CA URL.
-				ca, ok := issuer["ca"].(string)
-				if !ok || ca != tt.wantCAs[i] {
+				if ca, _ := issuer["ca"].(string); ca != tt.wantCAs[i] {
 					t.Errorf("issuer[%d].ca = %q, want %q", i, ca, tt.wantCAs[i])
 				}
-
-				// Check email.
 				emailVal, hasEmail := issuer["email"]
 				if tt.wantEmails[i] != "" {
 					if !hasEmail {
@@ -162,10 +120,8 @@ func TestBuildACMEIssuers(t *testing.T) {
 					} else if emailVal != tt.wantEmails[i] {
 						t.Errorf("issuer[%d].email = %q, want %q", i, emailVal, tt.wantEmails[i])
 					}
-				} else {
-					if hasEmail {
-						t.Errorf("issuer[%d] has unexpected email = %q", i, emailVal)
-					}
+				} else if hasEmail {
+					t.Errorf("issuer[%d] has unexpected email = %q", i, emailVal)
 				}
 			}
 
@@ -184,10 +140,9 @@ func TestBuildACMEIssuers(t *testing.T) {
 	}
 }
 
-// TestBuildACMEIssuers_NoBuypassInDefaultChain is a regression guard for
-// ADR-083: the Buypass directory URL must never appear in the default
-// fallback chain regardless of the tls.email value.
-func TestBuildACMEIssuers_NoBuypassInDefaultChain(t *testing.T) {
+// TestBuildACMEIssuers_NoBuypassInDefaultChain_Mirror is a regression guard
+// for ADR-083: Buypass must never appear in the default fallback chain.
+func TestBuildACMEIssuers_NoBuypassInDefaultChain_Mirror(t *testing.T) {
 	tests := []struct {
 		name string
 		cfg  ports.TLSConfig
@@ -213,49 +168,8 @@ func TestBuildACMEIssuers_NoBuypassInDefaultChain(t *testing.T) {
 			issuers, _ := buildACMEIssuers(tt.cfg)
 			for i, iss := range issuers {
 				if iss["ca"] == acmeCABuypass {
-					t.Errorf("issuer[%d].ca = buypass URL; Buypass must not appear in the default chain per ADR-083", i)
+					t.Errorf("issuer[%d].ca = buypass URL; Buypass must not appear in default chain per ADR-083", i)
 				}
-			}
-		})
-	}
-}
-
-func TestBuildSingleACMEIssuer(t *testing.T) {
-	tests := []struct {
-		name      string
-		ca        string
-		email     string
-		wantEmail bool
-	}{
-		{
-			name:      "with email",
-			ca:        acmeCALetsEncrypt,
-			email:     "admin@example.com",
-			wantEmail: true,
-		},
-		{
-			name:      "without email",
-			ca:        acmeCAZeroSSL,
-			email:     "",
-			wantEmail: false,
-		},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			issuer := buildSingleACMEIssuer(tt.ca, tt.email)
-
-			if issuer["module"] != "acme" {
-				t.Errorf("module = %q, want %q", issuer["module"], "acme")
-			}
-			if issuer["ca"] != tt.ca {
-				t.Errorf("ca = %q, want %q", issuer["ca"], tt.ca)
-			}
-			_, hasEmail := issuer["email"]
-			if tt.wantEmail && !hasEmail {
-				t.Error("expected email field, got none")
-			}
-			if !tt.wantEmail && hasEmail {
-				t.Errorf("unexpected email field: %v", issuer["email"])
 			}
 		})
 	}

@@ -130,12 +130,12 @@ var Catalog = []PluginDescriptor{
 	},
 	{
 		Name:        "tls",
-		Description: "TLS termination with ACME fallback chain (Let's Encrypt, ZeroSSL, Buypass), self-signed, or external certificates",
+		Description: "TLS termination with ACME fallback chain (Let's Encrypt primary, ZeroSSL fallback when tls.email is set), self-signed, or external certificates; buypass is available as an explicit opt-in only",
 		ConfigSchema: map[string]string{
 			"enabled":      "Enable TLS (default: false)",
-			"provider":     "Certificate provider: letsencrypt (default, with fallback chain), zerossl, buypass, letsencrypt-staging, self-signed, external",
+			"provider":     "Certificate provider: letsencrypt (default; falls back to zerossl when tls.email is set), zerossl, buypass (explicit opt-in; unhealthy as of #1055), letsencrypt-staging, self-signed, external",
 			"domain":       "Domain for certificate (required for ACME providers)",
-			"email":        "ACME account email for expiry notifications and EAB registration (required for zerossl, recommended for all ACME providers)",
+			"email":        "ACME account email for expiry notifications and EAB registration (required for zerossl; enables zerossl as a fallback under provider=letsencrypt)",
 			"acme_ca":      "Custom ACME directory URL (overrides fallback chain when set). Only applies to ACME providers.",
 			"cert_path":    "Path to certificate file (external provider)",
 			"key_path":     "Path to key file (external provider)",

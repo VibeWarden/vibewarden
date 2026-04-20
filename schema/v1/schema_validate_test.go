@@ -270,6 +270,39 @@ func TestSchemaValidation(t *testing.T) {
 				ExpiresAt: "2026-06-26T00:00:00Z",
 			}),
 		},
+		{
+			name: "tls.acme.chain_skipped",
+			event: events.NewTLSACMEChainSkipped(events.TLSACMEChainSkippedParams{
+				Provider:        "zerossl",
+				Reason:          "email_not_configured",
+				PrimaryProvider: "letsencrypt",
+			}),
+		},
+		{
+			name: "tls.acme.chain_fallback",
+			event: events.NewTLSACMEChainFallback(events.TLSACMEChainFallbackParams{
+				FromProvider: "letsencrypt",
+				ToProvider:   "zerossl",
+				Reason:       "upstream_unreachable",
+				Domain:       "app.example.com",
+			}),
+		},
+		{
+			name: "tls.acme.chain_configured",
+			event: events.NewTLSACMEChainConfigured(events.TLSACMEChainConfiguredParams{
+				PrimaryProvider: "letsencrypt",
+				ResolvedChain:   []string{"letsencrypt", "zerossl"},
+				Domain:          "app.example.com",
+			}),
+		},
+		{
+			name: "tls.acme.provider_deprecated",
+			event: events.NewTLSACMEProviderDeprecated(events.TLSACMEProviderDeprecatedParams{
+				Provider: "buypass",
+				Reason:   "directory_returns_403",
+				Guidance: "consider provider: letsencrypt with tls.email",
+			}),
+		},
 		// --- user ---
 		{
 			name: "user.created",
