@@ -28,6 +28,7 @@ func newAddTLSCmd() *cobra.Command {
 	var (
 		domain   string
 		provider string
+		email    string
 	)
 
 	cmd := &cobra.Command{
@@ -43,15 +44,19 @@ When TLS is already enabled, vibewarden.yaml is left unchanged and the domain
 is written only to vibewarden.production.yaml.
 
 Supported providers:
-  letsencrypt   Automatic certificate from Let's Encrypt (default, requires public domain)
-  self-signed   Self-signed certificate for local/internal use
-  external      You manage the certificate (Cloudflare, registrar, AWS ACM, etc.)
+  letsencrypt          Automatic certificate with fallback chain: LE -> ZeroSSL -> Buypass (default)
+  zerossl              ZeroSSL only (requires --email for automatic EAB registration)
+  buypass              Buypass Go SSL only
+  letsencrypt-staging  Let's Encrypt staging (for testing, no rate limits)
+  self-signed          Self-signed certificate for local/internal use
+  external             You manage the certificate (Cloudflare, registrar, AWS ACM, etc.)
 
 Run 'vibew wrap' first if vibewarden.yaml does not exist.
 
 Examples:
   vibew add tls --domain example.com
-  vibew add tls --domain example.com --provider letsencrypt
+  vibew add tls --domain example.com --provider letsencrypt --email admin@example.com
+  vibew add tls --domain example.com --provider zerossl --email admin@example.com
   vibew add tls --domain internal.corp --provider self-signed`,
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -95,13 +100,16 @@ Examples:
 				}
 			}
 
-			// Write the domain to vibewarden.production.yaml.
+			// Write the domain and email to vibewarden.production.yaml.
 			prodPath := filepath.Join(projDir, "vibewarden.production.yaml")
-			if err := upsertDomainInProdConfig(prodPath, domain); err != nil {
+			if err := upsertTLSFieldsInProdConfig(prodPath, domain, email); err != nil {
 				// Non-fatal: the production override file is optional.
 				fmt.Fprintf(cmd.OutOrStdout(), "Note: could not update %s: %v\n", prodPath, err)
 			} else {
 				fmt.Fprintf(cmd.OutOrStdout(), "Domain %q written to %s\n", domain, prodPath)
+				if email != "" {
+					fmt.Fprintf(cmd.OutOrStdout(), "Email %q written to %s\n", email, prodPath)
+				}
 			}
 
 			return nil
@@ -109,15 +117,17 @@ Examples:
 	}
 
 	cmd.Flags().StringVar(&domain, "domain", "", "domain for TLS certificate (required)")
-	cmd.Flags().StringVar(&provider, "provider", "letsencrypt", `TLS provider: "letsencrypt", "self-signed", or "external"`)
+	cmd.Flags().StringVar(&provider, "provider", "letsencrypt", `TLS provider: "letsencrypt", "zerossl", "buypass", "letsencrypt-staging", "self-signed", or "external"`)
+	cmd.Flags().StringVar(&email, "email", "", "ACME account email for certificate notifications and EAB registration (required for zerossl)")
 
 	return cmd
 }
 
-// upsertDomainInProdConfig reads vibewarden.production.yaml, sets
-// tls.domain to the given value, and writes the file back. If the file does
-// not exist, it is silently skipped (returns nil).
-func upsertDomainInProdConfig(path, domain string) error {
+// upsertTLSFieldsInProdConfig reads vibewarden.production.yaml, sets
+// tls.domain and optionally tls.email to the given values, and writes the file
+// back. If the file does not exist, it is created with sensible production
+// defaults.
+func upsertTLSFieldsInProdConfig(path, domain, email string) error {
 	var m map[string]any
 
 	data, err := os.ReadFile(path) //nolint:gosec // path is the vibewarden.production.yaml resolved from project root
@@ -147,6 +157,9 @@ func upsertDomainInProdConfig(path, domain string) error {
 		m["tls"] = tls
 	}
 	tls["domain"] = domain
+	if email != "" {
+		tls["email"] = email
+	}
 
 	out, err := yaml.Marshal(m)
 	if err != nil {

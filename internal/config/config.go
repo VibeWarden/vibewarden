@@ -1723,22 +1723,37 @@ func (c *Config) Validate() error {
 	// before Validate() runs, but direct callers of Validate() may still pass
 	// it, so we permit it here as well.
 	switch c.TLS.Provider {
-	case "", "self-signed", "letsencrypt", "acme", "external":
+	case "", "self-signed", "letsencrypt", "acme", "external",
+		"zerossl", "buypass", "letsencrypt-staging":
 		// valid — empty string is accepted (defaults to "self-signed" via Load)
 	default:
 		errs = append(errs, fmt.Sprintf(
-			"tls.provider %q is invalid; accepted values: \"self-signed\", \"letsencrypt\" (or alias \"acme\"), \"external\" — "+
+			"tls.provider %q is invalid; accepted values: \"self-signed\", \"letsencrypt\" (or alias \"acme\"), "+
+				"\"zerossl\", \"buypass\", \"letsencrypt-staging\", \"external\" — "+
 				"set tls.provider to one of those values",
 			c.TLS.Provider,
 		))
 	}
 
-	// TLS letsencrypt provider requires domain.
+	// ACME providers require a domain for certificate issuance.
 	// Also checked for "acme" — the alias — in case Validate() is called
 	// before Load() has had a chance to normalise the value.
-	if c.TLS.Enabled && (c.TLS.Provider == "letsencrypt" || c.TLS.Provider == "acme") && c.TLS.Domain == "" {
-		errs = append(errs, "tls.domain is required when tls.provider is \"letsencrypt\" — "+
-			"set tls.domain to your domain name (e.g., myapp.example.com)")
+	acmeProviders := map[string]bool{
+		"letsencrypt": true, "acme": true,
+		"zerossl": true, "buypass": true, "letsencrypt-staging": true,
+	}
+	if c.TLS.Enabled && acmeProviders[c.TLS.Provider] && c.TLS.Domain == "" {
+		errs = append(errs, fmt.Sprintf(
+			"tls.domain is required when tls.provider is %q — "+
+				"set tls.domain to your domain name (e.g., myapp.example.com)",
+			c.TLS.Provider,
+		))
+	}
+
+	// ZeroSSL requires email for automatic EAB registration.
+	if c.TLS.Enabled && c.TLS.Provider == "zerossl" && c.TLS.Email == "" {
+		errs = append(errs, "tls.email is required when tls.provider is \"zerossl\" — "+
+			"ZeroSSL needs an email for automatic EAB registration")
 	}
 
 	// TLS external provider requires cert_path and key_path.

@@ -2515,10 +2515,57 @@ func TestValidate_TLSProvider(t *testing.T) {
 			wantContain: "tls.domain is required",
 		},
 		{
+			name:    "zerossl is valid",
+			cfg:     config.Config{TLS: config.TLSConfig{Provider: "zerossl"}},
+			wantErr: false,
+		},
+		{
+			name:    "buypass is valid",
+			cfg:     config.Config{TLS: config.TLSConfig{Provider: "buypass"}},
+			wantErr: false,
+		},
+		{
+			name:    "letsencrypt-staging is valid",
+			cfg:     config.Config{TLS: config.TLSConfig{Provider: "letsencrypt-staging"}},
+			wantErr: false,
+		},
+		{
+			name: "zerossl enabled without email is invalid",
+			cfg: config.Config{TLS: config.TLSConfig{
+				Enabled:  true,
+				Provider: "zerossl",
+				Domain:   "example.com",
+				Email:    "",
+			}},
+			wantErr:     true,
+			wantContain: "tls.email is required when tls.provider is \"zerossl\"",
+		},
+		{
+			name: "zerossl enabled without domain is invalid",
+			cfg: config.Config{TLS: config.TLSConfig{
+				Enabled:  true,
+				Provider: "zerossl",
+				Domain:   "",
+				Email:    "admin@example.com",
+			}},
+			wantErr:     true,
+			wantContain: "tls.domain is required",
+		},
+		{
+			name: "buypass enabled without domain is invalid",
+			cfg: config.Config{TLS: config.TLSConfig{
+				Enabled:  true,
+				Provider: "buypass",
+				Domain:   "",
+			}},
+			wantErr:     true,
+			wantContain: "tls.domain is required",
+		},
+		{
 			name:        "unknown provider cloudflare is rejected with actionable message",
 			cfg:         config.Config{TLS: config.TLSConfig{Provider: "cloudflare"}},
 			wantErr:     true,
-			wantContain: "accepted values: \"self-signed\", \"letsencrypt\" (or alias \"acme\"), \"external\"",
+			wantContain: "accepted values:",
 		},
 		{
 			name:        "error message suggests fix",

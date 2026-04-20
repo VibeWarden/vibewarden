@@ -761,9 +761,12 @@ func validateConfig(cfg *config.Config) []string {
 	var errs []string
 
 	validTLSProviders := map[string]bool{
-		"letsencrypt": true,
-		"self-signed": true,
-		"external":    true,
+		"letsencrypt":         true,
+		"zerossl":             true,
+		"buypass":             true,
+		"letsencrypt-staging": true,
+		"self-signed":         true,
+		"external":            true,
 	}
 	validLogLevels := map[string]bool{
 		"debug": true,
@@ -788,10 +791,16 @@ func validateConfig(cfg *config.Config) []string {
 		errs = append(errs, fmt.Sprintf("upstream.port must be between 1 and 65535, got %d", cfg.Upstream.Port))
 	}
 	if !validTLSProviders[cfg.TLS.Provider] {
-		errs = append(errs, fmt.Sprintf("tls.provider must be one of letsencrypt, self-signed, external; got %q", cfg.TLS.Provider))
+		errs = append(errs, fmt.Sprintf("tls.provider must be one of letsencrypt, zerossl, buypass, letsencrypt-staging, self-signed, external; got %q", cfg.TLS.Provider))
 	}
-	if cfg.TLS.Enabled && cfg.TLS.Provider == "letsencrypt" && cfg.TLS.Domain == "" {
-		errs = append(errs, "tls.domain is required when tls.provider is letsencrypt")
+	acmeProviders := map[string]bool{
+		"letsencrypt": true, "zerossl": true, "buypass": true, "letsencrypt-staging": true,
+	}
+	if cfg.TLS.Enabled && acmeProviders[cfg.TLS.Provider] && cfg.TLS.Domain == "" {
+		errs = append(errs, fmt.Sprintf("tls.domain is required when tls.provider is %s", cfg.TLS.Provider))
+	}
+	if cfg.TLS.Enabled && cfg.TLS.Provider == "zerossl" && cfg.TLS.Email == "" {
+		errs = append(errs, "tls.email is required when tls.provider is zerossl")
 	}
 	if cfg.TLS.Enabled && cfg.TLS.Provider == "external" {
 		if cfg.TLS.CertPath == "" {

@@ -80,6 +80,41 @@ func TestPlugin_Init(t *testing.T) {
 			wantErr: true,
 		},
 		{
+			name:    "zerossl with domain and email — valid",
+			cfg:     ports.TLSConfig{Enabled: true, Provider: ports.TLSProviderZeroSSL, Domain: "example.com", Email: "admin@example.com"},
+			wantErr: false,
+		},
+		{
+			name:    "zerossl without email — invalid",
+			cfg:     ports.TLSConfig{Enabled: true, Provider: ports.TLSProviderZeroSSL, Domain: "example.com"},
+			wantErr: true,
+		},
+		{
+			name:    "zerossl without domain — invalid",
+			cfg:     ports.TLSConfig{Enabled: true, Provider: ports.TLSProviderZeroSSL, Email: "admin@example.com"},
+			wantErr: true,
+		},
+		{
+			name:    "buypass with domain — valid",
+			cfg:     ports.TLSConfig{Enabled: true, Provider: ports.TLSProviderBuypass, Domain: "example.com"},
+			wantErr: false,
+		},
+		{
+			name:    "buypass without domain — invalid",
+			cfg:     ports.TLSConfig{Enabled: true, Provider: ports.TLSProviderBuypass},
+			wantErr: true,
+		},
+		{
+			name:    "letsencrypt-staging with domain — valid",
+			cfg:     ports.TLSConfig{Enabled: true, Provider: ports.TLSProviderLetsEncryptStaging, Domain: "example.com"},
+			wantErr: false,
+		},
+		{
+			name:    "letsencrypt-staging without domain — invalid",
+			cfg:     ports.TLSConfig{Enabled: true, Provider: ports.TLSProviderLetsEncryptStaging},
+			wantErr: true,
+		},
+		{
 			name:    "external with cert and key — valid",
 			cfg:     ports.TLSConfig{Enabled: true, Provider: ports.TLSProviderExternal, CertPath: "/tls/cert.pem", KeyPath: "/tls/key.pem"},
 			wantErr: false,
@@ -352,6 +387,146 @@ func TestPlugin_TLSApp(t *testing.T) {
 	}
 }
 
+func TestPlugin_TLSApp_ZeroSSL(t *testing.T) {
+	cfg := ports.TLSConfig{
+		Enabled:  true,
+		Provider: ports.TLSProviderZeroSSL,
+		Domain:   "myapp.example.com",
+		Email:    "admin@example.com",
+	}
+	p := newPlugin(cfg)
+	got, err := p.TLSApp()
+	if err != nil {
+		t.Fatalf("TLSApp() unexpected error: %v", err)
+	}
+
+	automation, ok := got["automation"].(map[string]any)
+	if !ok {
+		t.Fatal("expected automation key")
+	}
+	policies, ok := automation["policies"].([]map[string]any)
+	if !ok || len(policies) == 0 {
+		t.Fatal("expected at least one policy")
+	}
+	issuers, ok := policies[0]["issuers"].([]map[string]any)
+	if !ok || len(issuers) == 0 {
+		t.Fatal("expected at least one issuer")
+	}
+	if len(issuers) != 1 {
+		t.Errorf("expected 1 issuer for zerossl, got %d", len(issuers))
+	}
+	if issuers[0]["ca"] != "https://acme.zerossl.com/v2/DV90" {
+		t.Errorf("ca = %q, want ZeroSSL URL", issuers[0]["ca"])
+	}
+	if issuers[0]["email"] != "admin@example.com" {
+		t.Errorf("email = %q, want %q", issuers[0]["email"], "admin@example.com")
+	}
+}
+
+func TestPlugin_TLSApp_Buypass(t *testing.T) {
+	cfg := ports.TLSConfig{
+		Enabled:  true,
+		Provider: ports.TLSProviderBuypass,
+		Domain:   "myapp.example.com",
+	}
+	p := newPlugin(cfg)
+	got, err := p.TLSApp()
+	if err != nil {
+		t.Fatalf("TLSApp() unexpected error: %v", err)
+	}
+
+	automation, ok := got["automation"].(map[string]any)
+	if !ok {
+		t.Fatal("expected automation key")
+	}
+	policies, ok := automation["policies"].([]map[string]any)
+	if !ok || len(policies) == 0 {
+		t.Fatal("expected at least one policy")
+	}
+	issuers, ok := policies[0]["issuers"].([]map[string]any)
+	if !ok || len(issuers) == 0 {
+		t.Fatal("expected at least one issuer")
+	}
+	if len(issuers) != 1 {
+		t.Errorf("expected 1 issuer for buypass, got %d", len(issuers))
+	}
+	if issuers[0]["ca"] != "https://api.buypass.com/acme/directory" {
+		t.Errorf("ca = %q, want Buypass URL", issuers[0]["ca"])
+	}
+}
+
+func TestPlugin_TLSApp_LetsEncryptStaging(t *testing.T) {
+	cfg := ports.TLSConfig{
+		Enabled:  true,
+		Provider: ports.TLSProviderLetsEncryptStaging,
+		Domain:   "myapp.example.com",
+	}
+	p := newPlugin(cfg)
+	got, err := p.TLSApp()
+	if err != nil {
+		t.Fatalf("TLSApp() unexpected error: %v", err)
+	}
+
+	automation, ok := got["automation"].(map[string]any)
+	if !ok {
+		t.Fatal("expected automation key")
+	}
+	policies, ok := automation["policies"].([]map[string]any)
+	if !ok || len(policies) == 0 {
+		t.Fatal("expected at least one policy")
+	}
+	issuers, ok := policies[0]["issuers"].([]map[string]any)
+	if !ok || len(issuers) == 0 {
+		t.Fatal("expected at least one issuer")
+	}
+	if len(issuers) != 1 {
+		t.Errorf("expected 1 issuer for letsencrypt-staging, got %d", len(issuers))
+	}
+	if issuers[0]["ca"] != "https://acme-staging-v02.api.letsencrypt.org/directory" {
+		t.Errorf("ca = %q, want LE staging URL", issuers[0]["ca"])
+	}
+}
+
+func TestPlugin_TLSApp_LetsEncrypt_FallbackChain(t *testing.T) {
+	cfg := ports.TLSConfig{
+		Enabled:  true,
+		Provider: ports.TLSProviderLetsEncrypt,
+		Domain:   "myapp.example.com",
+	}
+	p := newPlugin(cfg)
+	got, err := p.TLSApp()
+	if err != nil {
+		t.Fatalf("TLSApp() unexpected error: %v", err)
+	}
+
+	automation, ok := got["automation"].(map[string]any)
+	if !ok {
+		t.Fatal("expected automation key")
+	}
+	policies, ok := automation["policies"].([]map[string]any)
+	if !ok || len(policies) == 0 {
+		t.Fatal("expected at least one policy")
+	}
+	issuers, ok := policies[0]["issuers"].([]map[string]any)
+	if !ok {
+		t.Fatal("expected issuers key")
+	}
+	if len(issuers) != 3 {
+		t.Fatalf("expected 3 issuers in fallback chain, got %d", len(issuers))
+	}
+	// Verify chain order: LE -> ZeroSSL -> Buypass
+	wantCAs := []string{
+		"https://acme-v02.api.letsencrypt.org/directory",
+		"https://acme.zerossl.com/v2/DV90",
+		"https://api.buypass.com/acme/directory",
+	}
+	for i, issuer := range issuers {
+		if issuer["ca"] != wantCAs[i] {
+			t.Errorf("issuer[%d].ca = %q, want %q", i, issuer["ca"], wantCAs[i])
+		}
+	}
+}
+
 func TestPlugin_TLSApp_LetsEncrypt_Domain(t *testing.T) {
 	cfg := ports.TLSConfig{
 		Enabled:  true,
@@ -418,7 +593,8 @@ func TestPlugin_TLSApp_LetsEncrypt_StoragePath(t *testing.T) {
 }
 
 // TestPlugin_TLSApp_LetsEncrypt_ACMEIssuer verifies the ACME issuer is configured
-// without explicit challenge settings (Caddy selects TLS-ALPN-01 automatically).
+// with explicit CA URLs and without challenge settings (Caddy selects TLS-ALPN-01
+// automatically).
 func TestPlugin_TLSApp_LetsEncrypt_ACMEIssuer(t *testing.T) {
 	cfg := ports.TLSConfig{
 		Enabled:  true,
@@ -446,6 +622,10 @@ func TestPlugin_TLSApp_LetsEncrypt_ACMEIssuer(t *testing.T) {
 	acmeIssuer := issuers[0]
 	if acmeIssuer["module"] != "acme" {
 		t.Fatalf("expected acme module, got %q", acmeIssuer["module"])
+	}
+	// Each issuer in the fallback chain should have an explicit "ca" field.
+	if _, hasCA := acmeIssuer["ca"]; !hasCA {
+		t.Error("ACME issuer should have explicit 'ca' field in fallback chain")
 	}
 	// No explicit challenges — Caddy uses TLS-ALPN-01 automatically.
 	if _, hasChallenge := acmeIssuer["challenges"]; hasChallenge {

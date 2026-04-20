@@ -130,11 +130,13 @@ var Catalog = []PluginDescriptor{
 	},
 	{
 		Name:        "tls",
-		Description: "TLS termination with Let's Encrypt, self-signed, or external certificates",
+		Description: "TLS termination with ACME fallback chain (Let's Encrypt, ZeroSSL, Buypass), self-signed, or external certificates",
 		ConfigSchema: map[string]string{
 			"enabled":      "Enable TLS (default: false)",
-			"provider":     "Certificate provider: letsencrypt, self-signed, external",
-			"domain":       "Domain for certificate (required for letsencrypt)",
+			"provider":     "Certificate provider: letsencrypt (default, with fallback chain), zerossl, buypass, letsencrypt-staging, self-signed, external",
+			"domain":       "Domain for certificate (required for ACME providers)",
+			"email":        "ACME account email for expiry notifications and EAB registration (required for zerossl, recommended for all ACME providers)",
+			"acme_ca":      "Custom ACME directory URL (overrides fallback chain when set). Only applies to ACME providers.",
 			"cert_path":    "Path to certificate file (external provider)",
 			"key_path":     "Path to key file (external provider)",
 			"storage_path": "Directory for certificate storage",
@@ -142,7 +144,8 @@ var Catalog = []PluginDescriptor{
 		Example: `  tls:
     enabled: true
     provider: letsencrypt
-    domain: app.example.com`,
+    domain: app.example.com
+    email: admin@example.com`,
 	},
 	{
 		Name:        "security-headers",
