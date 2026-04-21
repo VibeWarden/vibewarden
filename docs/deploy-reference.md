@@ -4,9 +4,10 @@ The `vibew deploy` command was removed in the release referenced by
 [ADR-086](../decisions/adr-086-sunset-vibew-deploy.md). It has been replaced
 by `vibew bundle` plus a manual `scp` / `ssh` / `docker compose up -d` flow.
 
-Running `vibew deploy` today prints a deprecation message to stderr and
-exits with code `2`. No files are transferred, no SSH connection is opened,
-and no remote state is touched.
+`vibew deploy` is no longer a registered command. Invoking it prints
+cobra's default `unknown command "deploy"` error and exits non-zero. No
+files are transferred, no SSH connection is opened, and no remote state
+is touched.
 
 ---
 
@@ -55,9 +56,9 @@ pipeline. The user owns the transport.
 
 ## Rollback
 
-This is a one-way change. The deploy stub exists for one release only and is
-scheduled for removal in the release after that (tracked by issue #1063).
-New scripts and agent prompts must target `vibew bundle` from day one.
+This is a one-way change. There is no deprecation stub — `vibew deploy` is
+not a registered command. New scripts and agent prompts must target
+`vibew bundle` from day one.
 
 ---
 
