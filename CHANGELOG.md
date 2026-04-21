@@ -12,137 +12,196 @@ This initial entry was written by hand to summarise the work leading up to v0.1.
 
 ## [Unreleased]
 
+---
+
+## [v0.16.0] — 2026-04-21
+
+**Theme: `vibew deploy` is gone.**
+
+Four retros converged on `vibew deploy` as the single largest source of user
+friction (16 bugs across three retro cycles). This release retires the remote
+SSH orchestration command entirely in favour of the purely-local
+`vibew bundle` pipeline. One CLI command removed, ~8000 LOC deleted, and six
+new ADRs landed ([082](decisions/adr-082-strict-config-merge-unknown-keys-fail-loudly.md),
+[083](decisions/adr-083-acme-chain-hardening-email-preflight-buypass-removed.md),
+[084](decisions/adr-084-doctor-port-ownership-via-vibewarden-health-signature.md),
+[085](decisions/adr-085-vibew-bundle-compose-only.md),
+[086](decisions/adr-086-sunset-vibew-deploy.md),
+[087](decisions/adr-087-test-placement-contract-tests-and-architectural-invariants.md)).
+
+**Migration recipe** (replaces `vibew deploy`):
+
+```bash
+vibew bundle
+scp -r .vibewarden/bundle/ user@host:~/
+ssh user@host 'cd bundle && bash deploy.sh'
+```
+
+See [`docs/guide/bundle-to-vps.md`](docs/guide/bundle-to-vps.md) for the
+end-to-end walkthrough and [`docs/deploy-reference.md`](docs/deploy-reference.md)
+for the breaking-change landing page.
+
 ### Breaking
 
-- **MCP deploy tools removed** (#1062, [ADR-086](decisions/adr-086-sunset-vibew-deploy.md) §"MCP-server tools").
-  MCP tools `vibewarden_prepare_deploy`, `vibewarden_verify_deploy`, `vibewarden_get_deploy_logs` removed.
-  Use the `vibew bundle` CLI directly (see [`docs/guide/bundle-to-vps.md`](docs/guide/bundle-to-vps.md));
-  MCP tool for bundle tracked in #1068 — not shipped in this PR.
-- **`vibew deploy` removed** (#1051, #1063,
-  [ADR-086](decisions/adr-086-sunset-vibew-deploy.md) + amendment).
-  The remote SSH orchestration command — and its subcommands `status` and
-  `logs` — has been retired after four retros converged on deploy as the
-  single largest source of user friction (16 bugs across 3 retro cycles).
-  `vibew deploy` is no longer a registered command; invoking it prints
-  cobra's default `unknown command "deploy"` error and exits non-zero.
-  The purely-local `vibew bundle` pipeline shipped in #1044 is now the
-  canonical path to a VPS.
-
-  Migration:
-
-  ```bash
-  vibew bundle --output .vibewarden/bundle/
-  scp -r .vibewarden/bundle/ user@host:~/
-  ssh user@host 'cd ~/bundle && bash deploy.sh'
-  ```
-
-  See [`docs/guide/bundle-to-vps.md`](docs/guide/bundle-to-vps.md) for the
-  end-to-end walkthrough and [`docs/deploy-reference.md`](docs/deploy-reference.md)
-  for the breaking-change landing page. ADR-086 originally staged the
-  removal across two releases (sunset + one-release stub); the amendment
-  recorded in #1063 collapses the stub into this same release so the
-  "deploy is gone" messaging matches runtime behaviour.
-- **`vibew validate` / `vibew deploy` reject unknown keys** (#1053, ADR-082).
+- **`vibew deploy` removed** (#1051, #1063, #1071,
+  [ADR-086](decisions/adr-086-sunset-vibew-deploy.md) + amendment). The remote
+  SSH orchestration command — along with its `status` and `logs` subcommands
+  — has been retired. `vibew deploy` is no longer a registered command;
+  invoking it prints cobra's default `unknown command "deploy"` error and
+  exits non-zero. ADR-086 originally staged the removal across two releases
+  (sunset + one-release stub); the amendment recorded in #1063 collapses the
+  stub into this same release so the "deploy is gone" messaging matches
+  runtime behaviour. Use `vibew bundle` + `bash deploy.sh` (migration recipe
+  above).
+- **MCP deploy tools removed** (#1062, #1069,
+  [ADR-086 §"MCP-server tools"](decisions/adr-086-sunset-vibew-deploy.md)).
+  MCP tools `vibewarden_prepare_deploy`, `vibewarden_verify_deploy`, and
+  `vibewarden_get_deploy_logs` are gone. Use the `vibew bundle` CLI directly
+  (see [`docs/guide/bundle-to-vps.md`](docs/guide/bundle-to-vps.md)); an MCP
+  tool wrapping `vibew bundle` is tracked in #1068.
+- **`vibew validate` / `vibew bundle` reject unknown keys** (#1053, #1056,
+  [ADR-082](decisions/adr-082-strict-config-merge-unknown-keys-fail-loudly.md)).
   Typos or removed keys in `vibewarden.yaml` or `vibewarden.production.yaml`
   (e.g. `tls.dmain: example.com`) now fail loudly with an error naming the
   file and the offending key. Previously such keys were silently dropped,
-  which masked typos and caused silent misconfiguration in production. The
+  masking typos and causing silent misconfiguration in production. The
   runtime loader (`vibewarden serve`) is unchanged — it still accepts unknown
-  keys for forward-compat per ADR-065. If you used the silent-drop behaviour
-  to keep scratch annotations inside the YAML, move them to YAML comments
+  keys for forward-compat per ADR-065. If you relied on the silent-drop
+  behaviour for scratch annotations, move them to YAML comments
   (`# staging cutover 2026-04-18`).
-- **Buypass removed from the default `letsencrypt` fallback chain**
-  (#1055, ADR-083). `provider: letsencrypt` no longer falls back to Buypass.
-  Buypass's ACME directory currently returns `403 Forbidden`, so keeping it
-  in the chain only wasted recovery time. Buypass remains available as an
-  explicit opt-in via `provider: buypass`; a `tls.acme.provider_deprecated`
-  event is emitted at Init when that path is selected. Anyone who relied on
-  the silent Buypass fallback should set `provider: buypass` explicitly or
-  keep the default `letsencrypt` (which now falls through to ZeroSSL only
-  when `tls.email` is set).
+- **Buypass removed from the default `letsencrypt` fallback chain** (#1055,
+  #1058, [ADR-083](decisions/adr-083-acme-chain-hardening-email-preflight-buypass-removed.md)).
+  `provider: letsencrypt` no longer falls back to Buypass. Buypass's ACME
+  directory currently returns `403 Forbidden`, so keeping it in the chain
+  only wasted recovery time. Buypass remains available as explicit opt-in
+  via `provider: buypass`; a `tls.acme.provider_deprecated` event is emitted
+  at Init when selected. If you relied on the silent Buypass fallback, set
+  `provider: buypass` explicitly or keep the default `letsencrypt` (which
+  now falls through to ZeroSSL only when `tls.email` is set).
 
 ### Changed
 
-- **ZeroSSL is skipped from the default chain when `tls.email` is empty**
-  (#1055, ADR-083). Previously `provider: letsencrypt` wired ZeroSSL into
-  the chain unconditionally; ZeroSSL then rejected the order because EAB
-  requires an email, surfacing as a transient issuance error. The default
-  chain now degrades to single-issuer Let's Encrypt when email is absent,
-  and emits a `tls.acme.chain_skipped` event naming `zerossl` +
+- **ZeroSSL skipped from the default chain when `tls.email` is empty**
+  (#1055, #1058, [ADR-083](decisions/adr-083-acme-chain-hardening-email-preflight-buypass-removed.md)).
+  Previously `provider: letsencrypt` wired ZeroSSL into the chain
+  unconditionally; ZeroSSL then rejected the order because EAB requires an
+  email, surfacing as a transient issuance error. The default chain now
+  degrades to single-issuer Let's Encrypt when email is absent, and emits a
+  `tls.acme.chain_skipped` event naming `zerossl` +
   `reason=email_not_configured` so operators see why. Set `tls.email` to
   opt back into the two-issuer chain.
-
-### Fixes
-
-- **`vibew init` scaffold no longer suggests `example.com` as the TLS domain**
-  (#1079, closes #1077). The production scaffold placeholder is now
-  `app.yourcompany.com` and calls out that Let's Encrypt rejects RFC-2606
-  reserved names. The `tls.domain is required` validation error for ACME
-  providers was updated to the same guidance. Prevents the confusing
-  `rejectedIdentifier` failure users hit when they copy-pasted the previous
-  placeholder verbatim.
-- **`vibew doctor` no longer flags a running sidecar as a port conflict**
-  (#1054, ADR-084). When `vibew dev` is already running on the proxy port,
-  doctor probes `/_vibewarden/health` and reports
-  `[OK] Proxy port  in use by local vibew dev (expected)` instead of
-  `[FAIL] Proxy port  port 8443 is already in use`. Foreign processes
-  continue to FAIL as before.
-- **`vibew doctor` TLS cert check now inspects the live sidecar**
-  (#1054, ADR-084). The self-signed cert check performs a live TLS
-  handshake against the proxy and reads the leaf certificate from
-  `tls.Conn.ConnectionState().PeerCertificates`, instead of looking for a
-  hardcoded `server.crt` path on disk. This fixes the false-positive
-  "certificate file not found" reported when the self-signed cert lived
-  under Caddy's PKI storage path. When the sidecar is not reachable the
-  check is WARN with `sidecar not reachable on <addr> — start 'vibew dev'`.
-- **`vibew doctor` remote-containers errors no longer leak raw shell
-  fragments** (#1054, ADR-084). `checkRemoteContainerHealth` previously
-  surfaced errors containing literal `2>/dev/null` and
-  `|| docker-compose ps`. Errors are now rendered as a single clean line
-  of the form `exit <code>: <first stderr line> (<hint>)` — for example
-  `exit 127: docker: command not found; docker compose not installed on
-  remote`.
-- **Production override preserves every schema field** (#1053). `tls.email`,
-  `tls.acme_ca`, `tls.cert_monitoring.*`, `server.host`, and any other field
-  set only in `vibewarden.production.yaml` now reach the runtime
-  `*config.Config`. Previously a hand-written allow-list silently dropped
-  fields beyond `server.port`, `tls.enabled/provider/domain`, `log.level`,
-  and `waf.mode`, which broke the ADR-078 promise that `tls.email` wires to
-  the Caddy ACME issuer. The struct overlay now routes through the same YAML
-  deep-merge that feeds the on-disk bundle.
+- **`vibew doctor` port/TLS/remote checks redesigned** (#1054, #1060,
+  [ADR-084](decisions/adr-084-doctor-port-ownership-via-vibewarden-health-signature.md)).
+  Port-ownership detection now probes `/_vibewarden/health` to distinguish a
+  running `vibew dev` from a foreign process; TLS cert inspection performs a
+  live TLS handshake instead of reading a hardcoded `server.crt` path;
+  remote-container error rendering no longer leaks raw shell fragments.
+- **Port-layer tests moved to adapters / architectural invariants** (#717,
+  #1070, [ADR-087](decisions/adr-087-test-placement-contract-tests-and-architectural-invariants.md)).
+  Contract tests now live with the adapter implementations they exercise;
+  architectural invariants are enforced via dedicated test packages.
+- **`theme-sync.js` ported into mkdocs `extra_javascript`** (#1074) so
+  website regeneration is reproducible end-to-end.
 
 ### Added
 
-- `vibew init --non-interactive` flag — skips interactive prompts even when stdin is a TTY; primarily for CI / agent scripting. (#1065)
-- **`vibew bundle` command** — generates Docker Compose deployment
-  artifacts (`docker-compose.yml`, `vibewarden.yaml`, `.env`, `sample.env`,
-  `deploy.sh`, `README.md`, `image.tar`) into `.vibewarden/bundle/` with
-  no SSH, no remote docker, and no network calls. Replaces the
-  `vibew deploy --dry-run` workflow for users who drive their own
-  `scp`/`rsync`/CI pipeline. `.env` is preserved across re-runs via a
-  defer-safe snapshot so a mid-run generator failure cannot clobber user
-  edits. See [#1044](https://github.com/vibewarden/vibewarden/issues/1044)
-  and ADR-085.
-- **Four new v1 structured log events for ACME chain observability**
-  (#1055, ADR-083):
+- **`vibew bundle` command** (#1044, #1061,
+  [ADR-085](decisions/adr-085-vibew-bundle-compose-only.md)) — generates
+  Docker Compose deployment artifacts (`docker-compose.yml`,
+  `vibewarden.yaml`, `.env`, `sample.env`, `deploy.sh`, `README.md`,
+  `image.tar`) into `.vibewarden/bundle/` with no SSH, no remote docker, and
+  no network calls. Replaces the `vibew deploy --dry-run` workflow for users
+  who drive their own `scp`/`rsync`/CI pipeline. `.env` is preserved across
+  re-runs via a defer-safe snapshot so a mid-run generator failure cannot
+  clobber user edits.
+- `vibew init --non-interactive` flag (#1065, #1066) — skips interactive
+  prompts even when stdin is a TTY; primarily for CI / agent scripting. Also
+  fixes the integration-test port flag and multisite-skip path.
+- **Four new v1 structured log events for ACME chain observability** (#1055,
+  #1058, [ADR-083](decisions/adr-083-acme-chain-hardening-email-preflight-buypass-removed.md)):
   - `tls.acme.chain_skipped` — emitted at plugin Init for every issuer
-    evaluated and excluded from the default chain (payload:
-    `provider`, `reason`, `primary_provider`).
+    evaluated and excluded from the default chain (payload: `provider`,
+    `reason`, `primary_provider`).
   - `tls.acme.chain_configured` — emitted once at plugin Init with the
-    resolved chain (payload: `primary_provider`, `resolved_chain`, `domain`).
+    resolved chain (payload: `primary_provider`, `resolved_chain`,
+    `domain`).
   - `tls.acme.provider_deprecated` — emitted when `provider: buypass` is
     resolved (payload: `provider`, `reason`, `guidance`).
   - `tls.acme.chain_fallback` — reserved in the v1 schema for future use;
     emitted only once Caddy/certmagic exposes a stable issuer-transition
     hook (payload: `from_provider`, `to_provider`, `reason`, `domain`).
 
+### Fixed
+
+- **`vibew init` scaffold no longer suggests `example.com` as the TLS domain**
+  (#1077, #1079). The production scaffold placeholder is now
+  `app.yourcompany.com` and calls out that Let's Encrypt rejects RFC-2606
+  reserved names. The `tls.domain is required` validation error for ACME
+  providers was updated to the same guidance. Prevents the confusing
+  `rejectedIdentifier` failure users hit when they copy-pasted the previous
+  placeholder verbatim.
+- **`vibew doctor` no longer flags a running sidecar as a port conflict**
+  (#1054, #1060, [ADR-084](decisions/adr-084-doctor-port-ownership-via-vibewarden-health-signature.md)).
+  When `vibew dev` is already running on the proxy port, doctor probes
+  `/_vibewarden/health` and reports `[OK] Proxy port in use by local vibew
+  dev (expected)` instead of `[FAIL] Proxy port 8443 is already in use`.
+  Foreign processes continue to FAIL as before.
+- **`vibew doctor` TLS cert check now inspects the live sidecar** (#1054,
+  #1060, [ADR-084](decisions/adr-084-doctor-port-ownership-via-vibewarden-health-signature.md)).
+  The self-signed cert check performs a live TLS handshake against the
+  proxy and reads the leaf certificate from
+  `tls.Conn.ConnectionState().PeerCertificates`, instead of looking for a
+  hardcoded `server.crt` path on disk. When the sidecar is not reachable
+  the check is WARN with `sidecar not reachable on <addr> — start 'vibew
+  dev'`.
+- **`vibew doctor` remote-container errors no longer leak raw shell
+  fragments** (#1054, #1060, [ADR-084](decisions/adr-084-doctor-port-ownership-via-vibewarden-health-signature.md)).
+  `checkRemoteContainerHealth` previously surfaced errors containing literal
+  `2>/dev/null` and `|| docker-compose ps`. Errors are now rendered as a
+  single clean line of the form
+  `exit <code>: <first stderr line> (<hint>)` — for example
+  `exit 127: docker: command not found; docker compose not installed on
+  remote`.
+- **Production override preserves every schema field** (#1053, #1056).
+  `tls.email`, `tls.acme_ca`, `tls.cert_monitoring.*`, `server.host`, and
+  any other field set only in `vibewarden.production.yaml` now reach the
+  runtime `*config.Config`. Previously a hand-written allow-list silently
+  dropped fields beyond `server.port`, `tls.enabled/provider/domain`,
+  `log.level`, and `waf.mode`, breaking the ADR-078 promise that `tls.email`
+  wires to the Caddy ACME issuer. The struct overlay now routes through the
+  same YAML deep-merge that feeds the on-disk bundle.
+
 ### Removed
 
-- 5 production-only `vibew doctor` checks removed as part of the deploy
-  sunset (`checkSSHConnectivity`, `checkArchCompatibility`,
-  `checkRemoteContainerHealth`, `checkDomainDNS`, `checkRemoteTLSCert`).
-  The `--target` and `--ssh-key` flags on `vibew doctor` are gone; use
-  `vibew tls status` for remote TLS expiry. (#1059)
+- **`vibew deploy` package + orchestration** (~8000 LOC) — rsync, remote
+  docker, SSH health probing, drift detection, and the `status`/`logs`
+  subcommands are all gone (#1051, #1063, #1064, #1071,
+  [ADR-086](decisions/adr-086-sunset-vibew-deploy.md)).
+- **5 production-only `vibew doctor` checks** removed as part of the deploy
+  sunset: `checkSSHConnectivity`, `checkArchCompatibility`,
+  `checkRemoteContainerHealth`, `checkDomainDNS`, `checkRemoteTLSCert`. The
+  `--target` and `--ssh-key` flags on `vibew doctor` are gone; use
+  `vibew tls status` for remote TLS expiry. (#1059, #1072)
+- **MCP deploy tools** (`vibewarden_prepare_deploy`,
+  `vibewarden_verify_deploy`, `vibewarden_get_deploy_logs`) removed from the
+  MCP server (#1062, #1069).
+
+### Documentation
+
+- Main-repo docs audit removing stale deploy references (#1067, #1073).
+- Companion website releases: [vibewarden.dev#92](https://github.com/vibewarden/vibewarden.dev/pull/92)
+  (landing + root `llms-full.txt` cleaned) and
+  [vibewarden.dev#93](https://github.com/vibewarden/vibewarden.dev/pull/93)
+  (regenerated `docs/vibewarden/` with theme-sync.js).
+
+### Known follow-ups (not in this release)
+
+- LE rate-limit preflight (#1057)
+- MCP bundle tool replacement (#1068)
+- `vibew dev` stderr swallowing (#1075)
+- `vibew init` positional arg (#1076)
+- `vibew doctor` TLS expiry message (#1078)
+- docker/docker CVE — deferred to a security patch release (#805)
 
 ---
 
@@ -620,5 +679,12 @@ Single Go binary embedding Caddy. Zero-to-secure in minutes for vibe-coded apps.
 
 ---
 
+[v0.16.0]: https://github.com/vibewarden/vibewarden/releases/tag/v0.16.0
+[v0.15.0]: https://github.com/vibewarden/vibewarden/releases/tag/v0.15.0
+[v0.14.0]: https://github.com/vibewarden/vibewarden/releases/tag/v0.14.0
+[v0.13.1]: https://github.com/vibewarden/vibewarden/releases/tag/v0.13.1
+[v0.13.0]: https://github.com/vibewarden/vibewarden/releases/tag/v0.13.0
+[v0.12.1]: https://github.com/vibewarden/vibewarden/releases/tag/v0.12.1
+[v0.12.0]: https://github.com/vibewarden/vibewarden/releases/tag/v0.12.0
 [v0.11.0]: https://github.com/vibewarden/vibewarden/releases/tag/v0.11.0
 [v0.1.0]: https://github.com/vibewarden/vibewarden/releases/tag/v0.1.0
