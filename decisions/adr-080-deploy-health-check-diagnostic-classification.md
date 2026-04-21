@@ -1,5 +1,9 @@
 # ADR-080: Deploy Health Check Diagnostic Classification
 
+> **Historical.** The code described in this ADR was deleted by
+> [ADR-086](adr-086-sunset-vibew-deploy.md). This ADR is retained as a
+> record of the original decision.
+
 ## Status
 
 Accepted

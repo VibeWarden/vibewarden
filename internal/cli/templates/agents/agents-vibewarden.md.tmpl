@@ -78,8 +78,7 @@ app port directly — it has no security.
 | `vibew dev --watch` | Start with file watching |
 | `vibew build` | Build Docker image |
 | `vibew build --platform linux/amd64` | Build for a specific architecture |
-| `vibew deploy --target ssh://user@host` | Deploy to remote server |
-| `vibew bundle` | Produce a self-contained Docker Compose bundle (no SSH) for manual `scp` / CI deploy |
+| `vibew bundle` | Produce a self-contained Docker Compose bundle under `.vibewarden/bundle/`; ship with `scp` + `docker compose up -d` |
 | `vibew restart` | Restart containers |
 | `vibew status` | Show component health |
 | `vibew logs` | Tail logs |
@@ -118,7 +117,8 @@ sites/
   (container) name of that site's app (e.g., `app1-app`).
 - The sidecar reads all site configs from `sites/` automatically on startup.
 - TLS certificates are managed centrally by the sidecar for all configured domains.
-- Run `vibew deploy` to push the full multi-site layout to a remote host.
+- Multi-site bundle support is deferred; `vibew bundle` hard-fails on
+  multi-site projects today. See ADR-086 for the rationale.
 
 ## Known limitations
 
@@ -132,11 +132,11 @@ sites/
 vibewarden.yaml is your LOCAL dev config. It always works with `vibew dev`.
 vibewarden.production.yaml contains production overrides (letsencrypt, port 443).
 NEVER put production-only config in vibewarden.yaml.
-`vibew deploy` merges the override automatically.
+`vibew bundle` merges the override automatically.
 
 Key rules:
 - `vibew dev` reads only vibewarden.yaml.
-- `vibew deploy` deep-merges vibewarden.production.yaml on top of vibewarden.yaml.
+- `vibew bundle` deep-merges vibewarden.production.yaml on top of vibewarden.yaml.
 - `vibew add tls --domain` writes the domain to vibewarden.production.yaml.
 - Production-only settings (domain, letsencrypt, port 443) belong in the
   production override, not the base config.
@@ -172,36 +172,39 @@ vibewarden.production.yaml for prod-only values):
 
 ## Deploying to a VPS
 
-### Automated (recommended)
-
 ```bash
-vibew build --platform linux/amd64   # build for the target architecture
-vibew deploy --target ssh://user@host --config vibewarden.prod.yaml
-```
-
-`vibew deploy` handles image transfer, config generation, and container startup
-in a single command.
-
-### Manual fallback
-
-When `vibew deploy` fails or you need more control, use standard commands:
-
-```bash
-# 1. Build for the target architecture
+# 1. Build for the target architecture.
 vibew build --platform linux/amd64
 
-# 2. Transfer the image via SSH
-docker save <project>-app:latest | ssh user@host docker load
+# 2. Produce a self-contained deploy bundle locally.
+vibew bundle
 
-# 3. Copy the deploy bundle (config, compose files)
-rsync -az .vibewarden/deploy/production/ user@host:~/vibewarden/<project>/
+# 3. Copy the bundle to the VPS.
+scp -r .vibewarden/bundle/ user@host:~/
 
-# 4. Start the stack on the remote
-ssh user@host 'cd ~/vibewarden/<project> && docker compose up -d'
+# 4. Start the stack on the remote.
+ssh user@host 'cd ~/bundle && bash deploy.sh'
 ```
 
-Each of these commands produces standard error messages that are searchable --
-use them as a plan B when debugging deploy issues.
+`vibew bundle` is the canonical path. It emits a deterministic
+`docker-compose.yml` (image: pinned, never build:), the merged
+`vibewarden.yaml`, `sample.env`, `.env`, a reference `deploy.sh`, an
+optional `image.tar` (omit with `--skip-image`), and `README.md` under
+`.vibewarden/bundle/`. No SSH connection is opened by `vibew` itself -- the
+user owns the transport.
+
+Day-two operations are standard docker compose against the copied bundle:
+
+```bash
+ssh user@host 'cd ~/bundle && docker compose ps'
+ssh user@host 'cd ~/bundle && docker compose logs --tail=100 vibewarden'
+ssh user@host 'cd ~/bundle && docker compose restart vibewarden'
+```
+
+The removed `vibew deploy` command previously did all of this over SSH
+in one step. It was retired in ADR-086 after four retros converged on
+deploy-orchestration as the #1 source of user friction. Running
+`vibew deploy` today prints a deprecation message and exits 2.
 
 ## Writing your Dockerfile
 

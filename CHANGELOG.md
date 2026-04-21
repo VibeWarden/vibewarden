@@ -14,6 +14,26 @@ This initial entry was written by hand to summarise the work leading up to v0.1.
 
 ### Breaking
 
+- **`vibew deploy` removed** (#1051, [ADR-086](decisions/adr-086-sunset-vibew-deploy.md)).
+  The remote SSH orchestration command — and its subcommands `status` and
+  `logs` — has been retired after four retros converged on deploy as the
+  single largest source of user friction (16 bugs across 3 retro cycles).
+  Running `vibew deploy` today prints a deprecation message to stderr and
+  exits with code `2`. The purely-local `vibew bundle` pipeline shipped in
+  #1044 is now the canonical path to a VPS.
+
+  Migration:
+
+  ```bash
+  vibew bundle --output .vibewarden/bundle/
+  scp -r .vibewarden/bundle/ user@host:~/
+  ssh user@host 'cd ~/bundle && bash deploy.sh'
+  ```
+
+  See [`docs/guide/bundle-to-vps.md`](docs/guide/bundle-to-vps.md) for the
+  end-to-end walkthrough and [`docs/deploy-reference.md`](docs/deploy-reference.md)
+  for the breaking-change landing page. The deploy stub ships for exactly
+  one release and is removed in the release after that (tracked by #1063).
 - **`vibew validate` / `vibew deploy` reject unknown keys** (#1053, ADR-082).
   Typos or removed keys in `vibewarden.yaml` or `vibewarden.production.yaml`
   (e.g. `tls.dmain: example.com`) now fail loudly with an error naming the

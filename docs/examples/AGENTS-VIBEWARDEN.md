@@ -158,51 +158,41 @@ vibewarden.production.yaml for prod-only values):
 
 ## Deploy model
 
-`vibew build` builds the Docker image locally from your Dockerfile. `vibew deploy`
-transfers the pre-built image to the server via `docker save | rsync | docker load`.
-No source code is ever copied to the production server -- the image must be
-production-ready (all dependencies installed, assets compiled, etc.).
+`vibew build` builds the Docker image locally from your Dockerfile.
+`vibew bundle` packages the image (via `docker save`) plus a deterministic
+`docker-compose.yml`, merged `vibewarden.yaml`, `sample.env`, `.env`,
+reference `deploy.sh`, and README under `.vibewarden/bundle/`. The user
+then transfers the bundle to the VPS and runs `docker compose up -d`.
+No source code is ever copied to the production server -- the image must
+be production-ready (all dependencies installed, assets compiled, etc.).
 
-**Cross-architecture builds:** If deploying from Apple Silicon (arm64) to an amd64
-server, use `vibew build --platform linux/amd64`. Deploy auto-detects the mismatch
-and errors with a fix-it message if you forget.
+**Cross-architecture builds:** If deploying from Apple Silicon (arm64) to
+an amd64 server, use `vibew build --platform linux/amd64`. Bundle ships
+whatever arch you built; there is no cross-arch auto-detection.
 
 ## Deploying to a VPS
 
-### Automated (recommended)
-
 ```bash
-vibew build --platform linux/amd64   # build for the target architecture
-vibew deploy --target ssh://user@host --config vibewarden.prod.yaml
-```
-
-`vibew deploy` handles image transfer, config generation, and container startup
-in a single command.
-
-### Manual fallback
-
-When `vibew deploy` fails or you need more control, produce a bundle
-locally and drive the transfer yourself:
-
-```bash
-# 1. Build for the target architecture
+# 1. Build for the target architecture.
 vibew build --platform linux/amd64
 
-# 2. Generate a self-contained deploy bundle (no SSH).
-#    Produces docker-compose.yml, vibewarden.yaml, .env, sample.env,
-#    deploy.sh, README.md, and image.tar under .vibewarden/bundle/.
+# 2. Produce a self-contained deploy bundle locally.
 vibew bundle
 
-# 3. Copy the bundle and start the stack on the remote.
-./.vibewarden/bundle/deploy.sh user@host
-# or, if you prefer explicit commands:
-#   scp -r .vibewarden/bundle/* user@host:~/<project>/
-#   ssh user@host 'cd ~/<project> && docker load -i image.tar && docker compose up -d'
+# 3. Copy the bundle to the VPS.
+scp -r .vibewarden/bundle/ user@host:~/
+
+# 4. Start the stack on the remote.
+ssh user@host 'cd ~/bundle && bash deploy.sh'
 ```
 
-`vibew bundle` is byte-identical to `vibew deploy --dry-run` on the core
-files (`docker-compose.yml`, `vibewarden.yaml`) per ADR-085. Use it as
-the starting point for any custom CI/CD pipeline.
+`vibew bundle` is the canonical path to a VPS. It is deterministic
+(same inputs, same bytes), never opens an SSH connection, and never
+touches files outside the output directory.
+
+The removed `vibew deploy` command previously wrapped all four steps over
+SSH in one command. It was retired in ADR-086; running it today prints a
+deprecation message and exits 2.
 
 Use `app.environment` in vibewarden.yaml for runtime configuration:
 ```yaml
