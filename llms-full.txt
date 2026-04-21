@@ -1,25 +1,979 @@
-# VibeWarden — LLM context index
+# VibeWarden — Complete Setup & Reference Guide
 
-This file is a machine-readable index of VibeWarden's key concepts, intended
-to be included in LLM system prompts or context windows.
+> Always start with `vibew init` (new app) or `vibew wrap` (existing app).
+> Never scaffold manually — vibew generates your app code, Dockerfile, config,
+> and agent instructions together.
 
----
+This file is authored in the main repo (`vibewarden/vibewarden`) and is the
+single source of truth for AI agents consuming VibeWarden context. The website
+at https://vibewarden.dev fetches it verbatim at build time — do not edit
+copies elsewhere.
 
-## What is VibeWarden?
+Companion files (also authored in the main repo, fetched by the website):
 
-VibeWarden is an open-source security sidecar for vibe-coded apps. It is a
-single Go binary (embedding Caddy) that handles TLS, authentication (Ory
-Kratos), user management, rate limiting, IP filtering, security headers, egress
-proxy, webhook signature verification, and AI-readable structured logs.
+- `llms.txt` — short index (https://vibewarden.dev/llms.txt)
+- `vibewarden.reference.yaml` — exhaustive annotated config reference covering
+  every supported field (https://vibewarden.dev/vibewarden.reference.yaml).
+  Use this when you need the complete set of options; this guide covers the
+  common path.
 
-The sidecar always runs locally, next to the application, on localhost. It is
-never hosted as a service.
+## Getting Started
 
-Documentation: https://vibewarden.dev/docs
+Install vibew first:
 
----
+  curl -fsSL https://vibewarden.dev/install.sh | sh
 
-## AI-readable log schema
+IMPORTANT — always use vibew init or vibew wrap. Do NOT create vibewarden.yaml,
+Dockerfile, or docker-compose files by hand. These commands generate internal
+state (.vibewarden/, health check config, compose wiring) that vibew dev and
+vibew bundle depend on. Manually created configs will fail.
+
+PATH A — New project:
+
+  vibew init myapp                         # creates myapp/ subdirectory
+  cd myapp
+  # OR: scaffold in current directory:
+  mkdir myapp && cd myapp
+  vibew init .                             # uses directory name as project name
+
+  This creates: vibewarden.yaml, Dockerfile, .gitignore, and importantly:
+  - AGENTS-VIBEWARDEN.md — instructions for YOU (the AI agent) on what the
+    sidecar handles, what NOT to implement in app code, and architectural rules
+  - AGENTS.md — conventional tool-agnostic context file read by Claude Code,
+    Cursor, Aider, Continue, and any other modern coding agent
+  Read AGENTS-VIBEWARDEN.md after init — it tells you what security features
+  to never reimplement. Edit cmd/myapp/main.go to build your app.
+
+PATH B — Existing app (you already have source code):
+
+  cd my-existing-app
+  vibew wrap --upstream 3000
+
+  This adds: vibewarden.yaml, Dockerfile (if missing), and:
+  - AGENTS-VIBEWARDEN.md — instructions for YOU (the AI agent) on what the
+    sidecar handles and what NOT to implement in app code
+  - AGENTS.md — conventional tool-agnostic context file read by any modern
+    coding agent (Claude Code, Cursor, Aider, Continue, etc.)
+  Your existing code is untouched. Read AGENTS-VIBEWARDEN.md — it tells you
+  which security features are already handled (do not reimplement them).
+  Your app MUST have a GET /health endpoint returning HTTP 200 — the sidecar
+  waits for it before starting.
+
+Then run locally:
+
+  vibew dev
+
+Your app is protected at https://localhost:8443. Do not modify files in
+.vibewarden/generated/ — they are regenerated on every vibew dev.
+
+VibeWarden is an open-source security sidecar for web applications. It is a
+single Go binary that embeds Caddy as a reverse proxy and adds authentication,
+rate limiting, WAF, security headers, egress control, and observability. It
+runs locally next to your app via Docker Compose with zero code changes to
+your application.
+
+License: Apache 2.0 (free forever).
+GitHub: https://github.com/vibewarden/vibewarden
+Website: https://vibewarden.dev
+Event schema: https://vibewarden.dev/schema/v1/event.json
+
+
+## 1. Prerequisites
+
+- Docker Engine 27+ and Docker Compose v2+ installed and running
+- Your app listening on a local port (e.g., 3000)
+- Multi-arch images are published for linux/amd64 and linux/arm64 (Apple
+  Silicon, AWS Graviton)
+
+
+## 2. Install
+
+macOS / Linux:
+
+  curl -fsSL https://vibewarden.dev/install.sh | sh
+
+Windows (PowerShell):
+
+  irm https://vibewarden.dev/install.ps1 | iex
+
+The install script downloads the vibew binary to /usr/local/bin.
+
+
+## 3. Quick Start
+
+Step 1 — Initialize:
+
+  vibew init myapp
+  cd myapp
+
+Common init flags:
+  --name <name>         Project name (alternative to positional argument)
+  --port <port>         HTTP port the app listens on (default: 3000)
+  --describe <text>     One-line project description
+  --force               Overwrite existing files
+
+To add features after init:
+  vibew add auth                        Enable authentication (Ory Kratos)
+  vibew add tls --domain example.com    Enable Let's Encrypt TLS
+  vibew add rate-limiting               Enable rate limiting
+  vibew add metrics                     Enable Prometheus metrics
+
+Files generated by init:
+  vibewarden.yaml          Main config (commit this)
+  AGENTS-VIBEWARDEN.md     AI agent context (tool-agnostic, vibew-owned)
+  AGENTS.md                Reference file pointing to AGENTS-VIBEWARDEN.md
+  Dockerfile               Multi-stage build for your app
+  .dockerignore            Prevents secrets and build artifacts from entering the image
+
+Step 2 — Start:
+
+  ./vibew dev
+
+This runs vibew generate to produce .vibewarden/generated/docker-compose.yml,
+then starts the stack with docker compose up. Your app is now protected at
+https://localhost:8443.
+
+Step 3 — Trust the self-signed cert (dev only):
+
+  ./vibew cert export > vibewarden-ca.pem
+
+Import vibewarden-ca.pem into your browser or OS trust store, or pass
+--cacert vibewarden-ca.pem to curl.
+
+
+## IMPORTANT: Your app MUST have a /health endpoint
+
+The VibeWarden sidecar waits for your app to be healthy before starting.
+The generated docker-compose uses a healthcheck that calls GET /health on
+your app's port. If your app does not have this endpoint, the sidecar
+container will stay in "Created" state and never start.
+
+Add a simple health endpoint to your app. Example (Go):
+
+  http.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
+      w.WriteHeader(200)
+      w.Write([]byte(`{"status":"ok"}`))
+  })
+
+Example (Node/Express):
+
+  app.get('/health', (req, res) => res.json({ status: 'ok' }));
+
+Example (Python/Flask):
+
+  @app.route('/health')
+  def health(): return {'status': 'ok'}
+
+If you used `vibew init`, this endpoint is already included in the generated code.
+
+
+## 4. How It Works (Architecture)
+
+VibeWarden is a sidecar — it always runs on the same machine as your app, never
+on a remote server.
+
+  Internet --> VibeWarden (:8443) --> Your App (:3000)
+
+Middleware chain (in order):
+  1. IP filter — allowlist or blocklist by IP/CIDR
+  2. Body size limit — global and per-path maximum sizes
+  3. Rate limiter (per-IP) — token-bucket, in-memory or Redis-backed
+  4. WAF — SQLi, XSS, path traversal, command injection detection
+  5. Content-Type validation — rejects unexpected media types (optional)
+  6. Authentication — JWT/OIDC, Kratos session, or API key
+  7. Rate limiter (per-user) — applied only to authenticated requests
+  8. Secret injection — fetches from OpenBao, injects as request headers
+  9. Reverse proxy (Caddy) — forwards request to upstream app
+  10. Security headers — HSTS, CSP, X-Frame-Options, etc.
+  11. Audit log — structured event emitted for every request
+
+Disabled plugins are skipped entirely (no handler registered).
+
+Containers started by vibew dev:
+  vibewarden        The security sidecar (Caddy embedding all middleware)
+  kratos            Identity server (only when auth.mode: kratos)
+  kratos-db         Postgres for Kratos (only when auth.mode: kratos and no external DB)
+  openbao           Secrets manager (only when secrets.enabled: true)
+
+Your app runs outside Docker and is reached via host.docker.internal.
+Alternatively, set app.build or app.image in vibewarden.yaml to include your
+app in the Compose stack.
+
+Generated runtime files land under .vibewarden/generated/ (add to .gitignore).
+Do not edit generated files. Re-run vibew generate after changing vibewarden.yaml.
+
+### Source tree layout
+
+The sidecar itself follows hexagonal architecture (ports & adapters) with a
+DDD domain layer. Relevant for contributors and for agents reasoning about
+where features live:
+
+```
+cmd/vibewarden/         main entrypoint
+internal/domain/        entities, value objects, domain events (zero external deps)
+internal/ports/         interfaces (inbound + outbound)
+internal/adapters/      caddy/, kratos/, postgres/, log/, ops/
+internal/app/           application services (use cases)
+internal/config/        config loading and validation
+internal/mcp/           MCP server and tool handlers
+internal/plugins/       plugin registry and lifecycle
+migrations/             golang-migrate SQL files
+docs/                   published documentation (mkdocs site)
+```
+
+
+## 5. Complete vibewarden.yaml Reference
+
+Every field can be set via environment variable: YAML key path uppercased,
+prefixed with VIBEWARDEN_, dots replaced by underscores.
+Example: server.port -> VIBEWARDEN_SERVER_PORT
+
+Environment variable substitution in YAML values: ${VAR} syntax.
+Example: database.external_url: "postgres://user:${DB_PASSWORD}@db:5432/vw"
+
+
+### profile
+
+  Type: string
+  Default: dev
+  Values: dev, tls, prod
+
+  profile: dev
+
+
+### server
+
+  server.host      string    127.0.0.1    Host/IP to bind to
+  server.port      int       8443         Port to listen on
+
+  server:
+    host: 0.0.0.0
+    port: 8443
+
+
+### upstream
+
+  upstream.host                       string     127.0.0.1    Upstream host
+  upstream.port                       int        3000         Upstream port
+  upstream.health.enabled             bool       false        Enable health checking
+  upstream.health.path                string     /health      HTTP path to probe
+  upstream.health.interval            duration   10s          Time between probes
+  upstream.health.timeout             duration   5s           Per-probe timeout
+  upstream.health.unhealthy_threshold int        3            Failures to mark unhealthy
+  upstream.health.healthy_threshold   int        2            Successes to mark healthy
+
+  upstream:
+    host: 127.0.0.1
+    port: 3000
+    health:
+      enabled: true
+      path: /health
+
+
+### app
+
+Controls how your app is included in the generated Docker Compose file.
+When neither build nor image is set, VibeWarden falls back to host.docker.internal.
+
+  app.build    string    ""    Docker build context path (dev/tls profiles)
+  app.image    string    ""    Docker image reference (prod profile)
+
+  app:
+    build: .
+    # image: ghcr.io/org/myapp:latest   # prod workflow
+
+
+### tls
+
+  tls.enabled       bool     true     Enable TLS
+  tls.domain        string   ""       Domain for TLS cert (required for letsencrypt)
+  tls.provider      string   ""       letsencrypt (or acme), self-signed, or external
+  tls.cert_path     string   ""       PEM cert path (external only)
+  tls.key_path      string   ""       PEM key path (external only)
+  tls.storage_path  string   ""       ACME cert storage dir (letsencrypt only)
+
+  tls:
+    enabled: true
+    provider: letsencrypt
+    domain: myapp.example.com
+
+
+### auth
+
+  auth.enabled              bool     false                        Enable auth middleware
+  auth.mode                 string   none                         none, kratos, jwt, api-key
+  auth.public_paths         list     []                           Glob patterns bypassing auth
+  auth.session_cookie_name  string   ory_kratos_session           Kratos session cookie name
+  auth.login_url            string   /self-service/login/browser  Redirect for unauthed users
+  auth.on_kratos_unavailable string  503                          503 or allow_public
+  auth.identity_schema      string   email_password               email_password, email_only,
+                                                                  username_password, social,
+                                                                  or a file path
+
+### auth.jwt (used when auth.mode: jwt)
+
+  auth.jwt.jwks_url            string    ""              Direct JWKS endpoint URL
+  auth.jwt.issuer_url          string    ""              OIDC issuer base URL (auto-discovery)
+  auth.jwt.issuer              string    ""              Expected iss claim (required)
+  auth.jwt.audience            string    ""              Expected aud claim (required)
+  auth.jwt.claims_to_headers   map       (see below)     JWT claims -> upstream headers
+  auth.jwt.allowed_algorithms  list      [RS256, ES256]  Never add none or HS256 in prod
+  auth.jwt.cache_ttl           duration  1h              JWKS cache TTL
+
+  Default claims_to_headers:
+    sub: X-User-Id
+    email: X-User-Email
+    email_verified: X-User-Verified
+
+  Example:
+    auth:
+      mode: jwt
+      jwt:
+        jwks_url: "https://dev-abc123.us.auth0.com/.well-known/jwks.json"
+        issuer: "https://dev-abc123.us.auth0.com/"
+        audience: "https://api.your-app.com"
+        claims_to_headers:
+          sub: X-User-Id
+          email: X-User-Email
+          email_verified: X-User-Verified
+      public_paths:
+        - /health
+        - /static/*
+
+  JWKS discovery: provide jwks_url (takes precedence) or issuer_url (appends
+  /.well-known/openid-configuration). If neither is set, issuer is used as base.
+
+  Array claims (e.g. roles: ["admin","read"]) are joined with comma:
+  X-User-Roles: admin,read
+
+### auth.api_key (used when auth.mode: api-key)
+
+  auth.api_key.header        string    X-API-Key    Header carrying the API key
+  auth.api_key.keys          list      []           Static key entries
+  auth.api_key.openbao_path  string    ""           KV path in OpenBao for key hashes
+  auth.api_key.cache_ttl     duration  5m           TTL for keys from OpenBao
+  auth.api_key.scope_rules   list      []           Path+method authorization rules
+
+  Each key entry: name (string), hash (hex SHA-256 of plaintext key), scopes (list)
+  Each scope_rule: path (glob), methods (list, empty=all), required_scopes (list)
+
+  Example:
+    auth:
+      mode: api-key
+      api_key:
+        header: X-API-Key
+        keys:
+          - name: ci-deploy
+            hash: "e3b0c44298fc1c149afb..."
+            scopes: [deploy]
+          - name: monitoring
+            hash: "a665a45920422f9d417e..."
+            scopes: [read]
+        scope_rules:
+          - path: "/admin/*"
+            required_scopes: [deploy]
+
+### auth.social_providers (used with auth.mode: kratos)
+
+  Each entry:
+    provider     string    google, github, apple, facebook, microsoft, gitlab,
+                           discord, slack, spotify, oidc
+    client_id    string    OAuth2 client ID
+    client_secret string   OAuth2 client secret
+    scopes       list      OAuth2 scopes (optional)
+    label        string    Custom login button label (optional)
+    team_id      string    Apple Developer Team ID (Apple only)
+    key_id       string    Apple private key ID (Apple only)
+    id           string    Unique identifier (OIDC entries)
+    issuer_url   string    OIDC issuer URL (OIDC provider only)
+
+  Social login is configured in kratos.yml (not vibewarden.yaml). VibeWarden
+  proxies /self-service/ paths to Kratos. Callback URL pattern:
+  https://<domain>/self-service/methods/oidc/callback/<provider-id>
+
+### auth.ui
+
+  auth.ui.mode              string    built-in    built-in or custom
+  auth.ui.app_name          string    ""          App name on login pages
+  auth.ui.logo_url          string    ""          Logo URL for built-in pages
+  auth.ui.primary_color     string    #7C3AED     Accent color
+  auth.ui.background_color  string    #1a1a2e     Background color
+  auth.ui.login_url         string    ""          Custom login URL (mode: custom)
+  auth.ui.registration_url  string    ""          Custom registration URL
+  auth.ui.settings_url      string    ""          Custom account settings URL
+  auth.ui.recovery_url      string    ""          Custom account recovery URL
+
+
+### kratos (used when auth.mode: kratos)
+
+  kratos.public_url  string    http://127.0.0.1:4433    Kratos public API URL
+  kratos.admin_url   string    http://127.0.0.1:4434    Kratos admin API URL
+  kratos.dsn         string    ""                       Kratos database DSN
+  kratos.external    bool      false                    Use external Kratos instance
+  kratos.smtp.host   string    localhost                SMTP server host
+  kratos.smtp.port   int       1025                     SMTP server port
+  kratos.smtp.from   string    no-reply@vibewarden.local  Sender address
+
+
+### rate_limit
+
+  rate_limit.enabled              bool     true       Enable rate limiting
+  rate_limit.store                string   memory     memory or redis
+  rate_limit.trust_proxy_headers  bool     false      Read X-Forwarded-For
+  rate_limit.exempt_paths         list     []         Glob patterns bypassing limits
+
+  rate_limit.per_ip.requests_per_second   float   10     Sustained refill rate
+  rate_limit.per_ip.burst                 int     20     Maximum token accumulation
+
+  rate_limit.per_user.requests_per_second float   100    Sustained refill rate
+  rate_limit.per_user.burst               int     200    Maximum token accumulation
+
+  Both per_ip and per_user must pass. Failing either returns 429 with Retry-After.
+
+  rate_limit:
+    enabled: true
+    store: memory
+    per_ip:
+      requests_per_second: 10
+      burst: 20
+    per_user:
+      requests_per_second: 100
+      burst: 200
+
+### rate_limit.redis (when store: redis)
+
+  url                    string    ""              Full Redis URL (redis:// or rediss://)
+  address                string    localhost:6379  Redis address (host:port)
+  password               string    ""              Redis AUTH password
+  db                     int       0               Logical database index
+  pool_size              int       0 (auto)        Connection pool size
+  key_prefix             string    vibewarden      Key namespace prefix
+  fallback               bool      true            Fail-open on Redis failure
+  health_check_interval  duration  30s             Recovery probe interval
+
+  When store is redis and no url is set, vibew init adds a redis service to the
+  generated docker-compose.yml automatically.
+
+  Token bucket logic runs as an atomic Lua script in Redis, so no two instances
+  can race on the same key.
+
+
+### security_headers
+
+  security_headers.enabled                         bool     true
+  security_headers.hsts_max_age                    int      31536000  (1 year)
+  security_headers.hsts_include_subdomains         bool     true
+  security_headers.hsts_preload                    bool     false
+  security_headers.content_type_nosniff            bool     true
+  security_headers.frame_option                    string   DENY
+  security_headers.content_security_policy         string   "default-src 'self'; style-src 'self' 'unsafe-inline'"
+  security_headers.referrer_policy                 string   strict-origin-when-cross-origin
+  security_headers.permissions_policy              string   ""
+  security_headers.cross_origin_opener_policy      string   same-origin
+  security_headers.cross_origin_resource_policy    string   same-origin
+  security_headers.permitted_cross_domain_policies string   none
+  security_headers.suppress_via_header             bool     true
+
+
+### cors
+
+  cors.enabled            bool    false
+  cors.allowed_origins    list    []       Use ["*"] for dev only
+  cors.allowed_methods    list    [GET, POST, PUT, DELETE, OPTIONS]
+  cors.allowed_headers    list    [Content-Type, Authorization]
+  cors.exposed_headers    list    []
+  cors.allow_credentials  bool    false    Must not combine with ["*"] origins
+  cors.max_age            int     0        Preflight cache seconds
+
+
+### waf
+
+  waf.enabled  bool    true      Enable WAF (on by default in detect mode)
+  waf.mode     string  detect    block (reject 400) or detect (log only)
+
+  waf.rules.sqli               bool    true
+  waf.rules.xss                bool    true
+  waf.rules.path_traversal     bool    true
+  waf.rules.command_injection  bool    true
+
+  waf.content_type_validation.enabled  bool    false
+  waf.content_type_validation.allowed  list    [application/json,
+                                                application/x-www-form-urlencoded,
+                                                multipart/form-data]
+
+  waf:
+    enabled: true
+    mode: block
+    rules:
+      sqli: true
+      xss: true
+      path_traversal: true
+      command_injection: true
+
+
+### body_size
+
+  body_size.max        string    ""    Global max body size (e.g. 1MB, 512KB)
+  body_size.overrides  list      []    Per-path overrides
+
+  Each override: path (string), max (string)
+
+  body_size:
+    max: 1MB
+    overrides:
+      - path: /api/upload
+        max: 50MB
+
+
+### ip_filter
+
+  ip_filter.enabled              bool     false
+  ip_filter.mode                 string   blocklist    allowlist or blocklist
+  ip_filter.addresses            list     []           IP addresses or CIDRs
+  ip_filter.trust_proxy_headers  bool     false
+
+
+### resilience
+
+  resilience.timeout  duration  30s    Upstream response timeout (0 = disabled)
+
+  resilience.circuit_breaker.enabled    bool      false
+  resilience.circuit_breaker.threshold  int       5       Consecutive failures to trip
+  resilience.circuit_breaker.timeout    duration  60s     Open duration before probe
+
+  resilience.retry.enabled       bool      false
+  resilience.retry.max_attempts  int       3        Total attempts incl. initial
+  resilience.retry.backoff       duration  100ms    Wait before first retry
+  resilience.retry.max_backoff   duration  10s      Upper bound on backoff
+  resilience.retry.retry_on      list      [502, 503, 504]
+
+
+### telemetry
+
+  telemetry.enabled               bool      true
+  telemetry.path_patterns         list      []       URL path normalization (:param)
+  telemetry.prometheus.enabled    bool      true     Metrics at /_vibewarden/metrics
+  telemetry.otlp.enabled          bool      false    Push-based OTLP export
+  telemetry.otlp.endpoint         string    ""       OTLP HTTP endpoint URL
+  telemetry.otlp.headers          map       {}       Auth headers for OTLP
+  telemetry.otlp.interval         duration  30s      Export interval
+  telemetry.otlp.protocol         string    http     Only http supported
+  telemetry.logs.otlp             bool      false    Export logs via OTLP
+  telemetry.traces.enabled        bool      false    Distributed tracing (needs otlp)
+
+  Three export modes:
+    Prometheus-only (default): pull from /_vibewarden/metrics
+    OTLP-only: push to a collector, disable prometheus
+    Dual-export: both enabled simultaneously
+
+  telemetry:
+    enabled: true
+    prometheus:
+      enabled: true
+    otlp:
+      enabled: true
+      endpoint: https://otlp-gateway.example.com/otlp
+      headers:
+        Authorization: "Bearer ${OTLP_API_KEY}"
+      interval: 30s
+    path_patterns:
+      - "/api/v1/users/:id"
+      - "/api/v1/orders/:order_id"
+
+
+### observability
+
+Local observability stack (Grafana, Prometheus, Loki, Promtail).
+
+  observability.enabled          bool    false
+  observability.grafana_port     int     3001
+  observability.prometheus_port  int     9090
+  observability.loki_port        int     3100
+  observability.retention_days   int     7
+
+  Enable with: ./vibew add metrics
+  Access Grafana at: http://localhost:3001
+
+
+### database
+
+  database.external_url     string    ""        Full postgres:// URL (skips local container)
+  database.tls_mode         string    require   disable, require, verify-ca, verify-full
+  database.pool.max_conns   int       10
+  database.pool.min_conns   int       2
+  database.connect_timeout  duration  10s
+
+
+### egress
+
+  egress.enabled                     bool      false
+  egress.listen                      string    127.0.0.1:8081
+  egress.default_policy              string    deny       deny or allow
+  egress.allow_insecure              bool      false      Permit plain HTTP globally
+  egress.default_timeout             duration  30s
+  egress.default_body_size_limit     string    ""
+  egress.default_response_size_limit string    ""
+
+  egress.dns.block_private    bool    true     Block RFC 1918/loopback/reserved IPs
+  egress.dns.allowed_private  list    []       Exempt CIDRs (e.g. ["10.0.0.0/8"])
+
+### egress.routes (ordered list, first match wins)
+
+  Each route:
+    name                string    Unique identifier (required)
+    pattern             string    URL glob (must start with http:// or https://) (required)
+    methods             list      HTTP methods (empty = all)
+    timeout             duration  Per-route timeout
+    secret              string    OpenBao KV path for secret injection
+    secret_header       string    Header to inject secret into
+    secret_format       string    Value template ({value} replaced)
+    rate_limit          string    Rate limit expression (e.g. 100/s, 500/m)
+    body_size_limit     string    Max request body size
+    response_size_limit string    Max response body size
+    allow_insecure      bool      Permit plain HTTP for this route
+
+  Each route can also have:
+    circuit_breaker: { threshold: int, reset_after: duration }
+    retries: { max: int, methods: list, backoff: exponential|fixed }
+    mtls: { cert_path, key_path, ca_path }
+    validate_response: { status_codes: list, content_types: list }
+    cache: { enabled: bool, ttl: duration, max_size: int }
+    sanitize: { headers: list, query_params: list, body_fields: list }
+    headers: { inject: map, strip_request: list, strip_response: list }
+
+  Example:
+    egress:
+      enabled: true
+      listen: "127.0.0.1:8081"
+      default_policy: deny
+      dns:
+        block_private: true
+      routes:
+        - name: stripe-api
+          pattern: "https://api.stripe.com/**"
+          methods: ["POST"]
+          timeout: "10s"
+          secret: app/stripe
+          secret_header: Authorization
+          secret_format: "Bearer {value}"
+          rate_limit: "100/s"
+          circuit_breaker:
+            threshold: 5
+            reset_after: "30s"
+          retries:
+            max: 3
+            backoff: exponential
+
+  Routing modes:
+    Transparent: set HTTP_PROXY=http://127.0.0.1:8081 and use X-Egress-URL header
+    Named-route: POST http://127.0.0.1:8081/_egress/stripe-api/v1/charges
+
+
+### secrets
+
+  secrets.enabled       bool      false
+  secrets.provider      string    openbao
+  secrets.cache_ttl     duration  5m
+
+  secrets.openbao.address          string    ""
+  secrets.openbao.mount_path       string    secret
+  secrets.openbao.auth.method      string    ""       token or approle
+  secrets.openbao.auth.token       string    ""       Static token
+  secrets.openbao.auth.role_id     string    ""       AppRole role_id
+  secrets.openbao.auth.secret_id   string    ""       AppRole secret_id
+
+  secrets.inject.headers: list of { secret_path, secret_key, header }
+  secrets.inject.env_file: string (path to write .env file)
+  secrets.inject.env: list of { secret_path, secret_key, env_var }
+
+  secrets.dynamic.postgres.enabled  bool    false
+  secrets.dynamic.postgres.roles    list    []
+    Each role: name, env_var_user, env_var_password
+
+  secrets.health.check_interval   duration  6h
+  secrets.health.max_static_age   duration  2160h    (90 days)
+  secrets.health.weak_patterns    list      []
+
+  Example:
+    secrets:
+      enabled: true
+      provider: openbao
+      openbao:
+        address: http://openbao:8200
+        auth:
+          method: approle
+          role_id: ${OPENBAO_ROLE_ID}
+          secret_id: ${OPENBAO_SECRET_ID}
+      inject:
+        headers:
+          - secret_path: app/internal
+            secret_key: token
+            header: X-Internal-Token
+        env_file: /run/secrets/.env.secrets
+        env:
+          - secret_path: app/stripe
+            secret_key: api_key
+            env_var: STRIPE_API_KEY
+
+
+### webhook_signature_verification
+
+  Verify webhook signatures automatically. Supports Stripe, GitHub, Slack,
+  Twilio, and generic HMAC.
+
+  webhooks.signature_verification.enabled  bool  false
+  webhooks.signature_verification.paths    list  []
+
+  Each path entry:
+    path        string    URL path to protect (required)
+    provider    string    stripe, github, slack, twilio, or generic
+    secret      string    Env var reference: ${STRIPE_WEBHOOK_SECRET}
+    header      string    Signature header (auto-set per provider, override for generic)
+    algorithm   string    hmac-sha256 or hmac-sha1 (generic only)
+    tolerance   duration  Max timestamp age for replay protection (default: 5m)
+
+  Example:
+    webhooks:
+      signature_verification:
+        enabled: true
+        paths:
+          - path: /webhooks/stripe
+            provider: stripe
+            secret: ${STRIPE_WEBHOOK_SECRET}
+          - path: /webhooks/github
+            provider: github
+            secret: ${GITHUB_WEBHOOK_SECRET}
+
+  Invalid/missing signatures return 401. Events emitted:
+    webhook.signature_valid    Signature verified successfully
+    webhook.signature_invalid  Signature verification failed
+
+
+### watch (hot config reload)
+
+  watch.enabled   bool      true    Watch vibewarden.yaml for changes
+  watch.debounce  duration  500ms   Wait after last change before reload
+
+  When enabled, editing vibewarden.yaml triggers automatic reload:
+    1. New config loaded and validated
+    2. If invalid: error logged, old config kept
+    3. If valid: Caddy reloaded gracefully (in-flight requests complete)
+
+  Admin API reload:
+    POST /_vibewarden/config/reload   Trigger reload manually
+    GET  /_vibewarden/config          View running config (sensitive fields redacted)
+
+  Events emitted:
+    config.reloaded       Config applied successfully
+    config.reload_failed  Validation or reload error
+
+
+### webhooks (outbound event delivery)
+
+  webhooks.endpoints: list
+    Each endpoint:
+      url              string    HTTP(S) URL to POST events to (required)
+      events           list      Event types (["*"] for all)
+      format           string    raw, slack, or discord
+      timeout_seconds  int       10
+
+
+### audit
+
+  audit.enabled  bool    true
+  audit.output   string  stdout    stdout or a file path
+
+
+### log
+
+  log.level   string    info     debug, info, warn, error
+  log.format  string    json     json or text
+
+
+### admin
+
+  admin.enabled  bool    false    Admin API at /_vibewarden/admin/*
+  admin.token    string  ""       Bearer token for admin API auth
+
+
+### overrides
+
+  overrides.kratos_config    string    Path to custom kratos.yml
+  overrides.compose_file     string    Path to custom docker-compose.yml
+  overrides.identity_schema  string    Path to custom Kratos identity schema JSON
+
+
+## 6. Auth Modes In Detail
+
+### JWT/OIDC (recommended default)
+
+Works with any OIDC provider: Auth0, Keycloak, Firebase, Cognito, Okta,
+Supabase, and more.
+
+  auth:
+    enabled: true
+    mode: jwt
+    jwt:
+      jwks_url: "https://your-provider/.well-known/jwks.json"
+      issuer: "https://your-provider/"
+      audience: "your-api-identifier"
+    public_paths:
+      - /health
+      - /static/*
+
+Provide either jwks_url (direct) or issuer_url (auto-discovery via
+/.well-known/openid-configuration). Never add none or HS256 to
+allowed_algorithms in production.
+
+### Ory Kratos (self-hosted identity)
+
+Full UI flows: login, registration, MFA, account recovery, email verification.
+All /self-service/ paths are proxied to Kratos.
+
+  auth:
+    enabled: true
+    mode: kratos
+  kratos:
+    public_url: "http://127.0.0.1:4433"
+    admin_url: "http://127.0.0.1:4434"
+
+Kratos is started automatically when kratos.external is false (default).
+
+### API Key (machine-to-machine)
+
+Keys stored as SHA-256 hashes. Supports scope-based authorization.
+
+  auth:
+    enabled: true
+    mode: api-key
+    api_key:
+      header: X-API-Key
+      keys:
+        - name: ci-deploy
+          hash: "e3b0c44298fc1c149afb..."
+          scopes: [deploy]
+      scope_rules:
+        - path: "/admin/*"
+          required_scopes: [deploy]
+
+### Social Login (via Kratos)
+
+Supported providers: Google, GitHub, Apple, Facebook, Microsoft, GitLab,
+Discord, Slack, Spotify, generic OIDC.
+
+Social providers are configured in kratos.yml (not vibewarden.yaml). Callback
+URL pattern: https://<domain>/self-service/methods/oidc/callback/<provider-id>
+
+Example kratos.yml snippet for Google:
+
+  selfservice:
+    methods:
+      oidc:
+        enabled: true
+        config:
+          providers:
+            - id: google
+              provider: google
+              client_id: ${GOOGLE_CLIENT_ID}
+              client_secret: ${GOOGLE_CLIENT_SECRET}
+              scope:
+                - email
+                - profile
+              mapper_url: "base64://<base64-encoded-jsonnet>"
+
+
+## 7. Rate Limiting
+
+Two independent token-bucket limits: per_ip (every request) and per_user
+(authenticated only). Both must pass. Failing either returns 429 with
+Retry-After header and JSON body:
+
+  {"error":"rate_limit_exceeded","retry_after_seconds":<N>}
+
+Backing stores:
+  memory — per-process, resets on restart, no external deps
+  redis  — shared across instances, atomic Lua script, survives restarts
+
+Redis failover: when fallback: true (default), VibeWarden falls back to
+in-memory on Redis failure and emits a rate_limit.store_fallback event.
+When Redis recovers, a rate_limit.store_recovered event is emitted.
+
+
+## 8. WAF and Security Headers
+
+WAF detects SQLi, XSS, path traversal, and command injection in query strings
+and request bodies. WAF is enabled by default in detect mode (logs threats,
+does not block). Set mode: block for production. Two modes:
+  block — reject with 400 and log
+  detect — pass through and log only
+
+Security headers are enabled by default. Default CSP:
+  default-src 'self'; style-src 'self' 'unsafe-inline'
+Override content_security_policy for stricter or app-specific policies.
+
+Production CSP example:
+  content_security_policy: >-
+    default-src 'self';
+    script-src 'self';
+    style-src 'self' 'unsafe-inline';
+    img-src 'self' data: https:;
+    connect-src 'self' https://api.myapp.example.com
+
+
+## 9. Egress Proxy with SSRF Protection
+
+The egress proxy sits between your app and external APIs. Your app sends
+outbound HTTP requests to the proxy. The proxy applies allowlisting, secret
+injection, rate limiting, circuit breaking, retries, PII redaction, response
+validation, caching, and structured-event observability.
+
+Key features:
+  - Default deny: unmatched requests blocked with 403
+  - SSRF protection: DNS resolution blocks private/loopback/reserved IPs
+  - Secret injection: API keys fetched from OpenBao at request time, never
+    touch your app's memory
+  - Full structured-event audit trail
+
+Point your app at the proxy:
+  export HTTP_PROXY=http://127.0.0.1:8081
+
+Or use named routes:
+  POST http://127.0.0.1:8081/_egress/stripe-api/v1/charges
+
+
+## 10. Observability
+
+### Structured Logs
+
+Every security-relevant event produces a JSON log record:
+
+  {
+    "schema_version": "v1",
+    "event_type": "request.completed",
+    "ai_summary": "GET /api/users 200 in 3ms",
+    "time": "2026-03-28T12:00:00Z",
+    "level": "INFO",
+    "payload": {
+      "method": "GET",
+      "path": "/api/users",
+      "status_code": 200,
+      "duration_ms": 3,
+      "user_id": "usr_abc123"
+    }
+  }
+
+Event types:
+  request.completed          HTTP request completed
+  auth.allowed               Authentication passed
+  auth.blocked               Authentication failed
+  rate_limit.blocked         Request blocked by rate limiter
+  rate_limit.store_fallback  Redis unavailable, falling back to in-memory
+  rate_limit.store_recovered Redis recovered after fallback
+  waf.detected               WAF detected attack pattern
+  egress.allowed             Egress request permitted
+  egress.blocked             Egress request blocked
+
+### AI-readable log schema (key differentiator)
 
 VibeWarden's most original feature is its structured, strongly-typed log schema
 designed for consumption by AI agents and LLMs.
@@ -46,32 +1000,291 @@ https://vibewarden.dev/docs/ai-log-schema/
 The MCP tool `vibewarden_schema_describe` provides the same information
 programmatically without requiring a live sidecar:
 
-- Called with no arguments: returns a list of all event types with one-line descriptions.
-- Called with `event_type=<type>`: returns full field definitions for that event type.
+- Called with no arguments: returns a list of all event types with one-line
+  descriptions.
+- Called with `event_type=<type>`: returns full field definitions for that
+  event type.
 
----
+### Prometheus Metrics
 
-## MCP tools
+Exposed at /_vibewarden/metrics (enabled by default). Configure path_patterns
+to prevent high-cardinality labels:
 
-VibeWarden ships a Model Context Protocol (MCP) server that AI agents can use
-to inspect and manage a local sidecar. Tools:
+  telemetry:
+    path_patterns:
+      - "/users/:id"
+      - "/api/v1/items/:item_id/comments/:comment_id"
 
-| Tool | Purpose |
-|---|---|
-| `vibewarden_status` | Check whether the sidecar is running |
-| `vibewarden_doctor` | Run the full health-check suite |
-| `vibewarden_validate` | Validate a vibewarden.yaml configuration file |
-| `vibewarden_explain` | Explain a configuration in plain language |
-| `vibewarden_watch_events` | Stream live structured log events from the sidecar |
-| `vibewarden_stream_logs` | Stream raw container logs with client-side filtering (level, since, search) |
-| `vibewarden_schema_describe` | Describe the AI-readable log schema (pure metadata, no sidecar needed) |
-| `vibewarden_propose_action` | Create a configuration-change proposal for human review |
-| `vibewarden_list_proposals` | List pending configuration-change proposals |
-| `vibewarden_get_proposal` | Get details of a specific proposal |
+### OTLP Export
 
----
+Push metrics and logs to any OTLP-compatible backend (Grafana Cloud, Datadog,
+Honeycomb):
 
-## CLI commands
+  telemetry:
+    otlp:
+      enabled: true
+      endpoint: https://otlp-gateway.example.com/otlp
+      headers:
+        Authorization: "Bearer ${OTLP_API_KEY}"
+
+### Local Observability Stack
+
+Enable Grafana + Prometheus + Loki + Promtail:
+
+  ./vibew add metrics
+  ./vibew dev
+
+Access Grafana at http://localhost:3001. Pre-built dashboards show request
+rate, latency percentiles, rate limit hits, and auth decisions.
+
+
+## 11. Framework Patterns
+
+### Express / Node.js
+
+  vibewarden.yaml:
+    server:
+      host: "0.0.0.0"
+      port: 443
+    upstream:
+      host: "express"       # Docker Compose service name
+      port: 3000
+    tls:
+      provider: letsencrypt
+      domain: "myapp.example.com"
+    auth:
+      public_paths:
+        - "/login"
+        - "/register"
+        - "/static/*"
+        - "/favicon.ico"
+    body_size:
+      max: "10MB"
+      overrides:
+        - path: /api/upload
+          max: "50MB"
+
+  Reading identity in Express:
+    app.get('/api/me', (req, res) => {
+      const userId = req.headers['x-user-id'];
+      const email = req.headers['x-user-email'];
+      res.json({ userId, email });
+    });
+
+### Next.js
+
+  Same as Express but with Next.js-specific public_paths:
+    auth:
+      public_paths:
+        - "/login"
+        - "/register"
+        - "/_next/static/*"
+        - "/_next/image"
+        - "/favicon.ico"
+        - "/api/public/*"
+
+  Next.js requires 'unsafe-inline' for script-src in CSP due to hydration:
+    content_security_policy: >-
+      default-src 'self';
+      script-src 'self' 'unsafe-inline';
+      style-src 'self' 'unsafe-inline';
+      img-src 'self' data: https:;
+      font-src 'self' data:
+
+
+## 12. Production Deployment
+
+### Server Requirements
+
+  OS: Ubuntu 24.04 LTS or Debian 12 (recommended)
+  RAM: 512 MB minimum, 1 GB+ recommended (Hetzner CX23 recommended: 2 vCPU, 4 GB)
+  CPU: 1 vCPU minimum, 2 vCPU recommended
+  Disk: 10 GB minimum
+  Ports: 80 (ACME HTTP-01) and 443 (HTTPS)
+
+### Deploying to a VPS — step by step
+
+Step 1 — Provision server (Hetzner CX23 or equivalent).
+  Firewall rules: allow TCP 22 (SSH), 80 (ACME), 443 (HTTPS) inbound.
+
+Step 2 — Point DNS. Add A record: demo.yourdomain.com -> <server-ip>.
+  Verify propagation before continuing:
+    dig +short demo.yourdomain.com
+    # must return <server-ip>
+
+Step 3 — Install Docker on the server:
+    ssh root@<server-ip> 'curl -fsSL https://get.docker.com | sh'
+
+Step 4 — Set up project locally:
+    curl -fsSL https://vibewarden.dev/install.sh | sh
+    # New project:
+    vibew init myapp
+    # Existing app:
+    vibew wrap --upstream 3000
+
+Step 5 — Create vibewarden.prod.yaml by copying the generated vibewarden.yaml
+and modifying it for production. Do NOT write it from scratch:
+
+    cp vibewarden.yaml vibewarden.prod.yaml
+
+Then edit vibewarden.prod.yaml to change:
+    profile: prod
+    tls.provider: letsencrypt
+    tls.domain: demo.yourdomain.com
+    server.port: 443
+
+For the full set of supported fields, see the authoritative config reference at
+https://vibewarden.dev/vibewarden.reference.yaml. `vibew bundle` merges your
+base `vibewarden.yaml` with your production overrides and strict-validates the
+result before writing the bundle; run it to see exactly what the production
+config evaluates to.
+    waf:
+      enabled: true
+      mode: block
+
+Step 6 — Produce a deploy bundle locally:
+    vibew bundle --config vibewarden.prod.yaml
+    # Writes .vibewarden/bundle/ containing:
+    #   image.tar                 — docker-saved app image
+    #   docker-compose.yml        — pinned tag, deterministic
+    #   vibewarden.yaml           — merged base + prod override, strict-validated
+    #   sample.env                — template for operators
+    #   .env                      — first-run only (use --overwrite to regenerate)
+    #   deploy.sh                 — 10-line reference script (mode 0o750)
+    #   README.md                 — 3-paragraph manual-deploy guide
+
+Step 7 — Ship and start:
+    scp -r .vibewarden/bundle/ root@<server-ip>:/opt/myapp/
+    ssh root@<server-ip> 'cd /opt/myapp/bundle && bash deploy.sh'
+    # deploy.sh: docker load < image.tar && docker compose up -d
+
+Step 8 — Verify:
+    ssh root@<server-ip> 'cd /opt/myapp/bundle && docker compose ps'
+    # Health check probes localhost on the remote via SSH (not the external domain):
+    ssh root@<server-ip> 'curl -sf http://localhost/_vibewarden/healthz && echo OK'
+    # OK
+
+Step 9 — Subsequent deploys (after code or config changes):
+    vibew bundle --config vibewarden.prod.yaml
+    scp -r .vibewarden/bundle/ root@<server-ip>:/opt/myapp/
+    ssh root@<server-ip> 'cd /opt/myapp/bundle && bash deploy.sh'
+
+Note: the legacy `vibew deploy` command (one-shot SSH orchestration) was removed
+in ADR-086. The bundle pipeline above is the only supported remote workflow.
+
+### Troubleshooting VPS deployments
+
+  DNS not propagated:
+    dig +short demo.yourdomain.com   # wait until it returns <server-ip>
+
+  Port 80 blocked (ACME fails):
+    Check Hetzner firewall rules: allow TCP 80 inbound from 0.0.0.0/0.
+    curl -v http://demo.yourdomain.com/_vibewarden/healthz
+
+  Let's Encrypt rate limit (>5 failures/hour):
+    Wait 1 hour. Use tls.provider: self-signed to test the rest of the stack.
+
+  Container fails to start:
+    ssh root@<server-ip> 'cd /opt/myapp && docker compose logs vibewarden --tail 100'
+
+  Full doctor output from the server:
+    ssh root@<server-ip> 'docker run --rm \
+      -v /opt/myapp/vibewarden.prod.yaml:/vibewarden.yaml:ro \
+      ghcr.io/vibewarden/vibewarden:latest vibew doctor --json'
+
+### Production Profile
+
+  profile: prod
+  tls:
+    enabled: true
+    provider: letsencrypt
+    domain: myapp.example.com
+
+### Production Hardening Checklist
+
+  TLS:
+    - tls.provider: letsencrypt (never self-signed in production)
+    - tls.domain set to exact public hostname
+    - Caddy data volume persisted across restarts
+    - Ports 80 and 443 open
+    - hsts_max_age at least 31536000
+
+  Admin:
+    - admin.token set via VIBEWARDEN_ADMIN_TOKEN env var (never in YAML)
+    - Token is at least 32 bytes: openssl rand -hex 32
+    - Rotate every 90 days
+    - /_vibewarden/admin/* not reachable from internet
+
+  Rate limits:
+    - trust_proxy_headers: true only behind a trusted proxy
+    - Do not exempt API endpoints that mutate state
+
+  Docker:
+    - Pin image to specific tag (not :latest)
+    - read_only: true with tmpfs for /tmp
+    - Resource limits (cpus, memory) on all containers
+    - cap_drop: [ALL], cap_add: [NET_BIND_SERVICE]
+    - No privileged containers
+
+  Security headers:
+    - Set content_security_policy explicitly
+    - permissions_policy restricts unused browser features
+
+
+## 13. Secret Management
+
+VibeWarden ships a built-in AES-256-GCM encrypted secret store that requires no
+external containers. Secrets are stored in `.vibewarden/secrets.enc` and
+encrypted with a 32-byte master key provided via the
+`VIBEWARDEN_SECRETS_MASTER_KEY` environment variable or
+`secrets.builtin.key_file`. For advanced use cases (dynamic Postgres
+credentials, lease rotation), set `secrets.store: openbao` to use an OpenBao
+server instead. Both backends support the same injection modes (HTTP headers
+and env file) and the same CLI commands (`vibew secret set`, `vibew secret
+get`, `vibew secret list`).
+
+Any string field in `vibewarden.yaml` supports `secret://` URIs
+(e.g. `admin.token: secret://admin/api/token`). At load time, URIs are
+resolved from the configured store before validation. For composite values,
+use `${secret://path/key}` placeholders inside strings
+(e.g. `DATABASE_URL: "postgres://user:${secret://db/password}@host:5432/db"`).
+Escape with `$${secret://...}` to produce a literal placeholder string.
+The `secrets.inject.headers` and `secrets.inject.env` entries support a
+`value_template` field for composite values
+(e.g. `value_template: "Bearer ${secret://app/auth/token}"`).
+The `secrets.*` section itself cannot use `secret://` (bootstrap constraint).
+
+OpenBao quick start (opt-in):
+  1. Set `secrets.store: openbao` in vibewarden.yaml
+  2. docker compose up -d (OpenBao starts in dev mode)
+  3. bao kv put secret/app/stripe api_key=sk_live_abc123
+  4. Configure injection in vibewarden.yaml (see secrets section above)
+  5. docker compose restart vibewarden
+
+Injection modes:
+  Header injection — secret added to every proxied request as a header
+  Env file injection — secret written to a .env file read at app startup
+
+Dynamic Postgres credentials:
+  secrets:
+    dynamic:
+      postgres:
+        enabled: true
+        roles:
+          - name: app-readwrite
+            env_var_user: DB_USER
+            env_var_password: DB_PASSWORD
+
+Secret health checks run periodically and detect weak, short, and stale secrets.
+
+CLI commands:
+  vibew secret list              List all managed paths
+  vibew secret get app/stripe    Human-readable output
+  vibew secret get app/stripe --json   JSON output
+  vibew secret get app/stripe --env    KEY=value lines
+
+
+## 14. CLI Reference
 
 VibeWarden is operated via the `vibew` CLI. Below is the complete command list.
 
@@ -149,39 +1362,6 @@ or `vibew wrap`.
 - `vibew add metrics` -- enable Prometheus metrics (no extra flags)
 - `vibew add admin` -- enable admin API (no extra flags)
 
-### Multi-app deployment
-
-VibeWarden supports multi-app projects locally: multiple apps live under
-`sites/<name>/` each with their own `vibewarden.yaml`. A shared sidecar
-reverse-proxies all of them on the same VM.
-
-Remote orchestration for multi-site layouts is deferred per ADR-085 /
-ADR-086. `vibew bundle` currently hard-fails on multi-site projects with
-`multi-site bundle is not yet supported`; the local dev / test paths
-continue to work unchanged.
-
-Full guide: https://vibewarden.dev/docs/multi-app/
-
-### Deploy model
-
-`vibew build` builds the Docker image locally from the app's Dockerfile.
-`vibew bundle` packages the image (via `docker save`) along with a
-deterministic docker-compose.yml, merged vibewarden.yaml, sample.env,
-.env, reference deploy.sh, and README under `.vibewarden/bundle/`. The
-user then transfers the bundle directory to the VPS and runs
-`docker compose up -d` themselves. No source code is ever sent to the
-production server -- the image must be production-ready.
-
-There is no all-in-one remote-deploy command. `vibew bundle` is the only
-supported path to a VPS; the user owns the transport (scp, rsync, CI
-artifact) and the remote `docker compose up -d`. The removed `vibew deploy`
-command did all three steps (package, ship, start) in one SSH orchestration.
-That surface was retired in ADR-086 in favour of the thin bundle pipeline.
-Running `vibew deploy` today prints cobra's `unknown command "deploy"` error.
-See CHANGELOG and ADR-086 for the rationale.
-
-Use `app.environment` for runtime config (database URLs, API keys, etc.).
-
 ### bundle flags
 
 `vibew bundle` produces a self-contained Docker Compose deploy bundle under
@@ -223,78 +1403,242 @@ Multi-site projects (`sites/<name>/vibewarden.yaml`) hard-fail with
 - `--admin-token` -- generate a 32-byte admin token (outputs VIBEWARDEN_ADMIN_TOKEN=...)
 - `--fleet-key` -- generate a 32-byte fleet key (outputs VIBEWARDEN_FLEET_KEY=...)
 
----
+### Multi-app deployment
 
-## Configuration
+VibeWarden supports multi-app projects locally: multiple apps live under
+`sites/<name>/` each with their own `vibewarden.yaml`. A shared sidecar
+reverse-proxies all of them on the same VM.
 
-VibeWarden uses two config files:
+Remote orchestration for multi-site layouts is deferred per ADR-085 /
+ADR-086. `vibew bundle` currently hard-fails on multi-site projects with
+`multi-site bundle is not yet supported`; the local dev / test paths
+continue to work unchanged.
 
-- `vibewarden.yaml` -- local dev config (self-signed TLS, port 8443).
-  Read by `vibew dev`.
-- `vibewarden.production.yaml` -- production overrides (letsencrypt, port 443).
-  Read by `vibew bundle` and deep-merged on top of the base config.
+Full guide: https://vibewarden.dev/docs/multi-app/
 
-Both files are generated by `vibew init`. Never put production-only config in
-`vibewarden.yaml`.
+### Deploy model
 
-Key sections:
+`vibew build` builds the Docker image locally from the app's Dockerfile.
+`vibew bundle` packages the image (via `docker save`) along with a
+deterministic docker-compose.yml, merged vibewarden.yaml, sample.env,
+.env, reference deploy.sh, and README under `.vibewarden/bundle/`. The
+user then transfers the bundle directory to the VPS and runs
+`docker compose up -d` themselves. No source code is ever sent to the
+production server -- the image must be production-ready.
 
-- `name` — project name; controls Docker Compose project name, image tags, and deploy directory (default: directory name)
-- `server.port` — port the sidecar listens on (default 8443)
-- `upstream.port` — port the upstream application listens on
-- `app.build` — Docker build context; `vibew build` builds locally, `vibew bundle` packages the image into the bundle (no source on server)
-- `app.image` — Docker image reference (used when `app.build` is empty)
-- `app.environment` — custom env vars injected into the app container (e.g. DATABASE_URL, REDIS_URL)
-- `tls.enabled`, `tls.provider` — TLS termination (letsencrypt with LE → ZeroSSL fallback when `tls.email` is set; zerossl; buypass as explicit opt-in only, upstream currently unhealthy per ADR-083; letsencrypt-staging; self-signed; external)
-- `tls.email` — ACME account email (required for ZeroSSL, recommended for Let's Encrypt)
-- `tls.acme_ca` — override ACME directory URL (e.g. ZeroSSL, Let's Encrypt staging). Use this
-  when Let's Encrypt is rate-limited: `acme_ca: "https://acme.zerossl.com/v2/DV90"`
-- `auth.mode` — authentication strategy: `none`, `kratos`, `jwt`, or `api-key` (single source of truth; see ADR-065)
-- `auth.role_paths` — role-based access control via Kratos identity traits (maps role names to URL path patterns; only valid when `auth.mode` is `kratos`)
-- When `auth.mode: kratos`, the sidecar serves `GET /_vibewarden/me` returning the current
-  user's session info as JSON (`{"id","email","verified","role"}`). Returns 401 when
-  unauthenticated. Use this from frontend JS instead of calling Kratos directly.
-- `rate_limit.enabled`, `rate_limit.per_ip` — per-IP rate limiting
-- `security_headers.enabled` — HSTS, X-Frame-Options, X-Content-Type-Options, etc.
-- `secrets.store` — secret store backend: `builtin` (default, AES-256-GCM encrypted file) or `openbao` (opt-in for dynamic creds)
-- `egress` — outbound proxy rules with route-level controls
-- `plugins.fleet` — opt-in telemetry to the Pro fleet dashboard
-- Any string field supports `secret://` URIs (e.g. `admin.token: secret://admin/api/token`).
-  At load time, URIs are resolved from the encrypted secret store before validation.
-  For composite values, use `${secret://path/key}` placeholders inside strings
-  (e.g. `DATABASE_URL: "postgres://user:${secret://db/password}@host:5432/db"`).
-  Escape with `$${secret://...}` to produce a literal placeholder string.
-  The `secrets.inject.headers` and `secrets.inject.env` entries support a `value_template`
-  field for composite values (e.g. `value_template: "Bearer ${secret://app/auth/token}"`).
-  Store secrets with `vibew secret set <path> <key>=<value>`.
-  The `secrets.*` section itself cannot use `secret://` (bootstrap constraint).
+There is no all-in-one remote-deploy command. `vibew bundle` is the only
+supported path to a VPS; the user owns the transport (scp, rsync, CI
+artifact) and the remote `docker compose up -d`. The removed `vibew deploy`
+command did all three steps (package, ship, start) in one SSH orchestration.
+That surface was retired in ADR-086 in favour of the thin bundle pipeline.
+Running `vibew deploy` today prints cobra's `unknown command "deploy"` error.
+See CHANGELOG and ADR-086 for the rationale.
 
-### Secret management
+Use `app.environment` for runtime config (database URLs, API keys, etc.).
 
-VibeWarden ships a built-in AES-256-GCM encrypted secret store that requires no
-external containers. Secrets are stored in `.vibewarden/secrets.enc` and encrypted
-with a 32-byte master key provided via the `VIBEWARDEN_SECRETS_MASTER_KEY`
-environment variable or `secrets.builtin.key_file`. For advanced use cases
-(dynamic Postgres credentials, lease rotation), set `secrets.store: openbao` to
-use an OpenBao server instead. Both backends support the same injection modes
-(HTTP headers and env file) and the same CLI commands (`vibew secret set`,
-`vibew secret get`, `vibew secret list`).
+### vibew doctor details
 
----
+vibew doctor exit codes:
+  0 — all checks passed (OK or WARN only)
+  1 — at least one check failed (FAIL)
 
-## Architecture
+vibew doctor checks (in order):
+  1. Config file — vibewarden.yaml exists and parses
+  2. Docker daemon — docker info succeeds
+  3. Docker Compose — docker compose version returns v2+
+  4. Proxy port — server.port not already bound
+  5. Generated files — .vibewarden/generated/docker-compose.yml present
+  6. Container health — all containers running/healthy
 
-Hexagonal architecture (ports & adapters) with DDD domain layer.
 
-```
-cmd/vibewarden/         main entrypoint
-internal/domain/        entities, value objects, domain events (zero external deps)
-internal/ports/         interfaces (inbound + outbound)
-internal/adapters/      caddy/, kratos/, postgres/, log/, ops/
-internal/app/           application services (use cases)
-internal/config/        config loading and validation
-internal/mcp/           MCP server and tool handlers
-internal/plugins/       plugin registry and lifecycle
-migrations/             golang-migrate SQL files
-docs/                   published documentation (mkdocs site)
-```
+## 15. Troubleshooting
+
+### Port already in use
+
+  Symptom: vibew dev fails or doctor reports port 8443 in use.
+  Fix: change server.port in vibewarden.yaml or stop the conflicting process:
+    lsof -i :8443
+    kill <PID>
+
+### App not reachable
+
+  If your app runs outside Docker, verify it listens on 0.0.0.0 (not 127.0.0.1):
+    upstream:
+      host: host.docker.internal
+      port: 3000
+
+### Docker not running
+
+  macOS: open -a Docker
+  Linux: sudo systemctl start docker && sudo systemctl enable docker
+
+### Config file not found or invalid
+
+  Run from the directory containing vibewarden.yaml, or:
+    vibew doctor --config /path/to/vibewarden.yaml
+
+  Common YAML mistakes: tabs instead of spaces, missing quotes around values
+  with colons, misaligned indentation.
+
+### Generated files missing
+
+  vibew generate
+  vibew dev
+
+### Kratos unreachable
+
+  Possible causes:
+    - Postgres not ready (wait 15-30s, run vibew doctor again)
+    - Wrong DSN in vibewarden.yaml
+    - Port 4433/4434 bound by another process
+    - Schema migration failed (check: docker compose logs kratos)
+    - Insufficient memory (Docker Desktop needs at least 4 GB)
+
+### Containers stuck in restart loop
+
+  docker compose -f .vibewarden/generated/docker-compose.yml logs <container> --tail 100
+
+  For dev only, wipe volumes and restart:
+    docker compose -f .vibewarden/generated/docker-compose.yml down -v
+    vibew dev
+
+### Generate a dev JWT for testing
+
+  curl https://localhost:8443/api/me \
+    --cacert vibewarden-ca.pem \
+    -H "Authorization: Bearer $(./vibew token --json)"
+
+
+## 16. Environment Variables Quick Reference
+
+Every YAML key maps to an env var: uppercase, VIBEWARDEN_ prefix, dots become
+underscores.
+
+  VIBEWARDEN_SERVER_PORT=9443
+  VIBEWARDEN_UPSTREAM_PORT=3000
+  VIBEWARDEN_AUTH_MODE=jwt
+  VIBEWARDEN_ADMIN_TOKEN=<token>
+  VIBEWARDEN_RATE_LIMIT_STORE=redis
+  VIBEWARDEN_RATE_LIMIT_REDIS_URL=redis://localhost:6379
+  VIBEWARDEN_LOG_LEVEL=debug
+  VIBEWARDEN_PROFILE=prod
+
+
+## 17. Full Example vibewarden.yaml
+
+  profile: dev
+
+  server:
+    host: 0.0.0.0
+    port: 8443
+
+  tls:
+    enabled: true
+    provider: self-signed
+
+  upstream:
+    host: 127.0.0.1
+    port: 3000
+
+  auth:
+    enabled: true
+    mode: jwt
+    jwt:
+      jwks_url: "https://dev-abc123.us.auth0.com/.well-known/jwks.json"
+      issuer: "https://dev-abc123.us.auth0.com/"
+      audience: "https://api.your-app.com"
+      claims_to_headers:
+        sub: X-User-Id
+        email: X-User-Email
+        email_verified: X-User-Verified
+    public_paths:
+      - /health
+      - /static/*
+
+  rate_limit:
+    enabled: true
+    store: memory
+    per_ip:
+      requests_per_second: 10
+      burst: 20
+    per_user:
+      requests_per_second: 100
+      burst: 200
+
+  security_headers:
+    enabled: true
+    hsts_max_age: 31536000
+    content_security_policy: ""
+
+  telemetry:
+    enabled: true
+    prometheus:
+      enabled: true
+    path_patterns:
+      - "/api/v1/users/:id"
+      - "/api/v1/orders/:order_id"
+
+  log:
+    level: info
+    format: json
+
+
+## 18. MCP Server (AI Agent Integration)
+
+VibeWarden includes an MCP (Model Context Protocol) server for AI coding agents.
+
+  vibew mcp
+
+This starts a JSON-RPC 2.0 server on stdio. Tools:
+
+| Tool | Purpose |
+|---|---|
+| `vibewarden_status` | Check whether the sidecar is running |
+| `vibewarden_doctor` | Run the full health-check suite |
+| `vibewarden_validate` | Validate a vibewarden.yaml configuration file |
+| `vibewarden_explain` | Explain a configuration in plain language |
+| `vibewarden_watch_events` | Stream live structured log events from the sidecar |
+| `vibewarden_stream_logs` | Stream raw container logs with client-side filtering (level, since, search) |
+| `vibewarden_schema_describe` | Describe the AI-readable log schema (pure metadata, no sidecar needed) |
+| `vibewarden_propose_action` | Create a configuration-change proposal for human review |
+| `vibewarden_list_proposals` | List pending configuration-change proposals |
+| `vibewarden_get_proposal` | Get details of a specific proposal |
+
+Works with Claude Code, Cursor, Windsurf, VS Code + Copilot, and any MCP client.
+
+Configure in Claude Code:
+  Add to .claude/settings.json:
+    {
+      "mcpServers": {
+        "vibewarden": {
+          "command": "vibew",
+          "args": ["mcp"]
+        }
+      }
+    }
+
+
+## 19. Config JSON Schema
+
+A JSON Schema for vibewarden.yaml is published at:
+  https://vibewarden.dev/schema/v1/config.json
+
+Generated vibewarden.yaml files include the yaml-language-server directive:
+  # yaml-language-server: $schema=https://vibewarden.dev/schema/v1/config.json
+
+This enables autocomplete and validation in VS Code (with YAML extension),
+JetBrains IDEs, and other editors.
+
+
+## 20. AI Agent Context
+
+vibew init generates AGENTS-VIBEWARDEN.md — a tool-agnostic file that tells
+any AI coding agent (Claude Code, Cursor, Copilot, Windsurf, Aider) about
+the security sidecar. It includes:
+  - What VibeWarden handles (never reimplement these in app code)
+  - Injected identity headers (X-User-Id, X-User-Email, etc.)
+  - vibew CLI reference
+  - Architecture guidelines
+
+This file is fully owned by vibew and regenerated on config changes. User
+customizations go in AGENTS.md (never overwritten).
