@@ -21,7 +21,7 @@ type fakeComposeRunner struct {
 	restartErr error
 }
 
-func (f *fakeComposeRunner) Up(_ context.Context, _ string, _ []string) error {
+func (f *fakeComposeRunner) Up(_ context.Context, _ string, _ []string, _ ports.ComposeUpOptions) error {
 	return nil
 }
 
@@ -29,6 +29,10 @@ func (f *fakeComposeRunner) Restart(_ context.Context, composeFile string, servi
 	f.restartComposeFile = composeFile
 	f.restartServices = services
 	return f.restartErr
+}
+
+func (f *fakeComposeRunner) Down(_ context.Context, _ string, _ ports.ComposeDownOptions) (ports.DownResult, error) {
+	return ports.DownResult{}, nil
 }
 
 func (f *fakeComposeRunner) Version(_ context.Context) (string, error) {

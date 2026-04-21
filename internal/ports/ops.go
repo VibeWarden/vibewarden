@@ -3,6 +3,7 @@ package ports
 
 import (
 	"context"
+	"io"
 	"time"
 )
 
@@ -24,6 +25,41 @@ type ContainerInfo struct {
 	CreatedAt time.Time
 }
 
+// ComposeUpOptions carries optional arguments for ComposeRunner.Up. It is
+// defined as a struct (rather than positional parameters) so that future flags
+// can be added without breaking callers.
+type ComposeUpOptions struct {
+	// Stderr, when non-nil, receives a live copy of the docker compose stderr
+	// stream while the command runs. Use this to surface build progress or
+	// diagnostics to the user in real time (e.g. when --verbose is set).
+	// When nil, stderr is captured into an internal buffer that is written to
+	// the adapter's default stderr only on command failure.
+	Stderr io.Writer
+}
+
+// ComposeDownOptions carries optional arguments for ComposeRunner.Down.
+type ComposeDownOptions struct {
+	// Volumes controls whether named volumes declared in the compose file are
+	// also removed (equivalent to `docker compose down --volumes`). When true
+	// the Let's Encrypt cert volume and database data volumes are deleted —
+	// callers are responsible for confirming destructive intent with the user.
+	Volumes bool
+	// RemoveOrphans, when true, removes containers for services not defined in
+	// the current compose file (equivalent to `--remove-orphans`).
+	RemoveOrphans bool
+}
+
+// DownResult summarises what happened during a ComposeRunner.Down invocation.
+// Zero values indicate a no-op (nothing was running).
+type DownResult struct {
+	// StoppedContainers is the number of containers that were stopped/removed
+	// by the down invocation. Zero means nothing was running.
+	StoppedContainers int
+	// RemovedVolumes is the number of named volumes removed. Always zero when
+	// ComposeDownOptions.Volumes is false.
+	RemovedVolumes int
+}
+
 // ComposeRunner runs Docker Compose commands.
 // Implementations shell out to the docker compose CLI.
 type ComposeRunner interface {
@@ -31,8 +67,9 @@ type ComposeRunner interface {
 	// composeFile is the path to the docker-compose.yml to use; when empty
 	// the default file discovery behaviour of docker compose applies.
 	// profiles is a list of compose profiles to activate (e.g. "observability").
-	// The output of the command is streamed to the caller via the returned channel.
-	Up(ctx context.Context, composeFile string, profiles []string) error
+	// opts controls stderr handling — see ComposeUpOptions. On failure the
+	// adapter writes captured stderr to its default stderr before returning.
+	Up(ctx context.Context, composeFile string, profiles []string, opts ComposeUpOptions) error
 
 	// Restart rebuilds and recreates services in the compose project using
 	// docker compose up -d --force-recreate --build. This ensures Dockerfile
@@ -40,6 +77,13 @@ type ComposeRunner interface {
 	// when empty the default discovery logic applies. services is the optional
 	// list of service names to restart; when empty all services are restarted.
 	Restart(ctx context.Context, composeFile string, services []string) error
+
+	// Down stops and removes containers for the compose project. composeFile
+	// is the path to the docker-compose.yml; when empty the default discovery
+	// logic applies. opts controls --volumes and --remove-orphans.
+	// When nothing is running, Down returns a zero-valued DownResult and a
+	// nil error (idempotent no-op).
+	Down(ctx context.Context, composeFile string, opts ComposeDownOptions) (DownResult, error)
 
 	// Version returns the docker compose version string.
 	// Returns an error when docker compose is not available.

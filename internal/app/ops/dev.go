@@ -108,6 +108,12 @@ type DevOptions struct {
 	// (e.g. "go", "kotlin", "typescript"). When non-empty it is used to provide
 	// language-specific build instructions in the pre-flight image-missing error.
 	DetectedLang string
+
+	// Verbose streams the full docker compose stderr to the user during
+	// successful startup. When false, compose stderr is suppressed unless
+	// docker compose up fails, in which case the captured stderr is always
+	// surfaced so users can see the actual build error.
+	Verbose bool
 }
 
 // Run generates runtime config files (when a generator is configured), then
@@ -152,7 +158,13 @@ func (s *DevService) Run(ctx context.Context, cfg *config.Config, opts DevOption
 		return err
 	}
 
-	if err := s.compose.Up(ctx, composeFile, profiles); err != nil {
+	upOpts := ports.ComposeUpOptions{}
+	if opts.Verbose {
+		// Stream compose stderr live when --verbose is set so users see
+		// build progress in real time.
+		upOpts.Stderr = out
+	}
+	if err := s.compose.Up(ctx, composeFile, profiles, upOpts); err != nil {
 		return fmt.Errorf("starting dev environment: %w", err)
 	}
 

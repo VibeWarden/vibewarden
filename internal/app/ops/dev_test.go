@@ -24,21 +24,33 @@ type fakeCompose struct {
 	psErr      error
 	logsResult string
 	logsErr    error
+	downResult ports.DownResult
+	downErr    error
 
 	capturedComposeFile string
 	capturedProfiles    []string
+	capturedUpOpts      ports.ComposeUpOptions
+	capturedDownOpts    ports.ComposeDownOptions
 	restartCalled       int
+	downCalled          int
 }
 
-func (f *fakeCompose) Up(_ context.Context, composeFile string, profiles []string) error {
+func (f *fakeCompose) Up(_ context.Context, composeFile string, profiles []string, opts ports.ComposeUpOptions) error {
 	f.capturedComposeFile = composeFile
 	f.capturedProfiles = profiles
+	f.capturedUpOpts = opts
 	return f.upErr
 }
 
 func (f *fakeCompose) Restart(_ context.Context, _ string, _ []string) error {
 	f.restartCalled++
 	return f.restartErr
+}
+
+func (f *fakeCompose) Down(_ context.Context, _ string, opts ports.ComposeDownOptions) (ports.DownResult, error) {
+	f.downCalled++
+	f.capturedDownOpts = opts
+	return f.downResult, f.downErr
 }
 
 func (f *fakeCompose) Version(_ context.Context) (string, error) {
@@ -535,6 +547,37 @@ func TestDevService_ImageCheck_CheckerError_ReturnsError(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "docker daemon not running") {
 		t.Errorf("error should wrap checker error, got: %v", err)
+	}
+}
+
+// TestDevService_Verbose_ForwardsStderrWriter confirms that when Verbose is
+// set on DevOptions, ComposeUpOptions.Stderr is populated on the call to
+// compose.Up so the adapter streams compose output live.
+func TestDevService_Verbose_ForwardsStderrWriter(t *testing.T) {
+	fc := &fakeCompose{}
+	svc := ops.NewDevService(fc)
+	cfg := defaultConfig()
+	var buf bytes.Buffer
+
+	if err := svc.Run(context.Background(), cfg, ops.DevOptions{Verbose: true}, &buf); err != nil {
+		t.Fatalf("Run() unexpected error: %v", err)
+	}
+	if fc.capturedUpOpts.Stderr == nil {
+		t.Error("expected Up() to be called with a non-nil Stderr writer in verbose mode")
+	}
+}
+
+func TestDevService_NotVerbose_UpStderrNil(t *testing.T) {
+	fc := &fakeCompose{}
+	svc := ops.NewDevService(fc)
+	cfg := defaultConfig()
+	var buf bytes.Buffer
+
+	if err := svc.Run(context.Background(), cfg, ops.DevOptions{}, &buf); err != nil {
+		t.Fatalf("Run() unexpected error: %v", err)
+	}
+	if fc.capturedUpOpts.Stderr != nil {
+		t.Error("expected Up() Stderr nil when not verbose")
 	}
 }
 
