@@ -541,6 +541,145 @@ func TestInitCmd_NameFlag_WritesNameToConfig(t *testing.T) {
 	}
 }
 
+// TestInitCmd_NonInteractiveFlag_RegisteredAndDescribed verifies that
+// `--non-interactive` is a registered flag on `vibew init` and that it
+// appears in `--help` output. This is the agent-discoverability guarantee
+// that motivated introducing the flag (issue #1065).
+func TestInitCmd_NonInteractiveFlag_RegisteredAndDescribed(t *testing.T) {
+	root := cmd.NewRootCmd("test")
+	initCmd, _, err := root.Find([]string{"init"})
+	if err != nil {
+		t.Fatalf("Find(init) error: %v", err)
+	}
+	if initCmd.Flags().Lookup("non-interactive") == nil {
+		t.Fatal("expected --non-interactive flag on init command")
+	}
+
+	root.SetArgs([]string{"init", "--help"})
+	var out bytes.Buffer
+	root.SetOut(&out)
+
+	_ = root.Execute()
+	helpOutput := out.String()
+	if !strings.Contains(helpOutput, "--non-interactive") {
+		t.Errorf("--non-interactive flag must appear in help output:\n%s", helpOutput)
+	}
+}
+
+// TestInitCmd_NonInteractiveFlag_SkipsPromptsWithTTY verifies that
+// passing `--non-interactive` bypasses the description prompt even when
+// stdin IS a TTY. Regression guard for #1065.
+//
+// The test sets IsTTY to true and deliberately does NOT wire a stdin
+// pipe: if the flag is ignored, the scaffolder blocks forever reading
+// from an empty os.Stdin (or a real terminal). Success is measured by
+// the init command completing without blocking and PROJECT.md not being
+// created (empty description).
+func TestInitCmd_NonInteractiveFlag_SkipsPromptsWithTTY(t *testing.T) {
+	parent := scaffoldTestDir(t, false)
+	projectDir := filepath.Join(parent, "noninteractiveapp")
+	if err := os.MkdirAll(projectDir, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+
+	origDir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(projectDir); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(origDir) })
+
+	// Override IsTTY to claim interactive — the flag must still win.
+	origIsTTY := cmd.IsTTY
+	cmd.IsTTY = func(*os.File) bool { return true }
+	t.Cleanup(func() { cmd.IsTTY = origIsTTY })
+
+	root := cmd.NewRootCmd("test")
+	root.SetOut(&bytes.Buffer{})
+	root.SetArgs([]string{"init", "--non-interactive"})
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("init --non-interactive failed: %v", err)
+	}
+
+	// vibewarden.yaml should exist — the scaffold ran to completion
+	// without waiting for input.
+	if _, err := os.Stat(filepath.Join(projectDir, "vibewarden.yaml")); err != nil {
+		t.Errorf("expected vibewarden.yaml after non-interactive init: %v", err)
+	}
+	// PROJECT.md must NOT exist — no description was provided and the
+	// prompt was skipped.
+	if _, err := os.Stat(filepath.Join(projectDir, "PROJECT.md")); err == nil {
+		t.Error("PROJECT.md must not exist when --non-interactive skips the describe prompt")
+	}
+}
+
+// TestInitCmd_NonInteractiveFlag_NoTTYStillSkips is a regression guard for
+// the pre-existing no-TTY auto-detection path: even with the flag absent,
+// when IsTTY reports false, no prompt should fire.
+func TestInitCmd_NonInteractiveFlag_NoTTYStillSkips(t *testing.T) {
+	parent := scaffoldTestDir(t, false)
+	projectDir := filepath.Join(parent, "nottyapp")
+	if err := os.MkdirAll(projectDir, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+
+	origDir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(projectDir); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(origDir) })
+
+	// IsTTY already returns false via TestMain; assert init completes.
+	root := cmd.NewRootCmd("test")
+	root.SetOut(&bytes.Buffer{})
+	root.SetArgs([]string{"init"})
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("init (no TTY, no flag) failed: %v", err)
+	}
+
+	if _, err := os.Stat(filepath.Join(projectDir, "vibewarden.yaml")); err != nil {
+		t.Errorf("expected vibewarden.yaml after non-TTY init: %v", err)
+	}
+}
+
+// TestInitCmd_NonInteractiveFlag_NoTTYWithFlag verifies the combination is
+// a no-op — stdin is already non-TTY, so the flag changes nothing.
+func TestInitCmd_NonInteractiveFlag_NoTTYWithFlag(t *testing.T) {
+	parent := scaffoldTestDir(t, false)
+	projectDir := filepath.Join(parent, "nottyflagapp")
+	if err := os.MkdirAll(projectDir, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+
+	origDir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(projectDir); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(origDir) })
+
+	root := cmd.NewRootCmd("test")
+	root.SetOut(&bytes.Buffer{})
+	root.SetArgs([]string{"init", "--non-interactive"})
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("init --non-interactive (no TTY) failed: %v", err)
+	}
+
+	if _, err := os.Stat(filepath.Join(projectDir, "vibewarden.yaml")); err != nil {
+		t.Errorf("expected vibewarden.yaml: %v", err)
+	}
+}
+
 // TestInitCmd_NoNameFlag_NoNameInConfig verifies that when --name is not set,
 // vibewarden.yaml does not contain a top-level name: field.
 //

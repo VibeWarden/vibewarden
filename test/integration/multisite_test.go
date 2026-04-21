@@ -9,7 +9,9 @@
 //
 // Prerequisites:
 //   - Docker daemon running
-//   - vibewarden:local-test image built (make integration does this automatically)
+//   - vibewarden:local-test image built (make integration does this
+//     automatically). The test auto-skips with an actionable message when
+//     the image is not present locally.
 //
 // Run:
 //
@@ -23,6 +25,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -65,6 +68,17 @@ const (
 func TestMultiSite(t *testing.T) {
 	if testing.Short() {
 		t.Skip("skipping integration test in short mode")
+	}
+
+	// Fast-fail probes: skip cleanly when docker is missing or the
+	// sidecar image has not been built. Mirrors bundle_test.go.
+	if _, err := exec.LookPath("docker"); err != nil {
+		t.Skip("docker not on PATH; skipping multi-site integration test")
+	}
+	probeCtx, probeCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer probeCancel()
+	if err := exec.CommandContext(probeCtx, "docker", "image", "inspect", sidecarImage).Run(); err != nil {
+		t.Skipf("%s image not found; run 'make integration' to build it", sidecarImage)
 	}
 
 	ctx := context.Background()

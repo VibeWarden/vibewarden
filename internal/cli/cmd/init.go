@@ -56,6 +56,16 @@ func promptString(w *os.File, r *bufio.Reader, prompt, defaultVal string) (strin
 // This matches `vibew wrap`'s convention: cd into the directory first,
 // then run the command. No subdirectory creation.
 //
+// Interactivity is auto-detected via IsTTY(os.Stdin): when stdin is a
+// terminal the command may prompt for optional fields (e.g. --describe).
+// The --non-interactive flag provides an explicit, agent-discoverable
+// escape hatch: it forces non-interactive behaviour even when stdin IS a
+// TTY. The flag is preferred by AI agents, CI runners, and test harnesses
+// because it is visible in `vibew init --help` output and is unambiguous
+// across shells and PTY allocators (some CI environments allocate a TTY).
+// When stdin is not a TTY the flag is a no-op — non-interactive is already
+// the effective mode.
+//
 // Usage:
 //
 //	mkdir myapp && cd myapp
@@ -63,13 +73,15 @@ func promptString(w *os.File, r *bufio.Reader, prompt, defaultVal string) (strin
 //	vibew init --port 8080
 //	vibew init --name myapp
 //	vibew init --describe "a task management API"
+//	vibew init --non-interactive --port 3000
 func NewInitCmd() *cobra.Command {
 	var (
-		port     int
-		force    bool
-		version  string
-		describe string
-		name     string
+		port           int
+		force          bool
+		version        string
+		describe       string
+		name           string
+		nonInteractive bool
 	)
 
 	cmd := &cobra.Command{
@@ -101,10 +113,11 @@ Examples:
   vibew init --port 8080
   vibew init --name my-custom-project
   vibew init --describe "a task management API"
+  vibew init --non-interactive
   vibew init --force`,
 		Args: cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			interactive := IsTTY(os.Stdin)
+			interactive := !nonInteractive && IsTTY(os.Stdin)
 
 			stdinReader := bufio.NewReader(os.Stdin)
 
@@ -161,6 +174,7 @@ Examples:
 	cmd.Flags().StringVar(&version, "version", "", "VibeWarden version to pin in .vibewarden-version (default: latest)")
 	cmd.Flags().StringVar(&describe, "describe", "", "one-line description of what the project builds; written to PROJECT.md and injected into agent files")
 	cmd.Flags().StringVar(&name, "name", "", "project name for Docker Compose project naming and deploy directories (default: current directory name)")
+	cmd.Flags().BoolVar(&nonInteractive, "non-interactive", false, "skip all interactive prompts and use defaults (implied when stdin is not a TTY)")
 
 	return cmd
 }

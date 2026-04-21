@@ -51,7 +51,7 @@ func TestBundle_CLI_UpAndHealthy(t *testing.T) {
 	if err := os.MkdirAll(projectDir, 0o750); err != nil {
 		t.Fatalf("mkdir project: %v", err)
 	}
-	if err := runCmd(ctx, projectDir, "vibew", "init", "--non-interactive", "--upstream", "3000"); err != nil {
+	if err := runCmd(ctx, projectDir, "vibew", "init", "--non-interactive", "--port", "3000"); err != nil {
 		t.Fatalf("vibew init: %v", err)
 	}
 
