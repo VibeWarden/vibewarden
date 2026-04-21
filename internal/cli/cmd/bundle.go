@@ -16,8 +16,10 @@ import (
 	templateadapter "github.com/vibewarden/vibewarden/internal/adapters/template"
 	bundleapp "github.com/vibewarden/vibewarden/internal/app/bundle"
 	generateapp "github.com/vibewarden/vibewarden/internal/app/generate"
+	opsapp "github.com/vibewarden/vibewarden/internal/app/ops"
 	"github.com/vibewarden/vibewarden/internal/config"
 	configtemplates "github.com/vibewarden/vibewarden/internal/config/templates"
+	"github.com/vibewarden/vibewarden/internal/ports"
 )
 
 // defaultBundleOutputDir is the default target directory for `vibew bundle`.
@@ -39,21 +41,29 @@ const multiSiteErrorMessage = "multi-site bundle is not yet supported (see ADR-0
 // never opens an SSH connection, never calls docker on a remote host, and
 // never touches files outside the output directory.
 //
-// Flags:
-//   - --output <dir>    output directory (default: .vibewarden/bundle)
-//   - --overwrite       overwrite an existing .env inside --output
-//   - --image <tag>     docker image tag to package (default: <project>-app:latest)
-//   - --skip-image      do not package image.tar (for registry-pull users)
+// New flags (ADR-089):
+//   - --build              build the image first using `vibew build --platform <target>`
+//   - --allow-stale        suppress the stale warning; bundle proceeds regardless
+//   - --target-platform    target deployment platform (default: linux/amd64)
+//
+// Exit codes:
+//   - 0: success (including warnings)
+//   - 1: generic / config failure
+//   - 2: image missing from local Docker (use --build or run vibew build)
+//   - 3: docker daemon unreachable
 //
 // Configuration is loaded via config.LoadStrict so unknown keys in
 // vibewarden.yaml or vibewarden.production.yaml abort the command before
 // any files are written. This is the #1053 contract.
 func NewBundleCmd() *cobra.Command {
 	var (
-		outputDir string
-		overwrite bool
-		imageTag  string
-		skipImage bool
+		outputDir      string
+		overwrite      bool
+		imageTag       string
+		skipImage      bool
+		build          bool
+		allowStale     bool
+		targetPlatform string
 	)
 
 	cmd := &cobra.Command{
@@ -67,8 +77,19 @@ vibewarden.yaml, a sample.env scaffold, a preserved-across-runs .env, a
 reference deploy.sh script, an optional image.tar produced via docker save,
 and a README.md describing the three-step manual deploy.
 
+Before writing any files, bundle inspects the target image and prints a
+health block showing the tag, digest, architecture, freshness, and any
+warnings. The bundle aborts if the image is missing — use --build to build
+it automatically, or run ` + "`vibew build`" + ` first.
+
 No SSH connection is opened, no remote docker call is made, and nothing
 outside --output is modified. The command is purely local.
+
+Exit codes:
+  0  success (warnings do not change the exit code)
+  1  generic failure (config invalid, I/O error, etc.)
+  2  image missing — build it with --build or vibew build
+  3  docker daemon unreachable
 
 Output layout:
   .vibewarden/bundle/
@@ -83,12 +104,28 @@ Output layout:
 
 Examples:
   vibew bundle
+  vibew bundle --build
+  vibew bundle --build --target-platform linux/arm64
+  vibew bundle --allow-stale
   vibew bundle --output build/deploy
   vibew bundle --skip-image
   vibew bundle --image ghcr.io/acme/myapp:v1.2.3
   vibew bundle --overwrite`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			return runBundle(cmd, outputDir, imageTag, overwrite, skipImage)
+			code, err := runBundle(cmd, outputDir, imageTag, targetPlatform, overwrite, skipImage, build, allowStale)
+			if err != nil {
+				// Set the process exit code for semantic exit codes (2, 3) while
+				// still surfacing the error message via cobra.
+				if code == 2 || code == 3 {
+					// cobra prints the error; we need to signal exit code.
+					// Use os.Exit after printing to avoid cobra's default exit-1 swallowing
+					// our carefully chosen code. We print the error ourselves first.
+					fmt.Fprintln(cmd.ErrOrStderr(), "ERROR:", err)
+					os.Exit(code) //nolint:gocritic // intentional: semantic exit code required by ADR-089
+				}
+				return err
+			}
+			return nil
 		},
 	}
 
@@ -96,15 +133,25 @@ Examples:
 	cmd.Flags().BoolVar(&overwrite, "overwrite", false, "overwrite an existing .env inside the output directory")
 	cmd.Flags().StringVar(&imageTag, "image", "", "docker image tag to package (default: <project>-app:latest)")
 	cmd.Flags().BoolVar(&skipImage, "skip-image", false, "do not package image.tar (for users pulling from a registry)")
+	cmd.Flags().BoolVar(&build, "build", false, "build the app image before bundling (use when: image is missing or stale)")
+	cmd.Flags().BoolVar(&allowStale, "allow-stale", false, "suppress the stale-image warning (bundle proceeds regardless of freshness)")
+	cmd.Flags().StringVar(&targetPlatform, "target-platform", "linux/amd64", "expected deployment platform, e.g. linux/arm64 (use when: your VPS differs from your laptop arch)")
 
 	return cmd
 }
 
 // runBundle executes the "vibew bundle" use case. It is extracted from RunE
 // so tests can drive it directly with a fake cobra.Command.
-func runBundle(cmd *cobra.Command, outputDir, imageTag string, overwrite, skipImage bool) error {
+//
+// Returns (exitCode, error). Exit codes:
+//
+//	0: success
+//	1: generic failure
+//	2: image missing (ErrImageMissing)
+//	3: docker daemon unreachable (ErrDockerUnavailable)
+func runBundle(cmd *cobra.Command, outputDir, imageTag, targetPlatform string, overwrite, skipImage, build, allowStale bool) (int, error) {
 	if err := requireScaffolding(); err != nil {
-		return err
+		return 1, err
 	}
 
 	if outputDir == "" {
@@ -113,7 +160,7 @@ func runBundle(cmd *cobra.Command, outputDir, imageTag string, overwrite, skipIm
 
 	cfg, err := loadAndResolve(cmd.Context(), "")
 	if err != nil {
-		return err
+		return 1, err
 	}
 
 	// Resolve the config path to an absolute path so the merge and the
@@ -131,24 +178,42 @@ func runBundle(cmd *cobra.Command, outputDir, imageTag string, overwrite, skipIm
 		if errors.As(err, &unknown) {
 			fmt.Fprintf(cmd.ErrOrStderr(), "Configuration invalid: %s\n", unknown.Error())
 		}
-		return fmt.Errorf("validating config: %w", err)
+		return 1, fmt.Errorf("validating config: %w", err)
 	}
 
 	// Multi-site projects are deferred to a follow-up — see ADR-085.
 	// Local detection: presence of a sites/ directory next to the config.
 	if isMultiSiteProject(absConfig) {
-		return fmt.Errorf("%s", multiSiteErrorMessage)
+		return 1, fmt.Errorf("%s", multiSiteErrorMessage)
 	}
 
 	projectName := deriveProjectName(cfg, absConfig)
 	if imageTag == "" {
 		imageTag = cfg.ComposeProjectName() + "-app:latest"
 	}
+	if targetPlatform == "" {
+		targetPlatform = "linux/amd64"
+	}
+
+	// --build: run `vibew build --platform <target>` before inspecting or
+	// packaging. Failure aborts the bundle (no partial output written yet).
+	if build {
+		builder := opsadapter.NewBuildAdapter()
+		buildSvc := opsapp.NewBuildService(builder).
+			WithShellProber(opsadapter.NewShellProberAdapter())
+		buildOpts := opsapp.BuildOptions{
+			Platform:   targetPlatform,
+			ConfigPath: absConfig,
+		}
+		if err := buildSvc.Run(cmd.Context(), cfg, buildOpts, cmd.OutOrStdout()); err != nil {
+			return 1, fmt.Errorf("building image: %w", err)
+		}
+	}
 
 	// Ensure the output directory exists before we start writing into it.
 	bfs := bundlefs.New()
 	if err := bfs.MkdirAll(outputDir, 0o750); err != nil {
-		return fmt.Errorf("creating output directory: %w", err)
+		return 1, fmt.Errorf("creating output directory: %w", err)
 	}
 
 	renderer := templateadapter.NewRenderer(configtemplates.FS)
@@ -160,7 +225,13 @@ func runBundle(cmd *cobra.Command, outputDir, imageTag string, overwrite, skipIm
 
 	svc := bundleapp.NewService(nil, generator).WithBundleFS(bfs)
 	if !skipImage {
-		svc = svc.WithImageSaver(opsadapter.NewImageExportAdapter())
+		// Wire image inspection and saving only when we will actually package the
+		// image. When --skip-image is set the user is pulling from a registry and
+		// inspecting a local (possibly absent) image would abort unnecessarily.
+		svc = svc.
+			WithImageInspector(opsadapter.NewImageInspectAdapter()).
+			WithStalenessWalker(bundleapp.NewFileSystemStalenessWalker(filepath.Dir(absConfig))).
+			WithImageSaver(opsadapter.NewImageExportAdapter())
 	}
 
 	absOut, err := filepath.Abs(outputDir)
@@ -168,7 +239,7 @@ func runBundle(cmd *cobra.Command, outputDir, imageTag string, overwrite, skipIm
 		absOut = outputDir
 	}
 
-	if err := svc.Bundle(cmd.Context(), bundleapp.BundleOptions{
+	bundleErr := svc.Bundle(cmd.Context(), bundleapp.BundleOptions{
 		Config:         cfg,
 		ConfigPath:     absConfig,
 		ProdConfigPath: prodConfigPath,
@@ -179,8 +250,19 @@ func runBundle(cmd *cobra.Command, outputDir, imageTag string, overwrite, skipIm
 		Overwrite:      overwrite,
 		SkipImage:      skipImage,
 		ImageTag:       imageTag,
-	}); err != nil {
-		return fmt.Errorf("creating bundle: %w", err)
+		TargetPlatform: targetPlatform,
+		AllowStale:     allowStale,
+		Out:            cmd.OutOrStdout(),
+	})
+	if bundleErr != nil {
+		// Map sentinel errors to their designated exit codes (ADR-089 §Exit codes).
+		if errors.Is(bundleErr, bundleapp.ErrImageMissing) {
+			return 2, bundleErr
+		}
+		if errors.Is(bundleErr, ports.ErrDockerUnavailable) {
+			return 3, bundleErr
+		}
+		return 1, fmt.Errorf("creating bundle: %w", bundleErr)
 	}
 
 	// Print a listing so users (and AI agents) can see exactly what was
@@ -191,14 +273,14 @@ func runBundle(cmd *cobra.Command, outputDir, imageTag string, overwrite, skipIm
 	fmt.Fprintln(out, "Contents:")
 	files, listErr := bundleListing(absOut)
 	if listErr != nil {
-		return fmt.Errorf("listing bundle contents: %w", listErr)
+		return 1, fmt.Errorf("listing bundle contents: %w", listErr)
 	}
 	for _, f := range files {
 		fmt.Fprintf(out, "  %s\n", f)
 	}
 	fmt.Fprintln(out, "")
 	fmt.Fprintf(out, "Next: cd %s && ./deploy.sh user@host  (runs locally — scps bundle, loads image, brings stack up, probes /_vibewarden/health)\n", absOut)
-	return nil
+	return 0, nil
 }
 
 // bundleListing walks dir and returns a sorted slice of relative file paths
