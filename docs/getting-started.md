@@ -329,6 +329,22 @@ recreate:
 
 ---
 
+## Stopping the stack
+
+Stop all containers while keeping data volumes (Kratos DB, secrets, etc.):
+
+```bash
+vibew down
+```
+
+To also remove named volumes and destroy persisted state, pass `-v`:
+
+```bash
+vibew down -v
+```
+
+---
+
 ## What just happened
 
 ### The stack

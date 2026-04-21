@@ -12,8 +12,26 @@ This initial entry was written by hand to summarise the work leading up to v0.1.
 
 ## [Unreleased]
 
+### Added
+
+- **`vibew down`** (#1089) — stop the local dev stack. Runs `docker compose
+  down` in the project's `.vibewarden/` directory, preserving data volumes by
+  default. Pass `-v`/`--volumes` to also drop named volumes (destroys Kratos
+  DB state).
+- **`vibew dev --verbose`** (#1075) — streams docker compose output during
+  startup so the user can see image pulls and container boot messages in real
+  time instead of a silent wait.
+
 ### Fixed
 
+- **`vibew dev` no longer silently exits 0** (#1088). After a successful
+  startup the command now prints the dev URL, a logs hint
+  (`docker compose -f .vibewarden/compose.yaml logs -f`), and a stop hint
+  (`vibew down`) so users know the stack is running and how to interact with
+  it.
+- **`vibew dev` surfaces docker compose stderr on failure** (#1075). Previous
+  releases swallowed compose errors and returned a bare exit code; failures
+  now include the full compose stderr in the error message.
 - `vibew add tls` no longer silently regenerates `vibewarden.production.yaml`, wiping commented-out stanzas (WAF block mode, auth, headers). Comments/ordering/whitespace preserved via AST edit. (#1086)
 
 ### Changed

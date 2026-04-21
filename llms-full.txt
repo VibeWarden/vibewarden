@@ -1296,6 +1296,8 @@ VibeWarden is operated via the `vibew` CLI. Below is the complete command list.
 | `vibew generate` | Regenerate docker-compose.yml from config |
 | `vibew build` | Build the Docker image for the app |
 | `vibew dev` | Start local dev environment |
+| `vibew dev --verbose` | Start local dev environment and stream docker compose output during startup |
+| `vibew down` | Stop the local dev stack (preserves data volumes; pass `-v` to also remove volumes) |
 | `vibew restart` | Restart containers without rebuilding |
 | `vibew bundle` | Produce a self-contained Docker Compose deploy bundle under `.vibewarden/bundle/` (ship with scp + docker compose up -d) |
 | `vibew status` | Show health of all components |
