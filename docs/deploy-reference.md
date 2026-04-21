@@ -15,14 +15,14 @@ is touched.
 
 | Before (removed) | After (supported) |
 |------------------|-------------------|
-| `vibew deploy --target ssh://user@host --config vibewarden.prod.yaml` | `vibew bundle` + `scp -r .vibewarden/bundle/ user@host:~/` + `ssh user@host 'cd bundle && bash deploy.sh'` |
-| `vibew deploy status --target ssh://user@host` | `ssh user@host 'cd ~/bundle && docker compose ps'` |
-| `vibew deploy logs --target ssh://user@host --lines 50` | `ssh user@host 'cd ~/bundle && docker compose logs --tail=50'` |
+| `vibew deploy --target ssh://user@host --config vibewarden.prod.yaml` | `vibew bundle` + `cd .vibewarden/bundle && ./deploy.sh user@host` |
+| `vibew deploy status --target ssh://user@host` | `ssh user@host 'cd ~/vibewarden-bundle && docker compose ps'` |
+| `vibew deploy logs --target ssh://user@host --lines 50` | `ssh user@host 'cd ~/vibewarden-bundle && docker compose logs --tail=50'` |
 | `vibew deploy --dry-run` | `vibew bundle` (bundle is always written locally; inspect `.vibewarden/bundle/`) |
 
 ---
 
-## Migration — three steps
+## Migration — two steps
 
 See [Bundle to VPS](guide/bundle-to-vps.md) for the end-to-end walkthrough.
 In short:
@@ -31,12 +31,14 @@ In short:
 # 1. Build the deployment artifact locally.
 vibew bundle --output .vibewarden/bundle/
 
-# 2. Copy the bundle to the remote host.
-scp -r .vibewarden/bundle/ user@host:~/
-
-# 3. Start the stack on the remote host.
-ssh user@host 'cd ~/bundle && bash deploy.sh'
+# 2. Ship it to the VPS (scp + docker load + compose up + healthcheck).
+cd .vibewarden/bundle && ./deploy.sh user@host
 ```
+
+`deploy.sh` runs **locally** — it opens a single `scp` + two `ssh`
+sessions, probes `/_vibewarden/health` on the remote, and dumps the last
+50 log lines to stderr on failure. Pass `user@host:/remote/path` to
+override the default remote path (`~/vibewarden-bundle`).
 
 The bundle is self-contained and deterministic: same inputs, same bytes.
 See [`vibew bundle`](../README.md#bundle) for the flag reference.

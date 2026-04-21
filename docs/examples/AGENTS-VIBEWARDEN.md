@@ -173,22 +173,26 @@ vibew build --platform linux/amd64
 # 2. Produce a self-contained deploy bundle locally.
 vibew bundle
 
-# 3. Copy the bundle to the VPS.
-scp -r .vibewarden/bundle/ user@host:~/
-
-# 4. Start the stack on the remote.
-ssh user@host 'cd ~/bundle && bash deploy.sh'
+# 3. Ship it to the VPS (scp + docker load + compose up + healthcheck).
+cd .vibewarden/bundle && ./deploy.sh user@host
 ```
 
-`vibew bundle` is the canonical path to a VPS. It is deterministic
-(same inputs, same bytes), never opens an SSH connection, and never
-touches files outside the output directory.
+`deploy.sh` runs **locally** on the workstation. It `scp`s the bundle
+directory, loads the image (or runs `docker compose pull` when the
+bundle was built with `--skip-image`), runs `docker compose up -d`, and
+probes `/_vibewarden/health` on the remote. Pass
+`user@host:/remote/path` to override the default remote path
+(`~/vibewarden-bundle`).
 
-There is no all-in-one remote-deploy command. The user owns the transport
-(scp, rsync, CI artifact) and the remote `docker compose up -d`. The
-removed `vibew deploy` command previously wrapped all four steps over
-SSH in one command. It was retired in ADR-086; running it today prints
-cobra's `unknown command "deploy"` error.
+`vibew bundle` is deterministic (same inputs, same bytes), never opens
+an SSH connection, and never touches files outside the output
+directory. Only `deploy.sh` talks to the remote — and the script is
+plain bash you can inspect and replace.
+
+There is no all-in-one remote-deploy command baked into the vibew
+binary. The removed `vibew deploy` command previously wrapped all of
+this over SSH from Go. It was retired in ADR-086; running it today
+prints cobra's `unknown command "deploy"` error.
 
 Use `app.environment` in vibewarden.yaml for runtime configuration:
 ```yaml
