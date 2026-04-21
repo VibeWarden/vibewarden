@@ -59,7 +59,7 @@ for the breaking-change landing page.
   `vibewarden_get_deploy_logs` are gone. Use the `vibew bundle` CLI directly
   (see [`docs/guide/bundle-to-vps.md`](docs/guide/bundle-to-vps.md)); an MCP
   tool wrapping `vibew bundle` is tracked in #1068.
-- **`vibew validate` / `vibew deploy` reject unknown keys** (#1053, #1056,
+- **`vibew validate` / `vibew bundle` reject unknown keys** (#1053, #1056,
   [ADR-082](decisions/adr-082-strict-config-merge-unknown-keys-fail-loudly.md)).
   Typos or removed keys in `vibewarden.yaml` or `vibewarden.production.yaml`
   (e.g. `tls.dmain: example.com`) now fail loudly with an error naming the
