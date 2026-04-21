@@ -136,6 +136,19 @@ type Service struct {
 	generator     ports.ConfigGenerator
 	imageExporter ports.ImageExporter
 
+	// bundleFS is the filesystem adapter used by the "vibew bundle" extras
+	// pipeline (sample.env, .env, deploy.sh, README.md). When nil, the
+	// extras pipeline falls back to the real OS filesystem via the
+	// default writeFile / os.Stat helpers so existing callers of
+	// Service.Bundle (notably vibew deploy --dry-run) keep working unchanged.
+	bundleFS ports.BundleFS
+
+	// imageSaver saves the app image to image.tar during vibew bundle.
+	// When nil, the extras pipeline treats --skip-image as always-on for
+	// that single invocation, which matches the behaviour requested by
+	// callers that do not wire an ImageSaver (e.g. vibew deploy --dry-run).
+	imageSaver ports.ImageSaver
+
 	// localArch overrides runtime.GOARCH for testing. When empty, the real
 	// runtime.GOARCH is used. Set via WithLocalArch.
 	localArch string
@@ -160,6 +173,23 @@ func NewService(
 // prefix (bare name like "myapp:latest").
 func (s *Service) WithImageExporter(exporter ports.ImageExporter) *Service {
 	s.imageExporter = exporter
+	return s
+}
+
+// WithBundleFS sets the filesystem adapter used by the vibew bundle extras
+// pipeline and returns the Service for chaining. Production callers pass a
+// bundlefs.OSFS; tests pass an in-memory fake.
+func (s *Service) WithBundleFS(bfs ports.BundleFS) *Service {
+	s.bundleFS = bfs
+	return s
+}
+
+// WithImageSaver sets the ImageSaver used by the vibew bundle extras
+// pipeline and returns the Service for chaining. When not set, image.tar is
+// never produced (equivalent to --skip-image). Production callers pass an
+// opsadapter.ImageExportAdapter; tests pass a fake.
+func (s *Service) WithImageSaver(saver ports.ImageSaver) *Service {
+	s.imageSaver = saver
 	return s
 }
 

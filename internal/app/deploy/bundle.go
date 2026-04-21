@@ -49,6 +49,24 @@ type BundleOptions struct {
 	// Defaults to "production" when empty. The output directory includes the
 	// environment name: .vibewarden/deploy/<env>/.
 	Env string
+
+	// Overwrite, when true, replaces an existing .env in the output
+	// directory. When false (the default), an existing .env is preserved so
+	// user edits survive re-running vibew bundle. This flag is honoured only
+	// by the extras pipeline (bundle_extras.go) — it has no effect on the
+	// deterministic files (docker-compose.yml, vibewarden.yaml, .credentials).
+	Overwrite bool
+
+	// SkipImage, when true, omits image.tar from the bundle. This is the
+	// recommended mode for users who push their image via a container
+	// registry rather than docker save / docker load.
+	SkipImage bool
+
+	// ImageTag is the Docker image reference passed to docker save when
+	// producing image.tar. When empty, the bundle service defers to
+	// cfg.ComposeProjectName()+"-app:latest". Exported so the CLI layer can
+	// override the default without the service inventing names.
+	ImageTag string
 }
 
 // defaultBundleDir is the default output directory for deploy bundles.
@@ -81,7 +99,42 @@ func (s *Service) Bundle(ctx context.Context, opts BundleOptions) error {
 	if opts.MultiSite {
 		return s.bundleMultiSiteSite(ctx, opts.Config, opts.ConfigPath, opts.ProdConfigPath, opts.ProjectName, outDir)
 	}
-	return s.bundleSingleSite(ctx, opts.Config, opts.ConfigPath, opts.ProdConfigPath, opts.ProjectName, outDir)
+
+	// Snapshot the pre-existing .env (if any) BEFORE the generator runs.
+	// The generator unconditionally writes a fresh .env with randomised
+	// credentials every invocation; without this snapshot, re-running
+	// `vibew bundle` would destroy user edits even though the idempotency
+	// contract says the .env is preserved across runs.
+	priorDotEnv, priorExisted := s.snapshotPriorDotEnv(outDir)
+
+	if err := s.bundleSingleSite(ctx, opts.Config, opts.ConfigPath, opts.ProdConfigPath, opts.ProjectName, outDir); err != nil {
+		return err
+	}
+	// Bundle extras (sample.env, .env, deploy.sh, README.md, image.tar) are
+	// additive. They run only after the base generator has succeeded so a
+	// failing compose render does not leave half a bundle on disk with a
+	// fresh .env. See bundle_extras.go.
+	return s.writeBundleExtras(ctx, opts, outDir, priorDotEnv, priorExisted)
+}
+
+// snapshotPriorDotEnv reads the existing .env in outDir so the extras
+// pipeline can restore it after the generator clobbers the file with fresh
+// random credentials. Returns (nil, false) when the file is absent or when
+// no BundleFS is wired (in which case the extras pipeline is a no-op).
+func (s *Service) snapshotPriorDotEnv(outDir string) ([]byte, bool) {
+	if s.bundleFS == nil {
+		return nil, false
+	}
+	path := filepath.Join(outDir, fileDotEnv)
+	exists, err := s.bundleFS.Exists(path)
+	if err != nil || !exists {
+		return nil, false
+	}
+	data, err := s.bundleFS.ReadFile(path)
+	if err != nil {
+		return nil, false
+	}
+	return data, true
 }
 
 // BundleSidecar produces the sidecar compose and global.yaml under
