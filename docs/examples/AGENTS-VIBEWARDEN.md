@@ -183,7 +183,10 @@ ssh user@host 'cd ~/bundle && bash deploy.sh'
 touches files outside the output directory.
 
 There is no all-in-one remote-deploy command. The user owns the transport
-(scp, rsync, CI artifact) and the remote `docker compose up -d`.
+(scp, rsync, CI artifact) and the remote `docker compose up -d`. The
+removed `vibew deploy` command previously wrapped all four steps over
+SSH in one command. It was retired in ADR-086; running it today prints
+cobra's `unknown command "deploy"` error.
 
 Use `app.environment` in vibewarden.yaml for runtime configuration:
 ```yaml

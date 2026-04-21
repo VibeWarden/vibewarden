@@ -18,13 +18,15 @@ This initial entry was written by hand to summarise the work leading up to v0.1.
   MCP tools `vibewarden_prepare_deploy`, `vibewarden_verify_deploy`, `vibewarden_get_deploy_logs` removed.
   Use the `vibew bundle` CLI directly (see [`docs/guide/bundle-to-vps.md`](docs/guide/bundle-to-vps.md));
   MCP tool for bundle tracked in #1068 — not shipped in this PR.
-- **`vibew deploy` removed** (#1051, [ADR-086](decisions/adr-086-sunset-vibew-deploy.md)).
+- **`vibew deploy` removed** (#1051, #1063,
+  [ADR-086](decisions/adr-086-sunset-vibew-deploy.md) + amendment).
   The remote SSH orchestration command — and its subcommands `status` and
   `logs` — has been retired after four retros converged on deploy as the
   single largest source of user friction (16 bugs across 3 retro cycles).
-  Running `vibew deploy` today prints a deprecation message to stderr and
-  exits with code `2`. The purely-local `vibew bundle` pipeline shipped in
-  #1044 is now the canonical path to a VPS.
+  `vibew deploy` is no longer a registered command; invoking it prints
+  cobra's default `unknown command "deploy"` error and exits non-zero.
+  The purely-local `vibew bundle` pipeline shipped in #1044 is now the
+  canonical path to a VPS.
 
   Migration:
 
@@ -36,8 +38,10 @@ This initial entry was written by hand to summarise the work leading up to v0.1.
 
   See [`docs/guide/bundle-to-vps.md`](docs/guide/bundle-to-vps.md) for the
   end-to-end walkthrough and [`docs/deploy-reference.md`](docs/deploy-reference.md)
-  for the breaking-change landing page. The deploy stub ships for exactly
-  one release and is removed in the release after that (tracked by #1063).
+  for the breaking-change landing page. ADR-086 originally staged the
+  removal across two releases (sunset + one-release stub); the amendment
+  recorded in #1063 collapses the stub into this same release so the
+  "deploy is gone" messaging matches runtime behaviour.
 - **`vibew validate` / `vibew deploy` reject unknown keys** (#1053, ADR-082).
   Typos or removed keys in `vibewarden.yaml` or `vibewarden.production.yaml`
   (e.g. `tls.dmain: example.com`) now fail loudly with an error naming the

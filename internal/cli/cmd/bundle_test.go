@@ -136,7 +136,8 @@ func TestBundleCmd_MultiSite_HardErrors(t *testing.T) {
 		t.Errorf("error should reference ADR-085 for tracking, got: %v", err)
 	}
 	// vibew deploy has been removed (ADR-086): the multi-site branch must
-	// NOT direct users to a command that now exits 2.
+	// NOT direct users to a command that no longer exists (cobra now prints
+	// `unknown command "deploy"`).
 	if strings.Contains(err.Error(), "vibew deploy") {
 		t.Errorf("error must not reference the removed `vibew deploy` command, got: %v", err)
 	}
