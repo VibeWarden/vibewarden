@@ -439,39 +439,6 @@ Save the master key somewhere safe -- if you lose it, your secrets are unrecover
 
 ---
 
-### Remote TLS certificate expiring or invalid
-
-**Symptom**
-
-```
-[WARN]  Remote TLS cert  certificate expires in 12 days
-[FAIL]  Remote TLS cert  certificate expired 2 days ago
-```
-
-**Cause**
-
-The TLS certificate on the remote host is nearing expiry or has already expired.
-If you are using `tls.provider: letsencrypt`, the ACME renewal may have failed.
-
-**Fix**
-
-Inspect the certificate details:
-
-```bash
-vibew tls status --domain example.com --target ssh://user@host
-```
-
-If renewal failed, check the sidecar logs for ACME errors:
-
-```bash
-ssh user@host 'cd ~/bundle && docker compose logs vibewarden --tail=100'
-```
-
-Common causes: DNS not pointing to the server, port 80 blocked (HTTP-01 challenge
-requires it), or rate limits exhausted (switch to ZeroSSL via `tls.acme_ca`).
-
----
-
 ## Exit codes
 
 | Code | Meaning |
