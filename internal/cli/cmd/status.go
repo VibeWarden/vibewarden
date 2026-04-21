@@ -8,6 +8,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	caddyadapter "github.com/vibewarden/vibewarden/internal/adapters/caddy"
 	opsadapter "github.com/vibewarden/vibewarden/internal/adapters/ops"
 	opsapp "github.com/vibewarden/vibewarden/internal/app/ops"
 	"github.com/vibewarden/vibewarden/internal/config"
@@ -44,9 +45,24 @@ Examples:
 			httpClient := newStatusHTTPClient(cfg)
 			checker := opsadapter.NewHTTPHealthChecker(httpClient)
 			compose := opsadapter.NewComposeAdapter()
+
+			proxyHost := cfg.Server.Host
+			if proxyHost == "" {
+				proxyHost = "127.0.0.1"
+			}
+			proxyPort := cfg.Server.Port
+			if proxyPort == 0 {
+				proxyPort = 8443
+			}
+			tlsResolver := opsapp.NewChainResolver(
+				caddyadapter.NewInProcessResolver(cfg),
+				caddyadapter.NewHandshakeResolver(cfg, proxyHost, proxyPort),
+			)
+
 			svc := opsapp.NewStatusService(checker).
 				WithCompose(compose).
-				WithLogs(compose)
+				WithLogs(compose).
+				WithTLSStateResolver(tlsResolver)
 
 			return svc.Run(cmd.Context(), cfg, cmd.OutOrStdout())
 		},

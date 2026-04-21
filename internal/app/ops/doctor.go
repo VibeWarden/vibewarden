@@ -2,7 +2,6 @@ package ops
 
 import (
 	"context"
-	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -14,6 +13,7 @@ import (
 	"github.com/fatih/color"
 
 	"github.com/vibewarden/vibewarden/internal/config"
+	tlsdomain "github.com/vibewarden/vibewarden/internal/domain/tls"
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
 
@@ -53,6 +53,7 @@ type DoctorService struct {
 	healthChecker ports.HealthChecker
 	imageChecker  ports.DockerImageChecker
 	ownerProbe    ports.PortOwnerProbe
+	tlsState      ports.TLSStateResolver // optional; nil falls back to handshake-on-demand
 }
 
 // NewDoctorService creates a new DoctorService.
@@ -81,6 +82,16 @@ func (s *DoctorService) WithImageChecker(checker ports.DockerImageChecker) *Doct
 func (s *DoctorService) WithPortOwnerProbe(probe ports.PortOwnerProbe) *DoctorService {
 	cp := *s
 	cp.ownerProbe = probe
+	return &cp
+}
+
+// WithTLSStateResolver returns a copy of the DoctorService with the given
+// resolver wired for the TLS check. When nil, the doctor builds a
+// HandshakeResolver on the fly per invocation — this preserves behaviour
+// for existing tests that construct the service without a resolver.
+func (s *DoctorService) WithTLSStateResolver(r ports.TLSStateResolver) *DoctorService {
+	cp := *s
+	cp.tlsState = r
 	return &cp
 }
 
@@ -163,7 +174,7 @@ func (s *DoctorService) runChecks(ctx context.Context, cfg *config.Config, opts 
 
 	// --- Layer 2: Local Runtime ---
 	results = append(results, withSection(s.checkUpstreamReachable(ctx, cfg), sectionLocalRuntime))
-	results = append(results, withSection(checkTLSCertValid(ctx, cfg, proxyHost, proxyPort), sectionLocalRuntime))
+	results = append(results, withSection(s.checkTLSCertValid(ctx, cfg, proxyHost, proxyPort), sectionLocalRuntime))
 
 	return results
 }
@@ -374,17 +385,26 @@ func (s *DoctorService) checkUpstreamReachable(ctx context.Context, cfg *config.
 	}
 }
 
-// checkTLSCertValid inspects the local self-signed TLS certificate by doing
-// a live TLS handshake against the running sidecar. When the sidecar is not
-// reachable the check degrades to WARN with a "start vibew dev" hint.
+// checkTLSCertValid renders the "TLS certificate" doctor check by
+// consuming a resolved TLSState. When a resolver is wired on the
+// DoctorService it is used directly; otherwise the service falls back to
+// its built-in handshake path (preserved for tests and for composition
+// roots that pre-date #1090). See PM spec #1090 / #1078 and ADR-084.
 //
-// Self-signed cert storage is owned by the embedded Caddy instance
-// (internal/adapters/caddy) and the only reliable way to see which cert the
-// sidecar is actually serving is to handshake with it — which is exactly
-// what we do here. See ADR-084 for the rationale and the rejected
-// filesystem-scan approach.
-func checkTLSCertValid(ctx context.Context, cfg *config.Config, host string, port int) CheckResult {
-	if cfg.TLS.Provider != "self-signed" {
+// The renderer in doctor_tls_render.go is the single source of truth for
+// severity and detail mapping. This method only handles the resolver
+// selection and the legacy "provider != self-signed" short-circuit.
+func (s *DoctorService) checkTLSCertValid(ctx context.Context, cfg *config.Config, host string, port int) CheckResult {
+	// Disabled short-circuit — renderer produces an OK result.
+	if cfg != nil && !cfg.TLS.Enabled {
+		return renderTLSDoctorCheck(tlsdomain.NewDisabled())
+	}
+
+	// Legacy behaviour for non-self-signed providers without a resolver:
+	// skip the check. (External/ACME providers need an in-process
+	// resolver to observe cert state; the composition root wires that
+	// today, but older callers may not.)
+	if s.tlsState == nil && cfg != nil && cfg.TLS.Provider != "self-signed" {
 		return CheckResult{
 			Name:     "TLS certificate",
 			Severity: SeverityOK,
@@ -392,74 +412,21 @@ func checkTLSCertValid(ctx context.Context, cfg *config.Config, host string, por
 		}
 	}
 
-	handshakeCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
-	defer cancel()
-
-	dialHost := host
-	if dialHost == "0.0.0.0" || dialHost == "::" {
-		dialHost = "127.0.0.1"
+	resolver := s.tlsState
+	if resolver == nil {
+		resolver = newInlineHandshakeResolver(cfg, host, port)
 	}
-	addr := fmt.Sprintf("%s:%d", dialHost, port)
 
-	dialer := tls.Dialer{
-		Config: &tls.Config{
-			// Self-signed cert in dev is expected — we only need to
-			// inspect the leaf, not validate trust.
-			InsecureSkipVerify: true, //nolint:gosec
-		},
-	}
-	conn, err := dialer.DialContext(handshakeCtx, "tcp", addr)
+	state, err := resolver.Resolve(ctx)
 	if err != nil {
 		return CheckResult{
 			Name:     "TLS certificate",
 			Severity: SeverityWarn,
-			Detail:   fmt.Sprintf("sidecar not reachable on %s — start 'vibew dev'", addr),
-		}
-	}
-	defer conn.Close() //nolint:errcheck
-
-	tlsConn, ok := conn.(*tls.Conn)
-	if !ok {
-		return CheckResult{
-			Name:     "TLS certificate",
-			Severity: SeverityWarn,
-			Detail:   fmt.Sprintf("unexpected connection type from %s", addr),
+			Detail:   fmt.Sprintf("resolver error: %v", err),
 		}
 	}
 
-	certs := tlsConn.ConnectionState().PeerCertificates
-	if len(certs) == 0 {
-		return CheckResult{
-			Name:     "TLS certificate",
-			Severity: SeverityWarn,
-			Detail:   fmt.Sprintf("no certificate presented by %s", addr),
-		}
-	}
-
-	leaf := certs[0]
-	now := time.Now()
-	if now.After(leaf.NotAfter) {
-		return CheckResult{
-			Name:     "TLS certificate",
-			Severity: SeverityFail,
-			Detail:   fmt.Sprintf("expired on %s", leaf.NotAfter.Format(time.DateOnly)),
-		}
-	}
-
-	daysUntilExpiry := int(time.Until(leaf.NotAfter).Hours() / 24)
-	if daysUntilExpiry <= localTLSCertExpiryWarnDays {
-		return CheckResult{
-			Name:     "TLS certificate",
-			Severity: SeverityWarn,
-			Detail:   fmt.Sprintf("expires in %d day(s) on %s", daysUntilExpiry, leaf.NotAfter.Format(time.DateOnly)),
-		}
-	}
-
-	return CheckResult{
-		Name:     "TLS certificate",
-		Severity: SeverityOK,
-		Detail:   fmt.Sprintf("valid until %s (%d days)", leaf.NotAfter.Format(time.DateOnly), daysUntilExpiry),
-	}
+	return renderTLSDoctorCheck(state)
 }
 
 // checkACMEEmail verifies that an ACME account email is configured when the
