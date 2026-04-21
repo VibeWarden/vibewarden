@@ -1,4 +1,4 @@
-package deploy
+package bundle
 
 // defaultHealthPort is the port used when the config does not specify one.
 // It is consumed by the bundle template when rendering the generated

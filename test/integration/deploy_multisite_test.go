@@ -32,7 +32,7 @@ import (
 	"github.com/testcontainers/testcontainers-go/wait"
 	"golang.org/x/crypto/ssh"
 
-	deployapp "github.com/vibewarden/vibewarden/internal/app/deploy"
+	bundleapp "github.com/vibewarden/vibewarden/internal/app/bundle"
 	"github.com/vibewarden/vibewarden/internal/config"
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
@@ -142,7 +142,7 @@ func TestDeployMultiSite(t *testing.T) {
 		t.Fatalf("pulling http-echo image: %v", pullErr)
 	}
 
-	svc := deployapp.NewService(executor, &noopGenerator{})
+	svc := bundleapp.NewService(executor, &noopGenerator{})
 
 	// -------------------------------------------------------------------
 	// Prepare vibewarden.yaml files in temp directories.
@@ -161,7 +161,7 @@ func TestDeployMultiSite(t *testing.T) {
 	// -------------------------------------------------------------------
 	t.Run("fresh_install", func(t *testing.T) {
 		var buf bytes.Buffer
-		bootstrapErr := svc.BootstrapSidecar(ctx, app1Config, deployapp.RunOptions{
+		bootstrapErr := svc.BootstrapSidecar(ctx, app1Config, bundleapp.RunOptions{
 			ConfigPath:  filepath.Join(app1Dir, "vibewarden.yaml"),
 			ProjectName: testPrefix + "app1",
 			Out:         &buf,
@@ -171,7 +171,7 @@ func TestDeployMultiSite(t *testing.T) {
 		// In CI (DinD), the health check may time out due to slow container startup.
 		// ErrHealthCheck is acceptable — the deploy itself succeeded, only the
 		// post-deploy health probe timed out.
-		if bootstrapErr != nil && !errors.Is(bootstrapErr, deployapp.ErrHealthCheck) {
+		if bootstrapErr != nil && !errors.Is(bootstrapErr, bundleapp.ErrHealthCheck) {
 			dumpDockerState(ctx, t, executor)
 			t.Fatalf("BootstrapSidecar failed: %v", bootstrapErr)
 		}
@@ -200,7 +200,7 @@ func TestDeployMultiSite(t *testing.T) {
 	// -------------------------------------------------------------------
 	t.Run("add_site", func(t *testing.T) {
 		var buf bytes.Buffer
-		deployErr := svc.DeployMultiApp(ctx, app2Config, deployapp.RunOptions{
+		deployErr := svc.DeployMultiApp(ctx, app2Config, bundleapp.RunOptions{
 			ConfigPath:  filepath.Join(app2Dir, "vibewarden.yaml"),
 			ProjectName: testPrefix + "app2",
 			Out:         &buf,
@@ -208,7 +208,7 @@ func TestDeployMultiSite(t *testing.T) {
 		t.Logf("add-site output:\n%s", buf.String())
 
 		// In CI (DinD), the health check may time out due to slow container startup.
-		if deployErr != nil && !errors.Is(deployErr, deployapp.ErrHealthCheck) {
+		if deployErr != nil && !errors.Is(deployErr, bundleapp.ErrHealthCheck) {
 			dumpDockerState(ctx, t, executor)
 			t.Fatalf("DeployMultiApp failed: %v", deployErr)
 		}

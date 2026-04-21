@@ -1,4 +1,4 @@
-package deploy_test
+package bundle_test
 
 import (
 	"context"
@@ -8,13 +8,13 @@ import (
 	"strings"
 	"testing"
 
-	deployapp "github.com/vibewarden/vibewarden/internal/app/deploy"
+	bundleapp "github.com/vibewarden/vibewarden/internal/app/bundle"
 	"github.com/vibewarden/vibewarden/internal/config"
 )
 
 func TestBundle_SingleSite_ProducesCorrectLayout(t *testing.T) {
 	generator := &fakeGenerator{}
-	svc := deployapp.NewService(&fakeExecutor{}, generator)
+	svc := bundleapp.NewService(&fakeExecutor{}, generator)
 
 	outputDir := t.TempDir()
 
@@ -24,7 +24,7 @@ func TestBundle_SingleSite_ProducesCorrectLayout(t *testing.T) {
 		App:      config.AppConfig{Image: "myapp:latest"},
 	}
 
-	err := svc.Bundle(context.Background(), deployapp.BundleOptions{
+	err := svc.Bundle(context.Background(), bundleapp.BundleOptions{
 		Config:      cfg,
 		ConfigPath:  "/tmp/proj/vibewarden.yaml",
 		ProjectName: "myproject",
@@ -44,7 +44,7 @@ func TestBundle_SingleSite_ProducesCorrectLayout(t *testing.T) {
 
 func TestBundle_SingleSite_WritesResolvedUpstreamHost(t *testing.T) {
 	generator := &fakeGenerator{}
-	svc := deployapp.NewService(&fakeExecutor{}, generator)
+	svc := bundleapp.NewService(&fakeExecutor{}, generator)
 
 	outputDir := t.TempDir()
 
@@ -54,7 +54,7 @@ func TestBundle_SingleSite_WritesResolvedUpstreamHost(t *testing.T) {
 		App:      config.AppConfig{Image: "myapp:latest"},
 	}
 
-	err := svc.Bundle(context.Background(), deployapp.BundleOptions{
+	err := svc.Bundle(context.Background(), bundleapp.BundleOptions{
 		Config:      cfg,
 		ConfigPath:  "/tmp/proj/vibewarden.yaml",
 		ProjectName: "myproject",
@@ -77,7 +77,7 @@ func TestBundle_SingleSite_WritesResolvedUpstreamHost(t *testing.T) {
 
 func TestBundle_MultiSite_ProducesCorrectLayout(t *testing.T) {
 	generator := &fakeGenerator{}
-	svc := deployapp.NewService(&fakeExecutor{}, generator)
+	svc := bundleapp.NewService(&fakeExecutor{}, generator)
 
 	outputDir := t.TempDir()
 
@@ -87,7 +87,7 @@ func TestBundle_MultiSite_ProducesCorrectLayout(t *testing.T) {
 		App:      config.AppConfig{Image: "myapp:latest"},
 	}
 
-	err := svc.Bundle(context.Background(), deployapp.BundleOptions{
+	err := svc.Bundle(context.Background(), bundleapp.BundleOptions{
 		Config:      cfg,
 		ConfigPath:  "/tmp/proj/vibewarden.yaml",
 		ProjectName: "blog",
@@ -113,7 +113,7 @@ func TestBundle_MultiSite_ProducesCorrectLayout(t *testing.T) {
 
 func TestBundle_MultiSite_WritesResolvedUpstreamHost(t *testing.T) {
 	generator := &fakeGenerator{}
-	svc := deployapp.NewService(&fakeExecutor{}, generator)
+	svc := bundleapp.NewService(&fakeExecutor{}, generator)
 
 	outputDir := t.TempDir()
 
@@ -123,7 +123,7 @@ func TestBundle_MultiSite_WritesResolvedUpstreamHost(t *testing.T) {
 		App:      config.AppConfig{Image: "myapp:latest"},
 	}
 
-	err := svc.Bundle(context.Background(), deployapp.BundleOptions{
+	err := svc.Bundle(context.Background(), bundleapp.BundleOptions{
 		Config:      cfg,
 		ConfigPath:  "/tmp/proj/vibewarden.yaml",
 		ProjectName: "api",
@@ -145,7 +145,7 @@ func TestBundle_MultiSite_WritesResolvedUpstreamHost(t *testing.T) {
 
 func TestBundle_SingleSite_GeneratorError(t *testing.T) {
 	generator := &fakeGenerator{err: errors.New("template broken")}
-	svc := deployapp.NewService(&fakeExecutor{}, generator)
+	svc := bundleapp.NewService(&fakeExecutor{}, generator)
 
 	outputDir := t.TempDir()
 
@@ -153,7 +153,7 @@ func TestBundle_SingleSite_GeneratorError(t *testing.T) {
 		Server: config.ServerConfig{Port: 8443},
 	}
 
-	err := svc.Bundle(context.Background(), deployapp.BundleOptions{
+	err := svc.Bundle(context.Background(), bundleapp.BundleOptions{
 		Config:      cfg,
 		ConfigPath:  "/tmp/proj/vibewarden.yaml",
 		ProjectName: "myproject",
@@ -170,7 +170,7 @@ func TestBundle_SingleSite_GeneratorError(t *testing.T) {
 
 func TestBundleSidecar_ProducesCorrectLayout(t *testing.T) {
 	generator := &fakeGenerator{}
-	svc := deployapp.NewService(&fakeExecutor{}, generator)
+	svc := bundleapp.NewService(&fakeExecutor{}, generator)
 
 	outputDir := t.TempDir()
 
@@ -207,7 +207,7 @@ func TestBundleSidecar_ProducesCorrectLayout(t *testing.T) {
 
 func TestBundleSidecar_DefaultPort(t *testing.T) {
 	generator := &fakeGenerator{}
-	svc := deployapp.NewService(&fakeExecutor{}, generator)
+	svc := bundleapp.NewService(&fakeExecutor{}, generator)
 
 	outputDir := t.TempDir()
 
@@ -231,7 +231,7 @@ func TestBundleSidecar_DefaultPort(t *testing.T) {
 
 func TestBundle_MultiSite_AppBuildUsesImage(t *testing.T) {
 	generator := &fakeGenerator{}
-	svc := deployapp.NewService(&fakeExecutor{}, generator)
+	svc := bundleapp.NewService(&fakeExecutor{}, generator)
 
 	outputDir := t.TempDir()
 
@@ -241,7 +241,7 @@ func TestBundle_MultiSite_AppBuildUsesImage(t *testing.T) {
 		App:      config.AppConfig{Build: "."},
 	}
 
-	err := svc.Bundle(context.Background(), deployapp.BundleOptions{
+	err := svc.Bundle(context.Background(), bundleapp.BundleOptions{
 		Config:      cfg,
 		ConfigPath:  "/tmp/proj/vibewarden.yaml",
 		ProjectName: "buildsite",
@@ -272,7 +272,7 @@ func TestBundle_MultiSite_AppBuildUsesImage(t *testing.T) {
 
 func TestBundle_DefaultOutputDir(t *testing.T) {
 	generator := &fakeGenerator{}
-	svc := deployapp.NewService(&fakeExecutor{}, generator)
+	svc := bundleapp.NewService(&fakeExecutor{}, generator)
 
 	cfg := &config.Config{
 		Server:   config.ServerConfig{Port: 8443},
@@ -295,7 +295,7 @@ func TestBundle_DefaultOutputDir(t *testing.T) {
 	})
 
 	// Call Bundle with empty OutputDir -- should default to .vibewarden/deploy/production/.
-	err = svc.Bundle(context.Background(), deployapp.BundleOptions{
+	err = svc.Bundle(context.Background(), bundleapp.BundleOptions{
 		Config:      cfg,
 		ConfigPath:  "/tmp/proj/vibewarden.yaml",
 		ProjectName: "myproject",
@@ -315,7 +315,7 @@ func TestBundle_DefaultOutputDir(t *testing.T) {
 
 func TestBundle_WithProdOverride_MergesCorrectly(t *testing.T) {
 	generator := &fakeGenerator{}
-	svc := deployapp.NewService(&fakeExecutor{}, generator)
+	svc := bundleapp.NewService(&fakeExecutor{}, generator)
 
 	outputDir := t.TempDir()
 	projDir := t.TempDir()
@@ -364,7 +364,7 @@ tls:
 		TLS:      config.TLSConfig{Enabled: true, Provider: "letsencrypt", Domain: "example.com"},
 	}
 
-	err := svc.Bundle(context.Background(), deployapp.BundleOptions{
+	err := svc.Bundle(context.Background(), bundleapp.BundleOptions{
 		Config:         cfg,
 		ConfigPath:     basePath,
 		ProdConfigPath: prodPath,
@@ -417,7 +417,7 @@ tls:
 	// typed Config that the bundle YAML now carries. This is the core #1053
 	// regression — the struct overlay was dropping these fields even though
 	// the YAML overlay carried them.
-	mergedCfg, err := deployapp.LoadMergedConfig(basePath, prodPath)
+	mergedCfg, err := bundleapp.LoadMergedConfig(basePath, prodPath)
 	if err != nil {
 		t.Fatalf("LoadMergedConfig() error = %v", err)
 	}
@@ -431,7 +431,7 @@ tls:
 
 func TestBundle_WithEnv_OutputsToEnvSubdir(t *testing.T) {
 	generator := &fakeGenerator{}
-	svc := deployapp.NewService(&fakeExecutor{}, generator)
+	svc := bundleapp.NewService(&fakeExecutor{}, generator)
 
 	tmpDir := t.TempDir()
 	origDir, err := os.Getwd()
@@ -449,7 +449,7 @@ func TestBundle_WithEnv_OutputsToEnvSubdir(t *testing.T) {
 		App:      config.AppConfig{Image: "myapp:latest"},
 	}
 
-	err = svc.Bundle(context.Background(), deployapp.BundleOptions{
+	err = svc.Bundle(context.Background(), bundleapp.BundleOptions{
 		Config:      cfg,
 		ProjectName: "myproject",
 		MultiSite:   false,
@@ -467,7 +467,7 @@ func TestBundle_WithEnv_OutputsToEnvSubdir(t *testing.T) {
 
 func TestBundle_PreservesNonLocalUpstreamHost(t *testing.T) {
 	generator := &fakeGenerator{}
-	svc := deployapp.NewService(&fakeExecutor{}, generator)
+	svc := bundleapp.NewService(&fakeExecutor{}, generator)
 
 	outputDir := t.TempDir()
 
@@ -477,7 +477,7 @@ func TestBundle_PreservesNonLocalUpstreamHost(t *testing.T) {
 		App:      config.AppConfig{Image: "myapp:latest"},
 	}
 
-	err := svc.Bundle(context.Background(), deployapp.BundleOptions{
+	err := svc.Bundle(context.Background(), bundleapp.BundleOptions{
 		Config:      cfg,
 		ConfigPath:  "/tmp/proj/vibewarden.yaml",
 		ProjectName: "myproject",
@@ -508,7 +508,7 @@ func TestBundle_SingleSite_ConfigPathStatError(t *testing.T) {
 	}
 
 	generator := &fakeGenerator{}
-	svc := deployapp.NewService(&fakeExecutor{}, generator)
+	svc := bundleapp.NewService(&fakeExecutor{}, generator)
 
 	projDir := t.TempDir()
 	// Place a real config file inside an unreadable directory so os.Stat
@@ -535,7 +535,7 @@ func TestBundle_SingleSite_ConfigPathStatError(t *testing.T) {
 		Upstream: config.UpstreamConfig{Port: 3000},
 		App:      config.AppConfig{Image: "myapp:latest"},
 	}
-	err := svc.Bundle(context.Background(), deployapp.BundleOptions{
+	err := svc.Bundle(context.Background(), bundleapp.BundleOptions{
 		Config:      cfg,
 		ConfigPath:  configPath,
 		ProjectName: "myproject",

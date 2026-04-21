@@ -1,4 +1,4 @@
-package deploy
+package bundle
 
 import (
 	"fmt"

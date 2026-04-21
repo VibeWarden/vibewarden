@@ -1,4 +1,4 @@
-package deploy_test
+package bundle_test
 
 import (
 	"context"
@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	deployapp "github.com/vibewarden/vibewarden/internal/app/deploy"
+	bundleapp "github.com/vibewarden/vibewarden/internal/app/bundle"
 	"github.com/vibewarden/vibewarden/internal/config"
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
@@ -55,9 +55,9 @@ app:
 	}
 
 	gen := &captureGenerator{}
-	svc := deployapp.NewService(&fakeExecutor{}, gen)
+	svc := bundleapp.NewService(&fakeExecutor{}, gen)
 
-	err := svc.Bundle(context.Background(), deployapp.BundleOptions{
+	err := svc.Bundle(context.Background(), bundleapp.BundleOptions{
 		Config:      cfg,
 		ConfigPath:  basePath,
 		ProjectName: "myapp",
@@ -132,9 +132,9 @@ tls:
 		TLS:      config.TLSConfig{Enabled: true, Provider: "letsencrypt", Domain: "test.example.com"},
 	}
 
-	svc := deployapp.NewService(&fakeExecutor{}, &fakeGenerator{})
+	svc := bundleapp.NewService(&fakeExecutor{}, &fakeGenerator{})
 
-	err := svc.Bundle(context.Background(), deployapp.BundleOptions{
+	err := svc.Bundle(context.Background(), bundleapp.BundleOptions{
 		Config:         cfg,
 		ConfigPath:     basePath,
 		ProdConfigPath: prodPath,
@@ -186,9 +186,9 @@ app:
 		App:      config.AppConfig{Image: "myapp:latest"},
 	}
 
-	svc := deployapp.NewService(&fakeExecutor{}, &fakeGenerator{})
+	svc := bundleapp.NewService(&fakeExecutor{}, &fakeGenerator{})
 
-	err := svc.Bundle(context.Background(), deployapp.BundleOptions{
+	err := svc.Bundle(context.Background(), bundleapp.BundleOptions{
 		Config:      cfg,
 		ConfigPath:  basePath,
 		ProjectName: "myapp",
@@ -220,7 +220,7 @@ app:
 //
 // Regression test for #955.
 func TestArtifact_SidecarCompose_ContainsDNS(t *testing.T) {
-	svc := deployapp.NewService(&fakeExecutor{}, &fakeGenerator{})
+	svc := bundleapp.NewService(&fakeExecutor{}, &fakeGenerator{})
 
 	outputDir := t.TempDir()
 
@@ -263,12 +263,12 @@ security_headers:
 	overrideYAML := `rate_limit:
   burst: 50
 `
-	merged, err := deployapp.MergeConfigYAML([]byte(baseYAML), []byte(overrideYAML))
+	merged, err := bundleapp.MergeConfigYAML([]byte(baseYAML), []byte(overrideYAML))
 	if err != nil {
 		t.Fatalf("MergeConfigYAML() error = %v", err)
 	}
 
-	data, err := deployapp.MarshalYAMLMap(merged)
+	data, err := bundleapp.MarshalYAMLMap(merged)
 	if err != nil {
 		t.Fatalf("MarshalYAMLMap() error = %v", err)
 	}
@@ -338,9 +338,9 @@ tls:
 	// sentinelGenerator writes a sentinel value to vibewarden.yaml in the output
 	// directory, simulating the real generator which copies the original config.
 	gen := &sentinelGenerator{sentinel: "provider: SENTINEL_NOT_MERGED"}
-	svc := deployapp.NewService(&fakeExecutor{}, gen)
+	svc := bundleapp.NewService(&fakeExecutor{}, gen)
 
-	err := svc.Bundle(context.Background(), deployapp.BundleOptions{
+	err := svc.Bundle(context.Background(), bundleapp.BundleOptions{
 		Config:         cfg,
 		ConfigPath:     basePath,
 		ProdConfigPath: prodPath,
@@ -380,7 +380,7 @@ tls:
 // variables are rendered in the generated docker-compose.yml for single-site mode.
 func TestArtifact_AppEnvironment_RendersInCompose(t *testing.T) {
 	gen := &captureGenerator{}
-	svc := deployapp.NewService(&fakeExecutor{}, gen)
+	svc := bundleapp.NewService(&fakeExecutor{}, gen)
 
 	outputDir := t.TempDir()
 
@@ -396,7 +396,7 @@ func TestArtifact_AppEnvironment_RendersInCompose(t *testing.T) {
 		},
 	}
 
-	err := svc.Bundle(context.Background(), deployapp.BundleOptions{
+	err := svc.Bundle(context.Background(), bundleapp.BundleOptions{
 		Config:      cfg,
 		ConfigPath:  "/tmp/proj/vibewarden.yaml",
 		ProjectName: "myproject",
@@ -426,7 +426,7 @@ func TestArtifact_AppEnvironment_RendersInCompose(t *testing.T) {
 // TestArtifact_AppEnvironment_RendersInAppCompose verifies that app.environment
 // variables are rendered in the per-app compose file for multi-site mode.
 func TestArtifact_AppEnvironment_RendersInAppCompose(t *testing.T) {
-	svc := deployapp.NewService(&fakeExecutor{}, &fakeGenerator{})
+	svc := bundleapp.NewService(&fakeExecutor{}, &fakeGenerator{})
 
 	outputDir := t.TempDir()
 
@@ -442,7 +442,7 @@ func TestArtifact_AppEnvironment_RendersInAppCompose(t *testing.T) {
 		},
 	}
 
-	err := svc.Bundle(context.Background(), deployapp.BundleOptions{
+	err := svc.Bundle(context.Background(), bundleapp.BundleOptions{
 		Config:      cfg,
 		ConfigPath:  "/tmp/proj/vibewarden.yaml",
 		ProjectName: "envsite",
@@ -474,7 +474,7 @@ func TestArtifact_AppEnvironment_RendersInAppCompose(t *testing.T) {
 // source code needs to exist on the production server.
 func TestArtifact_DeployCompose_HasImageNotBuild(t *testing.T) {
 	gen := &captureGenerator{}
-	svc := deployapp.NewService(&fakeExecutor{}, gen)
+	svc := bundleapp.NewService(&fakeExecutor{}, gen)
 
 	outputDir := t.TempDir()
 
@@ -485,7 +485,7 @@ func TestArtifact_DeployCompose_HasImageNotBuild(t *testing.T) {
 		App:      config.AppConfig{Build: "."},
 	}
 
-	err := svc.Bundle(context.Background(), deployapp.BundleOptions{
+	err := svc.Bundle(context.Background(), bundleapp.BundleOptions{
 		Config:      cfg,
 		ConfigPath:  "/tmp/proj/vibewarden.yaml",
 		ProjectName: "myapp",

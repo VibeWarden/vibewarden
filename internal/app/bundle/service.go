@@ -4,7 +4,7 @@
 // The package name is a historical artefact from the removed `vibew deploy`
 // command and is renamed to `bundle` in a follow-up commit on this branch
 // (ADR-086).
-package deploy
+package bundle
 
 import (
 	"os"

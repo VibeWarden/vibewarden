@@ -14,7 +14,7 @@ import (
 	credentialsadapter "github.com/vibewarden/vibewarden/internal/adapters/credentials"
 	opsadapter "github.com/vibewarden/vibewarden/internal/adapters/ops"
 	templateadapter "github.com/vibewarden/vibewarden/internal/adapters/template"
-	deployapp "github.com/vibewarden/vibewarden/internal/app/deploy"
+	bundleapp "github.com/vibewarden/vibewarden/internal/app/bundle"
 	generateapp "github.com/vibewarden/vibewarden/internal/app/generate"
 	"github.com/vibewarden/vibewarden/internal/config"
 	configtemplates "github.com/vibewarden/vibewarden/internal/config/templates"
@@ -156,7 +156,7 @@ func runBundle(cmd *cobra.Command, outputDir, imageTag string, overwrite, skipIm
 		credentialsadapter.NewStore(),
 	).WithConfigSourcePath(absConfig)
 
-	svc := deployapp.NewService(nil, generator).WithBundleFS(bfs)
+	svc := bundleapp.NewService(nil, generator).WithBundleFS(bfs)
 	if !skipImage {
 		svc = svc.WithImageSaver(opsadapter.NewImageExportAdapter())
 	}
@@ -166,14 +166,14 @@ func runBundle(cmd *cobra.Command, outputDir, imageTag string, overwrite, skipIm
 		absOut = outputDir
 	}
 
-	if err := svc.Bundle(cmd.Context(), deployapp.BundleOptions{
+	if err := svc.Bundle(cmd.Context(), bundleapp.BundleOptions{
 		Config:         cfg,
 		ConfigPath:     absConfig,
 		ProdConfigPath: prodConfigPath,
 		ProjectName:    projectName,
 		MultiSite:      false,
 		OutputDir:      absOut,
-		Env:            deployapp.DefaultEnv,
+		Env:            bundleapp.DefaultEnv,
 		Overwrite:      overwrite,
 		SkipImage:      skipImage,
 		ImageTag:       imageTag,
@@ -253,7 +253,7 @@ func deriveProjectName(cfg *config.Config, absConfig string) string {
 			return name
 		}
 	}
-	return sanitiseProjectName(deployapp.ProjectNameFromConfig(absConfig))
+	return sanitiseProjectName(bundleapp.ProjectNameFromConfig(absConfig))
 }
 
 // sanitiseProjectName strips any byte outside the shell-safe subset

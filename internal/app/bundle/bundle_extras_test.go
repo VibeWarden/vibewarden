@@ -1,4 +1,4 @@
-package deploy_test
+package bundle_test
 
 import (
 	"context"
@@ -10,7 +10,7 @@ import (
 	"sync"
 	"testing"
 
-	deployapp "github.com/vibewarden/vibewarden/internal/app/deploy"
+	bundleapp "github.com/vibewarden/vibewarden/internal/app/bundle"
 	"github.com/vibewarden/vibewarden/internal/config"
 )
 
@@ -95,12 +95,12 @@ func minimalBundleCfg() *config.Config {
 func TestBundle_Extras_WritesExpectedFileSet(t *testing.T) {
 	mem := newMemBundleFS()
 	saver := &countingImageSaver{}
-	svc := deployapp.NewService(&fakeExecutor{}, &fakeGenerator{}).
+	svc := bundleapp.NewService(&fakeExecutor{}, &fakeGenerator{}).
 		WithBundleFS(mem).
 		WithImageSaver(saver)
 
 	outDir := t.TempDir() // real dir so the existing bundleSingleSite helpers work
-	err := svc.Bundle(context.Background(), deployapp.BundleOptions{
+	err := svc.Bundle(context.Background(), bundleapp.BundleOptions{
 		Config:      minimalBundleCfg(),
 		ConfigPath:  filepath.Join(t.TempDir(), "vibewarden.yaml"),
 		ProjectName: "myproject",
@@ -126,12 +126,12 @@ func TestBundle_Extras_WritesExpectedFileSet(t *testing.T) {
 func TestBundle_Extras_SkipImage_OmitsImageTar(t *testing.T) {
 	mem := newMemBundleFS()
 	saver := &countingImageSaver{}
-	svc := deployapp.NewService(&fakeExecutor{}, &fakeGenerator{}).
+	svc := bundleapp.NewService(&fakeExecutor{}, &fakeGenerator{}).
 		WithBundleFS(mem).
 		WithImageSaver(saver)
 
 	outDir := t.TempDir()
-	err := svc.Bundle(context.Background(), deployapp.BundleOptions{
+	err := svc.Bundle(context.Background(), bundleapp.BundleOptions{
 		Config:      minimalBundleCfg(),
 		ConfigPath:  filepath.Join(t.TempDir(), "vibewarden.yaml"),
 		ProjectName: "myproject",
@@ -159,11 +159,11 @@ func TestBundle_Extras_SkipImage_OmitsImageTar(t *testing.T) {
 
 func TestBundle_Extras_DeploySH_ExecutableMode(t *testing.T) {
 	mem := newMemBundleFS()
-	svc := deployapp.NewService(&fakeExecutor{}, &fakeGenerator{}).
+	svc := bundleapp.NewService(&fakeExecutor{}, &fakeGenerator{}).
 		WithBundleFS(mem)
 
 	outDir := t.TempDir()
-	err := svc.Bundle(context.Background(), deployapp.BundleOptions{
+	err := svc.Bundle(context.Background(), bundleapp.BundleOptions{
 		Config:      minimalBundleCfg(),
 		ConfigPath:  filepath.Join(t.TempDir(), "vibewarden.yaml"),
 		ProjectName: "myproject",
@@ -196,11 +196,11 @@ func TestBundle_Extras_DeploySH_DockerLoadVsPull(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			mem := newMemBundleFS()
-			svc := deployapp.NewService(&fakeExecutor{}, &fakeGenerator{}).
+			svc := bundleapp.NewService(&fakeExecutor{}, &fakeGenerator{}).
 				WithBundleFS(mem)
 
 			outDir := t.TempDir()
-			err := svc.Bundle(context.Background(), deployapp.BundleOptions{
+			err := svc.Bundle(context.Background(), bundleapp.BundleOptions{
 				Config:      minimalBundleCfg(),
 				ConfigPath:  filepath.Join(t.TempDir(), "vibewarden.yaml"),
 				ProjectName: "myproject",
@@ -221,7 +221,7 @@ func TestBundle_Extras_DeploySH_DockerLoadVsPull(t *testing.T) {
 
 func TestBundle_Extras_SampleEnv_DefaultsToComposeProjectName(t *testing.T) {
 	mem := newMemBundleFS()
-	svc := deployapp.NewService(&fakeExecutor{}, &fakeGenerator{}).
+	svc := bundleapp.NewService(&fakeExecutor{}, &fakeGenerator{}).
 		WithBundleFS(mem)
 
 	cfg := minimalBundleCfg()
@@ -235,7 +235,7 @@ func TestBundle_Extras_SampleEnv_DefaultsToComposeProjectName(t *testing.T) {
 	}
 
 	outDir := t.TempDir()
-	err := svc.Bundle(context.Background(), deployapp.BundleOptions{
+	err := svc.Bundle(context.Background(), bundleapp.BundleOptions{
 		Config:      cfg,
 		ConfigPath:  configPath,
 		ProjectName: "myproject",
@@ -259,7 +259,7 @@ func TestBundle_Extras_SampleEnv_DefaultsToComposeProjectName(t *testing.T) {
 
 func TestBundle_Extras_SampleEnv_IncludesTemplateKeys(t *testing.T) {
 	mem := newMemBundleFS()
-	svc := deployapp.NewService(&fakeExecutor{}, &fakeGenerator{}).
+	svc := bundleapp.NewService(&fakeExecutor{}, &fakeGenerator{}).
 		WithBundleFS(mem)
 
 	projectDir := t.TempDir()
@@ -273,7 +273,7 @@ func TestBundle_Extras_SampleEnv_IncludesTemplateKeys(t *testing.T) {
 	}
 
 	outDir := t.TempDir()
-	err := svc.Bundle(context.Background(), deployapp.BundleOptions{
+	err := svc.Bundle(context.Background(), bundleapp.BundleOptions{
 		Config:      minimalBundleCfg(),
 		ConfigPath:  configPath,
 		ProjectName: "myproject",
@@ -295,11 +295,11 @@ func TestBundle_Extras_SampleEnv_IncludesTemplateKeys(t *testing.T) {
 
 func TestBundle_Extras_Readme_MentionsPlatformHint(t *testing.T) {
 	mem := newMemBundleFS()
-	svc := deployapp.NewService(&fakeExecutor{}, &fakeGenerator{}).
+	svc := bundleapp.NewService(&fakeExecutor{}, &fakeGenerator{}).
 		WithBundleFS(mem)
 
 	outDir := t.TempDir()
-	err := svc.Bundle(context.Background(), deployapp.BundleOptions{
+	err := svc.Bundle(context.Background(), bundleapp.BundleOptions{
 		Config:      minimalBundleCfg(),
 		ConfigPath:  filepath.Join(t.TempDir(), "vibewarden.yaml"),
 		ProjectName: "blog",
@@ -326,10 +326,10 @@ func TestBundle_Extras_Readme_MentionsPlatformHint(t *testing.T) {
 func TestBundle_Extras_NoBundleFS_NoOp(t *testing.T) {
 	// When Service.bundleFS is nil, the extras pipeline must do nothing —
 	// existing callers (vibew deploy --dry-run) rely on this fallback.
-	svc := deployapp.NewService(&fakeExecutor{}, &fakeGenerator{})
+	svc := bundleapp.NewService(&fakeExecutor{}, &fakeGenerator{})
 
 	outDir := t.TempDir()
-	err := svc.Bundle(context.Background(), deployapp.BundleOptions{
+	err := svc.Bundle(context.Background(), bundleapp.BundleOptions{
 		Config:      minimalBundleCfg(),
 		ConfigPath:  filepath.Join(t.TempDir(), "vibewarden.yaml"),
 		ProjectName: "myproject",
@@ -354,12 +354,12 @@ func TestBundle_Extras_MultiSite_SkipsExtras(t *testing.T) {
 	// hard-errors before setting BundleOptions.MultiSite=true.
 	mem := newMemBundleFS()
 	saver := &countingImageSaver{}
-	svc := deployapp.NewService(&fakeExecutor{}, &fakeGenerator{}).
+	svc := bundleapp.NewService(&fakeExecutor{}, &fakeGenerator{}).
 		WithBundleFS(mem).
 		WithImageSaver(saver)
 
 	outDir := t.TempDir()
-	err := svc.Bundle(context.Background(), deployapp.BundleOptions{
+	err := svc.Bundle(context.Background(), bundleapp.BundleOptions{
 		Config:      minimalBundleCfg(),
 		ConfigPath:  filepath.Join(t.TempDir(), "vibewarden.yaml"),
 		ProjectName: "blog",
@@ -390,7 +390,7 @@ func TestBundle_DotEnv_RestoredOnGeneratorFailure(t *testing.T) {
 	// Generator returns an error so bundleSingleSite fails before the
 	// extras pipeline runs. The deferred restore must still fire.
 	gen := &fakeGenerator{err: errors.New("compose template exploded mid-run")}
-	svc := deployapp.NewService(&fakeExecutor{}, gen).WithBundleFS(mem)
+	svc := bundleapp.NewService(&fakeExecutor{}, gen).WithBundleFS(mem)
 
 	outDir := t.TempDir()
 	priorPath := filepath.Join(outDir, ".env")
@@ -407,7 +407,7 @@ func TestBundle_DotEnv_RestoredOnGeneratorFailure(t *testing.T) {
 		t.Fatalf("seeding disk .env: %v", err)
 	}
 
-	err := svc.Bundle(context.Background(), deployapp.BundleOptions{
+	err := svc.Bundle(context.Background(), bundleapp.BundleOptions{
 		Config:      minimalBundleCfg(),
 		ConfigPath:  filepath.Join(t.TempDir(), "vibewarden.yaml"),
 		ProjectName: "myproject",
@@ -436,7 +436,7 @@ func TestBundle_DotEnv_RestoredOnGeneratorFailure(t *testing.T) {
 func TestBundle_DotEnv_OverwriteSkipsDeferredRestore(t *testing.T) {
 	mem := newMemBundleFS()
 	gen := &fakeGenerator{err: errors.New("boom")}
-	svc := deployapp.NewService(&fakeExecutor{}, gen).WithBundleFS(mem)
+	svc := bundleapp.NewService(&fakeExecutor{}, gen).WithBundleFS(mem)
 
 	outDir := t.TempDir()
 	priorPath := filepath.Join(outDir, ".env")
@@ -445,7 +445,7 @@ func TestBundle_DotEnv_OverwriteSkipsDeferredRestore(t *testing.T) {
 		t.Fatalf("seeding mem .env: %v", err)
 	}
 
-	err := svc.Bundle(context.Background(), deployapp.BundleOptions{
+	err := svc.Bundle(context.Background(), bundleapp.BundleOptions{
 		Config:      minimalBundleCfg(),
 		ConfigPath:  filepath.Join(t.TempDir(), "vibewarden.yaml"),
 		ProjectName: "myproject",
@@ -471,12 +471,12 @@ func TestBundle_DotEnv_OverwriteSkipsDeferredRestore(t *testing.T) {
 func TestBundle_Extras_ImageSaverError_PropagatesWrapped(t *testing.T) {
 	mem := newMemBundleFS()
 	saver := &countingImageSaver{err: errors.New("no such image")}
-	svc := deployapp.NewService(&fakeExecutor{}, &fakeGenerator{}).
+	svc := bundleapp.NewService(&fakeExecutor{}, &fakeGenerator{}).
 		WithBundleFS(mem).
 		WithImageSaver(saver)
 
 	outDir := t.TempDir()
-	err := svc.Bundle(context.Background(), deployapp.BundleOptions{
+	err := svc.Bundle(context.Background(), bundleapp.BundleOptions{
 		Config:      minimalBundleCfg(),
 		ConfigPath:  filepath.Join(t.TempDir(), "vibewarden.yaml"),
 		ProjectName: "myproject",

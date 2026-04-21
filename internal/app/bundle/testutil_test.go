@@ -1,4 +1,4 @@
-package deploy_test
+package bundle_test
 
 import (
 	"context"
