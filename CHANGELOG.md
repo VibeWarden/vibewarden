@@ -74,6 +74,13 @@ This initial entry was written by hand to summarise the work leading up to v0.1.
 
 ### Fixes
 
+- **`vibew init` scaffold no longer suggests `example.com` as the TLS domain**
+  (#1079, closes #1077). The production scaffold placeholder is now
+  `app.yourcompany.com` and calls out that Let's Encrypt rejects RFC-2606
+  reserved names. The `tls.domain is required` validation error for ACME
+  providers was updated to the same guidance. Prevents the confusing
+  `rejectedIdentifier` failure users hit when they copy-pasted the previous
+  placeholder verbatim.
 - **`vibew doctor` no longer flags a running sidecar as a port conflict**
   (#1054, ADR-084). When `vibew dev` is already running on the proxy port,
   doctor probes `/_vibewarden/health` and reports
