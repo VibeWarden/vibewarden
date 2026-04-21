@@ -1,9 +1,12 @@
-// Package deploy provides the application service that produces the
+// Package bundle provides the application service that produces the
 // `vibew bundle` deployment artifact.
 //
-// The package name is a historical artefact from the removed `vibew deploy`
-// command and is renamed to `bundle` in a follow-up commit on this branch
-// (ADR-086).
+// A Service orchestrates the pipeline that writes docker-compose.yml,
+// the merged vibewarden.yaml, sample.env, .env, deploy.sh, README.md,
+// and (unless skipped) image.tar under a caller-supplied output
+// directory. The pipeline is purely local: no SSH connection is opened
+// and no remote state is touched — the user owns the transport. See
+// ADR-085 (vibew bundle contract) and ADR-086 (sunset vibew deploy).
 package bundle
 
 import (
