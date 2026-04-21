@@ -6,17 +6,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"net"
-	"net/url"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"time"
 
 	"github.com/fatih/color"
 
-	"github.com/vibewarden/vibewarden/internal/archutil"
 	"github.com/vibewarden/vibewarden/internal/config"
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
@@ -42,7 +38,7 @@ type CheckResult struct {
 	// Detail is an optional explanation (shown on success and failure).
 	Detail string `json:"detail,omitempty"`
 	// Section groups the check for display purposes (e.g. "Config & Docker",
-	// "Local Runtime", "Production"). Empty for legacy checks.
+	// "Local Runtime"). Empty for legacy checks.
 	Section string `json:"section,omitempty"`
 }
 
@@ -52,12 +48,11 @@ func (c CheckResult) OK() bool { return c.Severity == SeverityOK }
 // DoctorService orchestrates the "vibew doctor" use case.
 // Every check runs independently — a failing check does not stop subsequent ones.
 type DoctorService struct {
-	compose        ports.ComposeRunner
-	portChecker    ports.PortChecker
-	healthChecker  ports.HealthChecker
-	remoteExecutor ports.RemoteExecutor
-	imageChecker   ports.DockerImageChecker
-	ownerProbe     ports.PortOwnerProbe
+	compose       ports.ComposeRunner
+	portChecker   ports.PortChecker
+	healthChecker ports.HealthChecker
+	imageChecker  ports.DockerImageChecker
+	ownerProbe    ports.PortOwnerProbe
 }
 
 // NewDoctorService creates a new DoctorService.
@@ -67,15 +62,6 @@ func NewDoctorService(compose ports.ComposeRunner, portChecker ports.PortChecker
 		portChecker:   portChecker,
 		healthChecker: healthChecker,
 	}
-}
-
-// WithRemoteExecutor returns a copy of the DoctorService with the given
-// RemoteExecutor set for production checks. When nil, production checks are
-// skipped.
-func (s *DoctorService) WithRemoteExecutor(executor ports.RemoteExecutor) *DoctorService {
-	cp := *s
-	cp.remoteExecutor = executor
-	return &cp
 }
 
 // WithImageChecker returns a copy of the DoctorService with the given
@@ -107,9 +93,6 @@ type DoctorOptions struct {
 	WorkDir string
 	// JSON requests machine-readable JSON output instead of the human-readable table.
 	JSON bool
-	// Target is the SSH target for production checks (e.g. "ssh://user@host").
-	// When empty, production checks are skipped.
-	Target string
 }
 
 // Run executes all diagnostics and writes the report to out.
@@ -147,16 +130,9 @@ const sectionConfigDocker = "Config & Docker"
 // sectionLocalRuntime is the section header for local runtime checks.
 const sectionLocalRuntime = "Local Runtime"
 
-// sectionProduction is the section header for production checks.
-const sectionProduction = "Production"
-
 // localTLSCertExpiryWarnDays is the number of days before expiry that triggers
 // a warning for local TLS certificates.
 const localTLSCertExpiryWarnDays = 7
-
-// remoteTLSCertExpiryWarnDays is the number of days before expiry that triggers
-// a warning for remote TLS certificates.
-const remoteTLSCertExpiryWarnDays = 30
 
 // runChecks executes every diagnostic check and returns the aggregated results.
 func (s *DoctorService) runChecks(ctx context.Context, cfg *config.Config, opts DoctorOptions, workDir string) []CheckResult {
@@ -188,17 +164,6 @@ func (s *DoctorService) runChecks(ctx context.Context, cfg *config.Config, opts 
 	// --- Layer 2: Local Runtime ---
 	results = append(results, withSection(s.checkUpstreamReachable(ctx, cfg), sectionLocalRuntime))
 	results = append(results, withSection(checkTLSCertValid(ctx, cfg, proxyHost, proxyPort), sectionLocalRuntime))
-
-	// --- Layer 3: Production (only when target is set and executor is available) ---
-	if opts.Target != "" && s.remoteExecutor != nil {
-		results = append(results, withSection(s.checkSSHConnectivity(ctx), sectionProduction))
-		results = append(results, withSection(s.checkArchCompatibility(ctx), sectionProduction))
-		results = append(results, withSection(s.checkRemoteContainerHealth(ctx), sectionProduction))
-		if cfg.TLS.Domain != "" {
-			results = append(results, withSection(checkDomainDNS(ctx, cfg.TLS.Domain, opts.Target), sectionProduction))
-			results = append(results, withSection(checkRemoteTLSCert(ctx, cfg.TLS.Domain), sectionProduction))
-		}
-	}
 
 	return results
 }
@@ -497,238 +462,6 @@ func checkTLSCertValid(ctx context.Context, cfg *config.Config, host string, por
 	}
 }
 
-// checkSSHConnectivity tries to run a simple command on the remote host to
-// verify SSH access.
-func (s *DoctorService) checkSSHConnectivity(ctx context.Context) CheckResult {
-	checkCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
-
-	_, err := s.remoteExecutor.Run(checkCtx, "echo ok")
-	if err != nil {
-		return CheckResult{
-			Name:     "SSH connectivity",
-			Severity: SeverityFail,
-			Detail:   fmt.Sprintf("could not connect: %v", err),
-		}
-	}
-	return CheckResult{
-		Name:     "SSH connectivity",
-		Severity: SeverityOK,
-		Detail:   "connected successfully",
-	}
-}
-
-// checkRemoteContainerHealth runs "docker compose ps" on the remote host via
-// SSH and reports the health of each container. Error rendering goes through
-// formatRemoteError so the user-facing detail never contains raw shell
-// fragments (see ADR-084).
-func (s *DoctorService) checkRemoteContainerHealth(ctx context.Context) CheckResult {
-	checkCtx, cancel := context.WithTimeout(ctx, 15*time.Second)
-	defer cancel()
-
-	// Docker Compose v1 reached end-of-life in June 2023; the fallback
-	// ("|| docker-compose ps") and 2>/dev/null shims were dropped as part
-	// of ADR-084 so stderr surfaces naturally for the error formatter.
-	output, err := s.remoteExecutor.Run(checkCtx, "docker compose ps --format json")
-	if err != nil {
-		// ssh.Executor.Run merges stdout+stderr into `output` and never
-		// populates *exec.ExitError.Stderr, so we must forward `output`
-		// to the formatter — otherwise the real stderr line (e.g.
-		// "docker: command not found") is discarded and the user only
-		// sees the canned exit-code hint.
-		return CheckResult{
-			Name:     "Remote containers",
-			Severity: SeverityFail,
-			Detail:   formatRemoteError(err, output, "docker compose"),
-		}
-	}
-
-	output = strings.TrimSpace(output)
-	if output == "" {
-		return CheckResult{
-			Name:     "Remote containers",
-			Severity: SeverityWarn,
-			Detail:   "no containers found on remote host",
-		}
-	}
-
-	// Try to parse JSON lines output (docker compose ps --format json).
-	var unhealthy []string
-	var total int
-	for _, line := range strings.Split(output, "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" {
-			continue
-		}
-		var info struct {
-			Service string `json:"Service"`
-			State   string `json:"State"`
-			Health  string `json:"Health"`
-		}
-		if err := json.Unmarshal([]byte(line), &info); err != nil {
-			// Not JSON — fallback to reporting raw output as OK.
-			return CheckResult{
-				Name:     "Remote containers",
-				Severity: SeverityOK,
-				Detail:   "containers found (non-JSON output)",
-			}
-		}
-		total++
-		if info.State != "running" || (info.Health != "" && info.Health != "healthy") {
-			unhealthy = append(unhealthy, fmt.Sprintf("%s (%s/%s)", info.Service, info.State, info.Health))
-		}
-	}
-
-	if len(unhealthy) > 0 {
-		return CheckResult{
-			Name:     "Remote containers",
-			Severity: SeverityFail,
-			Detail:   fmt.Sprintf("unhealthy containers: %v", unhealthy),
-		}
-	}
-	return CheckResult{
-		Name:     "Remote containers",
-		Severity: SeverityOK,
-		Detail:   fmt.Sprintf("%d container(s) running", total),
-	}
-}
-
-// checkDomainDNS resolves the configured TLS domain and verifies it points to
-// the target host IP. Uses net.DefaultResolver.LookupHost for context-aware
-// DNS resolution.
-func checkDomainDNS(ctx context.Context, domain, target string) CheckResult {
-	dnsCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
-
-	addrs, err := net.DefaultResolver.LookupHost(dnsCtx, domain)
-	if err != nil {
-		return CheckResult{
-			Name:     "Domain DNS",
-			Severity: SeverityWarn,
-			Detail:   fmt.Sprintf("could not resolve %s: %v", domain, err),
-		}
-	}
-
-	if len(addrs) == 0 {
-		return CheckResult{
-			Name:     "Domain DNS",
-			Severity: SeverityWarn,
-			Detail:   fmt.Sprintf("no DNS records found for %s", domain),
-		}
-	}
-
-	// Extract the host from the SSH target URL (ssh://user@host[:port]).
-	targetIP := extractHostFromTarget(target)
-
-	// Resolve the target host in case it is a hostname rather than an IP.
-	targetAddrs, err := net.DefaultResolver.LookupHost(dnsCtx, targetIP)
-	if err != nil {
-		targetAddrs = []string{targetIP}
-	}
-
-	targetSet := make(map[string]bool, len(targetAddrs))
-	for _, a := range targetAddrs {
-		targetSet[a] = true
-	}
-
-	for _, a := range addrs {
-		if targetSet[a] {
-			return CheckResult{
-				Name:     "Domain DNS",
-				Severity: SeverityOK,
-				Detail:   fmt.Sprintf("%s resolves to %s (matches target)", domain, a),
-			}
-		}
-	}
-
-	return CheckResult{
-		Name:     "Domain DNS",
-		Severity: SeverityWarn,
-		Detail:   fmt.Sprintf("%s resolves to %s but target is %s", domain, strings.Join(addrs, ", "), targetIP),
-	}
-}
-
-// extractHostFromTarget parses the host component from an ssh://user@host[:port]
-// URL. It uses net/url.Parse which correctly handles IPv6 addresses and edge
-// cases. If parsing fails it returns the raw input.
-func extractHostFromTarget(raw string) string {
-	u, err := url.Parse(raw)
-	if err != nil || u.Host == "" {
-		return raw
-	}
-	host := u.Hostname()
-	if host == "" {
-		return raw
-	}
-	return host
-}
-
-// checkRemoteTLSCert connects to domain:443 and checks the certificate expiry.
-func checkRemoteTLSCert(ctx context.Context, domain string) CheckResult {
-	tlsCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
-
-	dialer := tls.Dialer{
-		Config: &tls.Config{
-			// We accept any cert — the purpose is to inspect expiry, not validate trust.
-			InsecureSkipVerify: true, //nolint:gosec
-		},
-	}
-	conn, err := dialer.DialContext(tlsCtx, "tcp", domain+":443")
-	if err != nil {
-		return CheckResult{
-			Name:     "Remote TLS cert",
-			Severity: SeverityWarn,
-			Detail:   fmt.Sprintf("could not connect to %s:443: %v", domain, err),
-		}
-	}
-	defer conn.Close() //nolint:errcheck
-
-	tlsConn, ok := conn.(*tls.Conn)
-	if !ok {
-		return CheckResult{
-			Name:     "Remote TLS cert",
-			Severity: SeverityWarn,
-			Detail:   fmt.Sprintf("unexpected connection type from %s:443", domain),
-		}
-	}
-
-	certs := tlsConn.ConnectionState().PeerCertificates
-	if len(certs) == 0 {
-		return CheckResult{
-			Name:     "Remote TLS cert",
-			Severity: SeverityWarn,
-			Detail:   fmt.Sprintf("no certificates presented by %s:443", domain),
-		}
-	}
-
-	leaf := certs[0]
-	now := time.Now()
-
-	if now.After(leaf.NotAfter) {
-		return CheckResult{
-			Name:     "Remote TLS cert",
-			Severity: SeverityFail,
-			Detail:   fmt.Sprintf("expired on %s", leaf.NotAfter.Format(time.DateOnly)),
-		}
-	}
-
-	daysUntilExpiry := int(time.Until(leaf.NotAfter).Hours() / 24)
-	if daysUntilExpiry <= remoteTLSCertExpiryWarnDays {
-		return CheckResult{
-			Name:     "Remote TLS cert",
-			Severity: SeverityWarn,
-			Detail:   fmt.Sprintf("expires in %d day(s) on %s", daysUntilExpiry, leaf.NotAfter.Format(time.DateOnly)),
-		}
-	}
-
-	return CheckResult{
-		Name:     "Remote TLS cert",
-		Severity: SeverityOK,
-		Detail:   fmt.Sprintf("valid until %s (%d days)", leaf.NotAfter.Format(time.DateOnly), daysUntilExpiry),
-	}
-}
-
 // checkACMEEmail verifies that an ACME account email is configured when the
 // ACME CA URL contains "zerossl". ZeroSSL requires an email address for
 // External Account Binding (EAB) registration.
@@ -781,45 +514,6 @@ func (s *DoctorService) checkImageTagConsistency(ctx context.Context, image stri
 		Name:     "Image tag",
 		Severity: SeverityOK,
 		Detail:   fmt.Sprintf("image %q exists locally", image),
-	}
-}
-
-// normalizeArch delegates to archutil.Normalize for shared architecture
-// normalization logic.
-func normalizeArch(unameMachine string) string {
-	return archutil.Normalize(unameMachine)
-}
-
-// checkArchCompatibility compares the local runtime.GOARCH with the remote
-// host's architecture (via "uname -m"). A mismatch means Docker images built
-// locally may not run on the remote without emulation.
-func (s *DoctorService) checkArchCompatibility(ctx context.Context) CheckResult {
-	checkCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
-
-	output, err := s.remoteExecutor.Run(checkCtx, "uname -m")
-	if err != nil {
-		return CheckResult{
-			Name:     "Arch compatibility",
-			Severity: SeverityWarn,
-			Detail:   fmt.Sprintf("could not determine remote architecture: %v", err),
-		}
-	}
-
-	remoteArch := normalizeArch(output)
-	localArch := runtime.GOARCH
-
-	if localArch != remoteArch {
-		return CheckResult{
-			Name:     "Arch compatibility",
-			Severity: SeverityWarn,
-			Detail:   fmt.Sprintf("local=%s remote=%s — use --platform linux/%s when building images", localArch, remoteArch, remoteArch),
-		}
-	}
-	return CheckResult{
-		Name:     "Arch compatibility",
-		Severity: SeverityOK,
-		Detail:   fmt.Sprintf("local=%s remote=%s", localArch, remoteArch),
 	}
 }
 
