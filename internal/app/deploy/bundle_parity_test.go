@@ -9,18 +9,31 @@ import (
 	"sort"
 	"testing"
 
+	credentialsadapter "github.com/vibewarden/vibewarden/internal/adapters/credentials"
+	templateadapter "github.com/vibewarden/vibewarden/internal/adapters/template"
 	deployapp "github.com/vibewarden/vibewarden/internal/app/deploy"
-	"github.com/vibewarden/vibewarden/internal/config"
+	generateapp "github.com/vibewarden/vibewarden/internal/app/generate"
+	configtemplates "github.com/vibewarden/vibewarden/internal/config/templates"
 )
 
-// TestBundle_Parity_SameConfigYieldsByteIdenticalCoreFiles is the ADR-085
-// parity guard for #1053. Running Service.Bundle twice against the same
-// inputs must produce byte-identical docker-compose.yml and
-// vibewarden.yaml. Other files are compared by file-set equality (minus
-// .credentials, whose contents are randomised every run).
-func TestBundle_Parity_SameConfigYieldsByteIdenticalCoreFiles(t *testing.T) {
-	// Build a realistic project tree. The base + prod override exercise
-	// the same LoadMergedConfig path both commands share.
+// TestBundle_Parity_RealGenerator_CoreFilesByteIdentical is the ADR-085 §4
+// parity guard: `vibew deploy --dry-run` and `vibew bundle` must produce
+// byte-identical docker-compose.yml AND vibewarden.yaml for the same input.
+//
+// The original parity test shelled out to fakeGenerator, which of course
+// produced the same (empty) output in both paths. That told us nothing
+// about real generation. The reviewer on PR #1061 flagged this: ADR-085 §4
+// required byte equality on the REAL generator output for those two files.
+// This rewrite instantiates the real templateadapter + credentialsadapter
+// stack (the same stack wired by cmd/bundle.go and cmd/deploy.go) and runs
+// both code paths against the exact same project fixture.
+//
+// Credentials and .env are randomised every run, so they stay out of the
+// byte-identical set and are compared by file-set membership only — same
+// treatment ADR-085 §4 gives them.
+func TestBundle_Parity_RealGenerator_CoreFilesByteIdentical(t *testing.T) {
+	// Realistic single-site fixture: base config + production override, same
+	// shape as a `vibew init` project after the user sets a domain.
 	projectDir := t.TempDir()
 	baseYAML := `server:
   port: 8443
@@ -36,7 +49,8 @@ rate_limit:
 app:
   image: "myapp:latest"
 `
-	if err := os.WriteFile(filepath.Join(projectDir, "vibewarden.yaml"), []byte(baseYAML), 0o600); err != nil {
+	basePath := filepath.Join(projectDir, "vibewarden.yaml")
+	if err := os.WriteFile(basePath, []byte(baseYAML), 0o600); err != nil {
 		t.Fatalf("writing base config: %v", err)
 	}
 	prodYAML := `server:
@@ -47,49 +61,66 @@ tls:
   domain: "example.com"
   email: "ops@example.com"
 `
-	if err := os.WriteFile(filepath.Join(projectDir, "vibewarden.production.yaml"), []byte(prodYAML), 0o600); err != nil {
+	prodPath := filepath.Join(projectDir, "vibewarden.production.yaml")
+	if err := os.WriteFile(prodPath, []byte(prodYAML), 0o600); err != nil {
 		t.Fatalf("writing prod config: %v", err)
 	}
 
-	cfg := &config.Config{
-		Server:   config.ServerConfig{Port: 443},
-		Upstream: config.UpstreamConfig{Host: "0.0.0.0", Port: 3000},
-		App:      config.AppConfig{Image: "myapp:latest"},
-		TLS:      config.TLSConfig{Enabled: true, Provider: "letsencrypt", Domain: "example.com"},
+	cfg, err := deployapp.LoadMergedConfig(basePath, prodPath)
+	if err != nil {
+		t.Fatalf("LoadMergedConfig: %v", err)
 	}
 
-	opts := deployapp.BundleOptions{
+	// newRealService builds a deployapp.Service backed by the production
+	// adapter stack — the same wiring cmd/bundle.go and cmd/deploy.go use.
+	// We construct it twice, once per invocation, so the two runs share zero
+	// mutable state.
+	newRealService := func() *deployapp.Service {
+		renderer := templateadapter.NewRenderer(configtemplates.FS)
+		gen := generateapp.NewServiceWithCredentials(
+			renderer,
+			credentialsadapter.NewGenerator(),
+			credentialsadapter.NewStore(),
+		).WithConfigSourcePath(basePath)
+		return deployapp.NewService(&fakeExecutor{}, gen)
+	}
+
+	commonOpts := deployapp.BundleOptions{
 		Config:         cfg,
-		ConfigPath:     filepath.Join(projectDir, "vibewarden.yaml"),
-		ProdConfigPath: filepath.Join(projectDir, "vibewarden.production.yaml"),
+		ConfigPath:     basePath,
+		ProdConfigPath: prodPath,
 		ProjectName:    "myproject",
 		SkipImage:      true,
 	}
 
-	// Two separate bundles, two separate temp dirs. The service is the same
-	// shape as vibew bundle (generator + BundleFS) and vibew deploy --dry-run
-	// (generator only, no BundleFS) by construction.
+	// Run A: mirrors `vibew deploy --dry-run` — no BundleFS wired, so the
+	// extras pipeline is a no-op and only the core generator + merged YAML
+	// are written.
 	outA := t.TempDir()
-	outB := t.TempDir()
-
-	svcA := deployapp.NewService(&fakeExecutor{}, &fakeGenerator{})
-	optsA := opts
+	svcA := newRealService()
+	optsA := commonOpts
 	optsA.OutputDir = outA
 	if err := svcA.Bundle(context.Background(), optsA); err != nil {
-		t.Fatalf("first Bundle() error = %v", err)
+		t.Fatalf("dry-run Bundle() error = %v", err)
 	}
 
-	// Second run uses the extras pipeline (BundleFS wired). Even with extras
-	// the two core files must still match byte-for-byte.
+	// Run B: mirrors `vibew bundle` — BundleFS wired, extras pipeline runs.
+	// To keep parity, the extras pipeline goes to an in-memory FS so only
+	// the two core files we care about end up on disk and can be byte-
+	// compared. (A real bundle run would write everything to disk; the
+	// byte-equality contract only applies to docker-compose.yml and
+	// vibewarden.yaml, not to the extras.)
+	outB := t.TempDir()
 	mem := newMemBundleFS()
-	svcB := deployapp.NewService(&fakeExecutor{}, &fakeGenerator{}).WithBundleFS(mem)
-	optsB := opts
+	svcB := newRealService().WithBundleFS(mem)
+	optsB := commonOpts
 	optsB.OutputDir = outB
 	if err := svcB.Bundle(context.Background(), optsB); err != nil {
-		t.Fatalf("second Bundle() error = %v", err)
+		t.Fatalf("bundle Bundle() error = %v", err)
 	}
 
-	for _, file := range []string{"vibewarden.yaml"} {
+	// Byte-identical on the two core files — this is the ADR-085 §4 contract.
+	for _, file := range []string{"docker-compose.yml", "vibewarden.yaml"} {
 		a, err := os.ReadFile(filepath.Join(outA, file)) //nolint:gosec // test dir
 		if err != nil {
 			t.Fatalf("reading A/%s: %v", file, err)
@@ -99,61 +130,30 @@ tls:
 			t.Fatalf("reading B/%s: %v", file, err)
 		}
 		if !bytes.Equal(a, b) {
-			t.Errorf("%s NOT byte-identical across runs\nA:\n%s\nB:\n%s", file, a, b)
+			t.Errorf("%s NOT byte-identical between `vibew deploy --dry-run` and `vibew bundle`\nA:\n%s\n\nB:\n%s", file, a, b)
 		}
 	}
 
-	// docker-compose.yml is produced by the generator. In this unit-test
-	// setup the generator is a fake (does not actually write a compose),
-	// so we instead assert it is either equally missing or equally present —
-	// whichever the fake produced.
-	_, errA := os.Stat(filepath.Join(outA, "docker-compose.yml"))
-	_, errB := os.Stat(filepath.Join(outB, "docker-compose.yml"))
-	if os.IsNotExist(errA) != os.IsNotExist(errB) {
-		t.Errorf("docker-compose.yml presence differs between runs (A err=%v, B err=%v)", errA, errB)
-	}
-
-	// File-set equality (minus image.tar which is docker-dependent, and
-	// .credentials whose content is randomised — existence-only checked).
-	setA := collectFileSet(t, outA)
-	setB := collectFileSet(t, outB)
-	// runB's extras live in mem, not on disk — merge them so the comparison
-	// reflects what a real vibew bundle would have produced.
-	for p := range mem.files {
-		rel, err := filepath.Rel(outB, p)
-		if err != nil || rel == "." {
-			continue
-		}
-		if len(rel) >= 2 && rel[:2] == ".." {
-			continue
-		}
-		if !contains(setB, rel) {
-			setB = append(setB, rel)
-		}
-	}
-	sort.Strings(setA)
-	sort.Strings(setB)
-
-	// Only assert that the intersection of deterministic files matches. We
-	// explicitly ignore image.tar (docker-dependent) and .credentials
-	// (randomised) — both are allowed to be present in one but not both.
+	// Semantic equality on the rest: the file sets must match modulo the
+	// ignore list. image.tar is SkipImage-ed, .credentials and .env carry
+	// randomised bytes every run. Extras from run B live in the in-memory
+	// FS and are expected to be absent from run A (the dry-run path does
+	// not call writeBundleExtras because BundleFS is nil by design).
 	ignore := map[string]bool{
 		"image.tar":    true,
 		".credentials": true,
+		".env":         true,
+		// Extras (vibew bundle only):
+		"sample.env": true,
+		"deploy.sh":  true,
+		"README.md":  true,
 	}
-	pruneA := pruneSet(setA, ignore)
-	pruneB := pruneSet(setB, ignore)
-
-	// runA did not wire BundleFS, so its extras file-set is a subset of B's.
-	// Parity is: every file in A must also be in B.
-	for _, f := range pruneA {
-		if !contains(pruneB, f) {
-			t.Errorf("file %q present in run A but missing from run B", f)
-		}
-	}
-
-	if !reflect.DeepEqual(pruneA, intersection(pruneA, pruneB)) {
-		t.Errorf("file set parity mismatch\nA: %v\nB: %v", pruneA, pruneB)
+	setA := pruneSet(collectFileSet(t, outA), ignore)
+	setB := pruneSet(collectFileSet(t, outB), ignore)
+	sort.Strings(setA)
+	sort.Strings(setB)
+	if !reflect.DeepEqual(setA, setB) {
+		t.Errorf("non-ignored file set mismatch\nA: %v\nB: %v", setA, setB)
 	}
 }
 
@@ -183,7 +183,7 @@ func collectFileSet(t *testing.T, dir string) []string {
 }
 
 func pruneSet(in []string, ignore map[string]bool) []string {
-	var out []string
+	out := make([]string, 0, len(in))
 	for _, f := range in {
 		if ignore[f] {
 			continue
@@ -192,28 +192,4 @@ func pruneSet(in []string, ignore map[string]bool) []string {
 	}
 	sort.Strings(out)
 	return out
-}
-
-func intersection(a, b []string) []string {
-	seen := make(map[string]bool, len(b))
-	for _, v := range b {
-		seen[v] = true
-	}
-	var out []string
-	for _, v := range a {
-		if seen[v] {
-			out = append(out, v)
-		}
-	}
-	sort.Strings(out)
-	return out
-}
-
-func contains(s []string, v string) bool {
-	for _, x := range s {
-		if x == v {
-			return true
-		}
-	}
-	return false
 }
