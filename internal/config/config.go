@@ -1745,7 +1745,8 @@ func (c *Config) Validate() error {
 	if c.TLS.Enabled && acmeProviders[c.TLS.Provider] && c.TLS.Domain == "" {
 		errs = append(errs, fmt.Sprintf(
 			"tls.domain is required when tls.provider is %q — "+
-				"set tls.domain to your domain name (e.g., myapp.example.com)",
+				"set tls.domain to a domain you control and have pointed at this server "+
+				"(Let's Encrypt rejects reserved names like example.com)",
 			c.TLS.Provider,
 		))
 	}
