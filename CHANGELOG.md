@@ -12,8 +12,22 @@ This initial entry was written by hand to summarise the work leading up to v0.1.
 
 ## [Unreleased]
 
+### Breaking
+
+- **`VIBEWARDEN_APP_IMAGE` default tag is now project-scoped** (#1084, [ADR-089](decisions/adr-089-bundle-image-health-tag-scoping-freshness-arch.md)). `vibew init`, `vibew wrap`, and `vibew bundle` no longer write the generic `vibewarden-app:latest` tag that collided across all projects on the same workstation. The generated `.env` and `docker-compose.yml` now use `<project>-app:latest` (e.g. `mysite-app:latest`). Existing v0.16.0 projects carrying the old tag will see a migration warning on every `vibew validate` run until you update `.env` — run `vibew bundle --overwrite` or follow the `sed` one-liner in the warning.
+
+### Changed
+
+- **`vibew bundle` now prints an image health block before writing any files** (#1084, #1085, #1091). Tag, digest, arch, creation timestamp, size, target platform, freshness verdict, and warnings are printed to stdout once per invocation. Agents and humans can parse the stable key-value layout without ANSI colour.
+- `vibew bundle` aborts with exit code **2** (image missing) or exit code **3** (docker daemon unreachable) rather than a generic exit 1. Exit code 0 includes successful bundles with stale/arch warnings.
+- `github.com/moby/patternmatcher` promoted from indirect to direct dependency — already vendored via Docker client, Apache 2.0.
+
 ### Added
 
+- **`vibew bundle --build`** — runs `vibew build --platform <target>` before inspecting or packaging; use when the image is missing or stale. (#1084)
+- **`vibew bundle --allow-stale`** — suppresses the STALE freshness warning; bundle proceeds regardless of source-file mtime. (#1085)
+- **`vibew bundle --target-platform linux/<arch>`** — overrides the default expected deployment platform (`linux/amd64`); use for Graviton / Pi / arm64 servers. (#1091)
+- `vibew validate` now emits a migration warning to stderr when `.env` contains the legacy `vibewarden-app:latest` tag. (#1084)
 - **`vibew down`** (#1089) — stop the local dev stack. Runs `docker compose
   down` in the project's `.vibewarden/` directory, preserving data volumes by
   default. Pass `-v`/`--volumes` to also drop named volumes (destroys Kratos
@@ -37,7 +51,7 @@ This initial entry was written by hand to summarise the work leading up to v0.1.
   (#1078). Self-signed local certificates are now identified and reported as
   `SelfSignedLocal` instead of triggering a spurious near-expiry warning.
 
-### Changed
+### Changed (continued)
 
 - `vibew add` commands that hit an unparseable YAML file now fail fast with a `vibew validate` remediation hint instead of silently rewriting. (#1086)
 - Bundle `deploy.sh` now runs locally (#1087,

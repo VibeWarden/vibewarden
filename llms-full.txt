@@ -1367,7 +1367,9 @@ or `vibew wrap`.
 ### bundle flags
 
 `vibew bundle` produces a self-contained Docker Compose deploy bundle under
-`--output` with no SSH, no remote docker, no network calls. Flags:
+`--output` with no SSH, no remote docker, no network calls. Before writing
+any files it inspects the target image and prints a health block (tag, digest,
+arch, created, size, target platform, freshness, warnings). Flags:
 
 - `--output` -- output directory (default: .vibewarden/bundle)
 - `--overwrite` -- replace an existing .env in --output (otherwise preserved
@@ -1375,6 +1377,15 @@ or `vibew wrap`.
 - `--image` -- docker image tag to package via `docker save`
   (default: `<project>-app:latest`)
 - `--skip-image` -- do not package image.tar (for users who pull from a registry)
+- `--build` -- run `vibew build --platform <target>` first; use when image is
+  missing or stale (off by default)
+- `--allow-stale` -- suppress the STALE freshness warning; bundle proceeds
+  regardless of source-file mtime
+- `--target-platform linux/<arch>` -- expected deployment platform (default:
+  `linux/amd64`); use for Graviton / Pi / arm64 servers
+
+Exit codes: 0=success (includes warnings), 1=generic failure, 2=image missing,
+3=docker daemon unreachable.
 
 Output layout:
 
@@ -1389,6 +1400,26 @@ Output layout:
 
 Multi-site projects (`sites/<name>/vibewarden.yaml`) hard-fail with
 `multi-site bundle is not yet supported`; see ADR-085 / ADR-086.
+
+#### Image health block format
+
+Printed to stdout once per `vibew bundle` invocation, before any files are
+written. Format is stable (key-value lines, one warning per `-` line):
+
+```
+Image health
+  Tag:          <project>-app:latest
+  Digest:       sha256:…
+  Arch:         linux/amd64
+  Created:      2026-04-19 14:02:11 UTC (1 day ago)
+  Size:         162.4 MB
+  Target:       linux/amd64  (override with --target-platform)
+  Freshness:    FRESH
+  Warnings:     none
+```
+
+When warnings are present, `Warnings:` is followed by indented `- ` lines.
+No ANSI colour. Parseable by agents line-by-line.
 
 ### migrate flags
 
