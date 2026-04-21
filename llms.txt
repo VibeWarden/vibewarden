@@ -33,11 +33,39 @@ cd my-app && vibew wrap --upstream 3000 && vibew dev
 - MCP server for AI agent integration (vibew mcp)
 - Config JSON schema for editor autocomplete
 
+## CLI quickstart
+
+`vibew` is the single CLI. Below are the commands most projects need.
+
+- `vibew init` — scaffold a new project in the current directory.
+  Example: `mkdir myapp && cd myapp && vibew init --port 3000`
+- `vibew wrap` — add the sidecar to an existing project.
+  Example: `vibew wrap --upstream 3000`
+  Flags: `--auth`, `--tls --domain example.com`, `--rate-limit`
+- `vibew dev` — start the local dev environment (sidecar + app via Docker Compose).
+  Example: `vibew dev`
+- `vibew add <feature>` — enable a feature incrementally after init/wrap.
+  Examples:
+    `vibew add auth`
+    `vibew add tls --domain example.com`
+    `vibew add rate-limiting`
+    `vibew add waf`
+- `vibew bundle` — produce a self-contained Docker Compose deploy bundle
+  under `.vibewarden/bundle/`. Ship it with `scp` and run `docker compose up -d`
+  on the target host.
+  Example: `vibew bundle`
+- `vibew doctor` — diagnose common configuration and runtime issues.
+  Example: `vibew doctor`
+- `vibew validate` — validate `vibewarden.yaml` against the config schema.
+  Example: `vibew validate`
+
+Full reference: https://vibewarden.dev/llms-full.txt
+
 ## Key files in this repo
 
 - vibewarden.yaml            — main configuration (start here)
 - vibewarden.example.yaml    — curated starter config (~40 lines)
-- vibewarden.reference.yaml  — full config reference (~840 lines)
+- vibewarden.reference.yaml  — full config reference (all supported fields) — https://vibewarden.dev/vibewarden.reference.yaml
 - AGENTS-VIBEWARDEN.md       — instructions for AI coding agents
 - AGENTS.md                  — tool-agnostic agent context file
 - docs/getting-started.md    — step-by-step setup guide
@@ -48,6 +76,7 @@ cd my-app && vibew wrap --upstream 3000 && vibew dev
 ## Docs
 
 - Full setup guide: llms-full.txt (in this repo) or https://vibewarden.dev/llms-full.txt
+- Full config reference: vibewarden.reference.yaml (in this repo) or https://vibewarden.dev/vibewarden.reference.yaml
 - Web docs: https://vibewarden.dev/docs/vibewarden/
 - GitHub: https://github.com/vibewarden/vibewarden
 
