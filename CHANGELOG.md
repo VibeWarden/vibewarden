@@ -98,6 +98,7 @@ This initial entry was written by hand to summarise the work leading up to v0.1.
 
 ### Added
 
+- `vibew init --non-interactive` flag — skips interactive prompts even when stdin is a TTY; primarily for CI / agent scripting. (#1065)
 - **`vibew bundle` command** — generates Docker Compose deployment
   artifacts (`docker-compose.yml`, `vibewarden.yaml`, `.env`, `sample.env`,
   `deploy.sh`, `README.md`, `image.tar`) into `.vibewarden/bundle/` with

@@ -123,6 +123,7 @@ support `--tls` or `--domain` — use `vibew add tls` after init for TLS.
 - `--describe` -- one-line project description (written to PROJECT.md and agent files)
 - `--version` -- VibeWarden version to pin in .vibewarden-version (default: latest)
 - `--force` -- overwrite existing files
+- `--non-interactive` -- skip interactive prompts even when stdin is a TTY (CI / agent scripting)
 
 ### wrap flags
 
