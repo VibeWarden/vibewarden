@@ -1,4 +1,11 @@
-package ports_test
+// Contract test — applies to all RateLimiter / RateLimiterFactory adapters.
+//
+// Although this file lives next to the "ratelimit" adapter, the tests
+// exercise the port contract defined in internal/ports — every adapter
+// implementing ports.RateLimiter or ports.RateLimiterFactory (memory,
+// redis_adapter, fallback_*) must honour the value-object and interface
+// invariants asserted here. See ADR-087 for the test-placement rationale.
+package ratelimit_test
 
 import (
 	"context"
