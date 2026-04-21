@@ -1,10 +1,12 @@
 package cmd
 
 import (
+	"bufio"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -131,6 +133,20 @@ Examples:
 				return fmt.Errorf("configuration has %d error(s)", len(errs))
 			}
 
+			// ADR-089 §G: migration warning when .env still carries the legacy
+			// generic tag. Printed to stderr so stdout stays machine-parsable.
+			configDir := filepath.Dir(configPath)
+			if configPath == "" {
+				configDir = "."
+			}
+			if detectLegacyAppImage(configDir) {
+				fmt.Fprintf(cmd.ErrOrStderr(), "\nMigration hint: .env contains VIBEWARDEN_APP_IMAGE=vibewarden-app:latest (the old generic tag).\n")
+				fmt.Fprintf(cmd.ErrOrStderr(), "This tag is shared across all projects on this workstation and may cause wrong-app deploys.\n")
+				fmt.Fprintf(cmd.ErrOrStderr(), "Update it to your project-scoped tag:\n")
+				fmt.Fprintf(cmd.ErrOrStderr(), "  sed -i 's/vibewarden-app:latest/%s-app:latest/g' .env\n", cfg.ComposeProjectName())
+				fmt.Fprintf(cmd.ErrOrStderr(), "Regenerate with: vibew bundle --overwrite\n\n")
+			}
+
 			fmt.Fprintf(cmd.OutOrStdout(), "Configuration valid (%s)\n", displayPath)
 			return nil
 		},
@@ -146,6 +162,28 @@ Examples:
 	}
 
 	return cmd
+}
+
+// detectLegacyAppImage reports whether the .env file in configDir contains
+// VIBEWARDEN_APP_IMAGE=vibewarden-app:latest (the old project-agnostic tag).
+// A missing .env returns false — no migration hint needed. This is a CLI
+// concern (not app logic) per ADR-089 §"vibew validate migration warning".
+func detectLegacyAppImage(configDir string) bool {
+	envPath := filepath.Join(configDir, ".env")
+	f, err := os.Open(envPath) //nolint:gosec // envPath is derived from project root
+	if err != nil {
+		return false // .env absent is fine
+	}
+	defer func() { _ = f.Close() }()
+
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
+		if line == "VIBEWARDEN_APP_IMAGE=vibewarden-app:latest" {
+			return true
+		}
+	}
+	return false
 }
 
 // discoverProdOverride returns the path to vibewarden.production.yaml that
