@@ -11,9 +11,7 @@ all of them when the project runs locally.
     the initial bundle ship ([ADR-085](../decisions/adr-085-vibew-bundle-cli.md),
     [ADR-086](../decisions/adr-086-sunset-vibew-deploy.md)).
 
-    The removed `vibew deploy` command previously orchestrated multi-site
-    deployments over SSH. That surface was retired in ADR-086; the
-    replacement for multi-site is in-flight under issue #1052 (Helm /
+    The multi-site remote path is in-flight under issue #1052 (Helm /
     Fly.io / k8s targets).
 
     This page documents the **local** multi-app configuration model.
@@ -183,6 +181,5 @@ deploying.
 ## Related
 
 - [Bundle to VPS](guide/bundle-to-vps.md) -- single-site deploy walkthrough
-- [Removed `vibew deploy`](deploy-reference.md) -- breaking-change landing
 - [Configuration](configuration.md) -- `vibewarden.yaml` field reference
 - [ADR-086](../decisions/adr-086-sunset-vibew-deploy.md) -- sunset rationale

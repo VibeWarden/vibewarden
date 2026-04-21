@@ -197,10 +197,9 @@ ssh user@host 'cd ~/bundle && docker compose logs --tail=100 vibewarden'
 ssh user@host 'cd ~/bundle && docker compose restart vibewarden'
 ```
 
-The removed `vibew deploy` command previously did all of this over SSH
-in one step. It was retired in ADR-086 after four retros converged on
-deploy-orchestration as the #1 source of user friction. Running
-`vibew deploy` today prints a deprecation message and exits 2.
+There is no all-in-one remote-deploy command. `vibew bundle` is the only
+supported path to a VPS; the user owns the transport (scp, rsync, CI
+artifact) and the remote `docker compose up -d`.
 
 ## Writing your Dockerfile
 

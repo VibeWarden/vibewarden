@@ -182,9 +182,8 @@ ssh user@host 'cd ~/bundle && bash deploy.sh'
 (same inputs, same bytes), never opens an SSH connection, and never
 touches files outside the output directory.
 
-The removed `vibew deploy` command previously wrapped all four steps over
-SSH in one command. It was retired in ADR-086; running it today prints a
-deprecation message and exits 2.
+There is no all-in-one remote-deploy command. The user owns the transport
+(scp, rsync, CI artifact) and the remote `docker compose up -d`.
 
 Use `app.environment` in vibewarden.yaml for runtime configuration:
 ```yaml

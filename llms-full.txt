@@ -172,10 +172,10 @@ user then transfers the bundle directory to the VPS and runs
 `docker compose up -d` themselves. No source code is ever sent to the
 production server -- the image must be production-ready.
 
-The removed `vibew deploy` command did all three steps (package, ship,
-start) in one SSH orchestration. That surface was retired in ADR-086 in
-favour of the thin bundle pipeline. Running `vibew deploy` today prints a
-deprecation message and exits 2.
+There is no all-in-one remote-deploy command. `vibew bundle` is the only
+supported path to a VPS; the user owns the transport (scp, rsync, CI
+artifact) and the remote `docker compose up -d`. See CHANGELOG and
+ADR-086 for the rationale.
 
 Use `app.environment` for runtime config (database URLs, API keys, etc.).
 
