@@ -35,5 +35,6 @@ type FeatureToggler interface {
 	// EnableFeature enables the named feature in the file at path, applying
 	// opts as feature-specific options. The file is written back atomically.
 	// Returns scaffold.ErrFeatureAlreadyEnabled when the feature is already on.
-	EnableFeature(ctx context.Context, path string, feature scaffold.Feature, opts scaffold.FeatureOptions) error
+	// The returned Diff lists the fields this call added or changed.
+	EnableFeature(ctx context.Context, path string, feature scaffold.Feature, opts scaffold.FeatureOptions) (scaffold.Diff, error)
 }

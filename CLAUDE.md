@@ -141,6 +141,7 @@ Keep prose replies maximally brief without losing technical substance. No pleasa
 - Integration tests for adapters (use `testcontainers-go` — Apache 2.0)
 - Tests live next to the code they test (`foo_test.go`)
 - Minimum coverage target: 80% on `internal/domain/` and `internal/app/`
+- YAML files are edited via node-based upsert (`internal/adapters/yamlmod`); no `yaml.Unmarshal(map[string]any)` → `yaml.Marshal` round-trips in `internal/cli/cmd/add_*.go` or `internal/app/scaffold/`
 
 ---
 

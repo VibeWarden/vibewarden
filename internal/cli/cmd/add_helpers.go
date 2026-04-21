@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 
 	"github.com/spf13/cobra"
 
@@ -57,6 +58,7 @@ func runAddFeature(
 	}
 
 	printAddSuccessMessage(cmd, feature, result)
+	PrintAddSummary(cmd.OutOrStdout(), result.ConfigDiff)
 	return nil
 }
 
@@ -74,4 +76,25 @@ func printAddSuccessMessage(cmd *cobra.Command, feature domainscaffold.Feature, 
 	}
 	fmt.Fprintln(w, "")
 	fmt.Fprintln(w, "Review vibewarden.yaml and adjust settings as needed.")
+}
+
+// PrintAddSummary writes a human-readable per-file summary of a Diff to w.
+// Called by every `vibew add <feature>` RunE after the underlying edit
+// returns. It is a no-op when diff is empty so already-enabled paths do not
+// print stray headers.
+func PrintAddSummary(w io.Writer, diff domainscaffold.Diff) {
+	if diff.IsEmpty() {
+		return
+	}
+
+	fmt.Fprintf(w, "\nChanges in %s:\n", diff.File)
+	for _, a := range diff.Added {
+		fmt.Fprintf(w, "  + %s: %s\n", a.Path, a.After)
+	}
+	for _, c := range diff.Changed {
+		fmt.Fprintf(w, "  ~ %s: %s -> %s\n", c.Path, c.Before, c.After)
+	}
+	for _, r := range diff.Removed {
+		fmt.Fprintf(w, "  - %s (was: %s)\n", r.Path, r.Before)
+	}
 }

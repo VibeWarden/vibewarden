@@ -12,6 +12,14 @@ This initial entry was written by hand to summarise the work leading up to v0.1.
 
 ## [Unreleased]
 
+### Fixed
+
+- `vibew add tls` no longer silently regenerates `vibewarden.production.yaml`, wiping commented-out stanzas (WAF block mode, auth, headers). Comments/ordering/whitespace preserved via AST edit. (#1086)
+
+### Changed
+
+- `vibew add` commands that hit an unparseable YAML file now fail fast with a `vibew validate` remediation hint instead of silently rewriting. (#1086)
+
 ---
 
 ## [v0.16.0] — 2026-04-21

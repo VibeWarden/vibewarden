@@ -60,25 +60,29 @@ func (t *Toggler) ReadFeatures(_ context.Context, path string) (*scaffold.Featur
 
 // EnableFeature enables the named feature in the file at path. The file is
 // written back atomically (temp file + rename). Returns
-// scaffold.ErrFeatureAlreadyEnabled when the feature is already on.
-func (t *Toggler) EnableFeature(_ context.Context, path string, feature scaffold.Feature, opts scaffold.FeatureOptions) error {
+// scaffold.ErrFeatureAlreadyEnabled when the feature is already on. The
+// returned Diff lists the fields this call added or changed so that the CLI
+// can render a precise summary.
+func (t *Toggler) EnableFeature(_ context.Context, path string, feature scaffold.Feature, opts scaffold.FeatureOptions) (scaffold.Diff, error) {
 	root, err := readNode(path)
 	if err != nil {
-		return err
+		return scaffold.Diff{}, err
 	}
+
+	builder := NewDiffBuilder()
 
 	switch feature {
 	case scaffold.FeatureAuth:
 		if hasKey(root, "auth") || hasKey(root, "kratos") {
-			return fmt.Errorf("add auth: %w", scaffold.ErrFeatureAlreadyEnabled)
+			return scaffold.Diff{}, fmt.Errorf("add auth: %w", scaffold.ErrFeatureAlreadyEnabled)
 		}
-		appendAuthBlock(root)
+		appendAuthBlock(root, builder)
 
 	case scaffold.FeatureRateLimit:
 		if boolField(root, "rate_limit", "enabled") {
-			return fmt.Errorf("add rate-limiting: %w", scaffold.ErrFeatureAlreadyEnabled)
+			return scaffold.Diff{}, fmt.Errorf("add rate-limiting: %w", scaffold.ErrFeatureAlreadyEnabled)
 		}
-		appendRateLimitBlock(root)
+		appendRateLimitBlock(root, builder)
 
 	case scaffold.FeatureTLS:
 		if boolField(root, "tls", "enabled") {
@@ -90,45 +94,48 @@ func (t *Toggler) EnableFeature(_ context.Context, path string, feature scaffold
 				if provider == "" {
 					provider = "letsencrypt"
 				}
-				upsertTLSBlock(root, opts.TLSDomain, provider)
+				upsertTLSBlock(root, builder, opts.TLSDomain, provider)
 			} else {
-				return fmt.Errorf("add tls: %w", scaffold.ErrFeatureAlreadyEnabled)
+				return scaffold.Diff{}, fmt.Errorf("add tls: %w", scaffold.ErrFeatureAlreadyEnabled)
 			}
 		} else {
 			provider := opts.TLSProvider
 			if provider == "" {
 				provider = "letsencrypt"
 			}
-			upsertTLSBlock(root, opts.TLSDomain, provider)
+			upsertTLSBlock(root, builder, opts.TLSDomain, provider)
 		}
 
 	case scaffold.FeatureAdmin:
 		if boolField(root, "admin", "enabled") {
-			return fmt.Errorf("add admin: %w", scaffold.ErrFeatureAlreadyEnabled)
+			return scaffold.Diff{}, fmt.Errorf("add admin: %w", scaffold.ErrFeatureAlreadyEnabled)
 		}
-		upsertAdminBlock(root)
+		upsertAdminBlock(root, builder)
 
 	case scaffold.FeatureMetrics:
 		if boolField(root, "metrics", "enabled") {
-			return fmt.Errorf("add metrics: %w", scaffold.ErrFeatureAlreadyEnabled)
+			return scaffold.Diff{}, fmt.Errorf("add metrics: %w", scaffold.ErrFeatureAlreadyEnabled)
 		}
-		appendMetricsBlock(root)
+		appendMetricsBlock(root, builder)
 
 	case scaffold.FeatureWAF:
 		if boolField(root, "waf", "enabled") {
-			return fmt.Errorf("add waf: %w", scaffold.ErrFeatureAlreadyEnabled)
+			return scaffold.Diff{}, fmt.Errorf("add waf: %w", scaffold.ErrFeatureAlreadyEnabled)
 		}
 		mode := opts.WAFMode
 		if mode == "" {
 			mode = "detect"
 		}
-		upsertWAFBlock(root, mode)
+		upsertWAFBlock(root, builder, mode)
 
 	default:
-		return fmt.Errorf("unknown feature %q", feature)
+		return scaffold.Diff{}, fmt.Errorf("unknown feature %q", feature)
 	}
 
-	return writeNode(path, root)
+	if err := writeNode(path, root); err != nil {
+		return scaffold.Diff{}, err
+	}
+	return builder.Build(path), nil
 }
 
 // --------------------------------------------------------------------------
@@ -244,19 +251,6 @@ func intField(root *yaml.Node, section, field string) int {
 	return n
 }
 
-// setScalar sets or inserts key in root to a scalar value.
-func setScalar(root *yaml.Node, key, value, tag string) {
-	mappingPairs(root, func(k, v *yaml.Node) bool {
-		if k.Value == key {
-			v.Kind = yaml.ScalarNode
-			v.Tag = tag
-			v.Value = value
-			return false
-		}
-		return true
-	})
-}
-
 // appendNode appends a key/value pair to a mapping node.
 func appendNode(m *yaml.Node, key *yaml.Node, value *yaml.Node) {
 	m.Content = append(m.Content, key, value)
@@ -297,12 +291,13 @@ func headComment(n *yaml.Node, comment string) *yaml.Node {
 // --------------------------------------------------------------------------
 
 // appendAuthBlock appends kratos and auth sections to the root mapping.
-func appendAuthBlock(root *yaml.Node) {
+func appendAuthBlock(root *yaml.Node, b *DiffBuilder) {
 	// kratos section
 	kratosVal := mappingNode()
 	appendNode(kratosVal, keyNode("public_url"), scalarNode("http://localhost:4433", "!!str"))
 	appendNode(kratosVal, keyNode("admin_url"), scalarNode("http://localhost:4434", "!!str"))
 	appendNode(root, headComment(keyNode("kratos"), "# Ory Kratos identity server"), kratosVal)
+	recordAdds(b, "kratos", kratosVal)
 
 	// auth section — mode is the single source of truth (ADR-065).
 	authVal := mappingNode()
@@ -312,10 +307,11 @@ func appendAuthBlock(root *yaml.Node) {
 	publicPaths := sequenceNode("/health", "/ready")
 	appendNode(authVal, keyNode("public_paths"), publicPaths)
 	appendNode(root, headComment(keyNode("auth"), "# Authentication (Ory Kratos)"), authVal)
+	recordAdds(b, "auth", authVal)
 }
 
 // appendRateLimitBlock appends a rate_limit section to root.
-func appendRateLimitBlock(root *yaml.Node) {
+func appendRateLimitBlock(root *yaml.Node, b *DiffBuilder) {
 	rl := mappingNode()
 	appendNode(rl, keyNode("enabled"), scalarNode("true", "!!bool"))
 	appendNode(rl, keyNode("trust_proxy_headers"), scalarNode("false", "!!bool"))
@@ -334,21 +330,22 @@ func appendRateLimitBlock(root *yaml.Node) {
 	appendNode(rl, keyNode("exempt_paths"), exemptPaths)
 
 	appendNode(root, headComment(keyNode("rate_limit"), "# Rate limiting"), rl)
+	recordAdds(b, "rate_limit", rl)
 }
 
 // upsertTLSBlock sets tls.enabled = true plus domain/provider in root.
 // If the tls key already exists, its fields are updated; otherwise the section
 // is appended.
-func upsertTLSBlock(root *yaml.Node, domain, provider string) {
+func upsertTLSBlock(root *yaml.Node, b *DiffBuilder, domain, provider string) {
 	existing := findKey(root, "tls")
 	if existing != nil {
 		// Update existing tls section.
-		setScalar(existing, "enabled", "true", "!!bool")
+		setScalarTracked(existing, b, "tls", "enabled", "true", "!!bool")
 		if domain != "" {
-			upsertField(existing, "domain", domain, "!!str")
+			upsertFieldTracked(existing, b, "tls", "domain", domain, "!!str")
 		}
 		if provider != "" {
-			upsertField(existing, "provider", provider, "!!str")
+			upsertFieldTracked(existing, b, "tls", "provider", provider, "!!str")
 		}
 		// storage_path defaults to /root/.local/share/caddy in config.Load
 		// (matches the Docker volume mount). No need to set explicitly.
@@ -361,13 +358,14 @@ func upsertTLSBlock(root *yaml.Node, domain, provider string) {
 	appendNode(tls, keyNode("domain"), scalarNode(domain, "!!str"))
 	appendNode(tls, keyNode("storage_path"), scalarNode("./data/caddy", "!!str"))
 	appendNode(root, headComment(keyNode("tls"), "# TLS configuration"), tls)
+	recordAdds(b, "tls", tls)
 }
 
 // upsertAdminBlock sets admin.enabled = true and appends a token placeholder.
-func upsertAdminBlock(root *yaml.Node) {
+func upsertAdminBlock(root *yaml.Node, b *DiffBuilder) {
 	existing := findKey(root, "admin")
 	if existing != nil {
-		setScalar(existing, "enabled", "true", "!!bool")
+		setScalarTracked(existing, b, "admin", "enabled", "true", "!!bool")
 		return
 	}
 
@@ -375,24 +373,26 @@ func upsertAdminBlock(root *yaml.Node) {
 	appendNode(admin, keyNode("enabled"), scalarNode("true", "!!bool"))
 	appendNode(admin, keyNode("token"), scalarNode("${VIBEWARDEN_ADMIN_TOKEN}", "!!str"))
 	appendNode(root, headComment(keyNode("admin"), "# Admin API"), admin)
+	recordAdds(b, "admin", admin)
 }
 
 // appendMetricsBlock appends a metrics section to root.
-func appendMetricsBlock(root *yaml.Node) {
+func appendMetricsBlock(root *yaml.Node, b *DiffBuilder) {
 	metrics := mappingNode()
 	appendNode(metrics, keyNode("enabled"), scalarNode("true", "!!bool"))
 	appendNode(metrics, keyNode("path"), scalarNode("/metrics", "!!str"))
 	appendNode(root, headComment(keyNode("metrics"), "# Prometheus metrics"), metrics)
+	recordAdds(b, "metrics", metrics)
 }
 
 // upsertWAFBlock sets waf.enabled = true plus mode in root. If the waf key
 // already exists, its fields are updated; otherwise the section is appended.
-func upsertWAFBlock(root *yaml.Node, mode string) {
+func upsertWAFBlock(root *yaml.Node, b *DiffBuilder, mode string) {
 	existing := findKey(root, "waf")
 	if existing != nil {
-		setScalar(existing, "enabled", "true", "!!bool")
+		setScalarTracked(existing, b, "waf", "enabled", "true", "!!bool")
 		if mode != "" {
-			upsertField(existing, "mode", mode, "!!str")
+			upsertFieldTracked(existing, b, "waf", "mode", mode, "!!str")
 		}
 		return
 	}
@@ -409,17 +409,25 @@ func upsertWAFBlock(root *yaml.Node, mode string) {
 	appendNode(waf, keyNode("rules"), rules)
 
 	appendNode(root, headComment(keyNode("waf"), "# Web Application Firewall"), waf)
+	recordAdds(b, "waf", waf)
 }
 
-// upsertField sets key to value in mapping m; if key does not exist it is
-// appended.
-func upsertField(m *yaml.Node, key, value, tag string) {
+// upsertFieldTracked sets key to value in mapping m and records the change
+// on b; if key does not exist, it is appended. The dotted path recorded on b
+// is "prefix.key" (or "key" when prefix is empty).
+// prefix is prepended to the dotted path when non-empty.
+func upsertFieldTracked(m *yaml.Node, b *DiffBuilder, prefix, key, value, tag string) {
 	found := false
 	mappingPairs(m, func(k, v *yaml.Node) bool {
 		if k.Value == key {
+			before := v.Value
 			v.Kind = yaml.ScalarNode
 			v.Tag = tag
 			v.Value = value
+			v.Content = nil
+			if b != nil && before != value {
+				b.RecordChange(dotJoin(prefix, key), before, value)
+			}
 			found = true
 			return false
 		}
@@ -427,5 +435,60 @@ func upsertField(m *yaml.Node, key, value, tag string) {
 	})
 	if !found {
 		appendNode(m, keyNode(key), scalarNode(value, tag))
+		if b != nil {
+			b.RecordAdd(dotJoin(prefix, key), value)
+		}
 	}
+}
+
+// setScalarTracked sets key in mapping m to a scalar value and records the
+// change on b. Unlike upsertFieldTracked it never inserts a missing key.
+func setScalarTracked(m *yaml.Node, b *DiffBuilder, prefix, key, value, tag string) {
+	mappingPairs(m, func(k, v *yaml.Node) bool {
+		if k.Value == key {
+			before := v.Value
+			v.Kind = yaml.ScalarNode
+			v.Tag = tag
+			v.Value = value
+			v.Content = nil
+			if b != nil && before != value {
+				b.RecordChange(dotJoin(prefix, key), before, value)
+			}
+			return false
+		}
+		return true
+	})
+}
+
+// recordAdds walks a freshly-appended subtree and records every leaf as an
+// addition on b. Non-scalar leaves are recorded with their RenderValue.
+func recordAdds(b *DiffBuilder, prefix string, node *yaml.Node) {
+	if b == nil || node == nil {
+		return
+	}
+	switch node.Kind {
+	case yaml.MappingNode:
+		for i := 0; i+1 < len(node.Content); i += 2 {
+			k := node.Content[i].Value
+			v := node.Content[i+1]
+			path := dotJoin(prefix, k)
+			if v.Kind == yaml.ScalarNode {
+				b.RecordAdd(path, v.Value)
+			} else {
+				recordAdds(b, path, v)
+			}
+		}
+	case yaml.SequenceNode:
+		b.RecordAdd(prefix, RenderValue(node))
+	case yaml.ScalarNode:
+		b.RecordAdd(prefix, node.Value)
+	}
+}
+
+// dotJoin concatenates a dotted path prefix with a key.
+func dotJoin(prefix, key string) string {
+	if prefix == "" {
+		return key
+	}
+	return prefix + "." + key
 }

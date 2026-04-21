@@ -3,7 +3,6 @@ package cmd
 import (
 	"context"
 	"fmt"
-	"os"
 	"path/filepath"
 
 	"github.com/spf13/cobra"
@@ -102,15 +101,19 @@ Examples:
 
 			// Write the domain and email to vibewarden.production.yaml.
 			prodPath := filepath.Join(projDir, "vibewarden.production.yaml")
-			if err := upsertTLSFieldsInProdConfig(prodPath, domain, email); err != nil {
-				// Non-fatal: the production override file is optional.
-				fmt.Fprintf(cmd.OutOrStdout(), "Note: could not update %s: %v\n", prodPath, err)
-			} else {
-				fmt.Fprintf(cmd.OutOrStdout(), "Domain %q written to %s\n", domain, prodPath)
-				if email != "" {
-					fmt.Fprintf(cmd.OutOrStdout(), "Email %q written to %s\n", email, prodPath)
-				}
+			prodDiff, prodErr := upsertTLSFieldsInProdConfig(prodPath, domain, email)
+			if prodErr != nil {
+				// Parse failure is fatal — we must not silently regenerate
+				// the file and destroy the user's edits. The error already
+				// carries the "run `vibew validate`" remediation.
+				return fmt.Errorf("updating %s: %w", prodPath, prodErr)
 			}
+
+			fmt.Fprintf(cmd.OutOrStdout(), "Domain %q written to %s\n", domain, prodPath)
+			if email != "" {
+				fmt.Fprintf(cmd.OutOrStdout(), "Email %q written to %s\n", email, prodPath)
+			}
+			PrintAddSummary(cmd.OutOrStdout(), prodDiff)
 
 			return nil
 		},
@@ -124,51 +127,52 @@ Examples:
 }
 
 // upsertTLSFieldsInProdConfig reads vibewarden.production.yaml, sets
-// tls.domain and optionally tls.email to the given values, and writes the file
-// back. If the file does not exist, it is created with sensible production
-// defaults.
-func upsertTLSFieldsInProdConfig(path, domain, email string) error {
-	var m map[string]any
-
-	data, err := os.ReadFile(path) //nolint:gosec // path is the vibewarden.production.yaml resolved from project root
-	if err != nil {
-		if os.IsNotExist(err) {
-			// File doesn't exist — create it with sensible production defaults.
-			m = map[string]any{
-				"server": map[string]any{"port": 443},
-				"tls":    map[string]any{"enabled": true, "provider": "letsencrypt"},
+// tls.domain and optionally tls.email to the given values, and writes the
+// file back while preserving comments and ordering. When the file does not
+// exist, it is created with sensible production defaults via
+// productionSeedFactory.
+//
+// If the file exists but cannot be parsed as YAML, this function returns a
+// wrapped error pointing the user at `vibew validate` — it never regenerates
+// the file from scratch, which would silently destroy the user's edits.
+func upsertTLSFieldsInProdConfig(path, domain, email string) (domainscaffold.Diff, error) {
+	return yamlmodadapter.UpsertFields(
+		path,
+		productionSeedFactory,
+		func(root *yaml.Node, b *yamlmodadapter.DiffBuilder) error {
+			yamlmodadapter.UpsertScalar(root, b, "tls", "domain", domain, "!!str")
+			if email != "" {
+				yamlmodadapter.UpsertScalar(root, b, "tls", "email", email, "!!str")
 			}
-		} else {
-			return fmt.Errorf("reading %s: %w", path, err)
-		}
-	} else {
-		if err := yaml.Unmarshal(data, &m); err != nil {
-			return fmt.Errorf("parsing %s: %w", path, err)
-		}
-		if m == nil {
-			m = make(map[string]any)
-		}
-	}
+			return nil
+		},
+	)
+}
 
-	// Ensure tls section exists.
-	tls, ok := m["tls"].(map[string]any)
-	if !ok {
-		tls = make(map[string]any)
-		m["tls"] = tls
-	}
-	tls["domain"] = domain
-	if email != "" {
-		tls["email"] = email
-	}
+// productionSeedFactory returns the seed mapping written to a freshly-created
+// vibewarden.production.yaml. It matches the former map-round-trip defaults:
+// server.port = 443 and tls.enabled = true with provider = letsencrypt.
+func productionSeedFactory() *yaml.Node {
+	server := &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"}
+	server.Content = append(server.Content,
+		&yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: "port"},
+		&yaml.Node{Kind: yaml.ScalarNode, Tag: "!!int", Value: "443"},
+	)
 
-	out, err := yaml.Marshal(m)
-	if err != nil {
-		return fmt.Errorf("marshalling %s: %w", path, err)
-	}
+	tls := &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"}
+	tls.Content = append(tls.Content,
+		&yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: "enabled"},
+		&yaml.Node{Kind: yaml.ScalarNode, Tag: "!!bool", Value: "true"},
+		&yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: "provider"},
+		&yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: "letsencrypt"},
+	)
 
-	if err := os.WriteFile(path, out, 0o600); err != nil {
-		return fmt.Errorf("writing %s: %w", path, err)
-	}
-
-	return nil
+	root := &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"}
+	root.Content = append(root.Content,
+		&yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: "server"},
+		server,
+		&yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: "tls"},
+		tls,
+	)
+	return root
 }
