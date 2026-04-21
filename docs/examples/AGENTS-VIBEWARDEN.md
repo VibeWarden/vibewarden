@@ -83,21 +83,13 @@ vibew add tls --domain example.com
 ```bash
 vibew doctor             # diagnose common issues
 vibew doctor --json      # machine-readable output for AI agents
-vibew doctor --target ssh://user@host  # include production reachability checks
-vibew tls status --domain example.com --target ssh://user@host  # inspect remote TLS cert
 vibew status             # check sidecar health
 vibew logs               # pretty-print structured logs
 ```
 
 `vibew doctor` checks (in order): config validity, Docker daemon, Docker Compose,
 proxy port availability, generated files, container health, ACME email, image tag
-consistency, upstream reachability, local TLS cert validity. When `--target` is
-provided it also checks SSH connectivity, architecture compatibility, remote
-container health, DNS resolution, and remote TLS certificate expiry.
-
-`vibew tls status` connects to the remote host via SSH, inspects the TLS
-certificate with openssl, and reports subject, issuer, validity, SANs, and
-expiry status (OK / WARNING / CRITICAL / EXPIRED).
+consistency, upstream reachability, and local TLS cert validity.
 
 ## Writing your Dockerfile
 
@@ -233,7 +225,7 @@ generated compose. VibeWarden never overwrites this file.
 ## Known limitations
 
 - WAF is in `detect` mode by default (logs but does not block). Set `waf.mode: block` in vibewarden.yaml to enforce blocking.
-- `vibew doctor` checks config, Docker, ports, container health, and production reachability (when `--target` is provided).
+- `vibew doctor` checks config, Docker, ports, container health, generated files, ACME email, image tag, upstream reachability, and local TLS cert validity.
 - Multi-site deployment is new and may have edge cases — report issues if routes or certs behave unexpectedly.
 - `vibew init` does not accept `--tls` or `--domain` flags — run `vibew add tls --domain <your-domain>` after init.
 

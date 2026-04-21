@@ -63,8 +63,6 @@ vibew dev --watch  # Start with hot reload
 vibew restart      # Restart without full rebuild
 vibew status       # Check component health
 vibew doctor       # Diagnose issues
-vibew doctor --target ssh://user@host  # Include production checks
-vibew tls status --domain example.com --target ssh://user@host  # Inspect remote TLS cert
 ```
 
 Access the app at https://localhost:8443 (through the sidecar). Never expose the
@@ -83,8 +81,6 @@ app port directly — it has no security.
 | `vibew status` | Show component health |
 | `vibew logs` | Tail logs |
 | `vibew doctor` | Diagnose issues |
-| `vibew doctor --target ssh://user@host` | Diagnose including production checks |
-| `vibew tls status --domain x --target y` | Inspect remote TLS certificate |
 | `vibew token` | Generate dev JWT |
 | `vibew secret get/set/list` | Manage secrets |
 | `vibew cert export` | Export TLS certificate |
@@ -123,7 +119,7 @@ sites/
 ## Known limitations
 
 - WAF is in `detect` mode by default (logs but does not block). Set `waf.mode: block` in vibewarden.yaml to enforce blocking.
-- `vibew doctor` checks config, Docker, ports, container health, and production reachability (when `--target` is provided).
+- `vibew doctor` checks config, Docker, ports, container health, generated files, ACME email, image tag, upstream reachability, and local TLS cert validity.
 - Multi-site deployment is new and may have edge cases — report issues if routes or certs behave unexpectedly.
 - `vibew init` does not accept `--tls` or `--domain` flags — run `vibew add tls --domain <your-domain>` after init.
 

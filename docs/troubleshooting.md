@@ -25,7 +25,6 @@ pre-flight scripts.
 |------|---------|-------------|
 | `--config <path>` | `./vibewarden.yaml` | Path to a non-default config file |
 | `--json` | `false` | Emit results as a JSON array instead of the human-readable table |
-| `--target <ssh://...>` | (none) | Remote target for production checks; when omitted, only local checks run |
 
 ### Checks performed (in order)
 
@@ -48,16 +47,6 @@ pre-flight scripts.
 |---|------------|---------------|
 | 9 | **Upstream reachable** | The configured upstream port is listening locally |
 | 10 | **TLS cert valid** | Performs a live TLS handshake against the sidecar, reads the leaf certificate from the handshake, and verifies it is not expired or expiring within 7 days. Reports WARN (`sidecar not reachable — start 'vibew dev'`) when the handshake fails, so the check no longer depends on a file-on-disk at a hardcoded path (ADR-084) |
-
-#### Layer 3: Production (only with `--target`)
-
-| # | Check name | What it tests |
-|---|------------|---------------|
-| 11 | **SSH connectivity** | SSH connection to the remote host succeeds |
-| 12 | **Arch compatibility** | Local build architecture matches the remote server architecture |
-| 13 | **Remote containers** | Remote Docker Compose services are healthy |
-| 14 | **Domain DNS** | `tls.domain` resolves to the target host IP (only when domain is set) |
-| 15 | **Remote TLS cert** | Remote certificate is valid and not expiring within 30 days (only when domain is set) |
 
 ### Severity levels
 
@@ -447,70 +436,6 @@ secrets:
 ```
 
 Save the master key somewhere safe -- if you lose it, your secrets are unrecoverable.
-
----
-
-### Architecture mismatch between build and deploy target
-
-**Symptom**
-
-```
-[WARN]  Arch compatibility  local build is arm64 but remote server is amd64
-```
-
-**Cause**
-
-You built the Docker image on Apple Silicon (arm64) without specifying the
-target platform. The remote server runs amd64 and cannot execute the image.
-
-**Fix**
-
-Rebuild with the correct platform:
-
-```bash
-vibew build --platform linux/amd64
-```
-
-Then regenerate and ship the bundle:
-
-```bash
-vibew bundle
-scp -r .vibewarden/bundle/ user@host:~/
-ssh user@host 'cd ~/bundle && bash deploy.sh'
-```
-
----
-
-### Remote TLS certificate expiring or invalid
-
-**Symptom**
-
-```
-[WARN]  Remote TLS cert  certificate expires in 12 days
-[FAIL]  Remote TLS cert  certificate expired 2 days ago
-```
-
-**Cause**
-
-The TLS certificate on the remote host is nearing expiry or has already expired.
-If you are using `tls.provider: letsencrypt`, the ACME renewal may have failed.
-
-**Fix**
-
-Inspect the certificate details:
-
-```bash
-vibew tls status --domain example.com --target ssh://user@host
-```
-
-If renewal failed, check the sidecar logs for ACME errors:
-
-```bash
-ssh user@host 'cd ~/bundle && docker compose logs vibewarden --tail=100'
-```
-
-Common causes: DNS not pointing to the server, port 80 blocked (HTTP-01 challenge
-requires it), or rate limits exhausted (switch to ZeroSSL via `tls.acme_ca`).
 
 ---
 

@@ -6,7 +6,7 @@
 
 ## Status
 
-Accepted
+Superseded by #1051/#1059 — archutil removed
 
 ## Context
 

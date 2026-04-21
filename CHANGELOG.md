@@ -125,6 +125,14 @@ This initial entry was written by hand to summarise the work leading up to v0.1.
     emitted only once Caddy/certmagic exposes a stable issuer-transition
     hook (payload: `from_provider`, `to_provider`, `reason`, `domain`).
 
+### Removed
+
+- 5 production-only `vibew doctor` checks removed as part of the deploy
+  sunset (`checkSSHConnectivity`, `checkArchCompatibility`,
+  `checkRemoteContainerHealth`, `checkDomainDNS`, `checkRemoteTLSCert`).
+  The `--target` and `--ssh-key` flags on `vibew doctor` are gone; use
+  `vibew tls status` for remote TLS expiry. (#1059)
+
 ---
 
 ## [v0.15.0] — 2026-04-20
