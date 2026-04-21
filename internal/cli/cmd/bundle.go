@@ -26,8 +26,10 @@ import (
 const defaultBundleOutputDir = ".vibewarden/bundle"
 
 // multiSiteErrorMessage is the user-facing error returned when vibew bundle
-// is run against a multi-site project. See ADR-085 §7.
-const multiSiteErrorMessage = "multi-site bundle is not yet supported; use `vibew deploy` until this lands (tracking: see ADR-085)"
+// is run against a multi-site project. See ADR-085 §7 and ADR-086 (sunset
+// vibew deploy). Multi-site bundling is tracked as a follow-up; there is no
+// working command for this case today — `vibew deploy` has been removed.
+const multiSiteErrorMessage = "multi-site bundle is not yet supported (see ADR-085); track progress at https://github.com/VibeWarden/vibewarden/issues"
 
 // NewBundleCmd creates the "vibew bundle" command.
 //

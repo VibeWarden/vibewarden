@@ -2,7 +2,8 @@
 #
 # This file is the reference for vibewarden.yaml, the LOCAL DEV config.
 # For production, use vibewarden.production.yaml as an override file —
-# vibew deploy deep-merges it on top of this file automatically.
+# `vibew bundle` deep-merges it on top of this file when it writes the
+# self-contained deploy artifact under .vibewarden/bundle/.
 #
 # If you are getting started, open `vibewarden.example.yaml` instead. It
 # is a short, curated starter config that covers the common cases. Copy
@@ -132,14 +133,15 @@ upstream:
 # Application container configuration
 #
 # Controls how the app runs inside Docker Compose. `vibew build` builds
-# the image locally; `vibew deploy` transfers it via docker save/load
-# (no source code on the server). Use `environment` for runtime config
-# (database URLs, API keys, etc.) -- never bake secrets into the image.
+# the image locally; `vibew bundle` packages it into image.tar (via
+# docker save/load) so no source code ships to the server. Use
+# `environment` for runtime config (database URLs, API keys, etc.) --
+# never bake secrets into the image.
 #
 # app:
 #   # Docker build context path (e.g., "." for the current directory).
-#   # When set, `vibew build` builds the image locally. `vibew deploy`
-#   # transfers the built image to the server, not the source code.
+#   # When set, `vibew build` builds the image locally. `vibew bundle`
+#   # packages the built image into image.tar, not the source code.
 #   build: "."
 #
 #   # Docker image reference. Default: derived from the project name.
