@@ -427,3 +427,38 @@ Files:
 - `decisions/adr-081-auto-detect-arch-mismatch-during-deploy-prerequisites.md`
 
 This is the only edit permitted to a merged ADR.
+
+---
+
+## Amendment (2026-04-21)
+
+**Issue**: [#1063](https://github.com/VibeWarden/vibewarden/issues/1063)
+
+§"Stub command" and §"Follow-ups" above described the hidden
+`vibew deploy` stub as shipping for *one release* before removal, with
+removal tracked by #1063 in "the release after that".
+
+That timeline is accelerated: #1063 now removes the stub in the SAME
+release as the sunset. The upcoming release's theme was reframed to
+"deploy is gone"; keeping a `Hidden: true` stub that prints a
+deprecation message and exits 2 alongside release notes titled "deploy
+is gone" dilutes the message. Users reading the CHANGELOG's Breaking
+section will expect the command to be absent, not politely deprecated.
+
+Concrete changes under #1063:
+
+- Delete `internal/cli/cmd/deploy_stub.go` and
+  `internal/cli/cmd/deploy_stub_test.go`.
+- Drop the `root.AddCommand(NewDeployCmd())` line from
+  `internal/cli/cmd/root.go`.
+- Replace the stub tests with a test asserting cobra's default
+  `unknown command "deploy"` error and non-zero exit for `vibew deploy`.
+- Update `CHANGELOG.md`, `docs/deploy-reference.md`,
+  `docs/examples/AGENTS-VIBEWARDEN.md`, and `llms-full.txt` to describe
+  the new reality: `vibew deploy` no longer exists; invoking it produces
+  cobra's `unknown command` error. Remove every claim that "the stub
+  ships for one release" — that statement is now historical.
+
+The rest of this ADR (the deletion list, the package rename, the
+orchestration removal, the doctor / MCP-tool follow-ups) stands as
+originally recorded. Only the stub timeline is amended.
