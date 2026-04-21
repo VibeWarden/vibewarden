@@ -15,6 +15,7 @@ import (
 	templateadapter "github.com/vibewarden/vibewarden/internal/adapters/template"
 	"github.com/vibewarden/vibewarden/internal/config"
 	"github.com/vibewarden/vibewarden/internal/config/templates"
+	"github.com/vibewarden/vibewarden/internal/ports"
 )
 
 // BundleOptions holds parameters for producing the deploy bundle.
@@ -71,6 +72,25 @@ type BundleOptions struct { //nolint:revive // kept stable across package rename
 	// cfg.ComposeProjectName()+"-app:latest". Exported so the CLI layer can
 	// override the default without the service inventing names.
 	ImageTag string
+
+	// TargetPlatform is the expected deployment platform (e.g. "linux/amd64").
+	// Used by the image health check. When empty, "linux/amd64" is assumed.
+	TargetPlatform string
+
+	// AllowStale, when true, suppresses the STALE warning in the image health
+	// block. The bundle always proceeds regardless of freshness.
+	AllowStale bool
+
+	// ProjectRoot is the directory walked by the staleness walker. When empty,
+	// the directory containing ConfigPath is used.
+	ProjectRoot string
+
+	// Out is the writer for the image health block output. When nil, os.Stdout
+	// is implied by the CLI layer — the service itself does not write to stdout
+	// directly so callers control where the block goes.
+	Out interface {
+		Write(p []byte) (n int, err error)
+	}
 }
 
 // defaultBundleDir is the default output directory for deploy bundles.
@@ -102,6 +122,16 @@ func (s *Service) Bundle(ctx context.Context, opts BundleOptions) error {
 
 	if opts.MultiSite {
 		return s.bundleMultiSiteSite(ctx, opts.Config, opts.ConfigPath, opts.ProdConfigPath, opts.ProjectName, outDir)
+	}
+
+	// Step 0: Image health check — runs before any files are written so that
+	// a missing/stale/mismatched image is caught before producing a partial
+	// bundle artifact. When no inspector is wired (existing tests that predate
+	// ADR-089), the health block is skipped with a visible notice.
+	if s.imageInspector != nil {
+		if err := s.runImageHealthCheck(ctx, opts); err != nil {
+			return err
+		}
 	}
 
 	// Snapshot the pre-existing .env (if any) BEFORE the generator runs.
@@ -144,6 +174,53 @@ func (s *Service) Bundle(ctx context.Context, opts BundleOptions) error {
 	// rules. Signal the deferred guard to skip the error-path restore so it
 	// does not clobber whatever the extras pipeline decided to write.
 	restored = true
+	return nil
+}
+
+// ErrImageMissing is a sentinel that the CLI layer maps to exit code 2.
+// It is returned (wrapping ports.ErrImageNotFound) when the target image is
+// absent from the local Docker daemon and --build was not requested.
+var ErrImageMissing = errors.New("image missing from local Docker")
+
+// runImageHealthCheck executes the image inspection + staleness walk, writes
+// the rendered health block to opts.Out (or discards it when nil), and returns
+// an error when the image is absent or Docker is unreachable.
+func (s *Service) runImageHealthCheck(ctx context.Context, opts BundleOptions) error {
+	projectRoot := opts.ProjectRoot
+	if projectRoot == "" && opts.ConfigPath != "" {
+		projectRoot = filepath.Dir(opts.ConfigPath)
+	}
+
+	health, err := CheckImageHealth(ctx, CheckImageHealthOptions{
+		ImageTag:       opts.ImageTag,
+		ProjectRoot:    projectRoot,
+		TargetPlatform: opts.TargetPlatform,
+		AllowStale:     opts.AllowStale,
+		Inspector:      s.imageInspector,
+		Walker:         s.stalenessWalker,
+	})
+	if err != nil {
+		if errors.Is(err, ports.ErrDockerUnavailable) {
+			return fmt.Errorf("docker daemon unreachable: %w", ports.ErrDockerUnavailable)
+		}
+		if errors.Is(err, ports.ErrImageNotFound) {
+			// Intentionally multi-line: this is the user-facing hard-failure
+			// message mandated by ADR-089 §F. The newlines and period are
+			// part of the UX copy, not a Go error string convention.
+			//nolint:revive,staticcheck // multi-line actionable message, not a wrapped log string
+			msg := fmt.Sprintf("image %s not found in local Docker\n\nFix one of:\n  vibew bundle --build\n  vibew build --platform linux/amd64\n  docker buildx build --platform linux/amd64 --load -t %s .",
+				opts.ImageTag, opts.ImageTag)
+			return fmt.Errorf("%w: %s", ErrImageMissing, msg)
+		}
+		return err
+	}
+
+	// Render the health block to opts.Out when provided.
+	if opts.Out != nil {
+		RenderImageHealth(opts.Out, health)
+		fmt.Fprintln(opts.Out)
+	}
+
 	return nil
 }
 

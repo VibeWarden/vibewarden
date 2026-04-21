@@ -30,6 +30,15 @@ type Service struct {
 	// nil, the extras pipeline treats --skip-image as always-on for the
 	// invocation.
 	imageSaver ports.ImageSaver
+
+	// imageInspector inspects the target image via `docker image inspect`
+	// before any bundle files are written. When nil, the health block is
+	// skipped (backward-compatible path for existing tests).
+	imageInspector ports.ImageInspector
+
+	// stalenessWalker computes the most-recent source file mtime for the
+	// freshness verdict. When nil, freshness reporting is disabled.
+	stalenessWalker StalenessWalker
 }
 
 // NewService creates a Service.
@@ -54,6 +63,23 @@ func (s *Service) WithBundleFS(bfs ports.BundleFS) *Service {
 // produced (equivalent to --skip-image).
 func (s *Service) WithImageSaver(saver ports.ImageSaver) *Service {
 	s.imageSaver = saver
+	return s
+}
+
+// WithImageInspector sets the ImageInspector used to produce the image health
+// block before any bundle files are written. When not set, the health block is
+// skipped — this is the nil-safe path used by existing tests that predate
+// ADR-089.
+func (s *Service) WithImageInspector(inspector ports.ImageInspector) *Service {
+	s.imageInspector = inspector
+	return s
+}
+
+// WithStalenessWalker sets the StalenessWalker used to compute the freshness
+// verdict in the image health block. When not set, freshness reporting is
+// disabled.
+func (s *Service) WithStalenessWalker(walker StalenessWalker) *Service {
+	s.stalenessWalker = walker
 	return s
 }
 

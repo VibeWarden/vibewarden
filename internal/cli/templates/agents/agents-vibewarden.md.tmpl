@@ -183,11 +183,33 @@ vibew bundle
 cd .vibewarden/bundle && ./deploy.sh user@host
 ```
 
-`vibew bundle` is the canonical path. It emits a deterministic
-`docker-compose.yml` (image: pinned, never build:), the merged
-`vibewarden.yaml`, `sample.env`, `.env`, a reference `deploy.sh`, an
-optional `image.tar` (omit with `--skip-image`), and `README.md` under
-`.vibewarden/bundle/`.
+`vibew bundle` is the canonical path. Before writing any files it inspects
+the target image and prints a health block to stdout. Read it to verify the
+right image is being shipped:
+
+```
+Image health
+  Tag:          <project>-app:latest
+  Digest:       sha256:…
+  Arch:         linux/amd64
+  Created:      2026-04-19 14:02:11 UTC (1 day ago)
+  Size:         162.4 MB
+  Target:       linux/amd64  (override with --target-platform)
+  Freshness:    FRESH
+  Warnings:     none
+```
+
+Key flags:
+- `--build` — build the image first (use when it's missing or stale)
+- `--allow-stale` — suppress STALE warning when you know the image is correct
+- `--target-platform linux/<arch>` — set when your VPS arch differs from your laptop
+
+Exit codes: 0=success (with or without warnings), 2=image missing, 3=docker daemon unreachable.
+
+`vibew bundle` then emits a deterministic `docker-compose.yml` (image: pinned,
+never build:), the merged `vibewarden.yaml`, `sample.env`, `.env`, a reference
+`deploy.sh`, an optional `image.tar` (omit with `--skip-image`), and `README.md`
+under `.vibewarden/bundle/`.
 
 `deploy.sh` runs **locally** on the workstation. It `scp`s the bundle
 directory, loads the image (or pulls it), runs `docker compose up -d`,

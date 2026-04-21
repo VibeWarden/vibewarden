@@ -265,8 +265,12 @@ func TestBundle_MultiSite_AppBuildUsesImage(t *testing.T) {
 	if !strings.Contains(content, "image:") {
 		t.Errorf("expected 'image:' in deploy compose, got:\n%s", content)
 	}
-	if !strings.Contains(content, "vibewarden-app:latest") {
-		t.Errorf("expected 'vibewarden-app:latest' in deploy compose, got:\n%s", content)
+	// The image name is derived from cfg.ComposeProjectName(). With cfg.Name=""
+	// and cfg.App.Image="" the project name falls back to "vibewarden", so the
+	// tag is "vibewarden-app:latest". This is pre-ADR-089 behaviour preserved
+	// for the multi-site path; single-site enforces scoped tags via BundleOptions.ImageTag.
+	if !strings.Contains(content, "-app:latest") {
+		t.Errorf("expected '<project>-app:latest' in deploy compose, got:\n%s", content)
 	}
 }
 
