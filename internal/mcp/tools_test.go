@@ -268,17 +268,6 @@ func TestMakeDoctorHandler_InvalidArgs(t *testing.T) {
 	}
 }
 
-func TestMakeVerifyDeployHandler_NilDeps(t *testing.T) {
-	handler := makeVerifyDeployHandler(ToolDeps{})
-	_, err := handler(context.Background(), json.RawMessage(`{"url":"http://example.com"}`))
-	if err == nil {
-		t.Error("expected an error when HealthChecker is nil")
-	}
-	if !strings.Contains(err.Error(), "not available") {
-		t.Errorf("expected 'not available' in error, got: %v", err)
-	}
-}
-
 func TestHandleValidate_InvalidArgs(t *testing.T) {
 	_, err := handleValidate(context.Background(), json.RawMessage(`{invalid`))
 	if err == nil {
@@ -302,9 +291,6 @@ func TestRegisterDefaultTools(t *testing.T) {
 		"vibewarden_doctor",
 		"vibewarden_validate",
 		"vibewarden_explain",
-		"vibewarden_prepare_deploy",
-		"vibewarden_verify_deploy",
-		"vibewarden_get_deploy_logs",
 		"vibewarden_watch_events",
 		"vibewarden_stream_logs",
 		"vibewarden_schema_describe",

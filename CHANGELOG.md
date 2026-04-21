@@ -14,6 +14,10 @@ This initial entry was written by hand to summarise the work leading up to v0.1.
 
 ### Breaking
 
+- **MCP deploy tools removed** (#1062, [ADR-086](decisions/adr-086-sunset-vibew-deploy.md) §"MCP-server tools").
+  MCP tools `vibewarden_prepare_deploy`, `vibewarden_verify_deploy`, `vibewarden_get_deploy_logs` removed.
+  Use the `vibew bundle` CLI directly (see [`docs/guide/bundle-to-vps.md`](docs/guide/bundle-to-vps.md));
+  MCP tool for bundle tracked in #1068 — not shipped in this PR.
 - **`vibew deploy` removed** (#1051, [ADR-086](decisions/adr-086-sunset-vibew-deploy.md)).
   The remote SSH orchestration command — and its subcommands `status` and
   `logs` — has been retired after four retros converged on deploy as the
