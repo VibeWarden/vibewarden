@@ -143,3 +143,15 @@ To keep the tree green at each commit:
 - The `GeneratorInput` typed fields are not yet consumed by the service
   body. Adding a new decision field requires coordinating the DTO, the
   mapper, and — in a later PR — the service body.
+
+## Note (2026-04-21)
+
+Per ADR-087, the advisory purity test has moved out of `internal/ports/`
+into a dedicated architecture-test package:
+
+- New location: `test/architecture/ports_purity_test.go`
+- New invocation: `go test -tags=purity ./test/architecture/...`
+
+The references above to `internal/ports/purity_test.go` and
+`go test -tags=purity ./internal/ports/...` are preserved as historical
+record of the v1 layout and should not be used for new invocations.
