@@ -290,9 +290,7 @@ add VibeWarden. Use `vibew add` to enable individual features after the initial 
 | `vibew build` | Build the Docker image for the app |
 | `vibew dev` | Start local dev environment |
 | `vibew restart` | Restart containers without rebuilding the image |
-| `vibew deploy` | Deploy the stack to a remote server over SSH ([reference](docs/deploy-reference.md)) |
-| `vibew deploy status` | Show Docker Compose service status on the remote |
-| `vibew deploy logs` | Fetch Docker Compose logs from the remote (`--follow` for streaming) |
+| `vibew bundle` | Produce a self-contained Docker Compose deploy artifact under `.vibewarden/bundle/` ([walkthrough](docs/guide/bundle-to-vps.md)) |
 | `vibew status` | Show health of all components |
 | `vibew doctor` | Diagnose common issues |
 | `vibew logs` | Pretty-print structured logs |
@@ -398,7 +396,8 @@ Architectural decisions are documented in [DECISIONS.md](DECISIONS.md).
 | Rate limiting at scale | [docs/rate-limiting.md](docs/rate-limiting.md) |
 | Production deployment | [docs/production-deployment.md](docs/production-deployment.md) |
 | Hardening checklist | [docs/production-hardening.md](docs/production-hardening.md) |
-| Deploy command reference | [docs/deploy-reference.md](docs/deploy-reference.md) |
+| Bundle to VPS walkthrough | [docs/guide/bundle-to-vps.md](docs/guide/bundle-to-vps.md) |
+| Removed `vibew deploy` (breaking change) | [docs/deploy-reference.md](docs/deploy-reference.md) |
 | Multi-app deployment | [docs/multi-app.md](docs/multi-app.md) |
 | Architectural decisions | [DECISIONS.md](DECISIONS.md) |
 

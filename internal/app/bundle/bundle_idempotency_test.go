@@ -1,4 +1,4 @@
-package deploy_test
+package bundle_test
 
 import (
 	"bytes"
@@ -6,16 +6,16 @@ import (
 	"path/filepath"
 	"testing"
 
-	deployapp "github.com/vibewarden/vibewarden/internal/app/deploy"
+	bundleapp "github.com/vibewarden/vibewarden/internal/app/bundle"
 )
 
 func TestBundle_Idempotency_DotEnvPreserved(t *testing.T) {
 	mem := newMemBundleFS()
-	svc := deployapp.NewService(&fakeExecutor{}, &fakeGenerator{}).
+	svc := bundleapp.NewService(&fakeExecutor{}, &fakeGenerator{}).
 		WithBundleFS(mem)
 
 	outDir := t.TempDir()
-	opts := deployapp.BundleOptions{
+	opts := bundleapp.BundleOptions{
 		Config:      minimalBundleCfg(),
 		ConfigPath:  filepath.Join(t.TempDir(), "vibewarden.yaml"),
 		ProjectName: "myproject",
@@ -64,11 +64,11 @@ func TestBundle_Idempotency_OverwriteReplacesDotEnv(t *testing.T) {
 	// mem store's .env between runs — that matches the real-world flow
 	// where the generator always overwrites .env with fresh credentials.
 	mem := newMemBundleFS()
-	svc := deployapp.NewService(&fakeExecutor{}, &fakeGenerator{}).
+	svc := bundleapp.NewService(&fakeExecutor{}, &fakeGenerator{}).
 		WithBundleFS(mem)
 
 	outDir := t.TempDir()
-	base := deployapp.BundleOptions{
+	base := bundleapp.BundleOptions{
 		Config:      minimalBundleCfg(),
 		ConfigPath:  filepath.Join(t.TempDir(), "vibewarden.yaml"),
 		ProjectName: "myproject",
@@ -114,11 +114,11 @@ func TestBundle_Idempotency_OverwriteReplacesDotEnv(t *testing.T) {
 
 func TestBundle_Idempotency_DeploySHOverwritten(t *testing.T) {
 	mem := newMemBundleFS()
-	svc := deployapp.NewService(&fakeExecutor{}, &fakeGenerator{}).
+	svc := bundleapp.NewService(&fakeExecutor{}, &fakeGenerator{}).
 		WithBundleFS(mem)
 
 	outDir := t.TempDir()
-	opts := deployapp.BundleOptions{
+	opts := bundleapp.BundleOptions{
 		Config:      minimalBundleCfg(),
 		ConfigPath:  filepath.Join(t.TempDir(), "vibewarden.yaml"),
 		ProjectName: "myproject",

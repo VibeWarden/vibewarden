@@ -183,7 +183,7 @@ Common flags:
 
 !!! note "Environment separation"
     `vibewarden.yaml` is your local dev config. `vibewarden.production.yaml`
-    contains production overrides. `vibew deploy` deep-merges the production
+    contains production overrides. `vibew bundle` deep-merges the production
     overrides automatically. Never put production-only settings in
     `vibewarden.yaml`.
 
@@ -455,7 +455,7 @@ See the [Observability guide](observability.md) for details.
 ```
 
 This sets `tls.provider: letsencrypt` and `tls.domain` in `vibewarden.yaml` and
-writes the domain to `vibewarden.production.yaml`. When you run `vibew deploy`,
+writes the domain to `vibewarden.production.yaml`. When you run `vibew bundle`,
 the production overrides (letsencrypt, port 443) are merged automatically.
 
 See the [Production Deployment guide](production-deployment.md) for the full

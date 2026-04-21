@@ -14,7 +14,7 @@ import (
 	credentialsadapter "github.com/vibewarden/vibewarden/internal/adapters/credentials"
 	opsadapter "github.com/vibewarden/vibewarden/internal/adapters/ops"
 	templateadapter "github.com/vibewarden/vibewarden/internal/adapters/template"
-	deployapp "github.com/vibewarden/vibewarden/internal/app/deploy"
+	bundleapp "github.com/vibewarden/vibewarden/internal/app/bundle"
 	generateapp "github.com/vibewarden/vibewarden/internal/app/generate"
 	"github.com/vibewarden/vibewarden/internal/config"
 	configtemplates "github.com/vibewarden/vibewarden/internal/config/templates"
@@ -26,8 +26,10 @@ import (
 const defaultBundleOutputDir = ".vibewarden/bundle"
 
 // multiSiteErrorMessage is the user-facing error returned when vibew bundle
-// is run against a multi-site project. See ADR-085 §7.
-const multiSiteErrorMessage = "multi-site bundle is not yet supported; use `vibew deploy` until this lands (tracking: see ADR-085)"
+// is run against a multi-site project. See ADR-085 §7 and ADR-086 (sunset
+// vibew deploy). Multi-site bundling is tracked as a follow-up; there is no
+// working command for this case today — `vibew deploy` has been removed.
+const multiSiteErrorMessage = "multi-site bundle is not yet supported (see ADR-085); track progress at https://github.com/VibeWarden/vibewarden/issues"
 
 // NewBundleCmd creates the "vibew bundle" command.
 //
@@ -156,7 +158,7 @@ func runBundle(cmd *cobra.Command, outputDir, imageTag string, overwrite, skipIm
 		credentialsadapter.NewStore(),
 	).WithConfigSourcePath(absConfig)
 
-	svc := deployapp.NewService(nil, generator).WithBundleFS(bfs)
+	svc := bundleapp.NewService(nil, generator).WithBundleFS(bfs)
 	if !skipImage {
 		svc = svc.WithImageSaver(opsadapter.NewImageExportAdapter())
 	}
@@ -166,14 +168,14 @@ func runBundle(cmd *cobra.Command, outputDir, imageTag string, overwrite, skipIm
 		absOut = outputDir
 	}
 
-	if err := svc.Bundle(cmd.Context(), deployapp.BundleOptions{
+	if err := svc.Bundle(cmd.Context(), bundleapp.BundleOptions{
 		Config:         cfg,
 		ConfigPath:     absConfig,
 		ProdConfigPath: prodConfigPath,
 		ProjectName:    projectName,
 		MultiSite:      false,
 		OutputDir:      absOut,
-		Env:            deployapp.DefaultEnv,
+		Env:            bundleapp.DefaultEnv,
 		Overwrite:      overwrite,
 		SkipImage:      skipImage,
 		ImageTag:       imageTag,
@@ -253,7 +255,7 @@ func deriveProjectName(cfg *config.Config, absConfig string) string {
 			return name
 		}
 	}
-	return sanitiseProjectName(deployapp.ProjectNameFromConfig(absConfig))
+	return sanitiseProjectName(bundleapp.ProjectNameFromConfig(absConfig))
 }
 
 // sanitiseProjectName strips any byte outside the shell-safe subset
@@ -281,6 +283,19 @@ func sanitiseProjectName(in string) string {
 		b.WriteRune(r)
 	}
 	return b.String()
+}
+
+// prodConfigPathForEnv returns the path to the environment-specific production
+// override file (e.g. vibewarden.production.yaml) based on the base config
+// path. When the computed file does not exist, an empty string is returned
+// (no override).
+func prodConfigPathForEnv(configPath, envName string) string {
+	dir := filepath.Dir(configPath)
+	prodFile := filepath.Join(dir, "vibewarden."+envName+".yaml")
+	if _, err := os.Stat(prodFile); err == nil {
+		return prodFile
+	}
+	return ""
 }
 
 // isMultiSiteProject reports whether configPath sits in a project whose

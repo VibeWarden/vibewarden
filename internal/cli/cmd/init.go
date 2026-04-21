@@ -88,8 +88,9 @@ The command scaffolds into the current working directory, creating:
   - .gitignore
 
 vibewarden.yaml is your LOCAL dev config. vibewarden.production.yaml contains
-production overrides. vibew deploy deep-merges the production overrides
-automatically. Never put production-only config in vibewarden.yaml.
+production overrides. vibew bundle deep-merges the production overrides into
+the self-contained deploy artifact under .vibewarden/bundle/. Never put
+production-only config in vibewarden.yaml.
 
 The project name is derived from the current directory's base name.
 Use --name to set an explicit project name for Docker Compose image

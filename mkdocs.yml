@@ -75,9 +75,9 @@ nav:
       - Secret Management: secret-management.md
       - Performance: performance.md
       - Social Login: social-login.md
-      - Deploy to VPS: deploy-to-vps.md
+      - Bundle to VPS: guide/bundle-to-vps.md
       - Multi-App Deployment: multi-app.md
-      - Deploy Reference: deploy-reference.md
+      - Removed vibew deploy: deploy-reference.md
       - Production Deployment: production-deployment.md
       - Production Hardening: production-hardening.md
       - WebSockets: websockets.md

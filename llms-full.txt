@@ -87,9 +87,7 @@ VibeWarden is operated via the `vibew` CLI. Below is the complete command list.
 | `vibew build` | Build the Docker image for the app |
 | `vibew dev` | Start local dev environment |
 | `vibew restart` | Restart containers without rebuilding |
-| `vibew deploy --target ssh://user@host` | Deploy the stack to a remote server over SSH |
-| `vibew deploy status --target ssh://user@host` | Show remote Docker Compose service status |
-| `vibew deploy logs --target ssh://user@host` | Fetch remote Docker Compose logs (--follow/-f for streaming) |
+| `vibew bundle` | Produce a self-contained Docker Compose deploy bundle under `.vibewarden/bundle/` (ship with scp + docker compose up -d) |
 | `vibew status` | Show health of all components |
 | `vibew doctor` | Diagnose common issues |
 | `vibew logs` | Pretty-print structured logs |
@@ -155,60 +153,33 @@ or `vibew wrap`.
 
 ### Multi-app deployment
 
-VibeWarden supports deploying multiple apps to a single VM, each on its own
-subdomain, behind one shared sidecar. `vibew deploy` automatically detects
-whether the target already has a sidecar:
+VibeWarden supports multi-app projects locally: multiple apps live under
+`sites/<name>/` each with their own `vibewarden.yaml`. A shared sidecar
+reverse-proxies all of them on the same VM.
 
-- First deploy with `tls.domain` set: bootstraps the sidecar and first site.
-- Subsequent deploys: adds new sites alongside existing ones.
-
-Each app keeps its own `vibewarden.yaml` (same file as local). No config
-merging. Server-side layout:
-
-```
-~/vibewarden/
-  .sidecar/global.yaml         # VM-wide settings
-  .sidecar/docker-compose.yml  # sidecar container
-  sites/<app>/vibewarden.yaml  # per-app config (copied from project)
-  sites/<app>/docker-compose.yml  # per-app container (generated)
-```
-
-The sidecar watches `sites/*/vibewarden.yaml` and hot-reloads on change.
-A broken site config does not affect other sites.
-
-Key commands:
-- `vibew deploy status --target ssh://user@host` -- shows all sites
-- `vibew deploy status --target ssh://user@host --app blog` -- single site
-- `vibew deploy logs --target ssh://user@host --app blog --follow` -- site logs
+Remote orchestration for multi-site layouts is deferred per ADR-085 /
+ADR-086. `vibew bundle` currently hard-fails on multi-site projects with
+`multi-site bundle is not yet supported`; the local dev / test paths
+continue to work unchanged.
 
 Full guide: https://vibewarden.dev/docs/multi-app/
 
 ### Deploy model
 
 `vibew build` builds the Docker image locally from the app's Dockerfile.
-`vibew deploy` transfers the pre-built image to the server via
-`docker save | rsync | docker load`. No source code is ever sent to the
+`vibew bundle` packages the image (via `docker save`) along with a
+deterministic docker-compose.yml, merged vibewarden.yaml, sample.env,
+.env, reference deploy.sh, and README under `.vibewarden/bundle/`. The
+user then transfers the bundle directory to the VPS and runs
+`docker compose up -d` themselves. No source code is ever sent to the
 production server -- the image must be production-ready.
 
+The removed `vibew deploy` command did all three steps (package, ship,
+start) in one SSH orchestration. That surface was retired in ADR-086 in
+favour of the thin bundle pipeline. Running `vibew deploy` today prints a
+deprecation message and exits 2.
+
 Use `app.environment` for runtime config (database URLs, API keys, etc.).
-
-### deploy flags
-
-`vibew deploy` uses SSH to deploy the stack remotely. It reads both
-`vibewarden.yaml` (base config) and `vibewarden.production.yaml` (production
-overrides), deep-merges them, resolves upstream.host for Docker networking, and
-writes the result to `.vibewarden/deploy/<env>/`. Key flags:
-
-- `--target` (required) -- `ssh://user@host[:port]`
-- `--config` -- path to vibewarden.yaml (default: ./vibewarden.yaml)
-- `--env` -- deployment environment name (default: "production"); reads
-  `vibewarden.<env>.yaml` as the override file
-- `--ssh-key` -- path to SSH private key (default: SSH agent / ~/.ssh/config)
-- `--secrets-from` -- .env file to seed into OpenBao on first deploy
-- `--rotate-secrets` -- re-seed secrets on subsequent deploys
-- `--unseal-key` -- OpenBao unseal key (overrides stored key)
-- `--force` -- overwrite remote files even if they have been modified since
-  last deploy
 
 ### bundle flags
 
@@ -224,9 +195,8 @@ writes the result to `.vibewarden/deploy/<env>/`. Key flags:
 
 Output layout:
 
-- `docker-compose.yml` -- image: pinned, byte-identical to `vibew deploy --dry-run`
-- `vibewarden.yaml` -- merged base + prod override, byte-identical to
-  `vibew deploy --dry-run`
+- `docker-compose.yml` -- image: pinned, deterministic across re-runs
+- `vibewarden.yaml` -- merged base + prod override, strict-validated
 - `sample.env` -- regenerated every run; template for operators
 - `.env` -- first-run only; `--overwrite` to replace
 - `deploy.sh` -- mode 0o750, 10-line reference script
@@ -235,7 +205,7 @@ Output layout:
 - `kratos/`, `.credentials` -- whatever the generator produces
 
 Multi-site projects (`sites/<name>/vibewarden.yaml`) hard-fail with
-`multi-site bundle is not yet supported — use vibew deploy`; see ADR-085.
+`multi-site bundle is not yet supported`; see ADR-085 / ADR-086.
 
 ### migrate flags
 
@@ -261,7 +231,7 @@ VibeWarden uses two config files:
 - `vibewarden.yaml` -- local dev config (self-signed TLS, port 8443).
   Read by `vibew dev`.
 - `vibewarden.production.yaml` -- production overrides (letsencrypt, port 443).
-  Read by `vibew deploy` and deep-merged on top of the base config.
+  Read by `vibew bundle` and deep-merged on top of the base config.
 
 Both files are generated by `vibew init`. Never put production-only config in
 `vibewarden.yaml`.
@@ -271,7 +241,7 @@ Key sections:
 - `name` — project name; controls Docker Compose project name, image tags, and deploy directory (default: directory name)
 - `server.port` — port the sidecar listens on (default 8443)
 - `upstream.port` — port the upstream application listens on
-- `app.build` — Docker build context; `vibew build` builds locally, `vibew deploy` transfers the image (no source on server)
+- `app.build` — Docker build context; `vibew build` builds locally, `vibew bundle` packages the image into the bundle (no source on server)
 - `app.image` — Docker image reference (used when `app.build` is empty)
 - `app.environment` — custom env vars injected into the app container (e.g. DATABASE_URL, REDIS_URL)
 - `tls.enabled`, `tls.provider` — TLS termination (letsencrypt with LE → ZeroSSL fallback when `tls.email` is set; zerossl; buypass as explicit opt-in only, upstream currently unhealthy per ADR-083; letsencrypt-staging; self-signed; external)

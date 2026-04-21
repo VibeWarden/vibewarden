@@ -1,4 +1,4 @@
-package deploy_test
+package bundle_test
 
 import (
 	"bytes"
@@ -11,7 +11,7 @@ import (
 
 	credentialsadapter "github.com/vibewarden/vibewarden/internal/adapters/credentials"
 	templateadapter "github.com/vibewarden/vibewarden/internal/adapters/template"
-	deployapp "github.com/vibewarden/vibewarden/internal/app/deploy"
+	bundleapp "github.com/vibewarden/vibewarden/internal/app/bundle"
 	generateapp "github.com/vibewarden/vibewarden/internal/app/generate"
 	configtemplates "github.com/vibewarden/vibewarden/internal/config/templates"
 )
@@ -66,26 +66,26 @@ tls:
 		t.Fatalf("writing prod config: %v", err)
 	}
 
-	cfg, err := deployapp.LoadMergedConfig(basePath, prodPath)
+	cfg, err := bundleapp.LoadMergedConfig(basePath, prodPath)
 	if err != nil {
 		t.Fatalf("LoadMergedConfig: %v", err)
 	}
 
-	// newRealService builds a deployapp.Service backed by the production
+	// newRealService builds a bundleapp.Service backed by the production
 	// adapter stack — the same wiring cmd/bundle.go and cmd/deploy.go use.
 	// We construct it twice, once per invocation, so the two runs share zero
 	// mutable state.
-	newRealService := func() *deployapp.Service {
+	newRealService := func() *bundleapp.Service {
 		renderer := templateadapter.NewRenderer(configtemplates.FS)
 		gen := generateapp.NewServiceWithCredentials(
 			renderer,
 			credentialsadapter.NewGenerator(),
 			credentialsadapter.NewStore(),
 		).WithConfigSourcePath(basePath)
-		return deployapp.NewService(&fakeExecutor{}, gen)
+		return bundleapp.NewService(&fakeExecutor{}, gen)
 	}
 
-	commonOpts := deployapp.BundleOptions{
+	commonOpts := bundleapp.BundleOptions{
 		Config:         cfg,
 		ConfigPath:     basePath,
 		ProdConfigPath: prodPath,

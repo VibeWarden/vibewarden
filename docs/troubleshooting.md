@@ -320,7 +320,7 @@ Error: loading config: ...
 
 **Cause**
 
-`vibew validate` and `vibew deploy` run the strict loader (ADR-082): every key in
+`vibew validate` and `vibew bundle` run the strict loader (ADR-082): every key in
 your `vibewarden.yaml` and sibling `vibewarden.production.yaml` must map to a field
 in the schema. A typo, a removed key, or a rename — such as `docker_compose`
 (the old name) instead of `compose_file` — is reported instead of silently dropped.
@@ -471,10 +471,12 @@ Rebuild with the correct platform:
 vibew build --platform linux/amd64
 ```
 
-Then redeploy:
+Then regenerate and ship the bundle:
 
 ```bash
-vibew deploy --target ssh://user@host
+vibew bundle
+scp -r .vibewarden/bundle/ user@host:~/
+ssh user@host 'cd ~/bundle && bash deploy.sh'
 ```
 
 ---
@@ -504,7 +506,7 @@ vibew tls status --domain example.com --target ssh://user@host
 If renewal failed, check the sidecar logs for ACME errors:
 
 ```bash
-vibew deploy logs --target ssh://user@host --lines 100
+ssh user@host 'cd ~/bundle && docker compose logs vibewarden --tail=100'
 ```
 
 Common causes: DNS not pointing to the server, port 80 blocked (HTTP-01 challenge
