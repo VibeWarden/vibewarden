@@ -107,6 +107,25 @@ func (s *Service) Bundle(ctx context.Context, opts BundleOptions) error {
 	// contract says the .env is preserved across runs.
 	priorDotEnv, priorExisted := s.snapshotPriorDotEnv(outDir)
 
+	// Defer-safe restore: if the generator clobbers .env and then something
+	// downstream fails (bundleSingleSite OR writeBundleExtras), the user's
+	// snapshot must come back. Without this defer, a mid-run failure leaves
+	// the fresh-random-credentials .env on disk and destroys user edits —
+	// silently breaking the "preserved across runs" contract. Opts.Overwrite
+	// is the only path where the user explicitly asked to drop the snapshot.
+	restored := false
+	defer func() {
+		if restored || !priorExisted || opts.Overwrite || s.bundleFS == nil {
+			return
+		}
+		// Best-effort restore on the error path. We deliberately ignore any
+		// restore error here because the caller already has an error to
+		// surface, and writing into a directory the generator just failed
+		// inside may itself fail — we do not want to mask the real cause.
+		path := filepath.Join(outDir, fileDotEnv)
+		_ = s.bundleFS.WriteFile(path, priorDotEnv, 0o600)
+	}()
+
 	if err := s.bundleSingleSite(ctx, opts.Config, opts.ConfigPath, opts.ProdConfigPath, opts.ProjectName, outDir); err != nil {
 		return err
 	}
@@ -114,7 +133,14 @@ func (s *Service) Bundle(ctx context.Context, opts BundleOptions) error {
 	// additive. They run only after the base generator has succeeded so a
 	// failing compose render does not leave half a bundle on disk with a
 	// fresh .env. See bundle_extras.go.
-	return s.writeBundleExtras(ctx, opts, outDir, priorDotEnv, priorExisted)
+	if err := s.writeBundleExtras(ctx, opts, outDir, priorDotEnv, priorExisted); err != nil {
+		return err
+	}
+	// writeBundleExtras already handled the snapshot per its own idempotency
+	// rules. Signal the deferred guard to skip the error-path restore so it
+	// does not clobber whatever the extras pipeline decided to write.
+	restored = true
+	return nil
 }
 
 // snapshotPriorDotEnv reads the existing .env in outDir so the extras

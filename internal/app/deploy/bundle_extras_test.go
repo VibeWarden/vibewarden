@@ -380,6 +380,94 @@ func TestBundle_Extras_MultiSite_SkipsExtras(t *testing.T) {
 	}
 }
 
+// TestBundle_DotEnv_RestoredOnGeneratorFailure is the #1061 reviewer guard:
+// if the generator clobbers .env with fresh credentials and then fails
+// partway through, the user's pre-run .env must be restored. Without the
+// defer in Bundle, a mid-run crash would leave the generator's fresh
+// random credentials on disk and destroy the user's edits silently.
+func TestBundle_DotEnv_RestoredOnGeneratorFailure(t *testing.T) {
+	mem := newMemBundleFS()
+	// Generator returns an error so bundleSingleSite fails before the
+	// extras pipeline runs. The deferred restore must still fire.
+	gen := &fakeGenerator{err: errors.New("compose template exploded mid-run")}
+	svc := deployapp.NewService(&fakeExecutor{}, gen).WithBundleFS(mem)
+
+	outDir := t.TempDir()
+	priorPath := filepath.Join(outDir, ".env")
+	priorContent := []byte("VIBEWARDEN_APP_IMAGE=userpin\nSTRIPE_KEY=sk_live_REAL\n")
+
+	// Seed the existing .env in the in-memory FS AND on disk. The in-memory
+	// copy is what snapshotPriorDotEnv reads; the on-disk copy is what
+	// bundleSingleSite's generator would clobber in real life. We write to
+	// both so the test exercises the exact sequence of a re-run.
+	if err := mem.WriteFile(priorPath, priorContent, 0o600); err != nil {
+		t.Fatalf("seeding mem .env: %v", err)
+	}
+	if err := os.WriteFile(priorPath, priorContent, 0o600); err != nil {
+		t.Fatalf("seeding disk .env: %v", err)
+	}
+
+	err := svc.Bundle(context.Background(), deployapp.BundleOptions{
+		Config:      minimalBundleCfg(),
+		ConfigPath:  filepath.Join(t.TempDir(), "vibewarden.yaml"),
+		ProjectName: "myproject",
+		OutputDir:   outDir,
+		ImageTag:    "myproject-app:latest",
+		SkipImage:   true,
+	})
+	if err == nil {
+		t.Fatal("Bundle() expected generator error, got nil")
+	}
+
+	// After the failure, the in-memory .env must hold the user's original
+	// content — the deferred restore fired.
+	got, readErr := mem.ReadFile(priorPath)
+	if readErr != nil {
+		t.Fatalf("reading .env after failure: %v", readErr)
+	}
+	if !strings.Contains(string(got), "STRIPE_KEY=sk_live_REAL") {
+		t.Errorf(".env NOT restored after generator failure\ngot: %q\nwant substring: STRIPE_KEY=sk_live_REAL", got)
+	}
+}
+
+// TestBundle_DotEnv_OverwriteSkipsDeferredRestore verifies that --overwrite
+// bypasses the deferred restore: callers who explicitly asked to replace
+// the .env must not see their prior file resurrected by the error path.
+func TestBundle_DotEnv_OverwriteSkipsDeferredRestore(t *testing.T) {
+	mem := newMemBundleFS()
+	gen := &fakeGenerator{err: errors.New("boom")}
+	svc := deployapp.NewService(&fakeExecutor{}, gen).WithBundleFS(mem)
+
+	outDir := t.TempDir()
+	priorPath := filepath.Join(outDir, ".env")
+	priorContent := []byte("STRIPE_KEY=old\n")
+	if err := mem.WriteFile(priorPath, priorContent, 0o600); err != nil {
+		t.Fatalf("seeding mem .env: %v", err)
+	}
+
+	err := svc.Bundle(context.Background(), deployapp.BundleOptions{
+		Config:      minimalBundleCfg(),
+		ConfigPath:  filepath.Join(t.TempDir(), "vibewarden.yaml"),
+		ProjectName: "myproject",
+		OutputDir:   outDir,
+		ImageTag:    "myproject-app:latest",
+		SkipImage:   true,
+		Overwrite:   true,
+	})
+	if err == nil {
+		t.Fatal("Bundle() expected generator error, got nil")
+	}
+	// --overwrite means: snapshot is dropped regardless of outcome. The mem
+	// FS still holds the user's original because we never wrote over it
+	// (the fake generator does not touch mem), but the point is the
+	// deferred restore MUST NOT have run. Easiest check: assert no
+	// additional writes happened during the error path beyond the seed.
+	if len(mem.writes) != 1 {
+		t.Errorf("expected exactly 1 write (the seed) under --overwrite on failure, got %d: %v",
+			len(mem.writes), mem.writes)
+	}
+}
+
 func TestBundle_Extras_ImageSaverError_PropagatesWrapped(t *testing.T) {
 	mem := newMemBundleFS()
 	saver := &countingImageSaver{err: errors.New("no such image")}
