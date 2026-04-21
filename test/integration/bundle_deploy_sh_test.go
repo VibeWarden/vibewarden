@@ -174,7 +174,7 @@ if [[ "$REMOTE_PATH" == "$TARGET" ]]; then REMOTE_PATH="~/vibewarden-bundle"; fi
 scp -r . "$USER_HOST:$REMOTE_PATH/"
 ssh "$USER_HOST" "cd $REMOTE_PATH && docker load -i image.tar && docker compose up -d"
 sleep 1
-if ! curl -fsSL -m 10 "http://localhost:` + healthPort + `/_vibewarden/health" >/dev/null; then
+if ! ssh "$USER_HOST" "curl -fsSL -m 10 'http://localhost:` + healthPort + `/_vibewarden/health'" >/dev/null; then
   ssh "$USER_HOST" "cd $REMOTE_PATH && docker compose logs --tail 50" >&2
   echo "deploy.sh: healthcheck failed — dumped last 50 log lines above" >&2
   exit 1
