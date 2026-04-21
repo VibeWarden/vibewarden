@@ -173,7 +173,15 @@ func (s *DevService) Run(ctx context.Context, cfg *config.Config, opts DevOption
 		return err
 	}
 
-	printServiceURLs(cfg, opts, out)
+	// Scan for any unhealthy containers and emit a warning above the
+	// summary if found. Unhealthy-at-start is a UX warning, not a hard
+	// failure — hard failures are caught by the stderr-surfacing path above.
+	warning := s.scanUnhealthyContainers(ctx, composeFile)
+	if warning != "" {
+		fmt.Fprintln(out, warning)
+	}
+
+	printStartupSummary(cfg, opts, out)
 
 	if opts.Watch && s.watcher != nil {
 		return s.watchLoop(ctx, cfg, opts, composeFile, out)
@@ -435,28 +443,62 @@ func buildMissingImageError(image, lang string) error {
 	return fmt.Errorf("%s", msg) //nolint:err113 // dynamic user-facing error message
 }
 
-// printServiceURLs writes a human-readable summary of the running services.
-func printServiceURLs(cfg *config.Config, opts DevOptions, out io.Writer) {
+// scanUnhealthyContainers inspects container health across the compose
+// project and returns a warning line for the first unhealthy container found.
+// Returns an empty string when all containers are healthy (or when PS fails —
+// graceful degradation, same pattern as verifySidecar).
+func (s *DevService) scanUnhealthyContainers(ctx context.Context, composeFile string) string {
+	containers, err := s.compose.PS(ctx, composeFile)
+	if err != nil {
+		return ""
+	}
+	for _, c := range containers {
+		if strings.EqualFold(c.Health, "unhealthy") {
+			return fmt.Sprintf("Warning: service %q unhealthy — run 'vibew logs -f %s'", c.Service, c.Service)
+		}
+	}
+	return ""
+}
+
+// summaryURL derives the user-facing URL for the started sidecar:
+//   - scheme is "https" when TLS is enabled, "http" otherwise.
+//   - host resolves "0.0.0.0", "", and "127.0.0.1" to "localhost".
+//   - port falls back to 8443 when unset.
+//
+// It is a pure function for easy unit testing.
+func summaryURL(cfg *config.Config) string {
 	scheme := "http"
 	if cfg.TLS.Enabled {
 		scheme = "https"
 	}
-	proxyPort := cfg.Server.Port
-	if proxyPort == 0 {
-		proxyPort = 8443
+	host := cfg.Server.Host
+	switch host {
+	case "", "0.0.0.0", "127.0.0.1":
+		host = "localhost"
 	}
+	port := cfg.Server.Port
+	if port == 0 {
+		port = 8443
+	}
+	return fmt.Sprintf("%s://%s:%d", scheme, host, port)
+}
 
+// printStartupSummary writes the three-line post-start hint block.
+// Format:
+//
+//	Started. <url>
+//	Logs: vibew logs -f
+//	Stop: vibew down
+//
+// When observability is enabled an extra line mentioning Grafana is emitted
+// above the summary block so it is discoverable without hiding the core hints.
+func printStartupSummary(cfg *config.Config, opts DevOptions, out io.Writer) {
 	fmt.Fprintln(out, "")
-	fmt.Fprintln(out, "Dev environment started. Service URLs:")
-	fmt.Fprintf(out, "  Proxy (VibeWarden):  %s://localhost:%d\n", scheme, proxyPort)
-	fmt.Fprintf(out, "  Health:              %s://localhost:%d/_vibewarden/health\n", scheme, proxyPort)
-	fmt.Fprintf(out, "  Metrics:             %s://localhost:%d/_vibewarden/metrics\n", scheme, proxyPort)
-	fmt.Fprintf(out, "  Kratos (public):     http://localhost:4433\n")
-	fmt.Fprintf(out, "  Mailslurper (UI):    http://localhost:4437\n")
+	fmt.Fprintln(out, "Dev environment started.")
 	if opts.Observability {
-		fmt.Fprintf(out, "  Prometheus:          http://localhost:9090\n")
-		fmt.Fprintf(out, "  Grafana:             http://localhost:3000\n")
+		fmt.Fprintln(out, "Grafana: http://localhost:3000 | Prometheus: http://localhost:9090")
 	}
-	fmt.Fprintln(out, "")
-	fmt.Fprintln(out, "Tip: run 'vibew status' to check component health.")
+	fmt.Fprintf(out, "Started. %s\n", summaryURL(cfg))
+	fmt.Fprintln(out, "Logs: vibew logs -f")
+	fmt.Fprintln(out, "Stop: vibew down")
 }
