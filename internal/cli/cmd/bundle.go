@@ -197,7 +197,7 @@ func runBundle(cmd *cobra.Command, outputDir, imageTag string, overwrite, skipIm
 		fmt.Fprintf(out, "  %s\n", f)
 	}
 	fmt.Fprintln(out, "")
-	fmt.Fprintf(out, "Next: ./deploy.sh <user@host>  (or scp -r %s/* user@host:~/ && ssh user@host 'docker compose up -d')\n", absOut)
+	fmt.Fprintf(out, "Next: cd %s && ./deploy.sh user@host  (runs locally — scps bundle, loads image, brings stack up, probes /_vibewarden/health)\n", absOut)
 	return nil
 }
 

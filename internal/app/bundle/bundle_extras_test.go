@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io/fs"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -189,7 +190,7 @@ func TestBundle_Extras_DeploySH_DockerLoadVsPull(t *testing.T) {
 		skipImage bool
 		wantFrag  string
 	}{
-		{name: "with image", skipImage: false, wantFrag: "docker load -i image.tar"},
+		{name: "with image", skipImage: false, wantFrag: "docker load -i image.tar && docker compose up -d"},
 		{name: "skip image", skipImage: true, wantFrag: "docker compose pull && docker compose up -d"},
 	}
 
@@ -216,6 +217,300 @@ func TestBundle_Extras_DeploySH_DockerLoadVsPull(t *testing.T) {
 				t.Errorf("deploy.sh missing %q\nbody:\n%s", tt.wantFrag, body)
 			}
 		})
+	}
+}
+
+// TestBundle_Extras_DeploySH_GoldenFixtures is the ADR-088 render-layer
+// guard: the rendered deploy.sh must be byte-identical to the committed
+// fixtures under testdata/deploy_sh/. Fixtures are regenerated manually
+// on intentional format changes — there is no -update flag because the
+// fixtures double as human-auditable reference output.
+func TestBundle_Extras_DeploySH_GoldenFixtures(t *testing.T) {
+	tests := []struct {
+		name      string
+		skipImage bool
+		fixture   string
+	}{
+		{name: "with image", skipImage: false, fixture: "testdata/deploy_sh/with_image.sh"},
+		{name: "skip image", skipImage: true, fixture: "testdata/deploy_sh/skip_image.sh"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mem := newMemBundleFS()
+			svc := bundleapp.NewService(&fakeExecutor{}, &fakeGenerator{}).
+				WithBundleFS(mem)
+
+			outDir := t.TempDir()
+			err := svc.Bundle(context.Background(), bundleapp.BundleOptions{
+				Config:      minimalBundleCfg(), // Server.Port = 8443
+				ConfigPath:  filepath.Join(t.TempDir(), "vibewarden.yaml"),
+				ProjectName: "myproject",
+				OutputDir:   outDir,
+				SkipImage:   tt.skipImage,
+			})
+			if err != nil {
+				t.Fatalf("Bundle() error = %v", err)
+			}
+
+			got := string(mem.files[filepath.Join(outDir, "deploy.sh")])
+			wantBytes, readErr := os.ReadFile(tt.fixture) //nolint:gosec // testdata relative path
+			if readErr != nil {
+				t.Fatalf("reading fixture %s: %v", tt.fixture, readErr)
+			}
+			if got != string(wantBytes) {
+				t.Errorf("deploy.sh body mismatches fixture %s\n---GOT---\n%s\n---WANT---\n%s", tt.fixture, got, string(wantBytes))
+			}
+		})
+	}
+}
+
+// TestBundle_Extras_DeploySH_BashSyntax runs `bash -n` against the rendered
+// script body to guard against typos that would only surface at deploy
+// time. Auto-skips when bash is not on PATH (Windows CI without WSL).
+func TestBundle_Extras_DeploySH_BashSyntax(t *testing.T) {
+	bashPath, lookErr := exec.LookPath("bash")
+	if lookErr != nil {
+		t.Skip("integration prerequisite missing: bash not on PATH — install it or run under WSL")
+	}
+
+	tests := []struct {
+		name      string
+		skipImage bool
+	}{
+		{name: "with image", skipImage: false},
+		{name: "skip image", skipImage: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mem := newMemBundleFS()
+			svc := bundleapp.NewService(&fakeExecutor{}, &fakeGenerator{}).
+				WithBundleFS(mem)
+
+			outDir := t.TempDir()
+			err := svc.Bundle(context.Background(), bundleapp.BundleOptions{
+				Config:      minimalBundleCfg(),
+				ConfigPath:  filepath.Join(t.TempDir(), "vibewarden.yaml"),
+				ProjectName: "myproject",
+				OutputDir:   outDir,
+				SkipImage:   tt.skipImage,
+			})
+			if err != nil {
+				t.Fatalf("Bundle() error = %v", err)
+			}
+
+			scriptPath := filepath.Join(t.TempDir(), "deploy.sh")
+			body := mem.files[filepath.Join(outDir, "deploy.sh")]
+			if err := os.WriteFile(scriptPath, body, 0o600); err != nil {
+				t.Fatalf("writing script to tempdir: %v", err)
+			}
+
+			cmd := exec.Command(bashPath, "-n", scriptPath) //nolint:gosec // test-owned paths
+			out, runErr := cmd.CombinedOutput()
+			if runErr != nil {
+				t.Errorf("bash -n failed: %v\noutput: %s\nscript:\n%s", runErr, out, body)
+			}
+		})
+	}
+}
+
+// TestBundle_Extras_DeploySH_Determinism asserts that two invocations of
+// the render path with identical inputs produce byte-identical output.
+// Mirrors the pattern in bundle_determinism_test.go.
+func TestBundle_Extras_DeploySH_Determinism(t *testing.T) {
+	render := func() []byte {
+		mem := newMemBundleFS()
+		svc := bundleapp.NewService(&fakeExecutor{}, &fakeGenerator{}).
+			WithBundleFS(mem)
+
+		outDir := t.TempDir()
+		err := svc.Bundle(context.Background(), bundleapp.BundleOptions{
+			Config:      minimalBundleCfg(),
+			ConfigPath:  filepath.Join(t.TempDir(), "vibewarden.yaml"),
+			ProjectName: "myproject",
+			OutputDir:   outDir,
+			SkipImage:   false,
+		})
+		if err != nil {
+			t.Fatalf("Bundle() error = %v", err)
+		}
+		return mem.files[filepath.Join(outDir, "deploy.sh")]
+	}
+
+	a := render()
+	b := render()
+	if string(a) != string(b) {
+		t.Errorf("deploy.sh not deterministic\nA:\n%s\nB:\n%s", a, b)
+	}
+}
+
+// TestBundle_Extras_DeploySH_HealthPort_FromConfig verifies that the
+// merged config's Server.Port is baked into the rendered script. When
+// Server.Port is unset, the default 8443 is used.
+func TestBundle_Extras_DeploySH_HealthPort_FromConfig(t *testing.T) {
+	tests := []struct {
+		name     string
+		port     int
+		wantPort string
+	}{
+		{name: "default port", port: 0, wantPort: "http://localhost:8443/_vibewarden/health"},
+		{name: "custom port", port: 9443, wantPort: "http://localhost:9443/_vibewarden/health"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := minimalBundleCfg()
+			cfg.Server.Port = tt.port
+
+			mem := newMemBundleFS()
+			svc := bundleapp.NewService(&fakeExecutor{}, &fakeGenerator{}).
+				WithBundleFS(mem)
+
+			outDir := t.TempDir()
+			err := svc.Bundle(context.Background(), bundleapp.BundleOptions{
+				Config:      cfg,
+				ConfigPath:  filepath.Join(t.TempDir(), "vibewarden.yaml"),
+				ProjectName: "myproject",
+				OutputDir:   outDir,
+				SkipImage:   true,
+			})
+			if err != nil {
+				t.Fatalf("Bundle() error = %v", err)
+			}
+
+			body := string(mem.files[filepath.Join(outDir, "deploy.sh")])
+			if !strings.Contains(body, tt.wantPort) {
+				t.Errorf("deploy.sh missing %q\nbody:\n%s", tt.wantPort, body)
+			}
+		})
+	}
+}
+
+// TestBundle_Extras_DeploySH_ArgParsing exercises the rendered script's
+// usage validation by invoking it with 0, 1, and 2 positional args under
+// bash. Fake `scp` and `ssh` on PATH keep the test hermetic (no real
+// network I/O). Auto-skips when bash is unavailable.
+func TestBundle_Extras_DeploySH_ArgParsing(t *testing.T) {
+	bashPath, lookErr := exec.LookPath("bash")
+	if lookErr != nil {
+		t.Skip("integration prerequisite missing: bash not on PATH — install it or run under WSL")
+	}
+
+	// Render once, write to a tempdir, and run with fake scp/ssh/curl on PATH.
+	mem := newMemBundleFS()
+	svc := bundleapp.NewService(&fakeExecutor{}, &fakeGenerator{}).
+		WithBundleFS(mem)
+	outDir := t.TempDir()
+	if err := svc.Bundle(context.Background(), bundleapp.BundleOptions{
+		Config:      minimalBundleCfg(),
+		ConfigPath:  filepath.Join(t.TempDir(), "vibewarden.yaml"),
+		ProjectName: "myproject",
+		OutputDir:   outDir,
+		SkipImage:   true,
+	}); err != nil {
+		t.Fatalf("Bundle() error = %v", err)
+	}
+
+	workDir := t.TempDir()
+	scriptPath := filepath.Join(workDir, "deploy.sh")
+	body := mem.files[filepath.Join(outDir, "deploy.sh")]
+	if err := os.WriteFile(scriptPath, body, 0o755); err != nil { //nolint:gosec // script must be executable
+		t.Fatalf("writing script: %v", err)
+	}
+
+	// Fake scp/ssh/curl that always succeed — so a valid invocation exits 0.
+	fakeBinDir := t.TempDir()
+	for _, name := range []string{"scp", "ssh", "curl"} {
+		stub := filepath.Join(fakeBinDir, name)
+		if err := os.WriteFile(stub, []byte("#!/usr/bin/env bash\nexit 0\n"), 0o755); err != nil { //nolint:gosec // test stub
+			t.Fatalf("writing stub %s: %v", name, err)
+		}
+	}
+
+	tests := []struct {
+		name     string
+		args     []string
+		wantExit int
+		wantErr  string // substring on stderr; "" means no check
+	}{
+		{name: "zero args", args: nil, wantExit: 1, wantErr: "usage:"},
+		{name: "one arg", args: []string{"user@host"}, wantExit: 0, wantErr: ""},
+		{name: "two args", args: []string{"user@host", "extra"}, wantExit: 1, wantErr: "usage:"},
+		{name: "with remote path", args: []string{"user@host:/srv/app"}, wantExit: 0, wantErr: ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cmd := exec.Command(bashPath, append([]string{scriptPath}, tt.args...)...) //nolint:gosec // test-owned paths + fixture args
+			cmd.Dir = workDir
+			cmd.Env = append(os.Environ(), "PATH="+fakeBinDir+":"+os.Getenv("PATH"))
+
+			var stderr strings.Builder
+			cmd.Stderr = &stderr
+			cmd.Stdout = &strings.Builder{}
+
+			runErr := cmd.Run()
+			gotExit := 0
+			if runErr != nil {
+				if ee, ok := runErr.(*exec.ExitError); ok {
+					gotExit = ee.ExitCode()
+				} else {
+					t.Fatalf("unexpected run error: %v", runErr)
+				}
+			}
+			if gotExit != tt.wantExit {
+				t.Errorf("exit code = %d, want %d\nstderr: %s", gotExit, tt.wantExit, stderr.String())
+			}
+			if tt.wantErr != "" && !strings.Contains(stderr.String(), tt.wantErr) {
+				t.Errorf("stderr missing %q\ngot: %s", tt.wantErr, stderr.String())
+			}
+		})
+	}
+}
+
+// TestBundle_Extras_Readme_LocalRunOnly is the ADR-088 docs-consistency
+// guard: the rendered README.md must describe the local-run form of
+// deploy.sh and must NOT contain the contradictory remote-run recipe.
+func TestBundle_Extras_Readme_LocalRunOnly(t *testing.T) {
+	mem := newMemBundleFS()
+	svc := bundleapp.NewService(&fakeExecutor{}, &fakeGenerator{}).
+		WithBundleFS(mem)
+
+	outDir := t.TempDir()
+	err := svc.Bundle(context.Background(), bundleapp.BundleOptions{
+		Config:      minimalBundleCfg(),
+		ConfigPath:  filepath.Join(t.TempDir(), "vibewarden.yaml"),
+		ProjectName: "myproject",
+		OutputDir:   outDir,
+		SkipImage:   false,
+	})
+	if err != nil {
+		t.Fatalf("Bundle() error = %v", err)
+	}
+
+	body := string(mem.files[filepath.Join(outDir, "README.md")])
+
+	// Positive assertions: new local-run recipe.
+	for _, want := range []string{
+		"./deploy.sh user@host",
+		"runs locally",
+		"/_vibewarden/health",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("README.md missing %q\nbody:\n%s", want, body)
+		}
+	}
+
+	// Negative assertions: the old contradictory remote-run phrases must be gone.
+	for _, forbidden := range []string{
+		"ssh user@host 'cd ~/",
+		"bash deploy.sh",
+		"Deploy in three steps",
+	} {
+		if strings.Contains(body, forbidden) {
+			t.Errorf("README.md still contains forbidden phrase %q\nbody:\n%s", forbidden, body)
+		}
 	}
 }
 
