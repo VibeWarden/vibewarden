@@ -78,6 +78,15 @@ This initial entry was written by hand to summarise the work leading up to v0.1.
 
 ### Added
 
+- **`vibew bundle` command** — generates Docker Compose deployment
+  artifacts (`docker-compose.yml`, `vibewarden.yaml`, `.env`, `sample.env`,
+  `deploy.sh`, `README.md`, `image.tar`) into `.vibewarden/bundle/` with
+  no SSH, no remote docker, and no network calls. Replaces the
+  `vibew deploy --dry-run` workflow for users who drive their own
+  `scp`/`rsync`/CI pipeline. `.env` is preserved across re-runs via a
+  defer-safe snapshot so a mid-run generator failure cannot clobber user
+  edits. See [#1044](https://github.com/vibewarden/vibewarden/issues/1044)
+  and ADR-085.
 - **Four new v1 structured log events for ACME chain observability**
   (#1055, ADR-083):
   - `tls.acme.chain_skipped` — emitted at plugin Init for every issuer

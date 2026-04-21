@@ -181,24 +181,28 @@ in a single command.
 
 ### Manual fallback
 
-When `vibew deploy` fails or you need more control, use standard commands:
+When `vibew deploy` fails or you need more control, produce a bundle
+locally and drive the transfer yourself:
 
 ```bash
 # 1. Build for the target architecture
 vibew build --platform linux/amd64
 
-# 2. Transfer the image via SSH
-docker save <project>-app:latest | ssh user@host docker load
+# 2. Generate a self-contained deploy bundle (no SSH).
+#    Produces docker-compose.yml, vibewarden.yaml, .env, sample.env,
+#    deploy.sh, README.md, and image.tar under .vibewarden/bundle/.
+vibew bundle
 
-# 3. Copy the deploy bundle (config, compose files)
-rsync -az .vibewarden/deploy/production/ user@host:~/vibewarden/<project>/
-
-# 4. Start the stack on the remote
-ssh user@host 'cd ~/vibewarden/<project> && docker compose up -d'
+# 3. Copy the bundle and start the stack on the remote.
+./.vibewarden/bundle/deploy.sh user@host
+# or, if you prefer explicit commands:
+#   scp -r .vibewarden/bundle/* user@host:~/<project>/
+#   ssh user@host 'cd ~/<project> && docker load -i image.tar && docker compose up -d'
 ```
 
-Each of these commands produces standard error messages that are searchable --
-use them as a plan B when debugging deploy issues.
+`vibew bundle` is byte-identical to `vibew deploy --dry-run` on the core
+files (`docker-compose.yml`, `vibewarden.yaml`) per ADR-085. Use it as
+the starting point for any custom CI/CD pipeline.
 
 Use `app.environment` in vibewarden.yaml for runtime configuration:
 ```yaml
