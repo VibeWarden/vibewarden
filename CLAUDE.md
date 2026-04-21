@@ -99,6 +99,12 @@ docs/                   # published documentation (mkdocs site)
 decisions/              # ADRs — one file per decision (see decisions/README.md for index)
 ```
 
+**Content authority.** The main repo is the source of truth for all LLM-consumable
+content files (`llms.txt`, `llms-full.txt`, `vibewarden.reference.yaml`). The
+`vibewarden/vibewarden.dev` website repo is presentation only and fetches these
+files from the main repo's latest release tag at build time. Never duplicate
+these files in the website repo — edit them here.
+
 ---
 
 ## Dependency rules
