@@ -24,21 +24,33 @@ type fakeCompose struct {
 	psErr      error
 	logsResult string
 	logsErr    error
+	downResult ports.DownResult
+	downErr    error
 
 	capturedComposeFile string
 	capturedProfiles    []string
+	capturedUpOpts      ports.ComposeUpOptions
+	capturedDownOpts    ports.ComposeDownOptions
 	restartCalled       int
+	downCalled          int
 }
 
-func (f *fakeCompose) Up(_ context.Context, composeFile string, profiles []string) error {
+func (f *fakeCompose) Up(_ context.Context, composeFile string, profiles []string, opts ports.ComposeUpOptions) error {
 	f.capturedComposeFile = composeFile
 	f.capturedProfiles = profiles
+	f.capturedUpOpts = opts
 	return f.upErr
 }
 
 func (f *fakeCompose) Restart(_ context.Context, _ string, _ []string) error {
 	f.restartCalled++
 	return f.restartErr
+}
+
+func (f *fakeCompose) Down(_ context.Context, _ string, opts ports.ComposeDownOptions) (ports.DownResult, error) {
+	f.downCalled++
+	f.capturedDownOpts = opts
+	return f.downResult, f.downErr
 }
 
 func (f *fakeCompose) Version(_ context.Context) (string, error) {
@@ -104,9 +116,9 @@ func TestDevService_Run(t *testing.T) {
 			wantErr:      false,
 			wantProfiles: nil,
 			wantOutputContains: []string{
-				"Proxy (VibeWarden):",
-				"https://localhost:8443",
-				"vibew status",
+				"Started. https://localhost:8443",
+				"Logs: vibew logs -f",
+				"Stop: vibew down",
 			},
 		},
 		{
@@ -115,8 +127,8 @@ func TestDevService_Run(t *testing.T) {
 			wantErr:      false,
 			wantProfiles: []string{"observability"},
 			wantOutputContains: []string{
-				"Prometheus:",
 				"Grafana:",
+				"Prometheus:",
 				"Observability profile enabled",
 			},
 		},
@@ -535,6 +547,142 @@ func TestDevService_ImageCheck_CheckerError_ReturnsError(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "docker daemon not running") {
 		t.Errorf("error should wrap checker error, got: %v", err)
+	}
+}
+
+// TestDevService_StartupSummary_ThreeLines verifies that a successful dev
+// run emits exactly the three expected hint lines (plus the "Dev environment
+// started." header for continuity with historical output).
+func TestDevService_StartupSummary_ThreeLines(t *testing.T) {
+	tests := []struct {
+		name       string
+		host       string
+		port       int
+		tlsEnabled bool
+		wantURL    string
+	}{
+		{
+			name:       "https tls with default port",
+			host:       "127.0.0.1",
+			port:       0,
+			tlsEnabled: true,
+			wantURL:    "https://localhost:8443",
+		},
+		{
+			name:       "http when tls disabled",
+			host:       "127.0.0.1",
+			port:       0,
+			tlsEnabled: false,
+			wantURL:    "http://localhost:8443",
+		},
+		{
+			name:       "0.0.0.0 renders as localhost",
+			host:       "0.0.0.0",
+			port:       9999,
+			tlsEnabled: true,
+			wantURL:    "https://localhost:9999",
+		},
+		{
+			name:       "empty host defaults to localhost",
+			host:       "",
+			port:       1234,
+			tlsEnabled: false,
+			wantURL:    "http://localhost:1234",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fc := &fakeCompose{}
+			svc := ops.NewDevService(fc)
+			cfg := defaultConfig()
+			cfg.Server.Host = tt.host
+			cfg.Server.Port = tt.port
+			cfg.TLS.Enabled = tt.tlsEnabled
+			var buf bytes.Buffer
+
+			if err := svc.Run(context.Background(), cfg, ops.DevOptions{}, &buf); err != nil {
+				t.Fatalf("Run() unexpected error: %v", err)
+			}
+
+			out := buf.String()
+			wantLines := []string{
+				"Started. " + tt.wantURL,
+				"Logs: vibew logs -f",
+				"Stop: vibew down",
+			}
+			for _, line := range wantLines {
+				if !strings.Contains(out, line) {
+					t.Errorf("output missing line %q\ngot:\n%s", line, out)
+				}
+			}
+		})
+	}
+}
+
+// TestDevService_Verbose_ForwardsStderrWriter confirms that when Verbose is
+// set on DevOptions, ComposeUpOptions.Stderr is populated on the call to
+// compose.Up so the adapter streams compose output live.
+func TestDevService_Verbose_ForwardsStderrWriter(t *testing.T) {
+	fc := &fakeCompose{}
+	svc := ops.NewDevService(fc)
+	cfg := defaultConfig()
+	var buf bytes.Buffer
+
+	if err := svc.Run(context.Background(), cfg, ops.DevOptions{Verbose: true}, &buf); err != nil {
+		t.Fatalf("Run() unexpected error: %v", err)
+	}
+	if fc.capturedUpOpts.Stderr == nil {
+		t.Error("expected Up() to be called with a non-nil Stderr writer in verbose mode")
+	}
+}
+
+func TestDevService_NotVerbose_UpStderrNil(t *testing.T) {
+	fc := &fakeCompose{}
+	svc := ops.NewDevService(fc)
+	cfg := defaultConfig()
+	var buf bytes.Buffer
+
+	if err := svc.Run(context.Background(), cfg, ops.DevOptions{}, &buf); err != nil {
+		t.Fatalf("Run() unexpected error: %v", err)
+	}
+	if fc.capturedUpOpts.Stderr != nil {
+		t.Error("expected Up() Stderr nil when not verbose")
+	}
+}
+
+// TestDevService_UnhealthyContainer_EmitsWarningAboveSummary verifies the
+// unhealthy-at-start UX: the warning line precedes the startup hints and
+// the command still exits 0.
+func TestDevService_UnhealthyContainer_EmitsWarningAboveSummary(t *testing.T) {
+	fc := &fakeCompose{
+		psResult: []ports.ContainerInfo{
+			{Service: "vibewarden", State: "running"},
+			{Service: "kratos", State: "running", Health: "unhealthy"},
+		},
+	}
+	svc := ops.NewDevService(fc)
+	cfg := defaultConfig()
+	var buf bytes.Buffer
+
+	if err := svc.Run(context.Background(), cfg, ops.DevOptions{}, &buf); err != nil {
+		t.Fatalf("Run() unexpected error: %v", err)
+	}
+
+	out := buf.String()
+	warnIdx := strings.Index(out, "unhealthy")
+	summaryIdx := strings.Index(out, "Started.")
+	if warnIdx < 0 {
+		t.Fatalf("expected warning about unhealthy container, got:\n%s", out)
+	}
+	if summaryIdx < 0 {
+		t.Fatalf("expected startup summary, got:\n%s", out)
+	}
+	if warnIdx > summaryIdx {
+		t.Errorf("warning must appear ABOVE summary; warnIdx=%d, summaryIdx=%d\nout:\n%s",
+			warnIdx, summaryIdx, out)
+	}
+	if !strings.Contains(out, "vibew logs -f kratos") {
+		t.Errorf("expected hint for unhealthy service in warning, got:\n%s", out)
 	}
 }
 

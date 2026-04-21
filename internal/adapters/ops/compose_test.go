@@ -1,11 +1,13 @@
 package ops_test
 
 import (
+	"bytes"
 	"context"
 	"os/exec"
 	"testing"
 
 	opsadapter "github.com/vibewarden/vibewarden/internal/adapters/ops"
+	"github.com/vibewarden/vibewarden/internal/ports"
 )
 
 // dockerAvailable reports whether the docker binary is available on PATH.
@@ -30,7 +32,7 @@ func TestComposeAdapter_UpArgsBaselineStack(t *testing.T) {
 
 	// We only care that Up returns an error (context cancelled), not that it
 	// succeeds — this confirms the command is attempted with the right args.
-	err := adapter.Up(ctx, "", nil)
+	err := adapter.Up(ctx, "", nil, ports.ComposeUpOptions{})
 	if err == nil {
 		t.Fatal("expected an error because context was cancelled before run")
 	}
@@ -46,7 +48,7 @@ func TestComposeAdapter_UpArgsWithProfiles(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	err := adapter.Up(ctx, "", []string{"observability"})
+	err := adapter.Up(ctx, "", []string{"observability"}, ports.ComposeUpOptions{})
 	if err == nil {
 		t.Fatal("expected an error because context was cancelled before run")
 	}
@@ -62,7 +64,7 @@ func TestComposeAdapter_UpArgsWithMultipleProfiles(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	err := adapter.Up(ctx, "", []string{"observability", "debug"})
+	err := adapter.Up(ctx, "", []string{"observability", "debug"}, ports.ComposeUpOptions{})
 	if err == nil {
 		t.Fatal("expected an error because context was cancelled before run")
 	}
@@ -78,7 +80,7 @@ func TestComposeAdapter_UpArgsWithComposeFile(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	err := adapter.Up(ctx, ".vibewarden/generated/docker-compose.yml", nil)
+	err := adapter.Up(ctx, ".vibewarden/generated/docker-compose.yml", nil, ports.ComposeUpOptions{})
 	if err == nil {
 		t.Fatal("expected an error because context was cancelled before run")
 	}
@@ -227,6 +229,110 @@ func commandArgs(composeFile string, profiles []string) []string {
 	}
 	args = append(args, "up", "-d")
 	return args
+}
+
+// TestParseDownOutput verifies the docker compose down stderr parser.
+// docker emits one "Container <name>  Removed" / "Volume <name>  Removed"
+// line per removed resource; we count containers and volumes (not networks).
+func TestParseDownOutput(t *testing.T) {
+	tests := []struct {
+		name           string
+		stderr         string
+		wantContainers int
+		wantVolumes    int
+	}{
+		{
+			name:           "empty output means nothing was running",
+			stderr:         "",
+			wantContainers: 0,
+			wantVolumes:    0,
+		},
+		{
+			name: "one container stopped, no volumes",
+			stderr: " Container myapp-app-1  Removed\n" +
+				" Network myapp_default  Removed\n",
+			wantContainers: 1,
+			wantVolumes:    0,
+		},
+		{
+			name: "multiple containers and volumes removed",
+			stderr: " Container myapp-app-1  Removed\n" +
+				" Container myapp-kratos-1  Removed\n" +
+				" Container myapp-postgres-1  Removed\n" +
+				" Volume myapp_certs  Removed\n" +
+				" Volume myapp_db  Removed\n" +
+				" Network myapp_default  Removed\n",
+			wantContainers: 3,
+			wantVolumes:    2,
+		},
+		{
+			name: "in-progress lines (not Removed) are ignored",
+			stderr: " Container myapp-app-1  Stopping\n" +
+				" Container myapp-app-1  Stopped\n" +
+				" Container myapp-app-1  Removed\n",
+			wantContainers: 1,
+			wantVolumes:    0,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := opsadapter.ParseDownOutputForTest(tt.stderr)
+			if got.StoppedContainers != tt.wantContainers {
+				t.Errorf("StoppedContainers = %d, want %d", got.StoppedContainers, tt.wantContainers)
+			}
+			if got.RemovedVolumes != tt.wantVolumes {
+				t.Errorf("RemovedVolumes = %d, want %d", got.RemovedVolumes, tt.wantVolumes)
+			}
+		})
+	}
+}
+
+// TestComposeAdapter_Up_SurfaceStderrOnFailure is a table-driven test that
+// verifies Up's stderr handling. It uses the package-level Up implementation
+// against a non-existent docker subcommand to trigger a real exec failure —
+// this keeps the test hermetic (no real docker daemon required) while still
+// exercising the actual adapter code path.
+func TestComposeAdapter_Up_StderrSink(t *testing.T) {
+	if !dockerAvailable() {
+		t.Skip("docker binary not available")
+	}
+	// When opts.Stderr is nil, failure stderr must be flushed to the
+	// adapter's stderrSink (not leaked to os.Stderr). We substitute a
+	// bytes.Buffer via the test-only constructor and point docker at a
+	// non-existent compose file so it fails deterministically.
+	adapter, sink := opsadapter.NewComposeAdapterForTest()
+	ctx := context.Background()
+
+	err := adapter.Up(ctx, "/nonexistent/docker-compose.yml", nil, ports.ComposeUpOptions{})
+	if err == nil {
+		t.Fatal("expected an error for nonexistent compose file")
+	}
+	if sink.Len() == 0 {
+		t.Error("expected stderr to be flushed to the sink on failure, got empty")
+	}
+}
+
+func TestComposeAdapter_Up_VerboseStreamsStderr(t *testing.T) {
+	if !dockerAvailable() {
+		t.Skip("docker binary not available")
+	}
+	// When opts.Stderr is set, docker compose stderr must stream to the
+	// caller even on failure paths. The internal sink must NOT receive a
+	// duplicate dump.
+	adapter, sink := opsadapter.NewComposeAdapterForTest()
+	ctx := context.Background()
+	var streamed bytes.Buffer
+
+	err := adapter.Up(ctx, "/nonexistent/docker-compose.yml", nil, ports.ComposeUpOptions{Stderr: &streamed})
+	if err == nil {
+		t.Fatal("expected an error for nonexistent compose file")
+	}
+	if streamed.Len() == 0 {
+		t.Error("expected stderr to stream to caller writer, got empty")
+	}
+	if sink.Len() != 0 {
+		t.Errorf("expected internal sink to be empty in verbose mode, got %q", sink.String())
+	}
 }
 
 func TestImageCheckerAdapter_ImageExists_NondexistentImage(t *testing.T) {

@@ -28,6 +28,7 @@ func NewDevCmd() *cobra.Command {
 		observability bool
 		watch         bool
 		configPath    string
+		verbose       bool
 	)
 
 	cmd := &cobra.Command{
@@ -95,6 +96,7 @@ Examples:
 				Watch:         watch,
 				ConfigPath:    configPath,
 				DetectedLang:  detectedLang,
+				Verbose:       verbose,
 			}
 
 			return svc.Run(cmd.Context(), cfg, opts, cmd.OutOrStdout())
@@ -104,6 +106,7 @@ Examples:
 	cmd.Flags().BoolVar(&observability, "observability", false, "start Prometheus and Grafana alongside the core stack")
 	cmd.Flags().BoolVar(&watch, "watch", false, "watch vibewarden.yaml for changes and auto-regenerate + restart")
 	cmd.Flags().StringVar(&configPath, "config", "", "path to vibewarden.yaml (default: ./vibewarden.yaml)")
+	cmd.Flags().BoolVar(&verbose, "verbose", false, "stream docker compose stderr during successful startup (always streamed on failure)")
 
 	if err := cmd.RegisterFlagCompletionFunc("config", func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
 		return []string{"yaml", "yml"}, cobra.ShellCompDirectiveFilterFileExt

@@ -224,9 +224,14 @@ type fakeStatusCompose struct {
 	psErr    error
 }
 
-func (f *fakeStatusCompose) Up(_ context.Context, _ string, _ []string) error { return nil }
+func (f *fakeStatusCompose) Up(_ context.Context, _ string, _ []string, _ ports.ComposeUpOptions) error {
+	return nil
+}
 func (f *fakeStatusCompose) Restart(_ context.Context, _ string, _ []string) error {
 	return nil
+}
+func (f *fakeStatusCompose) Down(_ context.Context, _ string, _ ports.ComposeDownOptions) (ports.DownResult, error) {
+	return ports.DownResult{}, nil
 }
 func (f *fakeStatusCompose) Version(_ context.Context) (string, error) { return "", nil }
 func (f *fakeStatusCompose) Info(_ context.Context) error              { return nil }

@@ -7,6 +7,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -16,19 +18,37 @@ import (
 
 // ComposeAdapter implements ports.ComposeRunner by shelling out to the
 // docker compose CLI.
-type ComposeAdapter struct{}
+//
+// stderrSink is the writer that receives captured stderr on failure paths.
+// It defaults to os.Stderr and is overridable for tests.
+type ComposeAdapter struct {
+	// stderrSink is where captured compose stderr is flushed when Up fails
+	// and the caller did not provide their own streaming writer. Tests may
+	// override this to capture output without touching the real terminal.
+	stderrSink io.Writer
+}
 
-// NewComposeAdapter creates a new ComposeAdapter.
+// NewComposeAdapter creates a new ComposeAdapter that writes captured stderr
+// on failure to os.Stderr.
 func NewComposeAdapter() *ComposeAdapter {
-	return &ComposeAdapter{}
+	return &ComposeAdapter{stderrSink: os.Stderr}
 }
 
 // Up runs "docker compose [-f <composeFile>] [--profile <p>...] up -d".
 // When composeFile is non-empty it is passed as the -f flag so that docker
 // compose uses that specific file rather than the default discovery logic.
-// Output from the command is streamed directly to stdout/stderr so the user
-// sees progress in real time.
-func (c *ComposeAdapter) Up(ctx context.Context, composeFile string, profiles []string) error {
+//
+// Stderr handling:
+//   - When opts.Stderr is non-nil, compose stderr is streamed live to that
+//     writer AND mirrored into an internal buffer so that the buffer can be
+//     included in the wrapped error on failure.
+//   - When opts.Stderr is nil, compose stderr is captured silently and, on
+//     failure only, flushed to the adapter's stderrSink (os.Stderr by default)
+//     so the user sees docker's actual error before the wrapped exit status.
+//
+// Stdout is always inherited from the parent process so progress bars render
+// correctly in interactive terminals.
+func (c *ComposeAdapter) Up(ctx context.Context, composeFile string, profiles []string, opts ports.ComposeUpOptions) error {
 	args := []string{"compose"}
 	if composeFile != "" {
 		args = append(args, "-f", composeFile)
@@ -39,16 +59,108 @@ func (c *ComposeAdapter) Up(ctx context.Context, composeFile string, profiles []
 	args = append(args, "up", "-d")
 
 	cmd := exec.CommandContext(ctx, "docker", args...)
-	// We want live output — use Run with inherited file descriptors instead.
-	// exec.Cmd with nil Stdout/Stderr inherits the parent process's file
-	// descriptors, which means output streams directly to the terminal.
 	cmd.Stdout = nil
-	cmd.Stderr = nil
+
+	// Always capture stderr into a buffer so we can surface it on failure.
+	var buf bytes.Buffer
+	if opts.Stderr != nil {
+		// Verbose: tee live stderr to the caller and keep a copy for errors.
+		cmd.Stderr = io.MultiWriter(opts.Stderr, &buf)
+	} else {
+		cmd.Stderr = &buf
+	}
 
 	if err := cmd.Run(); err != nil {
+		// Flush captured stderr to the adapter's sink so the user sees
+		// docker's real error message. When opts.Stderr was non-nil the
+		// stream was already written live — skip the dump to avoid
+		// duplication.
+		if opts.Stderr == nil {
+			if msg := strings.TrimSpace(buf.String()); msg != "" {
+				fmt.Fprintln(c.stderrSink, msg)
+			}
+		}
 		return fmt.Errorf("docker compose up: %w", err)
 	}
 	return nil
+}
+
+// Down runs "docker compose [-f <composeFile>] down [--volumes] [--remove-orphans]".
+// It returns a DownResult with counters parsed from docker's progress output
+// on stderr. When nothing is running, Down treats the invocation as a no-op
+// and returns a zero-valued DownResult and a nil error.
+//
+// docker compose emits one line per container/volume removal on stderr, e.g.
+//
+//	Container myapp-app-1  Removed
+//	Volume    myapp_certs  Removed
+//
+// We parse these lines to produce counts for the UX summary in the app layer.
+func (c *ComposeAdapter) Down(ctx context.Context, composeFile string, opts ports.ComposeDownOptions) (ports.DownResult, error) {
+	args := []string{"compose"}
+	if composeFile != "" {
+		args = append(args, "-f", composeFile)
+	}
+	args = append(args, "down")
+	if opts.Volumes {
+		args = append(args, "--volumes")
+	}
+	if opts.RemoveOrphans {
+		args = append(args, "--remove-orphans")
+	}
+
+	cmd := exec.CommandContext(ctx, "docker", args...)
+	var stderr bytes.Buffer
+	cmd.Stdout = nil
+	cmd.Stderr = &stderr
+
+	err := cmd.Run()
+	stderrText := stderr.String()
+
+	// Treat "no configuration file" and "no such service" as no-ops. These
+	// occur when Down is called in a project that never ran.
+	if err != nil {
+		lower := strings.ToLower(stderrText)
+		if strings.Contains(lower, "no configuration file provided") ||
+			strings.Contains(lower, "no such service") ||
+			strings.Contains(lower, "has no containers") {
+			return ports.DownResult{}, nil
+		}
+		msg := strings.TrimSpace(stderrText)
+		if msg != "" {
+			return ports.DownResult{}, fmt.Errorf("docker compose down: %w\nstderr: %s", err, msg)
+		}
+		return ports.DownResult{}, fmt.Errorf("docker compose down: %w", err)
+	}
+
+	result := parseDownOutput(stderrText)
+	return result, nil
+}
+
+// parseDownOutput counts "Removed" lines emitted by docker compose down on
+// stderr. It is exported at package level (lower-case) so tests can exercise
+// the parser directly without invoking docker.
+func parseDownOutput(stderrText string) ports.DownResult {
+	var result ports.DownResult
+	for _, line := range strings.Split(stderrText, "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			continue
+		}
+		// Format: "Container <name>  Removed" / "Volume <name>  Removed" /
+		// "Network <name>  Removed". We only count containers and volumes;
+		// networks are infrastructure, not user-visible state.
+		if !strings.HasSuffix(trimmed, "Removed") {
+			continue
+		}
+		switch {
+		case strings.HasPrefix(trimmed, "Container "):
+			result.StoppedContainers++
+		case strings.HasPrefix(trimmed, "Volume "):
+			result.RemovedVolumes++
+		}
+	}
+	return result
 }
 
 // Restart runs "docker compose [-f <composeFile>] up -d --force-recreate --build [<service>...]".
