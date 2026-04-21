@@ -9,6 +9,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	caddyadapter "github.com/vibewarden/vibewarden/internal/adapters/caddy"
 	opsadapter "github.com/vibewarden/vibewarden/internal/adapters/ops"
 	opsapp "github.com/vibewarden/vibewarden/internal/app/ops"
 	"github.com/vibewarden/vibewarden/internal/config"
@@ -76,9 +77,24 @@ Examples:
 			httpClient := &http.Client{Timeout: 5 * time.Second}
 			healthChecker := opsadapter.NewHTTPHealthChecker(httpClient)
 			ownerProbe := opsadapter.NewVibeWardenHealthProbe(nil)
+
+			proxyHost := cfg.Server.Host
+			if proxyHost == "" {
+				proxyHost = "127.0.0.1"
+			}
+			proxyPort := cfg.Server.Port
+			if proxyPort == 0 {
+				proxyPort = 8443
+			}
+			tlsResolver := opsapp.NewChainResolver(
+				caddyadapter.NewInProcessResolver(cfg),
+				caddyadapter.NewHandshakeResolver(cfg, proxyHost, proxyPort),
+			)
+
 			svc := opsapp.NewDoctorService(compose, portChecker, healthChecker).
 				WithImageChecker(opsadapter.NewImageCheckerAdapter()).
-				WithPortOwnerProbe(ownerProbe)
+				WithPortOwnerProbe(ownerProbe).
+				WithTLSStateResolver(tlsResolver)
 
 			label := configPath
 			if label == "" {

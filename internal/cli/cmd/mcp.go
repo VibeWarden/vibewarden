@@ -12,10 +12,12 @@ import (
 
 	"github.com/spf13/cobra"
 
+	caddyadapter "github.com/vibewarden/vibewarden/internal/adapters/caddy"
 	opsadapter "github.com/vibewarden/vibewarden/internal/adapters/ops"
 	opsapp "github.com/vibewarden/vibewarden/internal/app/ops"
 	"github.com/vibewarden/vibewarden/internal/config"
 	"github.com/vibewarden/vibewarden/internal/mcp"
+	"github.com/vibewarden/vibewarden/internal/ports"
 )
 
 // NewMCPCmd creates the "vibew mcp" subcommand.
@@ -79,12 +81,29 @@ func buildMCPToolDeps() mcp.ToolDeps {
 	portChecker := opsadapter.NewNetPortChecker()
 	ownerProbe := opsadapter.NewVibeWardenHealthProbe(nil)
 	doctorSvc := opsapp.NewDoctorService(compose, portChecker, healthChecker).
-		WithPortOwnerProbe(ownerProbe)
+		WithPortOwnerProbe(ownerProbe).
+		WithTLSStateResolver(buildMCPTLSStateResolver())
 
 	return mcp.ToolDeps{
 		HealthChecker: healthChecker,
 		DoctorRunner:  &doctorRunnerAdapter{svc: doctorSvc},
 	}
+}
+
+// buildMCPTLSStateResolver constructs a TLS state resolver for the MCP
+// doctor runner. The MCP server does not know the target config or host
+// at composition time — the doctor runner receives those per-call — so
+// this builds a resolver that defers config binding until Resolve runs.
+func buildMCPTLSStateResolver() ports.TLSStateResolver {
+	// MCP invocations always run as a separate process from the sidecar,
+	// so the in-process resolver falls through and the handshake is
+	// authoritative. We bind to the caller's config+host inside the
+	// doctor runner adapter; here we provide a resolver with sane
+	// zero-value defaults that the doctor will override if needed.
+	return opsapp.NewChainResolver(
+		caddyadapter.NewInProcessResolver(nil),
+		caddyadapter.NewHandshakeResolver(nil, "127.0.0.1", 8443),
+	)
 }
 
 // doctorRunnerAdapter adapts ops.DoctorService to the mcp.DoctorRunner interface.

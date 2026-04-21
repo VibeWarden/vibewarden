@@ -29,9 +29,10 @@ type ComponentStatus struct {
 // When a ComposeRunner is wired, it provides additional diagnostic details
 // when the proxy is unreachable (container state, log snippets).
 type StatusService struct {
-	health  ports.HealthChecker
-	compose ports.ComposeRunner // optional; nil disables container diagnostics
-	logs    ports.ComposeLogs   // optional; nil disables log-based diagnostics
+	health   ports.HealthChecker
+	compose  ports.ComposeRunner    // optional; nil disables container diagnostics
+	logs     ports.ComposeLogs      // optional; nil disables log-based diagnostics
+	tlsState ports.TLSStateResolver // optional; nil falls back to config-only rendering
 }
 
 // NewStatusService creates a new StatusService.
@@ -39,16 +40,30 @@ func NewStatusService(health ports.HealthChecker) *StatusService {
 	return &StatusService{health: health}
 }
 
-// WithCompose attaches a ComposeRunner for diagnostic container status checks.
+// WithCompose returns a copy of the StatusService with the given ComposeRunner
+// wired for diagnostic container status checks.
 func (s *StatusService) WithCompose(compose ports.ComposeRunner) *StatusService {
-	s.compose = compose
-	return s
+	cp := *s
+	cp.compose = compose
+	return &cp
 }
 
-// WithLogs attaches a ComposeLogs for diagnostic log tail checks.
+// WithLogs returns a copy of the StatusService with the given ComposeLogs
+// wired for diagnostic log tail checks.
 func (s *StatusService) WithLogs(logs ports.ComposeLogs) *StatusService {
-	s.logs = logs
-	return s
+	cp := *s
+	cp.logs = logs
+	return &cp
+}
+
+// WithTLSStateResolver returns a copy of the StatusService with the given TLS
+// state resolver wired to render the TLS row with state-aware detail
+// (obtained/obtaining/self-signed/...). When nil, the TLS row falls back to
+// the legacy config-only rendering.
+func (s *StatusService) WithTLSStateResolver(r ports.TLSStateResolver) *StatusService {
+	cp := *s
+	cp.tlsState = r
+	return &cp
 }
 
 // Run queries all components and writes the status dashboard to out.
@@ -117,22 +132,38 @@ func (s *StatusService) gatherStatuses(ctx context.Context, cfg *config.Config, 
 		})
 	}
 
-	// TLS
-	tlsDetail := fmt.Sprintf("disabled — provider: %s", cfg.TLS.Provider)
+	// TLS — prefer the state-aware resolver when wired. The renderer
+	// produces healthy/unhealthy plus the canonical detail string from
+	// the PM spec for #1090. When no resolver is wired we fall back to
+	// the legacy config-only detail.
+	statuses = append(statuses, s.tlsComponentStatus(ctx, cfg))
+
+	return statuses
+}
+
+// tlsComponentStatus builds the TLS row for the status dashboard. When a
+// TLS state resolver is wired it produces state-aware output (see PM spec
+// #1090); otherwise it falls back to the pre-#1090 config-only detail.
+func (s *StatusService) tlsComponentStatus(ctx context.Context, cfg *config.Config) ComponentStatus {
+	if s.tlsState != nil {
+		state, err := s.tlsState.Resolve(ctx)
+		if err == nil {
+			detail, healthy := renderTLSStatusLine(state)
+			return ComponentStatus{Name: "TLS", Healthy: healthy, Detail: detail}
+		}
+		// On resolver error, fall through to config-only detail so we
+		// never crash the status dashboard.
+	}
+
+	detail := fmt.Sprintf("disabled — provider: %s", cfg.TLS.Provider)
 	if cfg.TLS.Enabled {
 		domain := cfg.TLS.Domain
 		if domain == "" {
 			domain = "self-signed"
 		}
-		tlsDetail = fmt.Sprintf("enabled — provider: %s, domain: %s", cfg.TLS.Provider, domain)
+		detail = fmt.Sprintf("enabled — provider: %s, domain: %s", cfg.TLS.Provider, domain)
 	}
-	statuses = append(statuses, ComponentStatus{
-		Name:    "TLS",
-		Healthy: true,
-		Detail:  tlsDetail,
-	})
-
-	return statuses
+	return ComponentStatus{Name: "TLS", Healthy: true, Detail: detail}
 }
 
 // PluginStatus represents the enabled/disabled state of a single plugin

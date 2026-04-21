@@ -33,6 +33,9 @@ This initial entry was written by hand to summarise the work leading up to v0.1.
   releases swallowed compose errors and returned a bare exit code; failures
   now include the full compose stderr in the error message.
 - `vibew add tls` no longer silently regenerates `vibewarden.production.yaml`, wiping commented-out stanzas (WAF block mode, auth, headers). Comments/ordering/whitespace preserved via AST edit. (#1086)
+- **`vibew doctor` no longer reports "expires 0 days" for self-signed certs**
+  (#1078). Self-signed local certificates are now identified and reported as
+  `SelfSignedLocal` instead of triggering a spurious near-expiry warning.
 
 ### Changed
 
@@ -46,6 +49,11 @@ This initial entry was written by hand to summarise the work leading up to v0.1.
   bash deploy.sh'`) was a bug; every doc surface has been realigned.
   The script accepts `user@host[:/remote/path]` and defaults the remote
   path to `~/vibewarden-bundle`.
+- **`vibew status` and `vibew doctor` now report TLS state** (#1090, #1078).
+  The status table and doctor checks surface the live Caddy TLS state:
+  `Obtaining` (ACME in progress), `Obtained` (cert active), `Failing` (ACME
+  failed), or `SelfSignedLocal` (dev self-signed cert). Previously only a
+  binary up/down was shown.
 
 ---
 
