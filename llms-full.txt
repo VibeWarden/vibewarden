@@ -30,11 +30,11 @@ vibew bundle depend on. Manually created configs will fail.
 
 PATH A — New project:
 
-  vibew init myapp                         # creates myapp/ subdirectory
-  cd myapp
-  # OR: scaffold in current directory:
   mkdir myapp && cd myapp
-  vibew init .                             # uses directory name as project name
+  vibew init                               # uses directory name as project name
+  # OR set an explicit name:
+  mkdir myapp && cd myapp
+  vibew init --name my-custom-project
 
   This creates: vibewarden.yaml, Dockerfile, .gitignore, and importantly:
   - AGENTS-VIBEWARDEN.md — instructions for YOU (the AI agent) on what the
@@ -103,11 +103,11 @@ The install script downloads the vibew binary to /usr/local/bin.
 
 Step 1 — Initialize:
 
-  vibew init myapp
-  cd myapp
+  mkdir myapp && cd myapp
+  vibew init
 
 Common init flags:
-  --name <name>         Project name (alternative to positional argument)
+  --name <name>         Explicit project name (default: current directory name)
   --port <port>         HTTP port the app listens on (default: 3000)
   --describe <text>     One-line project description
   --force               Overwrite existing files
@@ -1118,9 +1118,9 @@ Step 3 — Install Docker on the server:
 Step 4 — Set up project locally:
     curl -fsSL https://vibewarden.dev/install.sh | sh
     # New project:
-    vibew init myapp
+    mkdir myapp && cd myapp && vibew init
     # Existing app:
-    vibew wrap --upstream 3000
+    cd my-existing-app && vibew wrap --upstream 3000
 
 Step 5 — Create vibewarden.prod.yaml by copying the generated vibewarden.yaml
 and modifying it for production. Do NOT write it from scratch:
