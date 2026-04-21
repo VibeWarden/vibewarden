@@ -100,6 +100,68 @@ remote host via SSH (single round-trip).
 
 ---
 
+### `vibew bundle`
+
+Produce a self-contained Docker Compose deployment bundle under
+`--output` without opening an SSH connection. The command writes
+every file needed to deploy on a VPS (merged docker-compose.yml with
+`image:` pinned, merged vibewarden.yaml, a `.env` preserved across
+runs, a reference `deploy.sh`, a README, and optionally an
+`image.tar`) and lists them on stdout.
+
+Use this when you want to run the deploy manually (your own `scp` /
+`rsync` / CI pipeline) instead of letting `vibew deploy` drive SSH.
+The bundle is local-only — no network calls, no changes outside
+`--output`.
+
+```bash
+vibew bundle
+vibew bundle --output build/deploy
+vibew bundle --skip-image
+vibew bundle --image ghcr.io/acme/myapp:v1.2.3
+vibew bundle --overwrite
+```
+
+#### Flags
+
+| Flag | Required | Default | Description |
+|------|----------|---------|-------------|
+| `--output` | No | `.vibewarden/bundle` | Output directory for all bundle files |
+| `--overwrite` | No | `false` | Replace an existing `.env` in `--output` (otherwise preserved across runs) |
+| `--image` | No | `<project>-app:latest` | Docker image tag to package via `docker save` |
+| `--skip-image` | No | `false` | Do not package `image.tar` (use this when pulling from a registry) |
+
+#### Output layout
+
+```
+.vibewarden/bundle/
+  docker-compose.yml     # image: pinned, never build:
+  vibewarden.yaml        # merged base + prod override, strict-validated
+  sample.env             # regenerated every run; template for operators
+  .env                   # first-run only; --overwrite to replace
+  deploy.sh              # mode 0o750, 10-line reference script
+  image.tar              # omitted with --skip-image
+  README.md              # 3-paragraph manual-deploy guide
+  kratos/, .credentials  # whatever the generator produces
+```
+
+Five of those files (`sample.env`, `.env`, `deploy.sh`, `README.md`,
+`image.tar`) are unique to `vibew bundle`. The rest are the same
+artifacts `vibew deploy` produces internally; ADR-085 §4 guarantees
+`docker-compose.yml` and `vibewarden.yaml` are byte-identical between
+the two commands for the same input.
+
+#### Common errors
+
+| Error | Cause | Fix |
+|-------|-------|-----|
+| `multi-site bundle is not yet supported; use vibew deploy` | Project has `sites/<name>/vibewarden.yaml` | Use `vibew deploy` until multi-site bundling lands (tracked under ADR-085 follow-ups) |
+| `Configuration invalid: unknown key ...` | Typo in `vibewarden.yaml` or `vibewarden.production.yaml` | Remove the unknown key; see ADR-082 |
+| `creating output directory: ...` | `--output` points at a read-only path | Choose a writable directory |
+| `saving image ... : no such image` | Image not yet built | Run `vibew build` (or pass `--skip-image` for registry-pull) |
+
+---
+
 ### `vibew deploy status`
 
 Show Docker Compose service status on the remote.

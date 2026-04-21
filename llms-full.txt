@@ -210,6 +210,33 @@ writes the result to `.vibewarden/deploy/<env>/`. Key flags:
 - `--force` -- overwrite remote files even if they have been modified since
   last deploy
 
+### bundle flags
+
+`vibew bundle` produces a self-contained Docker Compose deploy bundle under
+`--output` with no SSH, no remote docker, no network calls. Flags:
+
+- `--output` -- output directory (default: .vibewarden/bundle)
+- `--overwrite` -- replace an existing .env in --output (otherwise preserved
+  across re-runs; the snapshot is restored even if the generator fails mid-run)
+- `--image` -- docker image tag to package via `docker save`
+  (default: `<project>-app:latest`)
+- `--skip-image` -- do not package image.tar (for users who pull from a registry)
+
+Output layout:
+
+- `docker-compose.yml` -- image: pinned, byte-identical to `vibew deploy --dry-run`
+- `vibewarden.yaml` -- merged base + prod override, byte-identical to
+  `vibew deploy --dry-run`
+- `sample.env` -- regenerated every run; template for operators
+- `.env` -- first-run only; `--overwrite` to replace
+- `deploy.sh` -- mode 0o750, 10-line reference script
+- `README.md` -- 3-paragraph manual-deploy guide
+- `image.tar` -- omitted with `--skip-image`
+- `kratos/`, `.credentials` -- whatever the generator produces
+
+Multi-site projects (`sites/<name>/vibewarden.yaml`) hard-fail with
+`multi-site bundle is not yet supported — use vibew deploy`; see ADR-085.
+
 ### migrate flags
 
 - `--config` (persistent) -- path to vibewarden.yaml
