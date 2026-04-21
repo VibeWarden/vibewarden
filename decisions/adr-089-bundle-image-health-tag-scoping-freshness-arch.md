@@ -1,4 +1,4 @@
-# ADR-088: Bundle image health — tag scoping, freshness, and arch warning
+# ADR-089: Bundle image health — tag scoping, freshness, and arch warning
 
 **Date**: 2026-04-20
 **Issue**: #1084, #1085, #1091
