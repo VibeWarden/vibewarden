@@ -11,11 +11,9 @@ import (
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
 
-// caddyLocalIssuerCN is the issuer Common Name Caddy stamps on internal
-// self-signed dev leaves. Duplicated here (also defined in the caddy
-// adapter) to avoid an app → adapter import violation. If the constant
-// ever changes, bump it in both places.
-const caddyLocalIssuerCN = "Caddy Local Authority"
+// caddyLocalIssuerCN aliases the canonical constant from the domain layer
+// so this file avoids an app → adapter import violation.
+const caddyLocalIssuerCN = tlsdomain.CaddyLocalIssuerCN
 
 // inlineHandshakeResolver is an app-layer fallback TLS state resolver.
 // It performs the same TLS handshake as the caddy adapter's

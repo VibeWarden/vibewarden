@@ -40,24 +40,30 @@ func NewStatusService(health ports.HealthChecker) *StatusService {
 	return &StatusService{health: health}
 }
 
-// WithCompose attaches a ComposeRunner for diagnostic container status checks.
+// WithCompose returns a copy of the StatusService with the given ComposeRunner
+// wired for diagnostic container status checks.
 func (s *StatusService) WithCompose(compose ports.ComposeRunner) *StatusService {
-	s.compose = compose
-	return s
+	cp := *s
+	cp.compose = compose
+	return &cp
 }
 
-// WithLogs attaches a ComposeLogs for diagnostic log tail checks.
+// WithLogs returns a copy of the StatusService with the given ComposeLogs
+// wired for diagnostic log tail checks.
 func (s *StatusService) WithLogs(logs ports.ComposeLogs) *StatusService {
-	s.logs = logs
-	return s
+	cp := *s
+	cp.logs = logs
+	return &cp
 }
 
-// WithTLSStateResolver attaches a TLS state resolver used to render the
-// TLS row with state-aware detail (obtained/obtaining/self-signed/...).
-// When nil, the TLS row falls back to the legacy config-only rendering.
+// WithTLSStateResolver returns a copy of the StatusService with the given TLS
+// state resolver wired to render the TLS row with state-aware detail
+// (obtained/obtaining/self-signed/...). When nil, the TLS row falls back to
+// the legacy config-only rendering.
 func (s *StatusService) WithTLSStateResolver(r ports.TLSStateResolver) *StatusService {
-	s.tlsState = r
-	return s
+	cp := *s
+	cp.tlsState = r
+	return &cp
 }
 
 // Run queries all components and writes the status dashboard to out.

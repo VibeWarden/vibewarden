@@ -9,9 +9,7 @@ import (
 
 func TestRenderTLSDoctorCheck(t *testing.T) {
 	fixedNow := time.Date(2026, 4, 20, 12, 0, 0, 0, time.UTC)
-	origNow := nowFn
-	nowFn = func() time.Time { return fixedNow }
-	t.Cleanup(func() { nowFn = origNow })
+	clockFn := func() time.Time { return fixedNow }
 
 	expiryFar := fixedNow.Add(90 * 24 * time.Hour)
 	expirySoon := fixedNow.Add(3 * 24 * time.Hour)
@@ -34,7 +32,7 @@ func TestRenderTLSDoctorCheck(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := renderTLSDoctorCheck(tt.state)
+			got := renderTLSDoctorCheck(tt.state, clockFn)
 			if got.Name != "TLS certificate" {
 				t.Errorf("Name = %q, want %q", got.Name, "TLS certificate")
 			}
@@ -51,11 +49,9 @@ func TestRenderTLSDoctorCheck(t *testing.T) {
 // TestRenderTLSDoctorCheck_NoExpiringZeroDaysForSelfSigned locks bug #1078:
 // SelfSignedLocal must never produce a "expires 0 day(s)" message.
 func TestRenderTLSDoctorCheck_NoExpiringZeroDaysForSelfSigned(t *testing.T) {
-	origNow := nowFn
-	nowFn = func() time.Time { return time.Date(2026, 4, 20, 0, 0, 0, 0, time.UTC) }
-	t.Cleanup(func() { nowFn = origNow })
+	clockFn := func() time.Time { return time.Date(2026, 4, 20, 0, 0, 0, 0, time.UTC) }
 
-	got := renderTLSDoctorCheck(tlsdomain.NewSelfSignedLocal())
+	got := renderTLSDoctorCheck(tlsdomain.NewSelfSignedLocal(), clockFn)
 	if got.Severity != SeverityOK {
 		t.Errorf("SelfSignedLocal severity = %v, want OK", got.Severity)
 	}

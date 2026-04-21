@@ -397,7 +397,7 @@ func (s *DoctorService) checkUpstreamReachable(ctx context.Context, cfg *config.
 func (s *DoctorService) checkTLSCertValid(ctx context.Context, cfg *config.Config, host string, port int) CheckResult {
 	// Disabled short-circuit — renderer produces an OK result.
 	if cfg != nil && !cfg.TLS.Enabled {
-		return renderTLSDoctorCheck(tlsdomain.NewDisabled())
+		return renderTLSDoctorCheck(tlsdomain.NewDisabled(), time.Now)
 	}
 
 	// Legacy behaviour for non-self-signed providers without a resolver:
@@ -426,7 +426,7 @@ func (s *DoctorService) checkTLSCertValid(ctx context.Context, cfg *config.Confi
 		}
 	}
 
-	return renderTLSDoctorCheck(state)
+	return renderTLSDoctorCheck(state, time.Now)
 }
 
 // checkACMEEmail verifies that an ACME account email is configured when the

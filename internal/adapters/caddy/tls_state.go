@@ -16,11 +16,9 @@ import (
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
 
-// caddyLocalIssuerCN is the Common Name that Caddy's internal issuer
-// stamps on dev leaf certificates. Seeing this CN is the deterministic
-// signal that we are serving a self-signed dev cert and must not be
-// warned about by expiry heuristics.
-const caddyLocalIssuerCN = "Caddy Local Authority"
+// caddyLocalIssuerCN aliases the domain constant so the rest of this
+// file can use the short name without an explicit package qualifier.
+const caddyLocalIssuerCN = tlsdomain.CaddyLocalIssuerCN
 
 // tlsCertExpiryWarnDays mirrors the same constant used by the doctor
 // check — kept private here to avoid a cross-package dependency.

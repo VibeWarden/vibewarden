@@ -7,11 +7,6 @@ import (
 	tlsdomain "github.com/vibewarden/vibewarden/internal/domain/tls"
 )
 
-// nowFn is the clock used by renderTLSDoctorCheck. It is a package-level
-// variable so tests can replace it with a fixed time without threading a
-// clock through the renderer signature.
-var nowFn = time.Now
-
 // renderTLSDoctorCheck converts a TLSState into a CheckResult for the
 // `vibew doctor` report. Severity mapping follows the PM spec for
 // #1090 / #1078:
@@ -21,7 +16,10 @@ var nowFn = time.Now
 //
 // The Name is always "TLS certificate" and the Section is left to the
 // caller (the doctor service wraps it with the Local Runtime section).
-func renderTLSDoctorCheck(state tlsdomain.State) CheckResult {
+//
+// now is injected so callers can fix the clock in tests without mutating
+// any package-level variable.
+func renderTLSDoctorCheck(state tlsdomain.State, now func() time.Time) CheckResult {
 	result := CheckResult{Name: "TLS certificate"}
 
 	switch state.Kind() {
@@ -32,7 +30,7 @@ func renderTLSDoctorCheck(state tlsdomain.State) CheckResult {
 		result.Severity = SeverityOK
 		result.Detail = "self-signed dev cert (rotates automatically)"
 	case tlsdomain.KindObtained:
-		daysLeft := int(state.ExpiresAt().Sub(nowFn()).Hours() / 24)
+		daysLeft := int(state.ExpiresAt().Sub(now()).Hours() / 24)
 		if daysLeft < 0 {
 			daysLeft = 0
 		}
@@ -42,7 +40,7 @@ func renderTLSDoctorCheck(state tlsdomain.State) CheckResult {
 		// An ExpiringSoon state with NotAfter already in the past is
 		// really "expired" — escalate to FAIL so automation treats it
 		// as a hard failure.
-		if !state.ExpiresAt().IsZero() && nowFn().After(state.ExpiresAt()) {
+		if !state.ExpiresAt().IsZero() && now().After(state.ExpiresAt()) {
 			result.Severity = SeverityFail
 			result.Detail = fmt.Sprintf("expired on %s", state.ExpiresAt().Format("2006-01-02"))
 		} else {

@@ -5,6 +5,14 @@ import (
 	"time"
 )
 
+// CaddyLocalIssuerCN is the Common Name Caddy stamps on internal self-signed
+// dev leaf certificates. It is the authoritative signal that the sidecar is
+// serving a KindSelfSignedLocal cert and that expiry heuristics must not be
+// applied. The constant lives in the domain layer so it can be imported by
+// both the caddy adapter and the app-layer fallback resolver without creating
+// an adapter → app or app → adapter dependency.
+const CaddyLocalIssuerCN = "Caddy Local Authority"
+
 // Kind identifies the TLS state variant.
 type Kind int
 
