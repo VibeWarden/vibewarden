@@ -123,7 +123,7 @@ Common flags:
 | `--upstream <port>` | Port your app listens on (default: auto-detected or 3000) |
 | `--auth` | Enable authentication (Ory Kratos) |
 | `--rate-limit` | Enable rate limiting |
-| `--tls --domain example.com` | Enable TLS (requires `--domain`) |
+| `--tls --domain app.yourcompany.com` | Enable TLS (requires `--domain`; use a real domain you control — Let's Encrypt rejects `example.com`) |
 | `--force` | Overwrite existing files |
 
 ### What `wrap` generates
@@ -451,7 +451,7 @@ See the [Observability guide](observability.md) for details.
 ### Enable TLS for production
 
 ```bash
-./vibew add tls --domain myapp.example.com
+./vibew add tls --domain app.yourcompany.com
 ```
 
 This sets `tls.provider: letsencrypt` and `tls.domain` in `vibewarden.yaml` and

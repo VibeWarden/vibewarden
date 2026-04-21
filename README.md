@@ -283,7 +283,7 @@ add VibeWarden. Use `vibew add` to enable individual features after the initial 
 | `vibew wrap` | Add VibeWarden sidecar to an existing project |
 | `vibew add auth` | Enable authentication |
 | `vibew add rate-limiting` | Enable rate limiting |
-| `vibew add tls --domain example.com` | Enable TLS |
+| `vibew add tls --domain app.yourcompany.com` | Enable TLS (use a domain you control; Let's Encrypt rejects `example.com`) |
 | `vibew add metrics` | Enable Prometheus metrics |
 | `vibew add admin` | Enable admin API |
 | `vibew generate` | Regenerate `docker-compose.yml` from config |

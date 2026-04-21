@@ -75,7 +75,7 @@ To add a plugin:
 ```bash
 vibew add auth          # enable authentication
 vibew add rate-limiting # enable rate limiting
-vibew add tls --domain example.com
+vibew add tls --domain app.yourcompany.com  # use a real domain you control; Let's Encrypt rejects example.com
 ```
 
 ## Troubleshooting
