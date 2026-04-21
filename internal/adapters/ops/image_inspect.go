@@ -108,7 +108,6 @@ func isDockerNotFound(err error) bool {
 	if err == nil {
 		return false
 	}
-	var exitErr *exec.ExitError
 	if strings.Contains(err.Error(), "executable file not found") {
 		return true
 	}
@@ -116,6 +115,5 @@ func isDockerNotFound(err error) bool {
 	if strings.Contains(err.Error(), "exec: \"docker\": executable file not found in $PATH") {
 		return true
 	}
-	_ = exitErr
 	return false
 }

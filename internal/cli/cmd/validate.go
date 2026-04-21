@@ -135,9 +135,9 @@ Examples:
 
 			// ADR-089 §G: migration warning when .env still carries the legacy
 			// generic tag. Printed to stderr so stdout stays machine-parsable.
-			configDir := filepath.Dir(configPath)
-			if configPath == "" {
-				configDir = "."
+			configDir := "."
+			if configPath != "" {
+				configDir = filepath.Dir(configPath)
 			}
 			if detectLegacyAppImage(configDir) {
 				fmt.Fprintf(cmd.ErrOrStderr(), "\nMigration hint: .env contains VIBEWARDEN_APP_IMAGE=vibewarden-app:latest (the old generic tag).\n")
