@@ -62,6 +62,42 @@ type FeatureState struct {
 	WAFEnabled bool
 }
 
+// FieldChange describes a single key added, changed, or removed by a YAML
+// edit. Before is empty for additions; After is empty for removals. Path is
+// the dotted key path (e.g. "tls.domain").
+type FieldChange struct {
+	// Path is the dotted key path within the edited YAML document.
+	Path string
+
+	// Before is the rendered value prior to the edit, or "" for additions.
+	Before string
+
+	// After is the rendered value after the edit, or "" for removals.
+	After string
+}
+
+// Diff captures the set of fields added, changed, or removed by a single
+// YAML edit. It is used to render a summary to the user after a
+// `vibewarden add <feature>` call.
+type Diff struct {
+	// File is the absolute path of the edited file.
+	File string
+
+	// Added lists fields that did not exist before the edit.
+	Added []FieldChange
+
+	// Changed lists fields whose scalar value was replaced.
+	Changed []FieldChange
+
+	// Removed lists fields that were removed by the edit.
+	Removed []FieldChange
+}
+
+// IsEmpty reports whether the diff captures no changes.
+func (d Diff) IsEmpty() bool {
+	return len(d.Added) == 0 && len(d.Changed) == 0 && len(d.Removed) == 0
+}
+
 // FeatureOptions carries feature-specific options supplied by the user when
 // running `vibewarden add <feature>`. Fields that do not apply to a
 // particular feature are ignored.

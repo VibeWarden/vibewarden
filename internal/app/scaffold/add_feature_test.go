@@ -31,10 +31,10 @@ func (f *fakeToggler) ReadFeatures(_ context.Context, _ string) (*domainscaffold
 	return f.state, nil
 }
 
-func (f *fakeToggler) EnableFeature(_ context.Context, _ string, feature domainscaffold.Feature, opts domainscaffold.FeatureOptions) error {
+func (f *fakeToggler) EnableFeature(_ context.Context, _ string, feature domainscaffold.Feature, opts domainscaffold.FeatureOptions) (domainscaffold.Diff, error) {
 	f.enabledFeature = feature
 	f.enabledOpts = opts
-	return f.enableErr
+	return domainscaffold.Diff{}, f.enableErr
 }
 
 func TestAddFeatureService_AddFeature(t *testing.T) {
@@ -159,5 +159,5 @@ func TestAddFeatureService_AddFeature(t *testing.T) {
 // Compile-time check: fakeToggler satisfies the FeatureToggler interface shape.
 var _ interface {
 	ReadFeatures(context.Context, string) (*domainscaffold.FeatureState, error)
-	EnableFeature(context.Context, string, domainscaffold.Feature, domainscaffold.FeatureOptions) error
+	EnableFeature(context.Context, string, domainscaffold.Feature, domainscaffold.FeatureOptions) (domainscaffold.Diff, error)
 } = (*fakeToggler)(nil)

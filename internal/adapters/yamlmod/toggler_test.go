@@ -330,7 +330,7 @@ func TestToggler_EnableFeature(t *testing.T) {
 				path = filepath.Join(dir, "vibewarden.yaml")
 			}
 
-			err := tog.EnableFeature(ctx, path, tt.feature, tt.opts)
+			_, err := tog.EnableFeature(ctx, path, tt.feature, tt.opts)
 
 			if tt.wantErr {
 				if err == nil {
@@ -374,7 +374,7 @@ func TestToggler_EnableFeature_Idempotent(t *testing.T) {
 
 	original, _ := os.ReadFile(path)
 
-	err := tog.EnableFeature(ctx, path, scaffold.FeatureAuth, scaffold.FeatureOptions{})
+	_, err := tog.EnableFeature(ctx, path, scaffold.FeatureAuth, scaffold.FeatureOptions{})
 	if !errors.Is(err, scaffold.ErrFeatureAlreadyEnabled) {
 		t.Fatalf("expected ErrFeatureAlreadyEnabled, got %v", err)
 	}

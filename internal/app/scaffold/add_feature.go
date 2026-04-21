@@ -42,6 +42,10 @@ type AddResult struct {
 	// UpdatedConfig is the absolute path of the modified vibewarden.yaml.
 	UpdatedConfig string
 
+	// ConfigDiff lists the fields added/changed/removed in vibewarden.yaml
+	// by the EnableFeature call.
+	ConfigDiff domainscaffold.Diff
+
 	// RegeneratedContextFiles lists agent context files that were regenerated.
 	RegeneratedContextFiles []string
 }
@@ -51,11 +55,12 @@ type AddResult struct {
 func (s *AddFeatureService) AddFeature(ctx context.Context, dir string, opts AddFeatureOptions) (*AddResult, error) {
 	configPath := filepath.Join(dir, vibeWardenYAML)
 
-	if err := s.toggler.EnableFeature(ctx, configPath, opts.Feature, opts.FeatureOptions); err != nil {
+	diff, err := s.toggler.EnableFeature(ctx, configPath, opts.Feature, opts.FeatureOptions)
+	if err != nil {
 		return nil, fmt.Errorf("enabling feature %q: %w", opts.Feature, err)
 	}
 
-	result := &AddResult{UpdatedConfig: configPath}
+	result := &AddResult{UpdatedConfig: configPath, ConfigDiff: diff}
 
 	// Regenerate agent context files when requested.
 	if opts.RegenerateAgentContext {
