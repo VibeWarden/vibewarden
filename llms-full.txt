@@ -1299,7 +1299,7 @@ VibeWarden is operated via the `vibew` CLI. Below is the complete command list.
 | `vibew dev --verbose` | Start local dev environment and stream docker compose output during startup |
 | `vibew down` | Stop the local dev stack (preserves data volumes; pass `-v` to also remove volumes) |
 | `vibew restart` | Restart containers without rebuilding |
-| `vibew bundle` | Produce a self-contained Docker Compose deploy bundle under `.vibewarden/bundle/` (ship with scp + docker compose up -d) |
+| `vibew bundle` | Produce a self-contained Docker Compose deploy bundle under `.vibewarden/bundle/` (produces deploy.sh for local-run shipping) |
 | `vibew status` | Show health of all components |
 | `vibew doctor` | Diagnose common issues |
 | `vibew logs` | Pretty-print structured logs |
@@ -1382,8 +1382,8 @@ Output layout:
 - `vibewarden.yaml` -- merged base + prod override, strict-validated
 - `sample.env` -- regenerated every run; template for operators
 - `.env` -- first-run only; `--overwrite` to replace
-- `deploy.sh` -- mode 0o750, 10-line reference script
-- `README.md` -- 3-paragraph manual-deploy guide
+- `deploy.sh` -- mode 0o750, ~25-line local-run script
+- `README.md` -- single-step deploy guide: `cd .vibewarden/bundle && ./deploy.sh user@host`
 - `image.tar` -- omitted with `--skip-image`
 - `kratos/`, `.credentials` -- whatever the generator produces
 
@@ -1429,9 +1429,9 @@ user then transfers the bundle directory to the VPS and runs
 production server -- the image must be production-ready.
 
 There is no all-in-one remote-deploy command. `vibew bundle` is the only
-supported path to a VPS; the user owns the transport (scp, rsync, CI
-artifact) and the remote `docker compose up -d`. The removed `vibew deploy`
-command did all three steps (package, ship, start) in one SSH orchestration.
+supported path to a VPS; deploy.sh runs from the user's laptop (scp + ssh +
+healthcheck in one script). The removed `vibew deploy` command did all three
+steps (package, ship, start) in one SSH orchestration.
 That surface was retired in ADR-086 in favour of the thin bundle pipeline.
 Running `vibew deploy` today prints cobra's `unknown command "deploy"` error.
 See CHANGELOG and ADR-086 for the rationale.
