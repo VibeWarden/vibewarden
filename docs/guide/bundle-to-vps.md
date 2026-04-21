@@ -125,10 +125,8 @@ actually changed (config, image tag, overlay).
 
 - **Image not loading on the VPS.** Check that the host architecture
   matches the image's target arch. `docker inspect --format='{{.Architecture}}' <image>`
-  on both sides. Cross-arch bundles are not auto-detected by
-  `vibew bundle` — that was a `vibew deploy` feature that did not survive
-  the sunset (ADR-086). Rebuild with `docker buildx build --platform
-  linux/amd64` if needed.
+  on both sides. `vibew bundle` does not auto-detect cross-arch mismatches;
+  rebuild with `docker buildx build --platform linux/amd64` if needed.
 
 - **TLS certificates.** `vibew bundle` emits whatever TLS config the
   merged `vibewarden.yaml` specifies. Let's Encrypt flows run on first
@@ -136,9 +134,8 @@ actually changed (config, image tag, overlay).
   `ssh user@host 'cd ~/bundle && docker compose logs vibewarden | grep -i acme'`.
 
 - **Strict config validation failures before any files are written.**
-  `vibew bundle` calls the same `config.LoadStrict` path as the old
-  `vibew deploy`, so unknown keys abort the command before the bundle
-  directory is touched.
+  `vibew bundle` calls `config.LoadStrict`, so unknown keys abort the
+  command before the bundle directory is touched.
 
 - **Health check failures on the VPS.** `curl -k https://localhost:$PORT/_vibewarden/health`
   over SSH is the canonical probe. The sidecar's own `docker compose
