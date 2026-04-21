@@ -62,9 +62,6 @@ to inspect and manage a local sidecar. Tools:
 | `vibewarden_doctor` | Run the full health-check suite |
 | `vibewarden_validate` | Validate a vibewarden.yaml configuration file |
 | `vibewarden_explain` | Explain a configuration in plain language |
-| `vibewarden_prepare_deploy` | Generate a deployment spec for Docker, Railway, or Fly.io |
-| `vibewarden_verify_deploy` | Verify a deployed sidecar is reachable and healthy |
-| `vibewarden_get_deploy_logs` | Instructions for retrieving sidecar logs |
 | `vibewarden_watch_events` | Stream live structured log events from the sidecar |
 | `vibewarden_stream_logs` | Stream raw container logs with client-side filtering (level, since, search) |
 | `vibewarden_schema_describe` | Describe the AI-readable log schema (pure metadata, no sidecar needed) |
