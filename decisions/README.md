@@ -59,6 +59,7 @@ once accepted, they are not edited. If a decision is superseded, a new ADR refer
 | [085](adr-085-vibew-bundle-compose-only.md) | `vibew bundle` — compose-only deployment artifact generator | #1044 |
 | [086](adr-086-sunset-vibew-deploy.md) | Sunset `vibew deploy` — bundle-and-deploy-manually is the canonical path | #1051 |
 | [087](adr-087-test-placement-contract-tests-and-architectural-invariants.md) | Test placement — contract tests live with their adapter, architectural invariants live in test/architecture | — |
+| [088](adr-088-bundle-image-health-tag-scoping-freshness-arch.md) | Bundle image health — tag scoping, freshness, and arch warning | — |
 | [497](adr-497-graceful-shutdown-connection-draining.md) | Graceful Shutdown / Connection Draining | — |
 
 ## Numbering
