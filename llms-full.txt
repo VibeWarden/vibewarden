@@ -1150,24 +1150,24 @@ Step 6 — Produce a deploy bundle locally:
     #   vibewarden.yaml           — merged base + prod override, strict-validated
     #   sample.env                — template for operators
     #   .env                      — first-run only (use --overwrite to regenerate)
-    #   deploy.sh                 — 10-line reference script (mode 0o750)
-    #   README.md                 — 3-paragraph manual-deploy guide
+    #   deploy.sh                 — local-run reference script (mode 0o750)
+    #   README.md                 — per-bundle cheat sheet
 
-Step 7 — Ship and start:
-    scp -r .vibewarden/bundle/ root@<server-ip>:/opt/myapp/
-    ssh root@<server-ip> 'cd /opt/myapp/bundle && bash deploy.sh'
-    # deploy.sh: docker load < image.tar && docker compose up -d
+Step 7 — Ship and start (one command, runs on your laptop):
+    cd .vibewarden/bundle && ./deploy.sh root@<server-ip>:/opt/myapp
+    # scp -r .          → root@<server-ip>:/opt/myapp/
+    # ssh root@...      → docker load -i image.tar && docker compose up -d
+    # sleep 3 + probe  → http://localhost:<port>/_vibewarden/health
+    # on failure       → dumps `docker compose logs --tail 50` to stderr, exits 1
 
-Step 8 — Verify:
-    ssh root@<server-ip> 'cd /opt/myapp/bundle && docker compose ps'
-    # Health check probes localhost on the remote via SSH (not the external domain):
-    ssh root@<server-ip> 'curl -sf http://localhost/_vibewarden/healthz && echo OK'
+Step 8 — Verify (script already probed /_vibewarden/health; double-check anytime):
+    ssh root@<server-ip> 'cd /opt/myapp && docker compose ps'
+    ssh root@<server-ip> 'curl -sf http://localhost:8443/_vibewarden/health && echo OK'
     # OK
 
 Step 9 — Subsequent deploys (after code or config changes):
     vibew bundle --config vibewarden.prod.yaml
-    scp -r .vibewarden/bundle/ root@<server-ip>:/opt/myapp/
-    ssh root@<server-ip> 'cd /opt/myapp/bundle && bash deploy.sh'
+    cd .vibewarden/bundle && ./deploy.sh root@<server-ip>:/opt/myapp
 
 Note: the legacy `vibew deploy` command (one-shot SSH orchestration) was removed
 in ADR-086. The bundle pipeline above is the only supported remote workflow.

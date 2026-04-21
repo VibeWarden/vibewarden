@@ -179,34 +179,37 @@ vibew build --platform linux/amd64
 # 2. Produce a self-contained deploy bundle locally.
 vibew bundle
 
-# 3. Copy the bundle to the VPS.
-scp -r .vibewarden/bundle/ user@host:~/
-
-# 4. Start the stack on the remote.
-ssh user@host 'cd ~/bundle && bash deploy.sh'
+# 3. Ship it to the VPS (scp + docker load + compose up + healthcheck).
+cd .vibewarden/bundle && ./deploy.sh user@host
 ```
 
 `vibew bundle` is the canonical path. It emits a deterministic
 `docker-compose.yml` (image: pinned, never build:), the merged
 `vibewarden.yaml`, `sample.env`, `.env`, a reference `deploy.sh`, an
 optional `image.tar` (omit with `--skip-image`), and `README.md` under
-`.vibewarden/bundle/`. No SSH connection is opened by `vibew` itself -- the
-user owns the transport.
+`.vibewarden/bundle/`.
+
+`deploy.sh` runs **locally** on the workstation. It `scp`s the bundle
+directory, loads the image (or pulls it), runs `docker compose up -d`,
+and probes `/_vibewarden/health` on the remote. Pass
+`user@host:/remote/path` to override the default remote path
+(`~/vibewarden-bundle`). Vibew never opens an SSH connection itself --
+the script is plain bash you can inspect and modify.
 
 Day-two operations are standard docker compose against the copied bundle:
 
 ```bash
-ssh user@host 'cd ~/bundle && docker compose ps'
-ssh user@host 'cd ~/bundle && docker compose logs --tail=100 vibewarden'
-ssh user@host 'cd ~/bundle && docker compose restart vibewarden'
+ssh user@host 'cd ~/vibewarden-bundle && docker compose ps'
+ssh user@host 'cd ~/vibewarden-bundle && docker compose logs --tail=100 vibewarden'
+ssh user@host 'cd ~/vibewarden-bundle && docker compose restart vibewarden'
 ```
 
 There is no all-in-one remote-deploy command. `vibew bundle` is the only
-supported path to a VPS; the user owns the transport (scp, rsync, CI
-artifact) and the remote `docker compose up -d`. The removed `vibew deploy`
-command previously did all of this over SSH in one step. It was retired in
-ADR-086 after four retros converged on deploy-orchestration as the #1 source
-of user friction. Running `vibew deploy` today prints cobra's
+supported path to a VPS; `deploy.sh` automates scp + docker load + compose
+up + healthcheck in one local script. The removed `vibew deploy` command
+previously did all of this over SSH from the vibew binary itself. It was
+retired in ADR-086 after four retros converged on deploy-orchestration as
+the #1 source of user friction. Running `vibew deploy` today prints cobra's
 `unknown command "deploy"` error.
 
 ## Writing your Dockerfile

@@ -37,6 +37,15 @@ This initial entry was written by hand to summarise the work leading up to v0.1.
 ### Changed
 
 - `vibew add` commands that hit an unparseable YAML file now fail fast with a `vibew validate` remediation hint instead of silently rewriting. (#1086)
+- Bundle `deploy.sh` now runs locally (#1087,
+  [ADR-088](decisions/adr-088-deploy-sh-local-run-convention.md)). One
+  command on the workstation — `cd .vibewarden/bundle && ./deploy.sh
+  user@host` — scps the bundle, loads the image, runs `docker compose
+  up -d`, and probes `/_vibewarden/health` on the remote. The
+  remote-run recipe in previous docs (`ssh user@host 'cd ~/bundle &&
+  bash deploy.sh'`) was a bug; every doc surface has been realigned.
+  The script accepts `user@host[:/remote/path]` and defaults the remote
+  path to `~/vibewarden-bundle`.
 
 ---
 
@@ -59,9 +68,13 @@ new ADRs landed ([082](decisions/adr-082-strict-config-merge-unknown-keys-fail-l
 
 ```bash
 vibew bundle
-scp -r .vibewarden/bundle/ user@host:~/
-ssh user@host 'cd bundle && bash deploy.sh'
+cd .vibewarden/bundle && ./deploy.sh user@host
 ```
+
+> Note: earlier drafts of this recipe told users to `ssh user@host 'cd
+> ~/bundle && bash deploy.sh'`. That form was inconsistent with the
+> local-run script and has been corrected — see
+> [ADR-088](decisions/adr-088-deploy-sh-local-run-convention.md).
 
 See [`docs/guide/bundle-to-vps.md`](docs/guide/bundle-to-vps.md) for the
 end-to-end walkthrough and [`docs/deploy-reference.md`](docs/deploy-reference.md)
@@ -77,8 +90,8 @@ for the breaking-change landing page.
   exits non-zero. ADR-086 originally staged the removal across two releases
   (sunset + one-release stub); the amendment recorded in #1063 collapses the
   stub into this same release so the "deploy is gone" messaging matches
-  runtime behaviour. Use `vibew bundle` + `bash deploy.sh` (migration recipe
-  above).
+  runtime behaviour. Use `vibew bundle` + `./deploy.sh user@host`
+  (migration recipe above).
 - **MCP deploy tools removed** (#1062, #1069,
   [ADR-086 §"MCP-server tools"](decisions/adr-086-sunset-vibew-deploy.md)).
   MCP tools `vibewarden_prepare_deploy`, `vibewarden_verify_deploy`, and
