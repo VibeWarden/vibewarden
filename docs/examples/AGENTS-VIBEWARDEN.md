@@ -91,7 +91,10 @@ vibew logs               # pretty-print structured logs
 
 `vibew doctor` checks (in order): config validity, Docker daemon, Docker Compose,
 proxy port availability, generated files, container health, ACME email, image tag
-consistency, upstream reachability, and local TLS cert validity.
+consistency, upstream reachability, and TLS state. The TLS state check reports one
+of four values: `Obtaining` (ACME in progress), `Obtained` (cert active and valid),
+`Failing` (ACME failed), or `SelfSignedLocal` (dev self-signed cert — no expiry
+warning is raised). `vibew status` surfaces the same TLS state in its output table.
 
 ## Writing your Dockerfile
 
@@ -233,7 +236,7 @@ generated compose. VibeWarden never overwrites this file.
 ## Known limitations
 
 - WAF is in `detect` mode by default (logs but does not block). Set `waf.mode: block` in vibewarden.yaml to enforce blocking.
-- `vibew doctor` checks config, Docker, ports, container health, generated files, ACME email, image tag, upstream reachability, and local TLS cert validity.
+- `vibew doctor` checks config, Docker, ports, container health, generated files, ACME email, image tag, upstream reachability, and TLS state (Obtaining/Obtained/Failing/SelfSignedLocal). Self-signed dev certs are identified correctly and do not trigger a spurious expiry warning.
 - Multi-site deployment is new and may have edge cases — report issues if routes or certs behave unexpectedly.
 - `vibew init` does not accept `--tls` or `--domain` flags — run `vibew add tls --domain <your-domain>` after init.
 

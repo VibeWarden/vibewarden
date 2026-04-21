@@ -1300,8 +1300,8 @@ VibeWarden is operated via the `vibew` CLI. Below is the complete command list.
 | `vibew down` | Stop the local dev stack (preserves data volumes; pass `-v` to also remove volumes) |
 | `vibew restart` | Restart containers without rebuilding |
 | `vibew bundle` | Produce a self-contained Docker Compose deploy bundle under `.vibewarden/bundle/` (produces deploy.sh for local-run shipping) |
-| `vibew status` | Show health of all components |
-| `vibew doctor` | Diagnose common issues |
+| `vibew status` | Show health of all components; TLS column reports state: Obtaining, Obtained, Failing, or SelfSignedLocal |
+| `vibew doctor` | Diagnose common issues; check 7 reports TLS state (Obtaining/Obtained/Failing/SelfSignedLocal) |
 | `vibew logs` | Pretty-print structured logs |
 | `vibew migrate` | Apply all pending database migrations (alias for migrate up) |
 | `vibew migrate up` | Apply all pending database migrations |
@@ -1451,6 +1451,8 @@ vibew doctor checks (in order):
   4. Proxy port — server.port not already bound
   5. Generated files — .vibewarden/generated/docker-compose.yml present
   6. Container health — all containers running/healthy
+  7. TLS state — reports Obtaining/Obtained/Failing/SelfSignedLocal; self-signed
+     certs are identified and not reported as near-expiry
 
 
 ## 15. Troubleshooting
