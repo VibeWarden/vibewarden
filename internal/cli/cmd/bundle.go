@@ -229,9 +229,17 @@ func bundleListing(dir string) ([]string, error) {
 //  1. cfg.Name
 //  2. cfg.App.Image (strip ":tag" and any registry prefix)
 //  3. ProjectNameFromConfig fallback
+//
+// Every candidate is run through sanitiseProjectName so that downstream
+// shell interpolations (deploy.sh, README.md, rsync paths) cannot be
+// weaponised by a hostile vibewarden.yaml. ADR-085 §7 and the #1061
+// reviewer finding both call this out: even though deploy.sh only
+// interpolates the project name inside a comment today, the surface is
+// not defensible if we start allowing arbitrary unicode / shell
+// metacharacters through.
 func deriveProjectName(cfg *config.Config, absConfig string) string {
-	if cfg.Name != "" {
-		return cfg.Name
+	if name := sanitiseProjectName(cfg.Name); name != "" {
+		return name
 	}
 	if cfg.App.Image != "" {
 		image := cfg.App.Image
@@ -241,17 +249,51 @@ func deriveProjectName(cfg *config.Config, absConfig string) string {
 		if idx := strings.LastIndex(image, "/"); idx >= 0 {
 			image = image[idx+1:]
 		}
-		if image != "" {
-			return image
+		if name := sanitiseProjectName(image); name != "" {
+			return name
 		}
 	}
-	return deployapp.ProjectNameFromConfig(absConfig)
+	return sanitiseProjectName(deployapp.ProjectNameFromConfig(absConfig))
+}
+
+// sanitiseProjectName strips any byte outside the shell-safe subset
+// [a-zA-Z0-9_-] and collapses the result. Returns the empty string when
+// the input contains no safe characters — callers fall through to the
+// next derivation step in that case (deriveProjectName chains several).
+//
+// This is the defensive layer that protects deploy.sh / README.md /
+// rsync path interpolation from crafted inputs like
+// `myproject" && rm -rf /` in vibewarden.yaml's `name:` key. The config
+// schema does not currently validate `name` against this subset, so the
+// bundle pipeline carries the guard.
+func sanitiseProjectName(in string) string {
+	var b strings.Builder
+	b.Grow(len(in))
+	for _, r := range in {
+		switch {
+		case r >= 'a' && r <= 'z':
+		case r >= 'A' && r <= 'Z':
+		case r >= '0' && r <= '9':
+		case r == '_' || r == '-':
+		default:
+			continue
+		}
+		b.WriteRune(r)
+	}
+	return b.String()
 }
 
 // isMultiSiteProject reports whether configPath sits in a project whose
-// local layout implies multi-site bundling. The signal is a non-empty
-// sites/ subdirectory next to the base config file. This matches the
-// heuristic used by internal/config/sites.LoadSites.
+// local layout implies multi-site bundling. A project is multi-site iff
+// at least one subdirectory of sites/ contains a readable vibewarden.yaml.
+//
+// Mirrors internal/config/sites.LoadSites so detection stays consistent
+// across commands: an empty sites/, a sites/<name>/ with no YAML, or a
+// sites/<name>/vibewarden.yaml that is unreadable (permission denied)
+// are all treated as single-site. That matches LoadSites' behaviour of
+// silently skipping subdirectories without a vibewarden.yaml. Previously
+// any subdir tripped the branch, which made scaffolding tools that
+// create an empty sites/blog/ before populating it hard-fail on bundle.
 func isMultiSiteProject(configPath string) bool {
 	sitesDir := filepath.Join(filepath.Dir(configPath), "sites")
 	entries, err := os.ReadDir(sitesDir)
@@ -259,9 +301,15 @@ func isMultiSiteProject(configPath string) bool {
 		return false
 	}
 	for _, e := range entries {
-		if e.IsDir() {
-			return true
+		if !e.IsDir() {
+			continue
 		}
+		siteYAML := filepath.Join(sitesDir, e.Name(), "vibewarden.yaml")
+		info, statErr := os.Stat(siteYAML)
+		if statErr != nil || info.IsDir() {
+			continue
+		}
+		return true
 	}
 	return false
 }
