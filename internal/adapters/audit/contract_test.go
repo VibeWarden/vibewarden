@@ -1,4 +1,12 @@
-package ports_test
+// Contract test — applies to all AuditLogger / AuditEventLogger adapters.
+//
+// Although this file lives next to the "audit" adapter, the tests exercise
+// the port contract defined in internal/ports — every adapter implementing
+// ports.AuditLogger or ports.AuditEventLogger (json_writer, multi_writer,
+// otel_writer, …) must honour the AuditAction constant values and
+// AuditEntry value-object invariants asserted here. See ADR-087 for the
+// test-placement rationale.
+package audit_test
 
 import (
 	"testing"

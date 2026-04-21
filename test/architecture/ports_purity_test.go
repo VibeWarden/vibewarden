@@ -1,7 +1,7 @@
 //go:build purity
 // +build purity
 
-// Package ports advisory test — runs only under `go test -tags=purity`.
+// Package architecture_test holds repo-wide architectural-invariant tests.
 //
 // This file guards the hexagonal-architecture invariant locked in
 // ADR-064: internal/ports/ may import stdlib and internal/domain/* only.
@@ -10,10 +10,11 @@
 //
 // It is behind a build tag because the repository's default make check
 // gate (go build + golangci-lint + go test) does not run this assertion;
-// operators or CI can opt in with `go test -tags=purity ./internal/ports/...`
-// when an extra guardrail is desirable.
+// operators or CI can opt in with `go test -tags=purity ./test/architecture/...`
+// when an extra guardrail is desirable. See ADR-087 for the placement
+// rationale.
 
-package ports_test
+package architecture_test
 
 import (
 	"go/build"

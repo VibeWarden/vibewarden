@@ -1,4 +1,4 @@
-package ports_test
+package otel_test
 
 import (
 	"testing"
