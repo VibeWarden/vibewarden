@@ -283,6 +283,19 @@ func sanitiseProjectName(in string) string {
 	return b.String()
 }
 
+// prodConfigPathForEnv returns the path to the environment-specific production
+// override file (e.g. vibewarden.production.yaml) based on the base config
+// path. When the computed file does not exist, an empty string is returned
+// (no override).
+func prodConfigPathForEnv(configPath, envName string) string {
+	dir := filepath.Dir(configPath)
+	prodFile := filepath.Join(dir, "vibewarden."+envName+".yaml")
+	if _, err := os.Stat(prodFile); err == nil {
+		return prodFile
+	}
+	return ""
+}
+
 // isMultiSiteProject reports whether configPath sits in a project whose
 // local layout implies multi-site bundling. A project is multi-site iff
 // at least one subdirectory of sites/ contains a readable vibewarden.yaml.

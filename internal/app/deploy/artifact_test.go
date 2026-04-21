@@ -1,7 +1,6 @@
 package deploy_test
 
 import (
-	"bytes"
 	"context"
 	"os"
 	"path/filepath"
@@ -26,9 +25,9 @@ func (g *captureGenerator) Generate(_ context.Context, input ports.GeneratorInpu
 }
 
 // TestArtifact_DeployCompose_UsesImageNotBuild verifies that the generated
-// docker-compose.yml in a single-site deploy bundle uses image: instead of
-// build: when app.build is set. The image is built locally by `vibew build`
-// and transferred via docker save/load -- no source code on the server.
+// docker-compose.yml in a single-site bundle uses image: instead of build:
+// when app.build is set. The image is built locally by `vibew build` and
+// shipped via image.tar in the bundle — no source code on the server.
 //
 // Regression test for #952.
 func TestArtifact_DeployCompose_UsesImageNotBuild(t *testing.T) {
@@ -248,202 +247,6 @@ func TestArtifact_SidecarCompose_ContainsDNS(t *testing.T) {
 	}
 	if !strings.Contains(s, "8.8.8.8") {
 		t.Errorf("expected '8.8.8.8' in sidecar compose DNS, got:\n%s", s)
-	}
-}
-
-// TestArtifact_BuildMode_TransfersImageNotSource verifies that when app.build
-// is set, Deploy transfers the locally-built image via docker save/load instead
-// of rsyncing source code. No TransferExcluding is used because no source code
-// is sent to the server.
-//
-// Replaces #953 regression test (build context rsync is no longer used).
-func TestArtifact_BuildMode_TransfersImageNotSource(t *testing.T) {
-	projDir := t.TempDir()
-
-	// Base config: self-signed TLS on port 8443 (local dev).
-	baseYAML := `server:
-  port: 8443
-upstream:
-  host: "0.0.0.0"
-  port: 3000
-tls:
-  enabled: true
-  provider: self-signed
-app:
-  build: "."
-`
-	basePath := filepath.Join(projDir, "vibewarden.yaml")
-	if err := os.WriteFile(basePath, []byte(baseYAML), 0o600); err != nil {
-		t.Fatalf("writing base config: %v", err)
-	}
-
-	// Production override: letsencrypt on port 443.
-	prodYAML := `server:
-  port: 443
-tls:
-  enabled: true
-  provider: letsencrypt
-  domain: app.example.com
-`
-	prodPath := filepath.Join(projDir, "vibewarden.production.yaml")
-	if err := os.WriteFile(prodPath, []byte(prodYAML), 0o600); err != nil {
-		t.Fatalf("writing prod config: %v", err)
-	}
-
-	// The merged config that config.Load would produce.
-	cfg := &config.Config{
-		Server:   config.ServerConfig{Port: 443},
-		Upstream: config.UpstreamConfig{Host: "0.0.0.0", Port: 3000},
-		App:      config.AppConfig{Build: "."},
-		TLS:      config.TLSConfig{Enabled: true, Provider: "letsencrypt", Domain: "app.example.com"},
-	}
-
-	executor := &fakeExecutor{}
-	generator := &fakeGenerator{}
-	svc := deployapp.NewService(executor, generator)
-
-	bundleDir := t.TempDir()
-
-	err := svc.Deploy(context.Background(), cfg, deployapp.RunOptions{
-		ConfigPath:     basePath,
-		ProdConfigPath: prodPath,
-		ProjectName:    "myapp",
-		GeneratedDir:   bundleDir,
-		Force:          true,
-	})
-	if err != nil {
-		t.Fatalf("Deploy() unexpected error: %v", err)
-	}
-
-	// 1. The bundled vibewarden.yaml must have the merged (production) values.
-	bundledConfig, err := os.ReadFile(filepath.Join(bundleDir, "vibewarden.yaml"))
-	if err != nil {
-		t.Fatalf("reading bundled config: %v", err)
-	}
-	s := string(bundledConfig)
-	if !strings.Contains(s, "provider: letsencrypt") {
-		t.Errorf("bundled config should contain 'provider: letsencrypt' (merged), got:\n%s", s)
-	}
-	if !strings.Contains(s, "port: 443") {
-		t.Errorf("bundled config should contain 'port: 443' (merged), got:\n%s", s)
-	}
-	if strings.Contains(s, "provider: self-signed") {
-		t.Errorf("bundled config must NOT contain 'provider: self-signed' (base), got:\n%s", s)
-	}
-
-	// 2. No TransferExcluding must be called -- no source code is transferred.
-	if len(executor.transferExcludingCalls) != 0 {
-		t.Errorf("expected no TransferExcluding calls (no source code transfer), got %d: %v",
-			len(executor.transferExcludingCalls), executor.transferExcludingCalls)
-	}
-
-	// 3. No --build flag must be present in docker compose up.
-	for _, c := range executor.runCalls {
-		if strings.Contains(c, "--build") {
-			t.Errorf("did not expect --build flag (image transfer mode), got: %q", c)
-		}
-	}
-}
-
-// TestArtifact_BuildMode_MultiApp_NoSourceTransfer verifies that in multi-app
-// mode, when app.build is set, no source code is transferred to the server.
-// The image is transferred via docker save/load instead.
-//
-// Replaces #953 multi-app regression test.
-func TestArtifact_BuildMode_MultiApp_NoSourceTransfer(t *testing.T) {
-	cfg := &config.Config{
-		Server:   config.ServerConfig{Port: 443},
-		Upstream: config.UpstreamConfig{Host: "0.0.0.0", Port: 3000},
-		App:      config.AppConfig{Build: "."},
-	}
-
-	tests := []struct {
-		name   string
-		deploy func(svc *deployapp.Service, executor *fakeExecutor) error
-	}{
-		{
-			name: "BootstrapSidecar does not transfer source code",
-			deploy: func(svc *deployapp.Service, _ *fakeExecutor) error {
-				return svc.BootstrapSidecar(context.Background(), cfg, deployapp.RunOptions{
-					ConfigPath:   "/tmp/buildsite/vibewarden.yaml",
-					ProjectName:  "buildsite",
-					GeneratedDir: t.TempDir(),
-				})
-			},
-		},
-		{
-			name: "DeployMultiApp does not transfer source code",
-			deploy: func(svc *deployapp.Service, _ *fakeExecutor) error {
-				return svc.DeployMultiApp(context.Background(), cfg, deployapp.RunOptions{
-					ConfigPath:   "/tmp/buildsite/vibewarden.yaml",
-					ProjectName:  "buildsite",
-					GeneratedDir: t.TempDir(),
-				})
-			},
-		},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			executor := &fakeExecutor{}
-			generator := &fakeGenerator{}
-			svc := deployapp.NewService(executor, generator)
-
-			if err := tt.deploy(svc, executor); err != nil {
-				t.Fatalf("deploy error: %v", err)
-			}
-
-			// No TransferExcluding must be called -- no source code transfer.
-			if len(executor.transferExcludingCalls) != 0 {
-				t.Errorf("expected no TransferExcluding calls (no source transfer), got %d: %v",
-					len(executor.transferExcludingCalls), executor.transferExcludingCalls)
-			}
-
-			// No --build flag in docker compose up.
-			for _, c := range executor.runCalls {
-				if strings.Contains(c, "--build") {
-					t.Errorf("did not expect --build flag, got: %q", c)
-				}
-			}
-		})
-	}
-}
-
-// TestArtifact_FirstDeploy_NoDriftWarning verifies that on first deploy to an
-// empty remote, the dry-run output containing only new-file entries (all "+"
-// attributes) does NOT trigger a DriftError. Only actual modifications should
-// be treated as drift.
-//
-// Regression test for #962.
-func TestArtifact_FirstDeploy_NoDriftWarning(t *testing.T) {
-	// Simulate a first deploy where the dry-run reports only new files
-	// (all "+" attributes in the rsync itemize code).
-	executor := &fakeExecutor{
-		dryRunChanges: nil, // parseDryRunOutput now filters out new-file entries
-	}
-	generator := &fakeGenerator{}
-
-	svc := deployapp.NewService(executor, generator)
-
-	var buf bytes.Buffer
-	err := svc.Deploy(context.Background(), &config.Config{
-		Server: config.ServerConfig{Port: 8443},
-	}, deployapp.RunOptions{
-		ConfigPath:   "/tmp/firstproject/vibewarden.yaml",
-		GeneratedDir: t.TempDir(),
-		Force:        false,
-		Out:          &buf,
-	})
-	if err != nil {
-		t.Fatalf("Deploy() on first deploy should not return error, got: %v", err)
-	}
-
-	out := buf.String()
-	if strings.Contains(out, "remote files have been modified") {
-		t.Errorf("first deploy should not report drift, got:\n%s", out)
-	}
-	if !strings.Contains(out, "Deploy complete") {
-		t.Errorf("expected 'Deploy complete' in output, got:\n%s", out)
 	}
 }
 
@@ -667,7 +470,7 @@ func TestArtifact_AppEnvironment_RendersInAppCompose(t *testing.T) {
 }
 
 // TestArtifact_DeployCompose_HasImageNotBuild verifies that when app.build is
-// set, the deploy compose file uses image: instead of build:. This ensures no
+// set, the bundled compose file uses image: instead of build:. This ensures no
 // source code needs to exist on the production server.
 func TestArtifact_DeployCompose_HasImageNotBuild(t *testing.T) {
 	gen := &captureGenerator{}
@@ -701,13 +504,13 @@ func TestArtifact_DeployCompose_HasImageNotBuild(t *testing.T) {
 		t.Fatalf("TemplateData is %T, want *config.Config", gen.lastInput.TemplateData)
 	}
 
-	// App.Build must be cleared for deploy.
+	// App.Build must be cleared for bundle output.
 	if inputCfg.App.Build != "" {
-		t.Errorf("deploy bundle App.Build = %q, want empty", inputCfg.App.Build)
+		t.Errorf("bundle App.Build = %q, want empty", inputCfg.App.Build)
 	}
 	// App.Image must be set to the derived name.
 	if inputCfg.App.Image != "myapp-app:latest" {
-		t.Errorf("deploy bundle App.Image = %q, want %q", inputCfg.App.Image, "myapp-app:latest")
+		t.Errorf("bundle App.Image = %q, want %q", inputCfg.App.Image, "myapp-app:latest")
 	}
 }
 
