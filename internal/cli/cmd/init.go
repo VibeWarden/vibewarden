@@ -85,7 +85,7 @@ func NewInitCmd() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "init",
-		Short: "Scaffold a new VibeWarden project in the current directory",
+		Short: "Scaffold a new VibeWarden project in the current directory (name derived from dirname; same convention as vibew wrap)",
 		Long: `Scaffold a new project with VibeWarden security pre-configured.
 
 The command scaffolds into the current working directory, creating:
@@ -113,7 +113,12 @@ Examples:
   vibew init --describe "a task management API"
   vibew init --non-interactive
   vibew init --force`,
-		Args: cobra.NoArgs,
+		Args: func(_ *cobra.Command, args []string) error {
+			if len(args) == 0 {
+				return nil
+			}
+			return fmt.Errorf("vibew init takes no arguments.\nRun it from inside the project directory (name is derived from dirname).\nUse --name to override the derived name, or --help for all flags.") //nolint:revive,staticcheck // user-facing CLI error: intentional capitalisation, newlines, and trailing period
+		},
 		RunE: func(cmd *cobra.Command, _ []string) error {
 			interactive := !nonInteractive && IsTTY(os.Stdin)
 
