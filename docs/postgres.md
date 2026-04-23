@@ -521,7 +521,7 @@ the configured database.
 Apply all pending migrations:
 
 ```bash
-vibew migrate up --config vibewarden.prod.yaml
+vibew migrate up --config vibewarden.production.yaml
 ```
 
 Expected output on success:
@@ -533,13 +533,13 @@ Migrations applied successfully.
 Check current migration version:
 
 ```bash
-vibew migrate status --config vibewarden.prod.yaml
+vibew migrate status --config vibewarden.production.yaml
 ```
 
 Roll back the last migration:
 
 ```bash
-vibew migrate down --config vibewarden.prod.yaml
+vibew migrate down --config vibewarden.production.yaml
 ```
 
 Expected output on success:
