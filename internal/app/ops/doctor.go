@@ -12,8 +12,10 @@ import (
 
 	"github.com/fatih/color"
 
+	apptlspreflight "github.com/vibewarden/vibewarden/internal/app/tlspreflight"
 	"github.com/vibewarden/vibewarden/internal/config"
 	tlsdomain "github.com/vibewarden/vibewarden/internal/domain/tls"
+	domaintlspreflight "github.com/vibewarden/vibewarden/internal/domain/tlspreflight"
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
 
@@ -48,12 +50,13 @@ func (c CheckResult) OK() bool { return c.Severity == SeverityOK }
 // DoctorService orchestrates the "vibew doctor" use case.
 // Every check runs independently — a failing check does not stop subsequent ones.
 type DoctorService struct {
-	compose       ports.ComposeRunner
-	portChecker   ports.PortChecker
-	healthChecker ports.HealthChecker
-	imageChecker  ports.DockerImageChecker
-	ownerProbe    ports.PortOwnerProbe
-	tlsState      ports.TLSStateResolver // optional; nil falls back to handshake-on-demand
+	compose        ports.ComposeRunner
+	portChecker    ports.PortChecker
+	healthChecker  ports.HealthChecker
+	imageChecker   ports.DockerImageChecker
+	ownerProbe     ports.PortOwnerProbe
+	tlsState       ports.TLSStateResolver   // optional; nil falls back to handshake-on-demand
+	leRateLimitSvc *apptlspreflight.Service // optional; nil skips LE rate-limit check
 }
 
 // NewDoctorService creates a new DoctorService.
@@ -95,6 +98,15 @@ func (s *DoctorService) WithTLSStateResolver(r ports.TLSStateResolver) *DoctorSe
 	return &cp
 }
 
+// WithLERateLimitService returns a copy of the DoctorService with the given
+// tlspreflight.Service wired for the LE rate-limit preflight check. When nil,
+// the check is skipped entirely (no CheckResult is emitted).
+func (s *DoctorService) WithLERateLimitService(svc *apptlspreflight.Service) *DoctorService {
+	cp := *s
+	cp.leRateLimitSvc = svc
+	return &cp
+}
+
 // DoctorOptions controls how Run behaves.
 type DoctorOptions struct {
 	// ConfigPath is the path to the vibewarden.yaml file (used in the report label).
@@ -104,6 +116,14 @@ type DoctorOptions struct {
 	WorkDir string
 	// JSON requests machine-readable JSON output instead of the human-readable table.
 	JSON bool
+	// SkipLEPreflight skips the Let's Encrypt rate-limit preflight check.
+	// Equivalent to setting tls.skip_rate_limit_check: true in vibewarden.yaml.
+	// Both this flag and the config key are frozen by ADR-090.
+	SkipLEPreflight bool
+	// LERegisteredDomains is the deduplicated list of eTLD+1 domains to check
+	// for LE rate limits. The CLI wiring is responsible for normalising FQDNs
+	// via publicsuffix.EffectiveTLDPlusOne before populating this field.
+	LERegisteredDomains []string
 }
 
 // Run executes all diagnostics and writes the report to out.
@@ -170,6 +190,19 @@ func (s *DoctorService) runChecks(ctx context.Context, cfg *config.Config, opts 
 	results = append(results, withSection(checkACMEEmail(cfg), sectionConfigDocker))
 	if s.imageChecker != nil && cfg.App.Image != "" {
 		results = append(results, withSection(s.checkImageTagConsistency(ctx, cfg.App.Image), sectionConfigDocker))
+	}
+
+	// LE rate-limit preflight — only when all guards pass (see ADR-090 §(i)).
+	if s.leRateLimitSvc != nil &&
+		!opts.SkipLEPreflight &&
+		!cfg.TLS.SkipRateLimitCheck &&
+		cfg.TLS.Enabled &&
+		strings.EqualFold(cfg.TLS.Provider, "letsencrypt") &&
+		cfg.TLS.Domain != "" &&
+		cfg.TLS.ACMECA == "" {
+		for _, cr := range s.checkLERateLimit(ctx, cfg, opts) {
+			results = append(results, withSection(cr, sectionConfigDocker))
+		}
 	}
 
 	// --- Layer 2: Local Runtime ---
@@ -482,6 +515,35 @@ func (s *DoctorService) checkImageTagConsistency(ctx context.Context, image stri
 		Severity: SeverityOK,
 		Detail:   fmt.Sprintf("image %q exists locally", image),
 	}
+}
+
+// checkLERateLimit runs the LE rate-limit preflight for each registered domain
+// in opts.LERegisteredDomains and maps each domain/tlspreflight.Result to a
+// CheckResult. It never returns an error — query failures produce WARN results.
+func (s *DoctorService) checkLERateLimit(ctx context.Context, _ *config.Config, opts DoctorOptions) []CheckResult {
+	if len(opts.LERegisteredDomains) == 0 {
+		return nil
+	}
+
+	preflightResults := s.leRateLimitSvc.Check(ctx, opts.LERegisteredDomains)
+	out := make([]CheckResult, 0, len(preflightResults))
+
+	for _, pr := range preflightResults {
+		cr := CheckResult{
+			Name:   fmt.Sprintf("LE rate-limit: %s", pr.Domain),
+			Detail: pr.Detail,
+		}
+		switch pr.Status {
+		case domaintlspreflight.StatusFail:
+			cr.Severity = SeverityFail
+		case domaintlspreflight.StatusWarn:
+			cr.Severity = SeverityWarn
+		default:
+			cr.Severity = SeverityOK
+		}
+		out = append(out, cr)
+	}
+	return out
 }
 
 // printDoctorReport renders the check results to out using ANSI colour codes.

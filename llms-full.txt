@@ -1301,7 +1301,7 @@ VibeWarden is operated via the `vibew` CLI. Below is the complete command list.
 | `vibew restart` | Restart containers without rebuilding |
 | `vibew bundle` | Produce a self-contained Docker Compose deploy bundle under `.vibewarden/bundle/` (produces deploy.sh for local-run shipping) |
 | `vibew status` | Show health of all components; TLS column reports state: Obtaining, Obtained, Failing, or SelfSignedLocal |
-| `vibew doctor` | Diagnose common issues; check 7 reports TLS state (Obtaining/Obtained/Failing/SelfSignedLocal) |
+| `vibew doctor` | Diagnose common issues; includes LE rate-limit preflight (crt.sh CT log query) when tls.provider=letsencrypt; --skip-le-preflight suppresses it |
 | `vibew logs` | Pretty-print structured logs |
 | `vibew migrate` | Apply all pending database migrations (alias for migrate up) |
 | `vibew migrate up` | Apply all pending database migrations |
@@ -1480,8 +1480,17 @@ vibew doctor checks (in order):
   4. Proxy port — server.port not already bound
   5. Generated files — .vibewarden/generated/docker-compose.yml present
   6. Container health — all containers running/healthy
-  7. TLS state — reports Obtaining/Obtained/Failing/SelfSignedLocal; self-signed
-     certs are identified and not reported as near-expiry
+  7. ACME email — tls.email set when using ZeroSSL
+  8. Image tag — app.image exists locally (skipped when unset)
+  9. LE rate-limit: <domain> — queries crt.sh CT log; counts LE certs issued in
+     last 168h for the registered domain; WARN at 4/5, FAIL at 5/5. Only runs
+     when tls.provider=letsencrypt and no tls.acme_ca override is set. Degrades
+     to WARN (not FAIL) when crt.sh is unreachable.
+     Opt-out: --skip-le-preflight flag or tls.skip_rate_limit_check: true.
+  10. TLS certificate — live TLS handshake; reports expiry state
+
+vibew doctor flags:
+  --skip-le-preflight  skip the LE rate-limit CT log check for this run
 
 
 ## 15. Troubleshooting

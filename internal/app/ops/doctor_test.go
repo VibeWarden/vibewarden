@@ -24,7 +24,9 @@ import (
 	"time"
 
 	"github.com/vibewarden/vibewarden/internal/app/ops"
+	apptlspreflight "github.com/vibewarden/vibewarden/internal/app/tlspreflight"
 	"github.com/vibewarden/vibewarden/internal/config"
+	domaintlspreflight "github.com/vibewarden/vibewarden/internal/domain/tlspreflight"
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
 
@@ -996,5 +998,271 @@ func TestDoctorService_Run_ImageTag_NoImage_Skipped(t *testing.T) {
 	out := buf.String()
 	if strings.Contains(out, "Image tag") {
 		t.Errorf("expected 'Image tag' check to be skipped when no image is configured, got:\n%s", out)
+	}
+}
+
+// fakeCTQuerier is a test double for ports.CertTransparencyQuerier.
+type fakeCTQuerier struct {
+	records []ports.CrtShRecord
+	err     error
+}
+
+func (f *fakeCTQuerier) Query(_ context.Context, _ string) ([]ports.CrtShRecord, error) {
+	return f.records, f.err
+}
+
+// leCfg returns a doctorConfig() with TLS configured for letsencrypt.
+func leCfg() *config.Config {
+	cfg := doctorConfig()
+	cfg.TLS.Enabled = true
+	cfg.TLS.Provider = "letsencrypt"
+	cfg.TLS.Domain = "app.example.com"
+	cfg.TLS.ACMECA = ""
+	return cfg
+}
+
+// leRecords builds n ports.CrtShRecord values, all LE-issued within the 168h window.
+func leRecords(n int) []ports.CrtShRecord {
+	now := time.Now()
+	recs := make([]ports.CrtShRecord, n)
+	for i := range recs {
+		recs[i] = ports.CrtShRecord{
+			NotBefore:  now.Add(-time.Duration(i+1) * time.Hour),
+			IssuerName: "C=US, O=Let's Encrypt, CN=R3",
+		}
+	}
+	return recs
+}
+
+func TestDoctorService_Run_LERateLimit_WARN(t *testing.T) {
+	q := &fakeCTQuerier{records: leRecords(4)} // 4/5 → WARN, 1 remaining
+	svc := ops.NewDoctorService(noContainersCompose(), &fakePortChecker{}, reachableHealthChecker()).
+		WithLERateLimitService(apptlspreflight.NewService(q))
+
+	cfg := leCfg()
+	opts := defaultOpts(t)
+	opts.LERegisteredDomains = []string{"example.com"}
+
+	var buf bytes.Buffer
+	allOK, err := svc.Run(context.Background(), cfg, opts, &buf)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// WARN does not cause allOK = false.
+	if !allOK {
+		t.Error("expected allOK = true when only WARN checks exist")
+	}
+	out := buf.String()
+	if !strings.Contains(out, "LE rate-limit: example.com") {
+		t.Errorf("expected LE rate-limit check name in output\ngot:\n%s", out)
+	}
+	if !strings.Contains(out, "[WARN]") {
+		t.Errorf("expected [WARN] badge in output\ngot:\n%s", out)
+	}
+}
+
+func TestDoctorService_Run_LERateLimit_FAIL(t *testing.T) {
+	q := &fakeCTQuerier{records: leRecords(5)} // 5/5 → FAIL
+	svc := ops.NewDoctorService(noContainersCompose(), &fakePortChecker{}, reachableHealthChecker()).
+		WithLERateLimitService(apptlspreflight.NewService(q))
+
+	cfg := leCfg()
+	opts := defaultOpts(t)
+	opts.LERegisteredDomains = []string{"example.com"}
+
+	var buf bytes.Buffer
+	allOK, err := svc.Run(context.Background(), cfg, opts, &buf)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if allOK {
+		t.Error("expected allOK = false when LE rate limit is exhausted")
+	}
+	out := buf.String()
+	if !strings.Contains(out, "--skip-le-preflight") {
+		t.Errorf("expected --skip-le-preflight verbatim in FAIL detail\ngot:\n%s", out)
+	}
+}
+
+func TestDoctorService_Run_LERateLimit_SkipRateLimitCheck_Config(t *testing.T) {
+	q := &fakeCTQuerier{records: leRecords(5)} // Would be FAIL if checked.
+	svc := ops.NewDoctorService(noContainersCompose(), &fakePortChecker{}, reachableHealthChecker()).
+		WithLERateLimitService(apptlspreflight.NewService(q))
+
+	cfg := leCfg()
+	cfg.TLS.SkipRateLimitCheck = true // config opt-out
+	opts := defaultOpts(t)
+	opts.LERegisteredDomains = []string{"example.com"}
+
+	var buf bytes.Buffer
+	allOK, err := svc.Run(context.Background(), cfg, opts, &buf)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !allOK {
+		t.Error("expected allOK = true when SkipRateLimitCheck is true")
+	}
+	out := buf.String()
+	if strings.Contains(out, "LE rate-limit") {
+		t.Errorf("expected LE rate-limit check to be skipped\ngot:\n%s", out)
+	}
+}
+
+func TestDoctorService_Run_LERateLimit_SkipFlag(t *testing.T) {
+	q := &fakeCTQuerier{records: leRecords(5)} // Would be FAIL if checked.
+	svc := ops.NewDoctorService(noContainersCompose(), &fakePortChecker{}, reachableHealthChecker()).
+		WithLERateLimitService(apptlspreflight.NewService(q))
+
+	cfg := leCfg()
+	opts := defaultOpts(t)
+	opts.SkipLEPreflight = true // flag opt-out
+	opts.LERegisteredDomains = []string{"example.com"}
+
+	var buf bytes.Buffer
+	allOK, err := svc.Run(context.Background(), cfg, opts, &buf)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !allOK {
+		t.Error("expected allOK = true when --skip-le-preflight flag is set")
+	}
+	out := buf.String()
+	if strings.Contains(out, "LE rate-limit") {
+		t.Errorf("expected LE rate-limit check to be skipped\ngot:\n%s", out)
+	}
+}
+
+func TestDoctorService_Run_LERateLimit_NonLEProvider_Skipped(t *testing.T) {
+	q := &fakeCTQuerier{records: leRecords(5)} // Would be FAIL if checked.
+	svc := ops.NewDoctorService(noContainersCompose(), &fakePortChecker{}, reachableHealthChecker()).
+		WithLERateLimitService(apptlspreflight.NewService(q))
+
+	cfg := doctorConfig()
+	cfg.TLS.Enabled = true
+	cfg.TLS.Provider = "self-signed" // not letsencrypt
+	cfg.TLS.Domain = "app.example.com"
+	opts := defaultOpts(t)
+	opts.LERegisteredDomains = []string{"example.com"}
+
+	var buf bytes.Buffer
+	allOK, err := svc.Run(context.Background(), cfg, opts, &buf)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !allOK {
+		t.Error("expected allOK = true for non-LE provider")
+	}
+	out := buf.String()
+	if strings.Contains(out, "LE rate-limit") {
+		t.Errorf("expected LE rate-limit check to be skipped for non-LE provider\ngot:\n%s", out)
+	}
+}
+
+func TestDoctorService_Run_LERateLimit_ACMECASet_Skipped(t *testing.T) {
+	q := &fakeCTQuerier{records: leRecords(5)} // Would be FAIL if checked.
+	svc := ops.NewDoctorService(noContainersCompose(), &fakePortChecker{}, reachableHealthChecker()).
+		WithLERateLimitService(apptlspreflight.NewService(q))
+
+	cfg := leCfg()
+	cfg.TLS.ACMECA = "https://acme-staging-v02.api.letsencrypt.org/directory"
+	opts := defaultOpts(t)
+	opts.LERegisteredDomains = []string{"example.com"}
+
+	var buf bytes.Buffer
+	allOK, err := svc.Run(context.Background(), cfg, opts, &buf)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !allOK {
+		t.Error("expected allOK = true when ACME CA override is set")
+	}
+	out := buf.String()
+	if strings.Contains(out, "LE rate-limit") {
+		t.Errorf("expected LE rate-limit check to be skipped when ACMECA is set\ngot:\n%s", out)
+	}
+}
+
+func TestDoctorService_Run_LERateLimit_NoDomainsInOpts_Skipped(t *testing.T) {
+	q := &fakeCTQuerier{records: leRecords(5)} // Would be FAIL if checked.
+	svc := ops.NewDoctorService(noContainersCompose(), &fakePortChecker{}, reachableHealthChecker()).
+		WithLERateLimitService(apptlspreflight.NewService(q))
+
+	cfg := leCfg()
+	opts := defaultOpts(t)
+	// LERegisteredDomains deliberately not set.
+
+	var buf bytes.Buffer
+	allOK, err := svc.Run(context.Background(), cfg, opts, &buf)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// No FAIL because no domains were enumerated.
+	if !allOK {
+		t.Error("expected allOK = true when no registered domains are provided")
+	}
+	out := buf.String()
+	if strings.Contains(out, "LE rate-limit") {
+		t.Errorf("expected LE rate-limit check to be skipped when no domains set\ngot:\n%s", out)
+	}
+}
+
+func TestDoctorService_Run_LERateLimit_NetworkError_WARN(t *testing.T) {
+	q := &fakeCTQuerier{err: domaintlspreflight.ErrCTUnavailable}
+	svc := ops.NewDoctorService(noContainersCompose(), &fakePortChecker{}, reachableHealthChecker()).
+		WithLERateLimitService(apptlspreflight.NewService(q))
+
+	cfg := leCfg()
+	opts := defaultOpts(t)
+	opts.LERegisteredDomains = []string{"example.com"}
+
+	var buf bytes.Buffer
+	allOK, err := svc.Run(context.Background(), cfg, opts, &buf)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// Network error → WARN → allOK stays true.
+	if !allOK {
+		t.Error("expected allOK = true when crt.sh is unreachable (WARN)")
+	}
+	out := buf.String()
+	if !strings.Contains(out, "crt.sh unreachable") {
+		t.Errorf("expected 'crt.sh unreachable' in WARN detail\ngot:\n%s", out)
+	}
+}
+
+func TestDoctorService_Run_LERateLimit_JSONOutput(t *testing.T) {
+	q := &fakeCTQuerier{records: leRecords(4)} // 4/5 → WARN
+	svc := ops.NewDoctorService(noContainersCompose(), &fakePortChecker{}, reachableHealthChecker()).
+		WithLERateLimitService(apptlspreflight.NewService(q))
+
+	cfg := leCfg()
+	opts := defaultOpts(t)
+	opts.JSON = true
+	opts.LERegisteredDomains = []string{"example.com"}
+
+	var buf bytes.Buffer
+	_, err := svc.Run(context.Background(), cfg, opts, &buf)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var results []ops.CheckResult
+	if err := json.Unmarshal(buf.Bytes(), &results); err != nil {
+		t.Fatalf("JSON unmarshal failed: %v\nbody: %s", err, buf.String())
+	}
+	var found bool
+	for _, r := range results {
+		if strings.Contains(r.Name, "LE rate-limit") {
+			found = true
+			if r.Severity != ops.SeverityWarn {
+				t.Errorf("LE rate-limit check severity = %v, want WARN", r.Severity)
+			}
+			if r.Section == "" {
+				t.Error("LE rate-limit check has empty Section")
+			}
+		}
+	}
+	if !found {
+		t.Errorf("LE rate-limit check not found in JSON results: %s", buf.String())
 	}
 }

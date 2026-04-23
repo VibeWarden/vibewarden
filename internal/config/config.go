@@ -514,6 +514,13 @@ type TLSConfig struct {
 	ACMECA string `mapstructure:"acme_ca"`
 	// CertMonitoring holds configuration for the background certificate expiry monitor.
 	CertMonitoring TLSCertMonitoringConfig `mapstructure:"cert_monitoring"`
+	// SkipRateLimitCheck disables the Let's Encrypt rate-limit preflight check
+	// run by "vibew doctor" when provider is "letsencrypt". Set to true when
+	// you are intentionally re-issuing within a 168-hour window (e.g. after
+	// certificate revocation) or when crt.sh is unavailable and you want to
+	// suppress the WARN. The --skip-le-preflight flag on "vibew doctor" is the
+	// single-invocation equivalent. Both flags are frozen by ADR-090.
+	SkipRateLimitCheck bool `mapstructure:"skip_rate_limit_check"`
 }
 
 // KratosSMTPConfig holds SMTP settings used by Ory Kratos to send emails.

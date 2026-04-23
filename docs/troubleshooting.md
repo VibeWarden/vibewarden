@@ -25,6 +25,7 @@ pre-flight scripts.
 |------|---------|-------------|
 | `--config <path>` | `./vibewarden.yaml` | Path to a non-default config file |
 | `--json` | `false` | Emit results as a JSON array instead of the human-readable table |
+| `--skip-le-preflight` | `false` | Skip the Let's Encrypt rate-limit preflight check for this run |
 
 ### Checks performed (in order)
 
@@ -40,6 +41,7 @@ pre-flight scripts.
 | 6 | **Container health** | `docker compose ps` shows all containers in `running` / `healthy` state |
 | 7 | **ACME email** | `tls.email` is set when `tls.acme_ca` contains "zerossl" (fails if missing) |
 | 8 | **Image tag** | `app.image` matches a locally available Docker image (skipped when unset) |
+| 9 | **LE rate-limit: `<domain>`** | Queries the public crt.sh CT log to count Let's Encrypt certificates issued for the registered domain in the last 168 hours. WARN at 4/5, FAIL at 5/5. Skipped when `tls.provider` is not `letsencrypt`, when `tls.acme_ca` overrides the default ACME endpoint, or when `tls.skip_rate_limit_check: true` / `--skip-le-preflight` is set. See [LE rate-limit preflight](#le-rate-limit-preflight) below. |
 
 #### Layer 2: Local Runtime
 
@@ -159,6 +161,56 @@ needs to consume the results programmatically:
   }
 ]
 ```
+
+---
+
+## LE rate-limit preflight
+
+When `tls.provider: letsencrypt` is set and no `tls.acme_ca` override is present,
+`vibew doctor` queries the public [crt.sh](https://crt.sh) Certificate Transparency log to
+count certificates issued for your registered domain in the last 168 hours (the
+Let's Encrypt rate-limit window).
+
+### Severity thresholds
+
+| Certificates issued (168h) | Remaining | Result |
+|------|------|------|
+| 0–3 | 5–2 | `[OK]` — enough budget |
+| 4 | 1 | `[WARN]` — "1 of 5 slots remaining this week for `<domain>`" |
+| 5 | 0 | `[FAIL]` — "LE rate limit exhausted for `<domain>`; next slot at `<time>`; use --skip-le-preflight to bypass" |
+| crt.sh unreachable / throttled | — | `[WARN]` — check degraded, not blocking |
+
+A `[FAIL]` result causes `vibew doctor` to exit 1.
+
+### Opt-out
+
+If you are intentionally re-issuing a certificate within the same 168-hour window
+(e.g. after revocation), suppress the check for one run:
+
+```bash
+vibew doctor --skip-le-preflight
+```
+
+Or set it permanently in `vibewarden.yaml`:
+
+```yaml
+tls:
+  provider: letsencrypt
+  skip_rate_limit_check: true
+```
+
+### Privacy note
+
+The check sends your domain name to crt.sh — a public service operated by Sectigo.
+The certificate, once issued, will be publicly visible in CT logs anyway. If this is
+not acceptable, use `--skip-le-preflight` or `tls.skip_rate_limit_check: true`.
+
+### Limitations
+
+- **CT log propagation delay**: a certificate issued in the last 1–3 minutes may not
+  yet appear in CT logs. At 4/5 budget the WARN threshold absorbs this lag.
+- **Wildcard certificates**: `*.example.com` certs have a separate LE limit
+  (10 per 7 days). This check counts only the registered-domain budget.
 
 ---
 
