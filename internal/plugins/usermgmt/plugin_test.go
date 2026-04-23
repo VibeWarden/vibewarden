@@ -219,7 +219,7 @@ func TestPlugin_Start_BindsServer(t *testing.T) {
 	defer func() { usermgmt.ExportedServiceFactory = old }()
 
 	oldSrv := usermgmt.ExportedServerFactory
-	usermgmt.ExportedServerFactory = func(_ *httpadapter.AdminHandlers, _ *slog.Logger) usermgmt.AdminServerIface {
+	usermgmt.ExportedServerFactory = func(_ *httpadapter.AdminHandlers, _ *slog.Logger) usermgmt.AdminServerAPI {
 		return fake
 	}
 	defer func() { usermgmt.ExportedServerFactory = oldSrv }()
@@ -260,7 +260,7 @@ func TestPlugin_Start_ServerStartError(t *testing.T) {
 	defer func() { usermgmt.ExportedServiceFactory = old }()
 
 	oldSrv := usermgmt.ExportedServerFactory
-	usermgmt.ExportedServerFactory = func(_ *httpadapter.AdminHandlers, _ *slog.Logger) usermgmt.AdminServerIface {
+	usermgmt.ExportedServerFactory = func(_ *httpadapter.AdminHandlers, _ *slog.Logger) usermgmt.AdminServerAPI {
 		return fake
 	}
 	defer func() { usermgmt.ExportedServerFactory = oldSrv }()
@@ -288,7 +288,7 @@ func TestPlugin_Stop_CallsServerStop(t *testing.T) {
 	defer func() { usermgmt.ExportedServiceFactory = old }()
 
 	oldSrv := usermgmt.ExportedServerFactory
-	usermgmt.ExportedServerFactory = func(_ *httpadapter.AdminHandlers, _ *slog.Logger) usermgmt.AdminServerIface {
+	usermgmt.ExportedServerFactory = func(_ *httpadapter.AdminHandlers, _ *slog.Logger) usermgmt.AdminServerAPI {
 		return fake
 	}
 	defer func() { usermgmt.ExportedServerFactory = oldSrv }()
@@ -328,7 +328,7 @@ func TestPlugin_Stop_ServerStopError(t *testing.T) {
 	defer func() { usermgmt.ExportedServiceFactory = old }()
 
 	oldSrv := usermgmt.ExportedServerFactory
-	usermgmt.ExportedServerFactory = func(_ *httpadapter.AdminHandlers, _ *slog.Logger) usermgmt.AdminServerIface {
+	usermgmt.ExportedServerFactory = func(_ *httpadapter.AdminHandlers, _ *slog.Logger) usermgmt.AdminServerAPI {
 		return fake
 	}
 	defer func() { usermgmt.ExportedServerFactory = oldSrv }()
@@ -554,7 +554,7 @@ func TestPlugin_ContributeCaddyRoutes_Enabled(t *testing.T) {
 	defer func() { usermgmt.ExportedServiceFactory = old }()
 
 	oldSrv := usermgmt.ExportedServerFactory
-	usermgmt.ExportedServerFactory = func(_ *httpadapter.AdminHandlers, _ *slog.Logger) usermgmt.AdminServerIface {
+	usermgmt.ExportedServerFactory = func(_ *httpadapter.AdminHandlers, _ *slog.Logger) usermgmt.AdminServerAPI {
 		return &fakeAdminServer{addr: "127.0.0.1:19999"}
 	}
 	defer func() { usermgmt.ExportedServerFactory = oldSrv }()
@@ -581,7 +581,7 @@ func TestPlugin_ContributeCaddyRoutes_HandlerIsReverseProxy(t *testing.T) {
 	defer func() { usermgmt.ExportedServiceFactory = old }()
 
 	oldSrv := usermgmt.ExportedServerFactory
-	usermgmt.ExportedServerFactory = func(_ *httpadapter.AdminHandlers, _ *slog.Logger) usermgmt.AdminServerIface {
+	usermgmt.ExportedServerFactory = func(_ *httpadapter.AdminHandlers, _ *slog.Logger) usermgmt.AdminServerAPI {
 		return &fakeAdminServer{addr: "127.0.0.1:19999"}
 	}
 	defer func() { usermgmt.ExportedServerFactory = oldSrv }()
@@ -621,7 +621,7 @@ func TestPlugin_ContributeCaddyRoutes_DialAddrMatchesInternalAddr(t *testing.T) 
 	defer func() { usermgmt.ExportedServiceFactory = old }()
 
 	oldSrv := usermgmt.ExportedServerFactory
-	usermgmt.ExportedServerFactory = func(_ *httpadapter.AdminHandlers, _ *slog.Logger) usermgmt.AdminServerIface {
+	usermgmt.ExportedServerFactory = func(_ *httpadapter.AdminHandlers, _ *slog.Logger) usermgmt.AdminServerAPI {
 		return &fakeAdminServer{addr: wantAddr}
 	}
 	defer func() { usermgmt.ExportedServerFactory = oldSrv }()
@@ -664,7 +664,7 @@ func TestPlugin_ContributeCaddyRoutes_Priority(t *testing.T) {
 	defer func() { usermgmt.ExportedServiceFactory = old }()
 
 	oldSrv := usermgmt.ExportedServerFactory
-	usermgmt.ExportedServerFactory = func(_ *httpadapter.AdminHandlers, _ *slog.Logger) usermgmt.AdminServerIface {
+	usermgmt.ExportedServerFactory = func(_ *httpadapter.AdminHandlers, _ *slog.Logger) usermgmt.AdminServerAPI {
 		return &fakeAdminServer{addr: "127.0.0.1:19999"}
 	}
 	defer func() { usermgmt.ExportedServerFactory = oldSrv }()

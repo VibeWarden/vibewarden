@@ -28,22 +28,15 @@ func (e ErrUnsupportedFormat) Error() string {
 	return fmt.Sprintf("unsupported eject format %q; supported: caddy", e.Format)
 }
 
-// ConfigBuilder builds a proxy configuration map from a ProxyConfig.
-// The caddy adapter implements this interface.
-type ConfigBuilder interface {
-	// Build returns a proxy-format-specific configuration map.
-	Build(cfg *ports.ProxyConfig) (map[string]any, error)
-}
-
 // Service orchestrates the eject use case.
 // It translates a vibewarden.yaml Config into a proxy-native configuration
 // that can be used to run the proxy directly without VibeWarden.
 type Service struct {
-	builder ConfigBuilder
+	builder ports.ConfigBuilder
 }
 
-// NewService creates a new eject Service using the given ConfigBuilder.
-func NewService(builder ConfigBuilder) *Service {
+// NewService creates a new eject Service using the given ports.ConfigBuilder.
+func NewService(builder ports.ConfigBuilder) *Service {
 	return &Service{builder: builder}
 }
 

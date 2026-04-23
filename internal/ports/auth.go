@@ -1,8 +1,6 @@
 // Package ports defines the interfaces (ports) for VibeWarden's hexagonal architecture.
 package ports
 
-import "context"
-
 // Identity represents an authenticated user's identity information.
 // This is a read-only view of the user's identity from the auth provider.
 type Identity struct {
@@ -35,18 +33,6 @@ type Session struct {
 
 	// ExpiresAt is when the session expires (RFC3339 format, empty if not set).
 	ExpiresAt string
-}
-
-// SessionChecker validates sessions against an identity provider.
-//
-// Deprecated: Use IdentityProvider instead. SessionChecker will be removed in v2.
-// The Kratos adapter implements both interfaces during the migration period.
-type SessionChecker interface {
-	// CheckSession validates the given session cookie and returns the session if valid.
-	// Returns ErrSessionInvalid if the session is invalid or expired.
-	// Returns ErrSessionNotFound if no session exists for the cookie.
-	// Returns ErrAuthProviderUnavailable when the identity provider cannot be reached.
-	CheckSession(ctx context.Context, sessionCookie string) (*Session, error)
 }
 
 // KratosUnavailableBehavior controls how the auth middleware responds when

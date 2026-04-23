@@ -1,6 +1,6 @@
-// Package kratos implements the SessionChecker and IdentityProvider ports using
-// Ory Kratos. It communicates with the Kratos public API over plain HTTP,
-// avoiding the heavy transitive dependencies of the Ory Kratos Go client library.
+// Package kratos implements the IdentityProvider port using Ory Kratos.
+// It communicates with the Kratos public API over plain HTTP, avoiding the
+// heavy transitive dependencies of the Ory Kratos Go client library.
 package kratos
 
 import (
@@ -55,8 +55,7 @@ type kratosVerifiableAddress struct {
 	Verified bool   `json:"verified"`
 }
 
-// Adapter implements ports.SessionChecker and ports.IdentityProvider using the
-// Ory Kratos public API.
+// Adapter implements ports.IdentityProvider using the Ory Kratos public API.
 type Adapter struct {
 	publicURL  string
 	client     *http.Client
@@ -133,9 +132,11 @@ func (a *Adapter) Authenticate(ctx context.Context, r *http.Request) identity.Au
 	return identity.Success(ident)
 }
 
-// CheckSession implements ports.SessionChecker.
-// It calls the Kratos GET /sessions/whoami endpoint, passing the session cookie
-// in the Cookie request header, and maps the response to a ports.Session.
+// CheckSession calls the Kratos GET /sessions/whoami endpoint, passing the
+// session cookie in the Cookie request header, and maps the response to a
+// ports.Session. It is used internally by Authenticate.
+//
+// TODO(#1106): remove once no external caller depends on this method.
 //
 // Error semantics:
 //   - Returns ports.ErrSessionNotFound when no session cookie is present.

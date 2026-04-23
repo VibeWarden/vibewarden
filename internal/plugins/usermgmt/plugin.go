@@ -38,10 +38,10 @@ const healthCheckTimeout = 3 * time.Second
 // liveness probe.
 const kratosAdminHealthPath = "/health/ready"
 
-// AdminServerIface is the minimal interface the plugin needs from its internal
+// AdminServerAPI is the minimal interface the plugin needs from its internal
 // HTTP server. Exported so that test packages can provide fakes without
 // importing the concrete httpadapter package.
-type AdminServerIface interface {
+type AdminServerAPI interface {
 	// Start binds the listener and begins serving.
 	Start() error
 	// Addr returns the host:port the server is listening on, after Start.
@@ -61,11 +61,11 @@ type AdminServerIface interface {
 var ExportedServiceFactory func(Config, ports.EventLogger, *slog.Logger) (ports.AdminService, func(), PostgresProber, error) = defaultServiceFactory
 
 // ExportedServerFactory is a replaceable factory that creates an
-// AdminServerIface backed by the supplied handlers. Tests may replace this
+// AdminServerAPI backed by the supplied handlers. Tests may replace this
 // variable to inject a fake server that does not bind a real port.
 //
 // Exported for testing only — production code must not reassign this.
-var ExportedServerFactory func(*httpadapter.AdminHandlers, *slog.Logger) AdminServerIface = defaultServerFactory
+var ExportedServerFactory func(*httpadapter.AdminHandlers, *slog.Logger) AdminServerAPI = defaultServerFactory
 
 // defaultServiceFactory builds the real admin application service, wiring the
 // Kratos admin adapter and the optional PostgreSQL audit logger.
@@ -97,14 +97,19 @@ func defaultServiceFactory(cfg Config, eventLogger ports.EventLogger, logger *sl
 }
 
 // defaultServerFactory builds the real internal AdminServer.
-func defaultServerFactory(handlers *httpadapter.AdminHandlers, logger *slog.Logger) AdminServerIface {
+func defaultServerFactory(handlers *httpadapter.AdminHandlers, logger *slog.Logger) AdminServerAPI {
 	return httpadapter.NewAdminServer(handlers, logger)
 }
 
-// PostgresProber is a minimal interface for checking Postgres connectivity.
-// It is satisfied by *postgresadapter.AuditAdapter and by test fakes.
-// Exported so that the ExportedServiceFactory type signature is accessible
-// from external test packages.
+// PostgresProber is a consumer-side test seam: this interface is defined here
+// because it is consumed only by this package and its tests; it is not an
+// outbound port that crosses a layer boundary.
+//
+// Do not move to internal/ports/.
+//
+// PostgresProber is satisfied by *postgresadapter.AuditAdapter and by test
+// fakes. Exported so that the ExportedServiceFactory type signature is
+// accessible from external test packages.
 type PostgresProber interface {
 	// Ping sends a connectivity probe to the database.
 	Ping(ctx context.Context) error
@@ -136,7 +141,7 @@ type Plugin struct {
 	logger       *slog.Logger
 	eventLogger  ports.EventLogger
 	handlers     *httpadapter.AdminHandlers
-	server       AdminServerIface
+	server       AdminServerAPI
 	dbCleanup    func()
 	dbProber     postgresProber // non-nil only when DatabaseURL is set
 	internalAddr string

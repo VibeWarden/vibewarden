@@ -89,8 +89,8 @@ func (s *Service) Reload(ctx context.Context, source string) error {
 	// Update the proxy adapter's config before calling Reload.
 	// The Caddy adapter's Reload() method uses its stored config field, so we
 	// need to point it at the new ProxyConfig. We do this by checking whether
-	// the proxy implements ConfigUpdater (an optional extension interface).
-	if cu, ok := s.proxy.(ConfigUpdater); ok {
+	// the proxy implements ports.ConfigUpdater (an optional extension interface).
+	if cu, ok := s.proxy.(ports.ConfigUpdater); ok {
 		cu.UpdateConfig(proxyCfg)
 	}
 
@@ -167,15 +167,4 @@ func (s *Service) emitReloadFailed(ctx context.Context, source, reason string, v
 	if err := s.eventLog.Log(ctx, ev); err != nil {
 		s.logger.Error("failed to emit config.reload_failed event", slog.String("error", err.Error()))
 	}
-}
-
-// ------------------------------------------------------------------
-// Optional extension interface
-// ------------------------------------------------------------------
-
-// ConfigUpdater is an optional interface that a ProxyServer may implement to
-// accept a new ProxyConfig before a Reload call. It allows the reload service
-// to update the adapter's configuration without knowing the concrete type.
-type ConfigUpdater interface {
-	UpdateConfig(cfg *ports.ProxyConfig)
 }

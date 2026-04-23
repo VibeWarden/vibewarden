@@ -28,6 +28,8 @@ import (
 	"runtime"
 	"strings"
 	"time"
+
+	"github.com/vibewarden/vibewarden/internal/ports"
 )
 
 const (
@@ -108,21 +110,15 @@ type githubRelease struct {
 }
 
 // Service is the application service for the upgrade use case.
-// All I/O is performed through the injected HTTPClient so tests can use a fake.
+// All I/O is performed through the injected ports.HTTPClient so tests can use a fake.
 type Service struct {
-	http HTTPClient
+	http ports.HTTPClient
 }
 
-// HTTPClient is the outbound port used to make HTTP requests.
-type HTTPClient interface {
-	// Do executes an HTTP request and returns the response.
-	Do(req *http.Request) (*http.Response, error)
-}
-
-// NewService creates a new upgrade Service backed by the supplied HTTPClient.
+// NewService creates a new upgrade Service backed by the supplied ports.HTTPClient.
 // Pass http.DefaultClient (or a *http.Client with a custom timeout) for
 // production use.
-func NewService(client HTTPClient) *Service {
+func NewService(client ports.HTTPClient) *Service {
 	return &Service{http: client}
 }
 

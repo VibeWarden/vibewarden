@@ -1,8 +1,6 @@
 package middleware
 
 import (
-	"context"
-	"errors"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -261,68 +259,4 @@ func emitAuditAuthFailure(r *http.Request, auditLogger ports.AuditEventLogger, u
 	}
 	// Best-effort: ignore logging errors so request processing is never blocked.
 	_ = auditLogger.Log(r.Context(), ev)
-}
-
-// sessionCheckerAdapter wraps a deprecated ports.SessionChecker to implement
-// ports.IdentityProvider. This allows legacy code that constructs an
-// AuthMiddleware with a SessionChecker to continue working.
-//
-// Deprecated: Remove once all callers use IdentityProvider directly.
-type sessionCheckerAdapter struct {
-	checker    ports.SessionChecker //nolint:staticcheck // intentional: this adapter bridges the deprecated SessionChecker to IdentityProvider during migration
-	cookieName string
-}
-
-// SessionCheckerToIdentityProvider wraps a deprecated SessionChecker as an
-// IdentityProvider. The cookieName parameter specifies which cookie holds
-// the session token (defaults to "ory_kratos_session" if empty).
-//
-// Deprecated: Use a native IdentityProvider implementation instead. This
-// wrapper exists only for backward compatibility during the migration period.
-func SessionCheckerToIdentityProvider(checker ports.SessionChecker, cookieName string) ports.IdentityProvider {
-	if cookieName == "" {
-		cookieName = defaultSessionCookieName
-	}
-	return &sessionCheckerAdapter{checker: checker, cookieName: cookieName}
-}
-
-// Name implements ports.IdentityProvider.
-func (s *sessionCheckerAdapter) Name() string { return "kratos" }
-
-// Authenticate implements ports.IdentityProvider by delegating to the wrapped
-// SessionChecker. It extracts the session cookie, calls CheckSession, and maps
-// the result to an identity.AuthResult.
-func (s *sessionCheckerAdapter) Authenticate(ctx context.Context, r *http.Request) identity.AuthResult {
-	cookie, err := r.Cookie(s.cookieName)
-	if err != nil {
-		return identity.Failure("no_credentials", "no session cookie")
-	}
-
-	sessionCookie := s.cookieName + "=" + cookie.Value
-	session, err := s.checker.CheckSession(ctx, sessionCookie)
-	if err != nil {
-		switch {
-		case errors.Is(err, ports.ErrSessionInvalid):
-			return identity.Failure("session_invalid", "session is invalid or expired")
-		case errors.Is(err, ports.ErrSessionNotFound):
-			return identity.Failure("session_not_found", "session does not exist")
-		case errors.Is(err, ports.ErrAuthProviderUnavailable):
-			return identity.Failure("provider_unavailable", err.Error())
-		default:
-			return identity.Failure("auth_error", err.Error())
-		}
-	}
-
-	ident, err := identity.NewIdentity(
-		session.Identity.ID,
-		session.Identity.Email,
-		"kratos",
-		session.Identity.EmailVerified,
-		session.Identity.Traits,
-	)
-	if err != nil {
-		return identity.Failure("invalid_identity", err.Error())
-	}
-
-	return identity.Success(ident)
 }
