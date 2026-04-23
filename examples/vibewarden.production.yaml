@@ -141,7 +141,7 @@ rate_limit:
 
   # Paths excluded from rate limiting (e.g. Prometheus scrape endpoint).
   exempt_paths:
-    - /_vibewarden/healthz
+    - /_vibewarden/health
 
 # -------------------------------------------------------------------------
 # Web Application Firewall

@@ -444,7 +444,7 @@ Verify Kratos starts and can reach the database:
 
 ```bash
 docker compose logs kratos | grep "Starting"
-curl https://myapp.example.com/_vibewarden/healthz
+curl https://myapp.example.com/_vibewarden/health
 # {"status":"ok"}
 ```
 
