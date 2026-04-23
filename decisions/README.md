@@ -63,6 +63,7 @@ once accepted, they are not edited. If a decision is superseded, a new ADR refer
 | [088](adr-088-deploy-sh-local-run-convention.md) | deploy.sh runs locally — scp + ssh + healthcheck in one script | #1087 |
 | [089](adr-089-bundle-image-health-tag-scoping-freshness-arch.md) | Bundle image health — tag scoping, freshness, and arch warning | — |
 | [090](adr-090-le-rate-limit-preflight.md) | Let's Encrypt rate-limit preflight via Certificate Transparency | #1057 |
+| [091](adr-091-ports-hygiene-delete-dead-session-checker-adapter-move-outbound-ports.md) | Ports hygiene — delete dead SessionChecker adapter; move three outbound ports to `internal/ports/`; rename `AdminServerIface` | #1106, #1107 |
 | [497](adr-497-graceful-shutdown-connection-draining.md) | Graceful Shutdown / Connection Draining | — |
 
 ## Numbering

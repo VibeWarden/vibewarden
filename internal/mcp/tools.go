@@ -14,9 +14,14 @@ import (
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
 
-// DoctorRunner is the interface consumed by the vibewarden_doctor MCP tool.
-// It is satisfied by ops.DoctorService.Run but defined locally so that
-// internal/mcp/ does not import internal/app/ops.
+// DoctorRunner is a consumer-side test seam: this interface is defined here
+// because it is consumed only by this package and its tests; it is not an
+// outbound port that crosses a layer boundary.
+//
+// Do not move to internal/ports/.
+//
+// DoctorRunner is satisfied by ops.DoctorService.Run but defined locally so
+// that internal/mcp/ does not import internal/app/ops.
 type DoctorRunner interface {
 	// Run executes all diagnostics and writes the report to out.
 	// cfg is the loaded config (may be zero-value on load error).

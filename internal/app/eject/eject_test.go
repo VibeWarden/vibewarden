@@ -10,7 +10,7 @@ import (
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
 
-// fakeBuilder is a test double for eject.ConfigBuilder.
+// fakeBuilder is a test double for ports.ConfigBuilder.
 type fakeBuilder struct {
 	called bool
 	got    *ports.ProxyConfig

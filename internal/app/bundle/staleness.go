@@ -20,9 +20,14 @@ var hardIgnoreDirs = []string{
 	"dist", "build", "target", ".venv", "__pycache__",
 }
 
+// StalenessWalker is a consumer-side test seam: this interface is defined here
+// because it is consumed only by this package and its tests; it is not an
+// outbound port that crosses a layer boundary.
+//
+// Do not move to internal/ports/.
+//
 // StalenessWalker computes the most-recent file mtime under a project root,
-// respecting ignore patterns. It is an internal interface so tests can inject
-// fakes without touching disk.
+// respecting ignore patterns.
 type StalenessWalker interface {
 	// NewestMTime returns the most recent mtime of any non-ignored file under
 	// root, and the count of files whose mtime is strictly after threshold.

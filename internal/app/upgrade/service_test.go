@@ -19,7 +19,7 @@ import (
 	"github.com/vibewarden/vibewarden/internal/app/upgrade"
 )
 
-// fakeHTTPClient implements upgrade.HTTPClient and serves pre-programmed
+// fakeHTTPClient implements ports.HTTPClient and serves pre-programmed
 // responses without touching the network.
 type fakeHTTPClient struct {
 	// responses maps URL to the body bytes and status code to return.

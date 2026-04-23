@@ -17,3 +17,11 @@ Each ADR is a standalone file at `decisions/adr-NNN-title.md`.
 - Unblocks #1059 (remote-doctor check removal) — kept as a separate PR to contain blast radius.
 - ADR guidance: write a new ADR (ADR-086) for this sunset, covering the package rename (satisfying ADR-082 and ADR-085 deferrals) and marking ADR-080/ADR-081 as historical. Do not rewrite merged ADRs.
 - Open questions: (1) root-level exit-code wiring — does cobra's `RunE` map to exit 1 by default? If yes, the stub calls `os.Exit(2)` directly. Architect to confirm. (2) Whether the MCP-server tools `vibewarden_prepare_deploy` / `verify_deploy` / `get_deploy_logs` still exist; if yes, file a separate issue — out of scope here.
+
+### 2026-04-23 — #1106 + #1107 hexagonal hygiene spec finalised
+
+- Updated #1106 with full spec absorbing #1107. Both changes ship in one PR on branch `refactor/1106-1107-ports-hygiene`.
+- #1106: delete `SessionCheckerToIdentityProvider`, `sessionCheckerAdapter`, `ports.SessionChecker`, and `auth_compat_test.go`. Pre-condition: verify zero production callers before deleting (abort if any found).
+- #1107: move `HTTPClient` (`internal/app/upgrade`), `ConfigUpdater` (`internal/app/reload`), `ConfigBuilder` (`internal/app/eject`) to `internal/ports/`. Rename `AdminServerIface` → `AdminServer` (or equivalent idiomatic name, architect decides). Document consumer-side seam exceptions for `StalenessWalker`, `DoctorRunner`, `PostgresProber`.
+- Both issues labelled `status:ready-for-arch`. #1107 carries an absorption comment pointing to #1106.
+- Open questions: none. Architect decides target file(s) within `internal/ports/` for the 3 moved interfaces and the exact `AdminServerIface` rename.
