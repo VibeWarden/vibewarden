@@ -24,6 +24,9 @@ This initial entry was written by hand to summarise the work leading up to v0.1.
 
 ### Added
 
+- **LE rate-limit preflight in `vibew doctor`** — when `tls.provider: letsencrypt` is configured, `vibew doctor` now queries the public [crt.sh](https://crt.sh) Certificate Transparency log to count certificates issued for the registered domain in the last 168 hours. Reports WARN at 4/5, FAIL at 5/5. Degrades to WARN when crt.sh is unreachable. Opt-out: `--skip-le-preflight` flag or `tls.skip_rate_limit_check: true`. (ADR-090, #1057)
+- **`vibew doctor --skip-le-preflight`** — suppresses the LE rate-limit CT log check for a single invocation. (#1057)
+- **`tls.skip_rate_limit_check`** config key — persistent opt-out for the LE rate-limit preflight. Defaults to `false`. (#1057)
 - **`vibew bundle --build`** — runs `vibew build --platform <target>` before inspecting or packaging; use when the image is missing or stale. (#1084)
 - **`vibew bundle --allow-stale`** — suppresses the STALE freshness warning; bundle proceeds regardless of source-file mtime. (#1085)
 - **`vibew bundle --target-platform linux/<arch>`** — overrides the default expected deployment platform (`linux/amd64`); use for Graviton / Pi / arm64 servers. (#1091)
