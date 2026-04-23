@@ -46,6 +46,7 @@ once accepted, they are not edited. If a decision is superseded, a new ADR refer
 | [070](adr-070-deploy-detection.md) | Deploy detection | #877 |
 | [071](adr-071-multi-site-directory-watcher.md) | Multi-site directory watcher | #878 |
 | [072](adr-072-cli-ux-wiring-for-multi-app.md) | CLI UX wiring for multi-app | #879 |
+| [073](adr-073-init-cwd-only.md) | Make `vibew init` scaffold in current directory only | — |
 | [075](adr-075-redesign-vibew-deploy-local-resolution-no-remote-patching.md) | Redesign vibew deploy -- local resolution, no remote patching | #948 |
 | [076](adr-076-secret-uri-resolution-in-config.md) | secret:// URI resolution in vibewarden.yaml config | #1008 |
 | [077](adr-077-placeholder-substitution-for-composite-secret-values.md) | Placeholder substitution for composite secret values | #994 |
@@ -59,7 +60,9 @@ once accepted, they are not edited. If a decision is superseded, a new ADR refer
 | [085](adr-085-vibew-bundle-compose-only.md) | `vibew bundle` — compose-only deployment artifact generator | #1044 |
 | [086](adr-086-sunset-vibew-deploy.md) | Sunset `vibew deploy` — bundle-and-deploy-manually is the canonical path | #1051 |
 | [087](adr-087-test-placement-contract-tests-and-architectural-invariants.md) | Test placement — contract tests live with their adapter, architectural invariants live in test/architecture | — |
+| [088](adr-088-deploy-sh-local-run-convention.md) | deploy.sh runs locally — scp + ssh + healthcheck in one script | #1087 |
 | [089](adr-089-bundle-image-health-tag-scoping-freshness-arch.md) | Bundle image health — tag scoping, freshness, and arch warning | — |
+| [090](adr-090-le-rate-limit-preflight.md) | Let's Encrypt rate-limit preflight via Certificate Transparency | #1057 |
 | [497](adr-497-graceful-shutdown-connection-draining.md) | Graceful Shutdown / Connection Draining | — |
 
 ## Numbering
