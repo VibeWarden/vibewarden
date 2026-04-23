@@ -12,9 +12,9 @@ import (
 
 	"gopkg.in/yaml.v3"
 
-	templateadapter "github.com/vibewarden/vibewarden/internal/adapters/template"
 	"github.com/vibewarden/vibewarden/internal/config"
 	"github.com/vibewarden/vibewarden/internal/config/templates"
+	"github.com/vibewarden/vibewarden/internal/config/templates/funcs"
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
 
@@ -398,7 +398,7 @@ func renderSidecarCompose(listenPort int) (string, error) {
 		return "", fmt.Errorf("reading sidecar compose template: %w", err)
 	}
 
-	tmpl, err := template.New("sidecar-compose").Funcs(templateadapter.SharedFuncMap()).Parse(string(tmplContent))
+	tmpl, err := template.New("sidecar-compose").Funcs(funcs.FuncMap()).Parse(string(tmplContent))
 	if err != nil {
 		return "", fmt.Errorf("parsing sidecar compose template: %w", err)
 	}
@@ -419,7 +419,7 @@ func renderAppCompose(cfg *config.Config, projectName string) (string, error) {
 		return "", fmt.Errorf("reading app compose template: %w", err)
 	}
 
-	tmpl, err := template.New("app-compose").Funcs(templateadapter.SharedFuncMap()).Parse(string(tmplContent))
+	tmpl, err := template.New("app-compose").Funcs(funcs.FuncMap()).Parse(string(tmplContent))
 	if err != nil {
 		return "", fmt.Errorf("parsing app compose template: %w", err)
 	}
