@@ -21,6 +21,11 @@ const (
 	// userAgent is sent on every request so crt.sh operators can identify the
 	// tool. The URL is informational — it helps them contact us if we cause load.
 	userAgent = "vibew-doctor/1 (+https://vibewarden.dev)"
+
+	// maxResponseBytes is the upper bound on crt.sh response body size.
+	// 10 MiB is generous for even the largest CT query result sets; a response
+	// that exceeds this cap is treated as malformed (ErrCTResponseMalformed).
+	maxResponseBytes = 10 * 1024 * 1024
 )
 
 // Client implements ports.CertTransparencyQuerier by calling the crt.sh
@@ -93,9 +98,17 @@ func (c *Client) Query(ctx context.Context, registeredDomain string) ([]ports.Cr
 		return nil, fmt.Errorf("%w: Content-Type %q", tlspreflight.ErrCTResponseMalformed, ct)
 	}
 
-	body, err := io.ReadAll(resp.Body)
+	// Bound the response body to maxResponseBytes to prevent memory-exhaustion
+	// from a spoofed or misbehaving server. io.LimitReader returns io.EOF at
+	// the limit — we detect an over-limit response by checking whether the
+	// returned body is exactly maxResponseBytes after a successful read.
+	limited := io.LimitReader(resp.Body, maxResponseBytes+1)
+	body, err := io.ReadAll(limited)
 	if err != nil {
 		return nil, fmt.Errorf("%w: read body: %v", tlspreflight.ErrCTUnavailable, err)
+	}
+	if int64(len(body)) > maxResponseBytes {
+		return nil, fmt.Errorf("%w: response exceeds %d-byte limit", tlspreflight.ErrCTResponseMalformed, maxResponseBytes)
 	}
 
 	// crt.sh returns an empty array "[]" for unknown domains — treat as 0 certs.

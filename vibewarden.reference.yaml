@@ -228,6 +228,12 @@ tls:
   # Other ACME CAs (ZeroSSL, Buypass, etc.) are also supported.
   acme_ca: ""
 
+  # Skip the Let's Encrypt rate-limit preflight check run by "vibew doctor".
+  # Set to true after cert revocation when you need to re-issue within the
+  # 168-hour window and already know the budget is (temporarily) exhausted.
+  # Equivalent to passing --skip-le-preflight on the CLI.
+  skip_rate_limit_check: false
+
 # Ory Kratos (identity/auth) settings
 kratos:
   # Kratos public API (user-facing flows). When set, VibeWarden automatically:

@@ -1003,11 +1003,13 @@ func TestDoctorService_Run_ImageTag_NoImage_Skipped(t *testing.T) {
 
 // fakeCTQuerier is a test double for ports.CertTransparencyQuerier.
 type fakeCTQuerier struct {
-	records []ports.CrtShRecord
-	err     error
+	records   []ports.CrtShRecord
+	err       error
+	callCount int
 }
 
 func (f *fakeCTQuerier) Query(_ context.Context, _ string) ([]ports.CrtShRecord, error) {
+	f.callCount++
 	return f.records, f.err
 }
 
@@ -1189,7 +1191,7 @@ func TestDoctorService_Run_LERateLimit_NoDomainsInOpts_Skipped(t *testing.T) {
 
 	cfg := leCfg()
 	opts := defaultOpts(t)
-	// LERegisteredDomains deliberately not set.
+	// LERegisteredDomains and LESkippedDomains deliberately not set.
 
 	var buf bytes.Buffer
 	allOK, err := svc.Run(context.Background(), cfg, opts, &buf)
@@ -1203,6 +1205,42 @@ func TestDoctorService_Run_LERateLimit_NoDomainsInOpts_Skipped(t *testing.T) {
 	out := buf.String()
 	if strings.Contains(out, "LE rate-limit") {
 		t.Errorf("expected LE rate-limit check to be skipped when no domains set\ngot:\n%s", out)
+	}
+}
+
+// TestDoctorService_Run_LERateLimit_SingleLabelDomain_WARN verifies that a
+// single-label hostname (e.g. "localhost") that cannot be normalised to eTLD+1
+// produces a SeverityWarn CheckResult instead of being silently omitted. This
+// satisfies the ADR-090 error-cases contract for un-normalisable domains.
+func TestDoctorService_Run_LERateLimit_SingleLabelDomain_WARN(t *testing.T) {
+	q := &fakeCTQuerier{records: leRecords(0)} // should never be called
+	svc := ops.NewDoctorService(noContainersCompose(), &fakePortChecker{}, reachableHealthChecker()).
+		WithLERateLimitService(apptlspreflight.NewService(q))
+
+	cfg := leCfg()
+	opts := defaultOpts(t)
+	// Simulate deriveRegisteredDomains returning "localhost" as a skipped domain.
+	opts.LESkippedDomains = []string{"localhost"}
+
+	var buf bytes.Buffer
+	allOK, err := svc.Run(context.Background(), cfg, opts, &buf)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// WARN does not flip allOK to false.
+	if !allOK {
+		t.Error("expected allOK = true for WARN result (single-label domain)")
+	}
+	out := buf.String()
+	if !strings.Contains(out, "LE rate-limit") {
+		t.Errorf("expected LE rate-limit check in output for skipped domain\ngot:\n%s", out)
+	}
+	if !strings.Contains(out, "cannot derive registered domain") {
+		t.Errorf("expected 'cannot derive registered domain' in WARN detail\ngot:\n%s", out)
+	}
+	// Must not have called the CT querier (q.records would be consumed if queried).
+	if q.callCount > 0 {
+		t.Errorf("expected CT querier not to be called for a skipped domain, got %d calls", q.callCount)
 	}
 }
 

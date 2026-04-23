@@ -124,7 +124,7 @@ Examples:
 			}
 
 			// Normalise domains to eTLD+1 for the LE rate-limit check.
-			registeredDomains := deriveRegisteredDomains(cfg)
+			registeredDomains, skippedDomains := deriveRegisteredDomains(cfg)
 
 			opts := opsapp.DoctorOptions{
 				ConfigPath:          label,
@@ -132,6 +132,7 @@ Examples:
 				JSON:                jsonOutput,
 				SkipLEPreflight:     skipLEPreflight,
 				LERegisteredDomains: registeredDomains,
+				LESkippedDomains:    skippedDomains,
 			}
 
 			allOK, err := svc.Run(cmd.Context(), cfg, opts, cmd.OutOrStdout())
@@ -155,23 +156,25 @@ Examples:
 }
 
 // deriveRegisteredDomains returns the deduplicated set of eTLD+1 domains to
-// check for LE rate limits. It reads cfg.TLS.Domain and normalises via
-// publicsuffix.EffectiveTLDPlusOne. Domains that cannot be normalised are
-// skipped silently here — the doctor service emits a WARN for them via a
-// separate skipped-domain Result when needed.
+// check for LE rate limits, plus a list of FQDNs that could not be normalised
+// (e.g. single-label hostnames like "localhost").
+//
+// The registered slice is passed to the preflight service for CT queries.
+// The skipped slice is passed so the doctor can emit a SeverityWarn result
+// for each un-normalisable domain per ADR-090 instead of staying silent.
 //
 // In multi-site mode (ADR-068), the caller would extend this function to
 // iterate over all site domains; for now, only the primary TLS domain is used.
-func deriveRegisteredDomains(cfg *config.Config) []string {
+func deriveRegisteredDomains(cfg *config.Config) (registered []string, skipped []string) {
 	if cfg.TLS.Domain == "" {
-		return nil
+		return nil, nil
 	}
-	registered, err := publicsuffix.EffectiveTLDPlusOne(cfg.TLS.Domain)
+	reg, err := publicsuffix.EffectiveTLDPlusOne(cfg.TLS.Domain)
 	if err != nil {
-		// Single-label hostnames (e.g. "localhost") cannot be normalised.
-		// The guard in runChecks will catch this — we return nil so the
-		// caller knows there is nothing to query.
-		return nil
+		// Single-label hostnames (e.g. "localhost") cannot be normalised to
+		// eTLD+1. Return the FQDN in the skipped slice so the doctor emits
+		// a WARN result instead of silently omitting the check.
+		return nil, []string{cfg.TLS.Domain}
 	}
-	return []string{registered}
+	return []string{reg}, nil
 }

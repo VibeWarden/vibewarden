@@ -124,6 +124,10 @@ type DoctorOptions struct {
 	// for LE rate limits. The CLI wiring is responsible for normalising FQDNs
 	// via publicsuffix.EffectiveTLDPlusOne before populating this field.
 	LERegisteredDomains []string
+	// LESkippedDomains is the list of FQDNs whose registered domain could not
+	// be derived (e.g. single-label hostnames like "localhost"). The doctor
+	// emits a SeverityWarn CheckResult for each entry per ADR-090.
+	LESkippedDomains []string
 }
 
 // Run executes all diagnostics and writes the report to out.
@@ -193,6 +197,8 @@ func (s *DoctorService) runChecks(ctx context.Context, cfg *config.Config, opts 
 	}
 
 	// LE rate-limit preflight — only when all guards pass (see ADR-090 §(i)).
+	// LESkippedDomains are also surfaced here so single-label hostnames
+	// (e.g. "localhost") produce a WARN instead of silent omission.
 	if s.leRateLimitSvc != nil &&
 		!opts.SkipLEPreflight &&
 		!cfg.TLS.SkipRateLimitCheck &&
@@ -520,28 +526,44 @@ func (s *DoctorService) checkImageTagConsistency(ctx context.Context, image stri
 // checkLERateLimit runs the LE rate-limit preflight for each registered domain
 // in opts.LERegisteredDomains and maps each domain/tlspreflight.Result to a
 // CheckResult. It never returns an error — query failures produce WARN results.
+//
+// Domains in opts.LESkippedDomains (single-label hostnames whose eTLD+1 could
+// not be derived) are also included as SeverityWarn results per ADR-090.
 func (s *DoctorService) checkLERateLimit(ctx context.Context, _ *config.Config, opts DoctorOptions) []CheckResult {
-	if len(opts.LERegisteredDomains) == 0 {
+	if len(opts.LERegisteredDomains) == 0 && len(opts.LESkippedDomains) == 0 {
 		return nil
 	}
 
-	preflightResults := s.leRateLimitSvc.Check(ctx, opts.LERegisteredDomains)
-	out := make([]CheckResult, 0, len(preflightResults))
+	out := make([]CheckResult, 0, len(opts.LERegisteredDomains)+len(opts.LESkippedDomains))
 
-	for _, pr := range preflightResults {
-		cr := CheckResult{
-			Name:   fmt.Sprintf("LE rate-limit: %s", pr.Domain),
-			Detail: pr.Detail,
+	// Emit a WARN CheckResult for each domain that could not be normalised to
+	// eTLD+1 (e.g. "localhost"). No CT query is issued for these.
+	for _, fqdn := range opts.LESkippedDomains {
+		pr := domaintlspreflight.NewSkipped(fqdn)
+		out = append(out, CheckResult{
+			Name:     fmt.Sprintf("LE rate-limit: %s", pr.Domain),
+			Severity: SeverityWarn,
+			Detail:   pr.Detail,
+		})
+	}
+
+	if len(opts.LERegisteredDomains) > 0 {
+		preflightResults := s.leRateLimitSvc.Check(ctx, opts.LERegisteredDomains)
+		for _, pr := range preflightResults {
+			cr := CheckResult{
+				Name:   fmt.Sprintf("LE rate-limit: %s", pr.Domain),
+				Detail: pr.Detail,
+			}
+			switch pr.Status {
+			case domaintlspreflight.StatusFail:
+				cr.Severity = SeverityFail
+			case domaintlspreflight.StatusWarn:
+				cr.Severity = SeverityWarn
+			default:
+				cr.Severity = SeverityOK
+			}
+			out = append(out, cr)
 		}
-		switch pr.Status {
-		case domaintlspreflight.StatusFail:
-			cr.Severity = SeverityFail
-		case domaintlspreflight.StatusWarn:
-			cr.Severity = SeverityWarn
-		default:
-			cr.Severity = SeverityOK
-		}
-		out = append(out, cr)
 	}
 	return out
 }

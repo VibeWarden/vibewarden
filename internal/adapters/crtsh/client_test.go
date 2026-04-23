@@ -1,6 +1,7 @@
 package crtsh_test
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"net/http"
@@ -199,5 +200,24 @@ func TestClient_Query_MalformedNotBeforeRowSkipped(t *testing.T) {
 	// Only the valid row should be returned.
 	if len(recs) != 1 {
 		t.Errorf("len(recs) = %d, want 1 (malformed row should be skipped)", len(recs))
+	}
+}
+
+func TestClient_Query_OversizedBody_MalformedError(t *testing.T) {
+	// Stream a body larger than the 10 MiB cap to trigger ErrCTResponseMalformed.
+	const limit = 10 * 1024 * 1024 // must match maxResponseBytes in client.go
+	oversized := bytes.Repeat([]byte("x"), limit+1)
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(oversized)
+	}))
+	defer srv.Close()
+
+	c := newTestClient(t, srv)
+	_, err := c.Query(context.Background(), "example.com")
+	if !errors.Is(err, tlspreflight.ErrCTResponseMalformed) {
+		t.Errorf("error = %v, want ErrCTResponseMalformed for oversized body", err)
 	}
 }
