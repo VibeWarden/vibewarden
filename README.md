@@ -105,14 +105,24 @@ on both x86-64 servers and ARM64 machines (Apple Silicon, AWS Graviton).
 
 ## What `init` / `wrap` generates
 
-Both `vibew init` and `vibew wrap` produce the same project scaffolding:
+Use `vibew init` for a new directory (creates its own git repo). Use `vibew wrap` to add VibeWarden to an existing project in place.
 
-```
-vibewarden.yaml          # Main config — commit this
-vibew                    # CLI binary (installed via install script)
-AGENTS.md                # AI agent context (generic — Claude Code, Cursor, etc.)
-AGENTS-VIBEWARDEN.md     # Tool-agnostic AI agent context (all agents)
-```
+| File | `vibew init` | `vibew wrap` |
+|------|:------------:|:------------:|
+| `vibewarden.yaml` | yes | yes |
+| `vibewarden.production.yaml` | yes | — |
+| `Dockerfile` | yes | — |
+| `.dockerignore` | yes | — |
+| `.gitignore` | yes | yes (created or updated) |
+| `vibew` (macOS/Linux wrapper script) | — | yes |
+| `vibew.ps1` (PowerShell wrapper) | — | yes |
+| `vibew.cmd` (Windows batch wrapper) | — | yes |
+| `AGENTS.md` | yes (created or updated) | yes (created or updated) |
+| `AGENTS-VIBEWARDEN.md` | yes (always overwritten) | yes (always overwritten) |
+| `PROJECT.md` | yes (only with `--describe`) | — |
+| runs `git init` | yes | — |
+
+Wrapper scripts are omitted when `vibew wrap --skip-wrapper` is given.
 
 Running `vibew dev` or `vibew generate` creates runtime files under
 `.vibewarden/generated/` (gitignored):

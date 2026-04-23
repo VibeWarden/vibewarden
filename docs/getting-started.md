@@ -131,10 +131,14 @@ Common flags:
 ```
 vibewarden.yaml          # Main config — commit this
 vibew                    # Wrapper script (macOS/Linux)
-.dockerignore            # Prevents secrets and build artifacts from entering the image
-AGENTS.md                # AI agent context (generic — Claude Code, Cursor, etc.)
-AGENTS-VIBEWARDEN.md     # Tool-agnostic AI agent context (all agents)
+vibew.ps1                # Wrapper script (Windows — PowerShell)
+vibew.cmd                # Wrapper script (Windows — batch/cmd.exe)
+.gitignore               # Created if absent; .vibewarden/ entry appended if missing
+AGENTS.md                # AI agent context (created or updated)
+AGENTS-VIBEWARDEN.md     # VibeWarden-specific instructions for agents (always overwritten)
 ```
+
+Wrapper scripts are omitted when `--skip-wrapper` is given. `vibew wrap` does **not** generate `Dockerfile`, `.dockerignore`, or `vibewarden.production.yaml`.
 
 !!! tip "AI agent context"
     `vibew wrap` generates context files for your AI coding assistant. When you
@@ -172,11 +176,14 @@ Common flags:
   vibewarden.yaml                 # Local dev config (TLS self-signed, port 8443)
   vibewarden.production.yaml      # Production overrides (letsencrypt, port 443)
   Dockerfile                      # Placeholder with examples for common stacks
+  .dockerignore
   .gitignore
   PROJECT.md                      # Project description (only when --describe is given)
-  AGENTS.md                       # AI agent context (tool-agnostic)
-  AGENTS-VIBEWARDEN.md            # VibeWarden-specific instructions for agents
+  AGENTS.md                       # AI agent context (created or updated)
+  AGENTS-VIBEWARDEN.md            # VibeWarden-specific instructions for agents (always overwritten)
 ```
+
+`vibew init` also runs `git init` and creates an initial commit.
 
 !!! note "Environment separation"
     `vibewarden.yaml` is your local dev config. `vibewarden.production.yaml`
