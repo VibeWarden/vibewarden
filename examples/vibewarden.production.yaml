@@ -1,11 +1,12 @@
-# vibewarden.prod.yaml — Production configuration example
+# vibewarden.production.yaml — Production configuration example
 #
-# Copy this file to your project root, rename it to vibewarden.prod.yaml (or
-# vibewarden.yaml if you only have one environment), and fill in the values
-# marked with TODO.
+# vibew init generates this file in your project root automatically.
+# vibew add tls --domain <your-domain> keeps it up to date.
+# Do NOT copy or rename vibewarden.yaml manually — vibew bundle merges
+# vibewarden.yaml with vibewarden.production.yaml for you.
 #
-# Generate the Docker Compose stack from this config:
-#   ./vibew generate --config vibewarden.prod.yaml
+# Fill in the values marked with TODO, then run:
+#   vibew bundle
 #
 # See https://vibewarden.dev/docs/configuration for the full reference.
 
