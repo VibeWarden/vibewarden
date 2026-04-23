@@ -10,7 +10,7 @@ import (
 )
 
 func TestNewWrapCmd_WrapperScripts(t *testing.T) {
-	wrapperFiles := []string{"vibew", "vibew.ps1", "vibew.cmd", ".vibewarden-version"}
+	wrapperFiles := []string{"vibew", "vibew.ps1", "vibew.cmd"}
 
 	tests := []struct {
 		name        string
@@ -23,21 +23,20 @@ func TestNewWrapCmd_WrapperScripts(t *testing.T) {
 			name:       "default wrap generates wrapper scripts",
 			args:       []string{},
 			checkFiles: wrapperFiles,
+			// .vibewarden-version must never be generated.
+			absentFiles: []string{".vibewarden-version"},
 		},
 		{
 			name:        "skip-wrapper omits wrapper files",
 			args:        []string{"--skip-wrapper"},
-			absentFiles: wrapperFiles,
-		},
-		{
-			name:       "version flag written to .vibewarden-version",
-			args:       []string{"--version", "v1.2.3"},
-			checkFiles: wrapperFiles,
+			absentFiles: append(wrapperFiles, ".vibewarden-version"),
 		},
 		{
 			name:       "force flag overwrites existing wrapper files",
 			args:       []string{"--force"},
 			checkFiles: wrapperFiles,
+			// .vibewarden-version must never be generated even with --force.
+			absentFiles: []string{".vibewarden-version"},
 		},
 	}
 
@@ -95,22 +94,33 @@ func TestNewWrapCmd_VibewIsExecutable(t *testing.T) {
 	}
 }
 
-func TestNewWrapCmd_VersionFilePinnedContent(t *testing.T) {
+// TestNewWrapCmd_NoVersionFlag verifies that --version flag is absent from wrap.
+func TestNewWrapCmd_NoVersionFlag(t *testing.T) {
+	root := cmd.NewRootCmd("test")
+	root.SetArgs([]string{"wrap", "--help"})
+	var out strings.Builder
+	root.SetOut(&out)
+
+	_ = root.Execute()
+	if strings.Contains(out.String(), "--version") {
+		t.Errorf("--version flag must not appear in wrap --help output:\n%s", out.String())
+	}
+}
+
+// TestNewWrapCmd_NoVersionFileCreated verifies that running wrap does not
+// produce a .vibewarden-version file on disk.
+func TestNewWrapCmd_NoVersionFileCreated(t *testing.T) {
 	dir := scaffoldTestDir(t, false)
 
 	root := cmd.NewRootCmd("test")
-	root.SetArgs([]string{"wrap", dir, "--version", "v0.5.0"})
+	root.SetArgs([]string{"wrap", dir})
 
 	if err := root.Execute(); err != nil {
 		t.Fatalf("Execute() unexpected error: %v", err)
 	}
 
-	content, err := os.ReadFile(filepath.Join(dir, ".vibewarden-version"))
-	if err != nil {
-		t.Fatalf(".vibewarden-version not found: %v", err)
-	}
-	if strings.TrimSpace(string(content)) != "v0.5.0" {
-		t.Errorf(".vibewarden-version content = %q, want %q", string(content), "v0.5.0")
+	if _, err := os.Stat(filepath.Join(dir, ".vibewarden-version")); err == nil {
+		t.Error(".vibewarden-version must not be created by wrap but it exists")
 	}
 }
 
@@ -119,6 +129,7 @@ func TestNewWrapCmd_VibewScriptContainsKeyPatterns(t *testing.T) {
 		name     string
 		file     string
 		patterns []string
+		absent   []string
 	}{
 		{
 			name: "vibew shell script has required patterns",
@@ -130,6 +141,7 @@ func TestNewWrapCmd_VibewScriptContainsKeyPatterns(t *testing.T) {
 				".vibewarden/bin",
 				"exec",
 			},
+			absent: []string{"VERSION_FILE", ".vibewarden-version"},
 		},
 		{
 			name: "vibew.ps1 has required patterns",
@@ -140,6 +152,7 @@ func TestNewWrapCmd_VibewScriptContainsKeyPatterns(t *testing.T) {
 				".vibewarden",
 				"LASTEXITCODE",
 			},
+			absent: []string{"$VersionFile", ".vibewarden-version"},
 		},
 		{
 			name: "vibew.cmd has required patterns",
@@ -170,6 +183,11 @@ func TestNewWrapCmd_VibewScriptContainsKeyPatterns(t *testing.T) {
 					t.Errorf("%s does not contain %q", tt.file, pattern)
 				}
 			}
+			for _, absent := range tt.absent {
+				if strings.Contains(string(content), absent) {
+					t.Errorf("%s must not contain %q", tt.file, absent)
+				}
+			}
 		})
 	}
 }
@@ -187,9 +205,13 @@ func TestNewWrapCmd_SuccessMessageListsWrapperFiles(t *testing.T) {
 	}
 
 	out := outBuf.String()
-	for _, want := range []string{"vibew", "vibew.ps1", ".vibewarden-version"} {
+	for _, want := range []string{"vibew", "vibew.ps1"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("success message does not mention %q\n\nOutput:\n%s", want, out)
 		}
+	}
+	// .vibewarden-version must not appear in the success message.
+	if strings.Contains(out, ".vibewarden-version") {
+		t.Errorf("success message must not mention .vibewarden-version\n\nOutput:\n%s", out)
 	}
 }

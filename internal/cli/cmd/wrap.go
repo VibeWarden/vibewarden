@@ -30,7 +30,6 @@ func NewWrapCmd() *cobra.Command {
 		domain      string
 		force       bool
 		skipWrapper bool
-		version     string
 	)
 
 	cmd := &cobra.Command{
@@ -47,7 +46,6 @@ Examples:
   vibew wrap --upstream 8000
   vibew wrap --auth --rate-limit
   vibew wrap --tls --domain example.com
-  vibew wrap --version v0.2.0
   vibew wrap --skip-wrapper
   vibew wrap --force`,
 		Args: cobra.MaximumNArgs(1),
@@ -74,7 +72,6 @@ Examples:
 				TLSDomain:        domain,
 				Force:            force,
 				SkipWrapper:      skipWrapper,
-				Version:          version,
 			}
 
 			if err := svc.Init(context.Background(), dir, opts); err != nil {
@@ -107,7 +104,6 @@ Examples:
 	cmd.Flags().StringVar(&domain, "domain", "", "domain for TLS certificate (required with --tls)")
 	cmd.Flags().BoolVar(&force, "force", false, "overwrite existing files")
 	cmd.Flags().BoolVar(&skipWrapper, "skip-wrapper", false, "skip vibew wrapper script generation")
-	cmd.Flags().StringVar(&version, "version", "", "VibeWarden version to pin in .vibewarden-version (default: latest)")
 
 	return cmd
 }
@@ -124,7 +120,6 @@ func printWrapSuccessMessage(cmd *cobra.Command, dir string, opts scaffoldapp.In
 	if !opts.SkipWrapper {
 		fmt.Fprintf(w, "  vibew                    Wrapper script (macOS/Linux)\n")
 		fmt.Fprintf(w, "  vibew.ps1                Wrapper script (Windows)\n")
-		fmt.Fprintf(w, "  .vibewarden-version      Version pin\n")
 	}
 	fmt.Fprintf(w, "  .gitignore               Git ignore rules\n")
 	for _, f := range agentFiles {

@@ -74,7 +74,6 @@ func TestInitCmd_GeneratesAllFiles(t *testing.T) {
 		".gitignore",
 		"AGENTS-VIBEWARDEN.md",
 		"AGENTS.md",
-		".vibewarden-version",
 	}
 
 	for _, rel := range expectedFiles {
@@ -84,10 +83,11 @@ func TestInitCmd_GeneratesAllFiles(t *testing.T) {
 		}
 	}
 
-	// CLAUDE.md and .claude/commands/ must NOT be created.
+	// CLAUDE.md, .claude/commands/, and .vibewarden-version must NOT be created.
 	absentFiles := []string{
 		"CLAUDE.md",
 		".claude",
+		".vibewarden-version",
 	}
 	for _, rel := range absentFiles {
 		full := filepath.Join(projectDir, rel)

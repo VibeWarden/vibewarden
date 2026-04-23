@@ -25,10 +25,6 @@ type InitProjectOptions struct {
 	// Force allows overwriting existing files.
 	Force bool
 
-	// Version is the VibeWarden release version written into .vibewarden-version.
-	// When empty the wrapper falls back to the latest GitHub release at runtime.
-	Version string
-
 	// Description is an optional one-line description of what the project builds.
 	// When set it is included in PROJECT.md and injected into agent templates.
 	Description string
@@ -67,8 +63,7 @@ func NewInitProjectService(renderer ports.TemplateRenderer, _ any) *InitProjectS
 //	├── vibewarden.production.yaml      (production overrides)
 //	├── Dockerfile                      (generic placeholder)
 //	├── .dockerignore
-//	├── .gitignore
-//	└── .vibewarden-version
+//	└── .gitignore
 //
 // AGENTS-VIBEWARDEN.md consolidates all vibew-specific agent instructions.
 // AGENTS.md is user-owned; it is created with a reference to AGENTS-VIBEWARDEN.md
@@ -166,18 +161,6 @@ func (s *InitProjectService) InitProject(ctx context.Context, parentDir string, 
 	if opts.Description != "" {
 		if err := s.renderProjectMD(projectDir, data, opts.Force); err != nil {
 			return fmt.Errorf("rendering PROJECT.md: %w", err)
-		}
-	}
-
-	// Write .vibewarden-version for version pinning.
-	versionPath := filepath.Join(projectDir, ".vibewarden-version")
-	if opts.Version != "" {
-		if err := os.WriteFile(versionPath, []byte(opts.Version+"\n"), 0o600); err != nil {
-			return fmt.Errorf("writing .vibewarden-version: %w", err)
-		}
-	} else {
-		if err := os.WriteFile(versionPath, []byte(""), 0o600); err != nil {
-			return fmt.Errorf("writing .vibewarden-version: %w", err)
 		}
 	}
 

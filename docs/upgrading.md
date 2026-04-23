@@ -45,20 +45,6 @@ To show only the version string (useful in scripts):
 
 ## How to upgrade
 
-### Automatic upgrade via the `vibew` wrapper
-
-The `vibew` script reads the pinned version from `.vibewarden-version` in your project
-directory and downloads the correct binary automatically on every invocation. To upgrade,
-update `.vibewarden-version` to the desired version:
-
-```bash
-echo "v0.13.0" > .vibewarden-version
-./vibew version   # downloads v0.13.0 and prints it
-```
-
-Commit `.vibewarden-version` so everyone on your team, as well as your CI environment,
-uses the same version automatically.
-
 ### Upgrading with `vibew upgrade`
 
 `vibew upgrade` downloads and installs a new VibeWarden release, replacing the
@@ -78,8 +64,7 @@ The command:
 3. Verifies the SHA-256 checksum.
 4. Replaces the running binary in-place (resolved via `os.Executable` +
    symlink evaluation). Falls back to `~/.vibewarden/bin` if resolution fails.
-5. Updates `.vibewarden-version` if found in the current or a parent directory.
-6. Touches `vibew`, `vibew.ps1`, `vibew.cmd` in the current directory when present.
+5. Touches `vibew`, `vibew.ps1`, `vibew.cmd` in the current directory when present.
 
 If the target directory is not writable (e.g. `/usr/local/bin` without sudo),
 the command automatically retries with `sudo`.
@@ -98,9 +83,8 @@ the command automatically retries with `sudo`.
 ```
 
 This fetches the latest stable release from
-[github.com/vibewarden/vibewarden/releases](https://github.com/vibewarden/vibewarden/releases),
-writes the new version tag to `.vibewarden-version`, and re-downloads the binary on the
-next `vibew` invocation.
+[github.com/vibewarden/vibewarden/releases](https://github.com/vibewarden/vibewarden/releases)
+and re-downloads the binary on the next `vibew` invocation.
 
 !!! warning "Review the release notes first"
     Always read the release notes before upgrading across a MAJOR version boundary.
@@ -224,13 +208,7 @@ The following procedure applies to any version bump.
 3. **Apply any manual config changes** described in the release notes for breaking
    releases.
 
-4. **Update the pinned version:**
-
-    ```bash
-    echo "vX.Y.Z" > .vibewarden-version
-    ```
-
-5. **Validate the updated config:**
+4. **Validate the updated config:**
 
     ```bash
     ./vibew validate
@@ -238,7 +216,7 @@ The following procedure applies to any version bump.
 
     Fix any reported errors before proceeding.
 
-6. **Restart the stack:**
+5. **Restart the stack:**
 
     ```bash
     ./vibew dev       # development
@@ -246,7 +224,7 @@ The following procedure applies to any version bump.
     docker compose up -d vibewarden   # production
     ```
 
-7. **Verify:**
+6. **Verify:**
 
     ```bash
     ./vibew version
@@ -259,15 +237,13 @@ The following procedure applies to any version bump.
 
 ## Rolling back
 
-If an upgrade causes an unexpected issue, roll back by reverting `.vibewarden-version`:
+If an upgrade causes an unexpected issue, roll back by installing the previous version explicitly:
 
 ```bash
-echo "vX.Y.Z-previous" > .vibewarden-version
-./vibew dev
+vibew upgrade vX.Y.Z-previous
 ```
 
-Because the wrapper downloads a fresh binary matching `.vibewarden-version`, the rollback
-takes effect immediately on the next `vibew` invocation. No uninstall step is needed.
+This installs the specified version immediately. No uninstall step is needed.
 
 !!! tip "Keep your old config backup"
     If you applied manual config changes for the upgrade, restore `vibewarden.yaml.bak`

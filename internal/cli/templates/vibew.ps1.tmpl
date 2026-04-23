@@ -5,7 +5,7 @@
 # without a separate installation step.
 #
 # The script:
-#   1. Reads the required version from .vibewarden-version.
+#   1. Queries the GitHub API for the latest VibeWarden release.
 #   2. Downloads vibewarden-<version>-windows-amd64.exe from GitHub Releases.
 #   3. Verifies the SHA256 checksum.
 #   4. Caches at %USERPROFILE%\.vibewarden\bin\vibewarden-<version>.exe.
@@ -22,18 +22,13 @@ param(
 
 $ErrorActionPreference = 'Stop'
 
-$Repo       = 'vibewarden/vibewarden'
-$CacheDir   = Join-Path $env:USERPROFILE '.vibewarden\bin'
-$VersionFile = '.vibewarden-version'
+$Repo     = 'vibewarden/vibewarden'
+$CacheDir = Join-Path $env:USERPROFILE '.vibewarden\bin'
 
 # ---------------------------------------------------------------------------
-# Resolve-Version — read from .vibewarden-version or query GitHub API
+# Resolve-Version — query GitHub API for the latest release
 # ---------------------------------------------------------------------------
 function Resolve-Version {
-    if (Test-Path $VersionFile) {
-        return (Get-Content $VersionFile -Raw).Trim()
-    }
-
     $headers = @{ 'Accept' = 'application/vnd.github+json' }
     if ($env:GITHUB_TOKEN) {
         $headers['Authorization'] = "Bearer $env:GITHUB_TOKEN"

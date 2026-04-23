@@ -38,7 +38,9 @@ func TestInitProject_CreatesStructure(t *testing.T) {
 	mustExist(t, parent, "myapp", "Dockerfile")
 	mustExist(t, parent, "myapp", ".dockerignore")
 	mustExist(t, parent, "myapp", ".gitignore")
-	mustExist(t, parent, "myapp", ".vibewarden-version")
+
+	// .vibewarden-version must NOT be created — it is obsolete.
+	mustNotExist(t, parent, "myapp", ".vibewarden-version")
 }
 
 func TestInitProject_DefaultsPort(t *testing.T) {
@@ -58,7 +60,9 @@ func TestInitProject_DefaultsPort(t *testing.T) {
 	mustExist(t, parent, "noport", "vibewarden.yaml")
 }
 
-func TestInitProject_CreatesVersionFile(t *testing.T) {
+// TestInitProject_NoVersionFile verifies that .vibewarden-version is never
+// created by InitProject — the file is obsolete since the wrapper-less era.
+func TestInitProject_NoVersionFile(t *testing.T) {
 	renderer := newFakeRenderer()
 	svc := scaffoldapp.NewInitProjectService(renderer, nil)
 
@@ -66,14 +70,13 @@ func TestInitProject_CreatesVersionFile(t *testing.T) {
 	opts := scaffoldapp.InitProjectOptions{
 		ProjectName: "vertest",
 		Port:        3000,
-		Version:     "v0.2.1",
 	}
 
 	if err := svc.InitProject(context.Background(), parent, opts); err != nil {
 		t.Fatalf("InitProject() unexpected error: %v", err)
 	}
 
-	mustExist(t, parent, "vertest", ".vibewarden-version")
+	mustNotExist(t, parent, "vertest", ".vibewarden-version")
 }
 
 func TestInitProject_RejectsNonEmptyDir(t *testing.T) {
@@ -721,6 +724,15 @@ func mustExist(t *testing.T, parts ...string) {
 	path := filepath.Join(parts...)
 	if _, err := os.Stat(path); err != nil {
 		t.Errorf("expected file %q to exist: %v", path, err)
+	}
+}
+
+// mustNotExist is a test helper that fails if the file at path exists.
+func mustNotExist(t *testing.T, parts ...string) {
+	t.Helper()
+	path := filepath.Join(parts...)
+	if _, err := os.Stat(path); err == nil {
+		t.Errorf("file %q must not exist but does", path)
 	}
 }
 

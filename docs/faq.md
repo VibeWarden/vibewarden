@@ -24,7 +24,7 @@ For egress (outbound traffic), your app points its HTTP calls at the egress prox
 
 ## Is it production-ready?
 
-VibeWarden is pre-1.0. The core features (TLS, auth, rate limiting, security headers, WAF, egress proxy) are stable and tested, but the API may evolve. We recommend it for new projects and non-critical production workloads. Pin your version via `.vibewarden-version` to avoid surprises.
+VibeWarden is pre-1.0. The core features (TLS, auth, rate limiting, security headers, WAF, egress proxy) are stable and tested, but the API may evolve. We recommend it for new projects and non-critical production workloads. Always review the release notes before upgrading across a minor version boundary.
 
 ## What's the performance overhead?
 

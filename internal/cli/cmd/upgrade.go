@@ -42,7 +42,8 @@ The command:
      os.Executable + symlink evaluation).
      Use --install-dir to override the destination directory.
      Falls back to ~/.vibewarden/bin when executable resolution fails.
-  5. Updates .vibewarden-version if found in the current or a parent directory.
+  5. Emits a note to stderr when an orphaned .vibewarden-version file is
+     detected in cwd or a parent directory (file is never modified).
   6. Touches vibew, vibew.ps1, vibew.cmd in the current directory when present.
 
 If the target directory is not writable (e.g. /usr/local/bin without sudo),
@@ -79,6 +80,7 @@ Examples:
 				ExecutablePath: exePath,
 				DryRun:         dryRun,
 				Stdout:         cmd.OutOrStdout(),
+				Stderr:         cmd.ErrOrStderr(),
 			}
 
 			if err := svc.Run(cmd.Context(), opts); err != nil {

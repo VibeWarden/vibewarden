@@ -40,7 +40,6 @@ Exit code is `0` on success and `1` if any check fails.
 | vibew (shell) exists | present |
 | vibew.ps1 exists | present |
 | vibew.cmd exists | present |
-| .vibewarden-version exists | present |
 | .gitignore exists | present |
 | vibew shell wrapper is executable | +x permission set |
 | vibewarden.yaml contains upstream port 3000 | `port: 3000` present |

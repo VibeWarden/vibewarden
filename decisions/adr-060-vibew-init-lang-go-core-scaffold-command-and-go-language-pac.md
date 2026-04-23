@@ -170,7 +170,6 @@ myproject/
 ├── vibew              (wrapper script)
 ├── vibew.ps1          (wrapper script)
 ├── vibew.cmd          (wrapper script)
-├── .vibewarden-version
 └── .gitignore
 ```
 
