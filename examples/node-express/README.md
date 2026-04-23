@@ -15,13 +15,7 @@ Step 1 — move into this directory:
 cd examples/node-express
 ```
 
-Step 2 — generate the runtime stack from `vibewarden.yaml`:
-
-```bash
-vibew generate
-```
-
-Step 3 — start everything:
+Step 2 — start everything (runs `vibew generate` internally, then starts the stack):
 
 ```bash
 vibew dev
@@ -79,9 +73,8 @@ auth:
     - /public
 ```
 
-Then run `vibew generate` again. Requests to `/protected` without a valid JWT
-will receive a `401 Unauthorized` response from VibeWarden before reaching the
-Express app.
+Requests to `/protected` without a valid JWT will receive a `401 Unauthorized`
+response from VibeWarden before reaching the Express app.
 
 ## Development without VibeWarden
 

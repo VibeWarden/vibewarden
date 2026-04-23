@@ -1298,6 +1298,8 @@ VibeWarden is operated via the `vibew` CLI. Below is the complete command list.
 | `vibew build` | Build the Docker image for the app |
 | `vibew dev` | Start local dev environment |
 | `vibew dev --verbose` | Start local dev environment and stream docker compose output during startup |
+| `vibew dev --watch` | Watch vibewarden.yaml for changes and auto-regenerate config files + restart the stack (blocks until Ctrl+C) |
+| `vibew dev --observability` | Start Prometheus and Grafana alongside the core stack |
 | `vibew down` | Stop the local dev stack (preserves data volumes; pass `-v` to also remove volumes) |
 | `vibew restart` | Restart containers without rebuilding |
 | `vibew bundle` | Produce a self-contained Docker Compose deploy bundle under `.vibewarden/bundle/` (produces deploy.sh for local-run shipping) |
