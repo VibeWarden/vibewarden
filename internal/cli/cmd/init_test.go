@@ -680,6 +680,43 @@ func TestInitCmd_NonInteractiveFlag_NoTTYWithFlag(t *testing.T) {
 	}
 }
 
+// TestInitCmd_PositionalArgsError verifies that passing any positional argument
+// to vibew init returns the prescribed actionable error message that explains
+// the cwd-derivation convention, instead of cobra's generic unknown-command
+// message.
+func TestInitCmd_PositionalArgsError(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+	}{
+		{"single positional", []string{"init", "my-project"}},
+		{"multiple positionals", []string{"init", "a", "b"}},
+		{"positional after flag", []string{"init", "--name", "foo", "x"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			root := cmd.NewRootCmd("test")
+			var errOut bytes.Buffer
+			root.SetErr(&errOut)
+			root.SetArgs(tt.args)
+
+			err := root.Execute()
+			if err == nil {
+				t.Fatal("expected non-nil error, got nil")
+			}
+
+			stderr := errOut.String()
+			if !strings.Contains(stderr, "takes no arguments") {
+				t.Errorf("stderr missing 'takes no arguments'; got:\n%s", stderr)
+			}
+			if !strings.Contains(stderr, "name is derived from dirname") {
+				t.Errorf("stderr missing 'name is derived from dirname'; got:\n%s", stderr)
+			}
+		})
+	}
+}
+
 // TestInitCmd_NoNameFlag_NoNameInConfig verifies that when --name is not set,
 // vibewarden.yaml does not contain a top-level name: field.
 //
