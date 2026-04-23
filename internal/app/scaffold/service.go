@@ -13,12 +13,11 @@ import (
 )
 
 const (
-	vibeWardenYAML     = "vibewarden.yaml"
-	vibeWardenVersionF = ".vibewarden-version"
-	vibewShell         = "vibew"
-	vibewPowerShell    = "vibew.ps1"
-	vibewCmd           = "vibew.cmd"
-	gitIgnoreFile      = ".gitignore"
+	vibeWardenYAML  = "vibewarden.yaml"
+	vibewShell      = "vibew"
+	vibewPowerShell = "vibew.ps1"
+	vibewCmd        = "vibew.cmd"
+	gitIgnoreFile   = ".gitignore"
 
 	// vibeWardenDir is the local runtime directory that must be excluded from
 	// version control so that generated config files are never committed.
@@ -52,10 +51,6 @@ type InitOptions struct {
 
 	// Force allows overwriting existing files.
 	Force bool
-
-	// Version is the VibeWarden release version written into .vibewarden-version.
-	// When empty the wrapper falls back to the latest GitHub release at runtime.
-	Version string
 
 	// SkipWrapper skips generation of the vibew wrapper scripts.
 	SkipWrapper bool
@@ -121,7 +116,6 @@ func (s *Service) Init(_ context.Context, dir string, opts InitOptions) error {
 		RateLimitEnabled: opts.RateLimitEnabled,
 		TLSEnabled:       opts.TLSEnabled,
 		TLSDomain:        opts.TLSDomain,
-		Version:          opts.Version,
 		ProjectName:      filepath.Base(filepath.Clean(dir)),
 	}
 
@@ -149,8 +143,8 @@ func (s *Service) Init(_ context.Context, dir string, opts InitOptions) error {
 	return nil
 }
 
-// renderWrappers generates vibew, vibew.ps1, vibew.cmd and .vibewarden-version
-// in dir. The POSIX shell script is made executable (0o755).
+// renderWrappers generates vibew, vibew.ps1, and vibew.cmd in dir.
+// The POSIX shell script is made executable (0o755).
 func (s *Service) renderWrappers(dir string, data domainscaffold.TemplateData, force bool) error {
 	// POSIX shell wrapper — must be executable.
 	shellPath := filepath.Join(dir, vibewShell)
@@ -180,15 +174,6 @@ func (s *Service) renderWrappers(dir string, data domainscaffold.TemplateData, f
 			return fmt.Errorf("rendering vibew.cmd: %w", err)
 		}
 		return fmt.Errorf("vibew.cmd already exists; use --force to overwrite: %w", err)
-	}
-
-	// Version pin file.
-	versionPath := filepath.Join(dir, vibeWardenVersionF)
-	if err := s.renderer.RenderToFile("vibewarden-version.tmpl", data, versionPath, force); err != nil {
-		if !errors.Is(err, os.ErrExist) {
-			return fmt.Errorf("rendering .vibewarden-version: %w", err)
-		}
-		return fmt.Errorf(".vibewarden-version already exists; use --force to overwrite: %w", err)
 	}
 
 	return nil

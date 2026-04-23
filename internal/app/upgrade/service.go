@@ -1,8 +1,8 @@
 // Package upgrade provides the application service for the `vibew upgrade`
 // command. It fetches the latest (or a pinned) VibeWarden release from GitHub,
 // verifies the SHA-256 checksum, replaces the running binary (resolved via
-// os.Executable + filepath.EvalSymlinks), updates .vibewarden-version when
-// found, and regenerates wrapper scripts when they exist.
+// os.Executable + filepath.EvalSymlinks), and regenerates wrapper scripts when
+// they exist.
 //
 // Install path resolution order:
 //  1. opts.InstallDir — explicit override (--install-dir flag).
@@ -38,10 +38,12 @@ const (
 
 	// permExec is the mode applied to the installed binary and shell wrapper.
 	permExec = os.FileMode(0o755)
-	// permConfig is the mode applied to the .vibewarden-version file.
-	permConfig = os.FileMode(0o600)
 
-	versionFileName = ".vibewarden-version"
+	// orphanVersionFile is the legacy file name that older installs may have
+	// left on disk. The upgrade service detects its presence and emits an
+	// informational note; it never reads, writes, or deletes the file.
+	orphanVersionFile = ".vibewarden-version"
+
 	vibewShell      = "vibew"
 	vibewPowerShell = "vibew.ps1"
 	vibewCmd        = "vibew.cmd"
@@ -70,6 +72,10 @@ type Options struct {
 
 	// Stdout is where progress messages are written.
 	Stdout io.Writer
+
+	// Stderr is where diagnostic notes are written (e.g. the orphan-version-file
+	// notice). When nil, os.Stderr is used.
+	Stderr io.Writer
 
 	// GOOS / GOARCH override the detected platform (useful in tests).
 	GOOS   string
@@ -125,7 +131,8 @@ func NewService(client HTTPClient) *Service {
 //  2. Download the binary archive and checksum file.
 //  3. Verify the SHA-256 checksum.
 //  4. Install the binary to opts.InstallDir (or ~/.vibewarden/bin).
-//  5. Update .vibewarden-version in the nearest project root.
+//  5. Emit an informational note to stderr when an orphaned .vibewarden-version
+//     file is detected in cwd or a parent directory.
 //  6. Regenerate vibew, vibew.ps1, vibew.cmd wrapper scripts if present.
 //
 // When opts.DryRun is true no files are written; the function only prints
@@ -134,6 +141,10 @@ func (s *Service) Run(ctx context.Context, opts Options) error {
 	w := opts.Stdout
 	if w == nil {
 		w = io.Discard
+	}
+	werr := opts.Stderr
+	if werr == nil {
+		werr = os.Stderr
 	}
 
 	goos := opts.GOOS
@@ -249,12 +260,10 @@ func (s *Service) Run(ctx context.Context, opts Options) error {
 	}
 	fmt.Fprintf(w, "Installed: %s\n", destPath)
 
-	// Update .vibewarden-version if found in cwd or parents.
-	if vf := findVersionFile("."); vf != "" {
-		if err := os.WriteFile(vf, []byte(version+"\n"), permConfig); err != nil {
-			return fmt.Errorf("updating %s: %w", vf, err)
-		}
-		fmt.Fprintf(w, "Updated:   %s -> %s\n", vf, version)
+	// Emit an informational note when an orphaned .vibewarden-version file is
+	// found in cwd or a parent. The file is left byte-for-byte unchanged.
+	if vf := detectOrphanVersionFile("."); vf != "" {
+		fmt.Fprintf(werr, "note: .vibewarden-version detected at %s; this file is no longer used by vibew and can be removed manually.\n", vf)
 	}
 
 	// Regenerate wrapper scripts found in the current directory.
@@ -511,16 +520,17 @@ func atomicReplace(src, dest string, mode os.FileMode) error {
 	return nil
 }
 
-// findVersionFile walks from dir upward (up to 10 levels) looking for a
-// .vibewarden-version file. It returns the path to the first one found, or
-// an empty string when none is found.
-func findVersionFile(dir string) string {
+// detectOrphanVersionFile walks from dir upward (up to 10 levels) looking for
+// a .vibewarden-version file left over from an older install. It returns the
+// absolute path to the first one found, or an empty string when none is found.
+// The file is never read, modified, or deleted — detection only.
+func detectOrphanVersionFile(dir string) string {
 	abs, err := filepath.Abs(dir)
 	if err != nil {
 		return ""
 	}
 	for range 10 {
-		candidate := filepath.Join(abs, versionFileName)
+		candidate := filepath.Join(abs, orphanVersionFile)
 		if _, err := os.Stat(candidate); err == nil {
 			return candidate
 		}
@@ -533,23 +543,13 @@ func findVersionFile(dir string) string {
 	return ""
 }
 
-// regenerateWrappers rewrites vibew, vibew.ps1, and vibew.cmd in dir when they
-// exist. The scripts have the version pinned inline for readability, but the
-// actual version resolution at runtime always reads .vibewarden-version — so
-// we simply overwrite the files with freshly-generated content from the
-// embedded template FS.
+// regenerateWrappers touches vibew, vibew.ps1, and vibew.cmd in dir when they
+// exist. The only effect is updating the mtime, which signals tooling (e.g.
+// CI caching) that the scripts were considered during the upgrade.
 //
 // Because the templates live in the CLI template package (which imports this
-// package via the cmd layer), we avoid an import cycle by regenerating the
-// wrapper scripts directly here using the minimal inline template text instead
-// of importing the template adapter. The template output is a no-op update
-// (the scripts do not embed the version); the only thing that changes is the
-// mtime, which triggers a cache miss in CI caching tools.
-//
-// For now the function reports the files it would regenerate but leaves the
-// actual content unchanged (the script reads the version file at runtime).
-// This is consistent with the design: version is authoritative in
-// .vibewarden-version, not in the script body.
+// package via the cmd layer), we avoid an import cycle by touching the files
+// directly rather than re-rendering from templates.
 func regenerateWrappers(dir, version string, w io.Writer) error {
 	scripts := []string{vibewShell, vibewPowerShell, vibewCmd}
 	for _, name := range scripts {

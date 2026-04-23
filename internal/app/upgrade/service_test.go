@@ -283,7 +283,13 @@ func TestService_Run_ChecksumMismatch(t *testing.T) {
 	}
 }
 
-func TestService_Run_UpdatesVersionFile(t *testing.T) {
+// TestUpgrade_LeavesOrphanVersionFileUntouched is the mandatory orphan-safety
+// test. It pre-creates .vibewarden-version with known content and mtime, runs
+// the upgrade service, and asserts:
+//   - file contents are byte-for-byte unchanged
+//   - file mtime is unchanged
+//   - stderr contains the orphan note with the correct absolute path
+func TestUpgrade_LeavesOrphanVersionFileUntouched(t *testing.T) {
 	version := "v0.6.0"
 	goos := "linux"
 	goarch := "amd64"
@@ -302,13 +308,20 @@ func TestService_Run_UpdatesVersionFile(t *testing.T) {
 	}
 	svc := upgrade.NewService(client)
 
-	// Create a temp project dir with .vibewarden-version and change into it so
-	// findVersionFile("." ) finds it.
+	// Pre-create .vibewarden-version with known content.
 	projectDir := t.TempDir()
 	vfPath := filepath.Join(projectDir, ".vibewarden-version")
-	if err := os.WriteFile(vfPath, []byte("v0.5.0\n"), 0o600); err != nil {
+	originalContent := []byte("vOLD\n")
+	if err := os.WriteFile(vfPath, originalContent, 0o600); err != nil {
 		t.Fatalf("writing version file: %v", err)
 	}
+
+	// Record mtime before upgrade.
+	infoBeforeI, err := os.Stat(vfPath)
+	if err != nil {
+		t.Fatalf("stat before: %v", err)
+	}
+	mtimeBefore := infoBeforeI.ModTime()
 
 	origDir, err := os.Getwd()
 	if err != nil {
@@ -320,10 +333,12 @@ func TestService_Run_UpdatesVersionFile(t *testing.T) {
 	t.Cleanup(func() { os.Chdir(origDir) }) //nolint:errcheck
 
 	installDir := t.TempDir()
+	var errBuf strings.Builder
 	opts := upgrade.Options{
 		Version:    version,
 		InstallDir: installDir,
 		Stdout:     io.Discard,
+		Stderr:     &errBuf,
 		GOOS:       goos,
 		GOARCH:     goarch,
 	}
@@ -332,12 +347,160 @@ func TestService_Run_UpdatesVersionFile(t *testing.T) {
 		t.Fatalf("Run() error: %v", err)
 	}
 
+	// Assert contents are byte-for-byte unchanged.
+	got, err := os.ReadFile(vfPath)
+	if err != nil {
+		t.Fatalf("reading version file after upgrade: %v", err)
+	}
+	if string(got) != string(originalContent) {
+		t.Errorf(".vibewarden-version contents changed: want %q, got %q", originalContent, got)
+	}
+
+	// Assert mtime is unchanged (file was not touched).
+	infoAfter, err := os.Stat(vfPath)
+	if err != nil {
+		t.Fatalf("stat after: %v", err)
+	}
+	if !infoAfter.ModTime().Equal(mtimeBefore) {
+		t.Errorf(".vibewarden-version mtime changed: before=%v after=%v", mtimeBefore, infoAfter.ModTime())
+	}
+
+	// Assert stderr contains the orphan note.
+	stderrOut := errBuf.String()
+	if !strings.Contains(stderrOut, "note: .vibewarden-version detected at") {
+		t.Errorf("stderr should contain orphan note, got:\n%s", stderrOut)
+	}
+	if !strings.Contains(stderrOut, vfPath) {
+		t.Errorf("orphan note should mention file path %s, got:\n%s", vfPath, stderrOut)
+	}
+	if !strings.Contains(stderrOut, "can be removed manually") {
+		t.Errorf("orphan note should mention 'can be removed manually', got:\n%s", stderrOut)
+	}
+}
+
+// TestUpgrade_NoOrphanFile_NoNote verifies that when no .vibewarden-version
+// file exists, the upgrade completes successfully and emits no orphan note.
+func TestUpgrade_NoOrphanFile_NoNote(t *testing.T) {
+	version := "v0.6.1"
+	goos := "linux"
+	goarch := "amd64"
+	cleanVersion := "0.6.1"
+	archiveName := fmt.Sprintf("vibewarden_%s_%s_%s.tar.gz", cleanVersion, goos, goarch)
+
+	archiveBytes, checksumHex := buildFakeArchive(t, "vibew", "#!/bin/sh")
+	checksumBytes := buildChecksums(archiveName, checksumHex)
+
+	baseURL := fmt.Sprintf("https://github.com/vibewarden/vibewarden/releases/download/%s", version)
+	client := &fakeHTTPClient{
+		responses: map[string]fakeResponse{
+			baseURL + "/" + archiveName: {status: http.StatusOK, body: archiveBytes},
+			baseURL + "/checksums.txt":  {status: http.StatusOK, body: checksumBytes},
+		},
+	}
+	svc := upgrade.NewService(client)
+
+	// Chdir to a temp dir that has no .vibewarden-version file.
+	cleanDir := t.TempDir()
+	origDir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(cleanDir); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+	t.Cleanup(func() { os.Chdir(origDir) }) //nolint:errcheck
+
+	installDir := t.TempDir()
+	var errBuf strings.Builder
+	opts := upgrade.Options{
+		Version:    version,
+		InstallDir: installDir,
+		Stdout:     io.Discard,
+		Stderr:     &errBuf,
+		GOOS:       goos,
+		GOARCH:     goarch,
+	}
+
+	if err := svc.Run(context.Background(), opts); err != nil {
+		t.Fatalf("Run() unexpected error: %v", err)
+	}
+
+	if strings.Contains(errBuf.String(), ".vibewarden-version") {
+		t.Errorf("no orphan file exists, but stderr contains version-file note:\n%s", errBuf.String())
+	}
+}
+
+// TestUpgrade_OrphanFileInParent verifies that the orphan note is emitted when
+// .vibewarden-version exists in a parent directory, and the parent file is left
+// untouched.
+func TestUpgrade_OrphanFileInParent(t *testing.T) {
+	version := "v0.6.2"
+	goos := "linux"
+	goarch := "amd64"
+	cleanVersion := "0.6.2"
+	archiveName := fmt.Sprintf("vibewarden_%s_%s_%s.tar.gz", cleanVersion, goos, goarch)
+
+	archiveBytes, checksumHex := buildFakeArchive(t, "vibew", "#!/bin/sh")
+	checksumBytes := buildChecksums(archiveName, checksumHex)
+
+	baseURL := fmt.Sprintf("https://github.com/vibewarden/vibewarden/releases/download/%s", version)
+	client := &fakeHTTPClient{
+		responses: map[string]fakeResponse{
+			baseURL + "/" + archiveName: {status: http.StatusOK, body: archiveBytes},
+			baseURL + "/checksums.txt":  {status: http.StatusOK, body: checksumBytes},
+		},
+	}
+	svc := upgrade.NewService(client)
+
+	// Create parent/.vibewarden-version but chdir into parent/child.
+	parentDir := t.TempDir()
+	vfPath := filepath.Join(parentDir, ".vibewarden-version")
+	originalContent := []byte("vOLD\n")
+	if err := os.WriteFile(vfPath, originalContent, 0o600); err != nil {
+		t.Fatalf("writing version file: %v", err)
+	}
+	childDir := filepath.Join(parentDir, "child")
+	if err := os.MkdirAll(childDir, 0o750); err != nil {
+		t.Fatalf("mkdir child: %v", err)
+	}
+
+	origDir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(childDir); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+	t.Cleanup(func() { os.Chdir(origDir) }) //nolint:errcheck
+
+	installDir := t.TempDir()
+	var errBuf strings.Builder
+	opts := upgrade.Options{
+		Version:    version,
+		InstallDir: installDir,
+		Stdout:     io.Discard,
+		Stderr:     &errBuf,
+		GOOS:       goos,
+		GOARCH:     goarch,
+	}
+
+	if err := svc.Run(context.Background(), opts); err != nil {
+		t.Fatalf("Run() unexpected error: %v", err)
+	}
+
+	// Parent file must be untouched.
 	got, err := os.ReadFile(vfPath)
 	if err != nil {
 		t.Fatalf("reading version file: %v", err)
 	}
-	if !strings.Contains(string(got), version) {
-		t.Errorf(".vibewarden-version: want %s, got %s", version, string(got))
+	if string(got) != string(originalContent) {
+		t.Errorf("parent .vibewarden-version contents changed: want %q, got %q", originalContent, got)
+	}
+
+	// Note must mention the parent path.
+	stderrOut := errBuf.String()
+	if !strings.Contains(stderrOut, vfPath) {
+		t.Errorf("orphan note should mention parent path %s, got:\n%s", vfPath, stderrOut)
 	}
 }
 

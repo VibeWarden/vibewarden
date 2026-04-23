@@ -1333,7 +1333,6 @@ support `--tls` or `--domain` — use `vibew add tls` after init for TLS.
 - `--port` (default 3000) -- HTTP port the app listens on
 - `--name` -- project name for Docker Compose image naming and deploy directories (default: current directory name)
 - `--describe` -- one-line project description (written to PROJECT.md and agent files)
-- `--version` -- VibeWarden version to pin in .vibewarden-version (default: latest)
 - `--force` -- overwrite existing files
 - `--non-interactive` -- skip interactive prompts even when stdin is a TTY (CI / agent scripting)
 
@@ -1348,7 +1347,6 @@ support `--tls` or `--domain` — use `vibew add tls` after init for TLS.
 - `--domain` -- domain for TLS certificate (required with `--tls`)
 - `--force` -- overwrite existing files
 - `--skip-wrapper` -- skip vibew wrapper script generation
-- `--version` -- VibeWarden version to pin in .vibewarden-version (default: latest)
 
 ### add flags
 

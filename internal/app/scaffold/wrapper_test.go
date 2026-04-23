@@ -31,8 +31,9 @@ func TestService_Init_WrapperGeneration(t *testing.T) {
 				"vibew",
 				"vibew.ps1",
 				"vibew.cmd",
-				".vibewarden-version",
 			},
+			// .vibewarden-version must never be generated.
+			absentFiles: []string{".vibewarden-version"},
 		},
 		{
 			name: "skip-wrapper omits all wrapper files",
@@ -57,8 +58,9 @@ func TestService_Init_WrapperGeneration(t *testing.T) {
 				"vibew",
 				"vibew.ps1",
 				"vibew.cmd",
-				".vibewarden-version",
 			},
+			// .vibewarden-version must never be generated even with --force.
+			absentFiles: []string{".vibewarden-version"},
 		},
 		{
 			name: "wrapper without force fails when vibew exists",
@@ -132,30 +134,24 @@ func TestService_Init_VibewExecutable(t *testing.T) {
 	}
 }
 
-func TestService_Init_VersionWrittenToVersionFile(t *testing.T) {
+// TestService_Init_NoVersionFile verifies that .vibewarden-version is never
+// created by Init — the file is obsolete since the wrapper-less era.
+func TestService_Init_NoVersionFile(t *testing.T) {
 	dir := t.TempDir()
 	project := &scaffold.ProjectConfig{Type: scaffold.ProjectTypeNode}
 	detector := &fakeDetector{cfg: project}
-
-	// Use the real template renderer backed by a minimal FS so we can inspect
-	// the .vibewarden-version content.  Because fakeRenderer writes a stub
-	// "rendered:<tmpl>" string, we check that the version file exists and was
-	// written; the real rendering is verified by the CLI integration test.
 	renderer := newFakeRenderer()
 	svc := scaffoldapp.NewService(renderer, detector)
 
 	opts := scaffoldapp.InitOptions{
 		UpstreamPort: 3000,
-		Version:      "v1.2.3",
 	}
 	if err := svc.Init(context.Background(), dir, opts); err != nil {
 		t.Fatalf("Init() unexpected error: %v", err)
 	}
 
-	// The fake renderer writes "rendered:vibewarden-version.tmpl" to the file.
-	// We just verify the file was created.
 	versionPath := filepath.Join(dir, ".vibewarden-version")
-	if _, err := os.Stat(versionPath); err != nil {
-		t.Errorf(".vibewarden-version not found: %v", err)
+	if _, err := os.Stat(versionPath); err == nil {
+		t.Errorf(".vibewarden-version must not be created but it exists at %s", versionPath)
 	}
 }

@@ -6,12 +6,7 @@
 set -e
 REPO="vibewarden/vibewarden"
 CACHE_DIR="${HOME}/.vibewarden/bin"
-VERSION_FILE=".vibewarden-version"
 resolve_version() {
-    if [ -f "${VERSION_FILE}" ]; then
-        tr -d '[:space:]' < "${VERSION_FILE}"
-        return
-    fi
     if [ -n "${GITHUB_TOKEN}" ]; then
         auth_header="Authorization: Bearer ${GITHUB_TOKEN}"
     else

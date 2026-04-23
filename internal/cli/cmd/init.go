@@ -78,7 +78,6 @@ func NewInitCmd() *cobra.Command {
 	var (
 		port           int
 		force          bool
-		version        string
 		describe       string
 		name           string
 		nonInteractive bool
@@ -92,7 +91,6 @@ func NewInitCmd() *cobra.Command {
 The command scaffolds into the current working directory, creating:
   - vibewarden.yaml (local dev config: TLS self-signed, port 8443)
   - vibewarden.production.yaml (production overrides: letsencrypt, port 443)
-  - .vibewarden-version (pins the vibew version for this project)
   - AGENTS-VIBEWARDEN.md with all agent instructions (auto-generated, vibew-owned)
   - AGENTS.md with a reference to AGENTS-VIBEWARDEN.md (user-owned)
   - PROJECT.md with project description (when --describe is given)
@@ -149,7 +147,6 @@ Examples:
 				ProjectName: projectName,
 				Port:        port,
 				Force:       force,
-				Version:     version,
 				Description: describe,
 				Name:        name,
 			}
@@ -171,7 +168,6 @@ Examples:
 
 	cmd.Flags().IntVar(&port, "port", 3000, "HTTP port the app listens on")
 	cmd.Flags().BoolVar(&force, "force", false, "overwrite existing files")
-	cmd.Flags().StringVar(&version, "version", "", "VibeWarden version to pin in .vibewarden-version (default: latest)")
 	cmd.Flags().StringVar(&describe, "describe", "", "one-line description of what the project builds; written to PROJECT.md and injected into agent files")
 	cmd.Flags().StringVar(&name, "name", "", "project name for Docker Compose project naming and deploy directories (default: current directory name)")
 	cmd.Flags().BoolVar(&nonInteractive, "non-interactive", false, "skip all interactive prompts and use defaults (implied when stdin is not a TTY)")

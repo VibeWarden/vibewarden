@@ -131,7 +131,6 @@ Common flags:
 ```
 vibewarden.yaml          # Main config — commit this
 vibew                    # Wrapper script (macOS/Linux)
-.vibewarden-version      # Pinned version
 .dockerignore            # Prevents secrets and build artifacts from entering the image
 AGENTS.md                # AI agent context (generic — Claude Code, Cursor, etc.)
 AGENTS-VIBEWARDEN.md     # Tool-agnostic AI agent context (all agents)
@@ -164,7 +163,6 @@ Common flags:
 | `--port <port>` | Port your app will listen on (default: `3000`) |
 | `--name <name>` | Project name for Docker Compose and image tags (default: directory name) |
 | `--describe "<text>"` | One-line project description; written to `PROJECT.md` and injected into agent files |
-| `--version <vN.N.N>` | Pin a specific VibeWarden version in `.vibewarden-version` |
 | `--force` | Overwrite existing files |
 
 ### What `init` generates
@@ -173,7 +171,6 @@ Common flags:
 ./                                # current directory (you mkdir + cd first)
   vibewarden.yaml                 # Local dev config (TLS self-signed, port 8443)
   vibewarden.production.yaml      # Production overrides (letsencrypt, port 443)
-  .vibewarden-version             # Pinned VibeWarden version
   Dockerfile                      # Placeholder with examples for common stacks
   .gitignore
   PROJECT.md                      # Project description (only when --describe is given)

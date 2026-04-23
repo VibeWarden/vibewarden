@@ -110,7 +110,6 @@ Both `vibew init` and `vibew wrap` produce the same project scaffolding:
 ```
 vibewarden.yaml          # Main config — commit this
 vibew                    # CLI binary (installed via install script)
-.vibewarden-version      # Pinned version
 AGENTS.md                # AI agent context (generic — Claude Code, Cursor, etc.)
 AGENTS-VIBEWARDEN.md     # Tool-agnostic AI agent context (all agents)
 ```

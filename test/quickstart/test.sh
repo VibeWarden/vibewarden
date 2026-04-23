@@ -151,7 +151,6 @@ check_file_exists  "vibewarden.yaml"          "$WORKDIR/vibewarden.yaml"
 check_file_exists  "vibew wrapper (shell)"    "$WORKDIR/vibew"
 check_file_exists  "vibew wrapper (ps1)"      "$WORKDIR/vibew.ps1"
 check_file_exists  "vibew wrapper (cmd)"      "$WORKDIR/vibew.cmd"
-check_file_exists  ".vibewarden-version"      "$WORKDIR/.vibewarden-version"
 check_file_exists  ".gitignore"               "$WORKDIR/.gitignore"
 
 check_file_executable "vibew shell wrapper"  "$WORKDIR/vibew"
