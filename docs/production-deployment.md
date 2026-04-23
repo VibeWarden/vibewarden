@@ -156,7 +156,7 @@ services:
     networks:
       - myapp
     healthcheck:
-      test: ["CMD", "wget", "-q", "--spider", "http://localhost:80/_vibewarden/healthz"]
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:80/_vibewarden/health"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -452,7 +452,7 @@ myapp                  Up (healthy)
 Verify the site is reachable:
 
 ```bash
-curl -I https://myapp.example.com/_vibewarden/healthz
+curl -I https://myapp.example.com/_vibewarden/health
 # HTTP/2 200
 ```
 
@@ -596,7 +596,7 @@ See `docs/observability.md` for the full metrics reference and a local Grafana s
 ### Health check endpoint
 
 ```
-GET /_vibewarden/healthz
+GET /_vibewarden/health
 ```
 
 Returns `200 OK` with `{"status":"ok"}` when VibeWarden is running. Use this for
@@ -651,4 +651,4 @@ startup (subject to Let's Encrypt rate limits — 5 per hour per domain).
 2. Restore `vibewarden.yaml`, Kratos config, and `.env` from version control /
    secrets manager.
 3. Start the stack: `docker compose up -d`.
-4. Verify: `docker compose ps` and `curl https://myapp.example.com/_vibewarden/healthz`.
+4. Verify: `docker compose ps` and `curl https://myapp.example.com/_vibewarden/health`.

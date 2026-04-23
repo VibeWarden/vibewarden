@@ -1180,7 +1180,7 @@ in ADR-086. The bundle pipeline above is the only supported remote workflow.
 
   Port 80 blocked (ACME fails):
     Check Hetzner firewall rules: allow TCP 80 inbound from 0.0.0.0/0.
-    curl -v http://demo.yourdomain.com/_vibewarden/healthz
+    curl -v http://demo.yourdomain.com/_vibewarden/health
 
   Let's Encrypt rate limit (>5 failures/hour):
     Wait 1 hour. Use tls.provider: self-signed to test the rest of the stack.
