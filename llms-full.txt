@@ -1122,28 +1122,29 @@ Step 4 — Set up project locally:
     # Existing app:
     cd my-existing-app && vibew wrap --upstream 3000
 
-Step 5 — Create vibewarden.prod.yaml by copying the generated vibewarden.yaml
-and modifying it for production. Do NOT write it from scratch:
+Step 5 — Populate vibewarden.production.yaml (generated automatically):
 
-    cp vibewarden.yaml vibewarden.prod.yaml
+`vibew init` creates `vibewarden.production.yaml` in your project root.
+`vibew add tls --domain demo.yourdomain.com` keeps it up to date.
+You do NOT need to copy or rename `vibewarden.yaml` manually.
 
-Then edit vibewarden.prod.yaml to change:
+Edit `vibewarden.production.yaml` to set your production values:
     profile: prod
     tls.provider: letsencrypt
     tls.domain: demo.yourdomain.com
     server.port: 443
 
 For the full set of supported fields, see the authoritative config reference at
-https://vibewarden.dev/vibewarden.reference.yaml. `vibew bundle` merges your
-base `vibewarden.yaml` with your production overrides and strict-validates the
-result before writing the bundle; run it to see exactly what the production
+https://vibewarden.dev/vibewarden.reference.yaml. `vibew bundle` automatically
+merges `vibewarden.yaml` with `vibewarden.production.yaml` and strict-validates
+the result before writing the bundle; run it to see exactly what the production
 config evaluates to.
     waf:
       enabled: true
       mode: block
 
 Step 6 — Produce a deploy bundle locally:
-    vibew bundle --config vibewarden.prod.yaml
+    vibew bundle
     # Writes .vibewarden/bundle/ containing:
     #   image.tar                 — docker-saved app image
     #   docker-compose.yml        — pinned tag, deterministic
@@ -1166,7 +1167,7 @@ Step 8 — Verify (script already probed /_vibewarden/health; double-check anyti
     # OK
 
 Step 9 — Subsequent deploys (after code or config changes):
-    vibew bundle --config vibewarden.prod.yaml
+    vibew bundle
     cd .vibewarden/bundle && ./deploy.sh root@<server-ip>:/opt/myapp
 
 Note: the legacy `vibew deploy` command (one-shot SSH orchestration) was removed
@@ -1189,7 +1190,7 @@ in ADR-086. The bundle pipeline above is the only supported remote workflow.
 
   Full doctor output from the server:
     ssh root@<server-ip> 'docker run --rm \
-      -v /opt/myapp/vibewarden.prod.yaml:/vibewarden.yaml:ro \
+      -v /opt/myapp/vibewarden.production.yaml:/vibewarden.yaml:ro \
       ghcr.io/vibewarden/vibewarden:latest vibew doctor --json'
 
 ### Production Profile
