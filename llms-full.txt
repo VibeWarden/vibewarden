@@ -1300,7 +1300,7 @@ VibeWarden is operated via the `vibew` CLI. Below is the complete command list.
 | `vibew dev --verbose` | Start local dev environment and stream docker compose output during startup |
 | `vibew dev --watch` | Watch vibewarden.yaml for changes and auto-regenerate config files + restart the stack (blocks until Ctrl+C) |
 | `vibew dev --observability` | Start Prometheus and Grafana alongside the core stack |
-| `vibew down` | Stop the local dev stack (preserves data volumes; pass `-v` to also remove volumes) |
+| `vibew down` | Stop the local dev stack (preserves data volumes; pass `-v` to also remove volumes; pass `--yes` to skip confirmation prompt in CI/scripts) |
 | `vibew restart` | Restart containers without rebuilding |
 | `vibew bundle` | Produce a self-contained Docker Compose deploy bundle under `.vibewarden/bundle/` (produces deploy.sh for local-run shipping) |
 | `vibew status` | Show health of all components; TLS column reports state: Obtaining, Obtained, Failing, or SelfSignedLocal |
@@ -1642,7 +1642,7 @@ This starts a JSON-RPC 2.0 server on stdio. Tools:
 | `vibewarden_doctor` | Run the full health-check suite |
 | `vibewarden_validate` | Validate a vibewarden.yaml configuration file |
 | `vibewarden_explain` | Explain a configuration in plain language |
-| `vibewarden_watch_events` | Stream live structured log events from the sidecar |
+| `vibewarden_watch_events` | Poll the sidecar admin events endpoint for structured log events |
 | `vibewarden_stream_logs` | Stream raw container logs with client-side filtering (level, since, search) |
 | `vibewarden_schema_describe` | Describe the AI-readable log schema (pure metadata, no sidecar needed) |
 | `vibewarden_propose_action` | Create a configuration-change proposal for human review |

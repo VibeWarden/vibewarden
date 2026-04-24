@@ -111,7 +111,7 @@ documentation affected by the code changes is accurate and consistent.
    - `llms-full.txt` — CLI flags, command examples, config reference
    - `AGENTS-VIBEWARDEN.md` template — boundary rules, known limitations, CLI reference
    - `docs/getting-started.md` — setup steps, command examples
-   - `docs/deploy-to-vps.md` — deploy workflow
+   - `docs/guide/bundle-to-vps.md` — deploy workflow
    - `vibewarden.reference.yaml` — all config fields with defaults
    - `docs/examples/AGENTS-VIBEWARDEN.md` — static example matches template
 
