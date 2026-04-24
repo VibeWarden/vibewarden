@@ -91,6 +91,7 @@ func PromptInjectionMiddleware(
 	routes []PromptInjectionRouteConfig,
 	logger *slog.Logger,
 	eventLogger ports.EventLogger,
+	drops ports.EventLogDropCounter,
 ) func(http.Handler) http.Handler {
 	// Filter to only enabled routes to avoid repeated checks at request time.
 	enabled := make([]PromptInjectionRouteConfig, 0, len(routes))
@@ -190,9 +191,7 @@ func PromptInjectionMiddleware(
 						slog.String("method", r.Method),
 						slog.String("url", targetURL),
 					)
-					if eventLogger != nil {
-						_ = eventLogger.Log(r.Context(), events.NewLLMPromptInjectionBlocked(params))
-					}
+					logEvent(r.Context(), eventLogger, drops, "prompt_injection", events.NewLLMPromptInjectionBlocked(params))
 					WriteErrorResponse(w, r, http.StatusBadRequest, "prompt_injection_blocked",
 						fmt.Sprintf("request blocked: prompt injection detected by pattern %q in %s",
 							patternName, frag.path))
@@ -207,9 +206,7 @@ func PromptInjectionMiddleware(
 					slog.String("method", r.Method),
 					slog.String("url", targetURL),
 				)
-				if eventLogger != nil {
-					_ = eventLogger.Log(r.Context(), events.NewLLMPromptInjectionDetected(params))
-				}
+				logEvent(r.Context(), eventLogger, drops, "prompt_injection", events.NewLLMPromptInjectionDetected(params))
 				// Do not break — continue scanning all fragments in detect mode.
 			}
 

@@ -428,6 +428,7 @@ The endpoint uses the standard Prometheus text exposition format.
 | `vibewarden_auth_decisions_total` | Counter | `decision` | Auth allow / block decisions |
 | `vibewarden_upstream_errors_total` | Counter | — | Upstream connection failures |
 | `vibewarden_active_connections` | Gauge | — | Currently active connections |
+| `vibewarden_event_log_drops_total` | Counter | `middleware`, `reason` | Count of audit/event-log writes that failed. `middleware` = which middleware dropped (waf, auth, etc.). `reason` = short categorized error class. |
 
 ### Runtime Metrics
 

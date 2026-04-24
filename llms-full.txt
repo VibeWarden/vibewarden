@@ -1015,6 +1015,16 @@ to prevent high-cardinality labels:
       - "/users/:id"
       - "/api/v1/items/:item_id/comments/:comment_id"
 
+| Metric | Type | Labels | Description |
+|--------|------|--------|-------------|
+| `vibewarden_requests_total` | Counter | `method`, `status_code`, `path_pattern` | Total HTTP requests handled |
+| `vibewarden_request_duration_seconds` | Histogram | `method`, `path_pattern` | Request latency distribution |
+| `vibewarden_rate_limit_hits_total` | Counter | `limit_type` | Number of rate limit triggers |
+| `vibewarden_auth_decisions_total` | Counter | `decision` | Auth allow / block decisions |
+| `vibewarden_upstream_errors_total` | Counter | — | Upstream connection failures |
+| `vibewarden_active_connections` | Gauge | — | Currently active connections |
+| `vibewarden_event_log_drops_total` | Counter | `middleware`, `reason` | Audit/event-log writes that failed silently; use to alert on log-pipeline degradation. |
+
 ### OTLP Export
 
 Push metrics and logs to any OTLP-compatible backend (Grafana Cloud, Datadog,

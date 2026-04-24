@@ -43,6 +43,7 @@ func RateLimitMiddleware(
 	logger *slog.Logger,
 	eventLogger ports.EventLogger,
 	auditLogger ports.AuditEventLogger,
+	drops ports.EventLogDropCounter,
 ) func(http.Handler) http.Handler {
 	matcher, err := NewExemptPathMatcher(cfg.ExemptPaths)
 	if err != nil {
@@ -68,7 +69,7 @@ func RateLimitMiddleware(
 			// requests into a shared "" bucket, undermining per-IP limits.
 			clientIP := ExtractClientIP(r, cfg.TrustProxyHeaders)
 			if clientIP == "" {
-				emitRateLimitUnidentified(r, eventLogger)
+				emitRateLimitUnidentified(r, eventLogger, drops)
 				WriteErrorResponse(w, r, http.StatusForbidden, "forbidden", "client IP could not be determined")
 				return
 			}
@@ -76,8 +77,8 @@ func RateLimitMiddleware(
 			// Step 3: Per-IP rate limit check.
 			ipResult := ipLimiter.Allow(r.Context(), clientIP)
 			if !ipResult.Allowed {
-				emitRateLimitHit(r, eventLogger, "ip", clientIP, "", ipResult)
-				emitAuditRateLimitHit(r, auditLogger, "ip", clientIP, ipResult)
+				emitRateLimitHit(r, eventLogger, drops, "ip", clientIP, "", ipResult)
+				emitAuditRateLimitHit(r, auditLogger, drops, "ip", clientIP, ipResult)
 				writeRateLimitResponse(w, r, ipResult)
 				return
 			}
@@ -87,8 +88,8 @@ func RateLimitMiddleware(
 			if userID != "" {
 				userResult := userLimiter.Allow(r.Context(), userID)
 				if !userResult.Allowed {
-					emitRateLimitHit(r, eventLogger, "user", userID, clientIP, userResult)
-					emitAuditRateLimitHit(r, auditLogger, "user", clientIP, userResult)
+					emitRateLimitHit(r, eventLogger, drops, "user", userID, clientIP, userResult)
+					emitAuditRateLimitHit(r, auditLogger, drops, "user", clientIP, userResult)
 					writeRateLimitResponse(w, r, userResult)
 					return
 				}
@@ -121,14 +122,12 @@ func retryAfterSeconds(d time.Duration) int {
 func emitRateLimitHit(
 	r *http.Request,
 	eventLogger ports.EventLogger,
+	drops ports.EventLogDropCounter,
 	limitType string,
 	identifier string,
 	clientIP string,
 	result ports.RateLimitResult,
 ) {
-	if eventLogger == nil {
-		return
-	}
 	ev := events.NewRateLimitHit(events.RateLimitHitParams{
 		LimitType:         limitType,
 		Identifier:        identifier,
@@ -139,22 +138,17 @@ func emitRateLimitHit(
 		Method:            r.Method,
 		ClientIP:          clientIP,
 	})
-	// Best-effort: ignore logging errors so request processing is never blocked.
-	_ = eventLogger.Log(r.Context(), ev)
+	logEvent(r.Context(), eventLogger, drops, "ratelimit", ev)
 }
 
 // emitRateLimitUnidentified emits a rate_limit.unidentified_client event via
 // the EventLogger port. If eventLogger is nil the call is a no-op.
-func emitRateLimitUnidentified(r *http.Request, eventLogger ports.EventLogger) {
-	if eventLogger == nil {
-		return
-	}
+func emitRateLimitUnidentified(r *http.Request, eventLogger ports.EventLogger, drops ports.EventLogDropCounter) {
 	ev := events.NewRateLimitUnidentified(events.RateLimitUnidentifiedParams{
 		Path:   r.URL.Path,
 		Method: r.Method,
 	})
-	// Best-effort: ignore logging errors so request processing is never blocked.
-	_ = eventLogger.Log(r.Context(), ev)
+	logEvent(r.Context(), eventLogger, drops, "ratelimit", ev)
 }
 
 // emitAuditRateLimitHit emits an audit.rate_limit.hit event via the
@@ -162,13 +156,11 @@ func emitRateLimitUnidentified(r *http.Request, eventLogger ports.EventLogger) {
 func emitAuditRateLimitHit(
 	r *http.Request,
 	auditLogger ports.AuditEventLogger,
+	drops ports.EventLogDropCounter,
 	limitType string,
 	clientIP string,
 	result ports.RateLimitResult,
 ) {
-	if auditLogger == nil {
-		return
-	}
 	ev, err := audit.NewAuditEvent(
 		audit.EventTypeRateLimitHit,
 		audit.Actor{IP: clientIP},
@@ -184,6 +176,5 @@ func emitAuditRateLimitHit(
 	if err != nil {
 		return
 	}
-	// Best-effort: ignore logging errors so request processing is never blocked.
-	_ = auditLogger.Log(r.Context(), ev)
+	logAudit(r.Context(), auditLogger, drops, "ratelimit", ev)
 }

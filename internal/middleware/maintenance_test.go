@@ -35,7 +35,7 @@ func nextHandler(called *bool) http.Handler {
 func TestMaintenanceMiddleware_disabled(t *testing.T) {
 	cfg := MaintenanceConfig{Enabled: false, Message: "irrelevant"}
 	logger := &maintenanceFakeEventLogger{}
-	mw := MaintenanceMiddleware(cfg, logger)
+	mw := MaintenanceMiddleware(cfg, logger, nil)
 
 	called := false
 	handler := mw(nextHandler(&called))
@@ -86,7 +86,7 @@ func TestMaintenanceMiddleware_enabled_blocks_regular_paths(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := MaintenanceConfig{Enabled: true, Message: tt.message}
 			logger := &maintenanceFakeEventLogger{}
-			mw := MaintenanceMiddleware(cfg, logger)
+			mw := MaintenanceMiddleware(cfg, logger, nil)
 
 			called := false
 			handler := mw(nextHandler(&called))
@@ -145,7 +145,7 @@ func TestMaintenanceMiddleware_enabled_skips_vibewarden_paths(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := MaintenanceConfig{Enabled: true, Message: "down for maintenance"}
 			logger := &maintenanceFakeEventLogger{}
-			mw := MaintenanceMiddleware(cfg, logger)
+			mw := MaintenanceMiddleware(cfg, logger, nil)
 
 			called := false
 			handler := mw(nextHandler(&called))
@@ -169,7 +169,7 @@ func TestMaintenanceMiddleware_enabled_skips_vibewarden_paths(t *testing.T) {
 
 func TestMaintenanceMiddleware_defaultMessage(t *testing.T) {
 	cfg := MaintenanceConfig{Enabled: true, Message: ""}
-	mw := MaintenanceMiddleware(cfg, nil)
+	mw := MaintenanceMiddleware(cfg, nil, nil)
 
 	called := false
 	handler := mw(nextHandler(&called))
@@ -193,7 +193,7 @@ func TestMaintenanceMiddleware_defaultMessage(t *testing.T) {
 
 func TestMaintenanceMiddleware_nilEventLoggerDoesNotPanic(t *testing.T) {
 	cfg := MaintenanceConfig{Enabled: true, Message: "maintenance"}
-	mw := MaintenanceMiddleware(cfg, nil) // nil logger must not panic
+	mw := MaintenanceMiddleware(cfg, nil, nil) // nil logger must not panic
 
 	called := false
 	handler := mw(nextHandler(&called))

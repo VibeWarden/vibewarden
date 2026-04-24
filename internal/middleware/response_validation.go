@@ -75,6 +75,7 @@ func LLMResponseValidationMiddleware(
 	routes []LLMResponseValidationRouteConfig,
 	logger *slog.Logger,
 	eventLogger ports.EventLogger,
+	drops ports.EventLogDropCounter,
 ) func(http.Handler) http.Handler {
 	// Filter to only enabled routes to avoid repeated checks at request time.
 	enabled := make([]LLMResponseValidationRouteConfig, 0, len(routes))
@@ -145,13 +146,13 @@ func LLMResponseValidationMiddleware(
 					slog.String("error", valErr.Error()),
 				)
 				if matched.Action == LLMResponseValidationActionBlock {
-					emitLLMResponseInvalid(r, eventLogger, matched, targetURL, buf.status, ct, traceID,
+					emitLLMResponseInvalid(r, eventLogger, drops, matched, targetURL, buf.status, ct, traceID,
 						[]string{fmt.Sprintf("response body is not valid JSON: %s", valErr)})
 					WriteErrorResponse(w, r, http.StatusBadGateway, "llm_response_invalid",
 						"upstream response failed schema validation: body is not valid JSON")
 					return
 				}
-				emitLLMResponseInvalid(r, eventLogger, matched, targetURL, buf.status, ct, traceID,
+				emitLLMResponseInvalid(r, eventLogger, drops, matched, targetURL, buf.status, ct, traceID,
 					[]string{fmt.Sprintf("response body is not valid JSON: %s", valErr)})
 				copyBufferedResponse(w, buf)
 				return
@@ -163,7 +164,7 @@ func LLMResponseValidationMiddleware(
 					slog.String("url", targetURL),
 					slog.Int("violations", len(violations)),
 				)
-				emitLLMResponseInvalid(r, eventLogger, matched, targetURL, buf.status, ct, traceID, violations)
+				emitLLMResponseInvalid(r, eventLogger, drops, matched, targetURL, buf.status, ct, traceID, violations)
 
 				if matched.Action == LLMResponseValidationActionBlock {
 					WriteErrorResponse(w, r, http.StatusBadGateway, "llm_response_invalid",
@@ -239,10 +240,11 @@ func isJSONContentType(ct string) bool {
 }
 
 // emitLLMResponseInvalid emits an llm.response_invalid structured event when an
-// event logger is configured.
+// event logger is configured. On error it emits slog.Warn and increments drops.
 func emitLLMResponseInvalid(
 	r *http.Request,
 	eventLogger ports.EventLogger,
+	drops ports.EventLogDropCounter,
 	matched *LLMResponseValidationRouteConfig,
 	targetURL string,
 	statusCode int,
@@ -250,9 +252,6 @@ func emitLLMResponseInvalid(
 	traceID string,
 	violations []string,
 ) {
-	if eventLogger == nil {
-		return
-	}
 	ev := events.NewLLMResponseInvalid(events.LLMResponseInvalidParams{
 		Route:       matched.RouteName,
 		Method:      r.Method,
@@ -263,7 +262,7 @@ func emitLLMResponseInvalid(
 		Violations:  violations,
 		TraceID:     traceID,
 	})
-	_ = eventLogger.Log(r.Context(), ev)
+	logEvent(r.Context(), eventLogger, drops, "response_validation", ev)
 }
 
 // LLMResponseValidationRouteInput carries the per-route configuration fields

@@ -38,6 +38,7 @@ type WebhookSignatureRule struct {
 func WebhookSignatureMiddleware(
 	rules []WebhookSignatureRule,
 	eventLogger ports.EventLogger,
+	drops ports.EventLogDropCounter,
 ) func(http.Handler) http.Handler {
 	index := make(map[string]domainwebhook.VerifyConfig, len(rules))
 	for _, r := range rules {
@@ -56,7 +57,7 @@ func WebhookSignatureMiddleware(
 			// restore it for the upstream handler.
 			body, err := io.ReadAll(r.Body)
 			if err != nil {
-				emitWebhookInvalid(r, eventLogger, cfg.Provider, "failed to read request body")
+				emitWebhookInvalid(r, eventLogger, drops, cfg.Provider, "failed to read request body")
 				WriteErrorResponse(w, r, http.StatusUnauthorized, "unauthorized", "could not read request body")
 				return
 			}
@@ -82,12 +83,12 @@ func WebhookSignatureMiddleware(
 			verifyErr := domainwebhook.Verify(cfg, r.Header, body, fullURL, formParams)
 			if verifyErr != nil {
 				reason := classifyError(verifyErr)
-				emitWebhookInvalid(r, eventLogger, cfg.Provider, reason)
+				emitWebhookInvalid(r, eventLogger, drops, cfg.Provider, reason)
 				WriteErrorResponse(w, r, http.StatusUnauthorized, "unauthorized", "webhook signature verification failed")
 				return
 			}
 
-			emitWebhookValid(r, eventLogger, cfg.Provider)
+			emitWebhookValid(r, eventLogger, drops, cfg.Provider)
 			next.ServeHTTP(w, r)
 		})
 	}
@@ -124,25 +125,19 @@ func classifyError(err error) string {
 
 // emitWebhookValid emits a webhook.signature_valid event.
 // If eventLogger is nil the call is a no-op.
-func emitWebhookValid(r *http.Request, eventLogger ports.EventLogger, provider domainwebhook.Provider) {
-	if eventLogger == nil {
-		return
-	}
+func emitWebhookValid(r *http.Request, eventLogger ports.EventLogger, drops ports.EventLogDropCounter, provider domainwebhook.Provider) {
 	ev := events.NewWebhookSignatureValid(events.WebhookSignatureValidParams{
 		Path:     r.URL.Path,
 		Method:   r.Method,
 		Provider: string(provider),
 		ClientIP: ExtractClientIP(r, true),
 	})
-	_ = eventLogger.Log(r.Context(), ev)
+	logEvent(r.Context(), eventLogger, drops, "webhook_signature", ev)
 }
 
 // emitWebhookInvalid emits a webhook.signature_invalid event.
 // If eventLogger is nil the call is a no-op.
-func emitWebhookInvalid(r *http.Request, eventLogger ports.EventLogger, provider domainwebhook.Provider, reason string) {
-	if eventLogger == nil {
-		return
-	}
+func emitWebhookInvalid(r *http.Request, eventLogger ports.EventLogger, drops ports.EventLogDropCounter, provider domainwebhook.Provider, reason string) {
 	ev := events.NewWebhookSignatureInvalid(events.WebhookSignatureInvalidParams{
 		Path:     r.URL.Path,
 		Method:   r.Method,
@@ -150,5 +145,5 @@ func emitWebhookInvalid(r *http.Request, eventLogger ports.EventLogger, provider
 		Reason:   reason,
 		ClientIP: ExtractClientIP(r, true),
 	})
-	_ = eventLogger.Log(r.Context(), ev)
+	logEvent(r.Context(), eventLogger, drops, "webhook_signature", ev)
 }

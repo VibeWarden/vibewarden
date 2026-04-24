@@ -26,7 +26,7 @@ func TestAuthMiddleware_KratosUnavailable_EmitsAvailabilityEvent(t *testing.T) {
 	}
 	spy := &fakeEventLogger{}
 
-	mw := AuthMiddleware(provider, cfg, newTestLogger(), spy, nil)
+	mw := AuthMiddleware(provider, cfg, newTestLogger(), spy, nil, nil)
 	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
@@ -78,7 +78,7 @@ func TestAuthMiddleware_KratosRecovery_EmitsRecoveredEvent(t *testing.T) {
 	}
 	spy := &fakeEventLogger{}
 
-	mw := AuthMiddleware(provider, cfg, newTestLogger(), spy, nil)
+	mw := AuthMiddleware(provider, cfg, newTestLogger(), spy, nil, nil)
 	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
@@ -115,7 +115,7 @@ func TestAuthMiddleware_KratosRecovery_NoDoubleRecoveryEvent(t *testing.T) {
 		LoginURL:          "/login",
 	}
 	spy := &fakeEventLogger{}
-	mw := AuthMiddleware(provider, cfg, newTestLogger(), spy, nil)
+	mw := AuthMiddleware(provider, cfg, newTestLogger(), spy, nil, nil)
 	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
 
 	// Fail once to set unavailable state.
@@ -157,7 +157,7 @@ func TestAuthMiddleware_AvailabilityEvent_PayloadContainsProviderURL(t *testing.
 		KratosPublicURL:   wantURL,
 	}
 	spy := &fakeEventLogger{}
-	mw := AuthMiddleware(provider, cfg, newTestLogger(), spy, nil)
+	mw := AuthMiddleware(provider, cfg, newTestLogger(), spy, nil, nil)
 	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
 
 	req := httptest.NewRequest(http.MethodGet, "/protected", nil)
@@ -192,7 +192,7 @@ func TestAuthMiddleware_KratosUnavailable_Returns503(t *testing.T) {
 		LoginURL:            "/login",
 		OnKratosUnavailable: ports.KratosUnavailable503,
 	}
-	mw := AuthMiddleware(provider, cfg, newTestLogger(), nil, nil)
+	mw := AuthMiddleware(provider, cfg, newTestLogger(), nil, nil, nil)
 	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(http.StatusOK) })
 
 	req := httptest.NewRequest(http.MethodGet, "/dashboard", nil)

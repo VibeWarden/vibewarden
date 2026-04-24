@@ -65,13 +65,13 @@ func AdminAuthMiddleware(cfg ports.AdminAuthConfig, auditLogger ports.AuditEvent
 			// Validate the X-Admin-Key header.
 			provided := r.Header.Get(adminKeyHeader)
 			if !secureEqual(provided, cfg.Token) {
-				emitAuditAuthFailure(r, auditLogger, "", "missing or invalid admin key")
+				emitAuditAuthFailure(r, auditLogger, nil, "", "missing or invalid admin key")
 				w.Header().Set("WWW-Authenticate", `Bearer realm="vibewarden-admin"`)
 				WriteErrorResponse(w, r, http.StatusUnauthorized, "unauthorized", "missing or invalid admin key")
 				return
 			}
 
-			emitAuditAuthSuccess(r, auditLogger, "", "")
+			emitAuditAuthSuccess(r, auditLogger, nil, "", "")
 			next.ServeHTTP(w, r)
 		})
 	}

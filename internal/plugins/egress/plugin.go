@@ -173,7 +173,7 @@ func (p *Plugin) Init(ctx context.Context) error {
 // Returns a no-op passthrough middleware when no routes have prompt injection
 // enabled.
 func (p *Plugin) PromptInjectionMiddleware() func(http.Handler) http.Handler {
-	return middleware.PromptInjectionMiddleware(p.promptInjectionRoutes, p.logger, p.eventLogger)
+	return middleware.PromptInjectionMiddleware(p.promptInjectionRoutes, p.logger, p.eventLogger, nil)
 }
 
 // LLMResponseValidationMiddleware returns the LLM response schema validation
@@ -187,7 +187,7 @@ func (p *Plugin) PromptInjectionMiddleware() func(http.Handler) http.Handler {
 // Returns a no-op passthrough middleware when no routes have LLM response
 // validation enabled.
 func (p *Plugin) LLMResponseValidationMiddleware() func(http.Handler) http.Handler {
-	return middleware.LLMResponseValidationMiddleware(p.llmResponseRoutes, p.logger, p.eventLogger)
+	return middleware.LLMResponseValidationMiddleware(p.llmResponseRoutes, p.logger, p.eventLogger, nil)
 }
 
 // Addr returns the TCP address the egress proxy is listening on.

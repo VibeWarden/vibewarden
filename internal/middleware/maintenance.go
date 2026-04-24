@@ -33,7 +33,7 @@ type MaintenanceConfig struct {
 // The JSON response body is:
 //
 //	{"error":"maintenance","status":503,"message":"<configured message>"}
-func MaintenanceMiddleware(cfg MaintenanceConfig, eventLogger ports.EventLogger) func(next http.Handler) http.Handler {
+func MaintenanceMiddleware(cfg MaintenanceConfig, eventLogger ports.EventLogger, drops ports.EventLogDropCounter) func(next http.Handler) http.Handler {
 	message := cfg.Message
 	if message == "" {
 		message = "Service is under maintenance"
@@ -53,23 +53,20 @@ func MaintenanceMiddleware(cfg MaintenanceConfig, eventLogger ports.EventLogger)
 				return
 			}
 
-			emitMaintenanceBlocked(r, eventLogger, message)
+			emitMaintenanceBlocked(r, eventLogger, drops, message)
 			WriteErrorResponse(w, r, http.StatusServiceUnavailable, "maintenance", message)
 		})
 	}
 }
 
 // emitMaintenanceBlocked emits a maintenance.request_blocked structured event.
-// If eventLogger is nil the call is a no-op. Errors are discarded so that
-// logging failures never affect request handling.
-func emitMaintenanceBlocked(r *http.Request, eventLogger ports.EventLogger, message string) {
-	if eventLogger == nil {
-		return
-	}
+// If eventLogger is nil the call is a no-op. On error it emits slog.Warn and
+// increments the drops counter.
+func emitMaintenanceBlocked(r *http.Request, eventLogger ports.EventLogger, drops ports.EventLogDropCounter, message string) {
 	ev := events.NewMaintenanceRequestBlocked(events.MaintenanceRequestBlockedParams{
 		Path:    r.URL.Path,
 		Method:  r.Method,
 		Message: message,
 	})
-	_ = eventLogger.Log(r.Context(), ev)
+	logEvent(r.Context(), eventLogger, drops, "maintenance", ev)
 }

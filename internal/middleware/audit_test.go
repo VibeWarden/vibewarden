@@ -64,7 +64,7 @@ func TestAuthMiddleware_EmitsAuditAuthSuccessEvent(t *testing.T) {
 	}
 	auditSpy := &fakeAuditEventLogger{}
 
-	mw := AuthMiddleware(provider, cfg, newTestLogger(), nil, auditSpy)
+	mw := AuthMiddleware(provider, cfg, newTestLogger(), nil, auditSpy, nil)
 	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
@@ -106,7 +106,7 @@ func TestAuthMiddleware_EmitsAuditAuthFailureOnMissingCookie(t *testing.T) {
 	}
 	auditSpy := &fakeAuditEventLogger{}
 
-	mw := AuthMiddleware(provider, cfg, newTestLogger(), nil, auditSpy)
+	mw := AuthMiddleware(provider, cfg, newTestLogger(), nil, auditSpy, nil)
 	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
@@ -141,7 +141,7 @@ func TestAuthMiddleware_EmitsAuditAuthFailureOnInvalidSession(t *testing.T) {
 	}
 	auditSpy := &fakeAuditEventLogger{}
 
-	mw := AuthMiddleware(provider, cfg, newTestLogger(), nil, auditSpy)
+	mw := AuthMiddleware(provider, cfg, newTestLogger(), nil, auditSpy, nil)
 	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
@@ -167,7 +167,7 @@ func TestAuthMiddleware_NilAuditLoggerDoesNotPanic(t *testing.T) {
 	}
 
 	// nil auditLogger must not cause a panic.
-	mw := AuthMiddleware(provider, cfg, newTestLogger(), nil, nil)
+	mw := AuthMiddleware(provider, cfg, newTestLogger(), nil, nil, nil)
 	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
@@ -273,7 +273,7 @@ func TestAPIKeyMiddleware_EmitsAuditSuccessEvent(t *testing.T) {
 	cfg := ports.APIKeyConfig{}
 	auditSpy := &fakeAuditEventLogger{}
 
-	mw := APIKeyMiddleware(validator, cfg, nil, auditSpy)
+	mw := APIKeyMiddleware(validator, cfg, nil, auditSpy, nil)
 	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
@@ -306,7 +306,7 @@ func TestAPIKeyMiddleware_EmitsAuditFailureOnMissingKey(t *testing.T) {
 	cfg := ports.APIKeyConfig{}
 	auditSpy := &fakeAuditEventLogger{}
 
-	mw := APIKeyMiddleware(validator, cfg, nil, auditSpy)
+	mw := APIKeyMiddleware(validator, cfg, nil, auditSpy, nil)
 	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
@@ -335,7 +335,7 @@ func TestAPIKeyMiddleware_EmitsAuditFailureOnInvalidKey(t *testing.T) {
 	cfg := ports.APIKeyConfig{}
 	auditSpy := &fakeAuditEventLogger{}
 
-	mw := APIKeyMiddleware(validator, cfg, nil, auditSpy)
+	mw := APIKeyMiddleware(validator, cfg, nil, auditSpy, nil)
 	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
@@ -363,7 +363,7 @@ func TestAPIKeyMiddleware_EmitsAuditForbiddenEvent(t *testing.T) {
 	cfg := ports.APIKeyConfig{ScopeRules: scopeRules()}
 	auditSpy := &fakeAuditEventLogger{}
 
-	mw := APIKeyMiddleware(validator, cfg, nil, auditSpy)
+	mw := APIKeyMiddleware(validator, cfg, nil, auditSpy, nil)
 	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
@@ -396,7 +396,7 @@ func TestAPIKeyMiddleware_NilAuditLoggerDoesNotPanic(t *testing.T) {
 	validator := &fakeAPIKeyValidator{keys: map[string]*auth.APIKey{}}
 	cfg := ports.APIKeyConfig{}
 
-	mw := APIKeyMiddleware(validator, cfg, nil, nil)
+	mw := APIKeyMiddleware(validator, cfg, nil, nil, nil)
 	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
@@ -420,7 +420,7 @@ func TestRateLimitMiddleware_EmitsAuditRateLimitHitEvent(t *testing.T) {
 	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
-	mw := RateLimitMiddleware(ipLimiter, userLimiter, defaultCfg(), newTestLogger(), nil, auditSpy)
+	mw := RateLimitMiddleware(ipLimiter, userLimiter, defaultCfg(), newTestLogger(), nil, auditSpy, nil)
 	handler := mw(next)
 
 	r := httptest.NewRequest(http.MethodGet, "/api/data", nil)
@@ -460,7 +460,7 @@ func TestRateLimitMiddleware_EmitsAuditRateLimitHitOnUserLimit(t *testing.T) {
 	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
-	mw := RateLimitMiddleware(ipLimiter, userLimiter, defaultCfg(), newTestLogger(), nil, auditSpy)
+	mw := RateLimitMiddleware(ipLimiter, userLimiter, defaultCfg(), newTestLogger(), nil, auditSpy, nil)
 	handler := mw(next)
 
 	r := httptest.NewRequest(http.MethodGet, "/api/data", nil)
@@ -488,7 +488,7 @@ func TestRateLimitMiddleware_NilAuditLoggerDoesNotPanic(t *testing.T) {
 	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
-	mw := RateLimitMiddleware(ipLimiter, userLimiter, defaultCfg(), newTestLogger(), nil, nil)
+	mw := RateLimitMiddleware(ipLimiter, userLimiter, defaultCfg(), newTestLogger(), nil, nil, nil)
 	handler := mw(next)
 
 	r := httptest.NewRequest(http.MethodGet, "/api/data", nil)

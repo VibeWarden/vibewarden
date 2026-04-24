@@ -157,7 +157,7 @@ func BenchmarkProxy_WithRateLimiting(b *testing.B) {
 	cfg := defaultRateLimitCfg()
 
 	handler := middleware.RateLimitMiddleware(
-		ipLimiter, userLimiter, cfg, logger, nil, nil,
+		ipLimiter, userLimiter, cfg, logger, nil, nil, nil,
 	)(upstreamHandler)
 
 	b.ReportAllocs()
@@ -212,7 +212,7 @@ func BenchmarkProxy_AllMiddleware(b *testing.B) {
 
 	// Build the chain from innermost to outermost.
 	wafMW := middleware.WAFMiddleware(rs, defaultWAFCfg(), logger, noopMetrics{}, nil)
-	rateMW := middleware.RateLimitMiddleware(ipLimiter, userLimiter, defaultRateLimitCfg(), logger, nil, nil)
+	rateMW := middleware.RateLimitMiddleware(ipLimiter, userLimiter, defaultRateLimitCfg(), logger, nil, nil, nil)
 	secMW := middleware.SecurityHeaders(defaultSecurityCfg())
 
 	handler := secMW(rateMW(wafMW(upstreamHandler)))

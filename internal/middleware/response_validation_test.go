@@ -123,7 +123,7 @@ func invokeMiddleware(
 	eventLogger ports.EventLogger,
 ) *httptest.ResponseRecorder {
 	t.Helper()
-	mw := middleware.LLMResponseValidationMiddleware(routes, slog.Default(), eventLogger)
+	mw := middleware.LLMResponseValidationMiddleware(routes, slog.Default(), eventLogger, nil)
 	handler := mw(upstream)
 
 	req := httptest.NewRequest(http.MethodPost, "/", bytes.NewReader([]byte(`{"prompt":"hello"}`)))
@@ -143,7 +143,7 @@ func TestLLMResponseValidation_NoRoutes(t *testing.T) {
 	upstream := upstreamHandler(http.StatusOK, "application/json",
 		`{"model":"gpt-4"}`) // would fail schema
 
-	mw := middleware.LLMResponseValidationMiddleware(nil, slog.Default(), nil)
+	mw := middleware.LLMResponseValidationMiddleware(nil, slog.Default(), nil, nil)
 	handler := mw(upstream)
 
 	req := httptest.NewRequest(http.MethodPost, "/", nil)
@@ -409,7 +409,7 @@ func TestLLMResponseValidation_NoTargetURL(t *testing.T) {
 	routes := newMiddlewareRoutes("openai", "https://api.openai.com/**",
 		buildValidator(t), middleware.LLMResponseValidationActionBlock)
 
-	mw := middleware.LLMResponseValidationMiddleware(routes, slog.Default(), nil)
+	mw := middleware.LLMResponseValidationMiddleware(routes, slog.Default(), nil, nil)
 	handler := mw(upstream)
 
 	// Request without X-Egress-URL and not using /_egress/ path.

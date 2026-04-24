@@ -56,3 +56,6 @@ func (NoOpMetricsCollector) IncEgressErrorTotal(_ string) {}
 
 // SetTLSCertExpirySeconds implements ports.MetricsCollector and does nothing.
 func (NoOpMetricsCollector) SetTLSCertExpirySeconds(_ string, _ float64) {}
+
+// IncEventLogDrop implements ports.EventLogDropCounter and does nothing.
+func (NoOpMetricsCollector) IncEventLogDrop(_, _ string) {}

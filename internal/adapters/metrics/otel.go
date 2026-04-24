@@ -31,6 +31,7 @@ type OTelAdapter struct {
 	egressDuration            ports.Float64Histogram
 	egressErrorsTotal         ports.Int64Counter
 	tlsCertExpirySeconds      ports.Int64UpDownCounter
+	eventLogDrops             ports.Int64Counter
 	currentConns              atomic.Int64
 	currentCBState            atomic.Int64
 	currentUpstreamHealthy    atomic.Int64
@@ -156,6 +157,13 @@ func NewOTelAdapter(provider ports.OTelProvider, pathPatterns []string) (*OTelAd
 		return nil, err
 	}
 
+	eventLogDrops, err := meter.Int64Counter("vibewarden_event_log_drops_total",
+		ports.WithDescription("Total number of audit/event-log emissions dropped by middleware because the logger sink returned an error."),
+	)
+	if err != nil {
+		return nil, err
+	}
+
 	return &OTelAdapter{
 		requestsTotal:        requestsTotal,
 		requestDuration:      requestDuration,
@@ -172,6 +180,7 @@ func NewOTelAdapter(provider ports.OTelProvider, pathPatterns []string) (*OTelAd
 		egressDuration:       egressDuration,
 		egressErrorsTotal:    egressErrorsTotal,
 		tlsCertExpirySeconds: tlsCertExpirySeconds,
+		eventLogDrops:        eventLogDrops,
 		pathMatcher:          NewPathMatcher(pathPatterns),
 		handler:              provider.Handler(),
 	}, nil
@@ -322,4 +331,13 @@ func (a *OTelAdapter) SetTLSCertExpirySeconds(domain string, seconds float64) {
 			ports.Attribute{Key: "domain", Value: domain},
 		)
 	}
+}
+
+// IncEventLogDrop implements ports.EventLogDropCounter.
+// Increments vibewarden_event_log_drops_total{middleware, reason}.
+func (a *OTelAdapter) IncEventLogDrop(middleware, reason string) {
+	a.eventLogDrops.Add(context.Background(), 1,
+		ports.Attribute{Key: "middleware", Value: middleware},
+		ports.Attribute{Key: "reason", Value: reason},
+	)
 }
