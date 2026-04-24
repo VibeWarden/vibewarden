@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"testing"
+	"time"
 
 	"github.com/vibewarden/vibewarden/internal/app/eject"
 	"github.com/vibewarden/vibewarden/internal/config"
@@ -339,5 +340,382 @@ func TestErrUnsupportedFormat_Error(t *testing.T) {
 	want := "nginx"
 	if len(msg) < len(want) {
 		t.Errorf("error message %q does not mention format", msg)
+	}
+}
+
+// TestService_Eject_BodySizeConfig exercises buildBodySizeConfig through
+// Service.Eject, verifying correct translation of human-readable size strings
+// and per-path overrides into ports.BodySizeConfig.
+func TestService_Eject_BodySizeConfig(t *testing.T) {
+	tests := []struct {
+		name          string
+		bodySizeCfg   config.BodySizeConfig
+		wantEnabled   bool
+		wantMaxBytes  int64
+		wantOverrides []ports.BodySizeOverride
+	}{
+		{
+			name:         "empty Max returns zero config",
+			bodySizeCfg:  config.BodySizeConfig{Max: ""},
+			wantEnabled:  false,
+			wantMaxBytes: 0,
+		},
+		{
+			name:         "unparseable Max returns zero config",
+			bodySizeCfg:  config.BodySizeConfig{Max: "notasize"},
+			wantEnabled:  false,
+			wantMaxBytes: 0,
+		},
+		{
+			name:         "valid Max with no overrides",
+			bodySizeCfg:  config.BodySizeConfig{Max: "10MB"},
+			wantEnabled:  true,
+			wantMaxBytes: 10 * 1024 * 1024,
+		},
+		{
+			name: "valid Max with one valid override",
+			bodySizeCfg: config.BodySizeConfig{
+				Max: "10MB",
+				Overrides: []config.BodySizeOverrideConfig{
+					{Path: "/upload", Max: "50MB"},
+				},
+			},
+			wantEnabled:  true,
+			wantMaxBytes: 10 * 1024 * 1024,
+			wantOverrides: []ports.BodySizeOverride{
+				{Path: "/upload", MaxBytes: 50 * 1024 * 1024},
+			},
+		},
+		{
+			name: "valid Max with one unparseable override — override silently skipped",
+			bodySizeCfg: config.BodySizeConfig{
+				Max: "10MB",
+				Overrides: []config.BodySizeOverrideConfig{
+					{Path: "/bad", Max: "badsize"},
+				},
+			},
+			wantEnabled:   true,
+			wantMaxBytes:  10 * 1024 * 1024,
+			wantOverrides: nil,
+		},
+		{
+			name: "valid Max with mixed overrides — unparseable skipped, valid retained",
+			bodySizeCfg: config.BodySizeConfig{
+				Max: "10MB",
+				Overrides: []config.BodySizeOverrideConfig{
+					{Path: "/bad", Max: "badsize"},
+					{Path: "/upload", Max: "50MB"},
+				},
+			},
+			wantEnabled:  true,
+			wantMaxBytes: 10 * 1024 * 1024,
+			wantOverrides: []ports.BodySizeOverride{
+				{Path: "/upload", MaxBytes: 50 * 1024 * 1024},
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			b := &fakeBuilder{}
+			svc := eject.NewService(b)
+
+			cfg := minimalConfig()
+			cfg.BodySize = tt.bodySizeCfg
+
+			_, err := svc.Eject(cfg, nil)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			got := b.got.BodySize
+			if got.Enabled != tt.wantEnabled {
+				t.Errorf("BodySize.Enabled = %v, want %v", got.Enabled, tt.wantEnabled)
+			}
+			if got.MaxBytes != tt.wantMaxBytes {
+				t.Errorf("BodySize.MaxBytes = %d, want %d", got.MaxBytes, tt.wantMaxBytes)
+			}
+			if len(got.Overrides) != len(tt.wantOverrides) {
+				t.Fatalf("BodySize.Overrides len = %d, want %d", len(got.Overrides), len(tt.wantOverrides))
+			}
+			for i, ov := range tt.wantOverrides {
+				if got.Overrides[i].Path != ov.Path {
+					t.Errorf("Overrides[%d].Path = %q, want %q", i, got.Overrides[i].Path, ov.Path)
+				}
+				if got.Overrides[i].MaxBytes != ov.MaxBytes {
+					t.Errorf("Overrides[%d].MaxBytes = %d, want %d", i, got.Overrides[i].MaxBytes, ov.MaxBytes)
+				}
+			}
+		})
+	}
+}
+
+// TestService_Eject_ResilienceConfig exercises buildResilienceConfig through
+// Service.Eject, verifying timeout parsing, circuit breaker, and retry
+// translation into ports.ResilienceConfig.
+func TestService_Eject_ResilienceConfig(t *testing.T) {
+	tests := []struct {
+		name             string
+		resilienceCfg    config.ResilienceConfig
+		wantTimeout      time.Duration
+		wantCBEnabled    bool
+		wantCBThreshold  int
+		wantCBTimeout    time.Duration
+		wantRetryEnabled bool
+		wantMaxAttempts  int
+		wantInitBackoff  time.Duration
+		wantMaxBackoff   time.Duration
+		wantRetryOn      []int
+	}{
+		{
+			name:          "empty timeout — no timeout set",
+			resilienceCfg: config.ResilienceConfig{Timeout: ""},
+			wantTimeout:   0,
+		},
+		{
+			name:          "zero string timeout — no timeout set",
+			resilienceCfg: config.ResilienceConfig{Timeout: "0"},
+			wantTimeout:   0,
+		},
+		{
+			name:          "valid timeout parsed correctly",
+			resilienceCfg: config.ResilienceConfig{Timeout: "30s"},
+			wantTimeout:   30 * time.Second,
+		},
+		{
+			name:          "invalid timeout falls back to 30s",
+			resilienceCfg: config.ResilienceConfig{Timeout: "notaduration"},
+			wantTimeout:   30 * time.Second,
+		},
+		{
+			name: "circuit breaker disabled",
+			resilienceCfg: config.ResilienceConfig{
+				CircuitBreaker: config.CircuitBreakerConfig{Enabled: false},
+			},
+			wantCBEnabled: false,
+		},
+		{
+			name: "circuit breaker enabled with valid threshold and timeout",
+			resilienceCfg: config.ResilienceConfig{
+				CircuitBreaker: config.CircuitBreakerConfig{
+					Enabled:   true,
+					Threshold: 10,
+					Timeout:   "2m",
+				},
+			},
+			wantCBEnabled:   true,
+			wantCBThreshold: 10,
+			wantCBTimeout:   2 * time.Minute,
+		},
+		{
+			name: "circuit breaker enabled with zero threshold clamped to 5",
+			resilienceCfg: config.ResilienceConfig{
+				CircuitBreaker: config.CircuitBreakerConfig{
+					Enabled:   true,
+					Threshold: 0,
+					Timeout:   "60s",
+				},
+			},
+			wantCBEnabled:   true,
+			wantCBThreshold: 5,
+			wantCBTimeout:   60 * time.Second,
+		},
+		{
+			name: "circuit breaker enabled with negative threshold clamped to 5",
+			resilienceCfg: config.ResilienceConfig{
+				CircuitBreaker: config.CircuitBreakerConfig{
+					Enabled:   true,
+					Threshold: -3,
+					Timeout:   "60s",
+				},
+			},
+			wantCBEnabled:   true,
+			wantCBThreshold: 5,
+			wantCBTimeout:   60 * time.Second,
+		},
+		{
+			name: "circuit breaker enabled with invalid timeout falls back to 60s",
+			resilienceCfg: config.ResilienceConfig{
+				CircuitBreaker: config.CircuitBreakerConfig{
+					Enabled:   true,
+					Threshold: 5,
+					Timeout:   "notaduration",
+				},
+			},
+			wantCBEnabled:   true,
+			wantCBThreshold: 5,
+			wantCBTimeout:   60 * time.Second,
+		},
+		{
+			name: "circuit breaker enabled with empty timeout uses 60s default",
+			resilienceCfg: config.ResilienceConfig{
+				CircuitBreaker: config.CircuitBreakerConfig{
+					Enabled:   true,
+					Threshold: 5,
+					Timeout:   "",
+				},
+			},
+			wantCBEnabled:   true,
+			wantCBThreshold: 5,
+			wantCBTimeout:   60 * time.Second,
+		},
+		{
+			name: "retry disabled",
+			resilienceCfg: config.ResilienceConfig{
+				Retry: config.RetryConfig{Enabled: false},
+			},
+			wantRetryEnabled: false,
+		},
+		{
+			name: "retry enabled with valid settings",
+			resilienceCfg: config.ResilienceConfig{
+				Retry: config.RetryConfig{
+					Enabled:        true,
+					MaxAttempts:    5,
+					InitialBackoff: "200ms",
+					MaxBackoff:     "5s",
+					RetryOn:        []int{500, 502},
+				},
+			},
+			wantRetryEnabled: true,
+			wantMaxAttempts:  5,
+			wantInitBackoff:  200 * time.Millisecond,
+			wantMaxBackoff:   5 * time.Second,
+			wantRetryOn:      []int{500, 502},
+		},
+		{
+			name: "retry enabled with MaxAttempts less than 2 clamped to 3",
+			resilienceCfg: config.ResilienceConfig{
+				Retry: config.RetryConfig{
+					Enabled:     true,
+					MaxAttempts: 1,
+					RetryOn:     []int{502},
+				},
+			},
+			wantRetryEnabled: true,
+			wantMaxAttempts:  3,
+			wantInitBackoff:  100 * time.Millisecond,
+			wantMaxBackoff:   10 * time.Second,
+			wantRetryOn:      []int{502},
+		},
+		{
+			name: "retry enabled with zero MaxAttempts clamped to 3",
+			resilienceCfg: config.ResilienceConfig{
+				Retry: config.RetryConfig{
+					Enabled:     true,
+					MaxAttempts: 0,
+					RetryOn:     []int{502},
+				},
+			},
+			wantRetryEnabled: true,
+			wantMaxAttempts:  3,
+			wantInitBackoff:  100 * time.Millisecond,
+			wantMaxBackoff:   10 * time.Second,
+			wantRetryOn:      []int{502},
+		},
+		{
+			name: "retry enabled with empty RetryOn defaults to 502 503 504",
+			resilienceCfg: config.ResilienceConfig{
+				Retry: config.RetryConfig{
+					Enabled:     true,
+					MaxAttempts: 3,
+				},
+			},
+			wantRetryEnabled: true,
+			wantMaxAttempts:  3,
+			wantInitBackoff:  100 * time.Millisecond,
+			wantMaxBackoff:   10 * time.Second,
+			wantRetryOn:      []int{502, 503, 504},
+		},
+		{
+			name: "retry enabled with invalid InitialBackoff falls back to 100ms",
+			resilienceCfg: config.ResilienceConfig{
+				Retry: config.RetryConfig{
+					Enabled:        true,
+					MaxAttempts:    3,
+					InitialBackoff: "badbackoff",
+					MaxBackoff:     "10s",
+					RetryOn:        []int{502},
+				},
+			},
+			wantRetryEnabled: true,
+			wantMaxAttempts:  3,
+			wantInitBackoff:  100 * time.Millisecond,
+			wantMaxBackoff:   10 * time.Second,
+			wantRetryOn:      []int{502},
+		},
+		{
+			name: "retry enabled with invalid MaxBackoff falls back to 10s",
+			resilienceCfg: config.ResilienceConfig{
+				Retry: config.RetryConfig{
+					Enabled:        true,
+					MaxAttempts:    3,
+					InitialBackoff: "100ms",
+					MaxBackoff:     "badmax",
+					RetryOn:        []int{502},
+				},
+			},
+			wantRetryEnabled: true,
+			wantMaxAttempts:  3,
+			wantInitBackoff:  100 * time.Millisecond,
+			wantMaxBackoff:   10 * time.Second,
+			wantRetryOn:      []int{502},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			b := &fakeBuilder{}
+			svc := eject.NewService(b)
+
+			cfg := minimalConfig()
+			cfg.Resilience = tt.resilienceCfg
+
+			_, err := svc.Eject(cfg, nil)
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			got := b.got.Resilience
+
+			if got.Timeout != tt.wantTimeout {
+				t.Errorf("Resilience.Timeout = %v, want %v", got.Timeout, tt.wantTimeout)
+			}
+
+			if got.CircuitBreaker.Enabled != tt.wantCBEnabled {
+				t.Errorf("CircuitBreaker.Enabled = %v, want %v", got.CircuitBreaker.Enabled, tt.wantCBEnabled)
+			}
+			if tt.wantCBEnabled {
+				if got.CircuitBreaker.Threshold != tt.wantCBThreshold {
+					t.Errorf("CircuitBreaker.Threshold = %d, want %d", got.CircuitBreaker.Threshold, tt.wantCBThreshold)
+				}
+				if got.CircuitBreaker.Timeout != tt.wantCBTimeout {
+					t.Errorf("CircuitBreaker.Timeout = %v, want %v", got.CircuitBreaker.Timeout, tt.wantCBTimeout)
+				}
+			}
+
+			if got.Retry.Enabled != tt.wantRetryEnabled {
+				t.Errorf("Retry.Enabled = %v, want %v", got.Retry.Enabled, tt.wantRetryEnabled)
+			}
+			if tt.wantRetryEnabled {
+				if got.Retry.MaxAttempts != tt.wantMaxAttempts {
+					t.Errorf("Retry.MaxAttempts = %d, want %d", got.Retry.MaxAttempts, tt.wantMaxAttempts)
+				}
+				if got.Retry.InitialBackoff != tt.wantInitBackoff {
+					t.Errorf("Retry.InitialBackoff = %v, want %v", got.Retry.InitialBackoff, tt.wantInitBackoff)
+				}
+				if got.Retry.MaxBackoff != tt.wantMaxBackoff {
+					t.Errorf("Retry.MaxBackoff = %v, want %v", got.Retry.MaxBackoff, tt.wantMaxBackoff)
+				}
+				if len(got.Retry.RetryOn) != len(tt.wantRetryOn) {
+					t.Fatalf("Retry.RetryOn len = %d, want %d", len(got.Retry.RetryOn), len(tt.wantRetryOn))
+				}
+				for i, code := range tt.wantRetryOn {
+					if got.Retry.RetryOn[i] != code {
+						t.Errorf("Retry.RetryOn[%d] = %d, want %d", i, got.Retry.RetryOn[i], code)
+					}
+				}
+			}
+		})
 	}
 }
