@@ -4,13 +4,13 @@ package caddy
 import (
 	"encoding/json"
 	"fmt"
-	"io"
+	"log/slog"
 	"net/http"
+	"os"
 
 	gocaddy "github.com/caddyserver/caddy/v2"
 	"github.com/caddyserver/caddy/v2/modules/caddyhttp"
 
-	auditadapter "github.com/vibewarden/vibewarden/internal/adapters/audit"
 	"github.com/vibewarden/vibewarden/internal/middleware"
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
@@ -62,16 +62,35 @@ func (AdminAuthHandler) CaddyModule() gocaddy.ModuleInfo {
 	}
 }
 
-// Provision implements gocaddy.Provisioner.
-// It is called once after the module is loaded from JSON and creates the
-// compiled middleware handler from the configuration.
+// Provision implements gocaddy.Provisioner. It reads services from the
+// composition-root registry and forwards to ProvisionWith. Production code path.
 func (h *AdminAuthHandler) Provision(_ gocaddy.Context) error {
+	return h.ProvisionWith(currentServices())
+}
+
+// ProvisionWith initialises the handler with explicit services. Tests call this
+// directly with mock services; production calls it via Provision.
+//
+// When services.AuditEventLogger is nil the handler emits a one-time Warn log
+// and skips audit events; request processing continues normally.
+func (h *AdminAuthHandler) ProvisionWith(services RuntimeServices) error {
+	logger := services.Logger
+	if logger == nil {
+		logger = slog.New(slog.NewJSONHandler(os.Stderr, nil))
+	}
+
+	var auditLogger ports.AuditEventLogger
+	if services.AuditEventLogger != nil {
+		auditLogger = services.AuditEventLogger
+	} else {
+		logger.Warn("admin-auth: AuditEventLogger not set in RuntimeServices; audit events will be dropped")
+	}
+
 	cfg := ports.AdminAuthConfig{
 		Enabled:    h.Config.Enabled,
 		Token:      h.Config.Token,
 		ConfigPath: h.Config.ConfigPath,
 	}
-	auditLogger := auditadapter.NewJSONWriter(io.Discard)
 	h.handler = middleware.AdminAuthMiddleware(cfg, auditLogger)
 	return nil
 }

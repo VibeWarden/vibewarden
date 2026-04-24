@@ -10,6 +10,16 @@ import (
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
 
+// fakeCBFactory is a test double for ports.CircuitBreakerFactory.
+type fakeCBFactory struct {
+	cb  ports.CircuitBreaker
+	err error
+}
+
+func (f *fakeCBFactory) NewCircuitBreaker(_ ports.CircuitBreakerConfig) (ports.CircuitBreaker, error) {
+	return f.cb, f.err
+}
+
 var _ ports.CircuitBreaker = (*fakeCB)(nil)
 
 // fakeCB is a simple ports.CircuitBreaker fake for handler tests.
@@ -217,6 +227,36 @@ func TestBuildCaddyConfig_CircuitBreakerBeforeTimeout(t *testing.T) {
 	}
 	if cbIdx >= toIdx {
 		t.Errorf("circuit breaker (index %d) must come before timeout (index %d)", cbIdx, toIdx)
+	}
+}
+
+// TestCircuitBreakerHandler_ProvisionWith_MissingFactory verifies that
+// ProvisionWith returns an error when CircuitBreakerFactory is nil.
+func TestCircuitBreakerHandler_ProvisionWith_MissingFactory(t *testing.T) {
+	h := &CircuitBreakerHandler{
+		Config: CircuitBreakerHandlerConfig{Threshold: 5, TimeoutSeconds: 60},
+	}
+	err := h.ProvisionWith(RuntimeServices{})
+	if err == nil {
+		t.Error("ProvisionWith() should return error when CircuitBreakerFactory is nil")
+	}
+}
+
+// TestCircuitBreakerHandler_ProvisionWith_UsesFactory verifies that ProvisionWith
+// uses the provided CircuitBreakerFactory to create the circuit breaker.
+func TestCircuitBreakerHandler_ProvisionWith_UsesFactory(t *testing.T) {
+	fakeCB := &fakeCB{}
+	factory := &fakeCBFactory{cb: fakeCB}
+
+	h := &CircuitBreakerHandler{
+		Config: CircuitBreakerHandlerConfig{Threshold: 5, TimeoutSeconds: 60},
+	}
+	err := h.ProvisionWith(RuntimeServices{CircuitBreakerFactory: factory})
+	if err != nil {
+		t.Fatalf("ProvisionWith() unexpected error: %v", err)
+	}
+	if h.cb != fakeCB {
+		t.Error("ProvisionWith() did not use the provided factory's circuit breaker")
 	}
 }
 

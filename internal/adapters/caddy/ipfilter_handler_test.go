@@ -60,7 +60,7 @@ func TestIPFilterHandler_Provision_ValidAddresses(t *testing.T) {
 					Addresses: tt.addresses,
 				},
 			}
-			if err := h.Provision(gocaddy.Context{}); err != nil {
+			if err := h.ProvisionWith(RuntimeServices{}); err != nil {
 				t.Errorf("Provision() unexpected error: %v", err)
 			}
 		})
@@ -76,7 +76,7 @@ func TestIPFilterHandler_Provision_InvalidAddress(t *testing.T) {
 			Addresses: []string{"not-an-ip"},
 		},
 	}
-	if err := h.Provision(gocaddy.Context{}); err == nil {
+	if err := h.ProvisionWith(RuntimeServices{}); err == nil {
 		t.Error("Provision() expected error for invalid address, got nil")
 	}
 }
@@ -135,7 +135,7 @@ func TestIPFilterHandler_ServeHTTP_Blocklist(t *testing.T) {
 					Addresses: tt.addresses,
 				},
 			}
-			if err := h.Provision(gocaddy.Context{}); err != nil {
+			if err := h.ProvisionWith(RuntimeServices{}); err != nil {
 				t.Fatalf("Provision() error: %v", err)
 			}
 
@@ -218,7 +218,7 @@ func TestIPFilterHandler_ServeHTTP_Allowlist(t *testing.T) {
 					Addresses: tt.addresses,
 				},
 			}
-			if err := h.Provision(gocaddy.Context{}); err != nil {
+			if err := h.ProvisionWith(RuntimeServices{}); err != nil {
 				t.Fatalf("Provision() error: %v", err)
 			}
 
@@ -273,7 +273,7 @@ func TestIPFilterHandler_MatchesAny(t *testing.T) {
 					Addresses: tt.addresses,
 				},
 			}
-			if err := h.Provision(gocaddy.Context{}); err != nil {
+			if err := h.ProvisionWith(RuntimeServices{}); err != nil {
 				t.Fatalf("Provision() error: %v", err)
 			}
 
@@ -313,7 +313,7 @@ func TestIPFilterHandler_UnknownMode_TreatedAsBlocklist(t *testing.T) {
 			Addresses: []string{"10.0.0.1"},
 		},
 	}
-	if err := h.Provision(gocaddy.Context{}); err != nil {
+	if err := h.ProvisionWith(RuntimeServices{}); err != nil {
 		t.Fatalf("Provision() error: %v", err)
 	}
 
@@ -347,7 +347,7 @@ func TestIPFilterHandler_ServeHTTP_Blocked403IsJSON(t *testing.T) {
 			Addresses: []string{"10.0.0.1"},
 		},
 	}
-	if err := h.Provision(gocaddy.Context{}); err != nil {
+	if err := h.ProvisionWith(RuntimeServices{}); err != nil {
 		t.Fatalf("Provision() error: %v", err)
 	}
 

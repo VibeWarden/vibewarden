@@ -4,7 +4,6 @@ package caddy
 import (
 	"encoding/json"
 	"fmt"
-	"io"
 	"log/slog"
 	"net/http"
 	"os"
@@ -13,9 +12,6 @@ import (
 	gocaddy "github.com/caddyserver/caddy/v2"
 	"github.com/caddyserver/caddy/v2/modules/caddyhttp"
 
-	auditadapter "github.com/vibewarden/vibewarden/internal/adapters/audit"
-	logadapter "github.com/vibewarden/vibewarden/internal/adapters/log"
-	resilienceadapter "github.com/vibewarden/vibewarden/internal/adapters/resilience"
 	"github.com/vibewarden/vibewarden/internal/middleware"
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
@@ -80,12 +76,32 @@ func (CircuitBreakerHandler) CaddyModule() gocaddy.ModuleInfo {
 	}
 }
 
-// Provision implements gocaddy.Provisioner. It initialises the circuit breaker,
-// logger, event logger, and audit logger.
+// Provision implements gocaddy.Provisioner. It reads services from the
+// composition-root registry and forwards to ProvisionWith. Production code path.
 func (h *CircuitBreakerHandler) Provision(_ gocaddy.Context) error {
-	h.logger = slog.New(slog.NewJSONHandler(os.Stderr, nil))
-	h.eventLogger = logadapter.NewSlogEventLogger(os.Stdout)
-	h.auditLogger = auditadapter.NewJSONWriter(io.Discard)
+	return h.ProvisionWith(currentServices())
+}
+
+// ProvisionWith initialises the handler with explicit services. Tests call this
+// directly with mock services; production calls it via Provision.
+//
+// Returns an error when services.CircuitBreakerFactory is nil — that is a
+// programmer error (the composition root failed to wire the dependency).
+func (h *CircuitBreakerHandler) ProvisionWith(services RuntimeServices) error {
+	h.logger = services.Logger
+	if h.logger == nil {
+		h.logger = slog.New(slog.NewJSONHandler(os.Stderr, nil))
+	}
+	h.eventLogger = services.EventLogger
+	h.auditLogger = services.AuditEventLogger
+
+	if services.AuditEventLogger == nil {
+		h.logger.Warn("circuit-breaker: AuditEventLogger not set in RuntimeServices; audit events will be dropped")
+	}
+
+	if services.CircuitBreakerFactory == nil {
+		return fmt.Errorf("missing CircuitBreakerFactory in runtime services")
+	}
 
 	cfg := ports.CircuitBreakerConfig{
 		Enabled:   true,
@@ -93,11 +109,10 @@ func (h *CircuitBreakerHandler) Provision(_ gocaddy.Context) error {
 		Timeout:   time.Duration(h.Config.TimeoutSeconds * float64(time.Second)),
 	}
 
-	cb, err := resilienceadapter.NewInMemoryCircuitBreaker(cfg, h.logger, h.eventLogger, nil)
+	cb, err := services.CircuitBreakerFactory.NewCircuitBreaker(cfg)
 	if err != nil {
 		return fmt.Errorf("provisioning circuit breaker: %w", err)
 	}
-	cb.WithAuditLogger(h.auditLogger)
 	h.cb = cb
 	return nil
 }

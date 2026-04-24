@@ -91,6 +91,57 @@ func TestMCPPackage_NoAdapterOrAppImports(t *testing.T) {
 	assertNoForbiddenImports(t, pkgRoot, banned)
 }
 
+// TestCaddyAdapter_NoPeerAdapterImports asserts that no non-test Go file under
+// internal/adapters/caddy/ imports any peer adapter package (i.e. any path
+// matching internal/adapters/ other than internal/adapters/caddy itself).
+//
+// This guards the ADR-092 invariant: Caddy handler modules must receive their
+// dependencies via RuntimeServices, not by directly constructing sibling adapters.
+func TestCaddyAdapter_NoPeerAdapterImports(t *testing.T) {
+	const (
+		moduleRoot  = "github.com/vibewarden/vibewarden/"
+		pkgRoot     = "internal/adapters/caddy"
+		caddyPkg    = moduleRoot + "internal/adapters/caddy"
+		adapterBase = moduleRoot + "internal/adapters/"
+	)
+
+	sentinel, err := build.Default.Import("github.com/vibewarden/vibewarden/internal/ports", "", build.FindOnly)
+	if err != nil {
+		t.Fatalf("locating module root via internal/ports: %v", err)
+	}
+	moduleRootDir := filepath.Dir(filepath.Dir(sentinel.Dir))
+	targetDir := filepath.Join(moduleRootDir, filepath.FromSlash(pkgRoot))
+
+	fset := token.NewFileSet()
+
+	walkErr := filepath.WalkDir(targetDir, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+			return nil
+		}
+
+		f, parseErr := parser.ParseFile(fset, path, nil, parser.ImportsOnly)
+		if parseErr != nil {
+			t.Errorf("parsing %s: %v", path, parseErr)
+			return nil
+		}
+
+		for _, imp := range f.Imports {
+			importPath := strings.Trim(imp.Path.Value, `"`)
+			if strings.HasPrefix(importPath, adapterBase) && !strings.HasPrefix(importPath, caddyPkg) {
+				rel, _ := filepath.Rel(targetDir, path)
+				t.Errorf("%s/%s imports peer adapter %q — forbidden by ADR-092", pkgRoot, rel, importPath)
+			}
+		}
+		return nil
+	})
+	if walkErr != nil {
+		t.Fatalf("walking %s: %v", pkgRoot, walkErr)
+	}
+}
+
 // assertNoForbiddenImports walks pkgRoot (relative to the repo root resolved
 // via go/build), parses every non-test .go file, and fails the test for each
 // import that has any of the forbidden prefixes.

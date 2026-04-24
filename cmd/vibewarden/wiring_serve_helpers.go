@@ -7,7 +7,11 @@ import (
 	"sort"
 	"time"
 
+	auditadapter "github.com/vibewarden/vibewarden/internal/adapters/audit"
+	caddyadapter "github.com/vibewarden/vibewarden/internal/adapters/caddy"
 	logadapter "github.com/vibewarden/vibewarden/internal/adapters/log"
+	ratelimitadapter "github.com/vibewarden/vibewarden/internal/adapters/ratelimit"
+	resilienceadapter "github.com/vibewarden/vibewarden/internal/adapters/resilience"
 	"github.com/vibewarden/vibewarden/internal/config"
 	"github.com/vibewarden/vibewarden/internal/domain/csp"
 	"github.com/vibewarden/vibewarden/internal/plugins"
@@ -418,4 +422,46 @@ func buildEventLogger(registry *plugins.Registry, logger *slog.Logger, ringBuf p
 		slogLogger = logadapter.NewSlogEventLogger(os.Stdout)
 	}
 	return logadapter.NewMultiEventLogger(slogLogger, ringBuf)
+}
+
+// buildRuntimeServices constructs the caddyadapter.RuntimeServices that is
+// published to the Caddy handler registry via SetRuntimeServices. It must be
+// called after buildEventLogger so that the wired event logger (stdout + OTel
+// + ring buffer) is available.
+//
+// The metrics plugin's collector is passed to the CircuitBreakerFactory when
+// present so that circuit breaker state transitions update the Prometheus gauge.
+func buildRuntimeServices(
+	logger *slog.Logger,
+	eventLogger ports.EventLogger,
+	registry *plugins.Registry,
+) caddyadapter.RuntimeServices {
+	// Build the sidecar-level audit logger. Initial implementation writes JSON
+	// to stdout. Fan-out to OTel / PostgreSQL is a later, orthogonal task.
+	auditLogger := auditadapter.NewJSONWriter(os.Stdout)
+
+	// Build the rate limiter factory.
+	rlFactory := ratelimitadapter.NewDefaultMemoryFactory()
+
+	// Extract the MetricsCollectorWithCircuitBreaker from the metrics plugin, if
+	// available. Pass nil otherwise — the factory degrades gracefully.
+	var cbMetrics ports.MetricsCollectorWithCircuitBreaker
+	for _, p := range registry.Plugins() {
+		if mp, ok := p.(*metricsplugin.Plugin); ok {
+			if c, ok2 := mp.Collector().(ports.MetricsCollectorWithCircuitBreaker); ok2 {
+				cbMetrics = c
+			}
+			break
+		}
+	}
+
+	cbFactory := resilienceadapter.NewInMemoryCircuitBreakerFactory(logger, eventLogger, cbMetrics, auditLogger)
+
+	return caddyadapter.RuntimeServices{
+		Logger:                logger,
+		EventLogger:           eventLogger,
+		AuditEventLogger:      auditLogger,
+		RateLimiterFactory:    rlFactory,
+		CircuitBreakerFactory: cbFactory,
+	}
 }

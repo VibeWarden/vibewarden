@@ -14,7 +14,6 @@ import (
 	gocaddy "github.com/caddyserver/caddy/v2"
 	"github.com/caddyserver/caddy/v2/modules/caddyhttp"
 
-	logadapter "github.com/vibewarden/vibewarden/internal/adapters/log"
 	"github.com/vibewarden/vibewarden/internal/domain/events"
 	"github.com/vibewarden/vibewarden/internal/middleware"
 	"github.com/vibewarden/vibewarden/internal/ports"
@@ -68,11 +67,20 @@ func (TimeoutHandler) CaddyModule() gocaddy.ModuleInfo {
 	}
 }
 
-// Provision implements gocaddy.Provisioner. It initialises the logger and
-// event logger used by this handler instance.
+// Provision implements gocaddy.Provisioner. It reads services from the
+// composition-root registry and forwards to ProvisionWith. Production code path.
 func (h *TimeoutHandler) Provision(_ gocaddy.Context) error {
-	h.logger = slog.New(slog.NewJSONHandler(os.Stderr, nil))
-	h.eventLogger = logadapter.NewSlogEventLogger(os.Stdout)
+	return h.ProvisionWith(currentServices())
+}
+
+// ProvisionWith initialises the handler with explicit services. Tests call this
+// directly with mock services; production calls it via Provision.
+func (h *TimeoutHandler) ProvisionWith(services RuntimeServices) error {
+	h.logger = services.Logger
+	if h.logger == nil {
+		h.logger = slog.New(slog.NewJSONHandler(os.Stderr, nil))
+	}
+	h.eventLogger = services.EventLogger
 	return nil
 }
 
