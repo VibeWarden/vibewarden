@@ -11,7 +11,6 @@ import (
 	gocaddy "github.com/caddyserver/caddy/v2"
 	"github.com/caddyserver/caddy/v2/modules/caddyhttp"
 
-	logadapter "github.com/vibewarden/vibewarden/internal/adapters/log"
 	domainwebhook "github.com/vibewarden/vibewarden/internal/domain/webhook"
 	"github.com/vibewarden/vibewarden/internal/middleware"
 )
@@ -75,11 +74,20 @@ func (WebhookSignatureHandler) CaddyModule() gocaddy.ModuleInfo {
 	}
 }
 
-// Provision implements gocaddy.Provisioner.
-// It resolves secret env var references and constructs the middleware handler.
-func (h *WebhookSignatureHandler) Provision(_ gocaddy.Context) error {
-	logger := slog.New(slog.NewJSONHandler(os.Stderr, nil))
-	eventLogger := logadapter.NewSlogEventLogger(os.Stdout)
+// Provision implements gocaddy.Provisioner. It reads services from the
+// composition-root registry and forwards to ProvisionWith. Production code path.
+func (h *WebhookSignatureHandler) Provision(ctx gocaddy.Context) error {
+	return h.ProvisionWith(ctx, currentServices())
+}
+
+// ProvisionWith initialises the handler with explicit services. Tests call this
+// directly with mock services; production calls it via Provision.
+func (h *WebhookSignatureHandler) ProvisionWith(_ gocaddy.Context, services RuntimeServices) error {
+	logger := services.Logger
+	if logger == nil {
+		logger = slog.New(slog.NewJSONHandler(os.Stderr, nil))
+	}
+	eventLogger := services.EventLogger
 
 	rules := make([]middleware.WebhookSignatureRule, 0, len(h.Config.Rules))
 	for i, r := range h.Config.Rules {

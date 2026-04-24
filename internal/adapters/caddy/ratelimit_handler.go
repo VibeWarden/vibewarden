@@ -4,7 +4,6 @@ package caddy
 import (
 	"encoding/json"
 	"fmt"
-	"io"
 	"log/slog"
 	"net/http"
 	"os"
@@ -12,9 +11,6 @@ import (
 	gocaddy "github.com/caddyserver/caddy/v2"
 	"github.com/caddyserver/caddy/v2/modules/caddyhttp"
 
-	auditadapter "github.com/vibewarden/vibewarden/internal/adapters/audit"
-	logadapter "github.com/vibewarden/vibewarden/internal/adapters/log"
-	ratelimitadapter "github.com/vibewarden/vibewarden/internal/adapters/ratelimit"
 	"github.com/vibewarden/vibewarden/internal/middleware"
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
@@ -86,20 +82,37 @@ func (RateLimitHandler) CaddyModule() gocaddy.ModuleInfo {
 	}
 }
 
-// Provision implements gocaddy.Provisioner.
-// It is called once after the module is loaded from JSON, and creates the
-// in-memory rate limiter stores and the compiled middleware handler.
+// Provision implements gocaddy.Provisioner. It reads services from the
+// composition-root registry and forwards to ProvisionWith. Production code path.
 func (h *RateLimitHandler) Provision(_ gocaddy.Context) error {
-	logger := slog.New(slog.NewJSONHandler(os.Stderr, nil))
+	return h.ProvisionWith(currentServices())
+}
 
-	factory := ratelimitadapter.NewDefaultMemoryFactory()
+// ProvisionWith initialises the handler with explicit services. Tests call this
+// directly with mock services; production calls it via Provision.
+//
+// Returns an error when services.RateLimiterFactory is nil — that is a
+// programmer error (the composition root failed to wire the dependency).
+func (h *RateLimitHandler) ProvisionWith(services RuntimeServices) error {
+	logger := services.Logger
+	if logger == nil {
+		logger = slog.New(slog.NewJSONHandler(os.Stderr, nil))
+	}
 
-	h.ipLimiter = factory.NewLimiter(ports.RateLimitRule{
+	if services.RateLimiterFactory == nil {
+		return fmt.Errorf("missing RateLimiterFactory in runtime services")
+	}
+
+	if services.AuditEventLogger == nil {
+		logger.Warn("rate-limit: AuditEventLogger not set in RuntimeServices; audit events will be dropped")
+	}
+
+	h.ipLimiter = services.RateLimiterFactory.NewLimiter(ports.RateLimitRule{
 		RequestsPerSecond: h.Config.PerIP.RequestsPerSecond,
 		Burst:             h.Config.PerIP.Burst,
 	})
 
-	h.userLimiter = factory.NewLimiter(ports.RateLimitRule{
+	h.userLimiter = services.RateLimiterFactory.NewLimiter(ports.RateLimitRule{
 		RequestsPerSecond: h.Config.PerUser.RequestsPerSecond,
 		Burst:             h.Config.PerUser.Burst,
 	})
@@ -118,10 +131,10 @@ func (h *RateLimitHandler) Provision(_ gocaddy.Context) error {
 		},
 	}
 
-	eventLogger := logadapter.NewSlogEventLogger(os.Stdout)
-	auditLogger := auditadapter.NewJSONWriter(io.Discard)
-
-	h.handler = middleware.RateLimitMiddleware(h.ipLimiter, h.userLimiter, cfg, logger, eventLogger, auditLogger, nil)
+	h.handler = middleware.RateLimitMiddleware(
+		h.ipLimiter, h.userLimiter, cfg,
+		logger, services.EventLogger, services.AuditEventLogger, nil,
+	)
 
 	return nil
 }

@@ -132,6 +132,12 @@ func runServe(ctx context.Context, opts serveOptions, extraPlugins ...plugins.Pl
 	ringBuf := logadapter.NewRingBuffer(logadapter.DefaultRingBufferCapacity)
 	eventLogger := buildEventLogger(registry, logger, ringBuf)
 
+	// Publish runtime services to the Caddy adapter's registry so that handler
+	// Provision calls receive the wired sinks instead of constructing their own.
+	// This must happen before adapter.Start (which triggers caddy.Load and
+	// therefore Provision). See ADR-092.
+	caddyadapter.SetRuntimeServices(buildRuntimeServices(logger, eventLogger, registry))
+
 	// Wire the metrics collector into the TLS cert expiry monitor so that
 	// the vibewarden_tls_cert_expiry_seconds gauge is populated. This must
 	// happen after InitAll (metrics provider is ready) and before StartAll

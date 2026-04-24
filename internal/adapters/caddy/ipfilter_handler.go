@@ -3,7 +3,6 @@ package caddy
 
 import (
 	"context"
-	"io"
 	"log/slog"
 	"net"
 	"net/http"
@@ -12,8 +11,6 @@ import (
 	gocaddy "github.com/caddyserver/caddy/v2"
 	"github.com/caddyserver/caddy/v2/modules/caddyhttp"
 
-	auditadapter "github.com/vibewarden/vibewarden/internal/adapters/audit"
-	logadapter "github.com/vibewarden/vibewarden/internal/adapters/log"
 	"github.com/vibewarden/vibewarden/internal/domain/audit"
 	"github.com/vibewarden/vibewarden/internal/domain/events"
 	"github.com/vibewarden/vibewarden/internal/domain/ipfilter"
@@ -78,12 +75,28 @@ func (IPFilterHandler) CaddyModule() gocaddy.ModuleInfo {
 	}
 }
 
-// Provision implements gocaddy.Provisioner. It parses all configured address
-// strings into an ipfilter.List for efficient per-request matching.
+// Provision implements gocaddy.Provisioner. It reads services from the
+// composition-root registry and forwards to ProvisionWith. Production code path.
 func (h *IPFilterHandler) Provision(_ gocaddy.Context) error {
-	h.logger = slog.New(slog.NewJSONHandler(os.Stderr, nil))
-	h.eventLogger = logadapter.NewSlogEventLogger(os.Stdout)
-	h.auditLogger = auditadapter.NewJSONWriter(io.Discard)
+	return h.ProvisionWith(currentServices())
+}
+
+// ProvisionWith initialises the handler with explicit services. Tests call this
+// directly with mock services; production calls it via Provision.
+//
+// When services.AuditEventLogger is nil the handler emits a one-time Warn log
+// and skips audit events; request processing continues normally.
+func (h *IPFilterHandler) ProvisionWith(services RuntimeServices) error {
+	h.logger = services.Logger
+	if h.logger == nil {
+		h.logger = slog.New(slog.NewJSONHandler(os.Stderr, nil))
+	}
+	h.eventLogger = services.EventLogger
+	h.auditLogger = services.AuditEventLogger
+
+	if services.AuditEventLogger == nil {
+		h.logger.Warn("ip-filter: AuditEventLogger not set in RuntimeServices; audit events will be dropped")
+	}
 
 	list, err := ipfilter.ParseList(h.Config.Addresses)
 	if err != nil {

@@ -46,6 +46,18 @@ type CircuitBreakerConfig struct {
 	Timeout time.Duration
 }
 
+// CircuitBreakerFactory creates CircuitBreaker instances from a configuration.
+// Implementations wire logger, event logger, and metrics once at construction
+// time; NewCircuitBreaker captures only the per-instance threshold and timeout.
+//
+// This mirrors the existing RateLimiterFactory pattern.
+type CircuitBreakerFactory interface {
+	// NewCircuitBreaker returns a fresh CircuitBreaker configured with the
+	// supplied threshold and timeout. The returned breaker honours the
+	// factory's pre-wired logger, event logger, and metrics sinks.
+	NewCircuitBreaker(cfg CircuitBreakerConfig) (CircuitBreaker, error)
+}
+
 // MetricsCollectorWithCircuitBreaker extends MetricsCollector with a circuit
 // breaker state gauge. Adapters that expose this gauge implement this interface;
 // others embed a no-op to satisfy MetricsCollector without the extra method.

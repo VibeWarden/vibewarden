@@ -66,13 +66,13 @@ func TestAdminAuthHandler_Provision(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			h := &AdminAuthHandler{Config: tt.config}
 
-			err := h.Provision(gocaddy.Context{})
+			err := h.ProvisionWith(RuntimeServices{})
 			if (err != nil) != tt.wantErr {
-				t.Errorf("Provision() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("ProvisionWith() error = %v, wantErr %v", err, tt.wantErr)
 			}
 
 			if !tt.wantErr && h.handler == nil {
-				t.Error("Provision() did not create handler")
+				t.Error("ProvisionWith() did not create handler")
 			}
 		})
 	}
@@ -125,8 +125,8 @@ func TestAdminAuthHandler_ServeHTTP(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			h := &AdminAuthHandler{Config: tt.config}
-			if err := h.Provision(gocaddy.Context{}); err != nil {
-				t.Fatalf("Provision() error = %v", err)
+			if err := h.ProvisionWith(RuntimeServices{}); err != nil {
+				t.Fatalf("ProvisionWith() error = %v", err)
 			}
 
 			nextCalled := false

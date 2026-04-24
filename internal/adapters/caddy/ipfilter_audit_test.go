@@ -6,7 +6,6 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	gocaddy "github.com/caddyserver/caddy/v2"
 	"github.com/caddyserver/caddy/v2/modules/caddyhttp"
 
 	"github.com/vibewarden/vibewarden/internal/domain/audit"
@@ -45,6 +44,7 @@ func (f *fakeAuditEventLogger) lastAuditEventOfType(eventType audit.EventType) (
 
 // TestIPFilterHandler_EmitsAuditBlockedEvent verifies that a blocked request
 // produces an audit.ip_filter.blocked event with correct actor and target fields.
+// This is a regression test for the io.Discard bug fixed in ADR-092.
 func TestIPFilterHandler_EmitsAuditBlockedEvent(t *testing.T) {
 	auditSpy := &fakeAuditEventLogger{}
 
@@ -53,13 +53,10 @@ func TestIPFilterHandler_EmitsAuditBlockedEvent(t *testing.T) {
 			Mode:      "blocklist",
 			Addresses: []string{"10.0.0.1"},
 		},
-		auditLogger: auditSpy,
 	}
-	if err := h.Provision(gocaddy.Context{}); err != nil {
-		t.Fatalf("Provision() error: %v", err)
+	if err := h.ProvisionWith(RuntimeServices{AuditEventLogger: auditSpy}); err != nil {
+		t.Fatalf("ProvisionWith() error: %v", err)
 	}
-	// Override the audit logger set by Provision with our spy.
-	h.auditLogger = auditSpy
 
 	next := caddyhttp.HandlerFunc(func(w http.ResponseWriter, r *http.Request) error {
 		w.WriteHeader(http.StatusOK)
@@ -108,12 +105,10 @@ func TestIPFilterHandler_NoAuditEventOnAllowedRequest(t *testing.T) {
 			Mode:      "blocklist",
 			Addresses: []string{"10.0.0.1"},
 		},
-		auditLogger: auditSpy,
 	}
-	if err := h.Provision(gocaddy.Context{}); err != nil {
-		t.Fatalf("Provision() error: %v", err)
+	if err := h.ProvisionWith(RuntimeServices{AuditEventLogger: auditSpy}); err != nil {
+		t.Fatalf("ProvisionWith() error: %v", err)
 	}
-	h.auditLogger = auditSpy
 
 	next := caddyhttp.HandlerFunc(func(w http.ResponseWriter, r *http.Request) error {
 		w.WriteHeader(http.StatusOK)
@@ -142,7 +137,7 @@ func TestIPFilterHandler_NilAuditLoggerDoesNotPanic(t *testing.T) {
 			Addresses: []string{"10.0.0.1"},
 		},
 	}
-	if err := h.Provision(gocaddy.Context{}); err != nil {
+	if err := h.ProvisionWith(RuntimeServices{}); err != nil {
 		t.Fatalf("Provision() error: %v", err)
 	}
 	// Explicitly set to nil to test nil-safety.

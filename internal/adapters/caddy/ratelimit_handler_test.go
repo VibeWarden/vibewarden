@@ -13,6 +13,15 @@ import (
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
 
+// fakeRateLimiterFactory is a test double for ports.RateLimiterFactory.
+type fakeRateLimiterFactory struct {
+	allowResult ports.RateLimitResult
+}
+
+func (f *fakeRateLimiterFactory) NewLimiter(_ ports.RateLimitRule) ports.RateLimiter {
+	return &fakeRateLimiter{allowResult: f.allowResult}
+}
+
 // fakeRateLimiter is a test double for ports.RateLimiter.
 type fakeRateLimiter struct {
 	allowResult ports.RateLimitResult
@@ -118,24 +127,29 @@ func TestRateLimitHandler_Provision(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			h := &RateLimitHandler{Config: tt.config}
 
-			err := h.Provision(gocaddy.Context{})
+			svc := RuntimeServices{
+				RateLimiterFactory: &fakeRateLimiterFactory{
+					allowResult: ports.RateLimitResult{Allowed: true},
+				},
+			}
+			err := h.ProvisionWith(svc)
 			if (err != nil) != tt.wantErr {
-				t.Errorf("Provision() error = %v, wantErr %v", err, tt.wantErr)
+				t.Errorf("ProvisionWith() error = %v, wantErr %v", err, tt.wantErr)
 			}
 
 			if !tt.wantErr {
 				if h.ipLimiter == nil {
-					t.Error("Provision() did not create ipLimiter")
+					t.Error("ProvisionWith() did not create ipLimiter")
 				}
 				if h.userLimiter == nil {
-					t.Error("Provision() did not create userLimiter")
+					t.Error("ProvisionWith() did not create userLimiter")
 				}
 				if h.handler == nil {
-					t.Error("Provision() did not create handler")
+					t.Error("ProvisionWith() did not create handler")
 				}
 				// Clean up background goroutines.
 				if err := h.Cleanup(); err != nil {
-					t.Errorf("Cleanup() after Provision() error = %v", err)
+					t.Errorf("Cleanup() after ProvisionWith() error = %v", err)
 				}
 			}
 		})
@@ -262,8 +276,13 @@ func TestRateLimitHandler_ServeHTTP(t *testing.T) {
 					},
 				},
 			}
-			if err := h.Provision(gocaddy.Context{}); err != nil {
-				t.Fatalf("Provision() error = %v", err)
+			svc := RuntimeServices{
+				RateLimiterFactory: &fakeRateLimiterFactory{
+					allowResult: ports.RateLimitResult{Allowed: true},
+				},
+			}
+			if err := h.ProvisionWith(svc); err != nil {
+				t.Fatalf("ProvisionWith() error = %v", err)
 			}
 			defer func() {
 				if err := h.Cleanup(); err != nil {
@@ -397,6 +416,22 @@ func TestBuildRateLimitHandlerJSON(t *testing.T) {
 				tt.checks(t, result)
 			}
 		})
+	}
+}
+
+// TestRateLimitHandler_ProvisionWith_MissingFactory verifies that ProvisionWith
+// returns an error when RateLimiterFactory is nil.
+func TestRateLimitHandler_ProvisionWith_MissingFactory(t *testing.T) {
+	h := &RateLimitHandler{
+		Config: RateLimitHandlerConfig{
+			Enabled: true,
+			PerIP:   RateLimitRuleHandlerConfig{RequestsPerSecond: 10, Burst: 20},
+			PerUser: RateLimitRuleHandlerConfig{RequestsPerSecond: 5, Burst: 10},
+		},
+	}
+	err := h.ProvisionWith(RuntimeServices{})
+	if err == nil {
+		t.Error("ProvisionWith() should return error when RateLimiterFactory is nil")
 	}
 }
 
