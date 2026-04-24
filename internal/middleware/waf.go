@@ -76,6 +76,14 @@ func WAFMiddleware(
 
 	modeStr := string(mode)
 
+	// Extract the EventLogDropCounter from mc if it satisfies the interface.
+	// OTelAdapter and NoOpMetricsCollector both implement it; other collectors
+	// transparently fall back to nil (counter skipped, slog.Warn still fires).
+	var drops ports.EventLogDropCounter
+	if d, ok := mc.(ports.EventLogDropCounter); ok {
+		drops = d
+	}
+
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// Bypass exempt paths.
@@ -106,7 +114,7 @@ func WAFMiddleware(
 
 				if mode == WAFModeBlock {
 					// Emit audit event before writing the response.
-					emitWAFAuditEvent(r, auditLogger, audit.EventTypeWAFBlocked, d, modeStr)
+					emitWAFAuditEvent(r, auditLogger, drops, audit.EventTypeWAFBlocked, d, modeStr)
 
 					logger.Warn("waf: request blocked",
 						slog.String("rule", d.Rule().Name()),
@@ -124,7 +132,7 @@ func WAFMiddleware(
 				}
 
 				// Detect mode: log and continue.
-				emitWAFAuditEvent(r, auditLogger, audit.EventTypeWAFDetection, d, modeStr)
+				emitWAFAuditEvent(r, auditLogger, drops, audit.EventTypeWAFDetection, d, modeStr)
 
 				logger.Warn("waf: attack detected (detect mode — request allowed)",
 					slog.String("rule", d.Rule().Name()),
@@ -150,19 +158,15 @@ func wafDetail(d waf.Detection) string {
 }
 
 // emitWAFAuditEvent records a WAF audit event if auditLogger is non-nil.
-// Best-effort: errors are silently discarded so request processing is never
-// interrupted by audit logging failures.
+// On error it emits slog.Warn and increments the drops counter (if non-nil).
 func emitWAFAuditEvent(
 	r *http.Request,
 	auditLogger ports.AuditEventLogger,
+	drops ports.EventLogDropCounter,
 	eventType audit.EventType,
 	d waf.Detection,
 	mode string,
 ) {
-	if auditLogger == nil {
-		return
-	}
-
 	outcome := audit.OutcomeFailure
 	if eventType == audit.EventTypeWAFDetection {
 		// In detect mode the request proceeds — outcome is informational.
@@ -189,8 +193,7 @@ func emitWAFAuditEvent(
 	if err != nil {
 		return
 	}
-	// Best-effort.
-	_ = auditLogger.Log(r.Context(), ev)
+	logAudit(r.Context(), auditLogger, drops, "waf", ev)
 }
 
 // extractClientIPOrEmpty returns the client IP from RemoteAddr, stripping the

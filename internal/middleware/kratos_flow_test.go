@@ -105,7 +105,7 @@ func TestKratosFlowLoggingMiddleware_CallsNext(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	mw := KratosFlowLoggingMiddleware(logger, nil)(next)
+	mw := KratosFlowLoggingMiddleware(logger, nil, nil)(next)
 
 	req := httptest.NewRequest(http.MethodGet, "/self-service/login/browser", nil)
 	rec := httptest.NewRecorder()
@@ -128,7 +128,7 @@ func TestKratosFlowLoggingMiddleware_NonKratosPathCallsNext(t *testing.T) {
 		w.WriteHeader(http.StatusTeapot)
 	})
 
-	mw := KratosFlowLoggingMiddleware(logger, nil)(next)
+	mw := KratosFlowLoggingMiddleware(logger, nil, nil)(next)
 
 	req := httptest.NewRequest(http.MethodGet, "/dashboard", nil)
 	rec := httptest.NewRecorder()
@@ -149,7 +149,7 @@ func TestKratosFlowLoggingMiddleware_EmitsEventForKratosPath(t *testing.T) {
 		w.WriteHeader(http.StatusOK)
 	})
 
-	mw := KratosFlowLoggingMiddleware(slog.Default(), spy)(next)
+	mw := KratosFlowLoggingMiddleware(slog.Default(), spy, nil)(next)
 
 	req := httptest.NewRequest(http.MethodGet, "/self-service/login/browser", nil)
 	rec := httptest.NewRecorder()
@@ -176,7 +176,7 @@ func TestKratosFlowLoggingMiddleware_DoesNotEmitEventForNonKratosPath(t *testing
 		w.WriteHeader(http.StatusOK)
 	})
 
-	mw := KratosFlowLoggingMiddleware(slog.Default(), spy)(next)
+	mw := KratosFlowLoggingMiddleware(slog.Default(), spy, nil)(next)
 
 	req := httptest.NewRequest(http.MethodGet, "/dashboard", nil)
 	rec := httptest.NewRecorder()
@@ -193,7 +193,7 @@ func TestKratosFlowLoggingMiddleware_NilEventLoggerDoesNotPanic(t *testing.T) {
 	})
 
 	// Must not panic with nil eventLogger.
-	mw := KratosFlowLoggingMiddleware(slog.Default(), nil)(next)
+	mw := KratosFlowLoggingMiddleware(slog.Default(), nil, nil)(next)
 
 	req := httptest.NewRequest(http.MethodGet, "/self-service/login/browser", nil)
 	rec := httptest.NewRecorder()

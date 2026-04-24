@@ -26,11 +26,11 @@ var kratosFlowPathPrefixes = []string{
 //
 // The eventLogger receives structured events following the VibeWarden schema.
 // If eventLogger is nil, event logging is skipped silently.
-func KratosFlowLoggingMiddleware(logger *slog.Logger, eventLogger ports.EventLogger) func(http.Handler) http.Handler {
+func KratosFlowLoggingMiddleware(logger *slog.Logger, eventLogger ports.EventLogger, drops ports.EventLogDropCounter) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if isKratosFlowPath(r.URL.Path) {
-				emitKratosFlowEvent(r, eventLogger)
+				emitKratosFlowEvent(r, eventLogger, drops)
 			}
 			next.ServeHTTP(w, r)
 		})
@@ -50,14 +50,10 @@ func isKratosFlowPath(requestPath string) bool {
 
 // emitKratosFlowEvent emits the proxy.kratos_flow structured event via the
 // EventLogger port. If eventLogger is nil the call is a no-op.
-func emitKratosFlowEvent(r *http.Request, eventLogger ports.EventLogger) {
-	if eventLogger == nil {
-		return
-	}
+func emitKratosFlowEvent(r *http.Request, eventLogger ports.EventLogger, drops ports.EventLogDropCounter) {
 	ev := events.NewProxyKratosFlow(events.ProxyKratosFlowParams{
 		Method: r.Method,
 		Path:   r.URL.Path,
 	})
-	// Best-effort: ignore logging errors so request processing is never blocked.
-	_ = eventLogger.Log(r.Context(), ev)
+	logEvent(r.Context(), eventLogger, drops, "kratos_flow", ev)
 }

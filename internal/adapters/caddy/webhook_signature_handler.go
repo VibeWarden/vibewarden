@@ -109,7 +109,7 @@ func (h *WebhookSignatureHandler) Provision(_ gocaddy.Context) error {
 		})
 	}
 
-	h.handler = middleware.WebhookSignatureMiddleware(rules, eventLogger)
+	h.handler = middleware.WebhookSignatureMiddleware(rules, eventLogger, nil)
 	return nil
 }
 

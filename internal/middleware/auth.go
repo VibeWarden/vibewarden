@@ -53,6 +53,7 @@ func AuthMiddleware(
 	logger *slog.Logger,
 	eventLogger ports.EventLogger,
 	auditLogger ports.AuditEventLogger,
+	drops ports.EventLogDropCounter,
 ) func(http.Handler) http.Handler {
 	loginURL := cfg.LoginURL
 	if loginURL == "" {
@@ -99,25 +100,25 @@ func AuthMiddleware(
 					// Kratos is reachable but credentials are absent or invalid.
 					// If we were previously unhealthy, record the recovery.
 					if unavailableState.CompareAndSwap(1, 0) {
-						emitKratosRecovered(r, eventLogger, providerURL)
+						emitKratosRecovered(r, eventLogger, drops, providerURL)
 					}
-					emitAuthFailed(r, eventLogger, result.Message, "")
-					emitAuditAuthFailure(r, auditLogger, "", result.Message)
+					emitAuthFailed(r, eventLogger, drops, result.Message, "")
+					emitAuditAuthFailure(r, auditLogger, drops, "", result.Message)
 					http.Redirect(w, r, loginURL, http.StatusFound)
 
 				case "provider_unavailable":
 					// Emit availability event only on transition to unavailable.
 					if unavailableState.CompareAndSwap(0, 1) {
-						emitKratosUnavailable(r, eventLogger, providerURL, result.Message)
+						emitKratosUnavailable(r, eventLogger, drops, providerURL, result.Message)
 					}
-					emitAuthFailed(r, eventLogger, "auth provider unavailable", result.Message)
-					emitAuditAuthFailure(r, auditLogger, "", "auth provider unavailable")
+					emitAuthFailed(r, eventLogger, drops, "auth provider unavailable", result.Message)
+					emitAuditAuthFailure(r, auditLogger, drops, "", "auth provider unavailable")
 					WriteErrorResponse(w, r, http.StatusServiceUnavailable, "auth_provider_unavailable", "authentication service is temporarily unavailable")
 
 				default:
 					// Unknown failure — fail closed.
-					emitAuthFailed(r, eventLogger, "unexpected auth error", result.Message)
-					emitAuditAuthFailure(r, auditLogger, "", "unexpected auth error")
+					emitAuthFailed(r, eventLogger, drops, "unexpected auth error", result.Message)
+					emitAuditAuthFailure(r, auditLogger, drops, "", "unexpected auth error")
 					WriteErrorResponse(w, r, http.StatusServiceUnavailable, "auth_provider_unavailable", "authentication service is temporarily unavailable")
 				}
 				return
@@ -125,12 +126,12 @@ func AuthMiddleware(
 
 			// Authentication succeeded — record recovery if we were previously unhealthy.
 			if unavailableState.CompareAndSwap(1, 0) {
-				emitKratosRecovered(r, eventLogger, providerURL)
+				emitKratosRecovered(r, eventLogger, drops, providerURL)
 			}
 
 			// Step 7: Valid identity — store in context and proceed.
-			emitAuthSuccessIdentity(r, eventLogger, result.Identity)
-			emitAuditAuthSuccess(r, auditLogger, result.Identity.ID(), result.Identity.Email())
+			emitAuthSuccessIdentity(r, eventLogger, drops, result.Identity)
+			emitAuditAuthSuccess(r, auditLogger, drops, result.Identity.ID(), result.Identity.Email())
 			ctx := contextWithIdentity(r.Context(), result.Identity)
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})
@@ -150,10 +151,7 @@ func stripXUserHeaders(r *http.Request) {
 // emitAuthSuccessIdentity logs an auth.success event via the EventLogger port
 // using the domain Identity value object.
 // If eventLogger is nil the call is a no-op.
-func emitAuthSuccessIdentity(r *http.Request, eventLogger ports.EventLogger, ident identity.Identity) {
-	if eventLogger == nil {
-		return
-	}
+func emitAuthSuccessIdentity(r *http.Request, eventLogger ports.EventLogger, drops ports.EventLogDropCounter, ident identity.Identity) {
 	ev := events.NewAuthSuccess(events.AuthSuccessParams{
 		Method:     r.Method,
 		Path:       r.URL.Path,
@@ -161,58 +159,44 @@ func emitAuthSuccessIdentity(r *http.Request, eventLogger ports.EventLogger, ide
 		IdentityID: ident.ID(),
 		Email:      ident.Email(),
 	})
-	// Best-effort: ignore logging errors so request processing is never blocked.
-	_ = eventLogger.Log(r.Context(), ev)
+	logEvent(r.Context(), eventLogger, drops, "auth", ev)
 }
 
 // emitAuthFailed logs an auth.failed event via the EventLogger port.
 // If eventLogger is nil the call is a no-op.
-func emitAuthFailed(r *http.Request, eventLogger ports.EventLogger, reason, detail string) {
-	if eventLogger == nil {
-		return
-	}
+func emitAuthFailed(r *http.Request, eventLogger ports.EventLogger, drops ports.EventLogDropCounter, reason, detail string) {
 	ev := events.NewAuthFailed(events.AuthFailedParams{
 		Method: r.Method,
 		Path:   r.URL.Path,
 		Reason: reason,
 		Detail: detail,
 	})
-	// Best-effort: ignore logging errors so request processing is never blocked.
-	_ = eventLogger.Log(r.Context(), ev)
+	logEvent(r.Context(), eventLogger, drops, "auth", ev)
 }
 
 // emitKratosUnavailable logs an auth.provider_unavailable event.
 // If eventLogger is nil the call is a no-op.
-func emitKratosUnavailable(r *http.Request, eventLogger ports.EventLogger, providerURL, errMsg string) {
-	if eventLogger == nil {
-		return
-	}
+func emitKratosUnavailable(r *http.Request, eventLogger ports.EventLogger, drops ports.EventLogDropCounter, providerURL, errMsg string) {
 	ev := events.NewAuthProviderUnavailable(events.AuthProviderUnavailableParams{
 		ProviderURL:  providerURL,
 		Error:        errMsg,
 		AffectedPath: r.URL.Path,
 	})
-	_ = eventLogger.Log(r.Context(), ev)
+	logEvent(r.Context(), eventLogger, drops, "auth", ev)
 }
 
 // emitKratosRecovered logs an auth.provider_recovered event.
 // If eventLogger is nil the call is a no-op.
-func emitKratosRecovered(r *http.Request, eventLogger ports.EventLogger, providerURL string) {
-	if eventLogger == nil {
-		return
-	}
+func emitKratosRecovered(r *http.Request, eventLogger ports.EventLogger, drops ports.EventLogDropCounter, providerURL string) {
 	ev := events.NewAuthProviderRecovered(events.AuthProviderRecoveredParams{
 		ProviderURL: providerURL,
 	})
-	_ = eventLogger.Log(r.Context(), ev)
+	logEvent(r.Context(), eventLogger, drops, "auth", ev)
 }
 
 // emitAuditAuthSuccess emits an audit.auth.success event via the AuditEventLogger port.
 // If auditLogger is nil the call is a no-op.
-func emitAuditAuthSuccess(r *http.Request, auditLogger ports.AuditEventLogger, userID, email string) {
-	if auditLogger == nil {
-		return
-	}
+func emitAuditAuthSuccess(r *http.Request, auditLogger ports.AuditEventLogger, drops ports.EventLogDropCounter, userID, email string) {
 	ev, err := audit.NewAuditEvent(
 		audit.EventTypeAuthSuccess,
 		audit.Actor{
@@ -230,16 +214,12 @@ func emitAuditAuthSuccess(r *http.Request, auditLogger ports.AuditEventLogger, u
 	if err != nil {
 		return
 	}
-	// Best-effort: ignore logging errors so request processing is never blocked.
-	_ = auditLogger.Log(r.Context(), ev)
+	logAudit(r.Context(), auditLogger, drops, "auth", ev)
 }
 
 // emitAuditAuthFailure emits an audit.auth.failure event via the AuditEventLogger port.
 // If auditLogger is nil the call is a no-op.
-func emitAuditAuthFailure(r *http.Request, auditLogger ports.AuditEventLogger, userID, reason string) {
-	if auditLogger == nil {
-		return
-	}
+func emitAuditAuthFailure(r *http.Request, auditLogger ports.AuditEventLogger, drops ports.EventLogDropCounter, userID, reason string) {
 	ev, err := audit.NewAuditEvent(
 		audit.EventTypeAuthFailure,
 		audit.Actor{
@@ -257,6 +237,5 @@ func emitAuditAuthFailure(r *http.Request, auditLogger ports.AuditEventLogger, u
 	if err != nil {
 		return
 	}
-	// Best-effort: ignore logging errors so request processing is never blocked.
-	_ = auditLogger.Log(r.Context(), ev)
+	logAudit(r.Context(), auditLogger, drops, "auth", ev)
 }

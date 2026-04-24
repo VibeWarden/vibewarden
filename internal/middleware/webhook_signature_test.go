@@ -94,7 +94,7 @@ func TestWebhookSignatureMiddleware(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			logger := &fakeEventLogger{}
 
-			handler := middleware.WebhookSignatureMiddleware(rules, logger)(
+			handler := middleware.WebhookSignatureMiddleware(rules, logger, nil)(
 				http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 					w.WriteHeader(http.StatusOK)
 				}),
@@ -146,7 +146,7 @@ func TestWebhookSignatureMiddlewareBodyRestored(t *testing.T) {
 	}
 
 	var gotBody []byte
-	handler := middleware.WebhookSignatureMiddleware(rules, nil)(
+	handler := middleware.WebhookSignatureMiddleware(rules, nil, nil)(
 		http.HandlerFunc(func(_ http.ResponseWriter, r *http.Request) {
 			buf := new(bytes.Buffer)
 			buf.ReadFrom(r.Body) //nolint:errcheck
@@ -181,7 +181,7 @@ func TestWebhookSignatureMiddlewareNilEventLogger(t *testing.T) {
 		},
 	}
 
-	handler := middleware.WebhookSignatureMiddleware(rules, nil)(
+	handler := middleware.WebhookSignatureMiddleware(rules, nil, nil)(
 		http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 			w.WriteHeader(http.StatusOK)
 		}),

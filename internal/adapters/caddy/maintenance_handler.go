@@ -72,6 +72,7 @@ func (h *MaintenanceHandler) Provision(_ gocaddy.Context) error {
 			Message: h.Config.Message,
 		},
 		h.eventLogger,
+		nil,
 	)
 	return nil
 }

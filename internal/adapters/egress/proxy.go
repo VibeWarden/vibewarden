@@ -260,7 +260,7 @@ func (p *Proxy) Start() error {
 	// blocked prior to any upstream contact.
 	var handler http.Handler = mux
 	if len(p.cfg.PromptInjectionRoutes) > 0 {
-		handler = middleware.PromptInjectionMiddleware(p.cfg.PromptInjectionRoutes, p.logger, p.cfg.EventLogger)(mux)
+		handler = middleware.PromptInjectionMiddleware(p.cfg.PromptInjectionRoutes, p.logger, p.cfg.EventLogger, nil)(mux)
 	}
 
 	p.server = &http.Server{
