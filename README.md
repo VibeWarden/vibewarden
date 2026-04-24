@@ -69,7 +69,7 @@ Run:     vibew dev
 
 ```bash
 # macOS / Linux
-curl -sS https://vibewarden.dev/install.sh | sh
+curl -fsSL https://vibewarden.dev/install.sh | sh
 
 # New project
 mkdir myapp && cd myapp
