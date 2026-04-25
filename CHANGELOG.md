@@ -12,65 +12,81 @@ This initial entry was written by hand to summarise the work leading up to v0.1.
 
 ## [Unreleased]
 
+---
+
+## [v0.17.0] — 2026-04-25
+
+**Theme: architectural cleanup + LE preflight + bundle correctness.**
+
+Three areas of work converged in this release:
+
+1. **Bundle correctness** (#1084–#1091, ADR-088, ADR-089) — project-scoped image tags, image health block, staleness/arch warnings, local deploy.sh convention, TLS state in status/doctor, hand-written comment preservation in `vibew add`.
+2. **LE rate-limit preflight** (#1057, [ADR-090](decisions/adr-090-le-rate-limit-preflight.md)) — `vibew doctor` now queries crt.sh before any ACME attempt, preventing blind exhaustion of the 5-certs/domain/week limit.
+3. **Architectural cleanup pass** — ports-purity invariant now enforced in CI (#1099, ADR-067), `internal/config` god package split into 11 per-concern files (#1100), Caddy handler DI fixed a real pre-v0.16.0 bug (#1102, ADR-092), middleware log drops are now observable via Prometheus (#1104), oversized functions extracted (#1105), dead `SessionCheckerToIdentityProvider` adapter purged (#1106), and three outbound port interfaces relocated from `internal/app/` to `internal/ports/` (#1107, ADR-091).
+
+**No new breaking changes** beyond the project-scoped image tag (see Breaking section).
+
 ### Breaking
 
 - **`VIBEWARDEN_APP_IMAGE` default tag is now project-scoped** (#1084, [ADR-089](decisions/adr-089-bundle-image-health-tag-scoping-freshness-arch.md)). `vibew init`, `vibew wrap`, and `vibew bundle` no longer write the generic `vibewarden-app:latest` tag that collided across all projects on the same workstation. The generated `.env` and `docker-compose.yml` now use `<project>-app:latest` (e.g. `mysite-app:latest`). Existing v0.16.0 projects carrying the old tag will see a migration warning on every `vibew validate` run until you update `.env` — run `vibew bundle --overwrite` or follow the `sed` one-liner in the warning.
 
-### Changed
-
-- **`vibew bundle` now prints an image health block before writing any files** (#1084, #1085, #1091). Tag, digest, arch, creation timestamp, size, target platform, freshness verdict, and warnings are printed to stdout once per invocation. Agents and humans can parse the stable key-value layout without ANSI colour.
-- `vibew bundle` aborts with exit code **2** (image missing) or exit code **3** (docker daemon unreachable) rather than a generic exit 1. Exit code 0 includes successful bundles with stale/arch warnings.
-- `github.com/moby/patternmatcher` promoted from indirect to direct dependency — already vendored via Docker client, Apache 2.0.
-
 ### Added
 
-- **LE rate-limit preflight in `vibew doctor`** — when `tls.provider: letsencrypt` is configured, `vibew doctor` now queries the public [crt.sh](https://crt.sh) Certificate Transparency log to count certificates issued for the registered domain in the last 168 hours. Reports WARN at 4/5, FAIL at 5/5. Degrades to WARN when crt.sh is unreachable. Opt-out: `--skip-le-preflight` flag or `tls.skip_rate_limit_check: true`. (ADR-090, #1057)
-- **`vibew doctor --skip-le-preflight`** — suppresses the LE rate-limit CT log check for a single invocation. (#1057)
-- **`tls.skip_rate_limit_check`** config key — persistent opt-out for the LE rate-limit preflight. Defaults to `false`. (#1057)
-- **`vibew bundle --build`** — runs `vibew build --platform <target>` before inspecting or packaging; use when the image is missing or stale. (#1084)
-- **`vibew bundle --allow-stale`** — suppresses the STALE freshness warning; bundle proceeds regardless of source-file mtime. (#1085)
-- **`vibew bundle --target-platform linux/<arch>`** — overrides the default expected deployment platform (`linux/amd64`); use for Graviton / Pi / arm64 servers. (#1091)
+- **LE rate-limit preflight in `vibew doctor`** (#1057, [ADR-090](decisions/adr-090-le-rate-limit-preflight.md)) — when `tls.provider: letsencrypt` is configured, `vibew doctor` queries the public [crt.sh](https://crt.sh) Certificate Transparency log to count certificates issued for the registered domain in the last 168 hours. Reports WARN at 4/5, FAIL at 5/5. Degrades to WARN when crt.sh is unreachable. Opt-out: `--skip-le-preflight` flag or `tls.skip_rate_limit_check: true`.
+- **`vibew doctor --skip-le-preflight`** (#1057) — suppresses the LE rate-limit CT log check for a single invocation.
+- **`tls.skip_rate_limit_check`** config key (#1057) — persistent opt-out for the LE rate-limit preflight. Defaults to `false`.
+- **`vibew bundle --build`** (#1084) — runs `vibew build --platform <target>` before inspecting or packaging; use when the image is missing or stale.
+- **`vibew bundle --allow-stale`** (#1085) — suppresses the STALE freshness warning; bundle proceeds regardless of source-file mtime.
+- **`vibew bundle --target-platform linux/<arch>`** (#1091) — overrides the default expected deployment platform (`linux/amd64`); use for Graviton / Pi / arm64 servers.
 - `vibew validate` now emits a migration warning to stderr when `.env` contains the legacy `vibewarden-app:latest` tag. (#1084)
-- **`vibew down`** (#1089) — stop the local dev stack. Runs `docker compose
-  down` in the project's `.vibewarden/` directory, preserving data volumes by
-  default. Pass `-v`/`--volumes` to also drop named volumes (destroys Kratos
-  DB state).
-- **`vibew dev --verbose`** (#1075) — streams docker compose output during
-  startup so the user can see image pulls and container boot messages in real
-  time instead of a silent wait.
+- **`vibew down`** (#1089) — stop the local dev stack. Runs `docker compose down` in the project's `.vibewarden/` directory, preserving data volumes by default. Pass `-v`/`--volumes` to also drop named volumes (destroys Kratos DB state).
+- **`vibew dev --verbose`** (#1075) — streams docker compose output during startup so the user can see image pulls and container boot messages in real time instead of a silent wait.
+- **`vibewarden_event_log_drops_total` Prometheus counter** (#1104) — new metric with labels `{middleware, reason}` incremented whenever a structured log or audit event is dropped instead of delivered. Previously silent; now visible in Grafana without any dashboard changes.
+- **`CircuitBreakerFactory` port** (#1102, [ADR-092](decisions/adr-092-caddy-handler-dependency-injection.md)) — new outbound port interface in `internal/ports/` allowing Caddy handlers to receive a circuit-breaker factory via the `RuntimeServices` registry rather than constructing one directly.
+- **`vibew init` positional arg produces actionable error** (#1076, #1117) — running `vibew init myapp` now explains the cwd convention and exits non-zero instead of silently ignoring the argument.
+- **`vibew dev` prints startup summary** (#1093) — dev URL, logs hint (`docker compose -f .vibewarden/compose.yaml logs -f`), and stop hint (`vibew down`) printed after successful startup.
+- **`.vibewarden-version` file removed** (#732, #1116) — obsolete since the wrapper-less era; `vibew` no longer creates or reads it.
+
+### Changed
+
+- **`vibew bundle` now prints an image health block before writing any files** (#1084, #1085, #1091). Tag, digest, arch, creation timestamp, size, target platform, freshness verdict, and warnings are printed to stdout once per invocation in a stable key-value layout parseable without ANSI colour.
+- `vibew bundle` aborts with exit code **2** (image missing) or exit code **3** (docker daemon unreachable) rather than a generic exit 1. Exit code 0 includes successful bundles with stale/arch warnings.
+- **Bundle `deploy.sh` now runs locally** (#1087, [ADR-088](decisions/adr-088-deploy-sh-local-run-convention.md)). One command on the workstation — `cd .vibewarden/bundle && ./deploy.sh user@host` — scps the bundle, loads the image, runs `docker compose up -d`, and probes `/_vibewarden/health` on the remote. The script accepts `user@host[:/remote/path]` and defaults the remote path to `~/vibewarden-bundle`.
+- **`vibew status` and `vibew doctor` now report TLS state** (#1090, #1078). The status table and doctor checks surface the live Caddy TLS state: `Obtaining` (ACME in progress), `Obtained` (cert active), `Failing` (ACME failed), or `SelfSignedLocal` (dev self-signed cert). Previously only a binary up/down was shown.
+- `vibew add` commands that hit an unparseable YAML file now fail fast with a `vibew validate` remediation hint instead of silently rewriting. (#1086)
+- **`internal/config/config.go` split into 11 per-concern files** (#1100, #1131) — no behaviour change, public API unchanged. Files: `config.go` (types), `load.go`, `merge.go`, `validate.go`, `defaults.go`, `tls.go`, `auth.go`, `plugins.go`, `sites.go`, `secrets.go`, `override.go`. Reduces edit-conflict surface for parallel agent work.
+- **Caddy handlers now receive dependencies via `RuntimeServices` registry** (#1102, [ADR-092](decisions/adr-092-caddy-handler-dependency-injection.md)) — wired from `cmd/vibewarden/`. Eliminates the ad-hoc per-handler constructor pattern and keeps `internal/app/` free of adapter imports.
+- **Middleware helpers replace `_ = logger.Log(...)` silent discards** (#1104, #1129) — `logEvent` and `logAudit` helpers call `slog.Warn` on drop and increment `vibewarden_event_log_drops_total`.
+- **`BuildCaddyConfig`, `Proxy.forward`, `Proxy.handleRequest` refactored** (#1105, #1132) — extracted helpers reduce the three functions from 329/309/183 LOC to 19/27/15 LOC. No behaviour change; covered by existing tests.
+- **Three outbound port interfaces relocated from `internal/app/*` to `internal/ports/`** (#1107, #1126, [ADR-091](decisions/adr-091-ports-hygiene.md)) — `AuditLogger`, `EventLogger`, and `MetricRecorder` are now package-level ports, not embedded in app packages. Callers import from `internal/ports/`.
+- **`AdminServerIface` renamed to `AdminServerAPI`** (#1107, #1126) — aligns with the `*API` naming convention for inbound port interfaces. Update any external test helpers that referenced the old name.
+- **`llms-full.txt` and examples use `vibewarden.production.yaml`** (#1108, #1114, #1120) — non-existent `--config` flag removed; `vibewarden.prod.yaml` references corrected to `vibewarden.production.yaml` throughout.
+- **`/_vibewarden/healthz` corrected to `/_vibewarden/health`** (#1109, #1121) — docs, example configs, and reference YAML all now point to the real endpoint.
+- **`vibew init` vs `vibew wrap` comparison table added to README and getting-started** (#1110, #1122) — clarifies that the two commands produce different scaffolding; old docs incorrectly implied they were equivalent.
+- **`vibew dev --watch` and `vibew dev --observability` documented in CLI reference table** (#1112, #1113, #1125) — previously missing from `llms-full.txt`.
+- `github.com/moby/patternmatcher` promoted from indirect to direct dependency — already vendored via Docker client, Apache 2.0.
 
 ### Fixed
 
-- **`vibew dev` no longer silently exits 0** (#1088). After a successful
-  startup the command now prints the dev URL, a logs hint
-  (`docker compose -f .vibewarden/compose.yaml logs -f`), and a stop hint
-  (`vibew down`) so users know the stack is running and how to interact with
-  it.
-- **`vibew dev` surfaces docker compose stderr on failure** (#1075). Previous
-  releases swallowed compose errors and returned a bare exit code; failures
-  now include the full compose stderr in the error message.
-- `vibew add tls` no longer silently regenerates `vibewarden.production.yaml`, wiping commented-out stanzas (WAF block mode, auth, headers). Comments/ordering/whitespace preserved via AST edit. (#1086)
-- **`vibew doctor` no longer reports "expires 0 days" for self-signed certs**
-  (#1078). Self-signed local certificates are now identified and reported as
-  `SelfSignedLocal` instead of triggering a spurious near-expiry warning.
+- **CRITICAL: Caddy handlers were silently routing audit and log events to `/dev/null` since before v0.16.0** (#1102, #1130). Eight handlers constructed their audit/log sinks via `io.Discard` because the wiring in `cmd/` never reached the handler constructors. The `RuntimeServices` registry fix (#1102) closes the circuit: all handlers now receive the sinks configured in `vibewarden.yaml`. If your Grafana dashboard showed zero `audit.*` events despite traffic, this is why.
+- **`vibew dev` surfaces docker compose stderr on failure** (#1075, #1093). Previous releases swallowed compose errors and returned a bare exit code; failures now include the full compose stderr in the error message.
+- **`vibew dev` no longer silently exits 0** (#1088). After a successful startup the command now prints the dev URL and stop/logs hints.
+- `vibew add tls` no longer silently regenerates `vibewarden.production.yaml`, wiping commented-out stanzas (WAF block mode, auth, headers). Comments/ordering/whitespace preserved via AST edit. (#1086, #1094)
+- **`vibew doctor` no longer reports "expires 0 days" for self-signed certs** (#1078, #1096). Self-signed local certificates are now identified and reported as `SelfSignedLocal` instead of triggering a spurious near-expiry warning.
+- **`vibew add` preserves hand-written comments in `vibewarden.production.yaml`** (#1086, #1094) — AST-level upsert replaces the previous marshal/unmarshal round-trip that dropped all comments.
+- **Ports-purity invariant now enforced in CI** (#1098, #1099, #1119) — the architectural test that prevents `internal/app/*` from importing adapter packages was previously gated behind a build tag and never ran. Ungated; the `bundle.go` adapter-import regression that triggered the audit is fixed.
+- **`llms.txt` and `llms-full.txt` merged into main repo** (#1082, #1083) — main repo is now the single source of truth; website fetches at build time.
+- ADRs 073, 088 added to `decisions/README.md` index; ADR-090 promoted from Proposed to Accepted (#1111, #1103, #1124).
+- Small docs pass (#1115): poll-not-stream MCP wording corrected, README curl flag normalized, `vibew down --yes` documented, agent-doc reference fixed.
 
-### Changed (continued)
+### Removed
 
-- `vibew add` commands that hit an unparseable YAML file now fail fast with a `vibew validate` remediation hint instead of silently rewriting. (#1086)
-- Bundle `deploy.sh` now runs locally (#1087,
-  [ADR-088](decisions/adr-088-deploy-sh-local-run-convention.md)). One
-  command on the workstation — `cd .vibewarden/bundle && ./deploy.sh
-  user@host` — scps the bundle, loads the image, runs `docker compose
-  up -d`, and probes `/_vibewarden/health` on the remote. The
-  remote-run recipe in previous docs (`ssh user@host 'cd ~/bundle &&
-  bash deploy.sh'`) was a bug; every doc surface has been realigned.
-  The script accepts `user@host[:/remote/path]` and defaults the remote
-  path to `~/vibewarden-bundle`.
-- **`vibew status` and `vibew doctor` now report TLS state** (#1090, #1078).
-  The status table and doctor checks surface the live Caddy TLS state:
-  `Obtaining` (ACME in progress), `Obtained` (cert active), `Failing` (ACME
-  failed), or `SelfSignedLocal` (dev self-signed cert). Previously only a
-  binary up/down was shown.
+- **Dead `SessionCheckerToIdentityProvider` adapter deleted** (#1106, #1126) — the adapter had no callers since v0.11.0 and was kept only as scaffolding. Removes ~120 LOC.
+
+### Internal
+
+- `internal/app/eject` coverage raised from 34.5% to 100% via table-driven tests (#1101, #1128).
+- Five new ADRs landed this cycle: [ADR-088](decisions/adr-088-deploy-sh-local-run-convention.md) (deploy.sh local-run), [ADR-089](decisions/adr-089-bundle-image-health-tag-scoping-freshness-arch.md) (bundle image health/staleness/arch warn), [ADR-090](decisions/adr-090-le-rate-limit-preflight.md) (LE rate-limit preflight), [ADR-091](decisions/adr-091-ports-hygiene.md) (ports hygiene), [ADR-092](decisions/adr-092-caddy-handler-dependency-injection.md) (Caddy DI registry).
 
 ---
 
@@ -743,6 +759,7 @@ Single Go binary embedding Caddy. Zero-to-secure in minutes for vibe-coded apps.
 
 ---
 
+[v0.17.0]: https://github.com/vibewarden/vibewarden/releases/tag/v0.17.0
 [v0.16.0]: https://github.com/vibewarden/vibewarden/releases/tag/v0.16.0
 [v0.15.0]: https://github.com/vibewarden/vibewarden/releases/tag/v0.15.0
 [v0.14.0]: https://github.com/vibewarden/vibewarden/releases/tag/v0.14.0
