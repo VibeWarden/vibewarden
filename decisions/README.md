@@ -64,6 +64,7 @@ once accepted, they are not edited. If a decision is superseded, a new ADR refer
 | [089](adr-089-bundle-image-health-tag-scoping-freshness-arch.md) | Bundle image health — tag scoping, freshness, and arch warning | — |
 | [090](adr-090-le-rate-limit-preflight.md) | Let's Encrypt rate-limit preflight via Certificate Transparency | #1057 |
 | [091](adr-091-ports-hygiene-delete-dead-session-checker-adapter-move-outbound-ports.md) | Ports hygiene — delete dead SessionChecker adapter; move three outbound ports to `internal/ports/`; rename `AdminServerIface` | #1106, #1107 |
+| [092](adr-092-caddy-handler-dependency-injection.md) | Caddy handler dependency injection via composition-root-populated services registry | #1102 |
 | [497](adr-497-graceful-shutdown-connection-draining.md) | Graceful Shutdown / Connection Draining | — |
 
 ## Numbering
