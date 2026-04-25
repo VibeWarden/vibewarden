@@ -13,7 +13,6 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
-	"strconv"
 	"strings"
 	"time"
 
@@ -577,188 +576,19 @@ func (lb *limitedBody) Close() error { return nil }
 // extracts the egress request from the incoming HTTP request, delegates to
 // HandleRequest, and writes the upstream response back to the caller.
 func (p *Proxy) handleRequest(w http.ResponseWriter, r *http.Request) {
-	targetURL, err := p.resolveTargetURL(r)
+	egressReq, targetURL, err := p.parseIncomingRequest(r)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("bad request: %s", err), http.StatusBadRequest)
 		return
 	}
 
-	// Copy the incoming headers, stripping hop-by-hop entries.
-	outHeaders := cloneAndStripHopByHop(r.Header)
-	// Remove the proxy-specific header from the forwarded request.
-	outHeaders.Del(headerEgressURL)
-
-	egressReq, err := domainegress.NewEgressRequest(r.Method, targetURL, outHeaders, r.Body)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("invalid egress request: %s", err), http.StatusBadRequest)
-		return
-	}
-
 	egressResp, err := p.HandleRequest(r.Context(), egressReq)
 	if err != nil {
-		if err == ErrDeniedByPolicy {
-			http.Error(w, "403 Forbidden: request denied by egress policy", http.StatusForbidden)
-			return
-		}
-		if err == ErrInsecureURL {
-			p.logger.WarnContext(r.Context(), "egress.tls_error",
-				slog.String("event_type", "egress.tls_error"),
-				slog.String("target", targetURL),
-				slog.String("method", r.Method),
-				slog.String("reason", "plain HTTP not allowed"),
-			)
-			http.Error(w, "400 Bad Request: "+ErrInsecureURL.Error(), http.StatusBadRequest)
-			return
-		}
-		if err == ErrRequestBodyTooLarge {
-			p.logger.WarnContext(r.Context(), "egress.body_size_exceeded",
-				slog.String("event_type", "egress.body_size_exceeded"),
-				slog.String("kind", "request"),
-				slog.String("target", targetURL),
-				slog.String("method", r.Method),
-			)
-			http.Error(w, "413 Request Entity Too Large: request body exceeds egress size limit", http.StatusRequestEntityTooLarge)
-			return
-		}
-		if err == ErrCircuitOpen {
-			p.logger.WarnContext(r.Context(), "egress circuit breaker open — request rejected",
-				slog.String("target", targetURL),
-				slog.String("method", r.Method),
-			)
-			http.Error(w, "503 Service Unavailable: egress circuit breaker is open", http.StatusServiceUnavailable)
-			return
-		}
-		if err == ErrRateLimitExceeded {
-			// Resolve the matched route to compute Retry-After.
-			retryAfter := "1"
-			if p.cfg.RateLimiters != nil {
-				egressReq2, reqErr := domainegress.NewEgressRequest(r.Method, targetURL, nil, nil)
-				if reqErr == nil {
-					if m2, resolveErr := p.resolver.Resolve(r.Context(), egressReq2); resolveErr == nil && m2.Matched {
-						if secs, raErr := p.cfg.RateLimiters.RetryAfterSeconds(m2.Route); raErr == nil {
-							retryAfter = retryAfterHeader(secs)
-						}
-					}
-				}
-			}
-			p.logger.WarnContext(r.Context(), "egress rate limit exceeded — request rejected",
-				slog.String("target", targetURL),
-				slog.String("method", r.Method),
-				slog.String("retry_after", retryAfter),
-			)
-			w.Header().Set("Retry-After", retryAfter)
-			http.Error(w, "429 Too Many Requests: egress rate limit exceeded", http.StatusTooManyRequests)
-			return
-		}
-		if errors.Is(err, ErrResponseValidationFailed) {
-			p.logger.WarnContext(r.Context(), "egress.response_invalid",
-				slog.String("event_type", "egress.response_invalid"),
-				slog.String("target", targetURL),
-				slog.String("method", r.Method),
-				slog.String("err", err.Error()),
-			)
-			http.Error(w, "502 Bad Gateway: "+err.Error(), http.StatusBadGateway)
-			return
-		}
-		if errors.Is(err, ErrMTLSHandshakeFailed) {
-			p.logger.ErrorContext(r.Context(), "egress.mtls_error",
-				slog.String("event_type", "egress.mtls_error"),
-				slog.String("target", targetURL),
-				slog.String("method", r.Method),
-				slog.String("err", err.Error()),
-			)
-			http.Error(w, "502 Bad Gateway: mTLS handshake failed", http.StatusBadGateway)
-			return
-		}
-		var ssrfErr *SSRFBlockedError
-		if errors.As(err, &ssrfErr) {
-			p.logger.WarnContext(r.Context(), "egress SSRF protection blocked request",
-				slog.String("target", targetURL),
-				slog.String("host", ssrfErr.Host),
-				slog.String("resolved_ip", ssrfErr.IP.String()),
-			)
-			http.Error(w, "403 Forbidden: "+ssrfErr.Error(), http.StatusForbidden)
-			return
-		}
-		// A deadline-exceeded error from context.WithTimeout in forward() means
-		// the upstream did not respond within the configured timeout.
-		if isTimeoutError(err) {
-			p.logger.WarnContext(r.Context(), "egress request timed out",
-				slog.String("target", targetURL),
-				slog.String("method", r.Method),
-			)
-			http.Error(w, "504 Gateway Timeout: upstream did not respond in time", http.StatusGatewayTimeout)
-			return
-		}
-		p.logger.ErrorContext(r.Context(), "egress forwarding error",
-			slog.String("target", targetURL),
-			slog.String("method", r.Method),
-			slog.String("err", err.Error()),
-		)
-		http.Error(w, "egress proxy error", http.StatusBadGateway)
+		p.writeEgressErrorResponse(w, r, targetURL, err)
 		return
 	}
 
-	// Write the upstream response back to the caller.
-	respBody, _ := egressResp.BodyRef.(io.ReadCloser)
-
-	// Determine the effective response size limit before sending headers so we
-	// can declare the truncation trailer key in advance.
-	respSizeLimit := p.responseSizeLimitFor(egressReq)
-
-	respHeaders := cloneAndStripHopByHop(egressResp.Header)
-	// When a response size limit is active we cannot forward Content-Length
-	// because the actual bytes written may be fewer than the upstream reported.
-	// Removing it forces chunked transfer encoding, which is required for
-	// HTTP/1.1 trailers to work correctly.
-	if respSizeLimit > 0 {
-		respHeaders.Del("Content-Length")
-	}
-	for key, vals := range respHeaders {
-		for _, v := range vals {
-			w.Header().Add(key, v)
-		}
-	}
-	// Report total attempt count (initial + retries) to the caller.
-	if egressResp.Attempts > 0 {
-		w.Header().Set(headerEgressAttempts, fmt.Sprintf("%d", egressResp.Attempts))
-	}
-	// Announce the truncation trailer so HTTP/1.1 clients can read it after the body.
-	if respSizeLimit > 0 {
-		w.Header().Add("Trailer", headerResponseTruncated)
-	}
-	w.WriteHeader(egressResp.StatusCode)
-
-	if respBody != nil {
-		defer respBody.Close() //nolint:errcheck
-
-		if respSizeLimit > 0 {
-			// Copy at most respSizeLimit bytes.
-			written, copyErr := io.Copy(w, io.LimitReader(respBody, respSizeLimit))
-			// Try to read one more byte to detect whether the body was truncated.
-			var probe [1]byte
-			n, _ := respBody.Read(probe[:])
-			if n > 0 {
-				// Body exceeded the limit — log and set the truncation trailer.
-				p.logger.WarnContext(r.Context(), "egress.body_size_exceeded",
-					slog.String("event_type", "egress.body_size_exceeded"),
-					slog.String("kind", "response"),
-					slog.String("target", targetURL),
-					slog.String("method", r.Method),
-					slog.Int64("limit_bytes", respSizeLimit),
-					slog.Int64("bytes_written", written),
-				)
-				w.Header().Set(headerResponseTruncated, "true")
-			}
-			if copyErr != nil {
-				p.logger.WarnContext(r.Context(), "writing egress response body", "err", copyErr)
-			}
-		} else {
-			if _, err := io.Copy(w, respBody); err != nil {
-				p.logger.WarnContext(r.Context(), "writing egress response body", "err", err)
-			}
-		}
-	}
+	p.writeEgressResponse(w, r, egressReq, egressResp, targetURL)
 }
 
 // responseSizeLimitFor returns the effective response size limit for the given
@@ -857,314 +687,32 @@ func patternBase(pattern string) string {
 // logged as an egress.retry structured event. A timeout from context.WithTimeout
 // is returned as-is so the HTTP handler can respond with 504.
 func (p *Proxy) forward(ctx context.Context, req domainegress.EgressRequest, match domainegress.RouteMatch) (domainegress.EgressResponse, error) {
-	// --- Observability: start client span ---
 	routeName := routeNameOf(match)
-	spanCtx := ctx
-	var span ports.Span
-	if p.cfg.Tracer != nil {
-		spanCtx, span = p.cfg.Tracer.Start(ctx, "egress "+req.Method,
-			ports.WithSpanKind(ports.SpanKindClient))
-		// Store trace-id in context for structured log correlation.
-		// We extract it from the span context via a no-op propagation trick:
-		// instead, store the routeName and let the span carry the trace.
-		defer span.End()
-		span.SetAttributes(
-			ports.Attribute{Key: "http.request.method", Value: req.Method},
-			ports.Attribute{Key: "url.full", Value: req.URL},
-			ports.Attribute{Key: "egress.route", Value: routeName},
-		)
-	}
+	spanCtx, span := p.startEgressSpan(ctx, req, routeName)
+	defer endSpan(span)
 
-	// Emit egress.request event.
-	if p.cfg.EventLogger != nil {
-		_ = p.cfg.EventLogger.Log(spanCtx, events.NewEgressRequest(events.EgressRequestParams{
-			Route:   routeName,
-			Method:  req.Method,
-			URL:     req.URL,
-			TraceID: traceIDFromContext(spanCtx),
-		}))
-	}
+	p.emitEgressRequest(spanCtx, req, routeName)
 
-	timeout := p.cfg.DefaultTimeout
-	if match.Matched && match.Route.Timeout() > 0 {
-		timeout = match.Route.Timeout()
-	}
-
-	reqCtx, cancel := context.WithTimeout(spanCtx, timeout)
+	reqCtx, cancel := p.attemptContext(spanCtx, match)
 	defer cancel()
 
-	// Apply per-route request header manipulation when a route was matched.
+	var err error
 	var outHeaders http.Header
-	if match.Matched {
-		outHeaders = match.Route.Headers().ApplyToRequest(req.Header)
-	} else {
-		// Always strip X-Inject-Secret even on unmatched (allow-policy) requests.
-		outHeaders = req.Header.Clone()
-		outHeaders.Del(headerInjectSecret)
-	}
-
-	// PII sanitization phase — strip query params and redact JSON body fields
-	// before forwarding, and build a log-safe header copy.
-	// Sanitization runs after header manipulation so that injected/stripped
-	// headers are reflected correctly in the log output.
-	if match.Matched {
-		sanitizeCfg := match.Route.Sanitize()
-		if !sanitizeCfg.IsZero() {
-			sanitizedReq, _, sanitizeResult, sanitizeErr := sanitizeRequest(reqCtx, req, sanitizeCfg)
-			if sanitizeErr != nil {
-				p.logger.ErrorContext(ctx, "egress sanitization error — request blocked",
-					slog.String("url", req.URL),
-					slog.String("err", sanitizeErr.Error()),
-				)
-				return domainegress.EgressResponse{}, fmt.Errorf("sanitizing request: %w", sanitizeErr)
-			}
-			req = sanitizedReq
-			// Emit egress.sanitized event after updating req so the URL in the
-			// event already has query params stripped.
-			p.emitSanitized(reqCtx, routeName, req, sanitizeResult)
-		}
-	}
-
-	// Secret injection phase — must happen after header manipulation so that
-	// X-Inject-Secret is extracted before being stripped.
-	//
-	// Two injection sources are supported (in priority order):
-	//  1. Per-route static SecretConfig from the route definition.
-	//  2. Dynamic X-Inject-Secret request header set by the application.
-	//
-	// If secret injection is required but no injector is configured, or if the
-	// injector returns an error, the request is blocked (fail-closed).
-	if err := p.applySecretInjection(reqCtx, req.Header, match, outHeaders); err != nil {
-		p.logger.ErrorContext(ctx, "egress secret injection failed — request blocked",
-			slog.String("url", req.URL),
-			slog.String("err", err.Error()),
-		)
-		return domainegress.EgressResponse{}, fmt.Errorf("secret injection: %w", err)
-	}
-
-	// Determine retry parameters. Retry is only attempted for matched routes
-	// that carry a RetryConfig with Max > 0 and an idempotent method.
-	retryCfg := domainegress.RetryConfig{}
-	retryEnabled := false
-	if match.Matched {
-		rc := match.Route.Retry()
-		if rc.Max > 0 && rc.IsRetryableMethod(req.Method) {
-			retryCfg = rc
-			retryEnabled = true
-		}
-	}
-
-	maxAttempts := 1
-	if retryEnabled {
-		maxAttempts = 1 + retryCfg.Max
-	}
-
-	initialBackoff := retryCfg.InitialBackoff
-	if initialBackoff <= 0 {
-		initialBackoff = defaultRetryInitialBackoff
-	}
-
-	var (
-		lastResp     *http.Response
-		lastErr      error
-		start        = time.Now()
-		attemptsDone int
-	)
-
-	for attempt := 1; attempt <= maxAttempts; attempt++ {
-		attemptsDone = attempt
-
-		// Each attempt needs a fresh HTTP request because the body and context
-		// cannot be reused after the first send.
-		body, _ := req.BodyRef.(io.Reader)
-		httpReq, err := http.NewRequestWithContext(reqCtx, req.Method, req.URL, body)
-		if err != nil {
-			return domainegress.EgressResponse{}, fmt.Errorf("building upstream request: %w", err)
-		}
-		for key, vals := range outHeaders {
-			for _, v := range vals {
-				httpReq.Header.Add(key, v)
-			}
-		}
-
-		// Inject W3C traceparent into outbound request headers so the external
-		// service can continue the trace.
-		if p.cfg.Propagator != nil {
-			p.cfg.Propagator.Inject(reqCtx, httpHeaderCarrier(httpReq.Header))
-		}
-
-		// Use a per-route mTLS client when one has been configured for this
-		// route; otherwise fall back to the proxy default client.
-		activeClient := p.client
-		if match.Matched {
-			if mtlsClient, ok := p.cfg.MTLSClients[match.Route.Name()]; ok {
-				activeClient = mtlsClient
-			}
-		}
-
-		resp, err := activeClient.Do(httpReq)
-
-		if err != nil {
-			lastErr = err
-			lastResp = nil
-
-			// A TLS handshake failure on a route with an mTLS client certificate
-			// is logged as a structured egress.mtls_error event and surfaced
-			// immediately without retrying (the cert mismatch will not resolve
-			// itself on retry).
-			if match.Matched && !match.Route.MTLS().IsZero() && isMTLSError(err) {
-				p.logger.ErrorContext(ctx, "egress.mtls_error",
-					slog.String("event_type", "egress.mtls_error"),
-					slog.String("url", req.URL),
-					slog.String("method", req.Method),
-					slog.String("route", routeName),
-					slog.String("err", err.Error()),
-				)
-				wrappedErr := fmt.Errorf("%w: %w", ErrMTLSHandshakeFailed, err)
-				p.recordEgressError(spanCtx, span, match, req, routeName, attempt, time.Since(start), wrappedErr)
-				return domainegress.EgressResponse{}, wrappedErr
-			}
-
-			// A context deadline/cancellation is a timeout — do not retry, surface
-			// it immediately so the caller can return 504.
-			if isTimeoutError(err) {
-				p.logger.WarnContext(ctx, "egress.timeout",
-					slog.String("event_type", "egress.timeout"),
-					slog.String("url", req.URL),
-					slog.String("method", req.Method),
-					slog.Int("attempt", attempt),
-				)
-				if match.Matched && p.cfg.CircuitBreakers != nil {
-					p.cfg.CircuitBreakers.RecordFailure(ctx, match.Route)
-				}
-				wrappedErr := fmt.Errorf("forwarding request to %s: %w", req.URL, err)
-				p.recordEgressError(spanCtx, span, match, req, routeName, attempt, time.Since(start), wrappedErr)
-				return domainegress.EgressResponse{}, wrappedErr
-			}
-
-			if retryEnabled && attempt < maxAttempts {
-				backoff := computeBackoff(retryCfg.Backoff, initialBackoff, attempt)
-				p.logger.WarnContext(ctx, "egress.retry",
-					slog.String("event_type", "egress.retry"),
-					slog.String("url", req.URL),
-					slog.String("method", req.Method),
-					slog.Int("attempt", attempt),
-					slog.Int("max_attempts", maxAttempts),
-					slog.String("backoff", backoff.String()),
-					slog.String("reason", err.Error()),
-				)
-				if !sleep(reqCtx, backoff) {
-					// Context cancelled during backoff — surface timeout.
-					if match.Matched && p.cfg.CircuitBreakers != nil {
-						p.cfg.CircuitBreakers.RecordFailure(ctx, match.Route)
-					}
-					wrappedErr := fmt.Errorf("forwarding request to %s: %w", req.URL, reqCtx.Err())
-					p.recordEgressError(spanCtx, span, match, req, routeName, attempt, time.Since(start), wrappedErr)
-					return domainegress.EgressResponse{}, wrappedErr
-				}
-				continue
-			}
-
-			if match.Matched && p.cfg.CircuitBreakers != nil {
-				p.cfg.CircuitBreakers.RecordFailure(ctx, match.Route)
-			}
-			// lastErr is set — break the loop so the post-loop check records
-			// observability and returns the error.
-			break
-		}
-
-		// We have a response. Check whether it is a retryable status code.
-		if retryEnabled && attempt < maxAttempts {
-			if _, retryable := retryableStatusCodes[resp.StatusCode]; retryable {
-				// Drain and close the body before retrying to free the connection.
-				resp.Body.Close() //nolint:errcheck
-				backoff := computeBackoff(retryCfg.Backoff, initialBackoff, attempt)
-				p.logger.WarnContext(ctx, "egress.retry",
-					slog.String("event_type", "egress.retry"),
-					slog.String("url", req.URL),
-					slog.String("method", req.Method),
-					slog.Int("attempt", attempt),
-					slog.Int("max_attempts", maxAttempts),
-					slog.String("backoff", backoff.String()),
-					slog.String("reason", fmt.Sprintf("status %d", resp.StatusCode)),
-				)
-				if !sleep(reqCtx, backoff) {
-					wrappedErr := fmt.Errorf("forwarding request to %s: %w", req.URL, reqCtx.Err())
-					p.recordEgressError(spanCtx, span, match, req, routeName, attempt, time.Since(start), wrappedErr)
-					return domainegress.EgressResponse{}, wrappedErr
-				}
-				continue
-			}
-		}
-
-		lastResp = resp
-		lastErr = nil
-		break
-	}
-
-	if lastErr != nil {
-		duration := time.Since(start)
-		p.recordEgressError(spanCtx, span, match, req, routeName, attemptsDone, duration, lastErr)
-		return domainegress.EgressResponse{}, fmt.Errorf("forwarding request to %s: %w", req.URL, lastErr)
-	}
-
-	// Record circuit breaker outcome based on the final response status.
-	if match.Matched && p.cfg.CircuitBreakers != nil {
-		if isFailureStatus(lastResp.StatusCode) {
-			p.cfg.CircuitBreakers.RecordFailure(ctx, match.Route)
-		} else {
-			p.cfg.CircuitBreakers.RecordSuccess(ctx, match.Route)
-		}
-	}
-
-	duration := time.Since(start)
-
-	// --- Observability: record successful response metrics and events ---
-	if p.cfg.Metrics != nil {
-		p.cfg.Metrics.IncEgressRequestTotal(routeName, req.Method, strconv.Itoa(lastResp.StatusCode))
-		p.cfg.Metrics.ObserveEgressDuration(routeName, req.Method, duration)
-	}
-	if p.cfg.EventLogger != nil {
-		_ = p.cfg.EventLogger.Log(spanCtx, events.NewEgressResponse(events.EgressResponseParams{
-			Route:           routeName,
-			Method:          req.Method,
-			URL:             req.URL,
-			StatusCode:      lastResp.StatusCode,
-			DurationSeconds: duration.Seconds(),
-			Attempts:        attemptsDone,
-			TraceID:         traceIDFromContext(spanCtx),
-		}))
-	}
-	if span != nil {
-		span.SetAttributes(
-			ports.Attribute{Key: "http.response.status_code", Value: strconv.Itoa(lastResp.StatusCode)},
-		)
-		if lastResp.StatusCode >= 500 {
-			span.SetStatus(ports.SpanStatusError, http.StatusText(lastResp.StatusCode))
-		} else {
-			span.SetStatus(ports.SpanStatusOK, "")
-		}
-	}
-
-	// Apply per-route response header stripping (also strips default sensitive headers).
-	var respHeaders http.Header
-	if match.Matched {
-		respHeaders = match.Route.Headers().ApplyToResponse(lastResp.Header)
-	} else {
-		// Apply default sensitive-header stripping on unmatched requests too.
-		respHeaders = domainegress.HeadersConfig{}.ApplyToResponse(lastResp.Header)
-	}
-
-	egressResp, err := domainegress.NewEgressResponse(lastResp.StatusCode, respHeaders, lastResp.Body, duration)
+	req, outHeaders, err = p.prepareOutboundRequest(reqCtx, ctx, req, match, routeName)
 	if err != nil {
-		lastResp.Body.Close() //nolint:errcheck
-		return domainegress.EgressResponse{}, fmt.Errorf("building egress response: %w", err)
+		return domainegress.EgressResponse{}, err
 	}
 
-	// Record the total number of upstream attempts so the HTTP handler can set
-	// the X-Egress-Attempts response header.
-	egressResp.Attempts = attemptsDone
-	return egressResp, nil
+	lastResp, attempts, start, err := p.executeWithRetries(reqCtx, ctx, spanCtx, span, req, outHeaders, match, routeName)
+	if err != nil {
+		return domainegress.EgressResponse{}, err
+	}
+
+	p.recordCircuitOutcome(ctx, match, lastResp)
+	duration := time.Since(start)
+	p.recordEgressSuccess(spanCtx, span, match, req, routeName, attempts, duration, lastResp)
+
+	return p.buildEgressResponse(lastResp, match, attempts, duration)
 }
 
 // recordEgressError records observability for a transport-level egress failure.
