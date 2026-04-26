@@ -13,7 +13,7 @@ hexagonal architecture and DDD patterns.
 
 1. **Read everything first**:
    - `CLAUDE.md` — code style, architecture rules, testing requirements
-   - `DECISIONS.md` — all ADRs, especially the one for this issue
+   - `decisions/README.md` — ADR index. Read the ADR(s) the architect cited for this issue from `decisions/adr-NNN-*.md`. (`DECISIONS.md` at repo root is a PM scratch log; ignore it.)
    - The GitHub issue and all its comments:
      ```bash
      gh issue view <number> --repo vibewarden/vibewarden --comments
@@ -40,32 +40,44 @@ hexagonal architecture and DDD patterns.
 
 5. **Verify**:
    ```bash
-   go build ./...
-   go test ./...
-   go vet ./...
+   make check
    ```
-   Do not open a PR if any of these fail.
+   `make check` is the canonical pre-PR gate (gofmt, goimports, golangci-lint, go test). Do not open a PR if it fails.
 
-6. **Commit** — conventional commits:
+6. **Catch orphan files BEFORE commit** — the architect may have created files (commonly a new ADR under `decisions/adr-NNN-*.md`, or a design note). These will not be picked up by editing tracked files. Run:
    ```bash
-   git add .
+   git status --short | grep '^??'
+   ```
+   For every untracked file that belongs in the PR (especially anything under `decisions/`, `internal/ports/`, `internal/domain/`, or new test fixtures the architect referenced), `git add <path>` it explicitly. **Do NOT use `git add .` or `git add -A`** — those silently grab agent-scratch directories like `.claude/worktrees/`, `.claude/designs/`, `.claude/scheduled_tasks.lock`. Add files by path.
+
+   **ADR orphan check (mandatory if architect wrote any ADR):**
+   ```bash
+   git status --short | grep '^??' | grep -E 'decisions/adr-[0-9]'
+   ```
+   Must return empty AFTER you have added the architect's ADR file. If the architect's note references "ADR-NNN" but the file is missing from the staged set, you have orphaned it — past incident, see #1118 (ADR-090) and #1130 (ADR-092).
+
+   If a new ADR was added, also update `decisions/README.md` index in the correct sort order before committing.
+
+7. **Commit** — conventional commits:
+   ```bash
    git commit -m "feat(#<number>): <description>"
    ```
 
-7. **Push and open PR**:
+8. **Push and open PR**:
    ```bash
    git push origin feat/<issue-number>-<short-slug>
    gh pr create \
      --repo vibewarden/vibewarden \
      --title "feat(#<number>): <description>" \
-     --body "Closes #<number>\n\n## Summary\n<what you built>\n\n## Test plan\n<how to verify>" \
-     --label "status:review"
+     --body "Closes #<number>\n\n## Summary\n<what you built>\n\n## Test plan\n<how to verify>"
    ```
 
-8. **Set issue status**:
+9. **Set status via labels** (not comments):
    ```bash
-   gh issue comment <number> --repo vibewarden/vibewarden --body "Status: READY_FOR_REVIEW\nPR: <pr-url>"
+   gh issue edit <number> --remove-label "status:ready-for-dev" --add-label "status:ready-for-review"
+   gh pr edit <pr-number> --add-label "status:ready-for-review"
    ```
+   Labels are the source of truth for pipeline state. Do not post status comments.
 
 ## Code quality rules
 
