@@ -73,9 +73,10 @@ func NewBundleCmd() *cobra.Command {
 
 ` + "`vibew bundle`" + ` writes everything a user needs to deploy on a VPS: a
 merged docker-compose.yml (with image: pinned, never build:), the merged
-vibewarden.yaml, a sample.env scaffold, a preserved-across-runs .env, a
-reference deploy.sh script, an optional image.tar produced via docker save,
-and a README.md describing the three-step manual deploy.
+vibewarden.yaml, a sample.env scaffold, a preserved-across-runs .env, an
+optional image.tar produced via docker save, and a README.md describing
+the deploy contract (what the bundle is, where to put it, the two
+non-obvious traps).
 
 Before writing any files, bundle inspects the target image and prints a
 health block showing the tag, digest, architecture, freshness, and any
@@ -97,9 +98,8 @@ Output layout:
     vibewarden.yaml       # merged base + prod override, strict-validated
     sample.env            # regenerated every run
     .env                  # first-run only; --overwrite to replace
-    deploy.sh             # mode 0o750, 10-line reference script
     image.tar             # omitted with --skip-image
-    README.md             # 3-paragraph manual-deploy guide
+    README.md             # deploy contract — see file
     kratos/, .credentials # anything the generator produces
 
 Examples:
@@ -279,7 +279,7 @@ func runBundle(cmd *cobra.Command, outputDir, imageTag, targetPlatform string, o
 		fmt.Fprintf(out, "  %s\n", f)
 	}
 	fmt.Fprintln(out, "")
-	fmt.Fprintf(out, "Next: cd %s && ./deploy.sh user@host  (runs locally — scps bundle, loads image, brings stack up, probes /_vibewarden/health)\n", absOut)
+	fmt.Fprintf(out, "Next: see %s/README.md for the deploy contract.\n", absOut)
 	return 0, nil
 }
 
@@ -315,12 +315,10 @@ func bundleListing(dir string) ([]string, error) {
 //  3. ProjectNameFromConfig fallback
 //
 // Every candidate is run through sanitiseProjectName so that downstream
-// shell interpolations (deploy.sh, README.md, rsync paths) cannot be
-// weaponised by a hostile vibewarden.yaml. ADR-085 §7 and the #1061
-// reviewer finding both call this out: even though deploy.sh only
-// interpolates the project name inside a comment today, the surface is
-// not defensible if we start allowing arbitrary unicode / shell
-// metacharacters through.
+// path / README interpolations cannot be weaponised by a hostile
+// vibewarden.yaml. ADR-085 §7 and the #1061 reviewer finding both call
+// this out: the surface is not defensible if we start allowing arbitrary
+// unicode / shell metacharacters through.
 func deriveProjectName(cfg *config.Config, absConfig string) string {
 	if name := sanitiseProjectName(cfg.Name); name != "" {
 		return name
@@ -345,8 +343,8 @@ func deriveProjectName(cfg *config.Config, absConfig string) string {
 // the input contains no safe characters — callers fall through to the
 // next derivation step in that case (deriveProjectName chains several).
 //
-// This is the defensive layer that protects deploy.sh / README.md /
-// rsync path interpolation from crafted inputs like
+// This is the defensive layer that protects README.md / rsync path
+// interpolation from crafted inputs like
 // `myproject" && rm -rf /` in vibewarden.yaml's `name:` key. The config
 // schema does not currently validate `name` against this subset, so the
 // bundle pipeline carries the guard.

@@ -1161,24 +1161,25 @@ Step 6 — Produce a deploy bundle locally:
     #   vibewarden.yaml           — merged base + prod override, strict-validated
     #   sample.env                — template for operators
     #   .env                      — first-run only (use --overwrite to regenerate)
-    #   deploy.sh                 — local-run reference script (mode 0o750)
-    #   README.md                 — per-bundle cheat sheet
+    #   README.md                 — the deploy contract (read this on the host)
 
-Step 7 — Ship and start (one command, runs on your laptop):
-    cd .vibewarden/bundle && ./deploy.sh root@<server-ip>:/opt/myapp
-    # scp -r .          → root@<server-ip>:/opt/myapp/
-    # ssh root@...      → docker load -i image.tar && docker compose up -d
-    # sleep 3 + probe  → http://localhost:<port>/_vibewarden/health
-    # on failure       → dumps `docker compose logs --tail 50` to stderr, exits 1
+Step 7 — Ship and start. The bundle is just files; the contract is in README.md.
+    Two things easy to get wrong: the remote directory must exist before
+    you copy, and the production healthcheck port is 443 (TLS), not the
+    dev port 8443.
 
-Step 8 — Verify (script already probed /_vibewarden/health; double-check anytime):
-    ssh root@<server-ip> 'cd /opt/myapp && docker compose ps'
-    ssh root@<server-ip> 'curl -sf http://localhost:8443/_vibewarden/health && echo OK'
+    ssh root@<server-ip> "mkdir -p /opt/myapp"
+    scp -r .vibewarden/bundle/* root@<server-ip>:/opt/myapp/
+    ssh root@<server-ip> "cd /opt/myapp && docker load -i image.tar && docker compose up -d"
+
+Step 8 — Verify against the public URL (port 443, TLS):
+    curl https://demo.yourdomain.com/_vibewarden/health && echo OK
     # OK
 
 Step 9 — Subsequent deploys (after code or config changes):
     vibew bundle
-    cd .vibewarden/bundle && ./deploy.sh root@<server-ip>:/opt/myapp
+    rsync -av --delete .vibewarden/bundle/ root@<server-ip>:/opt/myapp/
+    ssh root@<server-ip> "cd /opt/myapp && docker load -i image.tar && docker compose up -d"
 
 Note: the legacy `vibew deploy` command (one-shot SSH orchestration) was removed
 in ADR-086. The bundle pipeline above is the only supported remote workflow.
@@ -1312,7 +1313,7 @@ VibeWarden is operated via the `vibew` CLI. Below is the complete command list.
 | `vibew dev --observability` | Start Prometheus and Grafana alongside the core stack |
 | `vibew down` | Stop the local dev stack (preserves data volumes; pass `-v` to also remove volumes; pass `--yes` to skip confirmation prompt in CI/scripts) |
 | `vibew restart` | Restart containers without rebuilding |
-| `vibew bundle` | Produce a self-contained Docker Compose deploy bundle under `.vibewarden/bundle/` (produces deploy.sh for local-run shipping) |
+| `vibew bundle` | Produce a self-contained Docker Compose deploy bundle under `.vibewarden/bundle/`. The bundle's `README.md` describes the deploy contract; operators copy the directory to a host and run `docker compose up -d`. |
 | `vibew status` | Show health of all components; TLS column reports state: Obtaining, Obtained, Failing, or SelfSignedLocal |
 | `vibew doctor` | Diagnose common issues; includes LE rate-limit preflight (crt.sh CT log query) when tls.provider=letsencrypt; --skip-le-preflight suppresses it |
 | `vibew logs` | Pretty-print structured logs |
@@ -1404,8 +1405,7 @@ Output layout:
 - `vibewarden.yaml` -- merged base + prod override, strict-validated
 - `sample.env` -- regenerated every run; template for operators
 - `.env` -- first-run only; `--overwrite` to replace
-- `deploy.sh` -- mode 0o750, ~25-line local-run script
-- `README.md` -- single-step deploy guide: `cd .vibewarden/bundle && ./deploy.sh user@host`
+- `README.md` -- the deploy contract (what each file is, where the bundle goes, the two non-obvious traps: remote dir must exist before copy; production healthcheck is on port 443, not 8443)
 - `image.tar` -- omitted with `--skip-image`
 - `kratos/`, `.credentials` -- whatever the generator produces
 
@@ -1465,16 +1465,21 @@ Full guide: https://vibewarden.dev/docs/multi-app/
 `vibew build` builds the Docker image locally from the app's Dockerfile.
 `vibew bundle` packages the image (via `docker save`) along with a
 deterministic docker-compose.yml, merged vibewarden.yaml, sample.env,
-.env, reference deploy.sh, and README under `.vibewarden/bundle/`. The
-user then transfers the bundle directory to the VPS and runs
+.env, and `README.md` (the deploy contract) under `.vibewarden/bundle/`.
+The user then transfers the bundle directory to the VPS and runs
 `docker compose up -d` themselves. No source code is ever sent to the
 production server -- the image must be production-ready.
 
-There is no all-in-one remote-deploy command. `vibew bundle` is the only
-supported path to a VPS; deploy.sh runs from the user's laptop (scp + ssh +
-healthcheck in one script). The removed `vibew deploy` command did all three
-steps (package, ship, start) in one SSH orchestration.
-That surface was retired in ADR-086 in favour of the thin bundle pipeline.
+There is no all-in-one remote-deploy command and no shipped shell script.
+`vibew bundle` is the only supported path to a VPS; orchestrators (systemd,
+Ansible, Kubernetes manifests) and AI agents own the `scp` / `ssh` /
+`docker compose` chain. The removed `vibew deploy` command did all three
+steps (package, ship, start) in one SSH orchestration; the previously-shipped
+`deploy.sh` did scp + load + compose-up + healthcheck. Both are retired
+(ADR-086 sunset deploy; #1138 dropped deploy.sh after the qr-dali retro
+showed its hardcoded healthcheck port reported false failures on
+successful deploys). The bundle README now describes the contract directly,
+per CLAUDE.md §Architecture principles → Artifact policy.
 Running `vibew deploy` today prints cobra's `unknown command "deploy"` error.
 See CHANGELOG and ADR-086 for the rationale.
 

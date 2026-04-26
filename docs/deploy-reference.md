@@ -15,7 +15,7 @@ is touched.
 
 | Before (removed) | After (supported) |
 |------------------|-------------------|
-| `vibew deploy --target ssh://user@host --config vibewarden.prod.yaml` | `vibew bundle` + `cd .vibewarden/bundle && ./deploy.sh user@host` |
+| `vibew deploy --target ssh://user@host --config vibewarden.production.yaml` | `vibew bundle` → copy `.vibewarden/bundle/` to the host → `docker compose up -d` (see the bundle's `README.md` for the full contract) |
 | `vibew deploy status --target ssh://user@host` | `ssh user@host 'cd ~/vibewarden-bundle && docker compose ps'` |
 | `vibew deploy logs --target ssh://user@host --lines 50` | `ssh user@host 'cd ~/vibewarden-bundle && docker compose logs --tail=50'` |
 | `vibew deploy --dry-run` | `vibew bundle` (bundle is always written locally; inspect `.vibewarden/bundle/`) |
@@ -27,18 +27,13 @@ is touched.
 See [Bundle to VPS](guide/bundle-to-vps.md) for the end-to-end walkthrough.
 In short:
 
-```bash
-# 1. Build the deployment artifact locally.
-vibew bundle --output .vibewarden/bundle/
-
-# 2. Ship it to the VPS (scp + docker load + compose up + healthcheck).
-cd .vibewarden/bundle && ./deploy.sh user@host
-```
-
-`deploy.sh` runs **locally** — it opens a single `scp` + two `ssh`
-sessions, probes `/_vibewarden/health` on the remote, and dumps the last
-50 log lines to stderr on failure. Pass `user@host:/remote/path` to
-override the default remote path (`~/vibewarden-bundle`).
+1. Run `vibew bundle --output .vibewarden/bundle/` to build the deployment
+   artifact locally.
+2. Copy the contents of that directory to the host, load the image (or
+   pull from the registry), bring the stack up with `docker compose up -d`,
+   and verify with `https://yourdomain/_vibewarden/health` (port **443**
+   in production, not the dev port 8443). The bundle's `README.md`
+   describes the contract — there are no shell scripts to run.
 
 The bundle is self-contained and deterministic: same inputs, same bytes.
 See [`vibew bundle`](../README.md#bundle) for the flag reference.
