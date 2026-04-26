@@ -14,6 +14,8 @@ This initial entry was written by hand to summarise the work leading up to v0.1.
 
 ### Fixed
 
+- **`vibew bundle` staleness check now uses content-hash, not mtime** (#1146, [ADR-089](decisions/adr-089-bundle-image-health-tag-scoping-freshness-arch.md) §Refinement). `touch vibewarden.yaml` (no content change) no longer triggers a false STALE warning. SHA-256 is computed over the same file set the existing staleness walker considers (same `.gitignore` / `.dockerignore` / `hardIgnoreDirs` rules). The digest is stored at `.vibewarden/.input-digest` after every successful bundle and auto-appended to the project `.gitignore`. First-run and corrupt-digest paths fall back to the existing mtime comparison — no flag-day on upgrade.
+
 - **`vibew bundle` no longer ignores the cwd-basename fallback for project name** (#1141, [ADR-093](decisions/adr-093-bundle-image-name-cwd-basename-fallback.md)). With no `name:` field set, `vibew bundle` and `vibew bundle --build` now both look for `<dirname>-app:latest`, matching the documented behavior. Previously `vibew bundle` resolved the image tag via `cfg.ComposeProjectName()` which silently fell through to the literal `"vibewarden"` when `ProjectRoot` was not populated by the loader, while `vibew bundle --build` correctly derived the cwd-basename — two different names from the same input. `deriveProjectName` is now the single project-name authority inside `runBundle`; its result is fed to both the image-tag default and the `--build` step.
 
 ### Changed

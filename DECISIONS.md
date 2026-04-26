@@ -37,3 +37,13 @@ Each ADR is a standalone file at `decisions/adr-NNN-title.md`.
 - `vibew init` stdout gains "Write your Dockerfile (see AGENTS-VIBEWARDEN.md §Dockerfile contract)" as the first "Next steps" line.
 - `test/quickstart/test.sh` requires no changes (tests `vibew wrap`, not `vibew init`; no Dockerfile assertions present).
 - Open questions: none.
+
+### 2026-04-23 — #1146 bundle staleness content-hash spec finalised
+
+- Posted full spec as a PM comment on #1146 (https://github.com/VibeWarden/vibewarden/issues/1146#issuecomment-4323182386).
+- Status label set to `status:ready-for-arch`.
+- Core decision: replace mtime-vs-image-Created comparison with a SHA-256 content hash of all inputs the staleness walker already visits. Hash stored at `.vibewarden/.input-digest` (format: `sha256:<hex>`). Written on successful bundle completion only.
+- Migration: missing digest file falls back to mtime behavior; corrupt digest file treated as missing (debug log, no error). First post-upgrade bundle writes the file; subsequent runs use content-hash.
+- ADR-089 §Freshness invariant must be amended to reflect the content-hash approach.
+- `.vibewarden/.input-digest` must be gitignored (automatically or documented — architect decides).
+- Open questions: none. Hash algorithm, aggregation order, and exact file placement within `internal/app/bundle/` delegated to architect.

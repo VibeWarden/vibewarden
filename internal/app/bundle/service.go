@@ -10,6 +10,7 @@
 package bundle
 
 import (
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -81,6 +82,38 @@ func (s *Service) WithImageInspector(inspector ports.ImageInspector) *Service {
 func (s *Service) WithStalenessWalker(walker StalenessWalker) *Service {
 	s.stalenessWalker = walker
 	return s
+}
+
+// WriteInputDigest computes the content digest for projectRoot and writes it
+// to <projectRoot>/.vibewarden/.input-digest. It also ensures the line
+// ".vibewarden/.input-digest" is present in the project .gitignore (idempotent).
+//
+// This must be called only after a successful Bundle() invocation. A write
+// failure is logged at warn level and does not return an error — the next run
+// will fall back to mtime comparison, which is the documented degraded path.
+//
+// The gitignore update happens BEFORE the digest is computed so that the
+// .gitignore file participates in the walked set on both this write and every
+// subsequent read. Without this ordering, the first write would compute a
+// digest without .gitignore (since it does not yet exist) but the second read
+// would compute a digest with .gitignore — the two would never match and every
+// run after the first would report STALE.
+func (s *Service) WriteInputDigest(projectRoot string) {
+	if projectRoot == "" {
+		return
+	}
+	// Ensure gitignore is updated first so .gitignore participates in the
+	// digest on both this write and every future read.
+	if err := ensureGitIgnored(projectRoot, inputDigestGitIgnoreLine); err != nil {
+		slog.Warn("input-digest: cannot update .gitignore before digest write", "err", err)
+		// Continue — digest write is still attempted; next run falls back to mtime.
+	}
+	d, err := computeInputDigest(projectRoot)
+	if err != nil {
+		slog.Debug("input-digest: compute failed, skipping write", "err", err)
+		return
+	}
+	writeInputDigest(projectRoot, d)
 }
 
 // ProjectNameFromConfig derives a project name from the config file path.

@@ -18,17 +18,35 @@ const defaultTargetPlatform = "linux/amd64"
 // scaffold tooling hardcoded. When detected, a migration warning is emitted.
 const legacyGenericTag = "vibewarden-app:latest"
 
+// FreshnessMode describes how the freshness verdict was computed.
+type FreshnessMode string
+
+const (
+	// FreshnessModeDigest means the verdict was computed by comparing SHA-256
+	// content digests. A digest file was present and valid.
+	FreshnessModeDigest FreshnessMode = "digest"
+
+	// FreshnessModeTime means the verdict was computed by comparing file mtimes
+	// against the image creation timestamp. Used when no valid digest file
+	// exists (first run, corrupt file, schema mismatch).
+	FreshnessModeTime FreshnessMode = "mtime"
+)
+
 // FreshnessVerdict is the outcome of the staleness walk for a given image.
 type FreshnessVerdict struct {
-	// Stale is true when the most-recent source file mtime is newer than
-	// the image creation timestamp.
+	// Stale is true when the source inputs have changed since the last bundle.
 	Stale bool
 	// ChangedCount is the number of source files with mtime strictly after
-	// the image creation time. Zero when !Stale.
+	// the image creation time. Populated only when Mode == FreshnessModeTime
+	// and Stale == true. Zero in digest mode.
 	ChangedCount int
 	// NewestMTime is the mtime of the file that tripped the STALE verdict.
-	// Zero value when !Stale.
+	// Zero value when !Stale or when Mode == FreshnessModeDigest.
 	NewestMTime time.Time
+	// Mode describes which algorithm produced this verdict.
+	// FreshnessModeDigest when a content-hash comparison was used;
+	// FreshnessModeTime when mtime comparison was the fallback.
+	Mode FreshnessMode
 }
 
 // ImageHealth is the complete health report rendered to stdout before any
@@ -91,15 +109,42 @@ func CheckImageHealth(ctx context.Context, opts CheckImageHealthOptions) (ImageH
 		return ImageHealth{}, fmt.Errorf("inspecting image: %w", err)
 	}
 
-	// Staleness walk.
+	// Freshness: prefer content-hash comparison; fall back to mtime when no
+	// valid digest file exists (first run, corrupt file, schema mismatch).
 	var verdict FreshnessVerdict
 	if opts.Walker != nil && opts.ProjectRoot != "" {
-		newest, count, walkErr := opts.Walker.NewestMTime(opts.ProjectRoot, info.Created)
-		if walkErr == nil {
-			verdict = FreshnessVerdict{
-				Stale:        count > 0,
-				ChangedCount: count,
-				NewestMTime:  newest,
+		prior, ok := readInputDigest(opts.ProjectRoot)
+		if ok {
+			// Digest path: compute current digest and compare.
+			current, digestErr := computeInputDigest(opts.ProjectRoot)
+			if digestErr == nil {
+				if current.Digest == prior.Digest {
+					verdict = FreshnessVerdict{
+						Stale: false,
+						Mode:  FreshnessModeDigest,
+					}
+				} else {
+					verdict = FreshnessVerdict{
+						Stale: true,
+						Mode:  FreshnessModeDigest,
+					}
+				}
+			} else {
+				// Digest computation failed — fall through to mtime.
+				ok = false
+			}
+		}
+		if !ok {
+			// mtime fallback: digest file missing, corrupt, wrong schema, or
+			// compute error. Preserves pre-#1146 behaviour exactly.
+			newest, count, walkErr := opts.Walker.NewestMTime(opts.ProjectRoot, info.Created)
+			if walkErr == nil {
+				verdict = FreshnessVerdict{
+					Stale:        count > 0,
+					ChangedCount: count,
+					NewestMTime:  newest,
+					Mode:         FreshnessModeTime,
+				}
 			}
 		}
 	}
@@ -161,6 +206,14 @@ func freshnessLabel(h ImageHealth) string {
 	if !h.Freshness.Stale {
 		return "FRESH"
 	}
+	if h.Freshness.Mode == FreshnessModeDigest {
+		// Digest mode: file count is not meaningful.
+		if h.AllowStale {
+			return "FRESH (stale suppressed — source files changed since image was built)"
+		}
+		return "STALE — source files changed since image was built"
+	}
+	// mtime mode: include file count.
 	if h.AllowStale {
 		return fmt.Sprintf("FRESH (stale suppressed — %d source files changed since image was built)", h.Freshness.ChangedCount)
 	}
