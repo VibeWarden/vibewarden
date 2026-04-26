@@ -75,6 +75,7 @@ their domain registrar, AWS ACM, etc.
 - **Functional where Go allows**: prefer pure functions, immutable value objects,
   explicit error handling over panics.
 - **No global state**: everything passed via dependency injection.
+- **Artifact policy: real or pure-instruction, never example-shaped.** Every artifact vibew produces is either (a) **real** — validated, kept current, owned by vibew (the merged `vibewarden.yaml` inside the bundle, the deterministic `docker-compose.yml`, the cert files); or (b) **pure instruction** — documented in `AGENTS-VIBEWARDEN.md` or `docs/` as a contract or checklist the agent satisfies (the Dockerfile contract, the deploy recipe). Forbidden: example-shaped middle-ground artifacts that read like real code but rot — placeholder Dockerfiles, commented-out config stanzas, mostly-correct shell scripts. Stale generated content teaches agents the wrong thing; a sharp spec lets them get it right against current reality. Surfaced by the qr-dali deploy retro on v0.17.0.
 
 ### Directory layout
 
