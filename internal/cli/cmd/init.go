@@ -94,7 +94,6 @@ The command scaffolds into the current working directory, creating:
   - AGENTS-VIBEWARDEN.md with all agent instructions (auto-generated, vibew-owned)
   - AGENTS.md with a reference to AGENTS-VIBEWARDEN.md (user-owned)
   - PROJECT.md with project description (when --describe is given)
-  - Dockerfile (generic placeholder with examples for common stacks)
   - .gitignore
 
 vibewarden.yaml is your LOCAL dev config. vibewarden.production.yaml contains
@@ -199,10 +198,10 @@ func printInitSuccessMessage(cmd *cobra.Command, projectName string, opts scaffo
 	}
 	fmt.Fprintf(w, "  AGENTS-VIBEWARDEN.md     Agent instructions (vibew-owned, auto-generated)\n")
 	fmt.Fprintf(w, "  AGENTS.md                Agent instructions entry point (user-owned)\n")
-	fmt.Fprintf(w, "  Dockerfile               Container build file (generic placeholder)\n")
 	fmt.Fprintf(w, "  .gitignore               Git ignore rules\n")
 	fmt.Fprintln(w, "")
 	fmt.Fprintln(w, "Next steps:")
+	fmt.Fprintln(w, "  Write your Dockerfile  (see AGENTS-VIBEWARDEN.md §Dockerfile contract)")
 	fmt.Fprintln(w, "  vibew dev                Start dev environment (app + sidecar)")
 	fmt.Fprintln(w, "  vibew status             Check component health")
 	fmt.Fprintln(w, "  vibew doctor             Diagnose common issues")

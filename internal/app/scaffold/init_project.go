@@ -61,9 +61,10 @@ func NewInitProjectService(renderer ports.TemplateRenderer, _ any) *InitProjectS
 //	├── AGENTS-VIBEWARDEN.md            (vibew-owned, regenerated on updates)
 //	├── vibewarden.yaml                 (local dev config)
 //	├── vibewarden.production.yaml      (production overrides)
-//	├── Dockerfile                      (generic placeholder)
-//	├── .dockerignore
 //	└── .gitignore
+//
+// Dockerfile and .dockerignore are NOT generated — they are user-owned artifacts.
+// AGENTS-VIBEWARDEN.md §Dockerfile contract describes the requirements.
 //
 // AGENTS-VIBEWARDEN.md consolidates all vibew-specific agent instructions.
 // AGENTS.md is user-owned; it is created with a reference to AGENTS-VIBEWARDEN.md
@@ -131,22 +132,6 @@ func (s *InitProjectService) InitProject(ctx context.Context, parentDir string, 
 			return fmt.Errorf("rendering vibewarden.production.yaml: %w", err)
 		}
 		return fmt.Errorf("vibewarden.production.yaml already exists; use --force to overwrite: %w", err)
-	}
-
-	// Render generic Dockerfile.
-	if err := s.renderer.RenderToFile("init-dockerfile.tmpl", data, filepath.Join(projectDir, "Dockerfile"), opts.Force); err != nil {
-		if !errors.Is(err, os.ErrExist) {
-			return fmt.Errorf("rendering Dockerfile: %w", err)
-		}
-		return fmt.Errorf("dockerfile already exists; use --force to overwrite: %w", err)
-	}
-
-	// Render .dockerignore.
-	if err := s.renderer.RenderToFile("init-dockerignore.tmpl", data, filepath.Join(projectDir, ".dockerignore"), opts.Force); err != nil {
-		if !errors.Is(err, os.ErrExist) {
-			return fmt.Errorf("rendering .dockerignore: %w", err)
-		}
-		return fmt.Errorf(".dockerignore already exists; use --force to overwrite: %w", err)
 	}
 
 	// Render .gitignore.

@@ -12,6 +12,10 @@ This initial entry was written by hand to summarise the work leading up to v0.1.
 
 ## [Unreleased]
 
+### Changed
+
+- **`vibew init` no longer generates a placeholder `Dockerfile` or `.dockerignore`** (#1139). `AGENTS-VIBEWARDEN.md` now carries a Dockerfile contract checklist; agents and users write their own Dockerfile against that contract. Migration: existing projects that already have a Dockerfile are unaffected. New projects must write a Dockerfile after `vibew init` — see `AGENTS-VIBEWARDEN.md` §Dockerfile contract.
+
 ### Removed
 
 - **`deploy.sh` no longer ships in the bundle** (#1138). The qr-dali deploy retrospective surfaced that the bundled script's hardcoded healthcheck port (8443, the dev port) reported false failures on successful production deploys (which listen on 443 with TLS). The bundle's `README.md` now describes the deploy contract directly — what the bundle is, where it goes, and the two non-obvious traps (the remote directory must exist before copying; healthcheck port in production is 443, not 8443). Operators and AI agents own the `scp` / `ssh` / `docker compose up -d` chain themselves. ADR-088 marked as superseded. See `CLAUDE.md` §Architecture principles → Artifact policy for the rationale (no example-shaped middle-ground artifacts).

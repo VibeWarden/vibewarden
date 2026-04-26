@@ -70,7 +70,6 @@ func TestInitCmd_GeneratesAllFiles(t *testing.T) {
 
 	expectedFiles := []string{
 		"vibewarden.yaml",
-		"Dockerfile",
 		".gitignore",
 		"AGENTS-VIBEWARDEN.md",
 		"AGENTS.md",
@@ -83,8 +82,11 @@ func TestInitCmd_GeneratesAllFiles(t *testing.T) {
 		}
 	}
 
-	// CLAUDE.md, .claude/commands/, and .vibewarden-version must NOT be created.
+	// Dockerfile, .dockerignore, CLAUDE.md, .claude/commands/, and
+	// .vibewarden-version must NOT be created.
 	absentFiles := []string{
+		"Dockerfile",
+		".dockerignore",
 		"CLAUDE.md",
 		".claude",
 		".vibewarden-version",
