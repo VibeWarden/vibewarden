@@ -96,35 +96,28 @@ of four values: `Obtaining` (ACME in progress), `Obtained` (cert active and vali
 `Failing` (ACME failed), or `SelfSignedLocal` (dev self-signed cert — no expiry
 warning is raised). `vibew status` surfaces the same TLS state in its output table.
 
-## Writing your Dockerfile
+## Dockerfile contract
 
-Your Dockerfile MUST:
-- Expose the port matching `upstream.port` in vibewarden.yaml (default: 3000)
-- Use an Alpine-based image (not distroless/scratch) for the healthcheck to work
-- Be a production-quality multi-stage build
+> **Pin the toolchain first.** Read your project's manifest **before** writing the `FROM` line. Stale base images surface as opaque deep-stack errors (`go mod download exit code 1`, `npm ERR! engine`, `pip: ERROR: Package requires a different Python`) with no hint that the base image is the cause. Match the manifest:
+>
+> - **Go** → `go.mod` `go` directive (e.g. `go 1.26.2` → `golang:1.26-alpine`).
+> - **Node** → `.nvmrc` or `package.json` `engines.node`.
+> - **Python** → `pyproject.toml` `requires-python` or `.python-version`.
+> - **JVM** → `pom.xml` `maven.compiler.source` or `build.gradle` `java.toolchain.languageVersion`.
+> - **Rust** → `rust-toolchain.toml` or `Cargo.toml` `rust-version`.
 
-Example (Node.js):
-```dockerfile
-FROM node:22-alpine
-WORKDIR /app
-COPY package*.json ./
-RUN npm ci --omit=dev
-COPY . .
-EXPOSE 3000
-CMD ["node", "server.js"]
-```
+**Required invariants — your Dockerfile MUST satisfy all of these:**
 
-Example (Go):
-```dockerfile
-FROM golang:1.24-alpine AS build
-WORKDIR /app
-COPY . .
-RUN CGO_ENABLED=0 go build -o server .
-FROM alpine:3.21
-COPY --from=build /app/server /app/server
-EXPOSE 3000
-CMD ["/app/server"]
-```
+- [ ] **Final-stage base image is Alpine-based** (not `distroless`, not `scratch`). The sidecar's compose-level healthcheck shells `wget` into the app container; `wget` ships on Alpine and is absent from distroless/scratch.
+- [ ] **`EXPOSE` matches `upstream.port` from `vibewarden.yaml`** (default `3000`). A mismatch is silent at build time and breaks `vibew dev` at runtime with a connection-refused loop.
+- [ ] **App responds to `GET /health` with HTTP 200** on that port. The sidecar waits on this endpoint before accepting traffic; a missing or 404 `/health` hangs the stack.
+- [ ] **Multi-stage build for compiled languages** (Go, Rust, Java, etc.). Pin the **builder** image's `major.minor` to the project toolchain manifest above. The final stage copies only the compiled binary onto Alpine — no source, no toolchain.
+- [ ] **No `HEALTHCHECK` directive.** Compose owns the healthcheck (already declared in the generated `docker-compose.yml`). A Dockerfile `HEALTHCHECK` is redundant, fights compose's view of container state, and will be flagged by `vibew doctor`.
+
+**Strongly recommended (warned, not blocked):**
+
+- [ ] **Final-stage `USER` is non-root.** Running as root is flagged at warn level by `vibew doctor`.
+- [ ] **`.dockerignore` alongside the Dockerfile.** Conventional but not generated; at minimum exclude `.git`, `.vibewarden`, `node_modules`, `vendor`, `.env*`.
 
 ## Image tag convention
 

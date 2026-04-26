@@ -111,8 +111,6 @@ Use `vibew init` for a new directory (creates its own git repo). Use `vibew wrap
 |------|:------------:|:------------:|
 | `vibewarden.yaml` | yes | yes |
 | `vibewarden.production.yaml` | yes | — |
-| `Dockerfile` | yes | — |
-| `.dockerignore` | yes | — |
 | `.gitignore` | yes | yes (created or updated) |
 | `vibew` (macOS/Linux wrapper script) | — | yes |
 | `vibew.ps1` (PowerShell wrapper) | — | yes |
@@ -370,7 +368,7 @@ Minimal reference apps showing VibeWarden in front of common stacks:
 | Spring Boot | [examples/spring-boot](examples/spring-boot/) | 3000 |
 
 Each example exposes `/health`, `/public`, and `/protected` endpoints and
-includes a `vibewarden.yaml`, `Dockerfile`, and a 3-step quick start README.
+includes a `vibewarden.yaml` and a 3-step quick start README.
 
 ---
 

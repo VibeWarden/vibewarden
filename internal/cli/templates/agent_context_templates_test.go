@@ -1,6 +1,7 @@
 package templates_test
 
 import (
+	"regexp"
 	"strings"
 	"testing"
 
@@ -93,6 +94,49 @@ func TestAgentContextTemplates_AgentsVibewardenMD(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestAgentsVibewardenTemplate_NoDockerfileExamples verifies that the rendered
+// agents-vibewarden.md.tmpl does not contain any Dockerfile code examples (FROM
+// lines or fenced Dockerfile blocks) and does contain the required contract terms.
+func TestAgentsVibewardenTemplate_NoDockerfileExamples(t *testing.T) {
+	renderer := templateadapter.NewRenderer(templates.FS)
+
+	out, err := renderer.Render("agents/agents-vibewarden.md.tmpl", domainscaffold.InitProjectData{
+		ProjectName: "testapp",
+		Port:        3000,
+	})
+	if err != nil {
+		t.Fatalf("Render() error = %v", err)
+	}
+	rendered := string(out)
+
+	// MUST NOT contain a Dockerfile FROM line at the start of any line.
+	fromLineRe := regexp.MustCompile(`(?m)^FROM `)
+	if fromLineRe.MatchString(rendered) {
+		t.Error("agents-vibewarden.md.tmpl must not contain a Dockerfile FROM line (^FROM )")
+	}
+
+	// MUST NOT contain fenced Dockerfile blocks (any case variant).
+	for _, fence := range []string{"```Dockerfile", "```dockerfile", "```docker"} {
+		if strings.Contains(rendered, fence) {
+			t.Errorf("agents-vibewarden.md.tmpl must not contain fenced block %q", fence)
+		}
+	}
+
+	// MUST contain the contract terms that prove the new section is present.
+	mustContain := []string{
+		"Alpine",
+		"EXPOSE",
+		"upstream.port",
+		"/health",
+		"No `HEALTHCHECK`",
+	}
+	for _, want := range mustContain {
+		if !strings.Contains(rendered, want) {
+			t.Errorf("agents-vibewarden.md.tmpl missing required contract term %q", want)
+		}
 	}
 }
 

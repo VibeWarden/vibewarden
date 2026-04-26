@@ -25,3 +25,15 @@ Each ADR is a standalone file at `decisions/adr-NNN-title.md`.
 - #1107: move `HTTPClient` (`internal/app/upgrade`), `ConfigUpdater` (`internal/app/reload`), `ConfigBuilder` (`internal/app/eject`) to `internal/ports/`. Rename `AdminServerIface` → `AdminServer` (or equivalent idiomatic name, architect decides). Document consumer-side seam exceptions for `StalenessWalker`, `DoctorRunner`, `PostgresProber`.
 - Both issues labelled `status:ready-for-arch`. #1107 carries an absorption comment pointing to #1106.
 - Open questions: none. Architect decides target file(s) within `internal/ports/` for the 3 moved interfaces and the exact `AdminServerIface` rename.
+
+### 2026-04-23 — #1139 stop generating Dockerfile/.dockerignore spec finalised
+
+- Posted full spec as a PM comment on #1139 (https://github.com/VibeWarden/vibewarden/issues/1139#issuecomment-4322956121).
+- Status label set to `status:READY_FOR_ARCH`.
+- Decision locked: drop both `Dockerfile` AND `.dockerignore`. Rationale: `.dockerignore` without a `Dockerfile` is an orphaned artifact; same artifact-policy logic.
+- Folds in #1151 (drop HEALTHCHECK from Dockerfile contract) — the contract checklist explicitly says "No HEALTHCHECK directive; compose owns it." Mark #1151 as resolved-by when the PR merges.
+- Files touched: `init-dockerfile.tmpl` (delete), `init-dockerignore.tmpl` (delete), `init_project.go`, `init_project_test.go`, `init.go`, `init_test.go`, `require_config.go`, `agents-vibewarden.md.tmpl`, `docs/examples/AGENTS-VIBEWARDEN.md`, `docs/getting-started.md`, `README.md`, `llms-full.txt`, `CHANGELOG.md`.
+- New negative-assertion test: rendered AGENTS-VIBEWARDEN.md template must NOT contain a code-fenced `FROM ` block. Architect decides which test file.
+- `vibew init` stdout gains "Write your Dockerfile (see AGENTS-VIBEWARDEN.md §Dockerfile contract)" as the first "Next steps" line.
+- `test/quickstart/test.sh` requires no changes (tests `vibew wrap`, not `vibew init`; no Dockerfile assertions present).
+- Open questions: none.
