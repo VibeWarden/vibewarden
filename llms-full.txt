@@ -1485,6 +1485,22 @@ per CLAUDE.md §Architecture principles → Artifact policy.
 Running `vibew deploy` today prints cobra's `unknown command "deploy"` error.
 See CHANGELOG and ADR-086 for the rationale.
 
+After writing files, `vibew bundle` prints a sensitive-file awareness block
+when credentials or key material exist in the output directory (ADR-094).
+The block appears after the `Contents:` listing, before the `Next:` hint:
+
+```
+Sensitive files in this bundle:
+  .credentials  — Kratos admin credentials
+  .env  — generated environment variables
+  kratos/secrets  — Kratos cookie and cipher secrets
+These files ship with the bundle when you copy it to a host. If the host or
+transport is untrusted, generate fresh credentials there instead.
+```
+
+The block is omitted entirely when no sensitive files are detected. No flag,
+no env var, no opt-out — unconditionally printed when matches exist.
+
 Use `app.environment` for runtime config (database URLs, API keys, etc.).
 
 ### vibew doctor details
