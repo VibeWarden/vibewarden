@@ -112,7 +112,7 @@ func TestBundle_Idempotency_OverwriteReplacesDotEnv(t *testing.T) {
 	}
 }
 
-func TestBundle_Idempotency_DeploySHOverwritten(t *testing.T) {
+func TestBundle_Idempotency_ReadmeOverwritten(t *testing.T) {
 	mem := newMemBundleFS()
 	svc := bundleapp.NewService(&fakeExecutor{}, &fakeGenerator{}).
 		WithBundleFS(mem)
@@ -128,16 +128,15 @@ func TestBundle_Idempotency_DeploySHOverwritten(t *testing.T) {
 	if err := svc.Bundle(context.Background(), opts); err != nil {
 		t.Fatalf("first Bundle() error = %v", err)
 	}
-	deployPath := filepath.Join(outDir, "deploy.sh")
-	// Simulate a user editing deploy.sh and expecting regeneration.
-	tampered := []byte("#!/bin/sh\necho tampered\n")
-	if err := mem.WriteFile(deployPath, tampered, 0o750); err != nil {
-		t.Fatalf("tampering deploy.sh: %v", err)
+	readmePath := filepath.Join(outDir, "README.md")
+	tampered := []byte("# tampered\n")
+	if err := mem.WriteFile(readmePath, tampered, 0o600); err != nil {
+		t.Fatalf("tampering README.md: %v", err)
 	}
 	if err := svc.Bundle(context.Background(), opts); err != nil {
 		t.Fatalf("second Bundle() error = %v", err)
 	}
-	if bytes.Contains(mem.files[deployPath], []byte("tampered")) {
-		t.Errorf("deploy.sh not regenerated on second run — tampered content survived")
+	if bytes.Contains(mem.files[readmePath], []byte("tampered")) {
+		t.Errorf("README.md not regenerated on second run — tampered content survived")
 	}
 }

@@ -4,20 +4,24 @@ This guide walks through the canonical path from a scaffolded VibeWarden
 project to a running stack on a VPS. It replaces the removed
 `vibew deploy` command (see [ADR-086](../../decisions/adr-086-sunset-vibew-deploy.md)).
 
-The whole flow is two commands from your workstation:
+The flow is one command on your workstation, then a copy and a compose-up
+on the host:
 
-```bash
-vibew bundle
-cd .vibewarden/bundle && ./deploy.sh user@host
-```
+1. `vibew bundle` — produce `.vibewarden/bundle/` locally.
+2. Copy the bundle directory to the host (path is up to you).
+3. On the host, load `image.tar` (or pull from the registry) and run
+   `docker compose up -d`.
+4. Verify with `https://yourdomain/_vibewarden/health` — port **443** in
+   production, not the dev port 8443.
 
-`deploy.sh` runs **locally**. It `scp`s the bundle directory to the host,
-loads the image, brings the stack up with `docker compose up -d`, and
-probes `/_vibewarden/health` on the remote. On failure it dumps the last
-50 log lines to stderr and exits non-zero.
+The bundle's `README.md` is the canonical deploy contract. It lists what
+each file is and the two non-obvious traps (the remote directory must
+exist before you copy; the healthcheck port). There is no shell script
+shipped in the bundle — operators and AI agents own the `scp`/`ssh`/`docker
+compose` chain.
 
-Everything after that — restarts, log inspection, updates — is done with
-standard `docker compose` commands against the copied bundle directory.
+Day-two ops — restarts, log inspection, updates — are standard
+`docker compose` commands against the copied bundle directory.
 
 ---
 
@@ -36,9 +40,8 @@ On the VPS:
 - A Linux host reachable over SSH.
 - Docker Engine 20.10+ and the Docker Compose v2 plugin installed and
   runnable by the SSH user.
-- The user's home directory writable (the bundle lands under
-  `~/vibewarden-bundle/` by default; override by passing
-  `user@host:/remote/path` to `deploy.sh`).
+- A directory writable by the SSH user where the bundle will land. Create
+  it before copying — `ssh user@host mkdir -p /path/to/bundle` works.
 
 ---
 
@@ -56,9 +59,8 @@ This writes a self-contained tree under `.vibewarden/bundle/`:
   vibewarden.yaml       # merged base + production override, strict-validated
   sample.env            # regenerated every run — commit this
   .env                  # first-run only; --overwrite to replace
-  deploy.sh             # reference script, mode 0o750
   image.tar             # omit with --skip-image for registry-pull flows
-  README.md             # per-bundle 3-paragraph cheat sheet
+  README.md             # the deploy contract — read this on the host
   kratos/               # anything the generator produces (auth, credentials…)
   .credentials          # stable across re-runs
 ```
@@ -78,41 +80,31 @@ same inputs produces byte-identical output (deterministic).
 
 ---
 
-## 2. Deploy with `deploy.sh`
+## 2. Deploy
 
-From the bundle directory on your workstation:
+The bundle is just files. The contract is described in
+`.vibewarden/bundle/README.md` and reproduced here:
 
-```bash
-cd .vibewarden/bundle
-./deploy.sh user@host                        # default remote path: ~/vibewarden-bundle
-./deploy.sh user@host:/srv/myapp             # custom remote path
-```
+1. Make sure the remote directory exists (e.g. `ssh user@host mkdir -p
+   /path/to/bundle`). The transfer step below cannot create missing
+   parent directories.
+2. Copy the contents of the bundle directory to the host. `scp -r` and
+   `rsync` both work; `rsync -av --delete` is the right choice for
+   redeploys with delta transfer.
+3. On the host, in the bundle directory: load `image.tar` into Docker
+   (or, in registry-pull mode built with `--skip-image`, ensure the
+   image referenced by `docker-compose.yml` is published and reachable).
+4. Bring the stack up with `docker compose up -d`.
+5. Verify against the public URL: `curl https://yourdomain/_vibewarden/health`.
+   Port **443** in production (TLS), not the dev port 8443.
 
-`deploy.sh` runs locally. It:
+If anything fails, `docker compose logs --tail=50` on the host is the
+canonical diagnostic. There is no script that wraps these steps —
+orchestrators (systemd, Ansible, Kubernetes manifests) and AI agents
+own the chain.
 
-1. `scp -r`s the bundle directory to the remote path.
-2. Runs `docker load -i image.tar` (or `docker compose pull` when the
-   bundle was built with `--skip-image`) over a single `ssh`.
-3. Runs `docker compose up -d` in the same `ssh` session.
-4. Probes `http://localhost:<port>/_vibewarden/health` from the remote
-   via a second `ssh`.
-5. On failure, dumps `docker compose logs --tail 50` to stderr and
-   exits 1.
-
-The script assumes your `~/.ssh/config` already works for the target
-host (keys, agent forwarding, host-key acceptance). There is no SSH key
-setup automation.
-
-You are free to replace `deploy.sh` with your own orchestration (systemd
-unit, Ansible play, Kubernetes manifest) — the bundle is just files.
-
-If you prefer `rsync` for delta transfers, use it directly in place of
-the script's `scp`:
-
-```bash
-rsync -av --delete .vibewarden/bundle/ user@host:~/vibewarden-bundle/
-ssh user@host 'cd ~/vibewarden-bundle && docker load -i image.tar && docker compose up -d'
-```
+The transfer assumes your `~/.ssh/config` already works for the target
+host (keys, agent forwarding, host-key acceptance).
 
 ---
 
@@ -128,7 +120,7 @@ ssh user@host 'cd ~/vibewarden-bundle && docker compose restart vibewarden' # re
 ssh user@host 'cd ~/vibewarden-bundle && docker compose pull && docker compose up -d'  # update
 ```
 
-Redeploys are `vibew bundle` → `./deploy.sh user@host` again. The bundle
+Redeploys are `vibew bundle` → repeat the copy + `docker compose up -d`. The bundle
 is deterministic so the redeploy diff is limited to what you actually
 changed (config, image tag, overlay).
 

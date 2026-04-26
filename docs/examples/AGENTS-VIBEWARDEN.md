@@ -158,9 +158,9 @@ vibewarden.production.yaml for prod-only values):
 `vibew build` builds the Docker image locally from your Dockerfile.
 `vibew bundle` packages the image (via `docker save`) plus a deterministic
 `docker-compose.yml`, merged `vibewarden.yaml`, `sample.env`, `.env`,
-reference `deploy.sh`, and README under `.vibewarden/bundle/`. The user
-then transfers the bundle to the VPS and runs `docker compose up -d`.
-No source code is ever copied to the production server -- the image must
+and `README.md` (the deploy contract) under `.vibewarden/bundle/`. The
+user then transfers the bundle to the VPS and runs `docker compose up -d`.
+No source code is ever copied to the production server — the image must
 be production-ready (all dependencies installed, assets compiled, etc.).
 
 **Cross-architecture builds:** If deploying from Apple Silicon (arm64) to
@@ -169,28 +169,25 @@ whatever arch you built; there is no cross-arch auto-detection.
 
 ## Deploying to a VPS
 
-```bash
-# 1. Build for the target architecture.
-vibew build --platform linux/amd64
+The bundle is just files. The contract is in `.vibewarden/bundle/README.md`:
 
-# 2. Produce a self-contained deploy bundle locally.
-vibew bundle
-
-# 3. Ship it to the VPS (scp + docker load + compose up + healthcheck).
-cd .vibewarden/bundle && ./deploy.sh user@host
-```
-
-`deploy.sh` runs **locally** on the workstation. It `scp`s the bundle
-directory, loads the image (or runs `docker compose pull` when the
-bundle was built with `--skip-image`), runs `docker compose up -d`, and
-probes `/_vibewarden/health` on the remote. Pass
-`user@host:/remote/path` to override the default remote path
-(`~/vibewarden-bundle`).
+1. Build for the target architecture: `vibew build --platform linux/amd64`.
+2. Produce the bundle: `vibew bundle`.
+3. Make sure the remote directory exists (e.g. `ssh user@host mkdir -p
+   /path/to/bundle`).
+4. Copy the contents of `.vibewarden/bundle/` to the host. `scp -r` or
+   `rsync -av` both work.
+5. On the host, in the bundle directory: load `image.tar` (in
+   registry-pull mode the image is already published — skip this step
+   and let compose pull it), then `docker compose up -d`.
+6. Verify against the public URL: `curl https://yourdomain/_vibewarden/health`.
+   Port **443** in production (TLS), not the dev port 8443.
 
 `vibew bundle` is deterministic (same inputs, same bytes), never opens
 an SSH connection, and never touches files outside the output
-directory. Only `deploy.sh` talks to the remote — and the script is
-plain bash you can inspect and replace.
+directory. The bundle ships no shell scripts — orchestrators (systemd,
+Ansible, Kubernetes manifests) and AI agents own the `scp`/`ssh`/`docker
+compose` chain.
 
 There is no all-in-one remote-deploy command baked into the vibew
 binary. The removed `vibew deploy` command previously wrapped all of

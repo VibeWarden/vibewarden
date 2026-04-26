@@ -1,8 +1,9 @@
 # ADR-088: deploy.sh runs locally — scp + ssh + healthcheck in one script
 
-**Date**: 2026-04-20
+**Status**: Superseded by [#1138](https://github.com/VibeWarden/vibewarden/issues/1138) (2026-04-26). The bundle no longer ships `deploy.sh`. The bundle README now describes the deploy contract directly (what the bundle is, where it goes, the non-obvious traps); operators and AI agents run their own `scp` / `ssh` / `docker compose up` chain. See `CLAUDE.md` §Architecture principles → Artifact policy for the rationale (no example-shaped middle-ground artifacts).
+
+**Date**: 2026-04-20 (accepted); superseded 2026-04-26
 **Issue**: [#1087](https://github.com/VibeWarden/vibewarden/issues/1087)
-**Status**: Accepted
 **Supersedes the deploy.sh / docs alignment implied by**: ADR-085 (vibew bundle
 compose-only), ADR-086 (sunset vibew deploy)
 

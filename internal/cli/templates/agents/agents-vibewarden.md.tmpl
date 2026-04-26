@@ -172,16 +172,18 @@ vibewarden.production.yaml for prod-only values):
 
 ## Deploying to a VPS
 
-```bash
-# 1. Build for the target architecture.
-vibew build --platform linux/amd64
+The bundle is just files. The contract is in `.vibewarden/bundle/README.md`:
 
-# 2. Produce a self-contained deploy bundle locally.
-vibew bundle
-
-# 3. Ship it to the VPS (scp + docker load + compose up + healthcheck).
-cd .vibewarden/bundle && ./deploy.sh user@host
-```
+1. Build for the target architecture: `vibew build --platform linux/amd64`.
+2. Produce the bundle: `vibew bundle`.
+3. Make sure the remote directory exists (`ssh user@host mkdir -p
+   /path/to/bundle`).
+4. Copy the contents of `.vibewarden/bundle/` to the host (`scp -r` or
+   `rsync -av`).
+5. On the host, in the bundle directory: load `image.tar` (skip in
+   registry-pull mode), then `docker compose up -d`.
+6. Verify against the public URL: `curl https://yourdomain/_vibewarden/health`.
+   Port **443** in production (TLS), not the dev port 8443.
 
 `vibew bundle` is the canonical path. Before writing any files it inspects
 the target image and prints a health block to stdout. Read it to verify the
@@ -207,31 +209,30 @@ Key flags:
 Exit codes: 0=success (with or without warnings), 2=image missing, 3=docker daemon unreachable.
 
 `vibew bundle` then emits a deterministic `docker-compose.yml` (image: pinned,
-never build:), the merged `vibewarden.yaml`, `sample.env`, `.env`, a reference
-`deploy.sh`, an optional `image.tar` (omit with `--skip-image`), and `README.md`
-under `.vibewarden/bundle/`.
+never build:), the merged `vibewarden.yaml`, `sample.env`, `.env`, an
+optional `image.tar` (omit with `--skip-image`), and `README.md` (the
+deploy contract) under `.vibewarden/bundle/`.
 
-`deploy.sh` runs **locally** on the workstation. It `scp`s the bundle
-directory, loads the image (or pulls it), runs `docker compose up -d`,
-and probes `/_vibewarden/health` on the remote. Pass
-`user@host:/remote/path` to override the default remote path
-(`~/vibewarden-bundle`). Vibew never opens an SSH connection itself --
-the script is plain bash you can inspect and modify.
+The bundle ships no shell scripts. Vibew never opens an SSH connection
+itself — orchestrators (systemd, Ansible, Kubernetes manifests) and AI
+agents own the `scp` / `ssh` / `docker compose` chain. The two non-obvious
+traps the README calls out: the remote directory must exist before you
+copy, and the production healthcheck port is 443 (TLS), not the dev port
+8443.
 
 Day-two operations are standard docker compose against the copied bundle:
 
 ```bash
-ssh user@host 'cd ~/vibewarden-bundle && docker compose ps'
-ssh user@host 'cd ~/vibewarden-bundle && docker compose logs --tail=100 vibewarden'
-ssh user@host 'cd ~/vibewarden-bundle && docker compose restart vibewarden'
+ssh user@host 'cd /path/to/bundle && docker compose ps'
+ssh user@host 'cd /path/to/bundle && docker compose logs --tail=100 vibewarden'
+ssh user@host 'cd /path/to/bundle && docker compose restart vibewarden'
 ```
 
 There is no all-in-one remote-deploy command. `vibew bundle` is the only
-supported path to a VPS; `deploy.sh` automates scp + docker load + compose
-up + healthcheck in one local script. The removed `vibew deploy` command
-previously did all of this over SSH from the vibew binary itself. It was
-retired in ADR-086 after four retros converged on deploy-orchestration as
-the #1 source of user friction. Running `vibew deploy` today prints cobra's
+supported path to a VPS. The removed `vibew deploy` command previously
+did all of this over SSH from the vibew binary itself; it was retired in
+ADR-086 after four retros converged on deploy-orchestration as the #1
+source of user friction. Running `vibew deploy` today prints cobra's
 `unknown command "deploy"` error.
 
 ## Writing your Dockerfile

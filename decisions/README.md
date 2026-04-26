@@ -60,7 +60,7 @@ once accepted, they are not edited. If a decision is superseded, a new ADR refer
 | [085](adr-085-vibew-bundle-compose-only.md) | `vibew bundle` — compose-only deployment artifact generator | #1044 |
 | [086](adr-086-sunset-vibew-deploy.md) | Sunset `vibew deploy` — bundle-and-deploy-manually is the canonical path | #1051 |
 | [087](adr-087-test-placement-contract-tests-and-architectural-invariants.md) | Test placement — contract tests live with their adapter, architectural invariants live in test/architecture | — |
-| [088](adr-088-deploy-sh-local-run-convention.md) | deploy.sh runs locally — scp + ssh + healthcheck in one script | #1087 |
+| [088](adr-088-deploy-sh-local-run-convention.md) | deploy.sh runs locally — scp + ssh + healthcheck in one script *(superseded by #1138)* | #1087 |
 | [089](adr-089-bundle-image-health-tag-scoping-freshness-arch.md) | Bundle image health — tag scoping, freshness, and arch warning | — |
 | [090](adr-090-le-rate-limit-preflight.md) | Let's Encrypt rate-limit preflight via Certificate Transparency | #1057 |
 | [091](adr-091-ports-hygiene-delete-dead-session-checker-adapter-move-outbound-ports.md) | Ports hygiene — delete dead SessionChecker adapter; move three outbound ports to `internal/ports/`; rename `AdminServerIface` | #1106, #1107 |
