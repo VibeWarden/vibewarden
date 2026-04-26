@@ -213,6 +213,22 @@ never build:), the merged `vibewarden.yaml`, `sample.env`, `.env`, an
 optional `image.tar` (omit with `--skip-image`), and `README.md` (the
 deploy contract) under `.vibewarden/bundle/`.
 
+After writing files, `vibew bundle` prints a sensitive-file awareness block
+when credentials or key material are present in the output directory. The block
+appears after the `Contents:` listing and before the `Next:` hint:
+
+```
+Sensitive files in this bundle:
+  .credentials  — Kratos admin credentials
+  .env  — generated environment variables
+  kratos/secrets  — Kratos cookie and cipher secrets
+These files ship with the bundle when you copy it to a host. If the host or
+transport is untrusted, generate fresh credentials there instead.
+```
+
+The block is omitted entirely when no sensitive files are detected. No flag,
+no env var, no opt-out — it is always printed when matches exist.
+
 The bundle ships no shell scripts. Vibew never opens an SSH connection
 itself — orchestrators (systemd, Ansible, Kubernetes manifests) and AI
 agents own the `scp` / `ssh` / `docker compose` chain. The two non-obvious

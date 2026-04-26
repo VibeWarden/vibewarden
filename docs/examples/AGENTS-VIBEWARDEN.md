@@ -182,6 +182,20 @@ directory. The bundle ships no shell scripts — orchestrators (systemd,
 Ansible, Kubernetes manifests) and AI agents own the `scp`/`ssh`/`docker
 compose` chain.
 
+After writing files, `vibew bundle` prints a sensitive-file awareness block
+when credentials or key material are present in the output directory:
+
+```
+Sensitive files in this bundle:
+  .credentials  — Kratos admin credentials
+  .env  — generated environment variables
+  kratos/secrets  — Kratos cookie and cipher secrets
+These files ship with the bundle when you copy it to a host. If the host or
+transport is untrusted, generate fresh credentials there instead.
+```
+
+The block is omitted when no sensitive files are detected. No flag, no env var.
+
 There is no all-in-one remote-deploy command baked into the vibew
 binary. The removed `vibew deploy` command previously wrapped all of
 this over SSH from Go. It was retired in ADR-086; running it today

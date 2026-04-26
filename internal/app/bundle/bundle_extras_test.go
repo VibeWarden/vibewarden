@@ -198,6 +198,10 @@ func TestBundle_Extras_Readme_DeployContract(t *testing.T) {
 				"image.tar",
 				"sample.env",
 				".env",
+				// ADR-094: Secrets section must be present.
+				"## Secrets",
+				".credentials",
+				"transport is untrusted",
 			} {
 				if !strings.Contains(body, want) {
 					t.Errorf("README.md missing %q\nbody:\n%s", want, body)
@@ -325,8 +329,8 @@ func TestBundle_Extras_Readme_MentionsPlatformHint(t *testing.T) {
 		t.Errorf("README.md missing project name\nbody:\n%s", body)
 	}
 	lines := strings.Count(body, "\n") + 1
-	if lines > 40 {
-		t.Errorf("README.md = %d lines, want <= 40", lines)
+	if lines > 60 {
+		t.Errorf("README.md = %d lines, want <= 60", lines)
 	}
 }
 

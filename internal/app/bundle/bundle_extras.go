@@ -249,7 +249,7 @@ func renderDotEnv(imageTag string, templateKeys []string) string {
 }
 
 // renderBundleReadme produces the README.md shipped inside the bundle.
-// Output is stable for a given projectName and fits under 40 lines.
+// Output is stable for a given projectName and fits under 60 lines.
 // The Deploy section describes the deploy contract as pure instruction —
 // no shell snippets, no scp/ssh/docker command literals — per
 // CLAUDE.md §Artifact policy. The skipImage parameter is accepted for
@@ -280,6 +280,10 @@ func renderBundleReadme(projectName string, _ bool) string {
 		"| `.env` | Generated environment variables. Preserved across re-bundles. |\n" +
 		"| `sample.env` | Template for hand-edits, regenerated each bundle. |\n" +
 		"| `README.md` | This file. |\n" +
+		"\n" +
+		"## Secrets\n" +
+		"\n" +
+		"This bundle contains files with credentials: `.env`, `.credentials`, and anything under `kratos/`. They will land on the remote host once you copy the bundle there. If the destination is shared or the transport is untrusted, generate fresh credentials on the host instead rather than shipping them from your local machine.\n" +
 		"\n" +
 		"## Rebuild for a different arch\n" +
 		"\n" +

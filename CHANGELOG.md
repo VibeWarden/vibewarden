@@ -12,6 +12,10 @@ This initial entry was written by hand to summarise the work leading up to v0.1.
 
 ## [Unreleased]
 
+### Added
+
+- **`vibew bundle` now prints a "Sensitive files in this bundle" awareness block** (#1142, [ADR-094](decisions/adr-094-bundle-sensitive-files-awareness-block.md)). After writing the bundle, `vibew bundle` scans the output directory and prints a stable awareness block listing any credential or key files (`.env`, `.credentials`, `kratos/secrets`, `*.pem`, `*.key`, `*.token`) when they are present. The block appears after the `Contents:` listing and before the `Next:` hint. The block is omitted entirely when no sensitive files are detected — no flag, no env var, no opt-out. The bundle `README.md` gains a `## Secrets` section documenting the credential surface.
+
 ### Fixed
 
 - **`vibew bundle` staleness check now uses content-hash, not mtime** (#1146, [ADR-089](decisions/adr-089-bundle-image-health-tag-scoping-freshness-arch.md) §Refinement). `touch vibewarden.yaml` (no content change) no longer triggers a false STALE warning. SHA-256 is computed over the same file set the existing staleness walker considers (same `.gitignore` / `.dockerignore` / `hardIgnoreDirs` rules). The digest is stored at `.vibewarden/.input-digest` after every successful bundle and auto-appended to the project `.gitignore`. First-run and corrupt-digest paths fall back to the existing mtime comparison — no flag-day on upgrade.
