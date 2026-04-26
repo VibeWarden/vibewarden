@@ -3251,6 +3251,26 @@ func TestComposeProjectName_DifferentDirs(t *testing.T) {
 	}
 }
 
+// TestComposeProjectName_FallsBackToVibewardenWhenProjectRootEmpty is a guard
+// test that pins the latent misbehavior identified in ADR-093: when neither
+// cfg.Name, cfg.App.Image, nor cfg.ProjectRoot is set (the state produced by
+// config.LoadRaw), ComposeProjectName() returns the literal "vibewarden".
+//
+// This is NOT correct behavior for runBundle — it was the root cause of #1141.
+// The fix in ADR-093 makes deriveProjectName (not ComposeProjectName) the
+// authority inside runBundle. This test exists so that if a future developer
+// re-introduces ComposeProjectName() as the imageTag source without populating
+// ProjectRoot, the test makes the regression visible immediately.
+func TestComposeProjectName_FallsBackToVibewardenWhenProjectRootEmpty(t *testing.T) {
+	cfg := &config.Config{}
+	// ProjectRoot is intentionally not set — this mirrors the state returned
+	// by config.LoadRaw, which never populates ProjectRoot.
+	got := cfg.ComposeProjectName()
+	if got != "vibewarden" {
+		t.Errorf("ComposeProjectName() with empty sources = %q, want %q (guard test — see ADR-093)", got, "vibewarden")
+	}
+}
+
 func TestResolvedBuildContext(t *testing.T) {
 	tests := []struct {
 		name        string

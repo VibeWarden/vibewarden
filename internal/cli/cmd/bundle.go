@@ -188,8 +188,11 @@ func runBundle(cmd *cobra.Command, outputDir, imageTag, targetPlatform string, o
 	}
 
 	projectName := deriveProjectName(cfg, absConfig)
+	if projectName == "" {
+		return 1, fmt.Errorf("cannot derive project name from configuration path %q", absConfig)
+	}
 	if imageTag == "" {
-		imageTag = cfg.ComposeProjectName() + "-app:latest"
+		imageTag = projectName + "-app:latest"
 	}
 	if targetPlatform == "" {
 		targetPlatform = "linux/amd64"
@@ -204,6 +207,7 @@ func runBundle(cmd *cobra.Command, outputDir, imageTag, targetPlatform string, o
 		buildOpts := opsapp.BuildOptions{
 			Platform:   targetPlatform,
 			ConfigPath: absConfig,
+			ImageTag:   imageTag,
 		}
 		if err := buildSvc.Run(cmd.Context(), cfg, buildOpts, cmd.OutOrStdout()); err != nil {
 			return 1, fmt.Errorf("building image: %w", err)

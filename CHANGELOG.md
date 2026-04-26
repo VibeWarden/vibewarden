@@ -12,6 +12,10 @@ This initial entry was written by hand to summarise the work leading up to v0.1.
 
 ## [Unreleased]
 
+### Fixed
+
+- **`vibew bundle` no longer ignores the cwd-basename fallback for project name** (#1141, [ADR-093](decisions/adr-093-bundle-image-name-cwd-basename-fallback.md)). With no `name:` field set, `vibew bundle` and `vibew bundle --build` now both look for `<dirname>-app:latest`, matching the documented behavior. Previously `vibew bundle` resolved the image tag via `cfg.ComposeProjectName()` which silently fell through to the literal `"vibewarden"` when `ProjectRoot` was not populated by the loader, while `vibew bundle --build` correctly derived the cwd-basename — two different names from the same input. `deriveProjectName` is now the single project-name authority inside `runBundle`; its result is fed to both the image-tag default and the `--build` step.
+
 ### Changed
 
 - **`vibew init` no longer generates a placeholder `Dockerfile` or `.dockerignore`** (#1139). `AGENTS-VIBEWARDEN.md` now carries a Dockerfile contract checklist; agents and users write their own Dockerfile against that contract. Migration: existing projects that already have a Dockerfile are unaffected. New projects must write a Dockerfile after `vibew init` — see `AGENTS-VIBEWARDEN.md` §Dockerfile contract.

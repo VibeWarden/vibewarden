@@ -50,6 +50,14 @@ type BuildOptions struct {
 	// WorkDir is the directory used both as the Docker build context and as
 	// the fallback source of the image name. Defaults to "." when empty.
 	WorkDir string
+
+	// ImageTag is a pre-resolved Docker image tag. When non-empty,
+	// BuildService skips its own derivation chain (resolveImageTag) and
+	// uses this value verbatim. Callers that have already resolved the
+	// project name (e.g. vibew bundle --build, via deriveProjectName)
+	// pass it here so the build step matches the bundle's image lookup
+	// byte-for-byte. When empty, the existing config/workdir chain runs.
+	ImageTag string
 }
 
 // Run executes the docker build command.
@@ -62,9 +70,17 @@ func (s *BuildService) Run(ctx context.Context, cfg *config.Config, opts BuildOp
 		workDir = "."
 	}
 
-	tag, err := resolveImageTag(cfg, workDir)
-	if err != nil {
-		return fmt.Errorf("resolving image tag: %w", err)
+	var tag string
+	if opts.ImageTag != "" {
+		// Caller has already resolved the project name; use it verbatim so
+		// the build step and the bundle lookup always agree on the tag.
+		tag = opts.ImageTag
+	} else {
+		var err error
+		tag, err = resolveImageTag(cfg, workDir)
+		if err != nil {
+			return fmt.Errorf("resolving image tag: %w", err)
+		}
 	}
 
 	fmt.Fprintf(out, "Building Docker image: %s\n", tag)
@@ -113,12 +129,17 @@ func (s *BuildService) probeShell(ctx context.Context, image string, out io.Writ
 
 // resolveImageTag returns the Docker image tag for the build.
 // The tag must match what docker-compose expects for the app service so that
-// `vibew build` followed by `vibew dev` or `vibew deploy` finds the image.
+// `vibew build` followed by `vibew dev` finds the image.
 //
 // Docker Compose names built images as "<project>-<service>:latest". Since the
 // app service is always called "app", the expected image name is
 // "<ComposeProjectName>-app:latest". This function uses the same derivation
 // logic as the deploy bundle to ensure consistency.
+//
+// Callers that have already resolved the project name (e.g. runBundle via
+// deriveProjectName) should set BuildOptions.ImageTag instead of relying on
+// this function. That ensures the build step and the bundle lookup always
+// use the same tag without re-running the derivation chain.
 //
 // Priority:
 //  1. cfg.ComposeProjectName() + "-app:latest" when cfg is non-nil and has a
