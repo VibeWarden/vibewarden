@@ -504,9 +504,156 @@ maintained by the Moby project.
 - Multi-site bundle — tracked separately; this ADR applies only to
   single-site.
 
+## Refinement (2026-04-23, issue #1146): Freshness uses content-hash, not mtime
+
+The Freshness invariant pinned in §"Invariants pinned by this ADR" item 2 is
+amended. The mtime comparison was a false-positive generator: `touch
+vibewarden.yaml` (no content change) bumps mtime and trips STALE, eroding
+trust in the signal (qr-dali retro §Ugly #1).
+
+**New invariant:** `vibew bundle` computes a SHA-256 content digest over the
+sorted set of non-ignored files the existing `FileSystemStalenessWalker`
+considers (same ignore rules: `.gitignore`, `.dockerignore`,
+`hardIgnoreDirs`). Files contribute their raw bytes — no normalisation. The
+digest is stored at `.vibewarden/.input-digest` after a successful bundle.
+On subsequent runs: digest equal → FRESH; digest differs → STALE; digest
+file missing or corrupt → fall back to the original mtime walker (no
+flag-day on upgrade). `--allow-stale` semantics unchanged.
+
+**File format** (`.vibewarden/.input-digest`, JSON, single line per field
+not required — pretty-printed is fine):
+
+```json
+{
+  "schema_version": 1,
+  "digest": "sha256:<hex>",
+  "inputs": ["Dockerfile", "vibewarden.production.yaml", "vibewarden.yaml", "..."]
+}
+```
+
+`schema_version` gates future format changes. `inputs` is the sorted list
+of forward-slash relative paths that contributed to the digest — diagnostic
+only, not re-verified on read (a bad list still hashes the right files
+because the digest is recomputed from the live walk every run).
+
+**Digest algorithm** (deterministic, platform-independent):
+
+```
+h := sha256.New()
+for each path in sort(walked_files):
+    write to h: path bytes
+    write to h: 0x00 separator
+    write to h: file content bytes
+    write to h: 0x00 separator
+return "sha256:" + hex(h.Sum(nil))
+```
+
+Path-then-content with a NUL separator prevents content-from-different-files
+from colliding. JSON chosen over YAML: simpler stdlib parsing
+(`encoding/json`), no new dep, file is machine-only.
+
+**Gitignore.** `.vibewarden/` is NOT globally gitignored today (only
+`**/.vibewarden/dev-keys/` is — see repo `.gitignore:37`). Because
+`hardIgnoreDirs` includes `.vibewarden`, the digest file is invisible to
+the walker itself, but it IS visible to `git status` in user projects.
+The bundle writer MUST append `.vibewarden/.input-digest` (or the broader
+`.vibewarden/`) to the project's `.gitignore` on first write — same pattern
+as the `.env` autogenerate. Idempotent: if the line already exists, no
+duplicate write.
+
+**Migration / first-run.** Digest file absent → mtime fallback (current
+behaviour). On successful bundle, write digest file. From the second run
+on, digest comparison is authoritative.
+
+**Failure modes.**
+- Digest file unreadable / not parseable as JSON / `schema_version` !=
+  1 / `digest` field missing or not `sha256:<64 hex>` → treated as
+  missing. Log at `debug`. Fall back to mtime. Continue.
+- Digest write fails after a successful bundle → log at `warn`, do not
+  fail the bundle. Next run will fall back to mtime, same as a fresh
+  install.
+
+**Pseudocode** (orchestrator slot inside `CheckImageHealth`, replaces the
+mtime-only branch):
+
+```
+prior, ok := readInputDigest(projectRoot)        // ok=false if missing/corrupt
+current := computeInputDigest(projectRoot, walker.IgnoreRules())
+if !ok:
+    // fallback path — preserves pre-#1146 behaviour
+    newest, count := walker.NewestMTime(root, image.Created)
+    verdict = FreshnessVerdict{Stale: count>0, ChangedCount: count, NewestMTime: newest}
+else:
+    if current.digest == prior.digest:
+        verdict = FreshnessVerdict{Stale: false}
+    else:
+        verdict = FreshnessVerdict{Stale: true, ChangedCount: -1}  // count not meaningful
+// digest write deferred to AFTER successful bundle (same pattern as .env restore)
+```
+
+`ChangedCount` semantics: `-1` (or simply `0` with a new bool) signals
+"digest-driven STALE — file count not computed." The render layer adjusts
+the freshness label accordingly: `STALE — source files changed since image
+was built` (no count) when digest-driven, keeps the existing count message
+when mtime-driven. Architect's preference: add a `Mode` field to
+`FreshnessVerdict` (`mtime` | `digest`) so the renderer is explicit.
+
+**New file layout** (additions only):
+
+```
+internal/app/bundle/
+  input_digest.go            # NEW: digest read/write, computeInputDigest, schema struct
+  input_digest_test.go       # NEW: missing / equal / differ / corrupt / write-failure / gitignore-append
+  staleness.go               # +ExposeIgnoreRules() so digest computer reuses the same matcher
+  image_health.go            # +Mode field on FreshnessVerdict; orchestrator branches digest vs mtime
+  image_health_test.go       # +cases for digest-driven STALE/FRESH and fallback labels
+  service.go                 # +WithInputDigestStore(...) (file-backed by default)
+internal/cli/cmd/
+  bundle.go                  # +call svc.WriteInputDigest after successful Bundle()
+```
+
+The digest reader/writer is kept inside the bundle package — it is bundle's
+private state, not a port. The existing `.gitignore` append helper (used
+for `.env`) is reused; if no helper exists, add one in
+`internal/app/bundle/gitignore.go` and unit-test it.
+
+**Test list** (covers PM acceptance criteria + edge cases):
+
+1. `digest_missing_falls_back_to_mtime` — no `.vibewarden/.input-digest`,
+   mtime newer than image → STALE via mtime mode.
+2. `digest_missing_mtime_older` — no digest, mtime older → FRESH.
+3. `digest_equal_suppresses_stale` — digest matches; even with mtime
+   newer than image, FRESH.
+4. `digest_differs_emits_stale` — change one byte; STALE digest-mode.
+5. `corrupt_digest_falls_back` — write `garbage` to digest file → fallback
+   to mtime; no error returned.
+6. `schema_version_mismatch_falls_back` — write `{"schema_version":2,...}`
+   → fallback.
+7. `qr_dali_bug_no_warning` — `touch vibewarden.yaml` with identical
+   bytes → no STALE.
+8. `digest_written_only_on_success` — simulate failure mid-bundle →
+   digest file unchanged.
+9. `gitignore_append_on_first_write` — fresh project, no `.gitignore`
+   entry → after bundle, `.gitignore` contains `.vibewarden/.input-digest`
+   (or `.vibewarden/`); idempotent on second bundle.
+10. `dockerfile_change_detected` — modify `Dockerfile` byte → STALE.
+11. `production_yaml_change_detected` — modify `vibewarden.production.yaml`
+    → STALE.
+12. `gitignored_file_change_does_not_trip` — touch `*.log` (matched by
+    `.gitignore`) → digest unchanged → FRESH.
+
+Integration (single `//go:build integration`): real `git init`, real
+`vibew init`, real bundle twice, assert no STALE on second run after
+`touch`.
+
+**No new external dependency.** SHA-256 is `crypto/sha256` (stdlib). JSON
+is `encoding/json` (stdlib). Re-uses `moby/patternmatcher` already
+promoted in this ADR.
+
 ## References
 
 - PM spec — combined across issues #1084, #1085, #1091 (2026-04-20)
+- PM spec — issue #1146 (2026-04-23) — content-hash refinement
 - ADR-082 — strict config merge / validate hook point
 - ADR-085 — `vibew bundle` compose-only contract
 - ADR-086 — sunset `vibew deploy`

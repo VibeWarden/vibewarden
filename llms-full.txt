@@ -1394,7 +1394,7 @@ arch, created, size, target platform, freshness, warnings). Flags:
 - `--build` -- run `vibew build --platform <target>` first; use when image is
   missing or stale (off by default)
 - `--allow-stale` -- suppress the STALE freshness warning; bundle proceeds
-  regardless of source-file mtime
+  regardless of source-file content-hash change
 - `--target-platform linux/<arch>` -- expected deployment platform (default:
   `linux/amd64`); use for Graviton / Pi / arm64 servers
 

@@ -269,6 +269,10 @@ func runBundle(cmd *cobra.Command, outputDir, imageTag, targetPlatform string, o
 		return 1, fmt.Errorf("creating bundle: %w", bundleErr)
 	}
 
+	// Write content-hash digest after a successful bundle so the next run can
+	// use digest comparison instead of mtime (ADR-089 §Refinement, issue #1146).
+	svc.WriteInputDigest(filepath.Dir(absConfig))
+
 	// Print a listing so users (and AI agents) can see exactly what was
 	// written.
 	out := cmd.OutOrStdout()
