@@ -535,6 +535,10 @@ func TestStatusService_AuthEnabled_Reachable_ShowsOK(t *testing.T) {
 	if hasComponentFAIL(out) {
 		t.Errorf("expected no FAIL component rows when auth is reachable, got:\n%s", out)
 	}
+	// The Kratos health probe must have been called exactly once when auth is enabled.
+	if checker.callCount[kratosURL] == 0 {
+		t.Errorf("Kratos health URL was never called when auth is enabled")
+	}
 }
 
 // TestStatusService_AuthEnabled_Unreachable_ShowsFAIL verifies that when
