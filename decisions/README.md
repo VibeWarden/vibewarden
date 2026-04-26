@@ -67,6 +67,7 @@ once accepted, they are not edited. If a decision is superseded, a new ADR refer
 | [092](adr-092-caddy-handler-dependency-injection.md) | Caddy handler dependency injection via composition-root-populated services registry | #1102 |
 | [093](adr-093-bundle-image-name-cwd-basename-fallback.md) | bundle image-name resolution — cwd-basename fallback unified across `vibew bundle` and `--build` | #1141 |
 | [094](adr-094-bundle-sensitive-files-awareness-block.md) | vibew bundle sensitive-file awareness block | #1142 |
+| [095](adr-095-status-three-state-ok-off-fail.md) | `vibew status` three-state model — OK / OFF / FAIL | #1143 |
 | [497](adr-497-graceful-shutdown-connection-draining.md) | Graceful Shutdown / Connection Draining | — |
 
 ## Numbering

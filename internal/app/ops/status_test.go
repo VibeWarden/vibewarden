@@ -6,16 +6,33 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/vibewarden/vibewarden/internal/app/ops"
 	"github.com/vibewarden/vibewarden/internal/config"
+	tlsdomain "github.com/vibewarden/vibewarden/internal/domain/tls"
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
+
+// hasComponentFAIL reports whether any component row in the status output
+// carries a FAIL label. It skips the legend line (which always contains the
+// word "FAIL" as part of "FAIL = check failed") by only inspecting lines
+// that are indented (component rows start with two spaces).
+func hasComponentFAIL(out string) bool {
+	for _, line := range strings.Split(out, "\n") {
+		if strings.HasPrefix(line, "  ") && strings.Contains(line, "FAIL") {
+			return true
+		}
+	}
+	return false
+}
 
 // fakeHealthChecker is a test double for ports.HealthChecker.
 type fakeHealthChecker struct {
 	// responses maps URL → (ok, statusCode, err)
 	responses map[string]healthResponse
+	// callCount tracks how many times CheckHealth was called per URL.
+	callCount map[string]int
 }
 
 type healthResponse struct {
@@ -25,6 +42,10 @@ type healthResponse struct {
 }
 
 func (f *fakeHealthChecker) CheckHealth(_ context.Context, url string) (bool, int, error) {
+	if f.callCount == nil {
+		f.callCount = make(map[string]int)
+	}
+	f.callCount[url]++
 	if r, found := f.responses[url]; found {
 		return r.ok, r.statusCode, r.err
 	}
@@ -38,7 +59,6 @@ func TestStatusService_Run(t *testing.T) {
 
 	healthURL := proxyBase + "/_vibewarden/health"
 	metricsURL := proxyBase + "/_vibewarden/metrics"
-	kratosURL := "http://127.0.0.1:4434/admin/health/ready"
 
 	tests := []struct {
 		name               string
@@ -50,7 +70,6 @@ func TestStatusService_Run(t *testing.T) {
 			responses: map[string]healthResponse{
 				healthURL:  {ok: true, statusCode: 200},
 				metricsURL: {ok: true, statusCode: 200},
-				kratosURL:  {ok: true, statusCode: 200},
 			},
 			wantOutputContains: []string{
 				"VibeWarden Status",
@@ -66,7 +85,6 @@ func TestStatusService_Run(t *testing.T) {
 			responses: map[string]healthResponse{
 				healthURL:  {ok: false, statusCode: 503},
 				metricsURL: {ok: true, statusCode: 200},
-				kratosURL:  {ok: true, statusCode: 200},
 			},
 			wantOutputContains: []string{
 				"Proxy",
@@ -78,7 +96,6 @@ func TestStatusService_Run(t *testing.T) {
 			responses: map[string]healthResponse{
 				healthURL:  {ok: false, err: errors.New("connection refused")},
 				metricsURL: {ok: true, statusCode: 200},
-				kratosURL:  {ok: true, statusCode: 200},
 			},
 			wantOutputContains: []string{
 				"unreachable",
@@ -89,7 +106,6 @@ func TestStatusService_Run(t *testing.T) {
 			responses: map[string]healthResponse{
 				healthURL:  {ok: true, statusCode: 200},
 				metricsURL: {ok: true, statusCode: 200},
-				kratosURL:  {ok: true, statusCode: 200},
 			},
 			wantOutputContains: []string{"enabled"},
 		},
@@ -122,9 +138,8 @@ func TestStatusService_RateLimitDisabled(t *testing.T) {
 
 	proxyBase := "https://localhost:8443"
 	checker := &fakeHealthChecker{responses: map[string]healthResponse{
-		proxyBase + "/_vibewarden/health":          {ok: true, statusCode: 200},
-		proxyBase + "/_vibewarden/metrics":         {ok: true, statusCode: 200},
-		"http://127.0.0.1:4434/admin/health/ready": {ok: true, statusCode: 200},
+		proxyBase + "/_vibewarden/health":  {ok: true, statusCode: 200},
+		proxyBase + "/_vibewarden/metrics": {ok: true, statusCode: 200},
 	}}
 
 	svc := ops.NewStatusService(checker)
@@ -144,8 +159,7 @@ func TestStatusService_MetricsDisabled(t *testing.T) {
 
 	proxyBase := "https://localhost:8443"
 	checker := &fakeHealthChecker{responses: map[string]healthResponse{
-		proxyBase + "/_vibewarden/health":          {ok: true, statusCode: 200},
-		"http://127.0.0.1:4434/admin/health/ready": {ok: true, statusCode: 200},
+		proxyBase + "/_vibewarden/health": {ok: true, statusCode: 200},
 	}}
 
 	svc := ops.NewStatusService(checker)
@@ -165,9 +179,8 @@ func TestStatusService_PluginSectionShown(t *testing.T) {
 
 	proxyBase := "https://localhost:8443"
 	checker := &fakeHealthChecker{responses: map[string]healthResponse{
-		proxyBase + "/_vibewarden/health":          {ok: true, statusCode: 200},
-		proxyBase + "/_vibewarden/metrics":         {ok: true, statusCode: 200},
-		"http://127.0.0.1:4434/admin/health/ready": {ok: true, statusCode: 200},
+		proxyBase + "/_vibewarden/health":  {ok: true, statusCode: 200},
+		proxyBase + "/_vibewarden/metrics": {ok: true, statusCode: 200},
 	}}
 
 	svc := ops.NewStatusService(checker)
@@ -200,7 +213,6 @@ func TestStatusService_TLSEnabled(t *testing.T) {
 	checker := &fakeHealthChecker{responses: map[string]healthResponse{
 		"https://localhost:8443/_vibewarden/health":  {ok: true, statusCode: 200},
 		"https://localhost:8443/_vibewarden/metrics": {ok: true, statusCode: 200},
-		"http://127.0.0.1:4434/admin/health/ready":   {ok: true, statusCode: 200},
 	}}
 
 	svc := ops.NewStatusService(checker)
@@ -257,9 +269,8 @@ func TestStatusService_ProxyUnreachable_NoContainers_ShowsDiagnosis(t *testing.T
 
 	proxyBase := "https://localhost:8443"
 	checker := &fakeHealthChecker{responses: map[string]healthResponse{
-		proxyBase + "/_vibewarden/health":          {ok: false, err: errors.New("connection refused")},
-		proxyBase + "/_vibewarden/metrics":         {ok: true, statusCode: 200},
-		"http://127.0.0.1:4434/admin/health/ready": {ok: true, statusCode: 200},
+		proxyBase + "/_vibewarden/health":  {ok: false, err: errors.New("connection refused")},
+		proxyBase + "/_vibewarden/metrics": {ok: true, statusCode: 200},
 	}}
 
 	compose := &fakeStatusCompose{psResult: nil} // no containers
@@ -284,9 +295,8 @@ func TestStatusService_ProxyUnreachable_SidecarRunning_ShowsLogDiagnosis(t *test
 
 	proxyBase := "https://localhost:8443"
 	checker := &fakeHealthChecker{responses: map[string]healthResponse{
-		proxyBase + "/_vibewarden/health":          {ok: false, err: errors.New("connection refused")},
-		proxyBase + "/_vibewarden/metrics":         {ok: true, statusCode: 200},
-		"http://127.0.0.1:4434/admin/health/ready": {ok: true, statusCode: 200},
+		proxyBase + "/_vibewarden/health":  {ok: false, err: errors.New("connection refused")},
+		proxyBase + "/_vibewarden/metrics": {ok: true, statusCode: 200},
 	}}
 
 	compose := &fakeStatusCompose{psResult: []ports.ContainerInfo{
@@ -313,9 +323,8 @@ func TestStatusService_ProxyUnreachable_LetsencryptLocal_ShowsHint(t *testing.T)
 
 	proxyBase := "https://localhost:8443"
 	checker := &fakeHealthChecker{responses: map[string]healthResponse{
-		proxyBase + "/_vibewarden/health":          {ok: false, err: errors.New("connection refused")},
-		proxyBase + "/_vibewarden/metrics":         {ok: true, statusCode: 200},
-		"http://127.0.0.1:4434/admin/health/ready": {ok: true, statusCode: 200},
+		proxyBase + "/_vibewarden/health":  {ok: false, err: errors.New("connection refused")},
+		proxyBase + "/_vibewarden/metrics": {ok: true, statusCode: 200},
 	}}
 
 	compose := &fakeStatusCompose{psResult: []ports.ContainerInfo{
@@ -342,9 +351,8 @@ func TestStatusService_ProxyHealthy_NoDiagnostics(t *testing.T) {
 
 	proxyBase := "https://localhost:8443"
 	checker := &fakeHealthChecker{responses: map[string]healthResponse{
-		proxyBase + "/_vibewarden/health":          {ok: true, statusCode: 200},
-		proxyBase + "/_vibewarden/metrics":         {ok: true, statusCode: 200},
-		"http://127.0.0.1:4434/admin/health/ready": {ok: true, statusCode: 200},
+		proxyBase + "/_vibewarden/health":  {ok: true, statusCode: 200},
+		proxyBase + "/_vibewarden/metrics": {ok: true, statusCode: 200},
 	}}
 
 	compose := &fakeStatusCompose{psResult: nil}
@@ -369,8 +377,7 @@ func TestStatusService_ProxyUnreachable_DoctorSuggestion(t *testing.T) {
 
 	proxyBase := "https://localhost:8443"
 	checker := &fakeHealthChecker{responses: map[string]healthResponse{
-		proxyBase + "/_vibewarden/health":          {ok: false, err: errors.New("connection refused")},
-		"http://127.0.0.1:4434/admin/health/ready": {ok: true, statusCode: 200},
+		proxyBase + "/_vibewarden/health": {ok: false, err: errors.New("connection refused")},
 	}}
 
 	// No compose wired, so diagnosis falls through to the suggestion.
@@ -398,9 +405,8 @@ func TestStatusService_WAFPluginShown(t *testing.T) {
 
 	proxyBase := "https://localhost:8443"
 	checker := &fakeHealthChecker{responses: map[string]healthResponse{
-		proxyBase + "/_vibewarden/health":          {ok: true, statusCode: 200},
-		proxyBase + "/_vibewarden/metrics":         {ok: true, statusCode: 200},
-		"http://127.0.0.1:4434/admin/health/ready": {ok: true, statusCode: 200},
+		proxyBase + "/_vibewarden/health":  {ok: true, statusCode: 200},
+		proxyBase + "/_vibewarden/metrics": {ok: true, statusCode: 200},
 	}}
 
 	svc := ops.NewStatusService(checker)
@@ -426,9 +432,8 @@ func TestStatusService_WAFPluginDisabledShown(t *testing.T) {
 
 	proxyBase := "https://localhost:8443"
 	checker := &fakeHealthChecker{responses: map[string]healthResponse{
-		proxyBase + "/_vibewarden/health":          {ok: true, statusCode: 200},
-		proxyBase + "/_vibewarden/metrics":         {ok: true, statusCode: 200},
-		"http://127.0.0.1:4434/admin/health/ready": {ok: true, statusCode: 200},
+		proxyBase + "/_vibewarden/health":  {ok: true, statusCode: 200},
+		proxyBase + "/_vibewarden/metrics": {ok: true, statusCode: 200},
 	}}
 
 	svc := ops.NewStatusService(checker)
@@ -440,5 +445,275 @@ func TestStatusService_WAFPluginDisabledShown(t *testing.T) {
 	out := buf.String()
 	if !strings.Contains(out, "waf") {
 		t.Errorf("expected 'waf' in plugin status output even when disabled, got:\n%s", out)
+	}
+}
+
+// --- New tests for ADR-095 three-state model ---
+
+// fakeTLSStateResolver is a test double for ports.TLSStateResolver.
+type fakeTLSStateResolver struct {
+	state tlsdomain.State
+	err   error
+}
+
+func (f *fakeTLSStateResolver) Resolve(_ context.Context) (tlsdomain.State, error) {
+	return f.state, f.err
+}
+
+// TestStatusService_AuthDisabled_ShowsOFF_NoHTTPCall verifies that when
+// auth is disabled in config the Auth row shows OFF and the Kratos URL is
+// never contacted.
+func TestStatusService_AuthDisabled_ShowsOFF_NoHTTPCall(t *testing.T) {
+	cfg := defaultConfig()
+	// defaultConfig leaves Auth.Mode empty → Active() == false
+	kratosURL := "http://127.0.0.1:4434/admin/health/ready"
+
+	checker := &fakeHealthChecker{responses: map[string]healthResponse{
+		"https://localhost:8443/_vibewarden/health":  {ok: true, statusCode: 200},
+		"https://localhost:8443/_vibewarden/metrics": {ok: true, statusCode: 200},
+		kratosURL: {ok: true, statusCode: 200}, // should never be called
+	}}
+
+	svc := ops.NewStatusService(checker)
+	var buf bytes.Buffer
+	if err := svc.Run(context.Background(), cfg, &buf); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	out := buf.String()
+
+	// The row must appear.
+	if !strings.Contains(out, "Auth (Kratos)") {
+		t.Errorf("expected 'Auth (Kratos)' row in output, got:\n%s", out)
+	}
+
+	// The row must show "auth disabled".
+	if !strings.Contains(out, "auth disabled") {
+		t.Errorf("expected 'auth disabled' detail, got:\n%s", out)
+	}
+
+	// OFF must appear in output.
+	if !strings.Contains(out, "OFF") {
+		t.Errorf("expected 'OFF' label in output, got:\n%s", out)
+	}
+
+	// Kratos URL must NOT have been called.
+	if checker.callCount[kratosURL] > 0 {
+		t.Errorf("Kratos health URL was called %d times; expected 0 when auth is disabled", checker.callCount[kratosURL])
+	}
+}
+
+// TestStatusService_AuthEnabled_Reachable_ShowsOK verifies that when auth
+// is enabled and Kratos is reachable the row shows OK.
+func TestStatusService_AuthEnabled_Reachable_ShowsOK(t *testing.T) {
+	cfg := defaultConfig()
+	cfg.Auth.Mode = "kratos"
+	kratosURL := "http://127.0.0.1:4434/admin/health/ready"
+
+	checker := &fakeHealthChecker{responses: map[string]healthResponse{
+		"https://localhost:8443/_vibewarden/health":  {ok: true, statusCode: 200},
+		"https://localhost:8443/_vibewarden/metrics": {ok: true, statusCode: 200},
+		kratosURL: {ok: true, statusCode: 200},
+	}}
+
+	svc := ops.NewStatusService(checker)
+	var buf bytes.Buffer
+	if err := svc.Run(context.Background(), cfg, &buf); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	out := buf.String()
+	if !strings.Contains(out, "Auth (Kratos)") {
+		t.Errorf("expected 'Auth (Kratos)' row, got:\n%s", out)
+	}
+	// OK must appear (proxy is also OK, so at least one OK).
+	if !strings.Contains(out, "OK") {
+		t.Errorf("expected 'OK' label when auth is enabled and reachable, got:\n%s", out)
+	}
+	// No component row must contain "FAIL" — the legend line is excluded by
+	// checking only lines that start with whitespace (component rows are indented).
+	if hasComponentFAIL(out) {
+		t.Errorf("expected no FAIL component rows when auth is reachable, got:\n%s", out)
+	}
+}
+
+// TestStatusService_AuthEnabled_Unreachable_ShowsFAIL verifies that when
+// auth is enabled but Kratos is unreachable the row shows FAIL.
+func TestStatusService_AuthEnabled_Unreachable_ShowsFAIL(t *testing.T) {
+	cfg := defaultConfig()
+	cfg.Auth.Mode = "kratos"
+	kratosURL := "http://127.0.0.1:4434/admin/health/ready"
+
+	checker := &fakeHealthChecker{responses: map[string]healthResponse{
+		"https://localhost:8443/_vibewarden/health":  {ok: true, statusCode: 200},
+		"https://localhost:8443/_vibewarden/metrics": {ok: true, statusCode: 200},
+		kratosURL: {ok: false, err: errors.New("connection refused")},
+	}}
+
+	svc := ops.NewStatusService(checker)
+	var buf bytes.Buffer
+	if err := svc.Run(context.Background(), cfg, &buf); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	out := buf.String()
+	if !strings.Contains(out, "FAIL") {
+		t.Errorf("expected 'FAIL' label when Kratos is unreachable, got:\n%s", out)
+	}
+	if !strings.Contains(out, "unreachable") {
+		t.Errorf("expected 'unreachable' detail when Kratos is unreachable, got:\n%s", out)
+	}
+}
+
+// TestStatusService_PrintStatusTable_LegendPresent verifies that the legend
+// line is rendered in the status table output.
+func TestStatusService_PrintStatusTable_LegendPresent(t *testing.T) {
+	cfg := defaultConfig()
+
+	checker := &fakeHealthChecker{responses: map[string]healthResponse{
+		"https://localhost:8443/_vibewarden/health":  {ok: true, statusCode: 200},
+		"https://localhost:8443/_vibewarden/metrics": {ok: true, statusCode: 200},
+	}}
+
+	svc := ops.NewStatusService(checker)
+	var buf bytes.Buffer
+	if err := svc.Run(context.Background(), cfg, &buf); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	out := buf.String()
+	if !strings.Contains(out, "States: OK") {
+		t.Errorf("expected legend line 'States: OK' in output, got:\n%s", out)
+	}
+	if !strings.Contains(out, "OFF") {
+		t.Errorf("expected 'OFF' in legend, got:\n%s", out)
+	}
+	if !strings.Contains(out, "FAIL") {
+		t.Errorf("expected 'FAIL' in legend, got:\n%s", out)
+	}
+}
+
+// TestStatusService_TLSSelfSigned_NeverFAIL verifies that a self-signed dev
+// cert never produces a FAIL row (acceptance criterion from ADR-095).
+func TestStatusService_TLSSelfSigned_NeverFAIL(t *testing.T) {
+	cfg := defaultConfig()
+	cfg.TLS.Enabled = true
+	cfg.TLS.Provider = "self-signed"
+
+	checker := &fakeHealthChecker{responses: map[string]healthResponse{
+		"https://localhost:8443/_vibewarden/health":  {ok: true, statusCode: 200},
+		"https://localhost:8443/_vibewarden/metrics": {ok: true, statusCode: 200},
+	}}
+
+	resolver := &fakeTLSStateResolver{state: tlsdomain.NewSelfSignedLocal()}
+	svc := ops.NewStatusService(checker).WithTLSStateResolver(resolver)
+
+	var buf bytes.Buffer
+	if err := svc.Run(context.Background(), cfg, &buf); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	out := buf.String()
+	if hasComponentFAIL(out) {
+		t.Errorf("expected no FAIL rows for self-signed dev cert, got:\n%s", out)
+	}
+	if !strings.Contains(out, "self-signed (dev)") {
+		t.Errorf("expected 'self-signed (dev)' annotation, got:\n%s", out)
+	}
+}
+
+// TestStatusService_TLSObtainedExpiringSoon_ShowsOK verifies that a cert
+// expiring in 5 days produces StatusOK with an annotation, not FAIL.
+func TestStatusService_TLSObtainedExpiringSoon_ShowsOK(t *testing.T) {
+	cfg := defaultConfig()
+	cfg.TLS.Enabled = true
+	cfg.TLS.Provider = "letsencrypt"
+
+	checker := &fakeHealthChecker{responses: map[string]healthResponse{
+		"https://localhost:8443/_vibewarden/health":  {ok: true, statusCode: 200},
+		"https://localhost:8443/_vibewarden/metrics": {ok: true, statusCode: 200},
+	}}
+
+	expiry := time.Now().Add(5 * 24 * time.Hour)
+	resolver := &fakeTLSStateResolver{state: tlsdomain.NewExpiringSoon(5, expiry)}
+	svc := ops.NewStatusService(checker).WithTLSStateResolver(resolver)
+
+	var buf bytes.Buffer
+	if err := svc.Run(context.Background(), cfg, &buf); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	out := buf.String()
+	if hasComponentFAIL(out) {
+		t.Errorf("expected no FAIL for expiring-soon TLS (should be OK + annotation), got:\n%s", out)
+	}
+	if !strings.Contains(out, "expires in 5 days") {
+		t.Errorf("expected 'expires in 5 days' annotation, got:\n%s", out)
+	}
+}
+
+// TestStatusService_TLSFailing_ShowsFAIL verifies that KindFailing produces
+// a FAIL row with the error detail.
+func TestStatusService_TLSFailing_ShowsFAIL(t *testing.T) {
+	cfg := defaultConfig()
+	cfg.TLS.Enabled = true
+	cfg.TLS.Provider = "letsencrypt"
+
+	checker := &fakeHealthChecker{responses: map[string]healthResponse{
+		"https://localhost:8443/_vibewarden/health":  {ok: true, statusCode: 200},
+		"https://localhost:8443/_vibewarden/metrics": {ok: true, statusCode: 200},
+	}}
+
+	resolver := &fakeTLSStateResolver{state: tlsdomain.NewFailing("dns challenge timeout")}
+	svc := ops.NewStatusService(checker).WithTLSStateResolver(resolver)
+
+	var buf bytes.Buffer
+	if err := svc.Run(context.Background(), cfg, &buf); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	out := buf.String()
+	if !strings.Contains(out, "FAIL") {
+		t.Errorf("expected 'FAIL' for failing TLS, got:\n%s", out)
+	}
+	if !strings.Contains(out, "dns challenge timeout") {
+		t.Errorf("expected error detail in TLS row, got:\n%s", out)
+	}
+}
+
+// TestStatusService_DevSmoke verifies that the default dev stack config
+// (auth off, metrics off, rate-limit on, TLS self-signed) produces zero
+// FAIL rows — acceptance criterion from ADR-095.
+func TestStatusService_DevSmoke_ZeroFAIL(t *testing.T) {
+	cfg := &config.Config{
+		Server:   config.ServerConfig{Host: "127.0.0.1", Port: 8443},
+		Upstream: config.UpstreamConfig{Host: "127.0.0.1", Port: 3000},
+		TLS:      config.TLSConfig{Enabled: true, Provider: "self-signed"},
+		RateLimit: config.RateLimitConfig{
+			Enabled: true,
+			PerIP:   config.RateLimitRuleConfig{RequestsPerSecond: 10, Burst: 20},
+		},
+		// Auth.Mode is empty → Active() == false
+		// Metrics.Enabled is false (zero value)
+	}
+
+	checker := &fakeHealthChecker{responses: map[string]healthResponse{
+		"https://localhost:8443/_vibewarden/health": {ok: true, statusCode: 200},
+	}}
+
+	resolver := &fakeTLSStateResolver{state: tlsdomain.NewSelfSignedLocal()}
+	svc := ops.NewStatusService(checker).WithTLSStateResolver(resolver)
+
+	var buf bytes.Buffer
+	if err := svc.Run(context.Background(), cfg, &buf); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	out := buf.String()
+	// No component rows must carry a FAIL label (the legend contains the word
+	// "FAIL" but component rows are the only indented lines starting with spaces
+	// followed by a state label).
+	if hasComponentFAIL(out) {
+		t.Errorf("unexpected FAIL row on dev smoke stack:\nfull output:\n%s", out)
 	}
 }
