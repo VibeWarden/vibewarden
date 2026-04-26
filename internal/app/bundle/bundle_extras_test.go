@@ -196,6 +196,8 @@ func TestBundle_Extras_Readme_DeployContract(t *testing.T) {
 				"docker-compose.yml",
 				"vibewarden.yaml",
 				"image.tar",
+				"sample.env",
+				".env",
 			} {
 				if !strings.Contains(body, want) {
 					t.Errorf("README.md missing %q\nbody:\n%s", want, body)
@@ -212,6 +214,7 @@ func TestBundle_Extras_Readme_DeployContract(t *testing.T) {
 				"docker compose up",
 				"PowerShell",
 				"pwsh",
+				"bash",
 				"./deploy.sh",
 				"deploy.sh",
 			} {
