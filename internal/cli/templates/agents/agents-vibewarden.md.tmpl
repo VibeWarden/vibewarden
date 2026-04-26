@@ -145,16 +145,16 @@ Key rules:
 
 ## Image tag convention
 
-`vibew build` tags the image as `<project>-app:latest`. The project name is
-resolved in this order:
+`vibew build` and `vibew bundle` tag the image as `<project>-app:latest`. The
+project name is resolved in this order:
 
-1. `name` field in vibewarden.yaml (explicit)
+1. `name` field in vibewarden.yaml (explicit) — optional in the common case
 2. `app.image` with registry prefix and tag stripped (e.g. `ghcr.io/org/myapp:latest` → `myapp`)
-3. Directory name containing vibewarden.yaml (fallback)
+3. Directory name containing vibewarden.yaml (cwd-basename fallback)
 
 For example, a project in `~/code/mysite` with no explicit `name` produces the
-image `mysite-app:latest`. This tag must match what Docker Compose expects for
-the app service.
+image `mysite-app:latest`. `vibew bundle` and `vibew bundle --build` both use
+this chain, so the bundle lookup and the build step always agree on the tag.
 
 ## TLS configuration keys
 

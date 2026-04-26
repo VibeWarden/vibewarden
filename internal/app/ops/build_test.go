@@ -340,6 +340,59 @@ func TestBuildService_ShellProber_NilProber_NoWarning(t *testing.T) {
 	}
 }
 
+// TestBuildService_Run_UsesPreResolvedImageTag verifies that when
+// BuildOptions.ImageTag is set the BuildService uses it verbatim and does NOT
+// run its own resolveImageTag chain. This is the ADR-093 short-circuit that
+// lets vibew bundle --build pass the already-resolved tag so the build step
+// and the bundle lookup always agree.
+func TestBuildService_Run_UsesPreResolvedImageTag(t *testing.T) {
+	tests := []struct {
+		name        string
+		cfg         *config.Config
+		preResolved string
+		wantTag     string
+	}{
+		{
+			name:        "pre-resolved tag wins over cfg.Name",
+			cfg:         &config.Config{Name: "other-name"},
+			preResolved: "qr-dali-app:latest",
+			wantTag:     "qr-dali-app:latest",
+		},
+		{
+			name:        "pre-resolved tag wins over cfg.App.Image",
+			cfg:         &config.Config{App: config.AppConfig{Image: "ghcr.io/org/myapp:v1"}},
+			preResolved: "qr-dali-app:latest",
+			wantTag:     "qr-dali-app:latest",
+		},
+		{
+			name:        "pre-resolved tag wins when cfg is nil",
+			cfg:         nil,
+			preResolved: "qr-dali-app:latest",
+			wantTag:     "qr-dali-app:latest",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fb := &fakeBuilder{}
+			svc := ops.NewBuildService(fb)
+
+			var out bytes.Buffer
+			err := svc.Run(context.Background(), tt.cfg, ops.BuildOptions{
+				WorkDir:  ".",
+				ImageTag: tt.preResolved,
+			}, &out)
+			if err != nil {
+				t.Fatalf("Run() unexpected error: %v", err)
+			}
+
+			if fb.capturedTag != tt.wantTag {
+				t.Errorf("tag = %q, want %q", fb.capturedTag, tt.wantTag)
+			}
+		})
+	}
+}
+
 // TestBuildService_Run_ImageNameMatchesComposeProjectName verifies that the
 // image tag produced by `vibew build` matches what docker-compose expects:
 // <ComposeProjectName>-app:latest.

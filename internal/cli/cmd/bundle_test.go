@@ -353,6 +353,91 @@ func TestBundleCmd_DotEnvPreserved(t *testing.T) {
 	}
 }
 
+// TestRunBundle_ImageTagDerivation is the ADR-093 regression test.
+// It verifies that the image tag written into sample.env/.env matches
+// the project name derived by deriveProjectName for all three derivation paths:
+// explicit name:, app.image: strip, and cwd-basename fallback.
+func TestRunBundle_ImageTagDerivation(t *testing.T) {
+	tests := []struct {
+		name        string
+		yaml        string
+		dirName     string // subdirectory to run bundle in (cwd basename)
+		wantImageIn string // expected IMAGE= prefix in sample.env
+	}{
+		{
+			name:        "explicit name: takes precedence",
+			yaml:        "name: myapp\nserver:\n  port: 8080\nupstream:\n  port: 3000\n",
+			dirName:     "qr-dali",
+			wantImageIn: "VIBEWARDEN_APP_IMAGE=myapp-app:latest",
+		},
+		{
+			name:        "app.image: strip wins when name: unset",
+			yaml:        "server:\n  port: 8080\nupstream:\n  port: 3000\napp:\n  image: ghcr.io/org/webapp:v2\n",
+			dirName:     "qr-dali",
+			wantImageIn: "VIBEWARDEN_APP_IMAGE=webapp-app:latest",
+		},
+		{
+			name:        "cwd-basename fallback when name: and app.image: both unset",
+			yaml:        "server:\n  port: 8080\nupstream:\n  port: 3000\n",
+			dirName:     "qr-dali",
+			wantImageIn: "VIBEWARDEN_APP_IMAGE=qr-dali-app:latest",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			base := t.TempDir()
+			projDir := filepath.Join(base, tt.dirName)
+			if err := os.MkdirAll(projDir, 0o750); err != nil {
+				t.Fatalf("mkdir %s: %v", projDir, err)
+			}
+			// Write scaffolding marker and config.
+			writeScaffoldingMarker(t, projDir)
+			if err := os.WriteFile(filepath.Join(projDir, "vibewarden.yaml"), []byte(tt.yaml), 0o644); err != nil {
+				t.Fatalf("writing vibewarden.yaml: %v", err)
+			}
+
+			// chdir into the project so bundle can find ./vibewarden.yaml.
+			origDir, err := os.Getwd()
+			if err != nil {
+				t.Fatalf("getwd: %v", err)
+			}
+			if err := os.Chdir(projDir); err != nil {
+				t.Fatalf("chdir %s: %v", projDir, err)
+			}
+			t.Cleanup(func() { _ = os.Chdir(origDir) })
+
+			outDir := filepath.Join(projDir, "out")
+			root := cmd.NewRootCmd("test")
+			root.SetArgs([]string{"bundle", "--output", outDir, "--skip-image"})
+			var out bytes.Buffer
+			root.SetOut(&out)
+			root.SetErr(&out)
+			if err := root.Execute(); err != nil {
+				t.Fatalf("bundle: %v\noutput:\n%s", err, out.String())
+			}
+
+			// Check sample.env.
+			sampleEnv, err := os.ReadFile(filepath.Join(outDir, "sample.env"))
+			if err != nil {
+				t.Fatalf("reading sample.env: %v", err)
+			}
+			if !bytes.Contains(sampleEnv, []byte(tt.wantImageIn)) {
+				t.Errorf("sample.env missing %q\ngot:\n%s", tt.wantImageIn, sampleEnv)
+			}
+
+			// Check .env.
+			dotEnv, err := os.ReadFile(filepath.Join(outDir, ".env")) //nolint:gosec // test file
+			if err != nil {
+				t.Fatalf("reading .env: %v", err)
+			}
+			if !bytes.Contains(dotEnv, []byte(tt.wantImageIn)) {
+				t.Errorf(".env missing %q\ngot:\n%s", tt.wantImageIn, dotEnv)
+			}
+		})
+	}
+}
+
 func TestBundleCmd_Overwrite_ReplacesDotEnv(t *testing.T) {
 	dir := setupBundleProject(t)
 	outDir := filepath.Join(dir, "out")
