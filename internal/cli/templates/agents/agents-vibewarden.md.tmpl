@@ -83,6 +83,7 @@ app port directly — it has no security.
 | `vibew bundle` | Produce a self-contained Docker Compose bundle under `.vibewarden/bundle/`; ship with `scp` + `docker compose up -d` |
 | `vibew restart` | Restart containers |
 | `vibew status` | Show component health |
+Output uses OK / OFF / FAIL labels; OFF means the component is disabled in config and was not probed.
 | `vibew logs` | Tail logs |
 | `vibew doctor` | Diagnose issues |
 | `vibew token` | Generate dev JWT |

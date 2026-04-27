@@ -14,12 +14,13 @@ import (
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
 
-// ComponentStatus represents the health of a single component.
+// ComponentStatus represents the three-state health of a single component.
+// The State field replaces the legacy boolean Healthy field (ADR-095).
 type ComponentStatus struct {
 	// Name is a human-readable component label.
 	Name string
-	// Healthy is true when the component is up and responding correctly.
-	Healthy bool
+	// State is the tri-state rendering tag: StatusOK, StatusOFF, or StatusFAIL.
+	State StatusState
 	// Detail is an optional extra detail line (e.g. provider, URL, reason).
 	Detail string
 }
@@ -87,7 +88,7 @@ func (s *StatusService) Run(ctx context.Context, cfg *config.Config, out io.Writ
 
 	// When the proxy is unreachable, print additional diagnostic details.
 	for _, st := range statuses {
-		if st.Name == "Proxy" && !st.Healthy {
+		if st.Name == "Proxy" && st.State == StatusFAIL {
 			s.diagnoseProxy(checkCtx, cfg, out)
 			break
 		}
@@ -100,56 +101,64 @@ func (s *StatusService) Run(ctx context.Context, cfg *config.Config, out io.Writ
 func (s *StatusService) gatherStatuses(ctx context.Context, cfg *config.Config, proxyBase string) []ComponentStatus {
 	var statuses []ComponentStatus
 
-	// Proxy health
+	// Proxy health — always-on infrastructure; always probed.
 	statuses = append(statuses, s.checkHTTP(ctx, "Proxy", proxyBase+"/_vibewarden/health", proxyBase))
 
-	// Auth (Kratos)
+	// Auth (Kratos) — gated on cfg.Auth.Active(). When auth is disabled in
+	// config, return StatusOFF immediately without any HTTP call (ADR-095).
 	kratosURL := cfg.Kratos.AdminURL
 	if kratosURL == "" {
 		kratosURL = "http://127.0.0.1:4434"
 	}
-	statuses = append(statuses, s.checkHTTP(ctx, "Auth (Kratos)", kratosURL+"/admin/health/ready", kratosURL))
+	if cfg.Auth.Active() {
+		statuses = append(statuses, s.checkHTTP(ctx, "Auth (Kratos)", kratosURL+"/admin/health/ready", kratosURL))
+	} else {
+		statuses = append(statuses, ComponentStatus{
+			Name:   "Auth (Kratos)",
+			State:  StatusOFF,
+			Detail: "auth disabled",
+		})
+	}
 
-	// Rate limit — config only, no HTTP check
+	// Rate limit — config only, no HTTP check. Always StatusOK.
 	rlStatus := ComponentStatus{
-		Name:    "Rate Limit",
-		Healthy: true,
-		Detail:  "disabled",
+		Name:   "Rate Limit",
+		State:  StatusOK,
+		Detail: "disabled",
 	}
 	if cfg.RateLimit.Enabled {
 		rlStatus.Detail = fmt.Sprintf("enabled (%.0f req/s per IP)", cfg.RateLimit.PerIP.RequestsPerSecond)
 	}
 	statuses = append(statuses, rlStatus)
 
-	// Metrics
+	// Metrics — gated on cfg.Metrics.Enabled.
 	if cfg.Metrics.Enabled {
 		statuses = append(statuses, s.checkHTTP(ctx, "Metrics", proxyBase+"/_vibewarden/metrics", proxyBase))
 	} else {
 		statuses = append(statuses, ComponentStatus{
-			Name:    "Metrics",
-			Healthy: true,
-			Detail:  "disabled",
+			Name:   "Metrics",
+			State:  StatusOFF,
+			Detail: "disabled",
 		})
 	}
 
 	// TLS — prefer the state-aware resolver when wired. The renderer
-	// produces healthy/unhealthy plus the canonical detail string from
-	// the PM spec for #1090. When no resolver is wired we fall back to
-	// the legacy config-only detail.
+	// produces a StatusState plus the canonical detail string.
+	// When no resolver is wired we fall back to the legacy config-only detail.
 	statuses = append(statuses, s.tlsComponentStatus(ctx, cfg))
 
 	return statuses
 }
 
 // tlsComponentStatus builds the TLS row for the status dashboard. When a
-// TLS state resolver is wired it produces state-aware output (see PM spec
-// #1090); otherwise it falls back to the pre-#1090 config-only detail.
+// TLS state resolver is wired it produces state-aware output (ADR-095);
+// otherwise it falls back to the pre-#1090 config-only detail.
 func (s *StatusService) tlsComponentStatus(ctx context.Context, cfg *config.Config) ComponentStatus {
 	if s.tlsState != nil {
 		state, err := s.tlsState.Resolve(ctx)
 		if err == nil {
-			detail, healthy := renderTLSStatusLine(state)
-			return ComponentStatus{Name: "TLS", Healthy: healthy, Detail: detail}
+			detail, status := renderTLSStatusLine(state)
+			return ComponentStatus{Name: "TLS", State: status, Detail: detail}
 		}
 		// On resolver error, fall through to config-only detail so we
 		// never crash the status dashboard.
@@ -163,7 +172,7 @@ func (s *StatusService) tlsComponentStatus(ctx context.Context, cfg *config.Conf
 		}
 		detail = fmt.Sprintf("enabled — provider: %s, domain: %s", cfg.TLS.Provider, domain)
 	}
-	return ComponentStatus{Name: "TLS", Healthy: true, Detail: detail}
+	return ComponentStatus{Name: "TLS", State: StatusOK, Detail: detail}
 }
 
 // PluginStatus represents the enabled/disabled state of a single plugin
@@ -233,26 +242,27 @@ func gatherPluginStatuses(cfg *config.Config) []PluginStatus {
 }
 
 // checkHTTP performs a health check against url and returns a ComponentStatus.
+// On success it returns StatusOK; on failure StatusFAIL.
 func (s *StatusService) checkHTTP(ctx context.Context, name, url, base string) ComponentStatus {
 	ok, code, err := s.health.CheckHealth(ctx, url)
 	if err != nil {
 		return ComponentStatus{
-			Name:    name,
-			Healthy: false,
-			Detail:  fmt.Sprintf("unreachable (%s)", base),
+			Name:   name,
+			State:  StatusFAIL,
+			Detail: fmt.Sprintf("unreachable (%s)", base),
 		}
 	}
 	if !ok {
 		return ComponentStatus{
-			Name:    name,
-			Healthy: false,
-			Detail:  fmt.Sprintf("HTTP %d (%s)", code, base),
+			Name:   name,
+			State:  StatusFAIL,
+			Detail: fmt.Sprintf("HTTP %d (%s)", code, base),
 		}
 	}
 	return ComponentStatus{
-		Name:    name,
-		Healthy: true,
-		Detail:  base,
+		Name:   name,
+		State:  StatusOK,
+		Detail: base,
 	}
 }
 
@@ -305,24 +315,24 @@ func (s *StatusService) diagnoseProxy(ctx context.Context, cfg *config.Config, o
 }
 
 // printStatusTable renders the component and plugin statuses as a table.
+// Component rows use coloured text labels (OK / OFF / FAIL); the plugins
+// sub-table is unchanged (enabled/disabled with glyphs).
 func printStatusTable(statuses []ComponentStatus, pluginStatuses []PluginStatus, out io.Writer) {
 	green := color.New(color.FgGreen).SprintFunc()
-	red := color.New(color.FgRed).SprintFunc()
 	cyan := color.New(color.FgCyan).SprintFunc()
 
 	fmt.Fprintln(out, "")
 	fmt.Fprintln(out, "VibeWarden Status")
 	fmt.Fprintln(out, "─────────────────────────────────────────")
+	fmt.Fprintln(out, "States: OK = healthy   OFF = disabled   FAIL = check failed")
+	fmt.Fprintln(out, "")
 
 	for _, s := range statuses {
-		mark := green("✓")
-		if !s.Healthy {
-			mark = red("✗")
-		}
+		label := s.State.coloredLabel()
 		if s.Detail != "" {
-			fmt.Fprintf(out, "  %s  %-20s  %s\n", mark, s.Name, s.Detail)
+			fmt.Fprintf(out, "  %s  %-20s  %s\n", label, s.Name, s.Detail)
 		} else {
-			fmt.Fprintf(out, "  %s  %s\n", mark, s.Name)
+			fmt.Fprintf(out, "  %s  %s\n", label, s.Name)
 		}
 	}
 

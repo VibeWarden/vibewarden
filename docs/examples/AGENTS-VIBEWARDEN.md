@@ -94,7 +94,7 @@ proxy port availability, generated files, container health, ACME email, image ta
 consistency, upstream reachability, and TLS state. The TLS state check reports one
 of four values: `Obtaining` (ACME in progress), `Obtained` (cert active and valid),
 `Failing` (ACME failed), or `SelfSignedLocal` (dev self-signed cert — no expiry
-warning is raised). `vibew status` surfaces the same TLS state in its output table.
+warning is raised). `vibew status` surfaces the same TLS state in its output table. Output uses OK / OFF / FAIL labels; OFF means the component is disabled in config and was not probed.
 
 ## Dockerfile contract
 
