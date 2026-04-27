@@ -12,6 +12,21 @@ This initial entry was written by hand to summarise the work leading up to v0.1.
 
 ## [Unreleased]
 
+### Migrating from v0.17.0
+
+This release trims CLI surface and tightens validation. Most users upgrading from v0.17.0 will be unaffected; the following breaking-ish changes have direct migration paths:
+
+| If you used (v0.17.0) | Use instead (v0.18.0) |
+|-----------------------|------------------------|
+| `vibew dev --observability` | `vibew dev` then `vibew obs up` (and `vibew obs down` to tear it down) |
+| `vibew restart` | `vibew build && vibew dev` (rebuild + restart) or `vibew down && vibew dev` (clean restart) |
+| `cd .vibewarden/bundle && ./deploy.sh user@host` | `ssh user@host mkdir -p /path` → `scp -r .vibewarden/bundle/* user@host:/path/` → `ssh user@host "cd /path && docker load -i image.tar && docker compose up -d"` → verify with `curl https://yourdomain/_vibewarden/health` (port **443** in production, not 8443). The bundle's `README.md` documents this contract. |
+| `vibew init` produced a `Dockerfile` placeholder | Write your own Dockerfile against the contract in `AGENTS-VIBEWARDEN.md` §Dockerfile contract (alpine base, `EXPOSE` matches `upstream.port`, no `HEALTHCHECK`, multi-stage for compiled languages, builder image major.minor matches your toolchain manifest). `vibew doctor` validates the Dockerfile against this contract. |
+| Multi-site projects (`sites/<name>/vibewarden.yaml`) ran end-to-end | Multi-site is post-v1. `vibew validate` and `vibew add` now refuse multi-site configs; the production-deploy architecture is tracked in #1169. Multi-site `vibew dev` (local reverse-proxy of N apps) keeps working. |
+| `.env` with `VIBEWARDEN_APP_IMAGE=vibewarden-app:latest` (legacy tag) | `vibew validate` now FAILs on the legacy tag. Run `vibew bundle --overwrite` to regenerate `.env` with the project-scoped tag, or edit by hand. |
+
+If `vibew validate` or `vibew doctor` start FAILing on a previously-clean project, the most likely causes are above. Each FAIL row carries an actionable hint pointing at the fix.
+
 ### Added
 
 - **`vibew doctor` Dockerfile lint** (#1140). Doctor now validates user-written Dockerfiles against the contract documented in AGENTS-VIBEWARDEN: alpine base, `EXPOSE` matches `upstream.port`, no `HEALTHCHECK` directive, non-root `USER` (warn), multi-stage build for compiled languages, and builder image major.minor matches the project's toolchain manifest (`go.mod`, `.nvmrc`, `pyproject.toml`). The toolchain-match check pre-empts the qr-dali deploy retro's #1 opaque error: `go mod download exit 1` masquerading as a build failure when really it's a Go-version mismatch between the Dockerfile and the project. Closes the loop on #1139's "stop generating placeholder Dockerfile" decision.
