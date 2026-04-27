@@ -225,3 +225,20 @@ func TestDownService_RemoveOrphans_Forwarded(t *testing.T) {
 		t.Error("expected RemoveOrphans=true forwarded to adapter")
 	}
 }
+
+func TestDownService_DoesNotPassProfiles(t *testing.T) {
+	// `vibew down` tears down the whole project and must NOT restrict teardown
+	// to any profile — passing --profile would leave non-profile services
+	// running. This is the regression guard for the obs-down profile fix: only
+	// ObsService.Down should set Profiles, not the main DownService.
+	fake := &downCompose{}
+	svc := opsapp.NewDownService(fake)
+
+	var out bytes.Buffer
+	if err := svc.Run(context.Background(), opsapp.DownOptions{}, &out); err != nil {
+		t.Fatalf("Run() unexpected error: %v", err)
+	}
+	if len(fake.capturedOp.Profiles) != 0 {
+		t.Errorf("DownService.Run() must not set Profiles, got %v", fake.capturedOp.Profiles)
+	}
+}

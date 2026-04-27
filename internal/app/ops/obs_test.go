@@ -245,3 +245,41 @@ func TestObsService_Down_ComposeError_ReturnsError(t *testing.T) {
 		t.Errorf("error should wrap compose error, got: %v", err)
 	}
 }
+
+func TestObsService_Down_PassesObservabilityProfile(t *testing.T) {
+	// obs down must scope teardown to the observability profile only, so that
+	// running `vibew obs down` does not stop the main sidecar or other services.
+	fc := &fakeCompose{}
+	svc := ops.NewObsService(fc, nil)
+	var buf bytes.Buffer
+
+	if err := svc.Down(context.Background(), ops.ObsDownOptions{Yes: true}, &buf); err != nil {
+		t.Fatalf("Down() unexpected error: %v", err)
+	}
+
+	profiles := fc.capturedDownOpts.Profiles
+	if len(profiles) != 1 || profiles[0] != "observability" {
+		t.Errorf("Down() Profiles = %v, want [observability]", profiles)
+	}
+}
+
+func TestObsService_Up_PrintsGrafanaOnPort3001(t *testing.T) {
+	// Grafana's default host port is 3001 (mapped from container-internal :3000).
+	// The CLI output must reflect the actual accessible URL.
+	fc := &fakeCompose{}
+	svc := ops.NewObsService(fc, nil)
+	cfg := defaultConfig()
+	var buf bytes.Buffer
+
+	if err := svc.Up(context.Background(), cfg, ops.ObsUpOptions{}, &buf); err != nil {
+		t.Fatalf("Up() unexpected error: %v", err)
+	}
+
+	out := buf.String()
+	if !strings.Contains(out, "localhost:3001") {
+		t.Errorf("expected Grafana URL with port 3001 in output, got:\n%s", out)
+	}
+	if strings.Contains(out, "localhost:3000") {
+		t.Errorf("output must not reference port 3000 (container-internal); got:\n%s", out)
+	}
+}

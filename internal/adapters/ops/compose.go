@@ -101,6 +101,9 @@ func (c *ComposeAdapter) Down(ctx context.Context, composeFile string, opts port
 	if composeFile != "" {
 		args = append(args, "-f", composeFile)
 	}
+	for _, p := range opts.Profiles {
+		args = append(args, "--profile", p)
+	}
 	args = append(args, "down")
 	if opts.Volumes {
 		args = append(args, "--volumes")

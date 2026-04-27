@@ -86,7 +86,7 @@ func (s *ObsService) Up(ctx context.Context, cfg *config.Config, opts ObsUpOptio
 
 	fmt.Fprintln(out, "")
 	fmt.Fprintln(out, "Observability stack started.")
-	fmt.Fprintln(out, "Grafana:    http://localhost:3000")
+	fmt.Fprintln(out, "Grafana:    http://localhost:3001")
 	fmt.Fprintln(out, "Prometheus: http://localhost:9090")
 	fmt.Fprintln(out, "Stop:       vibew obs down")
 
@@ -114,6 +114,7 @@ func (s *ObsService) Down(ctx context.Context, opts ObsDownOptions, out io.Write
 	result, err := s.compose.Down(ctx, composeFile, ports.ComposeDownOptions{
 		Volumes:       opts.Volumes,
 		RemoveOrphans: opts.RemoveOrphans,
+		Profiles:      []string{obsProfile},
 	})
 	if err != nil {
 		return fmt.Errorf("stopping observability stack: %w", err)

@@ -388,7 +388,7 @@ vibew down -v --yes
 
 | Service    | URL                          | Notes                                  |
 |------------|------------------------------|----------------------------------------|
-| Grafana    | http://localhost:3000        | Anonymous access, Admin role, no login |
+| Grafana    | http://localhost:3001        | Anonymous access, Admin role, no login |
 | Prometheus | http://localhost:9090        | No authentication required             |
 | Loki       | http://localhost:3100/ready  | API only; query logs via Grafana       |
 
@@ -549,13 +549,13 @@ Prometheus may not have scraped VibeWarden yet, or VibeWarden is not running.
 
 ### Port conflicts
 
-If port 3000 or 9090 is already in use, Docker Compose will fail to start the
+If port 3001 or 9090 is already in use, Docker Compose will fail to start the
 corresponding container. Stop the conflicting process or change the host port in
 `docker-compose.yml`:
 
 ```yaml
 ports:
-  - "3001:3000"   # expose Grafana on host port 3001 instead
+  - "3002:3000"   # expose Grafana on host port 3002 instead
 ```
 
 ### Grafana starts but the dashboard is not visible
