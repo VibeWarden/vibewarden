@@ -1411,8 +1411,9 @@ Output layout:
 - `image.tar` -- omitted with `--skip-image`
 - `kratos/`, `.credentials` -- whatever the generator produces
 
-Multi-site projects (`sites/<name>/vibewarden.yaml`) hard-fail with
-`multi-site bundle is not yet supported`; see ADR-085 / ADR-086.
+Multi-site projects (`sites/<name>/vibewarden.yaml`) hard-fail on
+production bundle with `multi-site bundle is post-v1 (see #1169)`; the
+local dev / test paths continue to work unchanged.
 
 #### Image health block format
 
@@ -1455,10 +1456,9 @@ VibeWarden supports multi-app projects locally: multiple apps live under
 `sites/<name>/` each with their own `vibewarden.yaml`. A shared sidecar
 reverse-proxies all of them on the same VM.
 
-Remote orchestration for multi-site layouts is deferred per ADR-085 /
-ADR-086. `vibew bundle` currently hard-fails on multi-site projects with
-`multi-site bundle is not yet supported`; the local dev / test paths
-continue to work unchanged.
+Multi-site production bundle is post-v1 (see #1169 — N apps on one VM
+architecture). `vibew bundle` hard-fails on multi-site projects; the
+local dev / test paths continue to work unchanged.
 
 Full guide: https://vibewarden.dev/docs/multi-app/
 

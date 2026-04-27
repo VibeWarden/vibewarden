@@ -130,7 +130,10 @@ Examples:
 			if checkPath == "" {
 				checkPath = "vibewarden.yaml"
 			}
-			absCheck, _ := filepath.Abs(checkPath)
+			absCheck, err := filepath.Abs(checkPath)
+			if err != nil {
+				return fmt.Errorf("resolving abs path %q: %w", checkPath, err)
+			}
 			if multisiteapp.IsProject(absCheck) {
 				fmt.Fprintf(cmd.ErrOrStderr(), "FAIL  multi-site bundle is post-v1 (see #1169 — N apps on one VM architecture). Dev path works locally; no production deploy path yet.\n")
 				return fmt.Errorf("multi-site bundle is post-v1 (see #1169)")
