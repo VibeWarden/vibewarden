@@ -239,11 +239,17 @@ Create `docker-compose.override.yml` next to your `vibewarden.yaml` for addition
 services like PostgreSQL or Redis. Docker Compose auto-merges it with the
 generated compose. VibeWarden never overwrites this file.
 
+## Multi-site (post-v1)
+
+The `sites/<name>/vibewarden.yaml` layout works for local dev (`vibew dev` reverse-proxies multiple apps on host headers), but `vibew bundle` does NOT support multi-site yet. Multi-app-per-VM deployment is the post-v1 #1169 architecture.
+
+For now: keep one site per project. Revisit when #1169 lands.
+
 ## Known limitations
 
 - WAF is in `detect` mode by default (logs but does not block). Set `waf.mode: block` in vibewarden.yaml to enforce blocking.
 - `vibew doctor` checks config, Docker, ports, container health, generated files, ACME email, image tag, upstream reachability, and TLS state (Obtaining/Obtained/Failing/SelfSignedLocal). Self-signed dev certs are identified correctly and do not trigger a spurious expiry warning.
-- Multi-site deployment is new and may have edge cases — report issues if routes or certs behave unexpectedly.
+- Multi-site local dev works; production deploy is post-v1 (see https://github.com/VibeWarden/vibewarden/issues/1169).
 - `vibew init` does not accept `--tls` or `--domain` flags — run `vibew add tls --domain <your-domain>` after init.
 
 ---

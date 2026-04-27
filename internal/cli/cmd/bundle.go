@@ -16,6 +16,7 @@ import (
 	templateadapter "github.com/vibewarden/vibewarden/internal/adapters/template"
 	bundleapp "github.com/vibewarden/vibewarden/internal/app/bundle"
 	generateapp "github.com/vibewarden/vibewarden/internal/app/generate"
+	multisiteapp "github.com/vibewarden/vibewarden/internal/app/multisite"
 	opsapp "github.com/vibewarden/vibewarden/internal/app/ops"
 	"github.com/vibewarden/vibewarden/internal/config"
 	configtemplates "github.com/vibewarden/vibewarden/internal/config/templates"
@@ -28,10 +29,9 @@ import (
 const defaultBundleOutputDir = ".vibewarden/bundle"
 
 // multiSiteErrorMessage is the user-facing error returned when vibew bundle
-// is run against a multi-site project. See ADR-085 §7 and ADR-086 (sunset
-// vibew deploy). Multi-site bundling is tracked as a follow-up; there is no
-// working command for this case today — `vibew deploy` has been removed.
-const multiSiteErrorMessage = "multi-site bundle is not yet supported (see ADR-085); track progress at https://github.com/VibeWarden/vibewarden/issues"
+// is run against a multi-site project. Multi-site bundle is post-v1; the
+// N-apps-on-one-VM architecture is tracked at #1169.
+const multiSiteErrorMessage = "multi-site bundle is post-v1; see #1169 for the N-apps-on-one-VM architecture work."
 
 // NewBundleCmd creates the "vibew bundle" command.
 //
@@ -181,9 +181,9 @@ func runBundle(cmd *cobra.Command, outputDir, imageTag, targetPlatform string, o
 		return 1, fmt.Errorf("validating config: %w", err)
 	}
 
-	// Multi-site projects are deferred to a follow-up — see ADR-085.
-	// Local detection: presence of a sites/ directory next to the config.
-	if isMultiSiteProject(absConfig) {
+	// Multi-site bundle is post-v1 (#1169). Refuse early with a clear message
+	// so users discover the limitation before any files are written.
+	if multisiteapp.IsProject(absConfig) {
 		return 1, fmt.Errorf("%s", multiSiteErrorMessage)
 	}
 
@@ -397,35 +397,4 @@ func prodConfigPathForEnv(configPath, envName string) string {
 		return prodFile
 	}
 	return ""
-}
-
-// isMultiSiteProject reports whether configPath sits in a project whose
-// local layout implies multi-site bundling. A project is multi-site iff
-// at least one subdirectory of sites/ contains a readable vibewarden.yaml.
-//
-// Mirrors internal/config/sites.LoadSites so detection stays consistent
-// across commands: an empty sites/, a sites/<name>/ with no YAML, or a
-// sites/<name>/vibewarden.yaml that is unreadable (permission denied)
-// are all treated as single-site. That matches LoadSites' behaviour of
-// silently skipping subdirectories without a vibewarden.yaml. Previously
-// any subdir tripped the branch, which made scaffolding tools that
-// create an empty sites/blog/ before populating it hard-fail on bundle.
-func isMultiSiteProject(configPath string) bool {
-	sitesDir := filepath.Join(filepath.Dir(configPath), "sites")
-	entries, err := os.ReadDir(sitesDir)
-	if err != nil {
-		return false
-	}
-	for _, e := range entries {
-		if !e.IsDir() {
-			continue
-		}
-		siteYAML := filepath.Join(sitesDir, e.Name(), "vibewarden.yaml")
-		info, statErr := os.Stat(siteYAML)
-		if statErr != nil || info.IsDir() {
-			continue
-		}
-		return true
-	}
-	return false
 }

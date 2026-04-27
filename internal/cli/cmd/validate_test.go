@@ -723,3 +723,51 @@ tls:
 		t.Errorf("Execute() expected success with valid prod override, got: %v\nstderr: %s", err, errBuf.String())
 	}
 }
+
+// TestValidateCmd_MultiSite_FailRow verifies that vibew validate on a multi-site
+// project root emits a FAIL row on stderr and exits with code 1. This is the
+// #1150 acceptance criterion: users learn about the post-v1 limitation at
+// validate time rather than bundle time.
+func TestValidateCmd_MultiSite_FailRow(t *testing.T) {
+	dir := t.TempDir()
+	basePath := filepath.Join(dir, "vibewarden.yaml")
+	baseYAML := `server:
+  port: 8080
+upstream:
+  port: 3000
+`
+	if err := os.WriteFile(basePath, []byte(baseYAML), 0o600); err != nil {
+		t.Fatalf("writing base config: %v", err)
+	}
+
+	// Populate sites/<name>/vibewarden.yaml to trigger multi-site detection.
+	siteDir := filepath.Join(dir, "sites", "shop")
+	if err := os.MkdirAll(siteDir, 0o750); err != nil {
+		t.Fatalf("mkdir sites/shop: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(siteDir, "vibewarden.yaml"), []byte("server:\n  port: 8443\n"), 0o600); err != nil {
+		t.Fatalf("writing site config: %v", err)
+	}
+
+	root := cmd.NewRootCmd("test")
+	var outBuf, errBuf bytes.Buffer
+	root.SetOut(&outBuf)
+	root.SetErr(&errBuf)
+	root.SetArgs([]string{"validate", basePath})
+
+	err := root.Execute()
+	if err == nil {
+		t.Fatal("Execute() expected non-zero exit for multi-site project, got nil")
+	}
+
+	errOut := errBuf.String()
+	if !strings.Contains(errOut, "post-v1") {
+		t.Errorf("stderr should contain 'post-v1', got: %q", errOut)
+	}
+	if !strings.Contains(errOut, "#1169") {
+		t.Errorf("stderr should contain '#1169', got: %q", errOut)
+	}
+	if !strings.Contains(errOut, "FAIL") {
+		t.Errorf("stderr should contain 'FAIL' row label, got: %q", errOut)
+	}
+}
