@@ -1338,7 +1338,7 @@ VibeWarden is operated via the `vibew` CLI. Below is the complete command list.
 | `vibew validate` | Validate configuration |
 | `vibew context refresh` | Regenerate AI agent context files |
 | `vibew tls status` | Show remote TLS certificate details (issuer, expiry, domain) |
-| `vibew eject` | Export raw proxy config to graduate past VibeWarden |
+| `vibew eject` | Export raw Caddy JSON for non-Docker deploys (Docker users want `vibew bundle`) |
 | `vibew mcp` | Start MCP server for AI agent integration |
 
 ### init flags

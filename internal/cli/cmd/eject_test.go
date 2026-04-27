@@ -217,6 +217,38 @@ upstream:
 	}
 }
 
+// TestEjectCmd_HelpTextDisambiguates verifies that the --help output for
+// "vibew eject" mentions both "non-Docker" and "vibew bundle" so that agents
+// reading cold --help output know when to use eject vs bundle (ADR-096).
+func TestEjectCmd_HelpTextDisambiguates(t *testing.T) {
+	root := cmd.NewRootCmd("test")
+	ejectCmd, _, _ := root.Find([]string{"eject"})
+	if ejectCmd == nil {
+		t.Fatal("eject subcommand not found")
+	}
+
+	short := ejectCmd.Short
+	long := ejectCmd.Long
+
+	tests := []struct {
+		name    string
+		field   string
+		keyword string
+	}{
+		{"Short contains non-Docker", short, "non-Docker"},
+		{"Short contains vibew bundle", short, "vibew bundle"},
+		{"Long contains non-Docker", long, "non-Docker"},
+		{"Long contains vibew bundle", long, "vibew bundle"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if !strings.Contains(tt.field, tt.keyword) {
+				t.Errorf("eject help text missing %q\n\nText:\n%s", tt.keyword, tt.field)
+			}
+		})
+	}
+}
+
 // mapKeys returns the string keys of a map, for use in error messages.
 func mapKeys(m map[string]any) []string {
 	ks := make([]string, 0, len(m))

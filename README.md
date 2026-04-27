@@ -207,7 +207,7 @@ It never holds external secrets or connects directly to third-party APIs.
 | MCP server | `vibew mcp` — AI agent integration via Model Context Protocol; `vibewarden_stream_logs` tool for filtered real-time event streaming |
 | Config schema | JSON schema for `vibewarden.yaml` — editor autocomplete |
 | Agent context | `AGENTS-VIBEWARDEN.md` generated for AI coding tools |
-| Eject | `vibew eject` — export raw proxy config to graduate past VibeWarden |
+| Eject | `vibew eject` — export raw Caddy JSON for non-Docker deploys (Docker users want `vibew bundle`) |
 
 ---
 
@@ -316,7 +316,7 @@ add VibeWarden. Use `vibew add` to enable individual features after the initial 
 | `vibew cert export` | Export the local CA certificate (for curl, Postman, …) |
 | `vibew validate` | Validate configuration |
 | `vibew context refresh` | Regenerate AI agent context files |
-| `vibew eject` | Export raw proxy config to graduate past VibeWarden |
+| `vibew eject` | Export raw Caddy JSON for non-Docker deploys (Docker users want `vibew bundle`) |
 | `vibew mcp` | Start MCP server for AI agent integration |
 
 ---
