@@ -376,3 +376,36 @@ func TestAddCmd_AgentContextRegenerated(t *testing.T) {
 		t.Errorf("unexpected output: %s", out)
 	}
 }
+
+// TestAddCmd_MultiSite_Refused verifies that every vibew add subcommand is
+// refused on a multi-site project root. The gate is in PersistentPreRunE on
+// the add command group; testing one representative subcommand (tls) is
+// sufficient because the pre-run hook fires before any subcommand's RunE.
+func TestAddCmd_MultiSite_Refused(t *testing.T) {
+	dir := scaffoldTestDir(t, false)
+
+	// Write root vibewarden.yaml so the dir looks like a real project.
+	if err := os.WriteFile(filepath.Join(dir, "vibewarden.yaml"), []byte(minimalVibeWardenYAML), 0o644); err != nil {
+		t.Fatalf("writing vibewarden.yaml: %v", err)
+	}
+
+	// Populate sites/<name>/vibewarden.yaml to make it a multi-site root.
+	siteDir := filepath.Join(dir, "sites", "shop")
+	if err := os.MkdirAll(siteDir, 0o750); err != nil {
+		t.Fatalf("mkdir sites/shop: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(siteDir, "vibewarden.yaml"), []byte("server:\n  port: 8443\n"), 0o600); err != nil {
+		t.Fatalf("writing site config: %v", err)
+	}
+
+	out, err := runAddCmd(t, dir, "tls", "--domain", "x.example.com")
+	if err == nil {
+		t.Fatalf("expected non-zero exit for multi-site project, got nil (output: %q)", out)
+	}
+	if !strings.Contains(err.Error()+out, "post-v1") {
+		t.Errorf("output/error should contain 'post-v1', got err=%v out=%q", err, out)
+	}
+	if !strings.Contains(err.Error()+out, "#1169") {
+		t.Errorf("output/error should contain '#1169', got err=%v out=%q", err, out)
+	}
+}

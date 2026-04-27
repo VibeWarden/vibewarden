@@ -10,6 +10,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	multisiteapp "github.com/vibewarden/vibewarden/internal/app/multisite"
 	"github.com/vibewarden/vibewarden/internal/config"
 )
 
@@ -120,6 +121,19 @@ Examples:
 				}
 				fmt.Fprintf(cmd.ErrOrStderr(), "Configuration invalid: %v\n", err)
 				return fmt.Errorf("loading config: %w", err)
+			}
+
+			// Multi-site bundle is post-v1 (#1169). Emit a FAIL row consistent
+			// with the OK/OFF/FAIL convention from #1143/#1159 and exit 1 so
+			// that agents and scripts detect the limitation immediately.
+			checkPath := configPath
+			if checkPath == "" {
+				checkPath = "vibewarden.yaml"
+			}
+			absCheck, _ := filepath.Abs(checkPath)
+			if multisiteapp.IsProject(absCheck) {
+				fmt.Fprintf(cmd.ErrOrStderr(), "FAIL  multi-site bundle is post-v1 (see #1169 — N apps on one VM architecture). Dev path works locally; no production deploy path yet.\n")
+				return fmt.Errorf("multi-site bundle is post-v1 (see #1169)")
 			}
 
 			errs := validateConfig(cfg)

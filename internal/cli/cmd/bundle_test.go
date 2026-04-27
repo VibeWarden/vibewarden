@@ -131,11 +131,11 @@ func TestBundleCmd_MultiSite_HardErrors(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected multi-site error, got nil")
 	}
-	if !strings.Contains(err.Error(), "multi-site bundle is not yet supported") {
+	if !strings.Contains(err.Error(), "multi-site bundle is post-v1") {
 		t.Errorf("error missing multi-site message, got: %v", err)
 	}
-	if !strings.Contains(err.Error(), "ADR-085") {
-		t.Errorf("error should reference ADR-085 for tracking, got: %v", err)
+	if !strings.Contains(err.Error(), "#1169") {
+		t.Errorf("error should reference #1169 for tracking, got: %v", err)
 	}
 	// vibew deploy has been removed (ADR-086): the multi-site branch must
 	// NOT direct users to a command that no longer exists (cobra now prints
@@ -227,7 +227,7 @@ func TestBundleCmd_IsMultiSiteProject_TableDriven(t *testing.T) {
 			root.SetErr(&out)
 			err := root.Execute()
 
-			gotMultiSite := err != nil && strings.Contains(err.Error(), "multi-site bundle is not yet supported")
+			gotMultiSite := err != nil && strings.Contains(err.Error(), "multi-site bundle is post-v1")
 			if gotMultiSite != tt.wantMultiSite {
 				t.Errorf("multi-site detection = %v, want %v (err = %v)", gotMultiSite, tt.wantMultiSite, err)
 			}

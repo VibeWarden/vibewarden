@@ -28,6 +28,8 @@ This initial entry was written by hand to summarise the work leading up to v0.1.
 
 ### Changed
 
+- **Multi-site projects flag-gated as post-v1** (#1150). `vibew validate` and `vibew add` now refuse multi-site configs with a clear "see #1169" message. `vibew bundle`'s existing hard-fail updated to point at the same tracking issue. Multi-site dev (`vibew dev` reverse-proxying multiple apps on host headers) keeps working — only the production-deploy path is gated. The architecture for multi-app-per-VM bundles is tracked in #1169 (post-stable).
+
 - **`vibew eject` clarified as the non-Docker escape hatch** (#1147, [ADR-096](decisions/adr-096-vibew-eject-keep-and-clarify-non-docker-escape-hatch.md)). The `--help` lead line and the agents-template description now make clear: `vibew bundle` is the canonical Docker Compose path; `vibew eject` produces raw Caddy JSON for vanilla-Caddy / non-Docker deploys. No behavior change. The deeper consolidation (`vibew bundle --target ...`) is tracked separately.
 
 - **`vibew init` now generates a minimal `vibewarden.production.yaml`** (#1145). The generated file no longer carries commented `# auth: ...`, `# admin: ...`, `# rate_limit: ...` stubs. Override patterns moved to `docs/examples/production-overrides.md`. Per CLAUDE.md §Artifact policy: examples belong in docs, not in live config. `vibew add tls` / `vibew add waf` continue to work; they don't depend on the stubs being present.
