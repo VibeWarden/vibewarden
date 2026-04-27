@@ -21,8 +21,9 @@ func TestNewDevCmd_RegisteredOnRoot(t *testing.T) {
 		t.Fatal("expected 'dev' subcommand to be registered on root")
 	}
 
-	if devCmd.Flags().Lookup("observability") == nil {
-		t.Error("expected --observability flag to be registered on 'dev' command")
+	// --observability was removed in #1149; verify it is gone.
+	if devCmd.Flags().Lookup("observability") != nil {
+		t.Error("--observability flag must not be registered on 'dev' command (removed in #1149; use 'vibew obs up' instead)")
 	}
 	if devCmd.Flags().Lookup("config") == nil {
 		t.Error("expected --config flag to be registered on 'dev' command")
@@ -41,10 +42,15 @@ func TestNewDevCmd_Help(t *testing.T) {
 	}
 
 	out := outBuf.String()
-	for _, want := range []string{"dev", "observability", "config"} {
+	// --observability was removed in #1149; the help should mention the
+	// replacement ('vibew obs up') but must no longer list --observability as a flag.
+	for _, want := range []string{"dev", "obs up", "config"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("help output missing %q\ngot:\n%s", want, out)
 		}
+	}
+	if strings.Contains(out, "--observability") {
+		t.Errorf("dev help must not mention --observability flag (removed in #1149):\n%s", out)
 	}
 }
 

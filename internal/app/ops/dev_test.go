@@ -107,29 +107,16 @@ func TestDevService_Run(t *testing.T) {
 		opts               ops.DevOptions
 		upErr              error
 		wantErr            bool
-		wantProfiles       []string
 		wantOutputContains []string
 	}{
 		{
-			name:         "baseline stack — no observability",
-			opts:         ops.DevOptions{Observability: false},
-			wantErr:      false,
-			wantProfiles: nil,
+			name:    "baseline stack",
+			opts:    ops.DevOptions{},
+			wantErr: false,
 			wantOutputContains: []string{
 				"Started. https://localhost:8443",
 				"Logs: vibew logs -f",
 				"Stop: vibew down",
-			},
-		},
-		{
-			name:         "observability profile enabled",
-			opts:         ops.DevOptions{Observability: true},
-			wantErr:      false,
-			wantProfiles: []string{"observability"},
-			wantOutputContains: []string{
-				"Grafana:",
-				"Prometheus:",
-				"Observability profile enabled",
 			},
 		},
 		{
@@ -161,14 +148,9 @@ func TestDevService_Run(t *testing.T) {
 					}
 				}
 
-				// Check profiles forwarded to compose
-				if len(tt.wantProfiles) == 0 && len(fc.capturedProfiles) != 0 {
-					t.Errorf("expected no profiles, got %v", fc.capturedProfiles)
-				}
-				for i, p := range tt.wantProfiles {
-					if i >= len(fc.capturedProfiles) || fc.capturedProfiles[i] != p {
-						t.Errorf("profile[%d] = %q, want %q", i, fc.capturedProfiles[i], p)
-					}
+				// Baseline dev run must not pass any profiles to compose.
+				if len(fc.capturedProfiles) != 0 {
+					t.Errorf("expected no profiles for baseline dev, got %v", fc.capturedProfiles)
 				}
 			}
 		})

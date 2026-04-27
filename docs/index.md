@@ -78,7 +78,7 @@ It is never hosted remotely.
 | AI-readable logs | Versioned JSON schema: `schema_version`, `event_type`, `ai_summary`, `payload` |
 | Audit log sinks | JSON file, OTel logs, webhook (HMAC-signed) with retry |
 | Admin API | User management at `/_vibewarden/admin/*` (bearer-token protected) |
-| Docker Compose | Profile-based: `--profile observability`, `--profile demo` |
+| Docker Compose | Profile-based: `vibew obs up` (observability), `--profile demo` |
 
 ---
 

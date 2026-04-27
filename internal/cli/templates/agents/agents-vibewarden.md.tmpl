@@ -63,6 +63,8 @@ vibew dev --watch    # Start with hot reload
 vibew dev --verbose  # Stream docker compose output during startup
 vibew down           # Stop the dev stack (preserves volumes; -v also removes volumes)
 vibew build && vibew dev  # Incremental rebuild — apply code changes without full recreate
+vibew obs up         # Start Prometheus + Grafana observability stack (after vibew dev)
+vibew obs down       # Stop Prometheus + Grafana observability stack
 vibew status         # Check component health
 vibew doctor         # Diagnose issues
 ```
@@ -78,6 +80,8 @@ app port directly — it has no security.
 | `vibew dev --watch` | Start with file watching |
 | `vibew dev --verbose` | Stream docker compose output during startup |
 | `vibew down` | Stop the dev stack (preserves data volumes; `-v` also removes volumes) |
+| `vibew obs up` | Start Prometheus + Grafana observability stack (runs after `vibew dev`) |
+| `vibew obs down` | Stop the observability stack (`-v` also removes volumes) |
 | `vibew build` | Build Docker image |
 | `vibew build --platform linux/amd64` | Build for a specific architecture |
 | `vibew bundle` | Produce a self-contained Docker Compose bundle under `.vibewarden/bundle/`; ship with `scp` + `docker compose up -d` |

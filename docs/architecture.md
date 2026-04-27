@@ -82,7 +82,7 @@ plugin API.
 | CORS | `cors` | Cross-Origin Resource Sharing headers |
 | Secrets | `secrets` | OpenBao integration — inject secrets as headers or env vars |
 | Egress proxy | `egress` | Outbound HTTP control with SSRF protection |
-| Observability | `observability` | Prometheus, Grafana, Loki, Promtail Compose stack |
+| Observability | `observability` | Prometheus, Grafana, Loki, Promtail Compose stack (start with `vibew obs up`) |
 | Resilience | `resilience` | Circuit breaker, retry, and timeout middleware |
 | IP filter | `ip_filter` | IP address allowlist / blocklist |
 | Body size | `body_size` | Per-request body size enforcement |

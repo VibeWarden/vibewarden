@@ -448,9 +448,10 @@ examples with Auth0, Keycloak, Firebase, Cognito, Okta, Supabase, and Kratos.
 ./vibew add metrics
 ./vibew build
 ./vibew dev
+./vibew obs up
 ```
 
-Open Grafana at `http://localhost:3001` to see request rate, latency percentiles,
+Open Grafana at `http://localhost:3000` to see request rate, latency percentiles,
 rate limit hits, and auth decisions in real time.
 
 !!! tip "Generate a dev JWT"

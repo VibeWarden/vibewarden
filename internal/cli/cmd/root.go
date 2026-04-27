@@ -47,6 +47,7 @@ Zero-to-secure in minutes.`,
 	root.AddCommand(NewUpgradeCmd())
 	root.AddCommand(NewBuildCmd())
 	root.AddCommand(NewDownCmd())
+	root.AddCommand(NewObsCmd())
 	root.AddCommand(NewMCPCmd())
 	root.AddCommand(NewBundleCmd())
 	root.AddCommand(NewTLSCmd())

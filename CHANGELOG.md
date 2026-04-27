@@ -14,6 +14,8 @@ This initial entry was written by hand to summarise the work leading up to v0.1.
 
 ### Added
 
+- **`vibew obs up` / `vibew obs down`** (#1149) — bring up / tear down the Prometheus + Grafana observability profile against the running dev stack. Uses Docker Compose profiles; the obs services share the same compose project as the main stack but are gated by the `observability` profile. Run `vibew dev` first, then `vibew obs up`.
+
 - **`vibew bundle` now prints a "Sensitive files in this bundle" awareness block** (#1142, [ADR-094](decisions/adr-094-bundle-sensitive-files-awareness-block.md)). After writing the bundle, `vibew bundle` scans the output directory and prints a stable awareness block listing any credential or key files (`.env`, `.credentials`, `kratos/secrets`, `*.pem`, `*.key`, `*.token`) when they are present. The block appears after the `Contents:` listing and before the `Next:` hint. The block is omitted entirely when no sensitive files are detected — no flag, no env var, no opt-out. The bundle `README.md` gains a `## Secrets` section documenting the credential surface.
 
 ### Fixed
@@ -33,6 +35,8 @@ This initial entry was written by hand to summarise the work leading up to v0.1.
 - **`vibew init` no longer generates a placeholder `Dockerfile` or `.dockerignore`** (#1139). `AGENTS-VIBEWARDEN.md` now carries a Dockerfile contract checklist; agents and users write their own Dockerfile against that contract. Migration: existing projects that already have a Dockerfile are unaffected. New projects must write a Dockerfile after `vibew init` — see `AGENTS-VIBEWARDEN.md` §Dockerfile contract.
 
 ### Removed
+
+- **`vibew dev --observability` flag** (#1149). Replaced by the new `vibew obs up` / `vibew obs down` subcommand pair. Migration: `vibew dev && vibew obs up` (run `vibew obs up` after the main stack is running). Per CLAUDE.md §Architecture principles: trim CLI surface; `vibew dev` is the core loop, observability is opt-in tooling.
 
 - **`vibew restart` removed** (#1148). For incremental rebuilds use `vibew build && vibew dev` (`vibew dev` auto-recreates stale app containers). For a clean restart of a wedged stack use `vibew down && vibew dev`.
 
