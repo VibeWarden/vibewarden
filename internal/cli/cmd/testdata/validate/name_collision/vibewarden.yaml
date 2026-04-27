@@ -1,0 +1,4 @@
+server:
+  port: 8443
+upstream:
+  port: 3000

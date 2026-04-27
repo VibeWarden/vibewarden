@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
-	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -330,60 +329,11 @@ func bundleListing(dir string) ([]string, error) {
 	return files, nil
 }
 
-// deriveProjectName mirrors the chain used by `vibew deploy`:
-//  1. cfg.Name
-//  2. cfg.App.Image (strip ":tag" and any registry prefix)
-//  3. ProjectNameFromConfig fallback
-//
-// Every candidate is run through sanitiseProjectName so that downstream
-// path / README interpolations cannot be weaponised by a hostile
-// vibewarden.yaml. ADR-085 §7 and the #1061 reviewer finding both call
-// this out: the surface is not defensible if we start allowing arbitrary
-// unicode / shell metacharacters through.
+// deriveProjectName delegates to the shared bundleapp.DeriveProjectName so
+// that vibew bundle and vibew validate use identical name-resolution logic.
+// See bundleapp.DeriveProjectName for the full derivation chain (ADR-085 §7).
 func deriveProjectName(cfg *config.Config, absConfig string) string {
-	if name := sanitiseProjectName(cfg.Name); name != "" {
-		return name
-	}
-	if cfg.App.Image != "" {
-		image := cfg.App.Image
-		if idx := strings.LastIndex(image, ":"); idx > 0 {
-			image = image[:idx]
-		}
-		if idx := strings.LastIndex(image, "/"); idx >= 0 {
-			image = image[idx+1:]
-		}
-		if name := sanitiseProjectName(image); name != "" {
-			return name
-		}
-	}
-	return sanitiseProjectName(bundleapp.ProjectNameFromConfig(absConfig))
-}
-
-// sanitiseProjectName strips any byte outside the shell-safe subset
-// [a-zA-Z0-9_-] and collapses the result. Returns the empty string when
-// the input contains no safe characters — callers fall through to the
-// next derivation step in that case (deriveProjectName chains several).
-//
-// This is the defensive layer that protects README.md / rsync path
-// interpolation from crafted inputs like
-// `myproject" && rm -rf /` in vibewarden.yaml's `name:` key. The config
-// schema does not currently validate `name` against this subset, so the
-// bundle pipeline carries the guard.
-func sanitiseProjectName(in string) string {
-	var b strings.Builder
-	b.Grow(len(in))
-	for _, r := range in {
-		switch {
-		case r >= 'a' && r <= 'z':
-		case r >= 'A' && r <= 'Z':
-		case r >= '0' && r <= '9':
-		case r == '_' || r == '-':
-		default:
-			continue
-		}
-		b.WriteRune(r)
-	}
-	return b.String()
+	return bundleapp.DeriveProjectName(cfg, absConfig)
 }
 
 // prodConfigPathForEnv returns the path to the environment-specific production

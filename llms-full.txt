@@ -1335,7 +1335,7 @@ VibeWarden is operated via the `vibew` CLI. Below is the complete command list.
 | `vibew secret list` | List all managed secret paths |
 | `vibew token` | Generate a signed dev JWT for local testing |
 | `vibew cert export` | Export the local CA certificate |
-| `vibew validate` | Validate configuration |
+| `vibew validate` | Validate configuration (schema + runtime checks: name collision, EXPOSE/upstream.port mismatch, image-tag drift, ACME-incompatible domain, WAF prod-mode sanity) |
 | `vibew context refresh` | Regenerate AI agent context files |
 | `vibew tls status` | Show remote TLS certificate details (issuer, expiry, domain) |
 | `vibew eject` | Export raw Caddy JSON for non-Docker deploys (Docker users want `vibew bundle`) |

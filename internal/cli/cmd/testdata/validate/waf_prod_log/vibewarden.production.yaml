@@ -1,0 +1,3 @@
+waf:
+  enabled: true
+  mode: log

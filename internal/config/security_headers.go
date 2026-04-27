@@ -118,6 +118,13 @@ type WAFConfig struct {
 
 	// ContentTypeValidation configures the Content-Type validation middleware.
 	ContentTypeValidation ContentTypeValidationConfig `mapstructure:"content_type_validation"`
+
+	// AcknowledgeLogMode, when true, suppresses the vibew validate FAIL that
+	// fires when WAF is enabled with mode: log in a production config. Use this
+	// escape hatch when log mode is intentional for a production rollout. The
+	// check still emits an OK row so the acknowledgement is visible in validate
+	// output. Default: false.
+	AcknowledgeLogMode bool `mapstructure:"acknowledge_log_mode" yaml:"acknowledge_log_mode"`
 }
 
 // WAFRulesConfig toggles individual WAF rule categories.

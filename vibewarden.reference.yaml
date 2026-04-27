@@ -714,7 +714,15 @@ waf:
   # "detect" — pass the request through but emit a structured log event (default).
   #            Use detect mode to audit traffic before switching to block.
   # "block"  — reject the request with 400 Bad Request (recommended for production).
+  # "log"    — alias for detect; kept for compatibility with staging configs.
   mode: detect
+
+  # Suppress the vibew validate FAIL that fires when WAF is enabled with
+  # mode: log in a production config (vibewarden.production.yaml).
+  # Set to true only when log mode is intentional for a production rollout.
+  # The check still emits an OK row so the acknowledgement is visible.
+  # Default: false.
+  acknowledge_log_mode: false
 
   # Content-Type validation — rejects requests whose Content-Type is not in the
   # allowed list with 415 Unsupported Media Type.
