@@ -206,3 +206,8 @@ Docker Compose," and inferred eject and bundle were two paths to the same
 artifact. Replacing that one line with the correct description ("raw Caddy
 JSON for non-Docker deploys") removes the conflation entirely. The
 `--help` and README clarifications are belt-and-braces.
+
+The deeper consolidation — folding eject into `vibew bundle --target caddy-only`
+so vibew has a single deploy-artifact verb with swappable targets — is tracked
+in #1165 and deferred to a designed feature with its own ADR. This decision
+is keep-and-revisit, not permanent.
