@@ -98,6 +98,8 @@ of four values: `Obtaining` (ACME in progress), `Obtained` (cert active and vali
 `Failing` (ACME failed), or `SelfSignedLocal` (dev self-signed cert — no expiry
 warning is raised). `vibew status` surfaces the same TLS state in its output table. Output uses OK / OFF / FAIL labels; OFF means the component is disabled in config and was not probed.
 
+`vibew validate` now catches real next-command failures before they reach `vibew bundle` or `vibew up`: name collision (directory named "vibewarden" with no explicit `name:` set), Dockerfile EXPOSE/upstream.port mismatch, image-tag drift in `.env`, ACME-incompatible domain (localhost, IP literal, `.local`/`.test` TLD), and WAF log-mode enabled in a production config. Any of these conditions exits with code 1 and a FAIL row on stderr; fix the config or set the appropriate acknowledgement key before running the next command.
+
 ## Dockerfile contract
 
 > **Pin the toolchain first.** Read your project's manifest **before** writing the `FROM` line. Stale base images surface as opaque deep-stack errors (`go mod download exit code 1`, `npm ERR! engine`, `pip: ERROR: Package requires a different Python`) with no hint that the base image is the cause. Match the manifest:

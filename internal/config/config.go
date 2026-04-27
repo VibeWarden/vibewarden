@@ -452,6 +452,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("waf.rules.xss", true)
 	v.SetDefault("waf.rules.path_traversal", true)
 	v.SetDefault("waf.rules.command_injection", true)
+	v.SetDefault("waf.acknowledge_log_mode", false)
 	v.SetDefault("egress.enabled", false)
 	v.SetDefault("egress.listen", "127.0.0.1:8081")
 	v.SetDefault("egress.default_policy", "deny")

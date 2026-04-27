@@ -10,7 +10,9 @@ import (
 
 	"github.com/spf13/cobra"
 
+	bundleapp "github.com/vibewarden/vibewarden/internal/app/bundle"
 	multisiteapp "github.com/vibewarden/vibewarden/internal/app/multisite"
+	validateapp "github.com/vibewarden/vibewarden/internal/app/validate"
 	"github.com/vibewarden/vibewarden/internal/config"
 )
 
@@ -76,6 +78,13 @@ Checks performed:
   - rate_limit.per_ip.requests_per_second is greater than zero
   - rate_limit.per_ip.burst is greater than zero
   - user-management requires auth to be enabled (inter-plugin dependency)
+
+Runtime checks (next-command failure prevention):
+  - Name collision: name unset and directory is named "vibewarden" (would collide with sidecar binary)
+  - EXPOSE/upstream.port mismatch: Dockerfile EXPOSE port does not match upstream.port
+  - Image-tag drift: .env VIBEWARDEN_APP_IMAGE does not match the tag vibew bundle would produce
+  - ACME-incompatible domain: tls.domain is localhost, an IP, or a reserved TLD (.local, .test, etc.)
+  - WAF prod-mode sanity: WAF enabled with mode: log in production config
 
 Exits with code 0 when configuration is valid, code 1 when invalid.
 
@@ -162,6 +171,31 @@ Examples:
 				fmt.Fprintf(cmd.ErrOrStderr(), "Update it to your project-scoped tag:\n")
 				fmt.Fprintf(cmd.ErrOrStderr(), "  sed -i 's/vibewarden-app:latest/%s-app:latest/g' .env\n", cfg.ComposeProjectName())
 				fmt.Fprintf(cmd.ErrOrStderr(), "Regenerate with: vibew bundle --overwrite\n\n")
+			}
+
+			// Runtime checks: detect next-command failure modes before they
+			// reach vibew bundle or vibew up. Each non-skipped result is printed
+			// to stderr; FAIL rows also cause a non-zero exit.
+			//
+			// When a production override exists the runtime checks must see the
+			// merged config (base + production) so that production-only values
+			// such as waf.mode are visible. The strict-schema check above already
+			// validated both files; a merge failure here is a non-fatal fallback
+			// to the base config.
+			projectRoot := filepath.Dir(absCheck)
+			prodOverrideExists := prodPath != ""
+			runtimeCfg := cfg
+			if prodOverrideExists {
+				if merged, mergeErr := bundleapp.LoadMergedConfig(absCheck, prodPath); mergeErr == nil {
+					runtimeCfg = merged
+				}
+			}
+			results, runtimeFailures := validateapp.RunChecks(cmd.Context(), projectRoot, runtimeCfg, prodOverrideExists)
+			for _, r := range results {
+				fmt.Fprintf(cmd.ErrOrStderr(), "%-6s%s\n", r.State.String(), r.Message)
+			}
+			if runtimeFailures > 0 {
+				return fmt.Errorf("configuration has %d runtime check failure(s)", runtimeFailures)
 			}
 
 			fmt.Fprintf(cmd.OutOrStdout(), "Configuration valid (%s)\n", displayPath)

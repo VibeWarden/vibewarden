@@ -28,6 +28,8 @@ This initial entry was written by hand to summarise the work leading up to v0.1.
 
 ### Changed
 
+- **`vibew validate` now checks name collision, EXPOSE/upstream.port mismatch, image-tag drift, ACME-incompatible domain, and WAF prod-mode sanity** (#1144). Five runtime checks run after strict schema validation and catch conditions that cause the next `vibew bundle` or `vibew up` to fail. Each failing check emits a `FAIL` row on stderr with an actionable hint; checks that do not apply (no Dockerfile, no `.env`, non-ACME provider) are silently skipped. Exit code 1 when any check fails. New config key `waf.acknowledge_log_mode: true` suppresses the WAF log-mode check when intentional.
+
 - **Multi-site projects flag-gated as post-v1** (#1150). `vibew validate` and `vibew add` now refuse multi-site configs with a clear "see #1169" message. `vibew bundle`'s existing hard-fail updated to point at the same tracking issue. Multi-site dev (`vibew dev` reverse-proxying multiple apps on host headers) keeps working — only the production-deploy path is gated. The architecture for multi-app-per-VM bundles is tracked in #1169 (post-stable).
 
 - **`vibew eject` clarified as the non-Docker escape hatch** (#1147, [ADR-096](decisions/adr-096-vibew-eject-keep-and-clarify-non-docker-escape-hatch.md)). The `--help` lead line and the agents-template description now make clear: `vibew bundle` is the canonical Docker Compose path; `vibew eject` produces raw Caddy JSON for vanilla-Caddy / non-Docker deploys. No behavior change. The deeper consolidation (`vibew bundle --target ...`) is tracked separately.
