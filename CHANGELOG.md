@@ -34,6 +34,8 @@ This initial entry was written by hand to summarise the work leading up to v0.1.
 
 ### Removed
 
+- **`vibew restart` removed** (#1148). For incremental rebuilds use `vibew build && vibew dev` (`vibew dev` auto-recreates stale app containers). For a clean restart of a wedged stack use `vibew down && vibew dev`.
+
 - **`deploy.sh` no longer ships in the bundle** (#1138). The qr-dali deploy retrospective surfaced that the bundled script's hardcoded healthcheck port (8443, the dev port) reported false failures on successful production deploys (which listen on 443 with TLS). The bundle's `README.md` now describes the deploy contract directly — what the bundle is, where it goes, and the two non-obvious traps (the remote directory must exist before copying; healthcheck port in production is 443, not 8443). Operators and AI agents own the `scp` / `ssh` / `docker compose up -d` chain themselves. ADR-088 marked as superseded. See `CLAUDE.md` §Architecture principles → Artifact policy for the rationale (no example-shaped middle-ground artifacts).
 
   **Migration:** if you scripted around `cd .vibewarden/bundle && ./deploy.sh user@host`, replace it with the steps the bundle README now describes: `ssh user@host mkdir -p /path` → `scp -r .vibewarden/bundle/* user@host:/path/` → `ssh user@host "cd /path && docker load -i image.tar && docker compose up -d"` → `curl https://yourdomain/_vibewarden/health`.

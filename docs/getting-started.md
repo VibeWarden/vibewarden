@@ -301,11 +301,10 @@ On first start:
 ./vibew dev
 ```
 
-After subsequent code changes — restart containers without a full `docker compose`
-recreate:
+After subsequent code changes — rebuild the image and restart the stack:
 
 ```bash
-./vibew restart
+./vibew build && ./vibew dev
 ```
 
 ---
@@ -315,7 +314,7 @@ recreate:
 | Situation | Command |
 |-----------|---------|
 | First run, no local toolchain needed | `vibew dev` |
-| Code change, want fast feedback | build locally, then `vibew build` + `vibew restart` |
+| Code change, want fast feedback | build locally, then `vibew build && vibew dev` |
 | Added a new service or changed `vibewarden.yaml` | `vibew dev` (full recreate) |
 
 !!! tip "Trust the self-signed certificate"

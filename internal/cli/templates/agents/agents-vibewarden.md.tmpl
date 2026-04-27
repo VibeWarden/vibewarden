@@ -62,7 +62,7 @@ vibew dev            # Start dev environment (full stack with sidecar)
 vibew dev --watch    # Start with hot reload
 vibew dev --verbose  # Stream docker compose output during startup
 vibew down           # Stop the dev stack (preserves volumes; -v also removes volumes)
-vibew restart        # Restart without full rebuild
+vibew build && vibew dev  # Incremental rebuild — apply code changes without full recreate
 vibew status         # Check component health
 vibew doctor         # Diagnose issues
 ```
@@ -81,7 +81,6 @@ app port directly — it has no security.
 | `vibew build` | Build Docker image |
 | `vibew build --platform linux/amd64` | Build for a specific architecture |
 | `vibew bundle` | Produce a self-contained Docker Compose bundle under `.vibewarden/bundle/`; ship with `scp` + `docker compose up -d` |
-| `vibew restart` | Restart containers |
 | `vibew status` | Show component health |
 Output uses OK / OFF / FAIL labels; OFF means the component is disabled in config and was not probed.
 | `vibew logs` | Tail logs |
