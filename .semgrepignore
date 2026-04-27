@@ -1,0 +1,17 @@
+# Semgrep ignore patterns. Matches .gitignore syntax.
+#
+# Test fixtures intentionally violate security rules to test that vibew's
+# own checks catch the violations. They are not production code and must
+# not be flagged by Semgrep on PRs that add new fixtures.
+#
+# Examples:
+# - internal/app/dockerfile/testdata/warn_nonroot.Dockerfile is the
+#   fixture for the non-root-USER rule (#1140). Adding USER to it would
+#   invalidate the test.
+# - internal/cli/cmd/testdata/validate/dockerfile_mismatch/Dockerfile
+#   tests EXPOSE/port mismatch detection (#1144).
+#
+# If you need Semgrep to scan a specific testdata file (e.g. a positive
+# fixture asserting clean code), use a more specific include rule rather
+# than removing this blanket exclude.
+**/testdata/**

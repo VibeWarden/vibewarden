@@ -108,7 +108,7 @@ For now: keep one site per project. Revisit when #1169 lands.
 ## Known limitations
 
 - WAF is in `detect` mode by default (logs but does not block). Set `waf.mode: block` in vibewarden.yaml to enforce blocking.
-- `vibew doctor` checks config, Docker, ports, container health, generated files, ACME email, image tag, upstream reachability, and local TLS cert validity.
+- `vibew doctor` checks config, Docker, ports, container health, generated files, ACME email, image tag, upstream reachability, and local TLS cert validity. When a `Dockerfile` is present in the project root, `vibew doctor` also lints it against the contract: alpine base, `EXPOSE` matches `upstream.port`, no `HEALTHCHECK` directive, non-root `USER` (warn, non-blocking), multi-stage build for compiled languages, and builder image major.minor matches the project toolchain manifest (`go.mod`, `.nvmrc`, `pyproject.toml`). When no `Dockerfile` is present, the Dockerfile section is omitted entirely.
 - Multi-site local dev works; production deploy is post-v1 (see https://github.com/VibeWarden/vibewarden/issues/1169).
 - `vibew init` does not accept `--tls` or `--domain` flags — run `vibew add tls --domain <your-domain>` after init.
 
