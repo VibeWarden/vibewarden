@@ -27,9 +27,13 @@ jobs:
           filters: |
             code:
               - '**/*.go'
-              - 'go.mod'
-              - 'go.sum'
-              - 'Dockerfile'
+              - '**/go.mod'
+              - '**/go.sum'
+              - 'Dockerfile*'
+              - '**/requirements*.txt'
+              - '**/package*.json'
+              - '**/.nvmrc'
+              - '**/pyproject.toml'
               - '.github/workflows/**'
               - 'internal/**'
               - 'cmd/**'
@@ -39,7 +43,10 @@ jobs:
   lint:
     name: Lint
     needs: [changes]
-    if: needs.changes.outputs.code == 'true'
+    # Run when path filter detects code change OR when Dependabot opened the PR.
+    # Defense in depth — any future ecosystem added to dependabot.yml that
+    # isn't in the path filter still gets the full check suite. See #1173.
+    if: needs.changes.outputs.code == 'true' || github.actor == 'dependabot[bot]'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -60,7 +67,10 @@ jobs:
   build-and-test:
     name: Build & Test
     needs: [changes]
-    if: needs.changes.outputs.code == 'true'
+    # Run when path filter detects code change OR when Dependabot opened the PR.
+    # Defense in depth — any future ecosystem added to dependabot.yml that
+    # isn't in the path filter still gets the full check suite. See #1173.
+    if: needs.changes.outputs.code == 'true' || github.actor == 'dependabot[bot]'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     steps:
@@ -110,7 +120,10 @@ jobs:
   integration:
     name: Integration Tests
     needs: [changes]
-    if: needs.changes.outputs.code == 'true'
+    # Run when path filter detects code change OR when Dependabot opened the PR.
+    # Defense in depth — any future ecosystem added to dependabot.yml that
+    # isn't in the path filter still gets the full check suite. See #1173.
+    if: needs.changes.outputs.code == 'true' || github.actor == 'dependabot[bot]'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
