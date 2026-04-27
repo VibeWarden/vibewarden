@@ -57,7 +57,7 @@ func CheckACME(_ context.Context, _ string, cfg *config.Config, _ bool) Result {
 	return Result{
 		State: ops.StatusFAIL,
 		Message: fmt.Sprintf(
-			"tls.domains contains %q which Let's Encrypt cannot issue for (%s) — use tls.provider: self-signed for local dev or tls.provider: external to manage TLS yourself",
+			"tls.domain is %q which Let's Encrypt cannot issue for (%s) — use tls.provider: self-signed for local dev or tls.provider: external to manage TLS yourself",
 			cfg.TLS.Domain,
 			reason,
 		),
