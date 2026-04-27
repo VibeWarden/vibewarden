@@ -2,6 +2,7 @@ package ops
 
 import (
 	"context"
+	"log/slog"
 	"os"
 	"path/filepath"
 
@@ -40,7 +41,14 @@ func (s *DoctorService) checkDockerfile(_ context.Context, projectRoot string, c
 		return nil
 	}
 
-	tc, _, _ := dockerfile.DetectToolchain(projectRoot)
+	// Fallback to zero Toolchain when detection fails (e.g. manifest read
+	// error). RuleMultiStageForCompiled and RuleToolchainMatch degrade
+	// gracefully with an empty Toolchain, so the remaining rules still run.
+	tc, _, tcErr := dockerfile.DetectToolchain(projectRoot)
+	if tcErr != nil {
+		slog.Warn("dockerfile toolchain detection failed; skipping toolchain rules", "error", tcErr)
+		tc = dockerfile.Toolchain{}
+	}
 
 	upstreamPort := cfg.Upstream.Port
 	if upstreamPort == 0 {
