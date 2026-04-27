@@ -90,11 +90,10 @@ the full multi-stage Docker build:
 
 ```bash
 go build -o bin/myapp ./cmd/myapp   # fast local build (seconds, not minutes)
-vibew build                          # package the artifact into a thin image
-vibew restart                        # restart containers without a full recreate
+vibew build && vibew dev             # package the artifact and restart the stack
 ```
 
-Use `vibew build` + `vibew restart` whenever you change code. Use `vibew dev` only when
+Use `vibew build && vibew dev` whenever you change code. Use `vibew dev` alone only when
 you add new services or change `vibewarden.yaml`.
 
 Docker images are published to `ghcr.io/vibewarden/vibewarden` as multi-arch manifests
@@ -296,7 +295,6 @@ add VibeWarden. Use `vibew add` to enable individual features after the initial 
 | `vibew generate` | Regenerate `docker-compose.yml` from config |
 | `vibew build` | Build the Docker image for the app |
 | `vibew dev` | Start local dev environment |
-| `vibew restart` | Restart containers without rebuilding the image |
 | `vibew bundle` | Produce a self-contained Docker Compose deploy artifact under `.vibewarden/bundle/` ([walkthrough](docs/guide/bundle-to-vps.md)) |
 | `vibew status` | Show health of all components |
 | `vibew doctor` | Diagnose common issues |

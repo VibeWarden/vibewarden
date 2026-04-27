@@ -1314,7 +1314,6 @@ VibeWarden is operated via the `vibew` CLI. Below is the complete command list.
 | `vibew dev --watch` | Watch vibewarden.yaml for changes and auto-regenerate config files + restart the stack (blocks until Ctrl+C) |
 | `vibew dev --observability` | Start Prometheus and Grafana alongside the core stack |
 | `vibew down` | Stop the local dev stack (preserves data volumes; pass `-v` to also remove volumes; pass `--yes` to skip confirmation prompt in CI/scripts) |
-| `vibew restart` | Restart containers without rebuilding |
 | `vibew bundle` | Produce a self-contained Docker Compose deploy bundle under `.vibewarden/bundle/`. The bundle's `README.md` describes the deploy contract; operators copy the directory to a host and run `docker compose up -d`. |
 | `vibew status` | Show health of all components. Rows use three text labels: OK (healthy), OFF (disabled in config — probe suppressed), FAIL (enabled but check failed). A legend line is printed below the header. TLS: KindSelfSignedLocal and KindExpiringSoon → OK with annotation; only KindFailing → FAIL. |
 | `vibew doctor` | Diagnose common issues; includes LE rate-limit preflight (crt.sh CT log query) when tls.provider=letsencrypt; --skip-le-preflight suppresses it |
