@@ -140,6 +140,32 @@ func TestAgentsVibewardenTemplate_NoDockerfileExamples(t *testing.T) {
 	}
 }
 
+// TestAgentsVibewardenTemplate_EjectRowDisambiguated verifies that the rendered
+// agents-vibewarden.md.tmpl eject row no longer says "Docker Compose" and does
+// say "Caddy" — this locks the fix for the qr-dali agent confusion (ADR-096).
+func TestAgentsVibewardenTemplate_EjectRowDisambiguated(t *testing.T) {
+	renderer := templateadapter.NewRenderer(templates.FS)
+
+	out, err := renderer.Render("agents/agents-vibewarden.md.tmpl", domainscaffold.InitProjectData{
+		ProjectName: "testapp",
+		Port:        3000,
+	})
+	if err != nil {
+		t.Fatalf("Render() error = %v", err)
+	}
+	rendered := string(out)
+
+	ejectDockerCompose := regexp.MustCompile(`vibew eject.*Docker Compose`)
+	if ejectDockerCompose.MatchString(rendered) {
+		t.Error("agents-vibewarden.md.tmpl eject row must not mention 'Docker Compose' — update the template (ADR-096)")
+	}
+
+	ejectCaddy := regexp.MustCompile(`vibew eject.*Caddy`)
+	if !ejectCaddy.MatchString(rendered) {
+		t.Error("agents-vibewarden.md.tmpl eject row must mention 'Caddy' to disambiguate from vibew bundle (ADR-096)")
+	}
+}
+
 // TestAgentContextTemplates_AgentsMd verifies that agents/agents.md.tmpl renders
 // the expected reference to AGENTS-VIBEWARDEN.md.
 func TestAgentContextTemplates_AgentsMd(t *testing.T) {

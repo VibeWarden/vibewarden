@@ -19,10 +19,11 @@ import (
 
 // NewEjectCmd creates the "vibew eject" subcommand.
 //
-// The command reads vibewarden.yaml (or the path supplied via --config) and
-// prints the equivalent raw proxy configuration to stdout. This allows
-// operators to graduate past VibeWarden and run the underlying proxy (e.g.
-// Caddy) directly with an equivalent configuration.
+// Use this command when you run Caddy directly on the host (vanilla Caddy,
+// k8s sidecar, or any non-Docker setup) and want VibeWarden to generate the
+// Caddy config for you. If you deploy via Docker Compose, use vibew bundle
+// instead — it produces a complete deploy package rather than just the raw
+// proxy config.
 //
 // Only --format caddy is supported in v1. Additional formats (nginx, traefik)
 // are reserved for future releases.
@@ -34,12 +35,15 @@ func NewEjectCmd() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "eject",
-		Short: "Export the equivalent raw proxy config from vibewarden.yaml",
-		Long: `Export the raw proxy configuration equivalent to the current vibewarden.yaml.
+		Short: "Export raw Caddy JSON for non-Docker deploys (most users want `vibew bundle`)",
+		Long: `Export the raw Caddy JSON configuration equivalent to the current vibewarden.yaml.
 
-The generated configuration can be used to run the underlying proxy directly,
-without VibeWarden. This is useful when you have outgrown VibeWarden and want
-to manage the proxy configuration yourself.
+Use this when you run Caddy directly (vanilla Caddy host, k8s sidecar, or any
+non-Docker setup) and want VibeWarden to generate the Caddy config for you.
+
+If you deploy via Docker Compose, use ` + "`vibew bundle`" + ` instead — it produces
+a complete deploy package (compose file, image tar, merged config, .env,
+README) rather than just the raw proxy config.
 
 Supported formats:
   caddy  — Caddy JSON config (default). Feed it to Caddy's /load API or use

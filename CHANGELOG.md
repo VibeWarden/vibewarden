@@ -26,6 +26,8 @@ This initial entry was written by hand to summarise the work leading up to v0.1.
 
 ### Changed
 
+- **`vibew eject` clarified as the non-Docker escape hatch** (#1147, [ADR-096](decisions/adr-096-vibew-eject-keep-and-clarify-non-docker-escape-hatch.md)). The `--help` lead line and the agents-template description now make clear: `vibew bundle` is the canonical Docker Compose path; `vibew eject` produces raw Caddy JSON for vanilla-Caddy / non-Docker deploys. No behavior change. The deeper consolidation (`vibew bundle --target ...`) is tracked separately.
+
 - **`vibew init` now generates a minimal `vibewarden.production.yaml`** (#1145). The generated file no longer carries commented `# auth: ...`, `# admin: ...`, `# rate_limit: ...` stubs. Override patterns moved to `docs/examples/production-overrides.md`. Per CLAUDE.md §Artifact policy: examples belong in docs, not in live config. `vibew add tls` / `vibew add waf` continue to work; they don't depend on the stubs being present.
 
 - **`vibew init` no longer generates a placeholder `Dockerfile` or `.dockerignore`** (#1139). `AGENTS-VIBEWARDEN.md` now carries a Dockerfile contract checklist; agents and users write their own Dockerfile against that contract. Migration: existing projects that already have a Dockerfile are unaffected. New projects must write a Dockerfile after `vibew init` — see `AGENTS-VIBEWARDEN.md` §Dockerfile contract.
