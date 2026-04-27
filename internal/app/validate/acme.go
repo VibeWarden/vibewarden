@@ -20,18 +20,6 @@ var acmeProviders = map[string]bool{
 	"letsencrypt-staging": true,
 }
 
-// rfc1918Nets is the list of RFC 1918 private IPv4 ranges.
-var rfc1918Nets []*net.IPNet
-
-func init() {
-	for _, cidr := range []string{"10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16"} {
-		_, n, err := net.ParseCIDR(cidr)
-		if err == nil {
-			rfc1918Nets = append(rfc1918Nets, n)
-		}
-	}
-}
-
 // reservedTLDs is the set of TLD suffixes that ACME CAs will never issue for.
 // Includes RFC 6761 reserved names and the .local mDNS TLD.
 var reservedTLDs = map[string]bool{
