@@ -1,25 +1,23 @@
 package validate
 
 import (
-	"bufio"
 	"context"
 	"fmt"
 	"os"
 	"path/filepath"
-	"strconv"
-	"strings"
 
+	"github.com/vibewarden/vibewarden/internal/app/dockerfile"
 	"github.com/vibewarden/vibewarden/internal/app/ops"
 	"github.com/vibewarden/vibewarden/internal/config"
 )
 
 // CheckDockerfile parses the EXPOSE directives in <projectRoot>/Dockerfile and
-// compares the last valid port against cfg.Upstream.Port.
+// compares the last valid port against cfg.Upstream.Port. It delegates parsing
+// to the shared internal/app/dockerfile package.
 //
 // Skip conditions (no row emitted):
 //   - Dockerfile is absent.
 //   - No valid EXPOSE directive is found.
-//   - The EXPOSE token is not a base-10 integer in [1, 65535].
 //   - The ports match.
 //
 // Multi-line continuation (\) is not supported; such lines are treated as
@@ -36,33 +34,17 @@ func CheckDockerfile(_ context.Context, projectRoot string, cfg *config.Config, 
 	}
 	defer func() { _ = f.Close() }()
 
-	lastPort := 0
-	scanner := bufio.NewScanner(f)
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		fields := strings.Fields(line)
-		if len(fields) < 2 {
-			continue
-		}
-		if strings.ToLower(fields[0]) != "expose" {
-			continue
-		}
-		// Strip protocol suffix (e.g. "3000/tcp" → "3000").
-		token := fields[1]
-		if idx := strings.Index(token, "/"); idx >= 0 {
-			token = token[:idx]
-		}
-		port, err := strconv.Atoi(token)
-		if err != nil || port < 1 || port > 65535 {
-			continue
-		}
-		lastPort = port
+	parsed, err := dockerfile.Parse(f)
+	if err != nil {
+		return Result{Skip: true}
 	}
 
-	if lastPort == 0 {
+	if len(parsed.Exposes) == 0 {
 		// No valid EXPOSE found — skip silently.
 		return Result{Skip: true}
 	}
+
+	lastPort := parsed.Exposes[len(parsed.Exposes)-1].Port
 
 	if lastPort == cfg.Upstream.Port {
 		// Ports match — no row needed.

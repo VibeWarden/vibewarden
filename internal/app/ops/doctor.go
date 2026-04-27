@@ -215,6 +215,12 @@ func (s *DoctorService) runChecks(ctx context.Context, cfg *config.Config, opts 
 	results = append(results, withSection(s.checkUpstreamReachable(ctx, cfg), sectionLocalRuntime))
 	results = append(results, withSection(s.checkTLSCertValid(ctx, cfg, proxyHost, proxyPort), sectionLocalRuntime))
 
+	// --- Dockerfile contract checks ---
+	// Omitted entirely when no Dockerfile is present in the project root.
+	if workDir != "" {
+		results = append(results, s.checkDockerfile(ctx, workDir, cfg)...)
+	}
+
 	return results
 }
 

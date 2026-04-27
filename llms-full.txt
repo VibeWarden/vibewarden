@@ -1524,6 +1524,16 @@ vibew doctor checks (in order):
      to WARN (not FAIL) when crt.sh is unreachable.
      Opt-out: --skip-le-preflight flag or tls.skip_rate_limit_check: true.
   10. TLS certificate — live TLS handshake; reports expiry state
+  11-16. Dockerfile contract checks (only when a Dockerfile is present):
+     11. Dockerfile: alpine base — final-stage FROM must be alpine-based (FAIL if not)
+     12. Dockerfile: EXPOSE port — EXPOSE must match upstream.port (FAIL on mismatch)
+     13. Dockerfile: HEALTHCHECK — no HEALTHCHECK directive allowed (FAIL if present)
+     14. Dockerfile: non-root USER — final stage must set non-root USER (WARN, non-blocking)
+     15. Dockerfile: multi-stage build — compiled languages (Go) need multi-stage (FAIL if not)
+     16. Dockerfile: <lang> toolchain version — builder FROM tag major.minor must match
+         the project manifest go.mod/nvmrc/pyproject.toml (FAIL on mismatch; OFF when
+         tag is "latest" or unrecognised, or when no manifest is found)
+     All 6 checks are omitted when no Dockerfile is present in the project root.
 
 vibew doctor flags:
   --skip-le-preflight  skip the LE rate-limit CT log check for this run
