@@ -47,6 +47,13 @@ type ComposeDownOptions struct {
 	// RemoveOrphans, when true, removes containers for services not defined in
 	// the current compose file (equivalent to `--remove-orphans`).
 	RemoveOrphans bool
+	// Profiles limits the down operation to services that belong to the listed
+	// Docker Compose profiles (equivalent to `--profile <name>` repeated for
+	// each element). When empty, docker compose down stops ALL services in the
+	// project regardless of profile. Set this to scope a partial teardown —
+	// for example, ObsService.Down sets ["observability"] so that only the
+	// observability services are stopped without touching the main sidecar.
+	Profiles []string
 }
 
 // DownResult summarises what happened during a ComposeRunner.Down invocation.

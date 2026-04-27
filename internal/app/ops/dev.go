@@ -90,10 +90,6 @@ func (s *DevService) WithImageChecker(checker ports.DockerImageChecker) *DevServ
 
 // DevOptions holds options for the dev command.
 type DevOptions struct {
-	// Observability enables the "observability" compose profile, which starts
-	// Prometheus and Grafana alongside the core stack.
-	Observability bool
-
 	// Watch enables file-system watching of vibewarden.yaml.  When true,
 	// any write to the config file triggers a regenerate + compose restart
 	// cycle after a 500 ms debounce window.  Requires a ConfigWatcher to be
@@ -122,15 +118,7 @@ type DevOptions struct {
 // When opts.Watch is true and a ConfigWatcher is wired, Run also starts the
 // watch loop and blocks until ctx is cancelled.
 func (s *DevService) Run(ctx context.Context, cfg *config.Config, opts DevOptions, out io.Writer) error {
-	var profiles []string
-	if opts.Observability {
-		profiles = append(profiles, "observability")
-	}
-
 	fmt.Fprintln(out, "Starting VibeWarden dev environment...")
-	if opts.Observability {
-		fmt.Fprintln(out, "Observability profile enabled (Prometheus + Grafana).")
-	}
 
 	// Warn when letsencrypt is configured in dev mode — ACME challenges will
 	// fail on localhost since the server is not publicly reachable.
@@ -164,7 +152,7 @@ func (s *DevService) Run(ctx context.Context, cfg *config.Config, opts DevOption
 		// build progress in real time.
 		upOpts.Stderr = out
 	}
-	if err := s.compose.Up(ctx, composeFile, profiles, upOpts); err != nil {
+	if err := s.compose.Up(ctx, composeFile, nil, upOpts); err != nil {
 		return fmt.Errorf("starting dev environment: %w", err)
 	}
 
@@ -483,21 +471,15 @@ func summaryURL(cfg *config.Config) string {
 	return fmt.Sprintf("%s://%s:%d", scheme, host, port)
 }
 
-// printStartupSummary writes the three-line post-start hint block.
+// printStartupSummary writes the post-start hint block.
 // Format:
 //
 //	Started. <url>
 //	Logs: vibew logs -f
 //	Stop: vibew down
-//
-// When observability is enabled an extra line mentioning Grafana is emitted
-// above the summary block so it is discoverable without hiding the core hints.
-func printStartupSummary(cfg *config.Config, opts DevOptions, out io.Writer) {
+func printStartupSummary(cfg *config.Config, _ DevOptions, out io.Writer) {
 	fmt.Fprintln(out, "")
 	fmt.Fprintln(out, "Dev environment started.")
-	if opts.Observability {
-		fmt.Fprintln(out, "Grafana: http://localhost:3000 | Prometheus: http://localhost:9090")
-	}
 	fmt.Fprintf(out, "Started. %s\n", summaryURL(cfg))
 	fmt.Fprintln(out, "Logs: vibew logs -f")
 	fmt.Fprintln(out, "Stop: vibew down")

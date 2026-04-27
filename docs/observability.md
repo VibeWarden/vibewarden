@@ -224,7 +224,7 @@ empty — all structured data lives in attributes.
 
 ### OTel Collector Architecture
 
-When the observability profile is enabled (`docker compose --profile observability up`),
+When the observability profile is enabled (via `vibew obs up`),
 VibeWarden generates an OTel Collector configuration that acts as a telemetry hub:
 
 ```
@@ -356,32 +356,39 @@ No manual config changes needed — just enable the observability profile.
 
 ## Quick Start
 
-Enable observability in `vibewarden.yaml`:
-
-```yaml
-observability:
-  enabled: true
-  grafana_port: 3001
-```
-
-Generate and start:
+Start the main dev stack first, then bring up the observability profile:
 
 ```bash
-vibewarden generate
-COMPOSE_PROFILES=observability docker compose -f .vibewarden/generated/docker-compose.yml up -d
+vibew dev
+vibew obs up
 ```
 
-Stop the stack:
+Stop only the observability services:
 
 ```bash
-COMPOSE_PROFILES=observability docker compose -f .vibewarden/generated/docker-compose.yml down
+vibew obs down
 ```
+
+Stop everything including observability services and volumes:
+
+```bash
+vibew obs down -v --yes
+vibew down -v --yes
+```
+
+> **Informational footnote:** The underlying Docker Compose commands that
+> `vibew obs up` / `vibew obs down` invoke are:
+> ```bash
+> docker compose -f .vibewarden/generated/docker-compose.yml --profile observability up -d
+> docker compose -f .vibewarden/generated/docker-compose.yml --profile observability down
+> ```
+> These are still valid if you prefer to call compose directly.
 
 ## Accessing the UIs
 
 | Service    | URL                          | Notes                                  |
 |------------|------------------------------|----------------------------------------|
-| Grafana    | http://localhost:3000        | Anonymous access, Admin role, no login |
+| Grafana    | http://localhost:3001        | Anonymous access, Admin role, no login |
 | Prometheus | http://localhost:9090        | No authentication required             |
 | Loki       | http://localhost:3100/ready  | API only; query logs via Grafana       |
 
@@ -531,7 +538,7 @@ Prometheus may not have scraped VibeWarden yet, or VibeWarden is not running.
 
 1. Check that all containers are up:
    ```bash
-   docker compose --profile observability ps
+   vibew status
    ```
 2. Verify VibeWarden's metrics endpoint is reachable:
    ```bash
@@ -542,13 +549,13 @@ Prometheus may not have scraped VibeWarden yet, or VibeWarden is not running.
 
 ### Port conflicts
 
-If port 3000 or 9090 is already in use, Docker Compose will fail to start the
+If port 3001 or 9090 is already in use, Docker Compose will fail to start the
 corresponding container. Stop the conflicting process or change the host port in
 `docker-compose.yml`:
 
 ```yaml
 ports:
-  - "3001:3000"   # expose Grafana on host port 3001 instead
+  - "3002:3000"   # expose Grafana on host port 3002 instead
 ```
 
 ### Grafana starts but the dashboard is not visible
@@ -570,11 +577,11 @@ docker compose -f .vibewarden/generated/docker-compose.yml logs grafana
    ```
 2. Check Promtail is running and has no errors:
    ```bash
-   docker compose --profile observability logs promtail
+   docker compose -f .vibewarden/generated/docker-compose.yml --profile observability logs promtail
    ```
 3. Confirm Promtail has write access to the Docker socket:
    ```bash
-   docker compose --profile observability ps promtail
+   docker compose -f .vibewarden/generated/docker-compose.yml --profile observability ps promtail
    ```
 4. In Grafana Explore, select the **Loki** datasource and run:
    ```logql

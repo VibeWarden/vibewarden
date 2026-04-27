@@ -20,15 +20,16 @@ import (
 //
 // The command generates runtime config files under .vibewarden/generated/,
 // then starts the Docker Compose dev environment in detached mode and
-// prints the running service URLs.  Pass --observability to also start the
-// Prometheus + Grafana observability stack.  Pass --watch to watch
-// vibewarden.yaml for changes and auto-regenerate + restart the stack.
+// prints the running service URLs.  Pass --watch to watch vibewarden.yaml
+// for changes and auto-regenerate + restart the stack.
+// To also start the Prometheus + Grafana observability stack run:
+//
+//	vibew obs up
 func NewDevCmd() *cobra.Command {
 	var (
-		observability bool
-		watch         bool
-		configPath    string
-		verbose       bool
+		watch      bool
+		configPath string
+		verbose    bool
 	)
 
 	cmd := &cobra.Command{
@@ -45,13 +46,12 @@ The baseline stack includes:
   - PostgreSQL
   - Mailslurper (email sink)
 
-Pass --observability to also start Prometheus and Grafana.
+To also start Prometheus and Grafana, run 'vibew obs up' after the stack is up.
 Pass --watch to watch vibewarden.yaml for changes and automatically
 regenerate config files and restart the stack (blocks until Ctrl+C).
 
 Examples:
   vibew dev
-  vibew dev --observability
   vibew dev --watch
   vibew dev --config ./my-vibewarden.yaml`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
@@ -92,18 +92,16 @@ Examples:
 			detectedLang := detectProjectLang(".")
 
 			opts := opsapp.DevOptions{
-				Observability: observability,
-				Watch:         watch,
-				ConfigPath:    configPath,
-				DetectedLang:  detectedLang,
-				Verbose:       verbose,
+				Watch:        watch,
+				ConfigPath:   configPath,
+				DetectedLang: detectedLang,
+				Verbose:      verbose,
 			}
 
 			return svc.Run(cmd.Context(), cfg, opts, cmd.OutOrStdout())
 		},
 	}
 
-	cmd.Flags().BoolVar(&observability, "observability", false, "start Prometheus and Grafana alongside the core stack")
 	cmd.Flags().BoolVar(&watch, "watch", false, "watch vibewarden.yaml for changes and auto-regenerate + restart")
 	cmd.Flags().StringVar(&configPath, "config", "", "path to vibewarden.yaml (default: ./vibewarden.yaml)")
 	cmd.Flags().BoolVar(&verbose, "verbose", false, "stream docker compose stderr during successful startup (always streamed on failure)")

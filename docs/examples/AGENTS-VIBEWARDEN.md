@@ -62,6 +62,8 @@ vibew dev            # local development (generates docker-compose, starts stack
 vibew dev --watch    # auto-restart on vibewarden.yaml changes
 vibew dev --verbose  # stream docker compose output during startup
 vibew down           # stop the dev stack (preserves volumes; -v also removes volumes)
+vibew obs up         # start Prometheus + Grafana observability stack (after vibew dev)
+vibew obs down       # stop the observability stack (-v also removes volumes)
 ```
 
 ## Config changes
