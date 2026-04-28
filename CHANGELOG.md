@@ -12,6 +12,10 @@ This initial entry was written by hand to summarise the work leading up to v0.1.
 
 ## [Unreleased]
 
+### Changed
+
+- **`vibew add tls --domain X` auto-sets `provider: letsencrypt` for LE-compatible domains** (#1188). Previously only wrote the domain to `vibewarden.production.yaml`, leaving the merged config with `provider: self-signed` (from base) plus a real-world domain — the v0.18.0 deploy to `demo.vibewarden.dev` had to manually edit production.yaml. Now the command classifies the domain via the same checker `vibew validate` uses (`internal/app/tlsdomain`); LE-compatible domains get `provider: letsencrypt` + domain; localhost / IP / RFC 1918 / `.local` / `.test` domains get only the domain plus a stderr hint about picking a provider manually. Explicit `--provider <self-signed|letsencrypt|external>` flag honored as override.
+
 ### Fixed
 
 - **`vibew status` annotates self-signed dev cert** (#1181). Self-signed dev certs (~12-hour TTL, auto-rotated by Caddy) used to render as `TLS: obtained (expires in 0 days)   OK` — technically correct (rotation happens) but visually alarming. The classifier now returns `KindSelfSignedLocal` whenever the cert was issued by the local CA regardless of `tls.provider` config, so the existing dev annotation from #1143 / ADR-095 fires correctly.
