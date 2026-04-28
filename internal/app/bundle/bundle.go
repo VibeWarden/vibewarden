@@ -271,7 +271,16 @@ func (s *Service) bundleSingleSite(ctx context.Context, cfg *config.Config, conf
 		case statErr == nil:
 			loaded, err := LoadMergedConfig(configPath, prodConfigPath)
 			if err != nil {
-				return err
+				// Attribute the error to the most likely source file so the user
+				// knows where to look. When a production override is present,
+				// provider-level TLS settings live there by convention (the base
+				// vibewarden.yaml defaults to self-signed). When no override is
+				// given, the base config is the only candidate.
+				hint := filepath.Base(configPath)
+				if prodConfigPath != "" {
+					hint = filepath.Base(prodConfigPath)
+				}
+				return fmt.Errorf("config validation failed (check %s): %w", hint, err)
 			}
 			mergedCfg = loaded
 		case errors.Is(statErr, fs.ErrNotExist):
