@@ -86,6 +86,27 @@ func TestHandshakeResolver_Resolve(t *testing.T) {
 		}
 	})
 
+	// Parity regression: HandshakeResolver must agree with InProcessResolver —
+	// a Caddy-issued dev cert served while provider="letsencrypt" must
+	// still resolve to KindSelfSignedLocal, not KindExpiringSoon.
+	t.Run("dev cert with letsencrypt provider → SelfSignedLocal", func(t *testing.T) {
+		// NotAfter is in the past to confirm expiry math is not reached.
+		host, port, cleanup := makeTLSServer(t, caddyLocalIssuerCN, fixedNow.Add(-1*time.Hour))
+		defer cleanup()
+
+		cfg := &config.Config{TLS: config.TLSConfig{Enabled: true, Provider: "letsencrypt"}}
+		r := NewHandshakeResolver(cfg, host, port)
+		r.now = func() time.Time { return fixedNow }
+
+		state, err := r.Resolve(context.Background())
+		if err != nil {
+			t.Fatalf("Resolve() unexpected error: %v", err)
+		}
+		if state.Kind() != tlsdomain.KindSelfSignedLocal {
+			t.Errorf("Kind() = %v, want SelfSignedLocal", state.Kind())
+		}
+	})
+
 	t.Run("external issuer with long expiry → Obtained", func(t *testing.T) {
 		host, port, cleanup := makeTLSServer(t, "ExampleCA", fixedNow.Add(90*24*time.Hour))
 		defer cleanup()

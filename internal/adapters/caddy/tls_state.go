@@ -117,10 +117,14 @@ func (r *InProcessResolver) Resolve(ctx context.Context) (tlsdomain.State, error
 		return tlsdomain.NewObtaining(), nil
 	}
 
-	// Self-signed branch is deterministic: issuer CN match → SelfSignedLocal,
-	// NO NotAfter inspection. The internal issuer rotates leaves on a
-	// short TTL and we trust it to do so.
-	if r.cfg.TLS.Provider == "self-signed" && leaf.Issuer.CommonName == caddyLocalIssuerCN {
+	// Issuer CN is authoritative — same rule as HandshakeResolver. The
+	// check is intentionally independent of cfg.TLS.Provider so that a
+	// Caddy-issued dev cert is classified as SelfSignedLocal even when the
+	// configured provider is "letsencrypt" (e.g. during vibew dev startup
+	// before the real ACME cert has been swapped in). No NotAfter
+	// inspection: the internal CA rotates leaves on a short TTL and we
+	// trust it to do so.
+	if leaf.Issuer.CommonName == caddyLocalIssuerCN {
 		return tlsdomain.NewSelfSignedLocal(), nil
 	}
 
