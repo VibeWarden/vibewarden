@@ -12,6 +12,10 @@ This initial entry was written by hand to summarise the work leading up to v0.1.
 
 ## [Unreleased]
 
+## [v0.18.2] — 2026-04-28
+
+Theme: v0.18.1 retrospective fixes. Eight retro-tagged issues + two smoke catches covering health-endpoint correctness, deploy-pipeline drift, language-agnostic onboarding, and a CI guard against re-introducing removed artifacts. Two breaking changes are user-visible: the `/_vibewarden/health` JSON wire format and `vibew bundle`'s arch-mismatch behavior. See "Breaking changes" first.
+
 ### Breaking changes
 
 **`/_vibewarden/health` wire-format change** (#1197, ADR-098). If you parse the JSON
