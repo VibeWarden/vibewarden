@@ -12,6 +12,12 @@ This initial entry was written by hand to summarise the work leading up to v0.1.
 
 ## [Unreleased]
 
+---
+
+## [v0.18.1] — 2026-04-28
+
+Theme: polish from the v0.18.0 deploy to demo.vibewarden.dev and follow-up smoke testing. No new features; UX and correctness tightening.
+
 ### Changed
 
 - **`vibew validate` auto-checks `vibewarden.production.yaml` when present** (#1180). Previously only the base file (or the file passed via `--config`) was checked, so production-only failures (WAF `mode: log`, ACME-incompatible domain in prod overrides, etc.) silently passed unless the user knew to invoke validate twice. Now `vibew validate` (no args) discovers `vibewarden.production.yaml` next to `vibewarden.yaml` and runs all 5 runtime checks against both files. FAIL rows annotate the source: `FAIL (vibewarden.production.yaml)  waf.mode: log — ...`. Explicit `--config <file>` keeps the existing single-file behavior.
@@ -20,6 +26,7 @@ This initial entry was written by hand to summarise the work leading up to v0.1.
 ### Fixed
 
 - **`vibew status` annotates self-signed dev cert** (#1181). Self-signed dev certs (~12-hour TTL, auto-rotated by Caddy) used to render as `TLS: obtained (expires in 0 days)   OK` — technically correct (rotation happens) but visually alarming. The classifier now returns `KindSelfSignedLocal` whenever the cert was issued by the local CA regardless of `tls.provider` config, so the existing dev annotation from #1143 / ADR-095 fires correctly.
+- **Match Caddy intermediate-CA issuer CN via prefix, not equality** (#1194). The #1181 fix used exact-equality on `"Caddy Local Authority"` but Caddy stamps the leaf's issuer as the intermediate CA's CN — e.g. `"Caddy Local Authority - ECC Intermediate"` or `"... - RSA Intermediate"`. The equality check never fired, so dev certs were still classified as `KindObtained` with `expires in 0 days`. Fix: `tlsdomain.IsCaddyLocalIssuer(cn)` uses `strings.HasPrefix` on the constant prefix `"Caddy Local Authority"`. All three classifier sites (in-process resolver, handshake resolver, app-layer fallback) use the helper. Surfaced by v0.18.0 smoke test pass-2.
 - **`vibew obs up` success message lists all UIs** (#1186). Previously printed only Grafana + Prometheus URLs; now also lists Loki (`/ready`) and Jaeger. Ports come from `observability.*_port` config keys (Jaeger is hardcoded — Jaeger port is not yet a config key).
 
 ---
@@ -836,6 +843,7 @@ Single Go binary embedding Caddy. Zero-to-secure in minutes for vibe-coded apps.
 
 ---
 
+[v0.18.1]: https://github.com/vibewarden/vibewarden/releases/tag/v0.18.1
 [v0.18.0]: https://github.com/vibewarden/vibewarden/releases/tag/v0.18.0
 [v0.17.0]: https://github.com/vibewarden/vibewarden/releases/tag/v0.17.0
 [v0.16.0]: https://github.com/vibewarden/vibewarden/releases/tag/v0.16.0
