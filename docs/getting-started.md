@@ -413,7 +413,7 @@ Runtime files land under `.vibewarden/generated/` (add this to `.gitignore`):
   docker-compose.yml           # Full stack
   kratos/kratos.yml            # Ory Kratos config
   kratos/identity.schema.json  # Identity schema
-  observability/               # Grafana/Prometheus/Loki (when enabled)
+  observability/               # Grafana/Prometheus/Loki (always generated; activate with vibew obs up)
 ```
 
 Do not edit generated files. Re-run `vibew generate` after changing

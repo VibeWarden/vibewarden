@@ -444,7 +444,7 @@ Loki, Promtail).
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `observability.enabled` | bool | `false` | Generate the observability stack |
+| `observability.enabled` | bool | `false` | Activate the observability compose profile (configs are always generated) |
 | `observability.grafana_port` | int | `3001` | Host port for Grafana |
 | `observability.prometheus_port` | int | `9090` | Host port for Prometheus |
 | `observability.loki_port` | int | `3100` | Host port for Loki |
