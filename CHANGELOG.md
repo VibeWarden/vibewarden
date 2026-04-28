@@ -40,6 +40,7 @@ when the image arch does not match the VPS target.
 
 ### Changed
 
+- **`vibew doctor` no longer probes the upstream port directly** (#1198). The check was structurally wrong — the upstream lives on the docker-compose internal network, never bound to the host — and produced misleading "unreachable" warnings before `vibew dev` ran. Runtime upstream health is reported by `/_vibewarden/health` (#1197).
 - **Bundle README now opens with a fenced shell block containing the literal deploy commands** (was: prose-only) (#1204). `app.name` and `tls.domain` are substituted; empty values produce `<your-app>` / `<your-domain>` placeholders. With `--skip-image` the `docker load -i image.tar &&` clause is omitted so the block is always copy-pasteable.
 - **`vibew bundle` stdout now prints the literal `ssh`/`scp`/`docker compose up -d` sequence** with `app.name` and `tls.domain` substituted (#1204). An agent has a copy-pasteable next step without opening the README.
 

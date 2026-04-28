@@ -53,22 +53,6 @@ func (f *fakePortOwnerProbe) ProbeOwner(_ context.Context, _ string, _ int) port
 	return f.owner
 }
 
-// reachableHealthChecker is a fakeHealthChecker that reports upstream as reachable.
-func reachableHealthChecker() *fakeHealthChecker {
-	return &fakeHealthChecker{
-		responses: map[string]healthResponse{
-			"http://127.0.0.1:3000": {ok: true, statusCode: 200},
-		},
-	}
-}
-
-// unreachableHealthChecker returns a fakeHealthChecker where upstream is unreachable.
-func unreachableHealthChecker() *fakeHealthChecker {
-	return &fakeHealthChecker{
-		responses: map[string]healthResponse{},
-	}
-}
-
 // noContainersCompose returns a fakeCompose whose PS returns an empty slice.
 func noContainersCompose() *fakeCompose {
 	return &fakeCompose{
@@ -172,9 +156,8 @@ func startTLSTestSidecar(t *testing.T, notBefore, notAfter time.Time) (host stri
 func TestDoctorService_Run_AllPassing(t *testing.T) {
 	fc := healthyContainersCompose()
 	pc := &fakePortChecker{available: map[int]bool{8443: true}}
-	hc := reachableHealthChecker()
 
-	svc := ops.NewDoctorService(fc, pc, hc)
+	svc := ops.NewDoctorService(fc, pc)
 	cfg := doctorConfig()
 	var buf bytes.Buffer
 
@@ -209,8 +192,7 @@ func TestDoctorService_Run_DockerNotRunning(t *testing.T) {
 		versionStr: "Docker Compose version v2.35.1",
 	}
 	pc := &fakePortChecker{}
-	hc := reachableHealthChecker()
-	svc := ops.NewDoctorService(fc, pc, hc)
+	svc := ops.NewDoctorService(fc, pc)
 	cfg := doctorConfig()
 	var buf bytes.Buffer
 
@@ -234,8 +216,7 @@ func TestDoctorService_Run_DockerComposeNotAvailable(t *testing.T) {
 		versionErr: errors.New("docker compose: command not found"),
 	}
 	pc := &fakePortChecker{}
-	hc := reachableHealthChecker()
-	svc := ops.NewDoctorService(fc, pc, hc)
+	svc := ops.NewDoctorService(fc, pc)
 	cfg := doctorConfig()
 	var buf bytes.Buffer
 
@@ -256,8 +237,7 @@ func TestDoctorService_Run_DockerComposeNotAvailable(t *testing.T) {
 func TestDoctorService_Run_PortInUse(t *testing.T) {
 	fc := noContainersCompose()
 	pc := &fakePortChecker{available: map[int]bool{8443: false}}
-	hc := reachableHealthChecker()
-	svc := ops.NewDoctorService(fc, pc, hc)
+	svc := ops.NewDoctorService(fc, pc)
 	cfg := doctorConfig()
 	var buf bytes.Buffer
 
@@ -320,8 +300,7 @@ func TestDoctorService_CheckPort_OwnershipMatrix(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			fc := noContainersCompose()
 			pc := &fakePortChecker{available: map[int]bool{8443: tt.available}}
-			hc := reachableHealthChecker()
-			svc := ops.NewDoctorService(fc, pc, hc)
+			svc := ops.NewDoctorService(fc, pc)
 			if tt.probe != nil {
 				svc = svc.WithPortOwnerProbe(tt.probe)
 			}
@@ -361,8 +340,7 @@ func TestDoctorService_CheckPort_OwnershipMatrix(t *testing.T) {
 func TestDoctorService_Run_ConfigPathInOutput(t *testing.T) {
 	fc := noContainersCompose()
 	pc := &fakePortChecker{}
-	hc := reachableHealthChecker()
-	svc := ops.NewDoctorService(fc, pc, hc)
+	svc := ops.NewDoctorService(fc, pc)
 	cfg := doctorConfig()
 	var buf bytes.Buffer
 
@@ -387,8 +365,7 @@ func TestDoctorService_ChecksAreIndependent(t *testing.T) {
 		psErr:      errors.New("ps failed"),
 	}
 	pc := &fakePortChecker{available: map[int]bool{8443: false}}
-	hc := reachableHealthChecker()
-	svc := ops.NewDoctorService(fc, pc, hc)
+	svc := ops.NewDoctorService(fc, pc)
 	cfg := doctorConfig()
 	var buf bytes.Buffer
 
@@ -415,8 +392,7 @@ func TestDoctorService_ChecksAreIndependent(t *testing.T) {
 func TestDoctorService_Run_GeneratedFileMissing_IsWarn(t *testing.T) {
 	fc := noContainersCompose()
 	pc := &fakePortChecker{available: map[int]bool{8443: true}}
-	hc := reachableHealthChecker()
-	svc := ops.NewDoctorService(fc, pc, hc)
+	svc := ops.NewDoctorService(fc, pc)
 	cfg := doctorConfig()
 	var buf bytes.Buffer
 
@@ -447,8 +423,7 @@ func TestDoctorService_Run_UnhealthyContainer_IsFail(t *testing.T) {
 		},
 	}
 	pc := &fakePortChecker{available: map[int]bool{8443: true}}
-	hc := reachableHealthChecker()
-	svc := ops.NewDoctorService(fc, pc, hc)
+	svc := ops.NewDoctorService(fc, pc)
 	cfg := doctorConfig()
 	var buf bytes.Buffer
 
@@ -469,8 +444,7 @@ func TestDoctorService_Run_UnhealthyContainer_IsFail(t *testing.T) {
 func TestDoctorService_Run_JSONOutput(t *testing.T) {
 	fc := noContainersCompose()
 	pc := &fakePortChecker{available: map[int]bool{8443: true}}
-	hc := reachableHealthChecker()
-	svc := ops.NewDoctorService(fc, pc, hc)
+	svc := ops.NewDoctorService(fc, pc)
 	cfg := doctorConfig()
 	var buf bytes.Buffer
 
@@ -505,8 +479,7 @@ func TestDoctorService_Run_OKFAILBadgesInOutput(t *testing.T) {
 		versionStr: "Docker Compose version v2.35.1",
 	}
 	pc := &fakePortChecker{available: map[int]bool{8443: true}}
-	hc := reachableHealthChecker()
-	svc := ops.NewDoctorService(fc, pc, hc)
+	svc := ops.NewDoctorService(fc, pc)
 	cfg := doctorConfig()
 	var buf bytes.Buffer
 
@@ -527,8 +500,7 @@ func TestDoctorService_Run_OKFAILBadgesInOutput(t *testing.T) {
 func TestDoctorService_Run_ContainersHealthy_AllOK(t *testing.T) {
 	fc := healthyContainersCompose()
 	pc := &fakePortChecker{available: map[int]bool{8443: true}}
-	hc := reachableHealthChecker()
-	svc := ops.NewDoctorService(fc, pc, hc)
+	svc := ops.NewDoctorService(fc, pc)
 	cfg := doctorConfig()
 	var buf bytes.Buffer
 
@@ -550,58 +522,7 @@ func TestDoctorService_Run_ContainersHealthy_AllOK(t *testing.T) {
 	}
 }
 
-// --- New tests for Layer 2: Local Runtime checks ---
-
-func TestDoctorService_Run_UpstreamReachable(t *testing.T) {
-	fc := noContainersCompose()
-	pc := &fakePortChecker{available: map[int]bool{8443: true}}
-	hc := reachableHealthChecker()
-	svc := ops.NewDoctorService(fc, pc, hc)
-	cfg := doctorConfig()
-	var buf bytes.Buffer
-
-	allOK, err := svc.Run(context.Background(), cfg, defaultOpts(t), &buf)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if !allOK {
-		t.Errorf("expected allOK = true when upstream is reachable\noutput:\n%s", buf.String())
-	}
-
-	out := buf.String()
-	if !strings.Contains(out, "Upstream reachable") {
-		t.Errorf("expected 'Upstream reachable' check in output, got:\n%s", out)
-	}
-	if !strings.Contains(out, "HTTP 200") {
-		t.Errorf("expected 'HTTP 200' in upstream detail, got:\n%s", out)
-	}
-}
-
-func TestDoctorService_Run_UpstreamUnreachable(t *testing.T) {
-	fc := noContainersCompose()
-	pc := &fakePortChecker{available: map[int]bool{8443: true}}
-	hc := unreachableHealthChecker()
-	svc := ops.NewDoctorService(fc, pc, hc)
-	cfg := doctorConfig()
-	var buf bytes.Buffer
-
-	// Upstream unreachable is WARN, not FAIL, so allOK should still be true.
-	allOK, err := svc.Run(context.Background(), cfg, defaultOpts(t), &buf)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if !allOK {
-		t.Errorf("expected allOK = true because upstream unreachable is WARN\noutput:\n%s", buf.String())
-	}
-
-	out := buf.String()
-	if !strings.Contains(out, "Upstream reachable") {
-		t.Errorf("expected 'Upstream reachable' check in output, got:\n%s", out)
-	}
-	if !strings.Contains(out, "unreachable") {
-		t.Errorf("expected 'unreachable' in upstream detail, got:\n%s", out)
-	}
-}
+// --- Tests for Layer 2: Local Runtime checks ---
 
 func TestDoctorService_Run_TLSCertValid(t *testing.T) {
 	host, port, cleanup := startTLSTestSidecar(t, time.Now().Add(-24*time.Hour), time.Now().Add(90*24*time.Hour))
@@ -609,8 +530,7 @@ func TestDoctorService_Run_TLSCertValid(t *testing.T) {
 
 	fc := noContainersCompose()
 	pc := &fakePortChecker{available: map[int]bool{port: true}}
-	hc := reachableHealthChecker()
-	svc := ops.NewDoctorService(fc, pc, hc)
+	svc := ops.NewDoctorService(fc, pc)
 	cfg := defaultConfig()
 	cfg.TLS.Provider = "self-signed"
 	cfg.Server.Host = host
@@ -642,8 +562,7 @@ func TestDoctorService_Run_TLSCertExpired(t *testing.T) {
 
 	fc := noContainersCompose()
 	pc := &fakePortChecker{available: map[int]bool{port: true}}
-	hc := reachableHealthChecker()
-	svc := ops.NewDoctorService(fc, pc, hc)
+	svc := ops.NewDoctorService(fc, pc)
 	cfg := defaultConfig()
 	cfg.TLS.Provider = "self-signed"
 	cfg.Server.Host = host
@@ -672,8 +591,7 @@ func TestDoctorService_Run_TLSCertExpiringSoon(t *testing.T) {
 
 	fc := noContainersCompose()
 	pc := &fakePortChecker{available: map[int]bool{port: true}}
-	hc := reachableHealthChecker()
-	svc := ops.NewDoctorService(fc, pc, hc)
+	svc := ops.NewDoctorService(fc, pc)
 	cfg := defaultConfig()
 	cfg.TLS.Provider = "self-signed"
 	cfg.Server.Host = host
@@ -710,8 +628,7 @@ func TestDoctorService_Run_TLSCertSidecarUnreachable(t *testing.T) {
 
 	fc := noContainersCompose()
 	pc := &fakePortChecker{available: map[int]bool{addr.Port: true}}
-	hc := reachableHealthChecker()
-	svc := ops.NewDoctorService(fc, pc, hc)
+	svc := ops.NewDoctorService(fc, pc)
 	cfg := defaultConfig()
 	cfg.TLS.Provider = "self-signed"
 	cfg.Server.Host = "127.0.0.1"
@@ -739,8 +656,7 @@ func TestDoctorService_Run_TLSCertSidecarUnreachable(t *testing.T) {
 func TestDoctorService_Run_TLSCertNonSelfSigned_Skipped(t *testing.T) {
 	fc := noContainersCompose()
 	pc := &fakePortChecker{available: map[int]bool{8443: true}}
-	hc := reachableHealthChecker()
-	svc := ops.NewDoctorService(fc, pc, hc)
+	svc := ops.NewDoctorService(fc, pc)
 	cfg := doctorConfig()
 	cfg.TLS.Provider = "letsencrypt"
 	cfg.TLS.Domain = "example.com"
@@ -763,8 +679,7 @@ func TestDoctorService_Run_TLSCertNonSelfSigned_Skipped(t *testing.T) {
 func TestDoctorService_Run_SectionHeaders(t *testing.T) {
 	fc := noContainersCompose()
 	pc := &fakePortChecker{available: map[int]bool{8443: true}}
-	hc := reachableHealthChecker()
-	svc := ops.NewDoctorService(fc, pc, hc)
+	svc := ops.NewDoctorService(fc, pc)
 	cfg := doctorConfig()
 	var buf bytes.Buffer
 
@@ -785,8 +700,7 @@ func TestDoctorService_Run_SectionHeaders(t *testing.T) {
 func TestDoctorService_Run_JSONOutput_IncludesSection(t *testing.T) {
 	fc := noContainersCompose()
 	pc := &fakePortChecker{available: map[int]bool{8443: true}}
-	hc := reachableHealthChecker()
-	svc := ops.NewDoctorService(fc, pc, hc)
+	svc := ops.NewDoctorService(fc, pc)
 	cfg := doctorConfig()
 	var buf bytes.Buffer
 
@@ -815,8 +729,7 @@ func TestDoctorService_Run_JSONOutput_IncludesSection(t *testing.T) {
 func TestDoctorService_Run_ACMEEmail_ZeroSSLWithoutEmail(t *testing.T) {
 	fc := noContainersCompose()
 	pc := &fakePortChecker{available: map[int]bool{8443: true}}
-	hc := reachableHealthChecker()
-	svc := ops.NewDoctorService(fc, pc, hc)
+	svc := ops.NewDoctorService(fc, pc)
 	cfg := doctorConfig()
 	cfg.TLS.Provider = "letsencrypt"
 	cfg.TLS.ACMECA = "https://acme.zerossl.com/v2/DV90"
@@ -843,8 +756,7 @@ func TestDoctorService_Run_ACMEEmail_ZeroSSLWithoutEmail(t *testing.T) {
 func TestDoctorService_Run_ACMEEmail_ZeroSSLWithEmail(t *testing.T) {
 	fc := noContainersCompose()
 	pc := &fakePortChecker{available: map[int]bool{8443: true}}
-	hc := reachableHealthChecker()
-	svc := ops.NewDoctorService(fc, pc, hc)
+	svc := ops.NewDoctorService(fc, pc)
 	cfg := doctorConfig()
 	cfg.TLS.Provider = "letsencrypt"
 	cfg.TLS.ACMECA = "https://acme.zerossl.com/v2/DV90"
@@ -871,8 +783,7 @@ func TestDoctorService_Run_ACMEEmail_ZeroSSLWithEmail(t *testing.T) {
 func TestDoctorService_Run_ACMEEmail_NonZeroSSL(t *testing.T) {
 	fc := noContainersCompose()
 	pc := &fakePortChecker{available: map[int]bool{8443: true}}
-	hc := reachableHealthChecker()
-	svc := ops.NewDoctorService(fc, pc, hc)
+	svc := ops.NewDoctorService(fc, pc)
 	cfg := doctorConfig()
 	cfg.TLS.Provider = "letsencrypt"
 	cfg.TLS.ACMECA = "" // default Let's Encrypt
@@ -901,9 +812,8 @@ func TestDoctorService_Run_ACMEEmail_NonZeroSSL(t *testing.T) {
 func TestDoctorService_Run_ImageTag_Exists(t *testing.T) {
 	fc := noContainersCompose()
 	pc := &fakePortChecker{available: map[int]bool{8443: true}}
-	hc := reachableHealthChecker()
 	ic := &fakeImageChecker{exists: true}
-	svc := ops.NewDoctorService(fc, pc, hc).WithImageChecker(ic)
+	svc := ops.NewDoctorService(fc, pc).WithImageChecker(ic)
 	cfg := doctorConfig()
 	cfg.App.Image = "myapp:latest"
 
@@ -928,9 +838,8 @@ func TestDoctorService_Run_ImageTag_Exists(t *testing.T) {
 func TestDoctorService_Run_ImageTag_Missing(t *testing.T) {
 	fc := noContainersCompose()
 	pc := &fakePortChecker{available: map[int]bool{8443: true}}
-	hc := reachableHealthChecker()
 	ic := &fakeImageChecker{exists: false}
-	svc := ops.NewDoctorService(fc, pc, hc).WithImageChecker(ic)
+	svc := ops.NewDoctorService(fc, pc).WithImageChecker(ic)
 	cfg := doctorConfig()
 	cfg.App.Image = "myapp:latest"
 
@@ -955,9 +864,8 @@ func TestDoctorService_Run_ImageTag_Missing(t *testing.T) {
 func TestDoctorService_Run_ImageTag_CheckerError(t *testing.T) {
 	fc := noContainersCompose()
 	pc := &fakePortChecker{available: map[int]bool{8443: true}}
-	hc := reachableHealthChecker()
 	ic := &fakeImageChecker{err: errors.New("docker daemon unavailable")}
-	svc := ops.NewDoctorService(fc, pc, hc).WithImageChecker(ic)
+	svc := ops.NewDoctorService(fc, pc).WithImageChecker(ic)
 	cfg := doctorConfig()
 	cfg.App.Image = "myapp:latest"
 
@@ -983,9 +891,8 @@ func TestDoctorService_Run_ImageTag_CheckerError(t *testing.T) {
 func TestDoctorService_Run_ImageTag_NoImage_Skipped(t *testing.T) {
 	fc := noContainersCompose()
 	pc := &fakePortChecker{available: map[int]bool{8443: true}}
-	hc := reachableHealthChecker()
 	ic := &fakeImageChecker{exists: false} // Should not be called.
-	svc := ops.NewDoctorService(fc, pc, hc).WithImageChecker(ic)
+	svc := ops.NewDoctorService(fc, pc).WithImageChecker(ic)
 	cfg := doctorConfig()
 	cfg.App.Image = "" // No image configured.
 
@@ -1038,7 +945,7 @@ func leRecords(n int) []ports.CrtShRecord {
 
 func TestDoctorService_Run_LERateLimit_WARN(t *testing.T) {
 	q := &fakeCTQuerier{records: leRecords(4)} // 4/5 → WARN, 1 remaining
-	svc := ops.NewDoctorService(noContainersCompose(), &fakePortChecker{}, reachableHealthChecker()).
+	svc := ops.NewDoctorService(noContainersCompose(), &fakePortChecker{}).
 		WithLERateLimitService(apptlspreflight.NewService(q))
 
 	cfg := leCfg()
@@ -1065,7 +972,7 @@ func TestDoctorService_Run_LERateLimit_WARN(t *testing.T) {
 
 func TestDoctorService_Run_LERateLimit_FAIL(t *testing.T) {
 	q := &fakeCTQuerier{records: leRecords(5)} // 5/5 → FAIL
-	svc := ops.NewDoctorService(noContainersCompose(), &fakePortChecker{}, reachableHealthChecker()).
+	svc := ops.NewDoctorService(noContainersCompose(), &fakePortChecker{}).
 		WithLERateLimitService(apptlspreflight.NewService(q))
 
 	cfg := leCfg()
@@ -1088,7 +995,7 @@ func TestDoctorService_Run_LERateLimit_FAIL(t *testing.T) {
 
 func TestDoctorService_Run_LERateLimit_SkipRateLimitCheck_Config(t *testing.T) {
 	q := &fakeCTQuerier{records: leRecords(5)} // Would be FAIL if checked.
-	svc := ops.NewDoctorService(noContainersCompose(), &fakePortChecker{}, reachableHealthChecker()).
+	svc := ops.NewDoctorService(noContainersCompose(), &fakePortChecker{}).
 		WithLERateLimitService(apptlspreflight.NewService(q))
 
 	cfg := leCfg()
@@ -1112,7 +1019,7 @@ func TestDoctorService_Run_LERateLimit_SkipRateLimitCheck_Config(t *testing.T) {
 
 func TestDoctorService_Run_LERateLimit_SkipFlag(t *testing.T) {
 	q := &fakeCTQuerier{records: leRecords(5)} // Would be FAIL if checked.
-	svc := ops.NewDoctorService(noContainersCompose(), &fakePortChecker{}, reachableHealthChecker()).
+	svc := ops.NewDoctorService(noContainersCompose(), &fakePortChecker{}).
 		WithLERateLimitService(apptlspreflight.NewService(q))
 
 	cfg := leCfg()
@@ -1136,7 +1043,7 @@ func TestDoctorService_Run_LERateLimit_SkipFlag(t *testing.T) {
 
 func TestDoctorService_Run_LERateLimit_NonLEProvider_Skipped(t *testing.T) {
 	q := &fakeCTQuerier{records: leRecords(5)} // Would be FAIL if checked.
-	svc := ops.NewDoctorService(noContainersCompose(), &fakePortChecker{}, reachableHealthChecker()).
+	svc := ops.NewDoctorService(noContainersCompose(), &fakePortChecker{}).
 		WithLERateLimitService(apptlspreflight.NewService(q))
 
 	cfg := doctorConfig()
@@ -1162,7 +1069,7 @@ func TestDoctorService_Run_LERateLimit_NonLEProvider_Skipped(t *testing.T) {
 
 func TestDoctorService_Run_LERateLimit_ACMECASet_Skipped(t *testing.T) {
 	q := &fakeCTQuerier{records: leRecords(5)} // Would be FAIL if checked.
-	svc := ops.NewDoctorService(noContainersCompose(), &fakePortChecker{}, reachableHealthChecker()).
+	svc := ops.NewDoctorService(noContainersCompose(), &fakePortChecker{}).
 		WithLERateLimitService(apptlspreflight.NewService(q))
 
 	cfg := leCfg()
@@ -1186,7 +1093,7 @@ func TestDoctorService_Run_LERateLimit_ACMECASet_Skipped(t *testing.T) {
 
 func TestDoctorService_Run_LERateLimit_NoDomainsInOpts_Skipped(t *testing.T) {
 	q := &fakeCTQuerier{records: leRecords(5)} // Would be FAIL if checked.
-	svc := ops.NewDoctorService(noContainersCompose(), &fakePortChecker{}, reachableHealthChecker()).
+	svc := ops.NewDoctorService(noContainersCompose(), &fakePortChecker{}).
 		WithLERateLimitService(apptlspreflight.NewService(q))
 
 	cfg := leCfg()
@@ -1214,7 +1121,7 @@ func TestDoctorService_Run_LERateLimit_NoDomainsInOpts_Skipped(t *testing.T) {
 // satisfies the ADR-090 error-cases contract for un-normalisable domains.
 func TestDoctorService_Run_LERateLimit_SingleLabelDomain_WARN(t *testing.T) {
 	q := &fakeCTQuerier{records: leRecords(0)} // should never be called
-	svc := ops.NewDoctorService(noContainersCompose(), &fakePortChecker{}, reachableHealthChecker()).
+	svc := ops.NewDoctorService(noContainersCompose(), &fakePortChecker{}).
 		WithLERateLimitService(apptlspreflight.NewService(q))
 
 	cfg := leCfg()
@@ -1246,7 +1153,7 @@ func TestDoctorService_Run_LERateLimit_SingleLabelDomain_WARN(t *testing.T) {
 
 func TestDoctorService_Run_LERateLimit_NetworkError_WARN(t *testing.T) {
 	q := &fakeCTQuerier{err: domaintlspreflight.ErrCTUnavailable}
-	svc := ops.NewDoctorService(noContainersCompose(), &fakePortChecker{}, reachableHealthChecker()).
+	svc := ops.NewDoctorService(noContainersCompose(), &fakePortChecker{}).
 		WithLERateLimitService(apptlspreflight.NewService(q))
 
 	cfg := leCfg()
@@ -1270,7 +1177,7 @@ func TestDoctorService_Run_LERateLimit_NetworkError_WARN(t *testing.T) {
 
 func TestDoctorService_Run_LERateLimit_JSONOutput(t *testing.T) {
 	q := &fakeCTQuerier{records: leRecords(4)} // 4/5 → WARN
-	svc := ops.NewDoctorService(noContainersCompose(), &fakePortChecker{}, reachableHealthChecker()).
+	svc := ops.NewDoctorService(noContainersCompose(), &fakePortChecker{}).
 		WithLERateLimitService(apptlspreflight.NewService(q))
 
 	cfg := leCfg()

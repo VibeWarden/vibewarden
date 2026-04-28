@@ -80,7 +80,7 @@ func buildMCPToolDeps() mcp.ToolDeps {
 	compose := opsadapter.NewComposeAdapter()
 	portChecker := opsadapter.NewNetPortChecker()
 	ownerProbe := opsadapter.NewVibeWardenHealthProbe(nil)
-	doctorSvc := opsapp.NewDoctorService(compose, portChecker, healthChecker).
+	doctorSvc := opsapp.NewDoctorService(compose, portChecker).
 		WithPortOwnerProbe(ownerProbe).
 		WithTLSStateResolver(buildMCPTLSStateResolver())
 

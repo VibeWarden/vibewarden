@@ -52,7 +52,6 @@ func (c CheckResult) OK() bool { return c.Severity == SeverityOK }
 type DoctorService struct {
 	compose        ports.ComposeRunner
 	portChecker    ports.PortChecker
-	healthChecker  ports.HealthChecker
 	imageChecker   ports.DockerImageChecker
 	ownerProbe     ports.PortOwnerProbe
 	tlsState       ports.TLSStateResolver   // optional; nil falls back to handshake-on-demand
@@ -60,11 +59,10 @@ type DoctorService struct {
 }
 
 // NewDoctorService creates a new DoctorService.
-func NewDoctorService(compose ports.ComposeRunner, portChecker ports.PortChecker, healthChecker ports.HealthChecker) *DoctorService {
+func NewDoctorService(compose ports.ComposeRunner, portChecker ports.PortChecker) *DoctorService {
 	return &DoctorService{
-		compose:       compose,
-		portChecker:   portChecker,
-		healthChecker: healthChecker,
+		compose:     compose,
+		portChecker: portChecker,
 	}
 }
 
@@ -212,7 +210,6 @@ func (s *DoctorService) runChecks(ctx context.Context, cfg *config.Config, opts 
 	}
 
 	// --- Layer 2: Local Runtime ---
-	results = append(results, withSection(s.checkUpstreamReachable(ctx, cfg), sectionLocalRuntime))
 	results = append(results, withSection(s.checkTLSCertValid(ctx, cfg, proxyHost, proxyPort), sectionLocalRuntime))
 
 	// --- Dockerfile contract checks ---
@@ -385,46 +382,6 @@ func (s *DoctorService) checkContainerHealth(ctx context.Context, composePath st
 		Name:     "Container health",
 		Severity: SeverityOK,
 		Detail:   fmt.Sprintf("%d container(s) running", len(containers)),
-	}
-}
-
-// checkUpstreamReachable verifies that the upstream application responds to
-// HTTP health checks. This uses the HealthChecker port already injected into
-// the service.
-func (s *DoctorService) checkUpstreamReachable(ctx context.Context, cfg *config.Config) CheckResult {
-	host := cfg.Upstream.Host
-	if host == "" {
-		host = "127.0.0.1"
-	}
-	port := cfg.Upstream.Port
-	if port == 0 {
-		port = 3000
-	}
-
-	url := fmt.Sprintf("http://%s:%d", host, port)
-
-	checkCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer cancel()
-
-	ok, statusCode, err := s.healthChecker.CheckHealth(checkCtx, url)
-	if err != nil {
-		return CheckResult{
-			Name:     "Upstream reachable",
-			Severity: SeverityWarn,
-			Detail:   fmt.Sprintf("%s — unreachable (app may not be started yet)", url),
-		}
-	}
-	if !ok {
-		return CheckResult{
-			Name:     "Upstream reachable",
-			Severity: SeverityWarn,
-			Detail:   fmt.Sprintf("%s — responded with HTTP %d", url, statusCode),
-		}
-	}
-	return CheckResult{
-		Name:     "Upstream reachable",
-		Severity: SeverityOK,
-		Detail:   fmt.Sprintf("%s — HTTP %d", url, statusCode),
 	}
 }
 

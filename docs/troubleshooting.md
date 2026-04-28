@@ -7,9 +7,10 @@ resolve the most common issues.
 
 ## `vibew doctor`
 
-`vibew doctor` is a first-aid command. It runs a series of independent diagnostics and
-prints a report so you can see exactly what is wrong before filing a bug or spending time
-searching logs.
+`vibew doctor` is a first-aid command. It validates static configuration and prints a
+report so you can see exactly what is wrong before filing a bug or spending time
+searching logs. For runtime upstream health, `curl https://<your-domain>/_vibewarden/health`
+after `vibew dev` is up — doctor only validates static config.
 
 ```bash
 vibew doctor
@@ -47,7 +48,6 @@ pre-flight scripts.
 
 | # | Check name | What it tests |
 |---|------------|---------------|
-| 9 | **Upstream reachable** | The configured upstream port is listening locally |
 | 10 | **TLS cert valid** | Performs a live TLS handshake against the sidecar, reads the leaf certificate from the handshake, and verifies it is not expired or expiring within 7 days. Reports WARN (`sidecar not reachable — start 'vibew dev'`) when the handshake fails, so the check no longer depends on a file-on-disk at a hardcoded path (ADR-084) |
 
 ### Severity levels
