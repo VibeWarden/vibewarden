@@ -3,6 +3,7 @@ package caddy
 import (
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -16,11 +17,13 @@ import (
 // server and verifies the HealthHandler renders the expected upstream state
 // transitions. No external dependencies — everything runs in-process.
 func TestHealthHandler_Integration(t *testing.T) {
-	// Track how the upstream should respond.
-	var returnOK = true
+	// returnOK is shared between the test goroutine (writer) and the httptest
+	// server handler goroutine (reader), so it must be accessed atomically.
+	var returnOK atomic.Bool
+	returnOK.Store(true)
 
 	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if returnOK {
+		if returnOK.Load() {
 			w.WriteHeader(http.StatusOK)
 		} else {
 			w.WriteHeader(http.StatusInternalServerError)
@@ -56,12 +59,12 @@ func TestHealthHandler_Integration(t *testing.T) {
 	assertUpstreamState(t, h, "ok", 2*time.Second)
 
 	// Now make the upstream fail.
-	returnOK = false
+	returnOK.Store(false)
 	// After 2 failures the state should flip to "failing".
 	assertUpstreamState(t, h, "failing", 2*time.Second)
 
 	// Bring the upstream back.
-	returnOK = true
+	returnOK.Store(true)
 	// After 2 successes the state should return to "ok".
 	assertUpstreamState(t, h, "ok", 2*time.Second)
 }
@@ -88,10 +91,6 @@ func assertUpstreamState(t *testing.T, h *HealthHandler, want string, timeout ti
 // serveHealthStr returns the components.upstream string from a handler response.
 func serveHealthStr(t *testing.T, h *HealthHandler) string {
 	t.Helper()
-	req := httptest.NewRequest(http.MethodGet, "/_vibewarden/health", nil)
-	w := httptest.NewRecorder()
-	_ = h.ServeHTTP(w, req, nil)
-
 	out := serveHealth(t, h)
 	comps, _ := out["components"].(map[string]any)
 	if comps == nil {

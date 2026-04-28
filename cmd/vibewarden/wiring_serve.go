@@ -149,8 +149,8 @@ func runServe(ctx context.Context, opts serveOptions, extraPlugins ...plugins.Pl
 			}); ok {
 				if c, ok2 := mp.Collector().(ports.MetricsCollectorWithUpstreamHealth); ok2 {
 					healthMetrics = c
+					break
 				}
-				break
 			}
 		}
 
