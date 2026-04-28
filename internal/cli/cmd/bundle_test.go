@@ -572,3 +572,68 @@ func TestBundle_Stdout_PrintsLiteralDeployCommands(t *testing.T) {
 		})
 	}
 }
+
+// TestBundle_Stdout_DomainFromProductionOverride is a regression test for #1215:
+// `vibew bundle` must substitute tls.domain from vibewarden.production.yaml
+// (the canonical place for letsencrypt domains via `vibew add tls --domain`)
+// into the README and stdout deploy block. Before the fix the substitution
+// only consulted the un-merged base config and rendered <your-domain> even
+// when production.yaml had a real domain.
+func TestBundle_Stdout_DomainFromProductionOverride(t *testing.T) {
+	base := t.TempDir()
+	projDir := filepath.Join(base, "prodproj")
+	if err := os.MkdirAll(projDir, 0o750); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	writeScaffoldingMarker(t, projDir)
+
+	baseYAML := "name: prodproj\nserver:\n  port: 8443\nupstream:\n  port: 3000\n"
+	if err := os.WriteFile(filepath.Join(projDir, "vibewarden.yaml"), []byte(baseYAML), 0o644); err != nil {
+		t.Fatalf("writing vibewarden.yaml: %v", err)
+	}
+
+	prodYAML := "tls:\n  domain: prod.example.com\n  provider: letsencrypt\n"
+	if err := os.WriteFile(filepath.Join(projDir, "vibewarden.production.yaml"), []byte(prodYAML), 0o644); err != nil {
+		t.Fatalf("writing vibewarden.production.yaml: %v", err)
+	}
+
+	origDir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(projDir); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(origDir) })
+
+	outDir := filepath.Join(projDir, "out")
+	root := cmd.NewRootCmd("test")
+	root.SetArgs([]string{"bundle", "--output", outDir, "--skip-image"})
+	var stdout bytes.Buffer
+	root.SetOut(&stdout)
+	root.SetErr(&stdout)
+	if err := root.Execute(); err != nil {
+		t.Fatalf("bundle: %v\nstdout:\n%s", err, stdout.String())
+	}
+
+	out := stdout.String()
+	if !strings.Contains(out, "https://prod.example.com/_vibewarden/health") {
+		t.Errorf("stdout missing substituted domain from production.yaml\nstdout:\n%s", out)
+	}
+	if strings.Contains(out, "<your-domain>") {
+		t.Errorf("stdout must not contain placeholder when production.yaml has tls.domain\nstdout:\n%s", out)
+	}
+
+	// README must also have the substituted domain.
+	readmeBytes, err := os.ReadFile(filepath.Join(outDir, "README.md"))
+	if err != nil {
+		t.Fatalf("read bundle README: %v", err)
+	}
+	readme := string(readmeBytes)
+	if !strings.Contains(readme, "curl -fsSL https://prod.example.com/_vibewarden/health") {
+		t.Errorf("bundle README missing substituted domain in fenced deploy block:\n%s", readme)
+	}
+	if strings.Contains(readme, "<your-domain>") {
+		t.Errorf("bundle README must not contain placeholder when production.yaml has tls.domain")
+	}
+}
