@@ -11,10 +11,6 @@ import (
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
 
-// caddyLocalIssuerCN aliases the canonical constant from the domain layer
-// so this file avoids an app → adapter import violation.
-const caddyLocalIssuerCN = tlsdomain.CaddyLocalIssuerCN
-
 // inlineHandshakeResolver is an app-layer fallback TLS state resolver.
 // It performs the same TLS handshake as the caddy adapter's
 // HandshakeResolver but lives here so internal/app/ops does not need to
@@ -74,7 +70,7 @@ func (r *inlineHandshakeResolver) Resolve(ctx context.Context) (tlsdomain.State,
 	}
 	leaf := certs[0]
 
-	if leaf.Issuer.CommonName == caddyLocalIssuerCN {
+	if tlsdomain.IsCaddyLocalIssuer(leaf.Issuer.CommonName) {
 		return tlsdomain.NewSelfSignedLocal(), nil
 	}
 

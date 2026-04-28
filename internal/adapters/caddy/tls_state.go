@@ -124,7 +124,7 @@ func (r *InProcessResolver) Resolve(ctx context.Context) (tlsdomain.State, error
 	// before the real ACME cert has been swapped in). No NotAfter
 	// inspection: the internal CA rotates leaves on a short TTL and we
 	// trust it to do so.
-	if leaf.Issuer.CommonName == caddyLocalIssuerCN {
+	if tlsdomain.IsCaddyLocalIssuer(leaf.Issuer.CommonName) {
 		return tlsdomain.NewSelfSignedLocal(), nil
 	}
 
