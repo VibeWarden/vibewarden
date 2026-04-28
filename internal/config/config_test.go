@@ -3224,29 +3224,21 @@ func TestComposeProjectName(t *testing.T) {
 	tests := []struct {
 		name        string
 		cfgName     string
-		appImage    string
 		projectRoot string
 		want        string
 	}{
-		{"directory name used when name and image empty", "", "", "/home/user/my-cool-app", "my-cool-app"},
-		{"directory name lowercased", "", "", "/home/user/MyCoolApp", "mycoolapp"},
-		{"directory name sanitized", "", "", "/home/user/My Cool App!", "my-cool-app"},
-		{"simple image name", "", "myapp:latest", "", "myapp"},
-		{"image without tag", "", "myapp", "", "myapp"},
-		{"registry prefix stripped", "", "ghcr.io/org/myapp:latest", "", "myapp"},
-		{"deep registry path stripped", "", "registry.example.com/org/team/myapp:v2", "", "myapp"},
-		{"image with only tag falls to directory", "", ":latest", "/home/user/webapp", "webapp"},
-		{"explicit name takes precedence over image", "my-project", "myapp:latest", "", "my-project"},
-		{"explicit name takes precedence over directory", "my-project", "", "/home/user/other", "my-project"},
-		{"explicit name used alone", "custom-name", "", "", "custom-name"},
-		{"fallback to vibewarden when all empty", "", "", "", "vibewarden"},
-		{"different directories produce different names", "", "", "/projects/app-a", "app-a"},
+		{"explicit name takes precedence over directory", "my-project", "/home/user/other", "my-project"},
+		{"explicit name used alone", "custom-name", "", "custom-name"},
+		{"directory name used when name empty", "", "/home/user/my-cool-app", "my-cool-app"},
+		{"directory name lowercased", "", "/home/user/MyCoolApp", "mycoolapp"},
+		{"directory name sanitized", "", "/home/user/My Cool App!", "my-cool-app"},
+		{"different directories produce different names", "", "/projects/app-a", "app-a"},
+		{"fallback to vibewarden when all empty", "", "", "vibewarden"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := &config.Config{Name: tt.cfgName}
-			cfg.App.Image = tt.appImage
 			cfg.ProjectRoot = tt.projectRoot
 			got := cfg.ComposeProjectName()
 			if got != tt.want {

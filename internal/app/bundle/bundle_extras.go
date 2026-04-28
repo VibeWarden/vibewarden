@@ -249,7 +249,7 @@ func renderDotEnv(imageTag string, templateKeys []string) string {
 }
 
 // renderBundleReadme produces the README.md shipped inside the bundle.
-// Output is stable for a given projectName and fits under 60 lines.
+// Output is stable for a given projectName and fits under 70 lines.
 // The Deploy section describes the deploy contract as pure instruction —
 // no shell snippets, no scp/ssh/docker command literals — per
 // CLAUDE.md §Artifact policy. The skipImage parameter is accepted for
@@ -269,6 +269,8 @@ func renderBundleReadme(projectName string, _ bool) string {
 		"Two things easy to get wrong: the remote directory must exist before you copy (create it on the host first), and the healthcheck port in production is **443** (TLS), not the dev port 8443.\n" +
 		"\n" +
 		"Image-load mode: if `image.tar` is present, load it into Docker on the host before starting the stack. Registry-pull mode (built with `--skip-image`): the compose file has `image:` set; pulling from the registry is optional if it is reachable at start time.\n" +
+		"\n" +
+		"**Upgrading from a previous deployment?** If your old stack ran under the project name `vibewarden-app`, run `docker compose -p vibewarden-app down` on the remote ONCE to remove orphan containers/networks before bringing up the new stack. The new stack uses your `app.name` for the project name.\n" +
 		"\n" +
 		"## What's in this bundle\n" +
 		"\n" +

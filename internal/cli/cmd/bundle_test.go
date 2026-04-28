@@ -353,10 +353,10 @@ func TestBundleCmd_DotEnvPreserved(t *testing.T) {
 	}
 }
 
-// TestRunBundle_ImageTagDerivation is the ADR-093 regression test.
-// It verifies that the image tag written into sample.env/.env matches
-// the project name derived by deriveProjectName for all three derivation paths:
-// explicit name:, app.image: strip, and cwd-basename fallback.
+// TestRunBundle_ImageTagDerivation verifies that the image tag written into
+// sample.env/.env matches the project name derived by deriveProjectName.
+// Since v0.19.0, the derivation chain is: name: → dirname → "vibewarden".
+// The App.Image derivation branch has been removed (#1199).
 func TestRunBundle_ImageTagDerivation(t *testing.T) {
 	tests := []struct {
 		name        string
@@ -371,10 +371,10 @@ func TestRunBundle_ImageTagDerivation(t *testing.T) {
 			wantImageIn: "VIBEWARDEN_APP_IMAGE=myapp-app:latest",
 		},
 		{
-			name:        "app.image: strip wins when name: unset",
+			name:        "dirname fallback when name: unset (app.image no longer used for project name)",
 			yaml:        "server:\n  port: 8080\nupstream:\n  port: 3000\napp:\n  image: ghcr.io/org/webapp:v2\n",
 			dirName:     "qr-dali",
-			wantImageIn: "VIBEWARDEN_APP_IMAGE=webapp-app:latest",
+			wantImageIn: "VIBEWARDEN_APP_IMAGE=qr-dali-app:latest",
 		},
 		{
 			name:        "cwd-basename fallback when name: and app.image: both unset",

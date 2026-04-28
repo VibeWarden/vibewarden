@@ -268,3 +268,61 @@ func TestInitProject_ProductionYAML_HasDeployTargetPlatform(t *testing.T) {
 		t.Errorf("vibewarden.production.yaml missing 'deploy:' block\n\nContent:\n%s", content)
 	}
 }
+
+// TestInitProject_NoNameFlag_DefaultsToDirname verifies that when opts.Name is
+// empty, vibewarden.yaml contains name: <ProjectName> (the directory basename).
+// Guard for #1199: init didn't populate name: without --name, causing
+// ComposeProjectName() to fall through to different values per environment.
+func TestInitProject_NoNameFlag_DefaultsToDirname(t *testing.T) {
+	r := mustBuildRealRenderer(t)
+	svc := scaffoldapp.NewInitProjectService(r, nil)
+
+	parent := scaffoldAppTestDir(t)
+	opts := scaffoldapp.InitProjectOptions{
+		ProjectName: "myapp",
+		Port:        3000,
+		// Name intentionally omitted — must default to ProjectName.
+	}
+
+	if err := svc.InitProject(context.Background(), parent, opts); err != nil {
+		t.Fatalf("InitProject() unexpected error: %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(parent, "myapp", "vibewarden.yaml"))
+	if err != nil {
+		t.Fatalf("reading vibewarden.yaml: %v", err)
+	}
+	content := string(data)
+
+	if !strings.Contains(content, `name: "myapp"`) {
+		t.Errorf("vibewarden.yaml missing 'name: \"myapp\"' (dirname default)\n\nContent:\n%s", content)
+	}
+}
+
+// TestInitProject_ExplicitName_OverridesDirname verifies that when opts.Name is
+// set explicitly, vibewarden.yaml contains that name, not the dirname.
+func TestInitProject_ExplicitName_OverridesDirname(t *testing.T) {
+	r := mustBuildRealRenderer(t)
+	svc := scaffoldapp.NewInitProjectService(r, nil)
+
+	parent := scaffoldAppTestDir(t)
+	opts := scaffoldapp.InitProjectOptions{
+		ProjectName: "myapp",
+		Port:        3000,
+		Name:        "custom-name",
+	}
+
+	if err := svc.InitProject(context.Background(), parent, opts); err != nil {
+		t.Fatalf("InitProject() unexpected error: %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(parent, "myapp", "vibewarden.yaml"))
+	if err != nil {
+		t.Fatalf("reading vibewarden.yaml: %v", err)
+	}
+	content := string(data)
+
+	if !strings.Contains(content, `name: "custom-name"`) {
+		t.Errorf("vibewarden.yaml missing 'name: \"custom-name\"'\n\nContent:\n%s", content)
+	}
+}

@@ -180,27 +180,15 @@ func sanitizeProjectName(name string) string {
 // under .vibewarden/generated/) and avoids stale image names like "generated-app".
 //
 // Derivation order:
-//  1. The explicit Name field (set via vibewarden.yaml name: or vibew init --name).
-//  2. App.Image with the tag stripped (e.g. "myapp:latest" -> "myapp").
-//  3. The project directory name (from ProjectRoot), lowercased and sanitized.
-//  4. "vibewarden" as a last-resort fallback (should not happen in practice).
+//  1. The explicit Name field (set via vibewarden.yaml name: or vibew init/wrap).
+//     Since vibew init and vibew wrap always populate name:, this branch fires
+//     for all projects created with v0.19.0+.
+//  2. The project directory name (from ProjectRoot), lowercased and sanitized.
+//     Defensive fallback for projects that pre-date the unconditional name: write.
+//  3. "vibewarden" as a last-resort fallback (should not happen in practice).
 func (c *Config) ComposeProjectName() string {
 	if c.Name != "" {
 		return c.Name
-	}
-	if c.App.Image != "" {
-		name := c.App.Image
-		// Strip registry prefix if present (e.g. "ghcr.io/org/myapp:latest" -> "myapp").
-		if idx := strings.LastIndex(name, "/"); idx >= 0 {
-			name = name[idx+1:]
-		}
-		// Strip tag (e.g. "myapp:latest" -> "myapp").
-		if idx := strings.Index(name, ":"); idx >= 0 {
-			name = name[:idx]
-		}
-		if name != "" {
-			return name
-		}
 	}
 	if c.ProjectRoot != "" {
 		if name := sanitizeProjectName(filepath.Base(c.ProjectRoot)); name != "" {

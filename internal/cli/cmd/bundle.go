@@ -171,6 +171,15 @@ func runBundle(cmd *cobra.Command, outputDir, imageTag, targetPlatform string, o
 	}
 	prodConfigPath := prodConfigPathForEnv(absConfig, "production")
 
+	// Populate ProjectRoot from the config file directory so that
+	// cfg.ComposeProjectName() can use the dirname fallback for legacy
+	// projects that do not yet have name: set in vibewarden.yaml.
+	// (Projects created or wrapped with v0.19.0+ always have name: written
+	// unconditionally, so this branch only fires for pre-v0.19.0 configs.)
+	if cfg.ProjectRoot == "" {
+		cfg.ProjectRoot = filepath.Dir(absConfig)
+	}
+
 	// Strict schema check — unknown keys in either file abort before we
 	// write anything. This is the #1053 regression guard for bundle.
 	if _, err := config.LoadStrict(absConfig, prodConfigPath); err != nil {

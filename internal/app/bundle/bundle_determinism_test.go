@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"reflect"
 	"sort"
+	"strings"
 	"testing"
 
 	credentialsadapter "github.com/vibewarden/vibewarden/internal/adapters/credentials"
@@ -192,4 +193,57 @@ func pruneSet(in []string, ignore map[string]bool) []string {
 	}
 	sort.Strings(out)
 	return out
+}
+
+// TestBundle_ComposeProjectName_MatchesAppName verifies that the bundled
+// docker-compose.yml carries a top-level name: field equal to cfg.Name.
+// Guard for #1199: the bundle and dev environments must use the same project
+// name so that `docker ps | grep <app>` returns the same containers in both.
+func TestBundle_ComposeProjectName_MatchesAppName(t *testing.T) {
+	projectDir := t.TempDir()
+	baseYAML := `name: "myapp"
+server:
+  port: 8443
+upstream:
+  host: "0.0.0.0"
+  port: 3000
+app:
+  image: "myapp:latest"
+`
+	basePath := filepath.Join(projectDir, "vibewarden.yaml")
+	if err := os.WriteFile(basePath, []byte(baseYAML), 0o600); err != nil {
+		t.Fatalf("writing base config: %v", err)
+	}
+
+	renderer := templateadapter.NewRenderer(configtemplates.FS)
+	gen := generateapp.NewServiceWithCredentials(
+		renderer,
+		credentialsadapter.NewGenerator(),
+		credentialsadapter.NewStore(),
+	).WithConfigSourcePath(basePath)
+	svc := bundleapp.NewService(&fakeExecutor{}, gen)
+
+	outDir := t.TempDir()
+	err := svc.Bundle(context.Background(), bundleapp.BundleOptions{
+		ConfigPath:  basePath,
+		ProjectName: "myapp",
+		SkipImage:   true,
+		OutputDir:   outDir,
+	})
+	if err != nil {
+		t.Fatalf("Bundle() error = %v", err)
+	}
+
+	composePath := filepath.Join(outDir, "docker-compose.yml")
+	data, err := os.ReadFile(composePath) //nolint:gosec // test dir
+	if err != nil {
+		t.Fatalf("reading docker-compose.yml: %v", err)
+	}
+	content := string(data)
+
+	// The top-level name: field must equal the cfg.Name value, not
+	// a legacy fallback like "vibewarden-app".
+	if !strings.Contains(content, "name: myapp") {
+		t.Errorf("docker-compose.yml missing 'name: myapp'; got:\n%s", content)
+	}
 }

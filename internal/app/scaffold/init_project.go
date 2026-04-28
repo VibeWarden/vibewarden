@@ -82,6 +82,12 @@ func (s *InitProjectService) InitProject(ctx context.Context, parentDir string, 
 		opts.Port = 3000
 	}
 
+	// Default Name to ProjectName (dirname) so vibewarden.yaml always carries
+	// a top-level name: field. The --name flag overrides this at call time.
+	if opts.Name == "" {
+		opts.Name = opts.ProjectName
+	}
+
 	projectDir := filepath.Join(filepath.Clean(parentDir), opts.ProjectName)
 
 	// Safety check: refuse to scaffold inside an existing populated git repo

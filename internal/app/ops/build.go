@@ -142,24 +142,31 @@ func (s *BuildService) probeShell(ctx context.Context, image string, out io.Writ
 // use the same tag without re-running the derivation chain.
 //
 // Priority:
-//  1. cfg.ComposeProjectName() + "-app:latest" when cfg is non-nil and has a
-//     project name or image. This matches Docker Compose's naming convention.
+//  1. cfg.ComposeProjectName() + "-app:latest" when cfg is non-nil and
+//     ComposeProjectName() returns a non-fallback value. cfg.ProjectRoot is
+//     populated from workDir when not already set so that the dirname fallback
+//     in ComposeProjectName() fires for legacy projects without name:.
 //  2. Base name of workDir (directory name), normalised to lower-case with
 //     "-app:latest" appended.
 func resolveImageTag(cfg *config.Config, workDir string) (string, error) {
+	abs, err := filepath.Abs(workDir)
+	if err != nil {
+		return "", fmt.Errorf("resolving work directory: %w", err)
+	}
+
 	if cfg != nil {
+		// Populate ProjectRoot from workDir so that cfg.ComposeProjectName()
+		// can use the dirname fallback for projects without name: set.
+		if cfg.ProjectRoot == "" {
+			cfg.ProjectRoot = abs
+		}
 		name := cfg.ComposeProjectName()
 		if name != "" && name != "vibewarden" {
 			return name + "-app:latest", nil
 		}
-		// When ComposeProjectName() returns "vibewarden" (the last-resort fallback),
-		// all three sources (name, image, and project directory) are empty. Fall
-		// through to workDir-based derivation.
-	}
-
-	abs, err := filepath.Abs(workDir)
-	if err != nil {
-		return "", fmt.Errorf("resolving work directory: %w", err)
+		// When ComposeProjectName() returns "vibewarden" (the last-resort
+		// fallback), ProjectRoot-based derivation also failed. Fall through to
+		// workDir-based derivation.
 	}
 
 	name := strings.ToLower(filepath.Base(abs))

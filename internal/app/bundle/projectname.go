@@ -7,35 +7,20 @@ import (
 )
 
 // DeriveProjectName returns the project name for use in Docker image tags and
-// bundle directory naming. It mirrors the derivation chain used by vibew bundle
-// and is the single source of truth shared by both the bundle command and the
-// validate checks.
+// bundle directory naming. It is a thin sanitising wrapper around
+// cfg.ComposeProjectName(), which is the canonical resolver since ADR-093.
 //
-// Derivation order:
-//  1. cfg.Name, sanitised.
-//  2. cfg.App.Image, stripped of tag and registry prefix, sanitised.
-//  3. ProjectNameFromConfig(absConfigPath) fallback, sanitised.
+// cfg.ComposeProjectName() already applies the full derivation chain:
+//  1. cfg.Name (always populated by vibew init / vibew wrap since v0.19.0).
+//  2. filepath.Base(cfg.ProjectRoot), sanitized — defensive fallback for
+//     projects that pre-date the unconditional name: write.
+//  3. "vibewarden" as a last-resort.
 //
-// Every candidate is run through SanitiseProjectName so that downstream path
-// and README interpolations cannot be affected by special characters in a
-// crafted vibewarden.yaml (ADR-085 §7).
-func DeriveProjectName(cfg *config.Config, absConfigPath string) string {
-	if name := SanitiseProjectName(cfg.Name); name != "" {
-		return name
-	}
-	if cfg.App.Image != "" {
-		image := cfg.App.Image
-		if idx := strings.LastIndex(image, ":"); idx > 0 {
-			image = image[:idx]
-		}
-		if idx := strings.LastIndex(image, "/"); idx >= 0 {
-			image = image[idx+1:]
-		}
-		if name := SanitiseProjectName(image); name != "" {
-			return name
-		}
-	}
-	return SanitiseProjectName(ProjectNameFromConfig(absConfigPath))
+// SanitiseProjectName is applied on top to strip shell-unsafe characters and
+// protect README.md / path interpolations from crafted vibewarden.yaml inputs
+// (ADR-085 §7, #1061).
+func DeriveProjectName(cfg *config.Config, _ string) string {
+	return SanitiseProjectName(cfg.ComposeProjectName())
 }
 
 // SanitiseProjectName strips any byte outside the shell-safe subset

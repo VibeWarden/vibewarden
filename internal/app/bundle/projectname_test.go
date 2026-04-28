@@ -1,8 +1,6 @@
 package bundle_test
 
 import (
-	"os"
-	"path/filepath"
 	"testing"
 
 	bundleapp "github.com/vibewarden/vibewarden/internal/app/bundle"
@@ -36,70 +34,82 @@ func TestSanitiseProjectName(t *testing.T) {
 }
 
 func TestDeriveProjectName(t *testing.T) {
-	dir := t.TempDir()
-	configPath := filepath.Join(dir, "myproject", "vibewarden.yaml")
-	if err := os.MkdirAll(filepath.Dir(configPath), 0o755); err != nil {
-		t.Fatalf("MkdirAll: %v", err)
-	}
-	if err := os.WriteFile(configPath, []byte("server:\n  port: 8443\n"), 0o600); err != nil {
-		t.Fatalf("WriteFile: %v", err)
-	}
-
 	tests := []struct {
-		name       string
-		cfgName    string
-		appImage   string
-		configPath string
-		want       string
+		name        string
+		cfgName     string
+		projectRoot string
+		want        string
 	}{
 		{
-			name:       "explicit name takes precedence",
-			cfgName:    "myapp",
-			appImage:   "otherapp:latest",
-			configPath: configPath,
-			want:       "myapp",
+			name:        "explicit name takes precedence",
+			cfgName:     "myapp",
+			projectRoot: "/home/user/other",
+			want:        "myapp",
 		},
 		{
-			name:       "app.image used when name is empty",
-			cfgName:    "",
-			appImage:   "ghcr.io/org/webapp:v1.0",
-			configPath: configPath,
-			want:       "webapp",
+			name:        "dirname fallback when name is empty",
+			cfgName:     "",
+			projectRoot: "/home/user/myproject",
+			want:        "myproject",
 		},
 		{
-			name:       "directory basename fallback",
-			cfgName:    "",
-			appImage:   "",
-			configPath: configPath,
-			want:       "myproject",
+			name:        "adversarial name is sanitised",
+			cfgName:     `myproject" && rm -rf /`,
+			projectRoot: "",
+			want:        "myprojectrm-rf",
 		},
 		{
-			name:       "adversarial name is sanitised",
-			cfgName:    `myproject" && rm -rf /`,
-			appImage:   "",
-			configPath: configPath,
-			want:       "myprojectrm-rf",
-		},
-		{
-			name:       "image tag stripped",
-			cfgName:    "",
-			appImage:   "myapp:latest",
-			configPath: configPath,
-			want:       "myapp",
+			// sanitizeProjectName (config layer) lowercases and replaces
+			// non-alnum with hyphens; SanitiseProjectName (bundle layer)
+			// then strips hyphens if they are the only chars, but preserves
+			// alnum and underscores. "My Cool App!" → "my-cool-app" via
+			// sanitizeProjectName → "my-cool-app" via SanitiseProjectName.
+			name:        "dirname sanitised",
+			cfgName:     "",
+			projectRoot: "/home/user/My Cool App!",
+			want:        "my-cool-app",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := &config.Config{
-				Name: tt.cfgName,
-				App: config.AppConfig{
-					Image: tt.appImage,
-				},
+				Name:        tt.cfgName,
+				ProjectRoot: tt.projectRoot,
 			}
-			got := bundleapp.DeriveProjectName(cfg, tt.configPath)
+			got := bundleapp.DeriveProjectName(cfg, "")
 			if got != tt.want {
 				t.Errorf("DeriveProjectName() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+// TestDeriveProjectName_MatchesComposeProjectName verifies that DeriveProjectName
+// returns the same value as SanitiseProjectName(cfg.ComposeProjectName()) for
+// all inputs — the two resolvers must be byte-equal (ADR-093, #1199).
+func TestDeriveProjectName_MatchesComposeProjectName(t *testing.T) {
+	tests := []struct {
+		name        string
+		cfgName     string
+		projectRoot string
+	}{
+		{"name set", "myapp", "/home/user/other"},
+		{"name empty, root set", "", "/home/user/myproject"},
+		{"both empty", "", ""},
+		{"adversarial name", `foo" && rm -rf /`, ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := &config.Config{
+				Name:        tt.cfgName,
+				ProjectRoot: tt.projectRoot,
+			}
+			got := bundleapp.DeriveProjectName(cfg, "")
+			want := bundleapp.SanitiseProjectName(cfg.ComposeProjectName())
+			if got != want {
+				t.Errorf("DeriveProjectName() = %q, want SanitiseProjectName(ComposeProjectName()) = %q", got, want)
 			}
 		})
 	}
