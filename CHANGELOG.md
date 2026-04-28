@@ -14,6 +14,7 @@ This initial entry was written by hand to summarise the work leading up to v0.1.
 
 ### Fixed
 
+- **`vibew status` annotates self-signed dev cert** (#1181). Self-signed dev certs (~12-hour TTL, auto-rotated by Caddy) used to render as `TLS: obtained (expires in 0 days)   OK` — technically correct (rotation happens) but visually alarming. The classifier now returns `KindSelfSignedLocal` whenever the cert was issued by the local CA regardless of `tls.provider` config, so the existing dev annotation from #1143 / ADR-095 fires correctly.
 - **`vibew obs up` success message lists all UIs** (#1186). Previously printed only Grafana + Prometheus URLs; now also lists Loki (`/ready`) and Jaeger. Ports come from `observability.*_port` config keys (Jaeger is hardcoded — Jaeger port is not yet a config key).
 
 ---

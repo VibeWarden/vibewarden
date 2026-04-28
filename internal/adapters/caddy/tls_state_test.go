@@ -97,10 +97,20 @@ func TestInProcessResolver_Resolve(t *testing.T) {
 			wantKind: tlsdomain.KindExpiringSoon,
 		},
 		{
-			name:     "self-signed with override issuer falls to expiry math",
+			name:     "self-signed with non-caddy issuer falls to expiry math",
 			cfg:      &config.Config{TLS: config.TLSConfig{Enabled: true, Provider: "self-signed"}},
 			provider: fakePeerCertProvider{leaf: makeLeaf("Not Caddy", expiryFar)},
 			wantKind: tlsdomain.KindObtained,
+		},
+		// Regression: dev cert served while provider is "letsencrypt" (e.g. vibew dev
+		// startup before ACME completes). Issuer CN is authoritative — provider gate
+		// must not short-circuit the check. NotAfter is in the past to confirm the
+		// old code would have returned KindExpiringSoon(0) here.
+		{
+			name:     "dev cert with letsencrypt provider and expired NotAfter → SelfSignedLocal",
+			cfg:      &config.Config{TLS: config.TLSConfig{Enabled: true, Provider: "letsencrypt"}},
+			provider: fakePeerCertProvider{leaf: makeLeaf(caddyLocalIssuerCN, fixedNow.Add(-1*time.Hour))},
+			wantKind: tlsdomain.KindSelfSignedLocal,
 		},
 	}
 

@@ -22,8 +22,9 @@ func TestRenderTLSStatusLine(t *testing.T) {
 		{"obtained", tlsdomain.NewObtained(expires), "obtained (expires 2026-07-21)", StatusOK},
 		// KindExpiringSoon must be StatusOK — near-expiry is an annotation, not a failure (ADR-095).
 		{"expiring soon", tlsdomain.NewExpiringSoon(3, expires), "obtained (expires in 3 days)", StatusOK},
-		// Self-signed case: verify no expiry alarm even with 0 days (would fire in old code).
-		{"expiring soon 0 days", tlsdomain.NewExpiringSoon(0, expires), "obtained (expires in 0 days)", StatusOK},
+		// Real CA cert at 0 days remaining — numeric countdown is shown; this is not a dev cert.
+		// A dev cert would carry KindSelfSignedLocal (issuer CN check) and never reach this branch.
+		{"expiring soon 0 days non-dev", tlsdomain.NewExpiringSoon(0, expires), "obtained (expires in 0 days)", StatusOK},
 		{"failing with error", tlsdomain.NewFailing("connection refused"), "failing (last error: connection refused)", StatusFAIL},
 		{"failing empty error", tlsdomain.NewFailing(""), "failing", StatusFAIL},
 		{"unknown", tlsdomain.NewUnknown(), "state unavailable — start 'vibew dev'", StatusOK},
