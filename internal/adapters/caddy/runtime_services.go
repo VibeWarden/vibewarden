@@ -35,6 +35,15 @@ type RuntimeServices struct {
 	// CircuitBreakerFactory creates per-handler circuit breaker instances.
 	// Required by CircuitBreakerHandler — ProvisionWith returns an error when nil.
 	CircuitBreakerFactory ports.CircuitBreakerFactory
+
+	// UpstreamHealthChecker is the cached upstream background probe. May be nil
+	// when the probe is disabled — the health handler renders
+	// "upstream":"unknown" in that case and degrades the outer status.
+	UpstreamHealthChecker ports.UpstreamHealthChecker
+
+	// SidecarVersion is the running binary version string, used by the health
+	// handler to render the "version" field without a separate plumbing path.
+	SidecarVersion string
 }
 
 // runtimeServicesRegistry is the package-scope atomic pointer. It is written

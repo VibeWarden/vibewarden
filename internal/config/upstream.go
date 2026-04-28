@@ -17,7 +17,7 @@ type UpstreamConfig struct {
 
 // UpstreamHealthConfig holds settings for the active upstream health checker.
 type UpstreamHealthConfig struct {
-	// Enabled toggles the background health checker (default: false).
+	// Enabled toggles the background health checker (default: true since v0.18.2).
 	Enabled bool `mapstructure:"enabled"`
 
 	// Path is the HTTP path probed on the upstream (default: "/health").
@@ -25,11 +25,11 @@ type UpstreamHealthConfig struct {
 	Path string `mapstructure:"path"`
 
 	// Interval is the time between consecutive probes, as a duration string
-	// (e.g. "10s", "1m"). Default: "10s".
+	// (e.g. "5s", "1m"). Default: "5s".
 	Interval string `mapstructure:"interval"`
 
 	// Timeout is the maximum time to wait for a probe response, as a duration
-	// string (e.g. "5s"). Default: "5s".
+	// string (e.g. "2s"). Default: "2s".
 	Timeout string `mapstructure:"timeout"`
 
 	// UnhealthyThreshold is the number of consecutive failures required to

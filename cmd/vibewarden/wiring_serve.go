@@ -11,10 +11,12 @@ import (
 
 	caddyadapter "github.com/vibewarden/vibewarden/internal/adapters/caddy"
 	fsnotifyadapter "github.com/vibewarden/vibewarden/internal/adapters/fsnotify"
+	healthadapter "github.com/vibewarden/vibewarden/internal/adapters/health"
 	httpadapter "github.com/vibewarden/vibewarden/internal/adapters/http"
 	logadapter "github.com/vibewarden/vibewarden/internal/adapters/log"
 	pgadapter "github.com/vibewarden/vibewarden/internal/adapters/postgres"
 	proposaladapter "github.com/vibewarden/vibewarden/internal/adapters/proposal"
+	healthapp "github.com/vibewarden/vibewarden/internal/app/health"
 	migratesvc "github.com/vibewarden/vibewarden/internal/app/migrate"
 	proposalapp "github.com/vibewarden/vibewarden/internal/app/proposal"
 	"github.com/vibewarden/vibewarden/internal/app/proxy"
@@ -132,11 +134,54 @@ func runServe(ctx context.Context, opts serveOptions, extraPlugins ...plugins.Pl
 	ringBuf := logadapter.NewRingBuffer(logadapter.DefaultRingBufferCapacity)
 	eventLogger := buildEventLogger(registry, logger, ringBuf)
 
+	// Build and start the upstream health probe (if enabled). The checker is
+	// constructed before SetRuntimeServices so that it is available to the Caddy
+	// HealthHandler at Provision time. See ADR-098.
+	var healthChecker ports.UpstreamHealthChecker
+	domainHealthCfg, probeEnabled := healthapp.BuildDomainConfig(cfg.Upstream.Health, logger)
+	if probeEnabled {
+		// Extract the MetricsCollectorWithUpstreamHealth from the metrics plugin
+		// when available. Pass nil otherwise — the checker degrades gracefully.
+		var healthMetrics ports.MetricsCollectorWithUpstreamHealth
+		for _, p := range registry.Plugins() {
+			if mp, ok := p.(interface {
+				Collector() ports.MetricsCollector
+			}); ok {
+				if c, ok2 := mp.Collector().(ports.MetricsCollectorWithUpstreamHealth); ok2 {
+					healthMetrics = c
+				}
+				break
+			}
+		}
+
+		checker, err := healthadapter.NewHTTPChecker(healthadapter.Config{
+			UpstreamHost: cfg.Upstream.Host,
+			UpstreamPort: cfg.Upstream.Port,
+			DomainConfig: domainHealthCfg,
+		}, logger, eventLogger, healthMetrics)
+		if err != nil {
+			return fmt.Errorf("creating upstream health checker: %w", err)
+		}
+		if err := checker.Start(ctx); err != nil {
+			return fmt.Errorf("starting upstream health checker: %w", err)
+		}
+		healthChecker = checker
+
+		// Stop the checker during graceful shutdown within the 10-second budget.
+		defer func() {
+			stopCtx, stopCancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer stopCancel()
+			if stopErr := checker.Stop(stopCtx); stopErr != nil {
+				logger.Error("stopping upstream health checker", slog.String("error", stopErr.Error()))
+			}
+		}()
+	}
+
 	// Publish runtime services to the Caddy adapter's registry so that handler
 	// Provision calls receive the wired sinks instead of constructing their own.
 	// This must happen before adapter.Start (which triggers caddy.Load and
 	// therefore Provision). See ADR-092.
-	caddyadapter.SetRuntimeServices(buildRuntimeServices(logger, eventLogger, registry))
+	caddyadapter.SetRuntimeServices(buildRuntimeServices(logger, eventLogger, registry, healthChecker, opts.version))
 
 	// Wire the metrics collector into the TLS cert expiry monitor so that
 	// the vibewarden_tls_cert_expiry_seconds gauge is populated. This must

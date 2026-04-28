@@ -267,6 +267,36 @@ func TestLoad_Defaults(t *testing.T) {
 	}
 }
 
+// TestLoad_UpstreamHealthDefaults verifies the v0.18.2+ defaults for the
+// upstream health probe: enabled=true, interval=5s, timeout=2s.
+func TestLoad_UpstreamHealthDefaults(t *testing.T) {
+	cfg, err := config.Load("")
+	if err != nil {
+		t.Fatalf("Load() unexpected error: %v", err)
+	}
+
+	tests := []struct {
+		name string
+		got  interface{}
+		want interface{}
+	}{
+		{"upstream.health.enabled", cfg.Upstream.Health.Enabled, true},
+		{"upstream.health.path", cfg.Upstream.Health.Path, "/health"},
+		{"upstream.health.interval", cfg.Upstream.Health.Interval, "5s"},
+		{"upstream.health.timeout", cfg.Upstream.Health.Timeout, "2s"},
+		{"upstream.health.unhealthy_threshold", cfg.Upstream.Health.UnhealthyThreshold, 3},
+		{"upstream.health.healthy_threshold", cfg.Upstream.Health.HealthyThreshold, 2},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.got != tt.want {
+				t.Errorf("default %s = %v, want %v", tt.name, tt.got, tt.want)
+			}
+		})
+	}
+}
+
 func TestLoad_FromFile(t *testing.T) {
 	content := `
 server:

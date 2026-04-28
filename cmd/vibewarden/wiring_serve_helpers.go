@@ -429,12 +429,18 @@ func buildEventLogger(registry *plugins.Registry, logger *slog.Logger, ringBuf p
 // called after buildEventLogger so that the wired event logger (stdout + OTel
 // + ring buffer) is available.
 //
+// checker may be nil when the upstream health probe is disabled; the health
+// handler degrades gracefully by rendering "upstream":"unknown".
+// version is the binary version string injected at build time.
+//
 // The metrics plugin's collector is passed to the CircuitBreakerFactory when
 // present so that circuit breaker state transitions update the Prometheus gauge.
 func buildRuntimeServices(
 	logger *slog.Logger,
 	eventLogger ports.EventLogger,
 	registry *plugins.Registry,
+	checker ports.UpstreamHealthChecker,
+	version string,
 ) caddyadapter.RuntimeServices {
 	// Build the sidecar-level audit logger. Initial implementation writes JSON
 	// to stdout. Fan-out to OTel / PostgreSQL is a later, orthogonal task.
@@ -463,5 +469,7 @@ func buildRuntimeServices(
 		AuditEventLogger:      auditLogger,
 		RateLimiterFactory:    rlFactory,
 		CircuitBreakerFactory: cbFactory,
+		UpstreamHealthChecker: checker,
+		SidecarVersion:        version,
 	}
 }

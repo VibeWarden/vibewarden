@@ -119,23 +119,18 @@ func buildCatchAllHandlers(cfg *ports.ProxyConfig) ([]map[string]any, error) {
 	return handlers, nil
 }
 
-// buildHealthRoute builds the static health check route that always returns
-// {"status":"ok",...} with a 200 status code.
-func buildHealthRoute(version string) map[string]any {
-	healthBody := fmt.Sprintf(`{"status":"ok","version":%q,"components":{"sidecar":"ok","upstream":"unknown"}}`, version)
+// buildHealthRoute builds the Caddy route for /_vibewarden/health. The route
+// uses the vibewarden_health custom module, which reads the cached upstream
+// probe state from RuntimeServices and applies the worst-component-wins
+// aggregation at request time. The version and probe state are both sourced
+// from RuntimeServices — no baked-in values.
+func buildHealthRoute() map[string]any {
 	return map[string]any{
 		"match": []map[string]any{
 			{"path": []string{"/_vibewarden/health"}},
 		},
 		"handle": []map[string]any{
-			{
-				"handler": "static_response",
-				"headers": map[string][]string{
-					"Content-Type": {"application/json"},
-				},
-				"body":        healthBody,
-				"status_code": 200,
-			},
+			{"handler": "vibewarden_health"},
 		},
 	}
 }
@@ -143,7 +138,7 @@ func buildHealthRoute(version string) map[string]any {
 // buildRoutes assembles the full ordered route list:
 // health → ready → metrics → kratos-flow → me → admin → docs → extra routes → catch-all.
 func buildRoutes(cfg *ports.ProxyConfig, handlers []map[string]any) []map[string]any {
-	healthRoute := buildHealthRoute(cfg.Version)
+	healthRoute := buildHealthRoute()
 
 	var readyRoute map[string]any
 	if cfg.Readiness.Enabled && cfg.Readiness.InternalAddr != "" {

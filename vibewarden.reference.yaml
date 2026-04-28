@@ -130,6 +130,33 @@ upstream:
   # Port of your application
   port: 3000
 
+  # Active upstream health probe — drives the /_vibewarden/health endpoint.
+  # The sidecar probes the upstream over HTTP and caches the result; every
+  # request to /_vibewarden/health reads the cached state (no extra I/O on
+  # the request path). See ADR-098.
+  health:
+    # Enable the background upstream health probe. Default: true (since v0.18.2).
+    # When false, /_vibewarden/health reports "upstream":"unknown" and logs a
+    # Warn at boot so the operator is aware. Set to false only if your upstream
+    # has no health endpoint.
+    enabled: true
+
+    # Path probed on the upstream (must return 2xx to be considered healthy).
+    # Default: "/health"
+    path: "/health"
+
+    # How often to probe the upstream. Default: "5s"
+    interval: "5s"
+
+    # Maximum time to wait for a single probe response. Default: "2s"
+    timeout: "2s"
+
+    # Consecutive failures required to transition Healthy → Unhealthy. Default: 3
+    unhealthy_threshold: 3
+
+    # Consecutive successes required to transition Unhealthy → Healthy. Default: 2
+    healthy_threshold: 2
+
 # Application container configuration
 #
 # Controls how the app runs inside Docker Compose. `vibew build` builds

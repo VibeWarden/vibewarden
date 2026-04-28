@@ -1159,27 +1159,24 @@ func TestBuildCaddyConfig_ReverseProxyUpstream(t *testing.T) {
 
 func TestBuildCaddyConfig_HealthRoute(t *testing.T) {
 	tests := []struct {
-		name        string
-		cfg         *ports.ProxyConfig
-		wantVersion string
+		name string
+		cfg  *ports.ProxyConfig
 	}{
 		{
-			name: "health route uses version from config",
+			name: "health route uses vibewarden_health module",
 			cfg: &ports.ProxyConfig{
 				ListenAddr:   "127.0.0.1:8080",
 				UpstreamAddr: "127.0.0.1:3000",
 				Version:      "v1.2.3",
 			},
-			wantVersion: "v1.2.3",
 		},
 		{
-			name: "health route with empty version",
+			name: "health route with empty version still uses vibewarden_health module",
 			cfg: &ports.ProxyConfig{
 				ListenAddr:   "127.0.0.1:8080",
 				UpstreamAddr: "127.0.0.1:3000",
 				Version:      "",
 			},
-			wantVersion: "",
 		},
 	}
 
@@ -1219,16 +1216,17 @@ func TestBuildCaddyConfig_HealthRoute(t *testing.T) {
 				t.Fatal("handle not found in health route")
 			}
 
-			if handlers[0]["handler"] != "static_response" {
-				t.Errorf("health handler type = %v, want 'static_response'", handlers[0]["handler"])
+			// The health route must use the vibewarden_health module, not a
+			// static_response. The module reads the cached probe from
+			// RuntimeServices at request time — no baked-in "upstream":"unknown".
+			if handlers[0]["handler"] != "vibewarden_health" {
+				t.Errorf("health handler type = %v, want 'vibewarden_health'", handlers[0]["handler"])
 			}
 
-			body, ok := handlers[0]["body"].(string)
-			if !ok {
-				t.Fatal("body not found in health route handler")
-			}
-			if tt.wantVersion != "" && body == "" {
-				t.Error("expected non-empty body in health route handler")
+			// Contract test: the produced JSON must NOT contain a hardcoded
+			// upstream:unknown value anywhere. This locks the original bug closed.
+			if _, hasBody := handlers[0]["body"]; hasBody {
+				t.Error("health route handler must not contain a hardcoded body field")
 			}
 		})
 	}
