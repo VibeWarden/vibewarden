@@ -36,6 +36,11 @@ vibew prompt-template --deploy --name <your-project> --describe "<your descripti
 rather than rendering a `<your-domain>` placeholder — the agent needs a real
 domain to configure TLS.
 
+The deploy flavor includes an architecture mismatch note in Step 6: if building
+on Apple Silicon (linux/arm64) for an amd64 VPS, the agent must run
+`vibew build --platform linux/amd64` before `vibew bundle`. `vibew bundle`
+hard-fails (exit 1) on arch mismatch. This matches the behavior added in #1200.
+
 The output is stdout-only, pipeable directly into a chat box:
 
 ```

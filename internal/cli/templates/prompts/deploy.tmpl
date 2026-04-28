@@ -44,6 +44,18 @@ When your application is ready to deploy:
 
 This produces a self-contained deploy artifact under .vibewarden/bundle/.
 
+IMPORTANT — architecture mismatch (Apple Silicon / ARM64 hosts):
+If you are building on Apple Silicon (linux/arm64) and deploying to a standard
+amd64 VPS, run this instead:
+
+  vibew build --platform linux/amd64
+  vibew bundle
+
+vibew bundle hard-fails (exit 1) if the image arch does not match the deploy
+target (default linux/amd64). The error message prints the exact rebuild command.
+Override the target via --target-platform or deploy.target_platform in
+vibewarden.production.yaml.
+
 ## Step 7 — Deploy to your server
 
 # NOTE: this is the canonical deploy recipe from the bundle README contract.
@@ -57,4 +69,7 @@ This produces a self-contained deploy artifact under .vibewarden/bundle/.
 
   curl -fsSL https://{{.Domain}}/_vibewarden/health
 
-A 200 response confirms TLS, the sidecar, and your app are all healthy.
+Expected: HTTP 200 with JSON body containing `"status":"ok"` and
+`"components":{"upstream":"ok"}`. If `components.upstream` is `"unknown"`,
+the first health probe has not yet completed — wait 10 seconds and retry.
+If it is `"failing"`, the upstream container is not accepting connections.

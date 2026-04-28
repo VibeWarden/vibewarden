@@ -1823,7 +1823,16 @@ rate-limiting, or security logic — VibeWarden handles those at the sidecar lay
 The sidecar starts on localhost. Your app is proxied through it automatically.
 ```
 
---deploy adds Steps 6–8 (vibew bundle, scp + ssh + docker load + docker compose up -d,
-and curl healthcheck). --domain is required when --deploy is set.
+--deploy adds Steps 6–8:
+- Step 6: vibew bundle (with arch mismatch guard — see note below)
+- Step 7: scp + ssh + docker load -i image.tar + docker compose up -d
+- Step 8: curl healthcheck expecting HTTP 200, `"status":"ok"`,
+  `"components":{"upstream":"ok"}`
+
+--domain is required when --deploy is set.
+
+Arch mismatch (Apple Silicon building for amd64 VPS): run
+`vibew build --platform linux/amd64` before `vibew bundle`. vibew bundle
+hard-fails (exit 1) on arch mismatch; the error prints the exact rebuild command.
 
 See docs/agent-kickoff.md for the full reference and deploy flavor sample.

@@ -316,6 +316,7 @@ add VibeWarden. Use `vibew add` to enable individual features after the initial 
 | `vibew context refresh` | Regenerate AI agent context files |
 | `vibew eject` | Export raw Caddy JSON for non-Docker deploys (Docker users want `vibew bundle`) |
 | `vibew mcp` | Start MCP server for AI agent integration |
+| `vibew prompt-template` | Print the canonical agent kickoff prompt to stdout. Flags: `--name`, `--describe`, `--deploy`, `--domain`. See `docs/agent-kickoff.md`. |
 
 ---
 

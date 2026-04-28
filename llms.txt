@@ -58,6 +58,14 @@ cd my-app && vibew wrap --upstream 3000 && vibew dev
   Example: `vibew doctor`
 - `vibew validate` — validate `vibewarden.yaml` against the config schema.
   Example: `vibew validate`
+- `vibew prompt-template` — print the canonical agent kickoff prompt to stdout.
+  Always matches the installed vibew version. Paste the output into a chat session
+  to start a new agent task correctly. Two flavors: default (dev loop only) and
+  `--deploy` (adds bundle + scp + ssh + healthcheck).
+  Examples:
+    `vibew prompt-template --name myapp --describe "todo list app"`
+    `vibew prompt-template --deploy --name myapp --describe "todo list app" --domain myapp.example.com`
+  See: docs/agent-kickoff.md and llms-full.txt § 21. Agent Kickoff Prompt.
 
 Full reference: https://vibewarden.dev/llms-full.txt
 
