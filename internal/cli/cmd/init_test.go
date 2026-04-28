@@ -777,6 +777,59 @@ func TestInitCmd_PrintsApplicationContractNextSteps(t *testing.T) {
 	}
 }
 
+// TestInitCmd_GeneratedAGENTSHasApplicationContract is an artifact test for #1213.
+// It verifies that vibew init writes an AGENTS-VIBEWARDEN.md whose body contains the
+// language-agnostic "## Application contract" section, not the older "## Required:
+// /health endpoint" heading. The previous heading slipped through #1202 because the
+// docs/examples reference was updated but the init template was not. This test
+// asserts the actual generated file (not just init's stdout success message).
+func TestInitCmd_GeneratedAGENTSHasApplicationContract(t *testing.T) {
+	parent := scaffoldTestDir(t, false)
+	projectDir := filepath.Join(parent, "contractgen")
+	if err := os.MkdirAll(projectDir, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+
+	origDir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(projectDir); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(origDir) })
+
+	root := cmd.NewRootCmd("test")
+	root.SetArgs([]string{"init"})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("init failed: %v", err)
+	}
+
+	body, err := os.ReadFile(filepath.Join(projectDir, "AGENTS-VIBEWARDEN.md"))
+	if err != nil {
+		t.Fatalf("read AGENTS-VIBEWARDEN.md: %v", err)
+	}
+	got := string(body)
+
+	if !strings.Contains(got, "## Application contract") {
+		t.Errorf("generated AGENTS-VIBEWARDEN.md missing '## Application contract' heading")
+	}
+	if strings.Contains(got, "## Required: /health endpoint") {
+		t.Errorf("generated AGENTS-VIBEWARDEN.md still has obsolete '## Required: /health endpoint' heading; should be replaced by '## Application contract'")
+	}
+	for _, want := range []string{
+		"language-agnostic",
+		"upstream.port",
+		"0.0.0.0",
+		"GET /health",
+		"vibew doctor",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("generated AGENTS-VIBEWARDEN.md missing %q in Application contract section", want)
+		}
+	}
+}
+
 // TestInitCmd_NoNameFlag_DefaultsToDirname verifies that when --name is not set,
 // vibewarden.yaml contains name: <dirname> (the directory basename). This ensures
 // ComposeProjectName() always resolves to a predictable value in both dev and

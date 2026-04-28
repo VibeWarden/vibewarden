@@ -21,12 +21,16 @@ The sidecar handles:
 
 App code focuses on **business logic only**.
 
-## Required: /health endpoint
+## Application contract
 
-Your app MUST expose `GET /health` returning HTTP 200. The sidecar waits for
-this endpoint to be healthy before starting. Without it, the sidecar container
-stays in "Created" state and never starts. If you used `vibew init`, this
-endpoint is already included.
+VibeWarden is language-agnostic — `vibew init` does not scaffold app code, a Dockerfile, or any starter source. You write the app; the sidecar wraps it. Whatever stack you use (Go, Node, Python, JVM, Rust, …), your app MUST satisfy this contract:
+
+- **Listen on TCP port `upstream.port`** (default `3000` in the generated `vibewarden.yaml`). Read it from the `PORT` env var if your framework supports it; otherwise hardcode the same port and keep `Dockerfile` `EXPOSE` and `vibewarden.yaml` `upstream.port` in sync.
+- **Bind to `0.0.0.0` inside the container** — never `127.0.0.1`/`localhost`. The sidecar dials your app over the Compose network from another container; loopback-only binds are unreachable.
+- **Serve `GET /health` returning HTTP 200** on that same port. Any response body is acceptable — vibew checks the status code only. Without this endpoint the sidecar container never leaves the "Created" state and `vibew dev` hangs.
+- **Do not implement TLS, auth, rate-limiting, WAF, or security headers in app code** — the sidecar owns all of those (see §Security boundary rule).
+
+`vibew doctor` validates this contract statically: `EXPOSE` vs `upstream.port` match, Dockerfile structure, and TLS state. Run it before `vibew dev` if you hit a connection-refused loop. For runtime upstream health, query `_vibewarden/health` after `vibew dev` is up.
 
 ## Sidecar-injected headers
 
