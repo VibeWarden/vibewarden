@@ -62,6 +62,109 @@ func TestObsService_Up_PrintsGrafanaAndPrometheusURLs(t *testing.T) {
 	}
 }
 
+func TestObsService_Up_PrintsAllFourURLs(t *testing.T) {
+	// Success message must include Grafana, Prometheus, Loki, and Jaeger URLs.
+	fc := &fakeCompose{}
+	svc := ops.NewObsService(fc, nil)
+	cfg := defaultConfig()
+	var buf bytes.Buffer
+
+	if err := svc.Up(context.Background(), cfg, ops.ObsUpOptions{}, &buf); err != nil {
+		t.Fatalf("Up() unexpected error: %v", err)
+	}
+
+	out := buf.String()
+	for _, want := range []string{
+		"localhost:3001",
+		"localhost:9090",
+		"localhost:3100/ready",
+		"localhost:16686",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("expected %q in output, got:\n%s", want, out)
+		}
+	}
+}
+
+func TestObsService_Up_PortsReflectConfig(t *testing.T) {
+	// When ports are set to non-default values, the success message must use
+	// the configured values — no hardcoded ports for Grafana, Prometheus, or Loki.
+	tests := []struct {
+		name           string
+		grafanaPort    int
+		prometheusPort int
+		lokiPort       int
+		wantLines      []string
+	}{
+		{
+			name:           "default ports",
+			grafanaPort:    3001,
+			prometheusPort: 9090,
+			lokiPort:       3100,
+			wantLines: []string{
+				"localhost:3001",
+				"localhost:9090",
+				"localhost:3100/ready",
+				"localhost:16686",
+			},
+		},
+		{
+			name:           "custom ports",
+			grafanaPort:    3002,
+			prometheusPort: 9091,
+			lokiPort:       3101,
+			wantLines: []string{
+				"localhost:3002",
+				"localhost:9091",
+				"localhost:3101/ready",
+				"localhost:16686",
+			},
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fc := &fakeCompose{}
+			svc := ops.NewObsService(fc, nil)
+			cfg := defaultConfig()
+			cfg.Observability.GrafanaPort = tt.grafanaPort
+			cfg.Observability.PrometheusPort = tt.prometheusPort
+			cfg.Observability.LokiPort = tt.lokiPort
+			var buf bytes.Buffer
+
+			if err := svc.Up(context.Background(), cfg, ops.ObsUpOptions{}, &buf); err != nil {
+				t.Fatalf("Up() unexpected error: %v", err)
+			}
+
+			out := buf.String()
+			for _, want := range tt.wantLines {
+				if !strings.Contains(out, want) {
+					t.Errorf("expected %q in output, got:\n%s", want, out)
+				}
+			}
+		})
+	}
+}
+
+func TestObsService_Up_DoesNotPrintPromtailOrOtelCollector(t *testing.T) {
+	// Promtail and otel-collector have no host-bound UI ports and must NOT
+	// appear in the success message.
+	fc := &fakeCompose{}
+	svc := ops.NewObsService(fc, nil)
+	cfg := defaultConfig()
+	var buf bytes.Buffer
+
+	if err := svc.Up(context.Background(), cfg, ops.ObsUpOptions{}, &buf); err != nil {
+		t.Fatalf("Up() unexpected error: %v", err)
+	}
+
+	out := buf.String()
+	for _, unwanted := range []string{"promtail", "otel-collector"} {
+		if strings.Contains(out, unwanted) {
+			t.Errorf("success message must not contain %q, got:\n%s", unwanted, out)
+		}
+	}
+}
+
 func TestObsService_Up_ComposeError_ReturnsError(t *testing.T) {
 	fc := &fakeCompose{upErr: errors.New("docker not running")}
 	svc := ops.NewObsService(fc, nil)

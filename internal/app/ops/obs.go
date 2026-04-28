@@ -113,8 +113,10 @@ func (s *ObsService) Up(ctx context.Context, cfg *config.Config, opts ObsUpOptio
 
 	fmt.Fprintln(out, "")
 	fmt.Fprintln(out, "Observability stack started.")
-	fmt.Fprintln(out, "Grafana:    http://localhost:3001")
-	fmt.Fprintln(out, "Prometheus: http://localhost:9090")
+	fmt.Fprintf(out, "Grafana:    http://localhost:%d\n", cfg.Observability.GrafanaPort)
+	fmt.Fprintf(out, "Prometheus: http://localhost:%d\n", cfg.Observability.PrometheusPort)
+	fmt.Fprintf(out, "Loki:       http://localhost:%d/ready\n", cfg.Observability.LokiPort)
+	fmt.Fprintln(out, "Jaeger:     http://localhost:16686")
 	fmt.Fprintln(out, "Stop:       vibew obs down")
 
 	return nil

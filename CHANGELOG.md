@@ -12,6 +12,10 @@ This initial entry was written by hand to summarise the work leading up to v0.1.
 
 ## [Unreleased]
 
+### Fixed
+
+- **`vibew obs up` success message lists all UIs** (#1186). Previously printed only Grafana + Prometheus URLs; now also lists Loki (`/ready`) and Jaeger. Ports come from `observability.*_port` config keys (Jaeger is hardcoded — Jaeger port is not yet a config key).
+
 ---
 
 ## [v0.18.0] — 2026-04-28
