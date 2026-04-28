@@ -98,6 +98,11 @@ func defaultConfig() *config.Config {
 		},
 		Telemetry: config.TelemetryConfig{Prometheus: config.PrometheusExporterConfig{Enabled: true}},
 		Kratos:    config.KratosConfig{PublicURL: "http://127.0.0.1:4433", AdminURL: "http://127.0.0.1:4434"},
+		Observability: config.ObservabilityConfig{
+			GrafanaPort:    3001,
+			PrometheusPort: 9090,
+			LokiPort:       3100,
+		},
 	}
 }
 
