@@ -379,8 +379,14 @@ vibew down -v --yes
 > **Informational footnote:** The underlying Docker Compose commands that
 > `vibew obs up` / `vibew obs down` invoke are:
 > ```bash
+> # obs up (profile activation is the correct mechanism for starting services)
 > docker compose -f .vibewarden/generated/docker-compose.yml --profile observability up -d
-> docker compose -f .vibewarden/generated/docker-compose.yml --profile observability down
+>
+> # obs down (service-targeted stop+rm, NOT compose down --profile)
+> # docker compose down --profile observability does NOT scope teardown by profile;
+> # it stops ALL services. obs down uses stop+rm to target only obs services.
+> docker compose -f .vibewarden/generated/docker-compose.yml stop prometheus loki promtail otel-collector jaeger grafana
+> docker compose -f .vibewarden/generated/docker-compose.yml rm -f prometheus loki promtail otel-collector jaeger grafana
 > ```
 > These are still valid if you prefer to call compose directly.
 

@@ -10,6 +10,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -85,24 +86,41 @@ func (c *ComposeAdapter) Up(ctx context.Context, composeFile string, profiles []
 	return nil
 }
 
-// Down runs "docker compose [-f <composeFile>] down [--volumes] [--remove-orphans]".
-// It returns a DownResult with counters parsed from docker's progress output
-// on stderr. When nothing is running, Down treats the invocation as a no-op
-// and returns a zero-valued DownResult and a nil error.
+// Down stops and removes containers for the compose project.
 //
-// docker compose emits one line per container/volume removal on stderr, e.g.
+// When opts.Services is empty, it runs:
 //
-//	Container myapp-app-1  Removed
-//	Volume    myapp_certs  Removed
+//	docker compose [-f <composeFile>] down [--volumes] [--remove-orphans]
 //
-// We parse these lines to produce counts for the UX summary in the app layer.
+// When opts.Services is non-empty, it performs a service-targeted teardown
+// instead of a full project `down`. This is the correct way to tear down a
+// subset of services: `docker compose down --profile <name>` does NOT scope
+// teardown by profile — compose's --profile is an activation flag for `up`,
+// not a scope limiter for `down` — and would remove all services in the
+// project. Service-targeted teardown runs two commands in sequence:
+//
+//  1. docker compose [-f <file>] stop  <services...>
+//  2. docker compose [-f <file>] rm -f <services...>
+//
+// When opts.Volumes is true and opts.VolumeNames is set, a best-effort
+// docker volume rm is run for each named volume after rm. Errors from
+// "in use" or "no such volume" are silently tolerated.
+//
+// Returns a DownResult with counters parsed from docker's progress output.
+// When nothing is running, Down treats the invocation as a no-op and returns
+// a zero-valued DownResult and a nil error.
 func (c *ComposeAdapter) Down(ctx context.Context, composeFile string, opts ports.ComposeDownOptions) (ports.DownResult, error) {
+	if len(opts.Services) > 0 {
+		return c.downServices(ctx, composeFile, opts)
+	}
+	return c.downProject(ctx, composeFile, opts)
+}
+
+// downProject runs `docker compose down` for the entire project.
+func (c *ComposeAdapter) downProject(ctx context.Context, composeFile string, opts ports.ComposeDownOptions) (ports.DownResult, error) {
 	args := []string{"compose"}
 	if composeFile != "" {
 		args = append(args, "-f", composeFile)
-	}
-	for _, p := range opts.Profiles {
-		args = append(args, "--profile", p)
 	}
 	args = append(args, "down")
 	if opts.Volumes {
@@ -138,6 +156,90 @@ func (c *ComposeAdapter) Down(ctx context.Context, composeFile string, opts port
 
 	result := parseDownOutput(stderrText)
 	return result, nil
+}
+
+// downServices runs service-targeted `stop` + `rm -f` instead of a full
+// project `down`. See Down for the rationale.
+func (c *ComposeAdapter) downServices(ctx context.Context, composeFile string, opts ports.ComposeDownOptions) (ports.DownResult, error) {
+	baseArgs := []string{"compose"}
+	if composeFile != "" {
+		baseArgs = append(baseArgs, "-f", composeFile)
+	}
+
+	// Step 1: stop named services.
+	stopArgs := append(append([]string{}, baseArgs...), "stop")
+	stopArgs = append(stopArgs, opts.Services...)
+	stopCmd := exec.CommandContext(ctx, "docker", stopArgs...) //nolint:gosec // args are constructed from caller-supplied service names, not user shell input
+	var stopStderr bytes.Buffer
+	stopCmd.Stdout = nil
+	stopCmd.Stderr = &stopStderr
+	if err := stopCmd.Run(); err != nil {
+		lower := strings.ToLower(stopStderr.String())
+		if !isNoOpError(lower) {
+			msg := strings.TrimSpace(stopStderr.String())
+			if msg != "" {
+				return ports.DownResult{}, fmt.Errorf("docker compose stop: %w\nstderr: %s", err, msg)
+			}
+			return ports.DownResult{}, fmt.Errorf("docker compose stop: %w", err)
+		}
+		// Service not running — treat as no-op; continue to rm.
+	}
+
+	// Step 2: remove named services.
+	rmArgs := append(append([]string{}, baseArgs...), "rm", "-f")
+	rmArgs = append(rmArgs, opts.Services...)
+	rmCmd := exec.CommandContext(ctx, "docker", rmArgs...) //nolint:gosec // args are constructed from caller-supplied service names, not user shell input
+	var rmStderr bytes.Buffer
+	rmCmd.Stdout = nil
+	rmCmd.Stderr = &rmStderr
+	if err := rmCmd.Run(); err != nil {
+		lower := strings.ToLower(rmStderr.String())
+		if !isNoOpError(lower) {
+			msg := strings.TrimSpace(rmStderr.String())
+			if msg != "" {
+				return ports.DownResult{}, fmt.Errorf("docker compose rm: %w\nstderr: %s", err, msg)
+			}
+			return ports.DownResult{}, fmt.Errorf("docker compose rm: %w", err)
+		}
+	}
+
+	result := parseDownOutput(stopStderr.String() + rmStderr.String())
+
+	// Step 3 (optional): remove named volumes best-effort.
+	if opts.Volumes && len(opts.VolumeNames) > 0 {
+		projectName := resolveProjectName(composeFile)
+		for _, vol := range opts.VolumeNames {
+			fullName := projectName + "_" + vol
+			volCmd := exec.CommandContext(ctx, "docker", "volume", "rm", fullName) //nolint:gosec // fullName is derived from caller-supplied volume name, not user shell input
+			if volErr := volCmd.Run(); volErr == nil {
+				result.RemovedVolumes++
+			}
+			// Tolerate "no such volume" / "in use" — best-effort.
+		}
+	}
+
+	return result, nil
+}
+
+// isNoOpError reports whether a lowercase stderr snippet represents a
+// non-fatal "nothing to do" condition from docker compose.
+func isNoOpError(lower string) bool {
+	return strings.Contains(lower, "no configuration file provided") ||
+		strings.Contains(lower, "no such service") ||
+		strings.Contains(lower, "has no containers")
+}
+
+// resolveProjectName derives the compose project name from the compose file
+// path. Docker Compose uses the parent directory name as the project name by
+// default. For the generated file at ".vibewarden/generated/docker-compose.yml"
+// this returns "generated", which does not match Docker's actual project name
+// (the workspace directory name). Callers that need the real project name
+// should pass it explicitly; this helper provides a best-effort fallback.
+func resolveProjectName(composeFile string) string {
+	if composeFile == "" {
+		return ""
+	}
+	return strings.ToLower(strings.ReplaceAll(filepath.Base(filepath.Dir(composeFile)), " ", ""))
 }
 
 // parseDownOutput counts "Removed" lines emitted by docker compose down on

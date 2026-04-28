@@ -1182,7 +1182,10 @@ func TestGenerate_Observability_ComposeDependsOn(t *testing.T) {
 	}
 }
 
-func TestGenerate_Observability_NotPresent_WhenDisabled(t *testing.T) {
+func TestGenerate_Observability_AlwaysPresent_WithProfile(t *testing.T) {
+	// Obs services are always emitted in the compose file, even when
+	// cfg.Observability.Enabled is false. They are inert until the
+	// observability profile is activated via `vibew obs up`. See ADR-097.
 	cfg := &config.Config{
 		Server:        config.ServerConfig{Host: "127.0.0.1", Port: 8080},
 		Upstream:      config.UpstreamConfig{Host: "127.0.0.1", Port: 3000},
@@ -1190,15 +1193,30 @@ func TestGenerate_Observability_NotPresent_WhenDisabled(t *testing.T) {
 	}
 	compose := renderCompose(t, cfg)
 
+	// All obs services must be present with profiles: [observability].
 	for _, svc := range []string{"prometheus:", "grafana:", "loki:", "promtail:", "otel-collector:", "jaeger:"} {
-		if bytes.Contains(compose, []byte(svc)) {
-			t.Errorf("service %q must not appear when observability is disabled\ncompose:\n%s", svc, compose)
+		if !bytes.Contains(compose, []byte(svc)) {
+			t.Errorf("service %q must always appear in compose (gated by profiles: [observability], not by cfg flag)\ncompose:\n%s", svc, compose)
 		}
 	}
+	// Obs volumes must be present unconditionally.
 	for _, vol := range []string{"prometheus-data:", "loki-data:", "grafana-data:"} {
-		if bytes.Contains(compose, []byte(vol)) {
-			t.Errorf("volume %q must not appear when observability is disabled\ncompose:\n%s", vol, compose)
+		if !bytes.Contains(compose, []byte(vol)) {
+			t.Errorf("volume %q must always appear in compose\ncompose:\n%s", vol, compose)
 		}
+	}
+	// OTLP env vars MUST NOT appear when observability is disabled — they are
+	// still gated by cfg.Observability.Enabled. Making them unconditional
+	// would cause the sidecar to attempt OTLP push to an absent collector.
+	for _, env := range []string{"VIBEWARDEN_TELEMETRY_OTLP_ENABLED", "VIBEWARDEN_TELEMETRY_OTLP_ENDPOINT"} {
+		if bytes.Contains(compose, []byte(env)) {
+			t.Errorf("OTLP env var %q must not appear when observability is disabled\ncompose:\n%s", env, compose)
+		}
+	}
+	// Profile annotation must be present to keep the services inert.
+	count := bytes.Count(compose, []byte("- observability"))
+	if count < 6 {
+		t.Errorf("expected at least 6 profile annotations for obs services, got %d", count)
 	}
 }
 
@@ -1388,16 +1406,23 @@ func TestGenerate_Jaeger_OtelCollector_TracesPipeline(t *testing.T) {
 	}
 }
 
-func TestGenerate_Jaeger_NotPresent_WhenDisabled(t *testing.T) {
-	cfg := &config.Config{} // observability not enabled
+func TestGenerate_Jaeger_AlwaysPresent_WithObsProfile(t *testing.T) {
+	// jaeger is always present in the compose file — it is part of the
+	// observability profile and is inert until `vibew obs up` is run.
+	// See ADR-097: obs services are emitted unconditionally, gated by profile.
+	cfg := &config.Config{} // observability not enabled in config
 	compose := renderCompose(t, cfg)
 
-	if bytes.Contains(compose, []byte("jaeger:")) {
-		t.Error("jaeger service should not be in compose when observability is disabled")
+	if !bytes.Contains(compose, []byte("jaeger:")) {
+		t.Error("jaeger service must always be present in compose (gated by profiles: [observability])")
+	}
+	// The profile annotation must be present to keep it inert.
+	if !bytes.Contains(compose, []byte("- observability")) {
+		t.Error("compose must include profiles: [observability] annotation on obs services")
 	}
 }
 
-// TestGenerate_Tempo_NotPresent_WhenDisabled is replaced by TestGenerate_Jaeger_NotPresent_WhenDisabled above.
+// TestGenerate_Tempo_NotPresent_WhenDisabled is replaced by TestGenerate_Jaeger_AlwaysPresent_WithObsProfile above.
 
 // --- Credential generation tests ---
 

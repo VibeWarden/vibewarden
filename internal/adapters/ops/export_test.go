@@ -19,3 +19,9 @@ func NewComposeAdapterForTest() (*ComposeAdapter, *bytes.Buffer) {
 	buf := &bytes.Buffer{}
 	return &ComposeAdapter{stderrSink: buf}, buf
 }
+
+// IsNoOpErrorForTest exposes the unexported isNoOpError helper so that
+// tests in the _test package can verify the no-op error classification logic.
+func IsNoOpErrorForTest(lower string) bool {
+	return isNoOpError(lower)
+}

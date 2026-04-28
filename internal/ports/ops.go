@@ -40,20 +40,38 @@ type ComposeUpOptions struct {
 // ComposeDownOptions carries optional arguments for ComposeRunner.Down.
 type ComposeDownOptions struct {
 	// Volumes controls whether named volumes declared in the compose file are
-	// also removed (equivalent to `docker compose down --volumes`). When true
-	// the Let's Encrypt cert volume and database data volumes are deleted —
+	// also removed. When Services is empty this is equivalent to
+	// `docker compose down --volumes` and removes ALL project volumes —
 	// callers are responsible for confirming destructive intent with the user.
+	// When Services is non-empty, Volumes is honoured via a follow-up
+	// `docker volume rm` step against VolumeNames (best-effort; errors from
+	// "in use" or "no such volume" are silently tolerated).
 	Volumes bool
 	// RemoveOrphans, when true, removes containers for services not defined in
-	// the current compose file (equivalent to `--remove-orphans`).
+	// the current compose file (equivalent to `--remove-orphans`). This flag
+	// is ignored when Services is non-empty (orphan removal is a project-level
+	// concept that does not apply to service-targeted teardown).
 	RemoveOrphans bool
-	// Profiles limits the down operation to services that belong to the listed
-	// Docker Compose profiles (equivalent to `--profile <name>` repeated for
-	// each element). When empty, docker compose down stops ALL services in the
-	// project regardless of profile. Set this to scope a partial teardown —
-	// for example, ObsService.Down sets ["observability"] so that only the
-	// observability services are stopped without touching the main sidecar.
-	Profiles []string
+
+	// Services limits teardown to the named compose services.
+	//
+	// When non-empty, the adapter performs a service-targeted teardown by
+	// running `docker compose stop <services...>` followed by
+	// `docker compose rm -f <services...>` instead of `docker compose down`.
+	// This is the correct way to tear down a subset of a compose project —
+	// `docker compose down --profile <name>` does NOT scope teardown by
+	// profile (compose's --profile is an activation flag for `up`, not a
+	// scope limiter for `down`) and would remove all services in the project.
+	// When empty, behaviour is unchanged: full project teardown via
+	// `docker compose down`.
+	Services []string
+
+	// VolumeNames lists the named volumes to remove when Volumes is true and
+	// Services is non-empty. Each name is relative (e.g. "prometheus-data");
+	// the adapter resolves the full volume name using the compose project name.
+	// When VolumeNames is empty and Volumes is true with a non-empty Services
+	// list, no volumes are removed (the caller must supply the list explicitly).
+	VolumeNames []string
 }
 
 // DownResult summarises what happened during a ComposeRunner.Down invocation.

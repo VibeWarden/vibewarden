@@ -25,14 +25,12 @@ name: {{ .ComposeProjectName }}
 {{- if and (eq .RateLimit.Store "redis") (not (.RateLimit.Redis.HasExternalURL)) }}
 #   redis       — Redis backing store for rate limiting
 {{- end }}
-{{- if .Observability.Enabled }}
 #   prometheus      — Metrics collection (profile: observability)
 #   loki            — Log aggregation (profile: observability)
 #   promtail        — Log collector for non-VibeWarden containers (profile: observability)
 #   otel-collector  — OTel Collector: receives OTLP from VibeWarden, exports to Prometheus, Loki, and Jaeger (profile: observability)
 #   jaeger          — Distributed tracing backend (profile: observability)
 #   grafana         — Visualization (profile: observability)
-{{- end }}
 
 
 services:
@@ -300,7 +298,6 @@ services:
       timeout: 5s
       retries: 5
 {{- end }}
-{{- if .Observability.Enabled }}
 
   prometheus:
     image: prom/prometheus:v3.2.1
@@ -429,7 +426,6 @@ services:
       interval: 10s
       timeout: 5s
       retries: 5
-{{- end }}
 
 networks:
 {{- if .Egress.IsNetworkIsolationEnabled }}
@@ -442,7 +438,6 @@ networks:
   vibewarden:
     driver: bridge
 {{- end }}
-{{- if or (and (eq (printf "%s" .Auth.Mode) "kratos") (not .Kratos.External) (eq .Database.ExternalURL "")) .TLS.Enabled (and (eq .RateLimit.Store "redis") (not (.RateLimit.Redis.HasExternalURL))) .Observability.Enabled (and .Secrets.Enabled .IsProdProfile) }}
 
 volumes:
 {{- if and (eq (printf "%s" .Auth.Mode) "kratos") (not .Kratos.External) (eq .Database.ExternalURL "") }}
@@ -460,9 +455,9 @@ volumes:
 {{- if and .Secrets.Enabled .IsProdProfile }}
   openbao-data:
 {{- end }}
-{{- if .Observability.Enabled }}
+  # Observability volumes — inert until `vibew obs up` activates the
+  # observability profile. Declared unconditionally so that `vibew obs down`
+  # can remove them with `docker volume rm` regardless of cfg.Observability.Enabled.
   prometheus-data:
   loki-data:
   grafana-data:
-{{- end }}
-{{- end }}

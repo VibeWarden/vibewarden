@@ -14,6 +14,27 @@ import (
 // obsProfile is the Docker Compose profile name for the observability stack.
 const obsProfile = "observability"
 
+// obsServices is the canonical list of service names in the "observability"
+// Docker Compose profile. It must stay in sync with the services that carry
+// `profiles: [observability]` in internal/config/templates/docker-compose.yml.tmpl.
+// A drift-detection unit test in obs_test.go enforces this.
+var obsServices = []string{
+	"prometheus",
+	"loki",
+	"promtail",
+	"otel-collector",
+	"jaeger",
+	"grafana",
+}
+
+// obsVolumeNames is the list of named volumes that belong exclusively to the
+// observability stack. These are removed when `vibew obs down --volumes` is run.
+var obsVolumeNames = []string{
+	"prometheus-data",
+	"loki-data",
+	"grafana-data",
+}
+
 // ObsService orchestrates the "vibew obs up" and "vibew obs down" use cases.
 // It runs the observability Compose profile (Prometheus + Grafana + Loki + Promtail)
 // against the same compose project as the main dev stack.
@@ -111,17 +132,38 @@ func (s *ObsService) Down(ctx context.Context, opts ObsDownOptions, out io.Write
 		}
 	}
 
+	// Use service-targeted stop+rm instead of `compose down --profile observability`.
+	// docker compose's --profile flag is an activation mechanism for `up`, not a
+	// scope limiter for `down` — passing --profile to `down` stops ALL services
+	// in the project regardless of profile. See ADR-097.
 	result, err := s.compose.Down(ctx, composeFile, ports.ComposeDownOptions{
-		Volumes:       opts.Volumes,
-		RemoveOrphans: opts.RemoveOrphans,
-		Profiles:      []string{obsProfile},
+		Volumes:     opts.Volumes,
+		Services:    obsServices,
+		VolumeNames: obsVolumeNames,
 	})
 	if err != nil {
 		return fmt.Errorf("stopping observability stack: %w", err)
 	}
 
-	printDownSummary(result, DownOptions{Volumes: opts.Volumes}, out)
+	printObsDownSummary(result, opts.Volumes, out)
 	return nil
+}
+
+// printObsDownSummary writes a one-line status summary for `vibew obs down`.
+// It reports how many obs services were stopped rather than the generic
+// "containers" wording, because the user stopped a named subset not the
+// whole project.
+func printObsDownSummary(result ports.DownResult, volumes bool, out io.Writer) {
+	n := result.StoppedContainers
+	if n == 0 && result.RemovedVolumes == 0 {
+		fmt.Fprintln(out, "No observability services were running. Nothing to do.")
+		return
+	}
+	if volumes {
+		fmt.Fprintf(out, "Stopped %d obs services and removed %d volumes.\n", n, result.RemovedVolumes)
+		return
+	}
+	fmt.Fprintf(out, "Stopped %d obs services. Volumes preserved — run 'vibew obs down -v' to also remove data.\n", n)
 }
 
 // printSidecarAdvisory checks whether the sidecar container is running and
