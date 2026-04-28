@@ -770,6 +770,21 @@ Local observability stack (Grafana, Prometheus, Loki, Promtail).
     config.reload_failed  Validation or reload error
 
 
+### deploy (vibew bundle target settings)
+
+  deploy.target_platform  string  linux/amd64  Expected deployment platform for `vibew bundle`.
+
+  `vibew bundle` compares the bundled image's architecture against this value
+  and aborts with an actionable error on mismatch. The field lives in
+  vibewarden.production.yaml (not the base config) because it describes the
+  deploy target, not the running sidecar.
+
+  Resolution order: --target-platform flag > deploy.target_platform in yaml > default linux/amd64.
+
+  Typical values: linux/amd64 (most cloud VMs), linux/arm64 (Ampere/Graviton).
+  Invalid values are caught as a mismatch at bundle time — no explicit validation.
+
+
 ### webhooks (outbound event delivery)
 
   webhooks.endpoints: list
@@ -1395,11 +1410,14 @@ arch, created, size, target platform, freshness, warnings). Flags:
   missing or stale (off by default)
 - `--allow-stale` -- suppress the STALE freshness warning; bundle proceeds
   regardless of source-file content-hash change
-- `--target-platform linux/<arch>` -- expected deployment platform (default:
-  `linux/amd64`); use for Graviton / Pi / arm64 servers
+- `--target-platform linux/<arch>` -- override the deploy target platform.
+  Resolution order: flag > deploy.target_platform in vibewarden.production.yaml
+  > default linux/amd64. Bundle aborts (exit 1) on arch mismatch with an
+  actionable rebuild command — this is the primary guard for Apple Silicon
+  builds landing on amd64 VPS hosts without being noticed.
 
-Exit codes: 0=success (includes warnings), 1=generic failure, 2=image missing,
-3=docker daemon unreachable.
+Exit codes: 0=success (includes warnings), 1=generic failure (including arch
+mismatch), 2=image missing, 3=docker daemon unreachable.
 
 Output layout:
 

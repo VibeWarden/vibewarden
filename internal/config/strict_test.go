@@ -209,3 +209,63 @@ func TestUnknownKeyError_Error(t *testing.T) {
 		})
 	}
 }
+
+// TestLoadStrict_DeployTargetPlatform_Accepted verifies that the new
+// deploy.target_platform field is accepted by LoadStrict and does not
+// trigger an UnknownKeyError. This ensures that production yaml files
+// carrying this field are not rejected.
+func TestLoadStrict_DeployTargetPlatform_Accepted(t *testing.T) {
+	dir := t.TempDir()
+	basePath := filepath.Join(dir, "vibewarden.yaml")
+	if err := os.WriteFile(basePath, []byte("server:\n  port: 8443\n"), 0o600); err != nil {
+		t.Fatalf("writing base: %v", err)
+	}
+	prodPath := filepath.Join(dir, "vibewarden.production.yaml")
+	prodYAML := "server:\n  port: 443\ndeploy:\n  target_platform: linux/amd64\n"
+	if err := os.WriteFile(prodPath, []byte(prodYAML), 0o600); err != nil {
+		t.Fatalf("writing prod: %v", err)
+	}
+
+	cfg, err := config.LoadStrict(basePath, prodPath)
+	if err != nil {
+		t.Fatalf("LoadStrict() error = %v (deploy.target_platform must be accepted)", err)
+	}
+	if cfg.Deploy.TargetPlatform != "linux/amd64" {
+		t.Errorf("Deploy.TargetPlatform = %q, want %q", cfg.Deploy.TargetPlatform, "linux/amd64")
+	}
+}
+
+// TestLoadStrict_DeployUnknownKey_Rejected verifies that unknown sibling keys
+// under the deploy namespace are rejected by LoadStrict.
+func TestLoadStrict_DeployUnknownKey_Rejected(t *testing.T) {
+	dir := t.TempDir()
+	basePath := filepath.Join(dir, "vibewarden.yaml")
+	if err := os.WriteFile(basePath, []byte("server:\n  port: 8443\n"), 0o600); err != nil {
+		t.Fatalf("writing base: %v", err)
+	}
+	prodPath := filepath.Join(dir, "vibewarden.production.yaml")
+	prodYAML := "deploy:\n  target_platform: linux/amd64\n  foo: bar\n"
+	if err := os.WriteFile(prodPath, []byte(prodYAML), 0o600); err != nil {
+		t.Fatalf("writing prod: %v", err)
+	}
+
+	_, err := config.LoadStrict(basePath, prodPath)
+	if err == nil {
+		t.Fatal("LoadStrict() returned nil, want error for deploy.foo")
+	}
+
+	var unknown *config.UnknownKeyError
+	if !errors.As(err, &unknown) {
+		t.Fatalf("want *UnknownKeyError, got %T: %v", err, err)
+	}
+	found := false
+	for _, k := range unknown.Keys {
+		if k == "deploy.foo" {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Errorf("UnknownKeyError.Keys = %v, want to contain %q", unknown.Keys, "deploy.foo")
+	}
+}

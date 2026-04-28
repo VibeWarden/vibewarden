@@ -122,6 +122,10 @@ type Config struct {
 	// Watch configures the config file watcher for hot reload.
 	Watch WatchConfig `mapstructure:"watch"`
 
+	// Deploy configures `vibew bundle` deploy-target settings. Fields here
+	// describe the deploy *target* and have no effect on the running sidecar.
+	Deploy DeployConfig `mapstructure:"deploy"`
+
 	// DeployMode is set to true by the deploy service when generating files for
 	// a deploy bundle. Templates use this to adjust paths (e.g. build context
 	// is the original App.Build value in deploy mode instead of the resolved
@@ -466,6 +470,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("compression.algorithms", []string{"zstd", "gzip"})
 	v.SetDefault("watch.enabled", true)
 	v.SetDefault("watch.debounce", "500ms")
+	v.SetDefault("deploy.target_platform", "linux/amd64")
 }
 
 // rejectRemovedAuthEnabled returns a load-time error when the user's YAML

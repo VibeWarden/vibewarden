@@ -181,6 +181,51 @@ postgres:
 
 ---
 
+## Bundle and deploy
+
+### Image architecture (`deploy.target_platform`)
+
+`vibew bundle` checks the bundled image's architecture against the configured
+deploy target before writing any files. On mismatch the command fails immediately
+with an actionable error:
+
+```
+image arch is linux/arm64, target is linux/amd64. Rebuild with: vibew build --platform linux/amd64
+Then re-run: vibew bundle
+```
+
+The default target is `linux/amd64` (Hetzner and most cloud VMs). Set the target
+explicitly in `vibewarden.production.yaml`:
+
+```yaml
+deploy:
+  target_platform: linux/amd64   # or linux/arm64 for Ampere/Graviton VMs
+```
+
+Override once on the command line without editing the file:
+
+```bash
+vibew bundle --target-platform linux/arm64
+```
+
+Common scenarios:
+
+| Development host | VPS arch | Action |
+|---|---|---|
+| Apple Silicon (arm64) | amd64 (typical Hetzner) | `vibew build --platform linux/amd64 && vibew bundle` |
+| Apple Silicon (arm64) | arm64 (Ampere/Graviton) | Set `target_platform: linux/arm64` — default is wrong for you |
+| Intel/AMD (amd64) | amd64 | Default works; no action needed |
+| Intel/AMD (amd64) | arm64 | `vibew bundle --target-platform linux/arm64` (or set in yaml) |
+
+- [ ] Confirm `deploy.target_platform` in `vibewarden.production.yaml` matches
+  your VPS architecture before running `vibew bundle`.
+- [ ] Verify the bundled image arch matches by inspecting `image.tar` after bundling:
+  ```bash
+  docker image inspect <your-project>-app:latest --format '{{.Architecture}}'
+  ```
+
+---
+
 ## Network hardening
 
 ### Firewall rules

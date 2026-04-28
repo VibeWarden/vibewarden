@@ -28,6 +28,7 @@ yet completed (boot gap of ~5–10s). After that it is always `"ok"` or `"failin
 
 ### Fixed
 
+- **`vibew bundle` now fails (was: warned) when image architecture doesn't match `deploy.target_platform`** (#1200). The primary case is Apple Silicon builds (linux/arm64) landing on amd64 VPS hosts without being noticed. On mismatch the bundle aborts before writing any files and prints: `image arch is linux/arm64, target is linux/amd64. Rebuild with: vibew build --platform linux/amd64` / `Then re-run: vibew bundle`. Default target is `linux/amd64`. Override via `--target-platform` flag or `deploy.target_platform` in `vibewarden.production.yaml`.
 - **`/_vibewarden/health` now reports real upstream state** (#1197). Previously the route was a hard-coded Caddy `static_response` that always returned `"upstream":"unknown"` regardless of actual upstream health. The existing `HTTPChecker` adapter, `UpstreamHealthChecker` port, and `UpstreamHealth` domain entity were fully implemented but never wired into the production composition root. Fix: the route is replaced by a new `vibewarden_health` Caddy handler module that reads the cached probe result from `RuntimeServices`; the probe default changes from `enabled: false` to `enabled: true` with interval=5s/timeout=2s; the checker is constructed, started, and stopped in `cmd/vibewarden/wiring_serve.go`.
 
 ---

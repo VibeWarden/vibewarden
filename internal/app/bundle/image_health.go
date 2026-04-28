@@ -10,6 +10,15 @@ import (
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
 
+// ErrPlatformMismatch is returned by runImageHealthCheck (and propagated by
+// Service.Bundle) when the bundled image's architecture does not match the
+// resolved deploy target. The CLI maps this to exit code 1.
+//
+// Note: local `docker image inspect` always returns a single architecture —
+// the variant that was loaded into the local Docker daemon. There is no
+// manifest-list case for vibew bundle; buildx --load writes only one arch.
+var ErrPlatformMismatch = errors.New("image platform mismatch")
+
 // defaultTargetPlatform is the expected deployment platform when no
 // --target-platform flag is supplied. VPS targets are almost always amd64.
 const defaultTargetPlatform = "linux/amd64"
@@ -220,17 +229,26 @@ func freshnessLabel(h ImageHealth) string {
 	return fmt.Sprintf("STALE — %d source files changed since image was built", h.Freshness.ChangedCount)
 }
 
+// platformMismatchMessage returns the exact actionable error copy for an arch
+// mismatch. The wording is pinned by tests — do not change it without updating
+// the test golden strings.
+//
+// Example output:
+//
+//	image arch is linux/arm64, target is linux/amd64. Rebuild with: vibew build --platform linux/amd64
+//	Then re-run: vibew bundle
+func platformMismatchMessage(h ImageHealth) string {
+	return fmt.Sprintf(
+		"image arch is %s, target is %s. Rebuild with: vibew build --platform %s\nThen re-run: vibew bundle",
+		h.Image.Platform(), h.Target, h.Target,
+	)
+}
+
 // collectWarnings builds the ordered list of human-readable warning strings
-// for the ImageHealth report.
+// for the ImageHealth report. Arch mismatch is NOT included here — it is a
+// hard failure returned by runImageHealthCheck before bundling proceeds.
 func collectWarnings(h ImageHealth) []string {
 	var warnings []string
-
-	if h.ArchMismatch {
-		warnings = append(warnings, fmt.Sprintf(
-			"image arch %s != target %s (rebuild: vibew build --platform %s)",
-			h.Image.Platform(), h.Target, h.Target,
-		))
-	}
 
 	if h.Freshness.Stale && !h.AllowStale {
 		warnings = append(warnings, "image is stale (pass --allow-stale to suppress, or rebuild)")

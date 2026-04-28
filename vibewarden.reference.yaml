@@ -1049,3 +1049,17 @@ secrets:
       - "123456"
       - "admin"
       - "letmein"
+
+# Deploy settings — consumed by `vibew bundle`, not by `vibewarden serve`.
+# These fields describe the deploy *target* and have no effect on the running sidecar.
+deploy:
+  # Target platform for `vibew bundle`, in the Docker Buildx format "<os>/<arch>".
+  # The bundle aborts with an actionable rebuild command when the bundled image's
+  # architecture does not match this value.
+  #
+  # Hetzner VMs and most cloud VPS targets are linux/amd64.
+  # Apple Silicon development machines produce linux/arm64 images by default.
+  # Override on the command line with: vibew bundle --target-platform linux/arm64
+  #
+  # Default: linux/amd64
+  target_platform: linux/amd64

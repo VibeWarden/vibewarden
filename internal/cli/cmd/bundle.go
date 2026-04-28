@@ -134,7 +134,8 @@ Examples:
 	cmd.Flags().BoolVar(&skipImage, "skip-image", false, "do not package image.tar (for users pulling from a registry)")
 	cmd.Flags().BoolVar(&build, "build", false, "build the app image before bundling (use when: image is missing or stale)")
 	cmd.Flags().BoolVar(&allowStale, "allow-stale", false, "suppress the stale-image warning (bundle proceeds regardless of freshness)")
-	cmd.Flags().StringVar(&targetPlatform, "target-platform", "linux/amd64", "expected deployment platform, e.g. linux/arm64 (use when: your VPS differs from your laptop arch)")
+	cmd.Flags().StringVar(&targetPlatform, "target-platform", "",
+		"expected deployment platform, e.g. linux/arm64 (default: deploy.target_platform from vibewarden.production.yaml, or linux/amd64)")
 
 	return cmd
 }
@@ -193,8 +194,14 @@ func runBundle(cmd *cobra.Command, outputDir, imageTag, targetPlatform string, o
 	if imageTag == "" {
 		imageTag = projectName + "-app:latest"
 	}
-	if targetPlatform == "" {
-		targetPlatform = "linux/amd64"
+
+	// Resolve platform precedence: CLI flag (if non-empty) → yaml
+	// deploy.target_platform → viper default "linux/amd64".
+	// cfg.Deploy.TargetPlatform is always populated by the viper default
+	// when the yaml field is absent.
+	resolvedPlatform := targetPlatform
+	if resolvedPlatform == "" {
+		resolvedPlatform = cfg.Deploy.TargetPlatform
 	}
 
 	// --build: run `vibew build --platform <target>` before inspecting or
@@ -204,7 +211,7 @@ func runBundle(cmd *cobra.Command, outputDir, imageTag, targetPlatform string, o
 		buildSvc := opsapp.NewBuildService(builder).
 			WithShellProber(opsadapter.NewShellProberAdapter())
 		buildOpts := opsapp.BuildOptions{
-			Platform:   targetPlatform,
+			Platform:   resolvedPlatform,
 			ConfigPath: absConfig,
 			ImageTag:   imageTag,
 		}
@@ -253,7 +260,7 @@ func runBundle(cmd *cobra.Command, outputDir, imageTag, targetPlatform string, o
 		Overwrite:      overwrite,
 		SkipImage:      skipImage,
 		ImageTag:       imageTag,
-		TargetPlatform: targetPlatform,
+		TargetPlatform: resolvedPlatform,
 		AllowStale:     allowStale,
 		Out:            cmd.OutOrStdout(),
 	})
@@ -264,6 +271,9 @@ func runBundle(cmd *cobra.Command, outputDir, imageTag, targetPlatform string, o
 		}
 		if errors.Is(bundleErr, ports.ErrDockerUnavailable) {
 			return 3, bundleErr
+		}
+		if errors.Is(bundleErr, bundleapp.ErrPlatformMismatch) {
+			return 1, bundleErr
 		}
 		return 1, fmt.Errorf("creating bundle: %w", bundleErr)
 	}

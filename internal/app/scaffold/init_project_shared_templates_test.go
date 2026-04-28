@@ -226,3 +226,45 @@ func TestInitProject_WithRealFS_Description(t *testing.T) {
 		})
 	}
 }
+
+// TestInitProject_ProductionYAML_HasDeployTargetPlatform verifies that vibew init
+// writes deploy.target_platform: linux/amd64 as an actual yaml entry (not a
+// comment) in vibewarden.production.yaml. Guard for #1200.
+func TestInitProject_ProductionYAML_HasDeployTargetPlatform(t *testing.T) {
+	r := mustBuildRealRenderer(t)
+	svc := scaffoldapp.NewInitProjectService(r, nil)
+
+	parent := scaffoldAppTestDir(t)
+	opts := scaffoldapp.InitProjectOptions{
+		ProjectName: "deploytest",
+		Port:        3000,
+	}
+
+	if err := svc.InitProject(context.Background(), parent, opts); err != nil {
+		t.Fatalf("InitProject() unexpected error: %v", err)
+	}
+
+	prodPath := filepath.Join(parent, "deploytest", "vibewarden.production.yaml")
+	data, err := os.ReadFile(prodPath)
+	if err != nil {
+		t.Fatalf("reading vibewarden.production.yaml: %v", err)
+	}
+	content := string(data)
+
+	if !strings.Contains(content, "target_platform: linux/amd64") {
+		t.Errorf("vibewarden.production.yaml missing 'target_platform: linux/amd64'\n\nContent:\n%s", content)
+	}
+
+	// Verify it is not commented out.
+	for _, line := range strings.Split(content, "\n") {
+		if strings.Contains(line, "target_platform: linux/amd64") {
+			if strings.HasPrefix(strings.TrimSpace(line), "#") {
+				t.Errorf("target_platform is commented out — must be active yaml\nLine: %q", line)
+			}
+		}
+	}
+
+	if !strings.Contains(content, "deploy:") {
+		t.Errorf("vibewarden.production.yaml missing 'deploy:' block\n\nContent:\n%s", content)
+	}
+}
