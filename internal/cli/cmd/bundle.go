@@ -311,8 +311,33 @@ func runBundle(cmd *cobra.Command, outputDir, imageTag, targetPlatform string, o
 		renderSensitiveBlock(sensitive, out)
 	}
 
+	// Resolve substitution values for the "Next: deploy" block.
+	appName := projectName
+	if appName == "" {
+		appName = "<your-app>"
+	}
+	domain := ""
+	if cfg.TLS.Domain != "" {
+		domain = cfg.TLS.Domain
+	} else {
+		domain = "<your-domain>"
+	}
+
+	// Build the docker command for the "Next" block — omit docker load when
+	// --skip-image was set so the printed sequence stays valid.
+	dockerCmd := "docker load -i image.tar && docker compose up -d"
+	if skipImage {
+		dockerCmd = "docker compose up -d"
+	}
+
 	fmt.Fprintln(out, "")
-	fmt.Fprintf(out, "Next: see %s/README.md for the deploy contract.\n", absOut)
+	fmt.Fprintln(out, "Next: deploy")
+	fmt.Fprintf(out, "    ssh user@host 'mkdir -p /opt/%s'\n", appName)
+	fmt.Fprintf(out, "    scp -r %s/* user@host:/opt/%s/\n", absOut, appName)
+	fmt.Fprintf(out, "    ssh user@host \"cd /opt/%s && %s\"\n", appName, dockerCmd)
+	fmt.Fprintf(out, "    curl -fsSL https://%s/_vibewarden/health\n", domain)
+	fmt.Fprintln(out, "")
+	fmt.Fprintf(out, "See %s/README.md for context and read-only inspection commands.\n", absOut)
 	return 0, nil
 }
 

@@ -7,6 +7,9 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
+	"runtime"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
@@ -112,7 +115,7 @@ func TestBundle_Extras_WritesExpectedFileSet(t *testing.T) {
 		t.Fatalf("Bundle() error = %v", err)
 	}
 
-	wantFiles := []string{"sample.env", ".env", "README.md"}
+	wantFiles := []string{"sample.env", ".env", "README.md", "MANIFEST.md"}
 	for _, name := range wantFiles {
 		p := filepath.Join(outDir, name)
 		if _, ok := mem.files[p]; !ok {
@@ -151,7 +154,7 @@ func TestBundle_Extras_SkipImage_OmitsImageTar(t *testing.T) {
 		t.Errorf("expected image.tar NOT present with --skip-image")
 	}
 	// The other artifacts still appear.
-	for _, name := range []string{"sample.env", ".env", "README.md"} {
+	for _, name := range []string{"sample.env", ".env", "README.md", "MANIFEST.md"} {
 		if _, ok := mem.files[filepath.Join(outDir, name)]; !ok {
 			t.Errorf("expected %s to still exist with --skip-image", name)
 		}
@@ -159,14 +162,13 @@ func TestBundle_Extras_SkipImage_OmitsImageTar(t *testing.T) {
 }
 
 // TestBundle_Extras_Readme_DeployContract is the artifact-policy enforcement
-// boundary for the bundle README (per CLAUDE.md §Architecture principles →
-// Artifact policy). The README must describe the deploy contract as pure
-// instruction — what the bundle is, where it goes, and the two non-obvious
-// traps (the remote dir must exist before copying; healthcheck port in
-// production is 443, not the dev port 8443). It must NOT contain shell
-// snippets (scp, ssh, docker load, etc.) — that would reintroduce the
-// example-shaped middle-ground artifact pattern that bit us with the
-// removed deploy.sh.
+// boundary for the bundle README (#1204). The README MUST contain the literal
+// deploy command sequence (scp/ssh/docker load/docker compose up) as a
+// copy-pasteable fenced block at the top — this inverts the old negative
+// assertions, which were removed when the policy shifted from "prose-only"
+// to "real commands paired with a forensic alignment test". The forbidden
+// token is only the wrapped shell script (./deploy.sh / deploy.sh) that was
+// retired in #1138 — not the raw commands themselves.
 func TestBundle_Extras_Readme_DeployContract(t *testing.T) {
 	for _, skipImage := range []bool{false, true} {
 		t.Run(fmt.Sprintf("skipImage=%v", skipImage), func(t *testing.T) {
@@ -188,8 +190,11 @@ func TestBundle_Extras_Readme_DeployContract(t *testing.T) {
 
 			body := string(mem.files[filepath.Join(outDir, "README.md")])
 
-			// Positive assertions: the deploy contract is described.
+			// Positive assertions: deploy commands are now required (#1204).
 			for _, want := range []string{
+				"scp ",
+				"ssh ",
+				"docker compose up",
 				"/_vibewarden/health",
 				"443",
 				"directory must exist",
@@ -208,22 +213,29 @@ func TestBundle_Extras_Readme_DeployContract(t *testing.T) {
 				}
 			}
 
-			// Negative assertions: zero shell snippets. Reintroducing any
-			// of these tokens means someone reverted to example-shaped
-			// instruction; CLAUDE.md §Artifact policy forbids it.
+			// With --skip-image the deploy fenced block must not include docker
+			// load; without it the block must include it. We check the first
+			// fenced block specifically (between first ```bash and next ```).
+			firstBlock := extractFirstFencedBlock(body)
+			if skipImage {
+				if strings.Contains(firstBlock, "docker load -i image.tar") {
+					t.Errorf("deploy fenced block with --skip-image must not contain 'docker load -i image.tar'\nblock:\n%s", firstBlock)
+				}
+			} else {
+				if !strings.Contains(firstBlock, "docker load") {
+					t.Errorf("deploy fenced block without --skip-image must contain 'docker load'\nblock:\n%s", firstBlock)
+				}
+			}
+
+			// Negative assertions: only the wrapped shell script is forbidden.
 			for _, forbidden := range []string{
-				"scp ",
-				"ssh ",
-				"docker load",
-				"docker compose up",
-				"PowerShell",
-				"pwsh",
-				"bash",
 				"./deploy.sh",
 				"deploy.sh",
+				"PowerShell",
+				"pwsh",
 			} {
 				if strings.Contains(body, forbidden) {
-					t.Errorf("README.md must not contain shell snippet %q (CLAUDE.md §Artifact policy)\nbody:\n%s", forbidden, body)
+					t.Errorf("README.md must not contain %q\nbody:\n%s", forbidden, body)
 				}
 			}
 		})
@@ -536,4 +548,412 @@ func TestBundle_Extras_ImageSaverError_PropagatesWrapped(t *testing.T) {
 	if !strings.Contains(err.Error(), "no such image") {
 		t.Errorf("error should wrap docker save cause, got: %v", err)
 	}
+}
+
+// configWithDomain returns a minimal config that includes a TLS domain, used
+// by README substitution tests.
+func configWithDomain(domain string) *config.Config {
+	cfg := minimalBundleCfg()
+	cfg.TLS.Domain = domain
+	return cfg
+}
+
+// TestBundle_Extras_Readme_FencedDeployBlock asserts that the bundle README
+// opens with a fenced bash block containing exactly the four-command deploy
+// sequence within the first 30 lines.
+func TestBundle_Extras_Readme_FencedDeployBlock(t *testing.T) {
+	tests := []struct {
+		name       string
+		appName    string
+		domain     string
+		skipImage  bool
+		wantCmds   []string
+		wantAbsent []string
+	}{
+		{
+			name:      "full deploy sequence",
+			appName:   "myapp",
+			domain:    "example.com",
+			skipImage: false,
+			wantCmds: []string{
+				"ssh user@host 'mkdir -p /opt/myapp'",
+				"scp -r .vibewarden/bundle/* user@host:/opt/myapp/",
+				"docker load -i image.tar && docker compose up -d",
+				"curl -fsSL https://example.com/_vibewarden/health",
+			},
+		},
+		{
+			name:      "skip-image omits docker load clause",
+			appName:   "myapp",
+			domain:    "example.com",
+			skipImage: true,
+			wantCmds: []string{
+				"ssh user@host 'mkdir -p /opt/myapp'",
+				"scp -r .vibewarden/bundle/* user@host:/opt/myapp/",
+				"docker compose up -d",
+				"curl -fsSL https://example.com/_vibewarden/health",
+			},
+			wantAbsent: []string{"docker load -i image.tar"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			mem := newMemBundleFS()
+			svc := bundleapp.NewService(&fakeExecutor{}, &fakeGenerator{}).
+				WithBundleFS(mem)
+
+			outDir := t.TempDir()
+			err := svc.Bundle(context.Background(), bundleapp.BundleOptions{
+				Config:      configWithDomain(tt.domain),
+				ConfigPath:  filepath.Join(t.TempDir(), "vibewarden.yaml"),
+				ProjectName: tt.appName,
+				OutputDir:   outDir,
+				SkipImage:   tt.skipImage,
+			})
+			if err != nil {
+				t.Fatalf("Bundle() error = %v", err)
+			}
+
+			body := string(mem.files[filepath.Join(outDir, "README.md")])
+
+			// The fenced block must appear within the first 30 lines.
+			lines := strings.SplitN(body, "\n", 31)
+			first30 := strings.Join(lines, "\n")
+			if !strings.Contains(first30, "```bash") {
+				t.Errorf("README.md missing ```bash fenced block within first 30 lines\nbody:\n%s", body)
+			}
+
+			for _, cmd := range tt.wantCmds {
+				if !strings.Contains(body, cmd) {
+					t.Errorf("README.md missing deploy command %q\nbody:\n%s", cmd, body)
+				}
+			}
+			// Absent checks apply to the first fenced block only — the prose
+			// sections may reference these strings in explanation context.
+			firstBlock := extractFirstFencedBlock(body)
+			for _, absent := range tt.wantAbsent {
+				if strings.Contains(firstBlock, absent) {
+					t.Errorf("deploy fenced block must not contain %q\nblock:\n%s", absent, firstBlock)
+				}
+			}
+		})
+	}
+}
+
+// TestBundle_Extras_Readme_ReadOnlyRecipes asserts that the bundle README
+// contains the three read-only inspection commands near the bottom.
+func TestBundle_Extras_Readme_ReadOnlyRecipes(t *testing.T) {
+	mem := newMemBundleFS()
+	svc := bundleapp.NewService(&fakeExecutor{}, &fakeGenerator{}).
+		WithBundleFS(mem)
+
+	outDir := t.TempDir()
+	err := svc.Bundle(context.Background(), bundleapp.BundleOptions{
+		Config:      configWithDomain("myapp.example.com"),
+		ConfigPath:  filepath.Join(t.TempDir(), "vibewarden.yaml"),
+		ProjectName: "myapp",
+		OutputDir:   outDir,
+		SkipImage:   true,
+	})
+	if err != nil {
+		t.Fatalf("Bundle() error = %v", err)
+	}
+
+	body := string(mem.files[filepath.Join(outDir, "README.md")])
+
+	wantRecipes := []string{
+		"docker compose -f /opt/myapp/docker-compose.yml logs --tail 50",
+		"docker compose -f /opt/myapp/docker-compose.yml ps",
+		"curl -fsSL https://myapp.example.com/_vibewarden/health",
+	}
+	for _, recipe := range wantRecipes {
+		if !strings.Contains(body, recipe) {
+			t.Errorf("README.md missing read-only recipe %q\nbody:\n%s", recipe, body)
+		}
+	}
+
+	// Read-only section header must exist.
+	if !strings.Contains(body, "## Read-only inspection") {
+		t.Errorf("README.md missing '## Read-only inspection' section\nbody:\n%s", body)
+	}
+}
+
+// TestBundle_Extras_Readme_PlaceholdersWhenAppOrDomainMissing verifies that
+// empty appName yields <your-app> and empty domain yields <your-domain> in
+// the generated README deploy block. These are defensive placeholders for
+// the edge case where name resolution yields an empty string — post-#1199
+// this should not happen in production, but the render function must be
+// safe. The test calls RenderBundleReadme directly to bypass the pipeline's
+// name-resolution fallback.
+func TestBundle_Extras_Readme_PlaceholdersWhenAppOrDomainMissing(t *testing.T) {
+	tests := []struct {
+		name    string
+		appName string
+		domain  string
+		wantApp string
+		wantDom string
+	}{
+		{
+			name:    "both empty",
+			appName: "",
+			domain:  "",
+			wantApp: "<your-app>",
+			wantDom: "<your-domain>",
+		},
+		{
+			name:    "domain empty",
+			appName: "myapp",
+			domain:  "",
+			wantApp: "myapp",
+			wantDom: "<your-domain>",
+		},
+		{
+			name:    "appName empty",
+			appName: "",
+			domain:  "example.com",
+			wantApp: "<your-app>",
+			wantDom: "example.com",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			body := bundleapp.RenderBundleReadme(tt.appName, tt.domain, true)
+
+			// The body must contain /opt/<wantApp> in the deploy block.
+			if !strings.Contains(body, "/opt/"+tt.wantApp) {
+				t.Errorf("README.md missing /opt/%q in deploy block\nbody:\n%s", tt.wantApp, body)
+			}
+			if !strings.Contains(body, tt.wantDom) {
+				t.Errorf("README.md missing domain %q\nbody:\n%s", tt.wantDom, body)
+			}
+		})
+	}
+}
+
+// TestBundle_Extras_Manifest_DeterministicAndSorted verifies that MANIFEST.md
+// body (excluding the timestamp header line) is byte-identical across two
+// renders with the same input file set, and that entries are sorted
+// alphabetically. It also verifies MANIFEST.md does not list itself.
+func TestBundle_Extras_Manifest_DeterministicAndSorted(t *testing.T) {
+	// Use a real outDir so renderBundleManifest can walk it.
+	outDir := t.TempDir()
+	// Create a fixed set of files.
+	for _, name := range []string{"vibewarden.yaml", "sample.env", ".env", "README.md", "docker-compose.yml"} {
+		if err := os.WriteFile(filepath.Join(outDir, name), []byte("placeholder"), 0o600); err != nil {
+			t.Fatalf("creating %s: %v", name, err)
+		}
+	}
+
+	render := func() (header, body string) {
+		t.Helper()
+		content, err := bundleapp.RenderBundleManifest(outDir, "testapp")
+		if err != nil {
+			t.Fatalf("RenderBundleManifest: %v", err)
+		}
+		lines := strings.SplitN(content, "\n", 4)
+		if len(lines) < 4 {
+			t.Fatalf("manifest too short: %q", content)
+		}
+		// Line 0: # heading, line 1: blank, line 2: Generated by... (timestamp), line 3: blank
+		return lines[2], strings.Join(lines[3:], "\n")
+	}
+
+	_, body1 := render()
+	_, body2 := render()
+
+	if body1 != body2 {
+		t.Errorf("MANIFEST.md body is not deterministic across runs\nrun1:\n%s\nrun2:\n%s", body1, body2)
+	}
+
+	// Verify entries are sorted alphabetically.
+	var names []string
+	for _, line := range strings.Split(strings.TrimSpace(body1), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		// Lines are "- <name> — <desc>"
+		after, ok := strings.CutPrefix(line, "- ")
+		if !ok {
+			continue
+		}
+		name := strings.SplitN(after, " — ", 2)[0]
+		names = append(names, name)
+	}
+
+	sorted := make([]string, len(names))
+	copy(sorted, names)
+	sort.Strings(sorted)
+	for i, got := range names {
+		if got != sorted[i] {
+			t.Errorf("MANIFEST.md entries not sorted: position %d got %q want %q", i, got, sorted[i])
+		}
+	}
+
+	// MANIFEST.md must not list itself.
+	if strings.Contains(body1, "- MANIFEST.md") {
+		t.Errorf("MANIFEST.md must not list itself\nbody:\n%s", body1)
+	}
+}
+
+// TestBundle_Extras_Manifest_UnknownFilesGetGenericDescription verifies that
+// a file the manifest generator does not recognise gets a generic description
+// rather than being silently omitted.
+func TestBundle_Extras_Manifest_UnknownFilesGetGenericDescription(t *testing.T) {
+	outDir := t.TempDir()
+	knownFiles := []string{"vibewarden.yaml", "docker-compose.yml", "README.md"}
+	for _, name := range knownFiles {
+		if err := os.WriteFile(filepath.Join(outDir, name), []byte("placeholder"), 0o600); err != nil {
+			t.Fatalf("creating %s: %v", name, err)
+		}
+	}
+
+	// Add a file the manifest generator does not have in its description map.
+	unknownFile := "mystery-tool.conf"
+	if err := os.WriteFile(filepath.Join(outDir, unknownFile), []byte("data"), 0o600); err != nil {
+		t.Fatalf("creating %s: %v", unknownFile, err)
+	}
+
+	content, err := bundleapp.RenderBundleManifest(outDir, "testapp")
+	if err != nil {
+		t.Fatalf("RenderBundleManifest: %v", err)
+	}
+
+	if !strings.Contains(content, unknownFile) {
+		t.Errorf("MANIFEST.md missing unknown file %q\nbody:\n%s", unknownFile, content)
+	}
+	// The line for the unknown file should contain the generic description.
+	for _, line := range strings.Split(content, "\n") {
+		if strings.Contains(line, unknownFile) {
+			if !strings.Contains(line, "bundle artifact") {
+				t.Errorf("unknown file line missing generic description 'bundle artifact'\nline: %s", line)
+			}
+			return
+		}
+	}
+	t.Errorf("no line found for unknown file %q\nbody:\n%s", unknownFile, content)
+}
+
+// TestBundle_Readme_AlignsWithDeployTmpl is the forensic drift guard for
+// #1203 and #1204. It loads prompts/deploy.tmpl, renders the bundle README,
+// extracts the four deploy commands from both sources, and asserts they are
+// equivalent after normalising template variables to concrete values.
+//
+// If a future change touches one source and not the other, this test fails
+// with a clear diff showing which command diverged.
+func TestBundle_Readme_AlignsWithDeployTmpl(t *testing.T) {
+	// Locate the deploy.tmpl relative to this test file using runtime.Caller.
+	_, thisFile, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("runtime.Caller failed")
+	}
+	// internal/app/bundle → go up 3 dirs to repo root, then into templates.
+	repoRoot := filepath.Join(filepath.Dir(thisFile), "..", "..", "..")
+	tmplPath := filepath.Join(repoRoot, "internal", "cli", "templates", "prompts", "deploy.tmpl")
+	tmplBytes, err := os.ReadFile(tmplPath) //nolint:gosec // path derived from source tree
+	if err != nil {
+		t.Fatalf("reading deploy.tmpl: %v", err)
+	}
+	tmplContent := string(tmplBytes)
+
+	// Render the bundle README with concrete substitution values.
+	const testApp = "myapp"
+	const testDomain = "example.com"
+	mem := newMemBundleFS()
+	svc := bundleapp.NewService(&fakeExecutor{}, &fakeGenerator{}).
+		WithBundleFS(mem)
+	outDir := t.TempDir()
+	err = svc.Bundle(context.Background(), bundleapp.BundleOptions{
+		Config:      configWithDomain(testDomain),
+		ConfigPath:  filepath.Join(t.TempDir(), "vibewarden.yaml"),
+		ProjectName: testApp,
+		OutputDir:   outDir,
+		SkipImage:   false,
+	})
+	if err != nil {
+		t.Fatalf("Bundle() error = %v", err)
+	}
+	readmeBody := string(mem.files[filepath.Join(outDir, "README.md")])
+
+	// normalise replaces template variables and domain-as-host with the
+	// canonical forms used in the bundle README:
+	//   - {{.Name}} → testApp
+	//   - user@{{.Domain}} → user@host (README never resolves the host)
+	//   - user@<testDomain> → user@host (template after first normalise)
+	//   - {{.Domain}} → testDomain (for non-host occurrences like curl URL)
+	// Order matters: replace the host patterns before the bare domain.
+	normalise := func(s string) string {
+		s = strings.ReplaceAll(s, "{{.Name}}", testApp)
+		s = strings.ReplaceAll(s, "user@{{.Domain}}", "user@host")
+		s = strings.ReplaceAll(s, "user@"+testDomain, "user@host")
+		s = strings.ReplaceAll(s, "{{.Domain}}", testDomain)
+		return s
+	}
+	tmplContent = normalise(tmplContent)
+
+	// Extract the four deploy commands from deploy.tmpl (Step 7 + Step 8).
+	// Each command starts with two leading spaces in the template.
+	tmplCommands := extractDeployCommands(tmplContent)
+	readmeCommands := extractDeployCommands(readmeBody)
+
+	if len(tmplCommands) == 0 {
+		t.Fatal("deploy.tmpl: could not extract any deploy commands — check regex / template format")
+	}
+	if len(readmeCommands) == 0 {
+		t.Fatal("bundle README: could not extract any deploy commands — check regex / README format")
+	}
+
+	// Assert each tmpl command is also in the README (order independent, since
+	// the README may split steps differently). This is the drift guard.
+	for _, cmd := range tmplCommands {
+		found := false
+		for _, rc := range readmeCommands {
+			if strings.TrimSpace(rc) == strings.TrimSpace(cmd) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Errorf("deploy command from deploy.tmpl not found in bundle README\ncmd: %q\nreadme commands: %v", cmd, readmeCommands)
+		}
+	}
+}
+
+// extractFirstFencedBlock returns the content of the first ```...``` fenced
+// block found in text, or empty string if none is found.
+func extractFirstFencedBlock(text string) string {
+	start := strings.Index(text, "```")
+	if start < 0 {
+		return ""
+	}
+	// Skip past the opening fence line (```bash or ``` etc.).
+	end1 := strings.Index(text[start:], "\n")
+	if end1 < 0 {
+		return ""
+	}
+	blockStart := start + end1 + 1
+	closeIdx := strings.Index(text[blockStart:], "```")
+	if closeIdx < 0 {
+		return ""
+	}
+	return text[blockStart : blockStart+closeIdx]
+}
+
+// extractDeployCommands extracts ssh/scp/docker/curl command lines from text.
+// It matches lines that look like shell commands inside fenced blocks or
+// indented recipe blocks.
+func extractDeployCommands(text string) []string {
+	// Match lines containing ssh, scp, docker load, docker compose up, or curl
+	// with _vibewarden/health. Strip leading whitespace and backtick wrappers.
+	cmdRe := regexp.MustCompile(`(?m)^\s*((?:ssh |scp |docker load|docker compose up|curl -fsSL https://\S+/_vibewarden/health)[^\n]*)`)
+	matches := cmdRe.FindAllStringSubmatch(text, -1)
+	var cmds []string
+	for _, m := range matches {
+		if len(m) > 1 {
+			cmds = append(cmds, strings.TrimSpace(m[1]))
+		}
+	}
+	return cmds
 }

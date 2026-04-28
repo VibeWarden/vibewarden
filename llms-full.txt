@@ -1197,7 +1197,8 @@ Step 6 — Produce a deploy bundle locally:
     #   vibewarden.yaml           — merged base + prod override, strict-validated
     #   sample.env                — template for operators
     #   .env                      — first-run only (use --overwrite to regenerate)
-    #   README.md                 — the deploy contract (read this on the host)
+    #   README.md                 — deploy contract: fenced commands + read-only recipes
+    #   MANIFEST.md               — sorted file listing with one-line descriptions
 
 Step 7 — Ship and start. The bundle is just files; the contract is in README.md.
     Two things easy to get wrong: the remote directory must exist before
@@ -1444,7 +1445,8 @@ Output layout:
 - `vibewarden.yaml` -- merged base + prod override, strict-validated
 - `sample.env` -- regenerated every run; template for operators
 - `.env` -- first-run only; `--overwrite` to replace
-- `README.md` -- the deploy contract (what each file is, where the bundle goes, the two non-obvious traps: remote dir must exist before copy; production healthcheck is on port 443, not 8443)
+- `README.md` -- opens with a fenced bash block containing the literal deploy commands (ssh/scp/docker/curl), substituted from app.name and tls.domain; prose sections explain the non-obvious traps and read-only inspection recipes
+- `MANIFEST.md` -- auto-generated, sorted file listing with one-line descriptions; unknown files get "bundle artifact"
 - `image.tar` -- omitted with `--skip-image`
 - `kratos/`, `.credentials` -- whatever the generator produces
 
@@ -1504,7 +1506,8 @@ Full guide: https://vibewarden.dev/docs/multi-app/
 `vibew build` builds the Docker image locally from the app's Dockerfile.
 `vibew bundle` packages the image (via `docker save`) along with a
 deterministic docker-compose.yml, merged vibewarden.yaml, sample.env,
-.env, and `README.md` (the deploy contract) under `.vibewarden/bundle/`.
+.env, `README.md` (opens with the literal deploy command block), and
+`MANIFEST.md` (sorted file listing) under `.vibewarden/bundle/`.
 The user then transfers the bundle directory to the VPS and runs
 `docker compose up -d` themselves. No source code is ever sent to the
 production server -- the image must be production-ready.
