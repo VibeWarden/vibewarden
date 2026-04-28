@@ -5,7 +5,8 @@ package templates
 import "embed"
 
 // FS holds all template files embedded at compile time, including shared
-// wrap templates (*.tmpl) and agent templates (agents/).
+// wrap templates (*.tmpl), agent templates (agents/), and prompt-template
+// flavors (prompts/).
 //
-//go:embed *.tmpl agents/*.tmpl
+//go:embed *.tmpl agents/*.tmpl prompts/*.tmpl
 var FS embed.FS

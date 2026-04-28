@@ -71,6 +71,7 @@ once accepted, they are not edited. If a decision is superseded, a new ADR refer
 | [096](adr-096-vibew-eject-keep-and-clarify-non-docker-escape-hatch.md) | `vibew eject` — keep-and-clarify as the non-Docker escape hatch | #1147 |
 | [097](adr-097-obs-up-down-fix.md) | Fix `vibew obs up` no-op and `vibew obs down` nuking the main stack | — |
 | [098](adr-098-upstream-health-probe.md) | Upstream health probe — wire the cached background probe into `/_vibewarden/health` | #1197 |
+| [099](adr-099-vibew-prompt-template-canonical-agent-kickoff.md) | `vibew prompt-template` — canonical agent kickoff prompt owned by the binary | — |
 | [497](adr-497-graceful-shutdown-connection-draining.md) | Graceful Shutdown / Connection Draining | — |
 
 ## Numbering
