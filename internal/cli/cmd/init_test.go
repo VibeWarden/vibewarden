@@ -719,6 +719,64 @@ func TestInitCmd_PositionalArgsError(t *testing.T) {
 	}
 }
 
+// TestInitCmd_PrintsApplicationContractNextSteps is an artifact test for #1202.
+// It verifies that the init success message contains the new 3-line "Next:" block
+// pointing at the Application contract and vibew prompt-template, and that it does
+// NOT mention source code paths that would imply vibew scaffolds app code.
+func TestInitCmd_PrintsApplicationContractNextSteps(t *testing.T) {
+	parent := scaffoldTestDir(t, false)
+	projectDir := filepath.Join(parent, "contractapp")
+	if err := os.MkdirAll(projectDir, 0o755); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+
+	origDir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(projectDir); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(origDir) })
+
+	root := cmd.NewRootCmd("test")
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetArgs([]string{"init"})
+
+	if err := root.Execute(); err != nil {
+		t.Fatalf("init failed: %v", err)
+	}
+
+	output := out.String()
+
+	required := []string{
+		"Next:",
+		"application contract",
+		"GET /health",
+		"vibew doctor && vibew dev",
+		"vibew prompt-template --name contractapp",
+	}
+	for _, want := range required {
+		if !strings.Contains(strings.ToLower(output), strings.ToLower(want)) {
+			t.Errorf("success message missing %q; got:\n%s", want, output)
+		}
+	}
+
+	// The next-steps block must not reference source-code paths — vibew init
+	// does not scaffold app code.
+	forbidden := []string{
+		"main.go",
+		"package main",
+		"cmd/",
+	}
+	for _, bad := range forbidden {
+		if strings.Contains(output, bad) {
+			t.Errorf("success message must not contain %q (implies app code scaffolding); got:\n%s", bad, output)
+		}
+	}
+}
+
 // TestInitCmd_NoNameFlag_DefaultsToDirname verifies that when --name is not set,
 // vibewarden.yaml contains name: <dirname> (the directory basename). This ensures
 // ComposeProjectName() always resolves to a predictable value in both dev and
