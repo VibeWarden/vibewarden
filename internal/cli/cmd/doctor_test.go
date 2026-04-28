@@ -61,3 +61,33 @@ func TestDoctorCmd_LongDescription_MentionsPreflight(t *testing.T) {
 		t.Error("expected 'rate-limit' mentioned in doctor Long description")
 	}
 }
+
+// TestDoctorCmd_LongDescription_NoUpstreamReachable is a regression guard that
+// ensures the misleading upstream-reachable check is not re-added to the help
+// text. The upstream lives on the docker-compose internal network and was never
+// reachable from the host; the check only produced confusing WARN output.
+func TestDoctorCmd_LongDescription_NoUpstreamReachable(t *testing.T) {
+	root := cmd.NewRootCmd("test")
+	doctorCmd, _, _ := root.Find([]string{"doctor"})
+
+	forbidden := []string{
+		"Upstream application is reachable",
+		"Upstream reachable",
+	}
+	for _, s := range forbidden {
+		if strings.Contains(doctorCmd.Long, s) {
+			t.Errorf("doctor Long description must not mention %q (misleading upstream check was removed in #1198)", s)
+		}
+	}
+}
+
+// TestDoctorCmd_LongDescription_MentionsHealthEndpoint verifies the Long
+// description points operators at _vibewarden/health for runtime upstream checks.
+func TestDoctorCmd_LongDescription_MentionsHealthEndpoint(t *testing.T) {
+	root := cmd.NewRootCmd("test")
+	doctorCmd, _, _ := root.Find([]string{"doctor"})
+
+	if !strings.Contains(doctorCmd.Long, "_vibewarden/health") {
+		t.Error("expected '_vibewarden/health' mentioned in doctor Long description as runtime health pointer")
+	}
+}

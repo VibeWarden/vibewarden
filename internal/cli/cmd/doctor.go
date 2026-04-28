@@ -32,7 +32,12 @@ func NewDoctorCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "doctor",
 		Short: "Diagnose common configuration and environment issues",
-		Long: `Run a series of independent diagnostics and report any issues found.
+		Long: `Validate VibeWarden config, Docker, generated files, and the Dockerfile contract.
+
+vibew doctor validates static configuration: vibewarden.yaml, Dockerfile contract,
+Go toolchain version, TLS state. It does NOT probe runtime upstream health — that
+is reported by /_vibewarden/health once vibew dev is up.
+Run: curl https://<your-domain>/_vibewarden/health for runtime checks.
 
 Checks are organised into two layers:
 
@@ -48,7 +53,6 @@ Checks are organised into two layers:
     - LE rate-limit budget (when tls.provider is "letsencrypt")
 
   Local Runtime (always runs):
-    - Upstream application is reachable (HTTP GET)
     - TLS certificate is valid (if self-signed)
 
 Each check runs independently — a failure does not stop subsequent checks.
@@ -89,8 +93,6 @@ Examples:
 
 			compose := opsadapter.NewComposeAdapter()
 			portChecker := opsadapter.NewNetPortChecker()
-			httpClient := &http.Client{Timeout: 5 * time.Second}
-			healthChecker := opsadapter.NewHTTPHealthChecker(httpClient)
 			ownerProbe := opsadapter.NewVibeWardenHealthProbe(nil)
 
 			proxyHost := cfg.Server.Host
@@ -112,7 +114,7 @@ Examples:
 			ctClient := crtshAdapter.NewClient(&http.Client{Timeout: 10 * time.Second})
 			leRateLimitSvc := apptlspreflight.NewService(ctClient)
 
-			svc := opsapp.NewDoctorService(compose, portChecker, healthChecker).
+			svc := opsapp.NewDoctorService(compose, portChecker).
 				WithImageChecker(opsadapter.NewImageCheckerAdapter()).
 				WithPortOwnerProbe(ownerProbe).
 				WithTLSStateResolver(tlsResolver).

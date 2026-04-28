@@ -26,7 +26,7 @@ VibeWarden is language-agnostic — `vibew init` does not scaffold app code, a D
 - **Serve `GET /health` returning HTTP 200** on that same port. Any response body is acceptable — vibew checks the status code only. Without this endpoint the sidecar container never leaves the "Created" state and `vibew dev` hangs.
 - **Do not implement TLS, auth, rate-limiting, WAF, or security headers in app code** — the sidecar owns all of those (see §Security boundary rule).
 
-`vibew doctor` validates this contract at runtime: `EXPOSE` vs `upstream.port`, upstream reachability, `/health` response, and TLS state. Run it before `vibew dev` if you hit a connection-refused loop.
+`vibew doctor` validates this contract statically: `EXPOSE` vs `upstream.port` match, Dockerfile structure, and TLS state. Run it before `vibew dev` if you hit a connection-refused loop. For runtime upstream health, query `_vibewarden/health` after `vibew dev` is up.
 
 ## Sidecar-injected headers
 
@@ -97,10 +97,12 @@ vibew logs               # pretty-print structured logs
 
 `vibew doctor` checks (in order): config validity, Docker daemon, Docker Compose,
 proxy port availability, generated files, container health, ACME email, image tag
-consistency, upstream reachability, and TLS state. The TLS state check reports one
-of four values: `Obtaining` (ACME in progress), `Obtained` (cert active and valid),
-`Failing` (ACME failed), or `SelfSignedLocal` (dev self-signed cert — no expiry
-warning is raised). `vibew status` surfaces the same TLS state in its output table. Output uses OK / OFF / FAIL labels; OFF means the component is disabled in config and was not probed.
+consistency, and TLS state. The TLS state check reports one of four values:
+`Obtaining` (ACME in progress), `Obtained` (cert active and valid), `Failing`
+(ACME failed), or `SelfSignedLocal` (dev self-signed cert — no expiry warning is
+raised). `vibew status` surfaces the same TLS state in its output table. Output
+uses OK / OFF / FAIL labels; OFF means the component is disabled in config and was
+not probed. For runtime upstream health, query `_vibewarden/health` after `vibew dev` is up.
 
 `vibew validate` now catches real next-command failures before they reach `vibew bundle` or `vibew up`: name collision (directory named "vibewarden" with no explicit `name:` set), Dockerfile EXPOSE/upstream.port mismatch, image-tag drift in `.env`, ACME-incompatible domain (localhost, IP literal, `.local`/`.test` TLD), and WAF log-mode enabled in a production config. Any of these conditions exits with code 1 and a FAIL row on stderr; fix the config or set the appropriate acknowledgement key before running the next command.
 
@@ -257,7 +259,7 @@ For now: keep one site per project. Revisit when #1169 lands.
 ## Known limitations
 
 - WAF is in `detect` mode by default (logs but does not block). Set `waf.mode: block` in vibewarden.yaml to enforce blocking.
-- `vibew doctor` checks config, Docker, ports, container health, generated files, ACME email, image tag, upstream reachability, and TLS state (Obtaining/Obtained/Failing/SelfSignedLocal). Self-signed dev certs are identified correctly and do not trigger a spurious expiry warning. When a `Dockerfile` is present in the project root, `vibew doctor` also lints it against the contract: alpine base, `EXPOSE` matches `upstream.port`, no `HEALTHCHECK` directive, non-root `USER` (warn, non-blocking), multi-stage build for compiled languages, and builder image major.minor matches the project toolchain manifest (`go.mod`, `.nvmrc`, `pyproject.toml`). When no `Dockerfile` is present, the Dockerfile section is omitted entirely.
+- `vibew doctor` checks config, Docker, ports, container health, generated files, ACME email, image tag, and TLS state (Obtaining/Obtained/Failing/SelfSignedLocal). It does not probe runtime upstream health — use `curl https://<your-domain>/_vibewarden/health` after `vibew dev` is up for that. Self-signed dev certs are identified correctly and do not trigger a spurious expiry warning. When a `Dockerfile` is present in the project root, `vibew doctor` also lints it against the contract: alpine base, `EXPOSE` matches `upstream.port`, no `HEALTHCHECK` directive, non-root `USER` (warn, non-blocking), multi-stage build for compiled languages, and builder image major.minor matches the project toolchain manifest (`go.mod`, `.nvmrc`, `pyproject.toml`). When no `Dockerfile` is present, the Dockerfile section is omitted entirely.
 - Multi-site local dev works; production deploy is post-v1 (see https://github.com/VibeWarden/vibewarden/issues/1169).
 - `vibew init` does not accept `--tls` or `--domain` flags — run `vibew add tls --domain <your-domain>` after init.
 

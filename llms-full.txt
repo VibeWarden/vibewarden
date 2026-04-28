@@ -1576,6 +1576,8 @@ vibew doctor checks (in order):
          the project manifest go.mod/nvmrc/pyproject.toml (FAIL on mismatch; OFF when
          tag is "latest" or unrecognised, or when no manifest is found)
      All 6 checks are omitted when no Dockerfile is present in the project root.
+  Runtime upstream health is NOT checked by doctor — query /_vibewarden/health
+  after vibew dev is up for live upstream status.
 
 vibew doctor flags:
   --skip-le-preflight  skip the LE rate-limit CT log check for this run

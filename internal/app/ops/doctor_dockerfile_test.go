@@ -87,12 +87,11 @@ const goMod126 = "module example.com/app\n\ngo 1.26\n"
 // ── helpers ──────────────────────────────────────────────────────────────────
 
 // doctorSvc returns a minimal DoctorService suitable for Dockerfile-only tests.
-// The compose/port/health fakes ensure all non-Dockerfile checks pass.
+// The compose/port fakes ensure all non-Dockerfile checks pass.
 func doctorSvc() *ops.DoctorService {
 	fc := noContainersCompose()
 	pc := &fakePortChecker{available: map[int]bool{8443: true}}
-	hc := reachableHealthChecker()
-	return ops.NewDoctorService(fc, pc, hc)
+	return ops.NewDoctorService(fc, pc)
 }
 
 // projectWithDockerfile creates a temp dir with the given Dockerfile content
