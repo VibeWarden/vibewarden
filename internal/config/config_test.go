@@ -3452,6 +3452,12 @@ func TestLoad_DeployTargetPlatform_DefaultIsAmd64(t *testing.T) {
 
 // TestLoad_DeployTargetPlatform_FromYAML verifies that deploy.target_platform
 // is populated when the yaml carries the field.
+//
+// Note on empty-string yaml: when the yaml contains `deploy.target_platform: ""`
+// (explicit empty string), viper returns "" — the explicit empty overrides the
+// viper default. The caller (CheckImageHealth / runBundle) is responsible for
+// treating "" as "use defaultTargetPlatform". This test documents that
+// config.Load returns "" in that case so callers are not surprised.
 func TestLoad_DeployTargetPlatform_FromYAML(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -3467,6 +3473,14 @@ func TestLoad_DeployTargetPlatform_FromYAML(t *testing.T) {
 			name:     "amd64 explicit in yaml",
 			yaml:     "deploy:\n  target_platform: linux/amd64\n",
 			wantPlat: "linux/amd64",
+		},
+		{
+			// Explicit empty string in yaml: viper returns "" (does not fall
+			// back to the default "linux/amd64"). CheckImageHealth treats ""
+			// as defaultTargetPlatform; config.Load must not silently hide it.
+			name:     "empty string in yaml returns empty",
+			yaml:     "deploy:\n  target_platform: \"\"\n",
+			wantPlat: "",
 		},
 	}
 	for _, tt := range tests {

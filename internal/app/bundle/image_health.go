@@ -174,18 +174,24 @@ func CheckImageHealth(ctx context.Context, opts CheckImageHealthOptions) (ImageH
 // The block is always printed, even when there are zero warnings — agents
 // depend on the stable layout. ANSI colour is never used.
 //
-// Example output:
+// When the image arch does not match the target platform, RenderImageHealth
+// still renders the full block (showing Arch and Target for context), and then
+// the caller (runImageHealthCheck) returns ErrPlatformMismatch with the
+// actionable rebuild instruction. The block itself does not include the
+// rebuild command — "Warnings: none" is shown when stale is the only absent
+// condition and no legacy tag is present.
+//
+// Example output (stale image, no arch mismatch):
 //
 //	Image health
 //	  Tag:          qr-van-gogh-app:latest
 //	  Digest:       sha256:abc123…
-//	  Arch:         linux/arm64
+//	  Arch:         linux/amd64
 //	  Created:      2026-04-19 14:02:11 UTC (1 day ago)
 //	  Size:         162.4 MB
 //	  Target:       linux/amd64  (override with --target-platform)
 //	  Freshness:    STALE — 12 source files changed since image was built
 //	  Warnings:
-//	    - image arch linux/arm64 != target linux/amd64 (rebuild: vibew build --platform linux/amd64)
 //	    - image is stale (pass --allow-stale to suppress, or rebuild)
 func RenderImageHealth(out io.Writer, h ImageHealth) {
 	age := formatAge(time.Since(h.Image.Created))

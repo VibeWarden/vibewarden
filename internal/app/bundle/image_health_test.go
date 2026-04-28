@@ -199,6 +199,37 @@ func TestCheckImageHealth_DefaultTargetPlatform(t *testing.T) {
 	}
 }
 
+// TestCheckImageHealth_EmptyStringTargetPlatform verifies that an explicit
+// empty-string TargetPlatform (the value config.Load returns when the yaml
+// contains `deploy.target_platform: ""`) is treated as "use the default".
+// This guards the path: yaml empty-string → config.Load returns "" →
+// BundleOptions.TargetPlatform = "" → CheckImageHealth falls back to
+// defaultTargetPlatform ("linux/amd64"). Without this guard, a future
+// refactor removing CheckImageHealth's empty-check would silently accept the
+// wrong platform.
+func TestCheckImageHealth_EmptyStringTargetPlatform(t *testing.T) {
+	inspector := &fakeInspector{
+		info: ports.ImageInfo{OS: "linux", Architecture: "amd64"},
+	}
+	h, err := bundleapp.CheckImageHealth(context.Background(), bundleapp.CheckImageHealthOptions{
+		ImageTag:       "myapp:latest",
+		TargetPlatform: "", // explicit empty — same as yaml `target_platform: ""`
+		Inspector:      inspector,
+		Walker:         &fakeStalenessWalker{},
+	})
+	if err != nil {
+		t.Fatalf("CheckImageHealth() error = %v", err)
+	}
+	// Must resolve to linux/amd64, not remain as empty string.
+	if h.Target != "linux/amd64" {
+		t.Errorf("empty-string target resolved to %q, want %q", h.Target, "linux/amd64")
+	}
+	// An amd64 image against the resolved amd64 target must not be a mismatch.
+	if h.ArchMismatch {
+		t.Error("amd64 image vs resolved linux/amd64 target should not be an arch mismatch")
+	}
+}
+
 // TestRenderImageHealth_FreshNoWarnings is a golden test for the all-good case.
 func TestRenderImageHealth_FreshNoWarnings(t *testing.T) {
 	h := bundleapp.ImageHealth{

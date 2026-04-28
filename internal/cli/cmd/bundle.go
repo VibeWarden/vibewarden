@@ -197,8 +197,11 @@ func runBundle(cmd *cobra.Command, outputDir, imageTag, targetPlatform string, o
 
 	// Resolve platform precedence: CLI flag (if non-empty) → yaml
 	// deploy.target_platform → viper default "linux/amd64".
-	// cfg.Deploy.TargetPlatform is always populated by the viper default
-	// when the yaml field is absent.
+	// cfg.Deploy.TargetPlatform is populated by the viper default when the
+	// yaml field is absent entirely; however, when the yaml field is present
+	// but set to an empty string (""), viper returns "" (explicit empty
+	// overrides the default). In that case CheckImageHealth's own empty-check
+	// falls back to defaultTargetPlatform ("linux/amd64").
 	resolvedPlatform := targetPlatform
 	if resolvedPlatform == "" {
 		resolvedPlatform = cfg.Deploy.TargetPlatform
