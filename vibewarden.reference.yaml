@@ -151,10 +151,10 @@ upstream:
     # Maximum time to wait for a single probe response. Default: "2s"
     timeout: "2s"
 
-    # Consecutive failures required to transition Healthy → Unhealthy. Default: 3
+    # Consecutive failures required to transition "ok" → "failing". Default: 3
     unhealthy_threshold: 3
 
-    # Consecutive successes required to transition Unhealthy → Healthy. Default: 2
+    # Consecutive successes required to transition "failing" → "ok". Default: 2
     healthy_threshold: 2
 
 # Application container configuration

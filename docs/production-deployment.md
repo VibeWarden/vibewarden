@@ -599,8 +599,12 @@ See `docs/observability.md` for the full metrics reference and a local Grafana s
 GET /_vibewarden/health
 ```
 
-Returns `200 OK` with `{"status":"ok"}` when VibeWarden is running. Use this for
-load balancer and uptime monitor health checks.
+Always returns HTTP 200. The `status` field reflects the worst component:
+`"ok"` (all healthy), `"degraded"` (partial), or `"failing"` (upstream probe failing).
+`components.upstream` is `"ok"` / `"failing"` / `"unknown"` (only during the ~5–10s
+boot gap before the first probe completes). Use this endpoint for load balancer and
+uptime monitor health checks; parse `status` to distinguish a live-but-degraded sidecar
+from a fully healthy one.
 
 ---
 

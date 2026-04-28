@@ -12,9 +12,23 @@ This initial entry was written by hand to summarise the work leading up to v0.1.
 
 ## [Unreleased]
 
+### Breaking changes
+
+**`/_vibewarden/health` wire-format change** (#1197, ADR-098). If you parse the JSON
+body of this endpoint, update your parser before upgrading.
+
+| Field | Before | After |
+|---|---|---|
+| `components.upstream` | `"healthy"` / `"unhealthy"` / `"unknown"` | `"ok"` / `"failing"` / `"unknown"` |
+| outer `status` | always `"ok"` (hardcoded) | `"ok"` / `"degraded"` / `"failing"` (worst-component-wins) |
+| HTTP status | 200 | 200 (unchanged) |
+
+`"unknown"` on `components.upstream` now means only one thing: the first probe has not
+yet completed (boot gap of ~5–10s). After that it is always `"ok"` or `"failing"`.
+
 ### Fixed
 
-- **`/_vibewarden/health` now reports real upstream state** (#1197). Previously the route was a hard-coded Caddy `static_response` that always returned `"upstream":"unknown"` regardless of actual upstream health. The existing `HTTPChecker` adapter, `UpstreamHealthChecker` port, and `UpstreamHealth` domain entity were fully implemented but never wired into the production composition root. Fix: the route is replaced by a new `vibewarden_health` Caddy handler module that reads the cached probe result from `RuntimeServices`; the probe default changes from `enabled: false` to `enabled: true` with interval=5s/timeout=2s; the checker is constructed, started, and stopped in `cmd/vibewarden/wiring_serve.go`. **Wire-format change**: `components.upstream` vocabulary changes from `healthy`/`unhealthy`/`unknown` to `ok`/`failing`/`unknown` (last only during the ~5–10s boot gap before the first probe completes). Outer `status` is now `"ok"`/`"degraded"` (worst-component-wins). This endpoint is operator-facing; the change is documented in release notes per ADR-098.
+- **`/_vibewarden/health` now reports real upstream state** (#1197). Previously the route was a hard-coded Caddy `static_response` that always returned `"upstream":"unknown"` regardless of actual upstream health. The existing `HTTPChecker` adapter, `UpstreamHealthChecker` port, and `UpstreamHealth` domain entity were fully implemented but never wired into the production composition root. Fix: the route is replaced by a new `vibewarden_health` Caddy handler module that reads the cached probe result from `RuntimeServices`; the probe default changes from `enabled: false` to `enabled: true` with interval=5s/timeout=2s; the checker is constructed, started, and stopped in `cmd/vibewarden/wiring_serve.go`.
 
 ---
 

@@ -257,12 +257,12 @@ Example: database.external_url: "postgres://user:${DB_PASSWORD}@db:5432/vw"
 
   upstream.host                       string     127.0.0.1    Upstream host
   upstream.port                       int        3000         Upstream port
-  upstream.health.enabled             bool       false        Enable health checking
+  upstream.health.enabled             bool       true         Enable health checking (default true since v0.18.2)
   upstream.health.path                string     /health      HTTP path to probe
-  upstream.health.interval            duration   10s          Time between probes
-  upstream.health.timeout             duration   5s           Per-probe timeout
-  upstream.health.unhealthy_threshold int        3            Failures to mark unhealthy
-  upstream.health.healthy_threshold   int        2            Successes to mark healthy
+  upstream.health.interval            duration   5s           Time between probes
+  upstream.health.timeout             duration   2s           Per-probe timeout
+  upstream.health.unhealthy_threshold int        3            Failures to mark upstream "failing"
+  upstream.health.healthy_threshold   int        2            Successes to mark upstream "ok"
 
   upstream:
     host: 127.0.0.1
