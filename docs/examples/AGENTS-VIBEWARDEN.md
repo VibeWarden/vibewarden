@@ -128,13 +128,13 @@ warning is raised). `vibew status` surfaces the same TLS state in its output tab
 `vibew build` and `vibew bundle` tag the image as `<project>-app:latest`. The
 project name is resolved in this order:
 
-1. `name` field in vibewarden.yaml (explicit) — optional in the common case
-2. `app.image` with registry prefix and tag stripped (e.g. `ghcr.io/org/myapp:latest` → `myapp`)
-3. Directory name containing vibewarden.yaml (cwd-basename fallback)
+1. `name` field in vibewarden.yaml — always populated by `vibew init`/`vibew wrap` since v0.19.0.
+2. Directory name containing vibewarden.yaml (cwd-basename fallback, for projects pre-dating v0.19.0).
+3. `"vibewarden"` as a last-resort (should not occur in practice).
 
-For example, a project in `~/code/mysite` with no explicit `name` produces the
-image `mysite-app:latest`. `vibew bundle` and `vibew bundle --build` both use
-this chain, so the bundle lookup and the build step always agree on the tag.
+For example, a project in `~/code/mysite` produces the image `mysite-app:latest`.
+`vibew bundle` and `vibew bundle --build` both use this chain, so the bundle
+lookup and the build step always agree on the tag.
 
 ## TLS configuration keys
 

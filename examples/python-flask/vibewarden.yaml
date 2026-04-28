@@ -4,6 +4,8 @@
 # Switch to jwt to protect /protected behind an OIDC provider.
 # See https://vibewarden.dev/docs/auth for details.
 
+name: "python-flask"
+
 profile: dev
 
 app:

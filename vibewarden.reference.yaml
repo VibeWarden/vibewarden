@@ -54,14 +54,16 @@
 # secret store is bootstrapped from that section (see ADR-076).
 
 # Project name — controls Docker Compose project name, image tags (<name>-app),
-# and deploy directory names. Derivation order when omitted:
-#   1. This field (name:)
-#   2. app.image with tag stripped (e.g. "myapp:latest" -> "myapp")
-#   3. Current directory name (lowercased, sanitized)
-#   4. "vibewarden" (last-resort fallback)
+# and deploy directory names.
 #
-# Set explicitly when running multiple VibeWarden projects on the same machine
-# to prevent Docker image name collisions.
+# `vibew init` and `vibew wrap` always write this field (default: directory
+# name). You should only override it explicitly when running multiple
+# VibeWarden projects on the same machine to prevent Docker name collisions.
+#
+# Derivation order (for projects that pre-date v0.19.0 and lack this field):
+#   1. This field (name:)
+#   2. Current directory name (lowercased, sanitized)
+#   3. "vibewarden" (last-resort fallback)
 #
 # Can also be set via: vibew init --name <name>
 #

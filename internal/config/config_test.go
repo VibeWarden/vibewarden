@@ -3224,29 +3224,27 @@ func TestComposeProjectName(t *testing.T) {
 	tests := []struct {
 		name        string
 		cfgName     string
-		appImage    string
 		projectRoot string
 		want        string
 	}{
-		{"directory name used when name and image empty", "", "", "/home/user/my-cool-app", "my-cool-app"},
-		{"directory name lowercased", "", "", "/home/user/MyCoolApp", "mycoolapp"},
-		{"directory name sanitized", "", "", "/home/user/My Cool App!", "my-cool-app"},
-		{"simple image name", "", "myapp:latest", "", "myapp"},
-		{"image without tag", "", "myapp", "", "myapp"},
-		{"registry prefix stripped", "", "ghcr.io/org/myapp:latest", "", "myapp"},
-		{"deep registry path stripped", "", "registry.example.com/org/team/myapp:v2", "", "myapp"},
-		{"image with only tag falls to directory", "", ":latest", "/home/user/webapp", "webapp"},
-		{"explicit name takes precedence over image", "my-project", "myapp:latest", "", "my-project"},
-		{"explicit name takes precedence over directory", "my-project", "", "/home/user/other", "my-project"},
-		{"explicit name used alone", "custom-name", "", "", "custom-name"},
-		{"fallback to vibewarden when all empty", "", "", "", "vibewarden"},
-		{"different directories produce different names", "", "", "/projects/app-a", "app-a"},
+		{"explicit name takes precedence over directory", "my-project", "/home/user/other", "my-project"},
+		{"explicit name used alone", "custom-name", "", "custom-name"},
+		// Branch 1 must sanitize the user-supplied name so that mixed-case or
+		// space-containing values are normalised before Docker Compose sees them.
+		// Docker Compose requires [a-z0-9_-]+ for project names.
+		{"name with spaces sanitized to hyphens", "My App", "", "my-app"},
+		{"name with uppercase lowercased", "MyProject", "", "myproject"},
+		{"name with special chars sanitized", "foo_bar!", "", "foo-bar"},
+		{"directory name used when name empty", "", "/home/user/my-cool-app", "my-cool-app"},
+		{"directory name lowercased", "", "/home/user/MyCoolApp", "mycoolapp"},
+		{"directory name sanitized", "", "/home/user/My Cool App!", "my-cool-app"},
+		{"different directories produce different names", "", "/projects/app-a", "app-a"},
+		{"fallback to vibewarden when all empty", "", "", "vibewarden"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := &config.Config{Name: tt.cfgName}
-			cfg.App.Image = tt.appImage
 			cfg.ProjectRoot = tt.projectRoot
 			got := cfg.ComposeProjectName()
 			if got != tt.want {
@@ -3282,19 +3280,19 @@ func TestComposeProjectName_DifferentDirs(t *testing.T) {
 }
 
 // TestComposeProjectName_FallsBackToVibewardenWhenProjectRootEmpty is a guard
-// test that pins the latent misbehavior identified in ADR-093: when neither
-// cfg.Name, cfg.App.Image, nor cfg.ProjectRoot is set (the state produced by
-// config.LoadRaw), ComposeProjectName() returns the literal "vibewarden".
+// test that pins the last-resort fallback in ComposeProjectName(): when neither
+// cfg.Name nor cfg.ProjectRoot is set (e.g. a manually constructed Config in
+// a test), ComposeProjectName() returns the literal "vibewarden".
 //
-// This is NOT correct behavior for runBundle — it was the root cause of #1141.
-// The fix in ADR-093 makes deriveProjectName (not ComposeProjectName) the
-// authority inside runBundle. This test exists so that if a future developer
-// re-introduces ComposeProjectName() as the imageTag source without populating
-// ProjectRoot, the test makes the regression visible immediately.
+// Note: since v0.19.0 (#1199) loadInternal sets ProjectRoot from the resolved
+// config file path, so configs loaded via Load / LoadRaw / LoadStrict will have
+// ProjectRoot populated whenever vibewarden.yaml exists on disk. This test
+// covers the manually constructed case (no file path involved).
 func TestComposeProjectName_FallsBackToVibewardenWhenProjectRootEmpty(t *testing.T) {
 	cfg := &config.Config{}
-	// ProjectRoot is intentionally not set — this mirrors the state returned
-	// by config.LoadRaw, which never populates ProjectRoot.
+	// ProjectRoot is intentionally not set — this is the manually constructed
+	// state (no loader involved). The fallback to "vibewarden" must still hold
+	// to prevent a blank project name from reaching Docker Compose.
 	got := cfg.ComposeProjectName()
 	if got != "vibewarden" {
 		t.Errorf("ComposeProjectName() with empty sources = %q, want %q (guard test — see ADR-093)", got, "vibewarden")

@@ -34,8 +34,12 @@ func TestArtifact_DeployCompose_UsesImageNotBuild(t *testing.T) {
 	projDir := t.TempDir()
 	outputDir := t.TempDir()
 
-	// Write a minimal vibewarden.yaml with app.build set.
-	baseYAML := `server:
+	// Write a minimal vibewarden.yaml with app.build and name: set.
+	// Since v0.19.0 (#1199) vibew init always writes name:, so bundles use
+	// cfg.Name (via ComposeProjectName) rather than the last-resort "vibewarden"
+	// fallback. The expected App.Image is therefore <name>-app:latest.
+	baseYAML := `name: myapp
+server:
   port: 8443
 upstream:
   host: "0.0.0.0"
@@ -49,6 +53,7 @@ app:
 	}
 
 	cfg := &config.Config{
+		Name:     "myapp",
 		Server:   config.ServerConfig{Port: 8443},
 		Upstream: config.UpstreamConfig{Host: "0.0.0.0", Port: 3000},
 		App:      config.AppConfig{Build: "."},
@@ -80,11 +85,12 @@ app:
 		t.Error("deploy bundle must set DeployMode = true")
 	}
 	// App.Build must be cleared and App.Image set for deploy compose.
+	// Image is derived from cfg.Name via ComposeProjectName().
 	if inputCfg.App.Build != "" {
 		t.Errorf("deploy bundle App.Build = %q, want empty (image mode)", inputCfg.App.Build)
 	}
-	if inputCfg.App.Image != "vibewarden-app:latest" {
-		t.Errorf("deploy bundle App.Image = %q, want %q", inputCfg.App.Image, "vibewarden-app:latest")
+	if inputCfg.App.Image != "myapp-app:latest" {
+		t.Errorf("deploy bundle App.Image = %q, want %q", inputCfg.App.Image, "myapp-app:latest")
 	}
 }
 

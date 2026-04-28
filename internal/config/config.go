@@ -134,9 +134,10 @@ type Config struct {
 	DeployMode bool `mapstructure:"-"`
 
 	// ProjectRoot is the absolute path to the project directory (i.e. the
-	// directory containing vibewarden.yaml). It is set programmatically at
-	// generation time so that the docker-compose.yml template can reference an
-	// absolute build context instead of fragile relative paths like "../../.".
+	// directory containing vibewarden.yaml). Set by loadInternal (and therefore
+	// by Load, LoadRaw, and LoadStrict) to the directory that contains the
+	// resolved config file. Callers of ComposeProjectName() MUST use the Config
+	// returned by a loader function — do not set this field manually.
 	// This field is not loaded from YAML.
 	ProjectRoot string `mapstructure:"-"`
 }
@@ -180,27 +181,18 @@ func sanitizeProjectName(name string) string {
 // under .vibewarden/generated/) and avoids stale image names like "generated-app".
 //
 // Derivation order:
-//  1. The explicit Name field (set via vibewarden.yaml name: or vibew init --name).
-//  2. App.Image with the tag stripped (e.g. "myapp:latest" -> "myapp").
-//  3. The project directory name (from ProjectRoot), lowercased and sanitized.
-//  4. "vibewarden" as a last-resort fallback (should not happen in practice).
+//  1. The explicit Name field (set via vibewarden.yaml name: or vibew init/wrap).
+//     Since vibew init and vibew wrap always populate name:, this branch fires
+//     for all projects created with v0.19.0+.
+//  2. The project directory name (from ProjectRoot), lowercased and sanitized.
+//     Defensive fallback for projects that pre-date the unconditional name: write.
+//  3. "vibewarden" as a last-resort fallback (should not happen in practice).
 func (c *Config) ComposeProjectName() string {
 	if c.Name != "" {
-		return c.Name
-	}
-	if c.App.Image != "" {
-		name := c.App.Image
-		// Strip registry prefix if present (e.g. "ghcr.io/org/myapp:latest" -> "myapp").
-		if idx := strings.LastIndex(name, "/"); idx >= 0 {
-			name = name[idx+1:]
-		}
-		// Strip tag (e.g. "myapp:latest" -> "myapp").
-		if idx := strings.Index(name, ":"); idx >= 0 {
-			name = name[:idx]
-		}
-		if name != "" {
-			return name
-		}
+		// sanitizeProjectName is applied so that a user-supplied name like
+		// "My App" is normalised to "my-app" before Docker Compose sees it.
+		// Docker Compose requires [a-z0-9_-]+ for project names.
+		return sanitizeProjectName(c.Name)
 	}
 	if c.ProjectRoot != "" {
 		if name := sanitizeProjectName(filepath.Base(c.ProjectRoot)); name != "" {

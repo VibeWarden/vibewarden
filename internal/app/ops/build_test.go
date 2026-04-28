@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -32,8 +34,9 @@ func TestBuildService_Run_UsesComposeProjectNameFromConfig(t *testing.T) {
 	fb := &fakeBuilder{}
 	svc := ops.NewBuildService(fb)
 
-	cfg := &config.Config{}
-	cfg.App.Image = "myapp:v1.2.3"
+	// Use cfg.Name — the canonical resolver since v0.19.0 (#1199).
+	// App.Image is no longer used to derive the project name.
+	cfg := &config.Config{Name: "myapp"}
 
 	var out bytes.Buffer
 	err := svc.Run(context.Background(), cfg, ops.BuildOptions{WorkDir: "."}, &out)
@@ -41,7 +44,7 @@ func TestBuildService_Run_UsesComposeProjectNameFromConfig(t *testing.T) {
 		t.Fatalf("Run() unexpected error: %v", err)
 	}
 
-	// ComposeProjectName() strips the tag from App.Image, giving "myapp".
+	// ComposeProjectName() uses cfg.Name, giving "myapp".
 	// resolveImageTag uses that to produce "myapp-app:latest" which matches
 	// what docker-compose expects for the app service.
 	wantTag := "myapp-app:latest"
@@ -397,28 +400,51 @@ func TestBuildService_Run_UsesPreResolvedImageTag(t *testing.T) {
 // image tag produced by `vibew build` matches what docker-compose expects:
 // <ComposeProjectName>-app:latest.
 //
+// Since v0.19.0 (#1199), App.Image is no longer part of the derivation chain.
+// The canonical resolver is: cfg.Name → dirname(cfg.ProjectRoot or workDir) →
+// dirname(workDir) fallback.
+//
 // Regression test for #973.
 func TestBuildService_Run_ImageNameMatchesComposeProjectName(t *testing.T) {
+	dir := t.TempDir()
+
 	tests := []struct {
 		name    string
 		cfg     *config.Config
+		workDir string
 		wantTag string
 	}{
 		{
 			name:    "explicit name in config",
 			cfg:     &config.Config{Name: "myapp"},
+			workDir: dir,
 			wantTag: "myapp-app:latest",
 		},
 		{
-			name:    "image-derived name (tag stripped)",
+			// App.Image is no longer used for project-name derivation.
+			// dirname(workDir) is used as the fallback.
+			name:    "image-derived name (tag stripped) — now uses dirname fallback",
 			cfg:     &config.Config{App: config.AppConfig{Image: "webapp:v2.0"}},
-			wantTag: "webapp-app:latest",
+			workDir: filepath.Join(dir, "webapp-project"),
+			wantTag: "webapp-project-app:latest",
 		},
 		{
-			name:    "image with registry prefix",
+			// App.Image with registry prefix — same: dirname is now authoritative.
+			name:    "image with registry prefix — now uses dirname fallback",
 			cfg:     &config.Config{App: config.AppConfig{Image: "ghcr.io/org/service:latest"}},
-			wantTag: "service-app:latest",
+			workDir: filepath.Join(dir, "my-service"),
+			wantTag: "my-service-app:latest",
 		},
+	}
+
+	// Pre-create subdirectories used as workDir.
+	for _, d := range []string{
+		filepath.Join(dir, "webapp-project"),
+		filepath.Join(dir, "my-service"),
+	} {
+		if err := os.MkdirAll(d, 0o750); err != nil {
+			t.Fatalf("MkdirAll %s: %v", d, err)
+		}
 	}
 
 	for _, tt := range tests {
@@ -427,7 +453,7 @@ func TestBuildService_Run_ImageNameMatchesComposeProjectName(t *testing.T) {
 			svc := ops.NewBuildService(fb)
 
 			var out bytes.Buffer
-			err := svc.Run(context.Background(), tt.cfg, ops.BuildOptions{WorkDir: "."}, &out)
+			err := svc.Run(context.Background(), tt.cfg, ops.BuildOptions{WorkDir: tt.workDir}, &out)
 			if err != nil {
 				t.Fatalf("Run() unexpected error: %v", err)
 			}

@@ -719,11 +719,11 @@ func TestInitCmd_PositionalArgsError(t *testing.T) {
 	}
 }
 
-// TestInitCmd_NoNameFlag_NoNameInConfig verifies that when --name is not set,
-// vibewarden.yaml does not contain a top-level name: field.
-//
-// Artifact test for #955.
-func TestInitCmd_NoNameFlag_NoNameInConfig(t *testing.T) {
+// TestInitCmd_NoNameFlag_DefaultsToDirname verifies that when --name is not set,
+// vibewarden.yaml contains name: <dirname> (the directory basename). This ensures
+// ComposeProjectName() always resolves to a predictable value in both dev and
+// bundle environments. Guard for #1199.
+func TestInitCmd_NoNameFlag_DefaultsToDirname(t *testing.T) {
 	parent := scaffoldTestDir(t, false)
 	projectDir := filepath.Join(parent, "testproj2")
 	if err := os.MkdirAll(projectDir, 0o755); err != nil {
@@ -753,7 +753,8 @@ func TestInitCmd_NoNameFlag_NoNameInConfig(t *testing.T) {
 		t.Fatalf("reading vibewarden.yaml: %v", err)
 	}
 
-	if strings.Contains(string(data), "name:") {
-		t.Errorf("vibewarden.yaml should NOT contain 'name:' when --name is not set, got:\n%s", data)
+	// vibewarden.yaml must contain name: "testproj2" (dirname) even without --name.
+	if !strings.Contains(string(data), `name: "testproj2"`) {
+		t.Errorf("vibewarden.yaml should contain 'name: \"testproj2\"' (dirname default), got:\n%s", data)
 	}
 }

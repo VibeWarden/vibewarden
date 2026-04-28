@@ -334,6 +334,42 @@ func TestBundle_Extras_Readme_MentionsPlatformHint(t *testing.T) {
 	}
 }
 
+// TestBundle_Extras_Readme_OrphanCleanupHint verifies that the bundle README
+// includes the one-time orphan-cleanup paragraph for users upgrading from
+// old stacks that ran under the "vibewarden-app" project name (#1199).
+func TestBundle_Extras_Readme_OrphanCleanupHint(t *testing.T) {
+	mem := newMemBundleFS()
+	svc := bundleapp.NewService(&fakeExecutor{}, &fakeGenerator{}).
+		WithBundleFS(mem)
+
+	outDir := t.TempDir()
+	err := svc.Bundle(context.Background(), bundleapp.BundleOptions{
+		Config:      minimalBundleCfg(),
+		ConfigPath:  filepath.Join(t.TempDir(), "vibewarden.yaml"),
+		ProjectName: "myproject",
+		OutputDir:   outDir,
+		SkipImage:   true,
+	})
+	if err != nil {
+		t.Fatalf("Bundle() error = %v", err)
+	}
+
+	body := string(mem.files[filepath.Join(outDir, "README.md")])
+
+	// The README must explain the one-time orphan cleanup for users upgrading
+	// from the legacy vibewarden-app project name.
+	for _, want := range []string{
+		"vibewarden-app",
+		"docker compose -p vibewarden-app down",
+		"Upgrading from a previous deployment",
+		"app.name",
+	} {
+		if !strings.Contains(body, want) {
+			t.Errorf("README.md missing orphan-cleanup hint %q\nbody:\n%s", want, body)
+		}
+	}
+}
+
 func TestBundle_Extras_NoBundleFS_NoOp(t *testing.T) {
 	// When Service.bundleFS is nil, the extras pipeline must do nothing —
 	// existing callers (vibew deploy --dry-run) rely on this fallback.

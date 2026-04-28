@@ -234,6 +234,25 @@ Environment variable substitution in YAML values: ${VAR} syntax.
 Example: database.external_url: "postgres://user:${DB_PASSWORD}@db:5432/vw"
 
 
+### name
+
+  Type: string
+  Default: current directory name (auto-populated by vibew init and vibew wrap since v0.19.0)
+  Required: no (but always written by vibew init / vibew wrap)
+
+  Controls the Docker Compose project name and the image tag prefix (<name>-app:latest).
+  Set explicitly when running multiple VibeWarden projects on the same machine to
+  prevent Docker name collisions. Both vibew dev and the bundled deploy use this
+  value, so the project name is consistent across environments.
+
+  Derivation order when field is absent (pre-v0.19.0 projects):
+    1. This field (name:)
+    2. Current directory name (lowercased, sanitized)
+    3. "vibewarden" (last-resort fallback)
+
+  name: my-project
+
+
 ### profile
 
   Type: string

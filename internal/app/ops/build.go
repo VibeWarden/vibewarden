@@ -142,24 +142,37 @@ func (s *BuildService) probeShell(ctx context.Context, image string, out io.Writ
 // use the same tag without re-running the derivation chain.
 //
 // Priority:
-//  1. cfg.ComposeProjectName() + "-app:latest" when cfg is non-nil and has a
-//     project name or image. This matches Docker Compose's naming convention.
+//  1. cfg.ComposeProjectName() + "-app:latest" when cfg is non-nil and
+//     ComposeProjectName() returns a non-fallback value. A copy of cfg is used
+//     so ProjectRoot can be filled from workDir as a fallback without mutating
+//     the caller's struct. Configs loaded via config.Load / config.LoadRaw
+//     already have ProjectRoot set by the loader; this guard fires only for
+//     manually constructed Config values (e.g. in tests).
 //  2. Base name of workDir (directory name), normalised to lower-case with
 //     "-app:latest" appended.
 func resolveImageTag(cfg *config.Config, workDir string) (string, error) {
-	if cfg != nil {
-		name := cfg.ComposeProjectName()
-		if name != "" && name != "vibewarden" {
-			return name + "-app:latest", nil
-		}
-		// When ComposeProjectName() returns "vibewarden" (the last-resort fallback),
-		// all three sources (name, image, and project directory) are empty. Fall
-		// through to workDir-based derivation.
-	}
-
 	abs, err := filepath.Abs(workDir)
 	if err != nil {
 		return "", fmt.Errorf("resolving work directory: %w", err)
+	}
+
+	if cfg != nil {
+		// Copy the struct before mutating so that setting ProjectRoot as a
+		// fallback does not silently alter the caller's *config.Config. The
+		// loader (loadInternal) sets ProjectRoot for configs loaded from disk;
+		// this guard only fires when the caller constructed a Config manually
+		// (e.g. in tests) or the config was loaded without a file path.
+		cfgCopy := *cfg
+		if cfgCopy.ProjectRoot == "" {
+			cfgCopy.ProjectRoot = abs
+		}
+		name := cfgCopy.ComposeProjectName()
+		if name != "" && name != "vibewarden" {
+			return name + "-app:latest", nil
+		}
+		// When ComposeProjectName() returns "vibewarden" (the last-resort
+		// fallback), ProjectRoot-based derivation also failed. Fall through to
+		// workDir-based derivation.
 	}
 
 	name := strings.ToLower(filepath.Base(abs))

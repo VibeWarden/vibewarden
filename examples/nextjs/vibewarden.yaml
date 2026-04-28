@@ -4,6 +4,8 @@
 # Switch to jwt to protect /api/protected behind an OIDC provider.
 # See https://vibewarden.dev/docs/auth for details.
 
+name: "nextjs"
+
 profile: dev
 
 app:
