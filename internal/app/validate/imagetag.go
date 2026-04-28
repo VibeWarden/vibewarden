@@ -10,7 +10,6 @@ import (
 
 	"github.com/vibewarden/vibewarden/internal/app/bundle"
 	"github.com/vibewarden/vibewarden/internal/app/ops"
-	"github.com/vibewarden/vibewarden/internal/config"
 )
 
 // CheckImageTag reads <projectRoot>/.env and checks whether the
@@ -24,9 +23,9 @@ import (
 //
 // A mismatch means the deployed image tag is stale and the user should run
 // vibew bundle --overwrite.
-func CheckImageTag(_ context.Context, projectRoot string, cfg *config.Config, _ bool) Result {
-	envPath := filepath.Join(projectRoot, ".env")
-	f, err := os.Open(envPath) //nolint:gosec // projectRoot is the project root provided by the caller
+func CheckImageTag(_ context.Context, inputs CheckInputs) Result {
+	envPath := filepath.Join(inputs.ProjectRoot, ".env")
+	f, err := os.Open(envPath) //nolint:gosec // ProjectRoot is the project root provided by the caller
 	if err != nil {
 		if os.IsNotExist(err) {
 			return Result{Skip: true}
@@ -58,9 +57,9 @@ func CheckImageTag(_ context.Context, projectRoot string, cfg *config.Config, _ 
 	}
 
 	// Derive the expected tag using the same logic as vibew bundle.
-	// absConfigPath is synthesised from projectRoot; the basename is what matters.
-	absConfigPath := filepath.Join(projectRoot, "vibewarden.yaml")
-	projectName := bundle.DeriveProjectName(cfg, absConfigPath)
+	// absConfigPath is synthesised from ProjectRoot; the basename is what matters.
+	absConfigPath := filepath.Join(inputs.ProjectRoot, "vibewarden.yaml")
+	projectName := bundle.DeriveProjectName(inputs.Cfg, absConfigPath)
 	expectedTag := projectName + "-app:latest"
 
 	if imageValue == expectedTag {

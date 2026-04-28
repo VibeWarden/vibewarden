@@ -77,7 +77,7 @@ func TestCheckWAF(t *testing.T) {
 			cfg.WAF.Mode = tt.wafMode
 			cfg.WAF.AcknowledgeLogMode = tt.acknowledgeLogMode
 
-			r := validate.CheckWAF(context.Background(), "", cfg, tt.prodOverrideExists)
+			r := validate.CheckWAF(context.Background(), validate.CheckInputs{Cfg: cfg, ProdOverrideExists: tt.prodOverrideExists})
 
 			if r.Skip != tt.wantSkip {
 				t.Errorf("Skip = %v, want %v (message: %q)", r.Skip, tt.wantSkip, r.Message)

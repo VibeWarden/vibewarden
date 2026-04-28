@@ -94,7 +94,7 @@ func TestCheckImageTag(t *testing.T) {
 			}
 
 			cfg := &config.Config{Name: tt.cfgName}
-			r := validate.CheckImageTag(context.Background(), dir, cfg, false)
+			r := validate.CheckImageTag(context.Background(), validate.CheckInputs{ProjectRoot: dir, Cfg: cfg})
 
 			if r.Skip != tt.wantSkip {
 				t.Errorf("Skip = %v, want %v (message: %q)", r.Skip, tt.wantSkip, r.Message)

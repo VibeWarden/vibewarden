@@ -95,7 +95,7 @@ func TestCheckDockerfile(t *testing.T) {
 
 			cfg := &config.Config{}
 			cfg.Upstream.Port = tt.upstreamPort
-			r := validate.CheckDockerfile(context.Background(), dir, cfg, false)
+			r := validate.CheckDockerfile(context.Background(), validate.CheckInputs{ProjectRoot: dir, Cfg: cfg})
 
 			if r.Skip != tt.wantSkip {
 				t.Errorf("Skip = %v, want %v (message: %q)", r.Skip, tt.wantSkip, r.Message)

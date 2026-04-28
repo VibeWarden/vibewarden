@@ -8,7 +8,6 @@ import (
 
 	"github.com/vibewarden/vibewarden/internal/app/dockerfile"
 	"github.com/vibewarden/vibewarden/internal/app/ops"
-	"github.com/vibewarden/vibewarden/internal/config"
 )
 
 // CheckDockerfile parses the EXPOSE directives in <projectRoot>/Dockerfile and
@@ -22,9 +21,9 @@ import (
 //
 // Multi-line continuation (\) is not supported; such lines are treated as
 // malformed and skipped, matching the architect's directive.
-func CheckDockerfile(_ context.Context, projectRoot string, cfg *config.Config, _ bool) Result {
-	dockerfilePath := filepath.Join(projectRoot, "Dockerfile")
-	f, err := os.Open(dockerfilePath) //nolint:gosec // projectRoot is the project root provided by the caller
+func CheckDockerfile(_ context.Context, inputs CheckInputs) Result {
+	dockerfilePath := filepath.Join(inputs.ProjectRoot, "Dockerfile")
+	f, err := os.Open(dockerfilePath) //nolint:gosec // ProjectRoot is the project root provided by the caller
 	if err != nil {
 		if os.IsNotExist(err) {
 			return Result{Skip: true}
@@ -46,7 +45,7 @@ func CheckDockerfile(_ context.Context, projectRoot string, cfg *config.Config, 
 
 	lastPort := parsed.Exposes[len(parsed.Exposes)-1].Port
 
-	if lastPort == cfg.Upstream.Port {
+	if lastPort == inputs.Cfg.Upstream.Port {
 		// Ports match — no row needed.
 		return Result{Skip: true}
 	}
@@ -56,7 +55,7 @@ func CheckDockerfile(_ context.Context, projectRoot string, cfg *config.Config, 
 		Message: fmt.Sprintf(
 			"Dockerfile EXPOSE %d does not match upstream.port %d — update one to match",
 			lastPort,
-			cfg.Upstream.Port,
+			inputs.Cfg.Upstream.Port,
 		),
 	}
 }

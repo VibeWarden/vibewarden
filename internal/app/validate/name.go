@@ -6,7 +6,6 @@ import (
 	"path/filepath"
 
 	"github.com/vibewarden/vibewarden/internal/app/ops"
-	"github.com/vibewarden/vibewarden/internal/config"
 )
 
 // CheckName detects the name-collision case: when cfg.Name is empty and the
@@ -18,13 +17,13 @@ import (
 // "vibewarden". Any other directory name (even "vibewarden-app", "myapp", etc.)
 // results in a skip — no row emitted — because there is no collision in those
 // cases.
-func CheckName(_ context.Context, projectRoot string, cfg *config.Config, _ bool) Result {
+func CheckName(_ context.Context, inputs CheckInputs) Result {
 	// When name: is set, no collision is possible — the explicit name wins.
-	if cfg.Name != "" {
+	if inputs.Cfg.Name != "" {
 		return Result{Skip: true}
 	}
 
-	dir := projectRoot
+	dir := inputs.ProjectRoot
 	if dir == "" {
 		return Result{Skip: true}
 	}
