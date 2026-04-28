@@ -13,8 +13,8 @@ import (
 	"errors"
 	"fmt"
 	"strings"
-	"unicode"
 
+	"github.com/vibewarden/vibewarden/internal/config"
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
 
@@ -98,7 +98,7 @@ func (s *Service) Render(opts Options) ([]byte, error) {
 	}
 
 	data := templateData{
-		Name:         sanitizeName(opts.Name),
+		Name:         config.SanitizeProjectName(opts.Name),
 		Describe:     strings.TrimSpace(opts.Describe),
 		Domain:       opts.Domain,
 		VibewVersion: opts.VibewVersion,
@@ -139,27 +139,4 @@ func validate(opts Options) error {
 		return ErrDomainRequired
 	}
 	return nil
-}
-
-// sanitizeName lowercases name and replaces non-alphanumeric characters with
-// hyphens, matching Docker Compose project name rules. Leading and trailing
-// hyphens are trimmed.
-//
-// This rule is deliberately duplicated from internal/config/config.go's
-// sanitizeProjectName rather than imported from there, because config is a
-// heavyweight package and this rule is six lines. If the two implementations
-// ever drift, the architecture test suite (ADR-087) is the enforcement point.
-func sanitizeName(name string) string {
-	name = strings.ToLower(name)
-	var b strings.Builder
-	for _, r := range name {
-		if (r >= 'a' && r <= 'z') || (r >= '0' && r <= '9') || r == '-' {
-			b.WriteRune(r)
-		} else if unicode.IsSpace(r) || !unicode.IsLetter(r) && !unicode.IsDigit(r) {
-			b.WriteRune('-')
-		} else {
-			b.WriteRune(r)
-		}
-	}
-	return strings.Trim(b.String(), "-")
 }

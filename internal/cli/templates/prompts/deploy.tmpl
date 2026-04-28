@@ -58,8 +58,9 @@ vibewarden.production.yaml.
 
 ## Step 7 — Deploy to your server
 
-# NOTE: this is the canonical deploy recipe from the bundle README contract.
-# Source of truth: internal/app/bundle. Run these commands directly — no shell script wrapper.
+# NOTE: this is the canonical deploy recipe defined in ADR-099.
+# The bundle README is prose-only; ADR-099 is the authoritative source for this sequence.
+# Run these commands directly — no shell script wrapper.
 
   ssh user@{{.Domain}} 'mkdir -p /opt/{{.Name}}'
   scp -r .vibewarden/bundle/* user@{{.Domain}}:/opt/{{.Name}}/

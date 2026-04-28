@@ -160,9 +160,13 @@ func (c *Config) IsProdProfile() bool {
 	return c.Profile == "prod"
 }
 
-// sanitizeProjectName lowercases and replaces non-alphanumeric characters with
-// hyphens, matching Docker Compose's project name rules.
-func sanitizeProjectName(name string) string {
+// SanitizeProjectName lowercases name and replaces every character outside
+// ASCII [a-z0-9-] with a hyphen, then trims leading/trailing hyphens.
+// This matches Docker Compose's project name rules.
+//
+// It is exported so that other packages (e.g. internal/app/promptkickoff) can
+// apply the identical transform without duplicating the logic.
+func SanitizeProjectName(name string) string {
 	name = strings.ToLower(name)
 	var b strings.Builder
 	for _, r := range name {
@@ -174,6 +178,10 @@ func sanitizeProjectName(name string) string {
 	}
 	return strings.Trim(b.String(), "-")
 }
+
+// sanitizeProjectName is a package-private alias kept for internal callers
+// that pre-date the export. It delegates to SanitizeProjectName.
+func sanitizeProjectName(name string) string { return SanitizeProjectName(name) }
 
 // ComposeProjectName returns the Docker Compose project name to use in the
 // generated docker-compose.yml. This prevents Docker Compose from deriving the

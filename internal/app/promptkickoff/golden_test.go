@@ -83,9 +83,12 @@ func compareGolden(t *testing.T, path string, got []byte) {
 
 // TestDeployTemplate_ContainsRequiredCommands is a forensic consistency test
 // (ADR-099 §Test strategy). It asserts the deploy template contains the four
-// landmark commands that match the bundle README contract. If a deploy-contract
-// change ever updates the template without updating these assertions, the test
-// fails immediately rather than silently shipping the wrong instructions to agents.
+// landmark commands that constitute the canonical deploy recipe (ADR-099).
+// The bundle README is prose-only (see TestBundle_Extras_Readme_DeployContract);
+// ADR-099 is the authoritative source for this command sequence.
+// If a deploy-contract change ever updates the template without updating these
+// assertions, the test fails immediately rather than silently shipping the
+// wrong instructions to agents.
 func TestDeployTemplate_ContainsRequiredCommands(t *testing.T) {
 	svc := newService(t)
 	out, err := svc.Render(fixtureOpts(true))

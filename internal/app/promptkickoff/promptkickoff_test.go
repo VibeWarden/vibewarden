@@ -4,6 +4,8 @@ import (
 	"errors"
 	"strings"
 	"testing"
+
+	"github.com/vibewarden/vibewarden/internal/config"
 )
 
 // fakeRenderer is a simple ports.TemplateRenderer implementation for testing.
@@ -114,13 +116,18 @@ func TestValidate_Errors(t *testing.T) {
 	}
 }
 
-// ---- sanitizeName() tests ---------------------------------------------------
+// ---- config.SanitizeProjectName() parity tests ------------------------------
 
-func TestSanitizeName(t *testing.T) {
+// TestSanitizeProjectName_Parity verifies that config.SanitizeProjectName
+// produces the expected output for a representative set of inputs.
+// promptkickoff delegates directly to this function (ADR-099), so these
+// assertions also cover the name sanitisation inside Render.
+func TestSanitizeProjectName_Parity(t *testing.T) {
 	tests := []struct {
 		input string
 		want  string
 	}{
+		// Basic ASCII cases.
 		{"foo", "foo"},
 		{"Foo", "foo"},
 		{"My Cool App", "my-cool-app"},
@@ -130,13 +137,23 @@ func TestSanitizeName(t *testing.T) {
 		{"123abc", "123abc"},
 		{"hello world", "hello-world"},
 		{"UPPER CASE", "upper-case"},
+		{"123-abc", "123-abc"},
+		// Non-ASCII Unicode letters must be replaced with hyphens, not passed
+		// through. Without this, "café" would produce "vibew init --name café"
+		// which vibew init would reject (Docker Compose requires [a-z0-9_-]+).
+		// "café" → lowercase "café" → 'é' replaced with '-' → "caf-" → trailing
+		// hyphen trimmed → "caf".
+		{"café", "caf"},
+		{"foo_bar", "foo-bar"},
+		{"My App", "my-app"},
+		{"!@#", ""},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
-			got := sanitizeName(tt.input)
+			got := config.SanitizeProjectName(tt.input)
 			if got != tt.want {
-				t.Errorf("sanitizeName(%q) = %q, want %q", tt.input, got, tt.want)
+				t.Errorf("config.SanitizeProjectName(%q) = %q, want %q", tt.input, got, tt.want)
 			}
 		})
 	}
