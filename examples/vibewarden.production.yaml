@@ -243,3 +243,16 @@ telemetry:
   path_patterns:
     - "/api/v1/:resource"
     - "/api/v1/:resource/:id"
+
+# -------------------------------------------------------------------------
+# Bundle target platform
+# -------------------------------------------------------------------------
+# `vibew bundle` compares the bundled image's architecture against this value
+# and aborts before writing any files if they do not match. The error message
+# contains the exact rebuild command to run.
+#
+# Hetzner VMs and most cloud VPS targets are linux/amd64.
+# Set linux/arm64 for Ampere (Hetzner CAX) or AWS Graviton VMs.
+# Override once on the CLI: vibew bundle --target-platform linux/arm64
+deploy:
+  target_platform: linux/amd64

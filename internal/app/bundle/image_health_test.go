@@ -199,6 +199,37 @@ func TestCheckImageHealth_DefaultTargetPlatform(t *testing.T) {
 	}
 }
 
+// TestCheckImageHealth_EmptyStringTargetPlatform verifies that an explicit
+// empty-string TargetPlatform (the value config.Load returns when the yaml
+// contains `deploy.target_platform: ""`) is treated as "use the default".
+// This guards the path: yaml empty-string → config.Load returns "" →
+// BundleOptions.TargetPlatform = "" → CheckImageHealth falls back to
+// defaultTargetPlatform ("linux/amd64"). Without this guard, a future
+// refactor removing CheckImageHealth's empty-check would silently accept the
+// wrong platform.
+func TestCheckImageHealth_EmptyStringTargetPlatform(t *testing.T) {
+	inspector := &fakeInspector{
+		info: ports.ImageInfo{OS: "linux", Architecture: "amd64"},
+	}
+	h, err := bundleapp.CheckImageHealth(context.Background(), bundleapp.CheckImageHealthOptions{
+		ImageTag:       "myapp:latest",
+		TargetPlatform: "", // explicit empty — same as yaml `target_platform: ""`
+		Inspector:      inspector,
+		Walker:         &fakeStalenessWalker{},
+	})
+	if err != nil {
+		t.Fatalf("CheckImageHealth() error = %v", err)
+	}
+	// Must resolve to linux/amd64, not remain as empty string.
+	if h.Target != "linux/amd64" {
+		t.Errorf("empty-string target resolved to %q, want %q", h.Target, "linux/amd64")
+	}
+	// An amd64 image against the resolved amd64 target must not be a mismatch.
+	if h.ArchMismatch {
+		t.Error("amd64 image vs resolved linux/amd64 target should not be an arch mismatch")
+	}
+}
+
 // TestRenderImageHealth_FreshNoWarnings is a golden test for the all-good case.
 func TestRenderImageHealth_FreshNoWarnings(t *testing.T) {
 	h := bundleapp.ImageHealth{
@@ -267,6 +298,10 @@ func TestRenderImageHealth_StaleWithWarning(t *testing.T) {
 }
 
 // TestRenderImageHealth_ArchMismatch is a golden test for the arch mismatch case.
+// Since #1200, arch mismatch is a hard error (ErrPlatformMismatch) that the
+// caller returns before the next bundle step. The rendered health block still
+// shows the Arch and Target lines so the user has the context, but there is
+// no warning line for the mismatch — the error message carries that information.
 func TestRenderImageHealth_ArchMismatch(t *testing.T) {
 	h := bundleapp.ImageHealth{
 		Image: ports.ImageInfo{
@@ -286,14 +321,19 @@ func TestRenderImageHealth_ArchMismatch(t *testing.T) {
 	bundleapp.RenderImageHealth(&sb, h)
 	out := sb.String()
 
+	// Arch and Target must still appear in the block header lines.
 	if !strings.Contains(out, "linux/arm64") {
 		t.Errorf("expected image arch linux/arm64 in output\noutput:\n%s", out)
 	}
 	if !strings.Contains(out, "linux/amd64") {
 		t.Errorf("expected target linux/amd64 in output\noutput:\n%s", out)
 	}
-	if !strings.Contains(out, "vibew build --platform linux/amd64") {
-		t.Errorf("expected rebuild command in warning\noutput:\n%s", out)
+	// The rebuild command is no longer in the rendered block — it is in the
+	// ErrPlatformMismatch error string returned by runImageHealthCheck.
+	// Verify it is NOT duplicated here (the caller's error message is the
+	// single source of truth).
+	if strings.Contains(out, "vibew build --platform") {
+		t.Errorf("rendered block should NOT contain rebuild command (it lives in ErrPlatformMismatch)\noutput:\n%s", out)
 	}
 }
 
@@ -454,5 +494,204 @@ func TestBundle_HealthBlockEmittedOnce(t *testing.T) {
 	count := strings.Count(rendered, "Image health")
 	if count != 1 {
 		t.Errorf("'Image health' block emitted %d times, want exactly 1\noutput:\n%s", count, rendered)
+	}
+}
+
+// TestRunImageHealthCheck_ArchMismatch_ReturnsErrPlatformMismatch verifies
+// that runImageHealthCheck (via Bundle) returns ErrPlatformMismatch when the
+// image arch does not match the target platform. This is the primary regression
+// guard for #1200: Apple Silicon builds landing on amd64 VPS hosts.
+func TestRunImageHealthCheck_ArchMismatch_ReturnsErrPlatformMismatch(t *testing.T) {
+	mem := newMemBundleFS()
+	inspector := &fakeInspector{
+		info: ports.ImageInfo{
+			OS:           "linux",
+			Architecture: "arm64", // Apple Silicon local image
+			Created:      fixedTime,
+		},
+	}
+	walker := &fakeStalenessWalker{}
+
+	var out strings.Builder
+	svc := bundleapp.NewService(&fakeExecutor{}, &fakeGenerator{}).
+		WithBundleFS(mem).
+		WithImageInspector(inspector).
+		WithStalenessWalker(walker)
+
+	err := svc.Bundle(context.Background(), bundleapp.BundleOptions{
+		Config:         minimalBundleCfg(),
+		ConfigPath:     t.TempDir() + "/vibewarden.yaml",
+		ProjectName:    "myapp",
+		OutputDir:      t.TempDir(),
+		ImageTag:       "myapp-app:latest",
+		TargetPlatform: "linux/amd64", // amd64 VPS target
+		Out:            &out,
+	})
+
+	if err == nil {
+		t.Fatal("Bundle() expected error on arch mismatch, got nil")
+	}
+	if !errors.Is(err, bundleapp.ErrPlatformMismatch) {
+		t.Errorf("expected ErrPlatformMismatch, got: %v", err)
+	}
+
+	// Error message must contain arch and target.
+	msg := err.Error()
+	if !strings.Contains(msg, "linux/arm64") {
+		t.Errorf("error message missing image arch: %s", msg)
+	}
+	if !strings.Contains(msg, "linux/amd64") {
+		t.Errorf("error message missing target: %s", msg)
+	}
+	if !strings.Contains(msg, "vibew build --platform linux/amd64") {
+		t.Errorf("error message missing rebuild command: %s", msg)
+	}
+	if !strings.Contains(msg, "Then re-run: vibew bundle") {
+		t.Errorf("error message missing re-run instruction: %s", msg)
+	}
+
+	// Health block must be rendered to opts.Out BEFORE the error is returned.
+	rendered := out.String()
+	if !strings.Contains(rendered, "Image health") {
+		t.Errorf("health block not rendered before mismatch error: %s", rendered)
+	}
+	if !strings.Contains(rendered, "linux/arm64") {
+		t.Errorf("health block missing image arch: %s", rendered)
+	}
+}
+
+// TestBundle_ArchMismatch_NoFilesWritten verifies that no bundle files are
+// written when the image arch does not match the target platform.
+func TestBundle_ArchMismatch_NoFilesWritten(t *testing.T) {
+	mem := newMemBundleFS()
+	inspector := &fakeInspector{
+		info: ports.ImageInfo{
+			OS:           "linux",
+			Architecture: "arm64",
+			Created:      fixedTime,
+		},
+	}
+	walker := &fakeStalenessWalker{}
+
+	svc := bundleapp.NewService(&fakeExecutor{}, &fakeGenerator{}).
+		WithBundleFS(mem).
+		WithImageInspector(inspector).
+		WithStalenessWalker(walker)
+
+	outDir := t.TempDir()
+	err := svc.Bundle(context.Background(), bundleapp.BundleOptions{
+		Config:         minimalBundleCfg(),
+		ConfigPath:     t.TempDir() + "/vibewarden.yaml",
+		ProjectName:    "myapp",
+		OutputDir:      outDir,
+		ImageTag:       "myapp-app:latest",
+		TargetPlatform: "linux/amd64",
+	})
+
+	if err == nil {
+		t.Fatal("Bundle() expected error on arch mismatch")
+	}
+	if !errors.Is(err, bundleapp.ErrPlatformMismatch) {
+		t.Errorf("expected ErrPlatformMismatch, got: %v", err)
+	}
+
+	// The in-memory FS should have no files (health check aborts before generator).
+	if len(mem.files) != 0 {
+		t.Errorf("expected no files written on mismatch, got: %v", mem.files)
+	}
+}
+
+// TestBundle_ArchMatch_Succeeds verifies the happy path: matching arch does
+// not trigger ErrPlatformMismatch.
+func TestBundle_ArchMatch_Succeeds(t *testing.T) {
+	mem := newMemBundleFS()
+	inspector := &fakeInspector{
+		info: ports.ImageInfo{
+			OS:           "linux",
+			Architecture: "amd64",
+			Created:      fixedTime,
+		},
+	}
+	walker := &fakeStalenessWalker{}
+
+	svc := bundleapp.NewService(&fakeExecutor{}, &fakeGenerator{}).
+		WithBundleFS(mem).
+		WithImageInspector(inspector).
+		WithStalenessWalker(walker)
+
+	err := svc.Bundle(context.Background(), bundleapp.BundleOptions{
+		Config:         minimalBundleCfg(),
+		ConfigPath:     t.TempDir() + "/vibewarden.yaml",
+		ProjectName:    "myapp",
+		OutputDir:      t.TempDir(),
+		ImageTag:       "myapp-app:latest",
+		TargetPlatform: "linux/amd64",
+		SkipImage:      true,
+	})
+
+	if err != nil {
+		t.Fatalf("Bundle() unexpected error on matching arch: %v", err)
+	}
+}
+
+// TestBundle_NoInspector_SkipsArchCheck preserves the existing nil-inspector
+// path used by tests that predate ADR-089.
+func TestBundle_NoInspector_SkipsArchCheck(t *testing.T) {
+	// No WithImageInspector — health check is skipped entirely.
+	svc := bundleapp.NewService(&fakeExecutor{}, &fakeGenerator{})
+
+	err := svc.Bundle(context.Background(), bundleapp.BundleOptions{
+		Config:      minimalBundleCfg(),
+		ConfigPath:  t.TempDir() + "/vibewarden.yaml",
+		ProjectName: "myapp",
+		OutputDir:   t.TempDir(),
+		ImageTag:    "myapp-app:latest",
+	})
+
+	if err != nil {
+		t.Fatalf("Bundle() unexpected error when inspector is nil: %v", err)
+	}
+}
+
+// TestPlatformMismatchMessage_ExactWording pins the exact error copy for
+// #1200. Any change to this message must be reflected in all agent docs.
+func TestPlatformMismatchMessage_ExactWording(t *testing.T) {
+	inspector := &fakeInspector{
+		info: ports.ImageInfo{
+			OS:           "linux",
+			Architecture: "arm64",
+			Created:      fixedTime,
+		},
+	}
+	walker := &fakeStalenessWalker{}
+
+	svc := bundleapp.NewService(&fakeExecutor{}, &fakeGenerator{}).
+		WithBundleFS(newMemBundleFS()).
+		WithImageInspector(inspector).
+		WithStalenessWalker(walker)
+
+	err := svc.Bundle(context.Background(), bundleapp.BundleOptions{
+		Config:         minimalBundleCfg(),
+		ConfigPath:     t.TempDir() + "/vibewarden.yaml",
+		ProjectName:    "myapp",
+		OutputDir:      t.TempDir(),
+		ImageTag:       "myapp-app:latest",
+		TargetPlatform: "linux/amd64",
+	})
+	if err == nil {
+		t.Fatal("expected error")
+	}
+
+	// Pin exact wording substrings that are load-bearing for agents.
+	wantSubstrings := []string{
+		"image arch is linux/arm64",
+		"target is linux/amd64",
+		"Rebuild with: vibew build --platform linux/amd64",
+		"Then re-run: vibew bundle",
+	}
+	for _, want := range wantSubstrings {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error message missing %q\nfull message: %s", want, err.Error())
+		}
 	}
 }

@@ -3431,3 +3431,84 @@ func TestValidate_RolePaths(t *testing.T) {
 		})
 	}
 }
+
+// TestLoad_DeployTargetPlatform_DefaultIsAmd64 verifies that when no yaml
+// contains deploy.target_platform the viper default resolves to linux/amd64.
+func TestLoad_DeployTargetPlatform_DefaultIsAmd64(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "vibewarden.yaml")
+	if err := os.WriteFile(cfgPath, []byte("server:\n  port: 8443\n"), 0o600); err != nil {
+		t.Fatalf("writing config: %v", err)
+	}
+
+	cfg, err := config.Load(cfgPath)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.Deploy.TargetPlatform != "linux/amd64" {
+		t.Errorf("Deploy.TargetPlatform = %q, want %q", cfg.Deploy.TargetPlatform, "linux/amd64")
+	}
+}
+
+// TestLoad_DeployTargetPlatform_FromYAML verifies that deploy.target_platform
+// is populated when the yaml carries the field.
+//
+// Note on empty-string yaml: when the yaml contains `deploy.target_platform: ""`
+// (explicit empty string), viper returns "" — the explicit empty overrides the
+// viper default. The caller (CheckImageHealth / runBundle) is responsible for
+// treating "" as "use defaultTargetPlatform". This test documents that
+// config.Load returns "" in that case so callers are not surprised.
+func TestLoad_DeployTargetPlatform_FromYAML(t *testing.T) {
+	tests := []struct {
+		name     string
+		yaml     string
+		wantPlat string
+	}{
+		{
+			name:     "arm64 from yaml",
+			yaml:     "deploy:\n  target_platform: linux/arm64\n",
+			wantPlat: "linux/arm64",
+		},
+		{
+			name:     "amd64 explicit in yaml",
+			yaml:     "deploy:\n  target_platform: linux/amd64\n",
+			wantPlat: "linux/amd64",
+		},
+		{
+			// Explicit empty string in yaml: viper returns "" (does not fall
+			// back to the default "linux/amd64"). CheckImageHealth treats ""
+			// as defaultTargetPlatform; config.Load must not silently hide it.
+			name:     "empty string in yaml returns empty",
+			yaml:     "deploy:\n  target_platform: \"\"\n",
+			wantPlat: "",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			cfgPath := filepath.Join(dir, "vibewarden.yaml")
+			if err := os.WriteFile(cfgPath, []byte(tt.yaml), 0o600); err != nil {
+				t.Fatalf("writing config: %v", err)
+			}
+			cfg, err := config.Load(cfgPath)
+			if err != nil {
+				t.Fatalf("Load() error = %v", err)
+			}
+			if cfg.Deploy.TargetPlatform != tt.wantPlat {
+				t.Errorf("Deploy.TargetPlatform = %q, want %q", cfg.Deploy.TargetPlatform, tt.wantPlat)
+			}
+		})
+	}
+}
+
+// TestLoad_DeployBlock_MissingEntirelyUsesDefault verifies that when the yaml
+// contains no deploy: block at all the viper default (linux/amd64) applies.
+func TestLoad_DeployBlock_MissingEntirelyUsesDefault(t *testing.T) {
+	cfg, err := config.Load("")
+	if err != nil {
+		t.Fatalf("Load(\"\") error = %v", err)
+	}
+	if cfg.Deploy.TargetPlatform != "linux/amd64" {
+		t.Errorf("Deploy.TargetPlatform = %q, want %q", cfg.Deploy.TargetPlatform, "linux/amd64")
+	}
+}

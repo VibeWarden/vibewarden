@@ -112,3 +112,57 @@ func TestInitProject_ProductionYAML_NoCommentedStubs(t *testing.T) {
 		}
 	})
 }
+
+// TestInitProject_ProductionYAML_HasDeployTargetPlatform verifies that the
+// rendered init-vibewarden.production.yaml.tmpl contains deploy.target_platform
+// as an actual yaml mapping (not a comment) — guard for #1200.
+func TestInitProject_ProductionYAML_HasDeployTargetPlatform(t *testing.T) {
+	renderer := templateadapter.NewRenderer(templates.FS)
+
+	data := domainscaffold.InitProjectData{
+		ProjectName: "myapp",
+		Port:        3000,
+		Name:        "myapp",
+	}
+
+	rendered, err := renderer.Render("init-vibewarden.production.yaml.tmpl", data)
+	if err != nil {
+		t.Fatalf("Render() error = %v", err)
+	}
+	content := string(rendered)
+
+	// Must contain deploy: block as a real yaml key (no leading #).
+	t.Run("has_deploy_block", func(t *testing.T) {
+		lines := strings.Split(content, "\n")
+		found := false
+		for _, line := range lines {
+			// A top-level deploy: key: not indented, not a comment.
+			if strings.TrimSpace(line) == "deploy:" && !strings.HasPrefix(strings.TrimSpace(line), "#") {
+				// Verify it is truly uncommented (no leading # before deploy:).
+				if !strings.HasPrefix(line, "#") {
+					found = true
+					break
+				}
+			}
+		}
+		if !found {
+			t.Errorf("rendered production.yaml missing active 'deploy:' block\n\nContent:\n%s", content)
+		}
+	})
+
+	// Must contain target_platform: linux/amd64 as an actual entry.
+	t.Run("has_target_platform_amd64", func(t *testing.T) {
+		if !strings.Contains(content, "target_platform: linux/amd64") {
+			t.Errorf("rendered production.yaml missing 'target_platform: linux/amd64'\n\nContent:\n%s", content)
+		}
+		// Must not be a commented line.
+		lines := strings.Split(content, "\n")
+		for _, line := range lines {
+			if strings.Contains(line, "target_platform: linux/amd64") {
+				if strings.HasPrefix(strings.TrimSpace(line), "#") {
+					t.Errorf("target_platform: linux/amd64 is commented out — must be active yaml\n\nLine: %q", line)
+				}
+			}
+		}
+	})
+}

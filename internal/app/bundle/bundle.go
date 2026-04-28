@@ -215,10 +215,20 @@ func (s *Service) runImageHealthCheck(ctx context.Context, opts BundleOptions) e
 		return err
 	}
 
-	// Render the health block to opts.Out when provided.
+	// Render the health block to opts.Out when provided. The block is always
+	// rendered before any error is returned so the user (and agents) can see
+	// the Tag/Digest/Arch/Target side-by-side even on mismatch.
 	if opts.Out != nil {
 		RenderImageHealth(opts.Out, health)
 		fmt.Fprintln(opts.Out)
+	}
+
+	// Fail hard on arch mismatch — this is the primary regression guard for
+	// #1200 (Apple Silicon builds landing on amd64 VPS without being noticed).
+	// The error is returned AFTER rendering the health block so the agent/user
+	// has the full context.
+	if health.ArchMismatch {
+		return fmt.Errorf("%w: %s", ErrPlatformMismatch, platformMismatchMessage(health))
 	}
 
 	return nil

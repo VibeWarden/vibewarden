@@ -10,6 +10,15 @@ import (
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
 
+// ErrPlatformMismatch is returned by runImageHealthCheck (and propagated by
+// Service.Bundle) when the bundled image's architecture does not match the
+// resolved deploy target. The CLI maps this to exit code 1.
+//
+// Note: local `docker image inspect` always returns a single architecture —
+// the variant that was loaded into the local Docker daemon. There is no
+// manifest-list case for vibew bundle; buildx --load writes only one arch.
+var ErrPlatformMismatch = errors.New("image platform mismatch")
+
 // defaultTargetPlatform is the expected deployment platform when no
 // --target-platform flag is supplied. VPS targets are almost always amd64.
 const defaultTargetPlatform = "linux/amd64"
@@ -165,18 +174,24 @@ func CheckImageHealth(ctx context.Context, opts CheckImageHealthOptions) (ImageH
 // The block is always printed, even when there are zero warnings — agents
 // depend on the stable layout. ANSI colour is never used.
 //
-// Example output:
+// When the image arch does not match the target platform, RenderImageHealth
+// still renders the full block (showing Arch and Target for context), and then
+// the caller (runImageHealthCheck) returns ErrPlatformMismatch with the
+// actionable rebuild instruction. The block itself does not include the
+// rebuild command — "Warnings: none" is shown when stale is the only absent
+// condition and no legacy tag is present.
+//
+// Example output (stale image, no arch mismatch):
 //
 //	Image health
 //	  Tag:          qr-van-gogh-app:latest
 //	  Digest:       sha256:abc123…
-//	  Arch:         linux/arm64
+//	  Arch:         linux/amd64
 //	  Created:      2026-04-19 14:02:11 UTC (1 day ago)
 //	  Size:         162.4 MB
 //	  Target:       linux/amd64  (override with --target-platform)
 //	  Freshness:    STALE — 12 source files changed since image was built
 //	  Warnings:
-//	    - image arch linux/arm64 != target linux/amd64 (rebuild: vibew build --platform linux/amd64)
 //	    - image is stale (pass --allow-stale to suppress, or rebuild)
 func RenderImageHealth(out io.Writer, h ImageHealth) {
 	age := formatAge(time.Since(h.Image.Created))
@@ -220,17 +235,26 @@ func freshnessLabel(h ImageHealth) string {
 	return fmt.Sprintf("STALE — %d source files changed since image was built", h.Freshness.ChangedCount)
 }
 
+// platformMismatchMessage returns the exact actionable error copy for an arch
+// mismatch. The wording is pinned by tests — do not change it without updating
+// the test golden strings.
+//
+// Example output:
+//
+//	image arch is linux/arm64, target is linux/amd64. Rebuild with: vibew build --platform linux/amd64
+//	Then re-run: vibew bundle
+func platformMismatchMessage(h ImageHealth) string {
+	return fmt.Sprintf(
+		"image arch is %s, target is %s. Rebuild with: vibew build --platform %s\nThen re-run: vibew bundle",
+		h.Image.Platform(), h.Target, h.Target,
+	)
+}
+
 // collectWarnings builds the ordered list of human-readable warning strings
-// for the ImageHealth report.
+// for the ImageHealth report. Arch mismatch is NOT included here — it is a
+// hard failure returned by runImageHealthCheck before bundling proceeds.
 func collectWarnings(h ImageHealth) []string {
 	var warnings []string
-
-	if h.ArchMismatch {
-		warnings = append(warnings, fmt.Sprintf(
-			"image arch %s != target %s (rebuild: vibew build --platform %s)",
-			h.Image.Platform(), h.Target, h.Target,
-		))
-	}
 
 	if h.Freshness.Stale && !h.AllowStale {
 		warnings = append(warnings, "image is stale (pass --allow-stale to suppress, or rebuild)")

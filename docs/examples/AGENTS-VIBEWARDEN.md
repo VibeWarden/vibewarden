@@ -161,8 +161,11 @@ No source code is ever copied to the production server — the image must
 be production-ready (all dependencies installed, assets compiled, etc.).
 
 **Cross-architecture builds:** If deploying from Apple Silicon (arm64) to
-an amd64 server, use `vibew build --platform linux/amd64`. Bundle ships
-whatever arch you built; there is no cross-arch auto-detection.
+an amd64 server, run `vibew build --platform linux/amd64` first. `vibew bundle`
+checks the bundled image arch against `deploy.target_platform` (default `linux/amd64`)
+and fails with exit code 1 before writing any files if they do not match. The error
+message contains the exact rebuild command to run. Set `deploy.target_platform:
+linux/arm64` in `vibewarden.production.yaml` if your VPS is Ampere/Graviton.
 
 ## Deploying to a VPS
 

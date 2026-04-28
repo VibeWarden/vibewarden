@@ -191,7 +191,7 @@ Key flags:
 - `--allow-stale` — suppress STALE warning when you know the image is correct
 - `--target-platform linux/<arch>` — set when your VPS arch differs from your laptop
 
-Exit codes: 0=success (with or without warnings), 2=image missing, 3=docker daemon unreachable.
+Exit codes: 0=success (with or without warnings), 1=image arch does not match target platform (rebuild with `vibew build --platform <target>`), 2=image missing, 3=docker daemon unreachable.
 
 `vibew bundle` then emits a deterministic `docker-compose.yml` (image: pinned,
 never build:), the merged `vibewarden.yaml`, `sample.env`, `.env`, an
