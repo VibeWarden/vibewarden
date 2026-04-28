@@ -8,6 +8,7 @@ import (
 	"sort"
 
 	"github.com/spf13/cobra"
+	"gopkg.in/yaml.v3"
 
 	"github.com/vibewarden/vibewarden/internal/adapters/bundlefs"
 	credentialsadapter "github.com/vibewarden/vibewarden/internal/adapters/credentials"
@@ -252,6 +253,17 @@ func runBundle(cmd *cobra.Command, outputDir, imageTag, targetPlatform string, o
 		absOut = outputDir
 	}
 
+	// Production overrides (notably tls.domain for letsencrypt deployments)
+	// land in vibewarden.production.yaml, NOT in the base cfg. The bundle's
+	// rendered docker-compose / vibewarden.yaml output is correctly merged
+	// internally by the service, but the README's fenced deploy block + the
+	// "Next: deploy" stdout block both need the resolved domain to print a
+	// copy-pasteable healthcheck URL. Read it from production.yaml directly.
+	if cfg.TLS.Domain == "" {
+		if prodDomain := readProdTLSDomain(prodConfigPath); prodDomain != "" {
+			cfg.TLS.Domain = prodDomain
+		}
+	}
 	bundleErr := svc.Bundle(cmd.Context(), bundleapp.BundleOptions{
 		Config:         cfg,
 		ConfigPath:     absConfig,
@@ -316,11 +328,9 @@ func runBundle(cmd *cobra.Command, outputDir, imageTag, targetPlatform string, o
 	if appName == "" {
 		appName = "<your-app>"
 	}
-	domain := ""
+	domain := "<your-domain>"
 	if cfg.TLS.Domain != "" {
 		domain = cfg.TLS.Domain
-	} else {
-		domain = "<your-domain>"
 	}
 
 	// Build the docker command for the "Next" block — omit docker load when
@@ -385,4 +395,29 @@ func prodConfigPathForEnv(configPath, envName string) string {
 		return prodFile
 	}
 	return ""
+}
+
+// readProdTLSDomain reads tls.domain from a production override YAML without
+// merging the rest of the file. config.Load+LoadStrict together do not merge
+// production values into *Config (LoadStrict only schema-checks), so this
+// targeted read is the smallest path to making the bundle README and stdout
+// substitute the real domain when it lives in vibewarden.production.yaml.
+// Returns "" when the file does not exist, is unreadable, or has no domain.
+func readProdTLSDomain(prodConfigPath string) string {
+	if prodConfigPath == "" {
+		return ""
+	}
+	data, err := os.ReadFile(prodConfigPath) //nolint:gosec // path is the resolved production config path
+	if err != nil {
+		return ""
+	}
+	var tree struct {
+		TLS struct {
+			Domain string `yaml:"domain"`
+		} `yaml:"tls"`
+	}
+	if err := yaml.Unmarshal(data, &tree); err != nil {
+		return ""
+	}
+	return tree.TLS.Domain
 }
