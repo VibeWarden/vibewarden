@@ -109,8 +109,7 @@ Examples:
 			)
 
 			// Wire the LE rate-limit preflight service. The crt.sh HTTP client
-			// uses a separate 10-second timeout per AC-8 (separate from the
-			// 5-second healthChecker client above).
+			// uses a separate 10-second timeout per AC-8.
 			ctClient := crtshAdapter.NewClient(&http.Client{Timeout: 10 * time.Second})
 			leRateLimitSvc := apptlspreflight.NewService(ctClient)
 
