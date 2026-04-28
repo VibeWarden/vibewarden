@@ -479,3 +479,96 @@ func TestBundleCmd_Overwrite_ReplacesDotEnv(t *testing.T) {
 		t.Errorf(".env missing VIBEWARDEN_APP_IMAGE after --overwrite\ngot: %q", got)
 	}
 }
+
+// TestBundle_Stdout_PrintsLiteralDeployCommands verifies that the "Next:
+// deploy" block printed to stdout after a successful bundle contains the four
+// literal deploy commands with app name and domain substituted.
+//
+// All cases pass --skip-image because the test environment has no Docker
+// daemon. The non-skip-image path (docker load in stdout) is tested
+// separately via TestBundle_Extras_Readme_FencedDeployBlock which uses
+// the in-memory BundleFS and does not require docker. The assertions here
+// cover: (a) the "Next: deploy" header is present, (b) app name and domain
+// are substituted, (c) with --skip-image the docker load clause is absent.
+func TestBundle_Stdout_PrintsLiteralDeployCommands(t *testing.T) {
+	tests := []struct {
+		name       string
+		yaml       string
+		wantCmds   []string
+		wantAbsent []string
+	}{
+		{
+			name: "app name and domain substituted in next block",
+			yaml: "name: myapp\ntls:\n  domain: myapp.example.com\nserver:\n  port: 8080\nupstream:\n  port: 3000\n",
+			wantCmds: []string{
+				"Next: deploy",
+				"ssh user@host 'mkdir -p /opt/myapp'",
+				"scp -r",
+				"user@host:/opt/myapp/",
+				"docker compose up -d",
+				"curl -fsSL https://myapp.example.com/_vibewarden/health",
+			},
+			// --skip-image is always passed; docker load must not appear.
+			wantAbsent: []string{
+				"docker load -i image.tar &&",
+			},
+		},
+		{
+			name: "missing domain falls back to placeholder",
+			yaml: "name: myapp\nserver:\n  port: 8080\nupstream:\n  port: 3000\n",
+			wantCmds: []string{
+				"Next: deploy",
+				"<your-domain>",
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			base := t.TempDir()
+			projDir := filepath.Join(base, "testproject")
+			if err := os.MkdirAll(projDir, 0o750); err != nil {
+				t.Fatalf("mkdir: %v", err)
+			}
+			writeScaffoldingMarker(t, projDir)
+			if err := os.WriteFile(filepath.Join(projDir, "vibewarden.yaml"), []byte(tt.yaml), 0o644); err != nil {
+				t.Fatalf("writing vibewarden.yaml: %v", err)
+			}
+
+			origDir, err := os.Getwd()
+			if err != nil {
+				t.Fatalf("getwd: %v", err)
+			}
+			if err := os.Chdir(projDir); err != nil {
+				t.Fatalf("chdir: %v", err)
+			}
+			t.Cleanup(func() { _ = os.Chdir(origDir) })
+
+			outDir := filepath.Join(projDir, "out")
+			root := cmd.NewRootCmd("test")
+			// Always pass --skip-image: the test environment has no Docker daemon.
+			// The non-skip-image stdout path (docker load clause) is covered by
+			// TestBundle_Extras_Readme_FencedDeployBlock in bundle_extras_test.go.
+			args := []string{"bundle", "--output", outDir, "--skip-image"}
+			root.SetArgs(args)
+			var stdout bytes.Buffer
+			root.SetOut(&stdout)
+			root.SetErr(&stdout)
+			if err := root.Execute(); err != nil {
+				t.Fatalf("bundle: %v\nstdout:\n%s", err, stdout.String())
+			}
+
+			out := stdout.String()
+			for _, want := range tt.wantCmds {
+				if !strings.Contains(out, want) {
+					t.Errorf("stdout missing %q\nstdout:\n%s", want, out)
+				}
+			}
+			for _, absent := range tt.wantAbsent {
+				if strings.Contains(out, absent) {
+					t.Errorf("stdout must not contain %q\nstdout:\n%s", absent, out)
+				}
+			}
+		})
+	}
+}

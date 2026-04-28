@@ -34,7 +34,14 @@ when the image arch does not match the VPS target.
 
 ### Added
 
+- **Bundles include an auto-generated `MANIFEST.md`** listing every file in the bundle with a one-line description (#1204). Entries are sorted alphabetically; unknown files receive a generic "bundle artifact" description so future generators don't silently drop entries.
+- **Read-only inspection recipes** (logs, ps, healthcheck) are now documented in the bundle README (#1204). Folds in the dropped `vibew remote logs` proposal.
 - **`vibew prompt-template`** — emits the canonical agent kickoff prompt to stdout (#1203, ADR-099). Two flavors: default (dev only) and `--deploy` (adds bundle + scp + ssh + healthcheck). Always uses `vibew init --name <prjname> --describe "<desc>"`. `--domain` is required when `--deploy` is set. See `docs/agent-kickoff.md` and ADR-099.
+
+### Changed
+
+- **Bundle README now opens with a fenced shell block containing the literal deploy commands** (was: prose-only) (#1204). `app.name` and `tls.domain` are substituted; empty values produce `<your-app>` / `<your-domain>` placeholders. With `--skip-image` the `docker load -i image.tar &&` clause is omitted so the block is always copy-pasteable.
+- **`vibew bundle` stdout now prints the literal `ssh`/`scp`/`docker compose up -d` sequence** with `app.name` and `tls.domain` substituted (#1204). An agent has a copy-pasteable next step without opening the README.
 
 ### Fixed
 
