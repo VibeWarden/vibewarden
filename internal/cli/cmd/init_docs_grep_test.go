@@ -11,9 +11,13 @@ package cmd_test
 // The test file itself is excluded because it must contain the patterns to
 // assert against them.
 //
-// TODO(#1201): when the removed-artifacts CI grep guard lands, fold these
-// patterns into .github/removed-artifacts.txt (or a sibling allowlist file)
-// so we have one central guard instead of two.
+// Kept separate from the removed-artifact guard added in #1201
+// (internal/quality/removed_artifacts_test.go + .github/removed-artifacts.txt)
+// by design — see issue #1201 architect comment. That guard targets removed
+// artifact *names* (literal tokens, versioned allowlist). This guard targets
+// false *claims about behavior* (regex phrases). Different category, different
+// match semantics, different allowlist axis. Re-evaluate unification when a
+// third guard appears.
 
 import (
 	"os"

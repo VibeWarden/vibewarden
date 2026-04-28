@@ -163,7 +163,7 @@ func (s *Service) Bundle(ctx context.Context, opts BundleOptions) error {
 	if err := s.bundleSingleSite(ctx, opts.Config, opts.ConfigPath, opts.ProdConfigPath, opts.ProjectName, outDir); err != nil {
 		return err
 	}
-	// Bundle extras (sample.env, .env, deploy.sh, README.md, image.tar) are
+	// Bundle extras (sample.env, .env, README.md, MANIFEST.md, image.tar) are
 	// additive. They run only after the base generator has succeeded so a
 	// failing compose render does not leave half a bundle on disk with a
 	// fresh .env. See bundle_extras.go.

@@ -2,7 +2,7 @@ package bundle
 
 // defaultHealthPort is the port used when the config does not specify one.
 // It is consumed by the bundle template when rendering the generated
-// deploy.sh and README.md.
+// README.md (which documents the deploy commands).
 const defaultHealthPort = 8443
 
 // SidecarComposeData holds the template data for the sidecar compose file
