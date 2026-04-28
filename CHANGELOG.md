@@ -12,6 +12,12 @@ This initial entry was written by hand to summarise the work leading up to v0.1.
 
 ## [Unreleased]
 
+---
+
+## [v0.18.0] — 2026-04-28
+
+Theme: agent-deploy stability. Every entry below traces to the qr-dali deploy retrospective on v0.17.0 (~/notes/vibewarden/retro-0.17.0.md). Three blockers found in v0.18.0-candidate smoke testing were fixed before tagging (#1176, #1177, #1178, #1184).
+
 ### Migrating from v0.17.0
 
 This release trims CLI surface and tightens validation. Most users upgrading from v0.17.0 will be unaffected; the following breaking-ish changes have direct migration paths:
@@ -48,6 +54,8 @@ If `vibew validate` or `vibew doctor` start FAILing on a previously-clean projec
 - **`vibew bundle` staleness check now uses content-hash, not mtime** (#1146, [ADR-089](decisions/adr-089-bundle-image-health-tag-scoping-freshness-arch.md) §Refinement). `touch vibewarden.yaml` (no content change) no longer triggers a false STALE warning. SHA-256 is computed over the same file set the existing staleness walker considers (same `.gitignore` / `.dockerignore` / `hardIgnoreDirs` rules). The digest is stored at `.vibewarden/.input-digest` after every successful bundle and auto-appended to the project `.gitignore`. First-run and corrupt-digest paths fall back to the existing mtime comparison — no flag-day on upgrade.
 
 - **`vibew bundle` no longer ignores the cwd-basename fallback for project name** (#1141, [ADR-093](decisions/adr-093-bundle-image-name-cwd-basename-fallback.md)). With no `name:` field set, `vibew bundle` and `vibew bundle --build` now both look for `<dirname>-app:latest`, matching the documented behavior. Previously `vibew bundle` resolved the image tag via `cfg.ComposeProjectName()` which silently fell through to the literal `"vibewarden"` when `ProjectRoot` was not populated by the loader, while `vibew bundle --build` correctly derived the cwd-basename — two different names from the same input. `deriveProjectName` is now the single project-name authority inside `runBundle`; its result is fed to both the image-tag default and the `--build` step.
+
+- **`vibew validate` ACME-incompatible-domain message uses singular `tls.domain`** (#1179). The error message was pointing users at `tls.domains` (plural list) — a non-existent key. The config field is `tls.domain` (singular string). Surfaced during v0.18.0-candidate smoke testing.
 
 ### Changed
 
@@ -818,6 +826,7 @@ Single Go binary embedding Caddy. Zero-to-secure in minutes for vibe-coded apps.
 
 ---
 
+[v0.18.0]: https://github.com/vibewarden/vibewarden/releases/tag/v0.18.0
 [v0.17.0]: https://github.com/vibewarden/vibewarden/releases/tag/v0.17.0
 [v0.16.0]: https://github.com/vibewarden/vibewarden/releases/tag/v0.16.0
 [v0.15.0]: https://github.com/vibewarden/vibewarden/releases/tag/v0.15.0
