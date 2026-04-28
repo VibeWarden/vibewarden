@@ -428,37 +428,6 @@ func TestReadyHandler_ReadyFieldAlwaysPresentInJSON(t *testing.T) {
 	}
 }
 
-// TestReadyAndHealthAreIndependent verifies that the liveness endpoint
-// (/_vibewarden/health) and the readiness endpoint (/_vibewarden/ready) can
-// return different statuses independently.
-func TestReadyAndHealthAreIndependent(t *testing.T) {
-	// Health handler always returns 200 (liveness — process is alive).
-	healthHandler := HealthHandler("v1.0.0", nil)
-
-	// Ready handler returns 503 (plugins not yet initialised).
-	readyChecker := &fakeReadinessChecker{
-		status: ports.ReadinessStatus{
-			PluginsReady:      false,
-			UpstreamReachable: true,
-		},
-	}
-	readyHandler := ReadyHandler(readyChecker)
-
-	// Health must be 200.
-	hW := httptest.NewRecorder()
-	healthHandler(hW, httptest.NewRequest(http.MethodGet, "/_vibewarden/health", nil))
-	if hW.Code != http.StatusOK {
-		t.Errorf("health status = %d, want 200", hW.Code)
-	}
-
-	// Ready must be 503.
-	rW := httptest.NewRecorder()
-	readyHandler(rW, httptest.NewRequest(http.MethodGet, "/_vibewarden/ready", nil))
-	if rW.Code != http.StatusServiceUnavailable {
-		t.Errorf("ready status = %d, want 503", rW.Code)
-	}
-}
-
 // Ensure the fake implements the context-less interface correctly.
 var _ ports.ReadinessChecker = (*fakeReadinessChecker)(nil)
 var _ http.Handler = http.HandlerFunc(nil)

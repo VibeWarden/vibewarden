@@ -33,14 +33,15 @@ paths:
     get:
       summary: Health check
       description: |
-        Returns the sidecar status and binary version. This endpoint is public —
-        no authentication is required. Suitable for use as a liveness or
-        readiness probe.
+        Returns the sidecar status and binary version. Always returns HTTP 200.
+        Parse `status` to distinguish healthy from degraded/failing. This endpoint
+        is public — no authentication is required. Suitable for use as a liveness
+        probe; for a readiness probe, assert `status == "ok"`.
       operationId: getHealth
       tags: [health]
       responses:
         "200":
-          description: Sidecar is healthy.
+          description: Sidecar is running. Check `status` for component health.
           content:
             application/json:
               schema:
@@ -48,6 +49,8 @@ paths:
               example:
                 status: ok
                 version: "v0.1.0"
+                components:
+                  upstream: ok
 
   /_vibewarden/api/docs:
     get:
@@ -239,13 +242,28 @@ components:
       properties:
         status:
           type: string
-          description: Sidecar health status.
-          enum: [ok]
+          description: |
+            Worst-component-wins aggregate status. `ok` means all components healthy.
+            `degraded` means at least one component is non-critical and degraded.
+            `failing` means at least one critical component is failing.
+            HTTP status is always 200 regardless of this value.
+          enum: [ok, degraded, failing]
           example: ok
         version:
           type: string
           description: Binary version string.
           example: "v0.1.0"
+        components:
+          type: object
+          description: Per-component status. Only present when at least one component is active.
+          properties:
+            upstream:
+              type: string
+              description: |
+                Upstream probe result. `ok` = probe passing. `failing` = probe failing.
+                `unknown` = probe not yet completed (only during the ~5–10s boot gap).
+              enum: [ok, failing, unknown]
+              example: ok
 
     UserResponse:
       type: object

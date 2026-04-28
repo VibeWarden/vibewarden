@@ -221,7 +221,10 @@ func buildSiteRoutes(s *site.Site, domain string, extraHandlers []ports.CaddyHan
 	handlers = append(handlers, reverseProxyHandler)
 
 	// Per-site health check route scoped to the site's domain.
-	healthBody := fmt.Sprintf(`{"status":"ok","site":%q,"components":{"sidecar":"ok","upstream":"unknown"}}`, s.Name())
+	// The vibewarden_health module reads the cached probe state from
+	// RuntimeServices and applies worst-component-wins aggregation at request
+	// time. The site_name config field scopes the "site" field in the JSON
+	// response body.
 	healthRoute := map[string]any{
 		"match": []map[string]any{
 			{
@@ -231,12 +234,8 @@ func buildSiteRoutes(s *site.Site, domain string, extraHandlers []ports.CaddyHan
 		},
 		"handle": []map[string]any{
 			{
-				"handler": "static_response",
-				"headers": map[string][]string{
-					"Content-Type": {"application/json"},
-				},
-				"body":        healthBody,
-				"status_code": 200,
+				"handler": "vibewarden_health",
+				"config":  map[string]any{"site_name": s.Name()},
 			},
 		},
 	}
