@@ -41,7 +41,6 @@ var manifestFileDescriptions = map[string]string{
 	"docker-compose.yml":         "deterministic compose file",
 	"image.tar":                  "docker-saved app image (omit when --skip-image)",
 	"README.md":                  "deploy contract + command reference",
-	"MANIFEST.md":                "this file",
 	".env":                       "environment variables (preserved across re-bundles, contains credentials)",
 	"sample.env":                 "environment template (regenerated each bundle)",
 }
