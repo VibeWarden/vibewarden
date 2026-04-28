@@ -32,6 +32,10 @@ continued past a `vibew bundle` warning is now broken: the command exits with co
 and writes no files. Fix: run `vibew build --platform linux/amd64` before `vibew bundle`
 when the image arch does not match the VPS target.
 
+### Added
+
+- **`vibew prompt-template`** — emits the canonical agent kickoff prompt to stdout (#1203, ADR-099). Two flavors: default (dev only) and `--deploy` (adds bundle + scp + ssh + healthcheck). Always uses `vibew init --name <prjname> --describe "<desc>"`. `--domain` is required when `--deploy` is set. See `docs/agent-kickoff.md` and ADR-099.
+
 ### Fixed
 
 - **`vibew bundle` now fails (was: warned) when image architecture doesn't match `deploy.target_platform`** (#1200). The primary case is Apple Silicon builds (linux/arm64) landing on amd64 VPS hosts without being noticed. On mismatch the bundle aborts before writing any files and prints: `image arch is linux/arm64, target is linux/amd64. Rebuild with: vibew build --platform linux/amd64` / `Then re-run: vibew bundle`. Default target is `linux/amd64`. Override via `--target-platform` flag or `deploy.target_platform` in `vibewarden.production.yaml`.
