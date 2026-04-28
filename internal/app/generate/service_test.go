@@ -1008,6 +1008,10 @@ func TestGenerate_Observability_WhenEnabled(t *testing.T) {
 }
 
 func TestGenerate_Observability_WhenDisabled(t *testing.T) {
+	// Obs config files must always be written regardless of Observability.Enabled.
+	// The files are inert until the obs compose profile is activated. Without them
+	// Docker auto-creates bind-mount sources as empty directories, causing mount
+	// type mismatches. See fix(#1184).
 	cfg := &config.Config{
 		Server:        config.ServerConfig{Host: "127.0.0.1", Port: 8080},
 		Upstream:      config.UpstreamConfig{Host: "127.0.0.1", Port: 3000},
@@ -1021,8 +1025,8 @@ func TestGenerate_Observability_WhenDisabled(t *testing.T) {
 	}
 
 	obsDir := filepath.Join(outputDir, "observability")
-	if _, err := os.Stat(obsDir); err == nil {
-		t.Errorf("observability directory must not be created when observability is disabled: %q", obsDir)
+	if _, err := os.Stat(obsDir); err != nil {
+		t.Errorf("observability directory must be created even when observability is disabled: %v", err)
 	}
 }
 
@@ -1329,7 +1333,9 @@ func TestGenerate_OtelCollector_OtlpEnvVars_AbsentWhenDisabled(t *testing.T) {
 	}
 }
 
-func TestGenerate_OtelCollector_NotPresent_WhenDisabled(t *testing.T) {
+func TestGenerate_OtelCollector_PresentEvenWhenDisabled(t *testing.T) {
+	// otel-collector config must be written even when Observability.Enabled is false.
+	// Symmetric with the compose-template gate removal in PR #1182. See fix(#1184).
 	cfg := &config.Config{
 		Server:        config.ServerConfig{Host: "127.0.0.1", Port: 8080},
 		Upstream:      config.UpstreamConfig{Host: "127.0.0.1", Port: 3000},
@@ -1342,9 +1348,66 @@ func TestGenerate_OtelCollector_NotPresent_WhenDisabled(t *testing.T) {
 		t.Fatalf("Generate() unexpected error: %v", err)
 	}
 
-	collectorDir := filepath.Join(outputDir, "observability", "otel-collector")
-	if _, err := os.Stat(collectorDir); err == nil {
-		t.Errorf("otel-collector directory must not be created when observability is disabled: %q", collectorDir)
+	configPath := filepath.Join(outputDir, "observability", "otel-collector", "config.yaml")
+	info, err := os.Stat(configPath)
+	if err != nil {
+		t.Errorf("otel-collector config.yaml must exist even when observability is disabled: %v", err)
+		return
+	}
+	if !info.Mode().IsRegular() {
+		t.Errorf("otel-collector config.yaml must be a regular file, got mode %v", info.Mode())
+	}
+}
+
+// TestGenerate_Observability_FilesAreRegular_WhenDisabled is the regression
+// test for fix(#1184): when Observability.Enabled is false, all seven obs config
+// file paths must exist as regular, non-empty files. Prior to the fix the
+// generator skipped writing these files and Docker auto-created the bind-mount
+// sources as empty directories, causing mount-type mismatch errors at container
+// start.
+func TestGenerate_Observability_FilesAreRegular_WhenDisabled(t *testing.T) {
+	cfg := &config.Config{
+		Server:        config.ServerConfig{Host: "127.0.0.1", Port: 8080},
+		Upstream:      config.UpstreamConfig{Host: "127.0.0.1", Port: 3000},
+		Observability: config.ObservabilityConfig{Enabled: false},
+	}
+	outputDir := t.TempDir()
+	svc := generate.NewService(realRenderer())
+
+	if err := svc.Generate(context.Background(), cfg.ToGeneratorInput(), outputDir); err != nil {
+		t.Fatalf("Generate() unexpected error: %v", err)
+	}
+
+	obsDir := filepath.Join(outputDir, "observability")
+	paths := []struct {
+		name string
+		rel  string
+	}{
+		{"prometheus.yml", filepath.Join("prometheus", "prometheus.yml")},
+		{"grafana datasources.yml", filepath.Join("grafana", "provisioning", "datasources", "datasources.yml")},
+		{"grafana dashboards.yml", filepath.Join("grafana", "provisioning", "dashboards", "dashboards.yml")},
+		{"grafana vibewarden.json", filepath.Join("grafana", "dashboards", "vibewarden.json")},
+		{"loki-config.yml", filepath.Join("loki", "loki-config.yml")},
+		{"promtail-config.yml", filepath.Join("promtail", "promtail-config.yml")},
+		{"otel-collector config.yaml", filepath.Join("otel-collector", "config.yaml")},
+	}
+
+	for _, p := range paths {
+		p := p
+		t.Run(p.name, func(t *testing.T) {
+			full := filepath.Join(obsDir, p.rel)
+			info, err := os.Stat(full)
+			if err != nil {
+				t.Errorf("expected %q to exist: %v", full, err)
+				return
+			}
+			if !info.Mode().IsRegular() {
+				t.Errorf("%q must be a regular file (not a directory), got mode %v", full, info.Mode())
+			}
+			if info.Size() == 0 {
+				t.Errorf("%q must be non-empty", full)
+			}
+		})
 	}
 }
 
