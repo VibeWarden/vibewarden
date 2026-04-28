@@ -72,6 +72,12 @@ type ObsDownOptions struct {
 	In io.Reader
 	// IsTTY indicates whether the process is attached to an interactive terminal.
 	IsTTY bool
+	// ProjectName is the Docker Compose project name (e.g. "myapp"). It must
+	// match the `name:` field in the generated compose file so that volume
+	// removal constructs the correct "<project>_<volume>" reference. Obtain
+	// this from cfg.ComposeProjectName(). When empty, volumes are not removed
+	// even if Volumes is true.
+	ProjectName string
 }
 
 // Up starts the observability Compose profile against the generated compose file.
@@ -140,6 +146,7 @@ func (s *ObsService) Down(ctx context.Context, opts ObsDownOptions, out io.Write
 		Volumes:     opts.Volumes,
 		Services:    obsServices,
 		VolumeNames: obsVolumeNames,
+		ProjectName: opts.ProjectName,
 	})
 	if err != nil {
 		return fmt.Errorf("stopping observability stack: %w", err)

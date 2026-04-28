@@ -68,10 +68,17 @@ type ComposeDownOptions struct {
 
 	// VolumeNames lists the named volumes to remove when Volumes is true and
 	// Services is non-empty. Each name is relative (e.g. "prometheus-data");
-	// the adapter resolves the full volume name using the compose project name.
+	// the adapter resolves the full volume name by prepending ProjectName + "_".
 	// When VolumeNames is empty and Volumes is true with a non-empty Services
 	// list, no volumes are removed (the caller must supply the list explicitly).
 	VolumeNames []string
+
+	// ProjectName is the Docker Compose project name used to construct the
+	// fully-qualified volume name "<ProjectName>_<VolumeName>" when removing
+	// volumes in a service-targeted teardown (Volumes true, Services non-empty).
+	// It must match the `name:` field in the compose file (or the value Docker
+	// derives from it). When empty and Volumes is true, no volumes are removed.
+	ProjectName string
 }
 
 // DownResult summarises what happened during a ComposeRunner.Down invocation.
@@ -106,6 +113,10 @@ type ComposeRunner interface {
 	// Down stops and removes containers for the compose project. composeFile
 	// is the path to the docker-compose.yml; when empty the default discovery
 	// logic applies. opts controls --volumes and --remove-orphans.
+	// When opts.Services is non-empty, teardown is scoped to those services
+	// via stop+rm rather than a full project down — docker compose --profile
+	// does NOT scope teardown by profile (it is an activation flag for up,
+	// not a scope limiter for down), so Services is the correct mechanism.
 	// When nothing is running, Down returns a zero-valued DownResult and a
 	// nil error (idempotent no-op).
 	Down(ctx context.Context, composeFile string, opts ComposeDownOptions) (DownResult, error)

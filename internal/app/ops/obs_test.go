@@ -300,6 +300,48 @@ func TestObsService_Down_PassesObsVolumeNames(t *testing.T) {
 	}
 }
 
+func TestObsService_Down_WithVolumes_PassesProjectName(t *testing.T) {
+	// When Volumes=true, obs down must forward ProjectName to ComposeDownOptions
+	// so that the adapter can construct the correct "<project>_<volume>" Docker
+	// volume reference. Without this, docker volume rm targets the wrong name
+	// and silently removes nothing (RemovedVolumes stays 0).
+	//
+	// This is a regression guard for the resolveProjectName bug identified in
+	// the PR #1182 review: the adapter must NOT derive the project name from
+	// the compose file path (which yields "generated" for the generated file),
+	// but must instead receive it from the caller via ComposeDownOptions.ProjectName.
+	tests := []struct {
+		name        string
+		projectName string
+		wantProject string
+	}{
+		{"project name forwarded", "myapp", "myapp"},
+		{"empty project name forwarded as-is", "", ""},
+		{"multi-word project name", "my-cool-app", "my-cool-app"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fc := &fakeCompose{}
+			svc := ops.NewObsService(fc, nil)
+			var buf bytes.Buffer
+
+			opts := ops.ObsDownOptions{
+				Volumes:     true,
+				Yes:         true,
+				ProjectName: tt.projectName,
+			}
+			if err := svc.Down(context.Background(), opts, &buf); err != nil {
+				t.Fatalf("Down() unexpected error: %v", err)
+			}
+
+			got := fc.capturedDownOpts.ProjectName
+			if got != tt.wantProject {
+				t.Errorf("Down() ProjectName = %q, want %q", got, tt.wantProject)
+			}
+		})
+	}
+}
+
 func TestObsService_Down_DoesNotPassProfiles(t *testing.T) {
 	// Profiles must NOT be set on ComposeDownOptions — that was the buggy approach.
 	fc := &fakeCompose{}

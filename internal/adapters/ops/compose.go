@@ -10,7 +10,6 @@ import (
 	"io"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -206,11 +205,15 @@ func (c *ComposeAdapter) downServices(ctx context.Context, composeFile string, o
 	result := parseDownOutput(stopStderr.String() + rmStderr.String())
 
 	// Step 3 (optional): remove named volumes best-effort.
-	if opts.Volumes && len(opts.VolumeNames) > 0 {
-		projectName := resolveProjectName(composeFile)
+	// ProjectName must be supplied by the caller via opts.ProjectName; it
+	// must match the compose file's `name:` field (e.g. "myapp"). We do NOT
+	// derive the project name from the file path because the generated compose
+	// file lives at .vibewarden/generated/docker-compose.yml, so filepath.Dir
+	// would yield "generated" — not the actual project name Docker uses.
+	if opts.Volumes && len(opts.VolumeNames) > 0 && opts.ProjectName != "" {
 		for _, vol := range opts.VolumeNames {
-			fullName := projectName + "_" + vol
-			volCmd := exec.CommandContext(ctx, "docker", "volume", "rm", fullName) //nolint:gosec // fullName is derived from caller-supplied volume name, not user shell input
+			fullName := opts.ProjectName + "_" + vol
+			volCmd := exec.CommandContext(ctx, "docker", "volume", "rm", fullName) //nolint:gosec // fullName is derived from caller-supplied project+volume names, not user shell input
 			if volErr := volCmd.Run(); volErr == nil {
 				result.RemovedVolumes++
 			}
@@ -227,19 +230,6 @@ func isNoOpError(lower string) bool {
 	return strings.Contains(lower, "no configuration file provided") ||
 		strings.Contains(lower, "no such service") ||
 		strings.Contains(lower, "has no containers")
-}
-
-// resolveProjectName derives the compose project name from the compose file
-// path. Docker Compose uses the parent directory name as the project name by
-// default. For the generated file at ".vibewarden/generated/docker-compose.yml"
-// this returns "generated", which does not match Docker's actual project name
-// (the workspace directory name). Callers that need the real project name
-// should pass it explicitly; this helper provides a best-effort fallback.
-func resolveProjectName(composeFile string) string {
-	if composeFile == "" {
-		return ""
-	}
-	return strings.ToLower(strings.ReplaceAll(filepath.Base(filepath.Dir(composeFile)), " ", ""))
 }
 
 // parseDownOutput counts "Removed" lines emitted by docker compose down on
