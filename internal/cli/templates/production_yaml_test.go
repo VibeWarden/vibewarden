@@ -78,16 +78,30 @@ func TestInitProject_ProductionYAML_NoCommentedStubs(t *testing.T) {
 		}
 	})
 
-	// Positive: must contain active tls block.
-	t.Run("has_active_tls_block", func(t *testing.T) {
-		if !strings.Contains(content, "tls:") {
-			t.Errorf("rendered production.yaml missing active 'tls:' key\n\nContent:\n%s", content)
+	// Negative: must NOT contain any uncommented tls block or provider keys.
+	// Regression guard for #1178: the template previously carried a stale
+	// tls.provider: letsencrypt block that caused vibew bundle to fail on
+	// fresh projects because tls.domain was not set.
+	t.Run("no_tls_block", func(t *testing.T) {
+		for _, line := range lines {
+			trimmed := strings.TrimSpace(line)
+			// Detect a top-level uncommented "tls:" key. We avoid matching
+			// comment lines (# ...) and URLs that may contain "tls:" as a
+			// substring. A line is a top-level tls: key when it is exactly
+			// "tls:" (no leading indent, no comment prefix).
+			if trimmed == "tls:" {
+				t.Errorf("rendered production.yaml contains forbidden top-level 'tls:' key (stale TLS block — see #1178)\n\nContent:\n%s", content)
+				break
+			}
 		}
-		if !strings.Contains(content, "enabled: true") {
-			t.Errorf("rendered production.yaml missing 'enabled: true'\n\nContent:\n%s", content)
+		if strings.Contains(content, "provider: letsencrypt") {
+			t.Errorf("rendered production.yaml contains forbidden 'provider: letsencrypt' (stale TLS block — see #1178)\n\nContent:\n%s", content)
 		}
-		if !strings.Contains(content, "provider: letsencrypt") {
-			t.Errorf("rendered production.yaml missing 'provider: letsencrypt'\n\nContent:\n%s", content)
+		if strings.Contains(content, "provider: acme") {
+			t.Errorf("rendered production.yaml contains forbidden 'provider: acme' (stale TLS block — see #1178)\n\nContent:\n%s", content)
+		}
+		if strings.Contains(content, "enabled: true") {
+			t.Errorf("rendered production.yaml contains forbidden 'enabled: true' (TLS block removed — see #1178)\n\nContent:\n%s", content)
 		}
 	})
 

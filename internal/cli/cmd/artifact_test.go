@@ -78,6 +78,9 @@ tls:
 
 // TestArtifact_Init_GeneratesBothFiles verifies that `vibew init` creates both
 // vibewarden.yaml and vibewarden.production.yaml with appropriate defaults.
+// Regression guard for #1178: the production template must NOT contain a
+// tls.provider: letsencrypt block — that caused vibew bundle to fail on fresh
+// projects because tls.domain was not set. TLS is added via `vibew add tls`.
 func TestArtifact_Init_GeneratesBothFiles(t *testing.T) {
 	parent := scaffoldTestDir(t, false)
 	projectDir := filepath.Join(parent, "bothfiles")
@@ -114,13 +117,18 @@ func TestArtifact_Init_GeneratesBothFiles(t *testing.T) {
 		t.Errorf("expected vibewarden.production.yaml to exist: %v", err)
 	}
 
-	// vibewarden.production.yaml should have letsencrypt as default provider.
+	// vibewarden.production.yaml must NOT contain a tls block or letsencrypt
+	// provider — the template was stripped in #1178. TLS is added explicitly
+	// via `vibew add tls --domain ...` after the project is initialised.
 	prodData, err := os.ReadFile(prodPath)
 	if err != nil {
 		t.Fatalf("reading prod config: %v", err)
 	}
-	if !strings.Contains(string(prodData), "letsencrypt") {
-		t.Errorf("production config should default to letsencrypt, got:\n%s", string(prodData))
+	if strings.Contains(string(prodData), "letsencrypt") {
+		t.Errorf("production config must NOT contain 'letsencrypt' (stale TLS block — #1178), got:\n%s", string(prodData))
+	}
+	if strings.Contains(string(prodData), "provider:") {
+		t.Errorf("production config must NOT contain a 'provider:' key (stale TLS block — #1178), got:\n%s", string(prodData))
 	}
 }
 
