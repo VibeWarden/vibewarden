@@ -24,19 +24,48 @@ type Result struct {
 	// It must not include a trailing newline.
 	Message string
 
+	// Source, when non-empty, names the config file that caused this result
+	// (e.g. "vibewarden.production.yaml"). An empty Source means the base
+	// config file or no specific file attribution. The CLI renderer prefixes
+	// FAIL rows with "(Source)" when this field is set.
+	Source string
+
 	// Skip, when true, means the check does not apply (e.g. Dockerfile absent).
 	// The caller emits no row.
 	Skip bool
 }
 
+// CheckInputs carries all inputs a check function may need. Using a struct
+// instead of a growing argument list lets individual checks access the base
+// config separately from the merged (production) config without breaking the
+// CheckFunc signature whenever a new input is added.
+type CheckInputs struct {
+	// ProjectRoot is the absolute path to the directory containing the base
+	// vibewarden.yaml. It is used by file-system checks (Dockerfile, .env).
+	ProjectRoot string
+
+	// Cfg is the merged (base + production override) config that runtime checks
+	// should evaluate. When no production override exists it equals BaseCfg.
+	Cfg *config.Config
+
+	// BaseCfg is the config loaded from the base vibewarden.yaml only. Checks
+	// that need to distinguish whether a failing value originates from the base
+	// or from the production override compare Cfg against BaseCfg.
+	BaseCfg *config.Config
+
+	// ProdOverrideExists is true when a vibewarden.production.yaml was
+	// discovered and successfully merged into Cfg.
+	ProdOverrideExists bool
+}
+
 // CheckFunc is the signature every individual check must satisfy.
-type CheckFunc func(ctx context.Context, projectRoot string, cfg *config.Config, prodOverrideExists bool) Result
+type CheckFunc func(ctx context.Context, inputs CheckInputs) Result
 
 // RunChecks executes all runtime checks and returns the number of FAIL results.
 // Each non-skipped result is appended to results in the order the checks run.
 // Callers use the returned slice to render rows and use failures > 0 to set
 // exit code 1.
-func RunChecks(ctx context.Context, projectRoot string, cfg *config.Config, prodOverrideExists bool) ([]Result, int) {
+func RunChecks(ctx context.Context, inputs CheckInputs) ([]Result, int) {
 	checks := []CheckFunc{
 		CheckName,
 		CheckDockerfile,
@@ -48,7 +77,7 @@ func RunChecks(ctx context.Context, projectRoot string, cfg *config.Config, prod
 	var results []Result
 	failures := 0
 	for _, fn := range checks {
-		r := fn(ctx, projectRoot, cfg, prodOverrideExists)
+		r := fn(ctx, inputs)
 		if r.Skip {
 			continue
 		}

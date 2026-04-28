@@ -7,12 +7,10 @@ import (
 )
 
 // TestDiscoverProdOverride covers every branch of the auto-discovery helper
-// used by `vibew validate` / `vibew deploy`. The helper's contract: return
-// the path to a sibling vibewarden.production.yaml when one exists, and the
-// empty string in every other case (nil input, missing base, missing prod,
-// unreadable dir). Happy path plus the four negative cases are asserted so
-// the behaviour — an architect-unmandated UX addition flagged in review —
-// has explicit test coverage.
+// used by `vibew validate`. The helper's contract: when configPath is non-empty,
+// look for the sibling vibewarden.production.yaml. When configPath is empty,
+// resolve against os.Getwd(). Return the empty string when the override is
+// absent, the directory cannot be read, or os.Getwd() fails.
 func TestDiscoverProdOverride(t *testing.T) {
 	tests := []struct {
 		name   string
@@ -21,7 +19,10 @@ func TestDiscoverProdOverride(t *testing.T) {
 		expect string // literal value when setup returns no dir; "" means use want fn
 	}{
 		{
-			name:  "empty input returns empty",
+			// empty configPath → falls through to os.Getwd(). The package test
+			// directory does not contain vibewarden.production.yaml so the result
+			// is "". For positive cwd cases see TestDiscoverProdOverride_EmptyCwdWithOverride.
+			name:  "empty input returns empty (no prod override in cwd)",
 			setup: func(_ *testing.T) string { return "" },
 			want:  func(_ *testing.T, _ string) string { return "" },
 		},
@@ -97,6 +98,66 @@ func TestDiscoverProdOverride(t *testing.T) {
 				t.Errorf("discoverProdOverride(%q) = %q, want %q", basePath, got, want)
 			}
 		})
+	}
+}
+
+// TestDiscoverProdOverride_EmptyCwdWithOverride verifies that
+// discoverProdOverride("") resolves against os.Getwd() and returns the
+// absolute path when vibewarden.production.yaml exists in cwd.
+func TestDiscoverProdOverride_EmptyCwdWithOverride(t *testing.T) {
+	dir := t.TempDir()
+	prodPath := filepath.Join(dir, "vibewarden.production.yaml")
+	if err := os.WriteFile(prodPath, []byte("name: prod\n"), 0o600); err != nil {
+		t.Fatalf("writing prod: %v", err)
+	}
+
+	orig, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(dir); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(orig) })
+
+	got := discoverProdOverride("")
+	if got == "" {
+		t.Error("discoverProdOverride(\"\") = \"\", want non-empty path")
+	}
+	// On macOS, t.TempDir() returns a path under /var/... which is a symlink to
+	// /private/var/... while os.Getwd() returns the symlink-resolved path. Use
+	// filepath.EvalSymlinks to normalise both before comparing.
+	wantResolved, err := filepath.EvalSymlinks(prodPath)
+	if err != nil {
+		t.Fatalf("EvalSymlinks prod: %v", err)
+	}
+	gotResolved, err := filepath.EvalSymlinks(got)
+	if err != nil {
+		t.Fatalf("EvalSymlinks got: %v", err)
+	}
+	if gotResolved != wantResolved {
+		t.Errorf("discoverProdOverride(\"\") = %q, want %q", got, prodPath)
+	}
+}
+
+// TestDiscoverProdOverride_EmptyCwdWithoutOverride verifies that
+// discoverProdOverride("") returns "" when no vibewarden.production.yaml
+// exists in cwd.
+func TestDiscoverProdOverride_EmptyCwdWithoutOverride(t *testing.T) {
+	dir := t.TempDir()
+
+	orig, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(dir); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(orig) })
+
+	got := discoverProdOverride("")
+	if got != "" {
+		t.Errorf("discoverProdOverride(\"\") = %q, want empty", got)
 	}
 }
 

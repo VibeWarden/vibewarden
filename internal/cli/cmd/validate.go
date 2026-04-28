@@ -190,9 +190,19 @@ Examples:
 					runtimeCfg = merged
 				}
 			}
-			results, runtimeFailures := validateapp.RunChecks(cmd.Context(), projectRoot, runtimeCfg, prodOverrideExists)
+			inputs := validateapp.CheckInputs{
+				ProjectRoot:        projectRoot,
+				Cfg:                runtimeCfg,
+				BaseCfg:            cfg,
+				ProdOverrideExists: prodOverrideExists,
+			}
+			results, runtimeFailures := validateapp.RunChecks(cmd.Context(), inputs)
 			for _, r := range results {
-				fmt.Fprintf(cmd.ErrOrStderr(), "%-6s%s\n", r.State.String(), r.Message)
+				msg := r.Message
+				if r.Source != "" {
+					msg = fmt.Sprintf("%s (%s)", r.Message, r.Source)
+				}
+				fmt.Fprintf(cmd.ErrOrStderr(), "%-6s%s\n", r.State.String(), msg)
 			}
 			if runtimeFailures > 0 {
 				return fmt.Errorf("configuration has %d runtime check failure(s)", runtimeFailures)
@@ -238,15 +248,23 @@ func detectLegacyAppImage(configDir string) bool {
 }
 
 // discoverProdOverride returns the path to vibewarden.production.yaml that
-// sits next to configPath, when it exists. The empty string is returned when
-// configPath is empty, the override file does not exist, or the directory
-// cannot be read. Strict validation still succeeds when no override is
-// present.
+// sits next to configPath, when it exists. When configPath is empty, the
+// working directory (os.Getwd()) is used as the search base so that bare
+// `vibew validate` (no --config flag) also discovers production overrides.
+// The empty string is returned when the override file does not exist, the
+// working directory cannot be determined, or the directory cannot be read.
+// Strict validation still succeeds when no override is present.
 func discoverProdOverride(configPath string) string {
+	var dir string
 	if configPath == "" {
-		return ""
+		cwd, err := os.Getwd()
+		if err != nil {
+			return ""
+		}
+		dir = cwd
+	} else {
+		dir = filepath.Dir(configPath)
 	}
-	dir := filepath.Dir(configPath)
 	candidate := filepath.Join(dir, "vibewarden.production.yaml")
 	if _, err := os.Stat(candidate); err != nil {
 		return ""

@@ -1,0 +1,9 @@
+name: myapp
+server:
+  port: 8443
+upstream:
+  port: 3000
+tls:
+  enabled: true
+  provider: letsencrypt
+  domain: localhost

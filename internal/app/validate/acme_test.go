@@ -132,7 +132,7 @@ func TestCheckACME(t *testing.T) {
 			cfg := &config.Config{}
 			cfg.TLS.Provider = tt.provider
 			cfg.TLS.Domain = tt.domain
-			r := validate.CheckACME(context.Background(), "", cfg, false)
+			r := validate.CheckACME(context.Background(), validate.CheckInputs{Cfg: cfg})
 
 			if r.Skip != tt.wantSkip {
 				t.Errorf("Skip = %v, want %v (message: %q)", r.Skip, tt.wantSkip, r.Message)

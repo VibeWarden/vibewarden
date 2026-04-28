@@ -14,6 +14,7 @@ This initial entry was written by hand to summarise the work leading up to v0.1.
 
 ### Changed
 
+- **`vibew validate` auto-checks `vibewarden.production.yaml` when present** (#1180). Previously only the base file (or the file passed via `--config`) was checked, so production-only failures (WAF `mode: log`, ACME-incompatible domain in prod overrides, etc.) silently passed unless the user knew to invoke validate twice. Now `vibew validate` (no args) discovers `vibewarden.production.yaml` next to `vibewarden.yaml` and runs all 5 runtime checks against both files. FAIL rows annotate the source: `FAIL (vibewarden.production.yaml)  waf.mode: log — ...`. Explicit `--config <file>` keeps the existing single-file behavior.
 - **`vibew add tls --domain X` auto-sets `provider: letsencrypt` for LE-compatible domains** (#1188). Previously only wrote the domain to `vibewarden.production.yaml`, leaving the merged config with `provider: self-signed` (from base) plus a real-world domain — the v0.18.0 deploy to `demo.vibewarden.dev` had to manually edit production.yaml. Now the command classifies the domain via the same checker `vibew validate` uses (`internal/app/tlsdomain`); LE-compatible domains get `provider: letsencrypt` + domain; localhost / IP / RFC 1918 / `.local` / `.test` domains get only the domain plus a stderr hint about picking a provider manually. Explicit `--provider <self-signed|letsencrypt|external>` flag honored as override.
 
 ### Fixed

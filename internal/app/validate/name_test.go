@@ -61,7 +61,7 @@ func TestCheckName(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := &config.Config{Name: tt.cfgName}
-			r := validate.CheckName(context.Background(), tt.projectRoot, cfg, false)
+			r := validate.CheckName(context.Background(), validate.CheckInputs{ProjectRoot: tt.projectRoot, Cfg: cfg})
 
 			if r.Skip != tt.wantSkip {
 				t.Errorf("Skip = %v, want %v (message: %q)", r.Skip, tt.wantSkip, r.Message)
