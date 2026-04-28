@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/vibewarden/vibewarden/internal/app/ops"
+	"github.com/vibewarden/vibewarden/internal/config/templates"
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
 
@@ -203,7 +204,9 @@ func TestObsService_Down_WithVolumes_ForwardsFlag(t *testing.T) {
 	}
 }
 
-func TestObsService_Down_WithRemoveOrphans_ForwardsFlag(t *testing.T) {
+func TestObsService_Down_DoesNotForwardRemoveOrphans(t *testing.T) {
+	// RemoveOrphans is a project-level concept and must NOT be forwarded when
+	// the adapter is performing service-targeted teardown. See ADR-097.
 	fc := &fakeCompose{}
 	svc := ops.NewObsService(fc, nil)
 	var buf bytes.Buffer
@@ -212,8 +215,8 @@ func TestObsService_Down_WithRemoveOrphans_ForwardsFlag(t *testing.T) {
 	if err := svc.Down(context.Background(), opts, &buf); err != nil {
 		t.Fatalf("Down() unexpected error: %v", err)
 	}
-	if !fc.capturedDownOpts.RemoveOrphans {
-		t.Error("expected RemoveOrphans=true forwarded to compose.Down")
+	if fc.capturedDownOpts.RemoveOrphans {
+		t.Error("obs Down() must not set RemoveOrphans (not meaningful for service-targeted teardown)")
 	}
 }
 
@@ -246,9 +249,10 @@ func TestObsService_Down_ComposeError_ReturnsError(t *testing.T) {
 	}
 }
 
-func TestObsService_Down_PassesObservabilityProfile(t *testing.T) {
-	// obs down must scope teardown to the observability profile only, so that
-	// running `vibew obs down` does not stop the main sidecar or other services.
+func TestObsService_Down_PassesObsServices(t *testing.T) {
+	// obs down must perform a service-targeted teardown using the static obs
+	// service list — NOT compose down --profile observability, which would
+	// remove all services in the project. See ADR-097.
 	fc := &fakeCompose{}
 	svc := ops.NewObsService(fc, nil)
 	var buf bytes.Buffer
@@ -257,9 +261,180 @@ func TestObsService_Down_PassesObservabilityProfile(t *testing.T) {
 		t.Fatalf("Down() unexpected error: %v", err)
 	}
 
-	profiles := fc.capturedDownOpts.Profiles
-	if len(profiles) != 1 || profiles[0] != "observability" {
-		t.Errorf("Down() Profiles = %v, want [observability]", profiles)
+	want := []string{"prometheus", "loki", "promtail", "otel-collector", "jaeger", "grafana"}
+	got := fc.capturedDownOpts.Services
+	if len(got) != len(want) {
+		t.Errorf("Down() Services = %v, want %v", got, want)
+	} else {
+		for i, s := range want {
+			if got[i] != s {
+				t.Errorf("Down() Services[%d] = %q, want %q", i, got[i], s)
+			}
+		}
+	}
+}
+
+func TestObsService_Down_PassesObsVolumeNames(t *testing.T) {
+	// When Volumes=true, obs down must pass VolumeNames for the obs-specific
+	// volumes so that non-obs volumes (kratos-db-data, vibewarden-data, etc.)
+	// are not touched.
+	fc := &fakeCompose{}
+	svc := ops.NewObsService(fc, nil)
+	var buf bytes.Buffer
+
+	opts := ops.ObsDownOptions{Volumes: true, Yes: true}
+	if err := svc.Down(context.Background(), opts, &buf); err != nil {
+		t.Fatalf("Down() unexpected error: %v", err)
+	}
+
+	wantVols := []string{"prometheus-data", "loki-data", "grafana-data"}
+	got := fc.capturedDownOpts.VolumeNames
+	if len(got) != len(wantVols) {
+		t.Errorf("Down() VolumeNames = %v, want %v", got, wantVols)
+	} else {
+		for i, v := range wantVols {
+			if got[i] != v {
+				t.Errorf("Down() VolumeNames[%d] = %q, want %q", i, got[i], v)
+			}
+		}
+	}
+}
+
+func TestObsService_Down_WithVolumes_PassesProjectName(t *testing.T) {
+	// When Volumes=true, obs down must forward ProjectName to ComposeDownOptions
+	// so that the adapter can construct the correct "<project>_<volume>" Docker
+	// volume reference. Without this, docker volume rm targets the wrong name
+	// and silently removes nothing (RemovedVolumes stays 0).
+	//
+	// This is a regression guard for the resolveProjectName bug identified in
+	// the PR #1182 review: the adapter must NOT derive the project name from
+	// the compose file path (which yields "generated" for the generated file),
+	// but must instead receive it from the caller via ComposeDownOptions.ProjectName.
+	tests := []struct {
+		name        string
+		projectName string
+		wantProject string
+	}{
+		{"project name forwarded", "myapp", "myapp"},
+		{"empty project name forwarded as-is", "", ""},
+		{"multi-word project name", "my-cool-app", "my-cool-app"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			fc := &fakeCompose{}
+			svc := ops.NewObsService(fc, nil)
+			var buf bytes.Buffer
+
+			opts := ops.ObsDownOptions{
+				Volumes:     true,
+				Yes:         true,
+				ProjectName: tt.projectName,
+			}
+			if err := svc.Down(context.Background(), opts, &buf); err != nil {
+				t.Fatalf("Down() unexpected error: %v", err)
+			}
+
+			got := fc.capturedDownOpts.ProjectName
+			if got != tt.wantProject {
+				t.Errorf("Down() ProjectName = %q, want %q", got, tt.wantProject)
+			}
+		})
+	}
+}
+
+func TestObsService_Down_DoesNotPassProfiles(t *testing.T) {
+	// Profiles must NOT be set on ComposeDownOptions — that was the buggy approach.
+	fc := &fakeCompose{}
+	svc := ops.NewObsService(fc, nil)
+	var buf bytes.Buffer
+
+	if err := svc.Down(context.Background(), ops.ObsDownOptions{Yes: true}, &buf); err != nil {
+		t.Fatalf("Down() unexpected error: %v", err)
+	}
+
+	// Verify Services is non-empty (the correct approach) and RemoveOrphans
+	// is not set (not meaningful for service-targeted teardown).
+	if len(fc.capturedDownOpts.Services) == 0 {
+		t.Error("Down() must set Services for service-targeted teardown, got empty")
+	}
+	if fc.capturedDownOpts.RemoveOrphans {
+		t.Error("Down() must not set RemoveOrphans for service-targeted teardown")
+	}
+}
+
+func TestObsService_Down_PrintsObsServiceCount(t *testing.T) {
+	// The summary message should mention "obs services", not generic "containers".
+	fc := &fakeCompose{downResult: ports.DownResult{StoppedContainers: 6}}
+	svc := ops.NewObsService(fc, nil)
+	var buf bytes.Buffer
+
+	if err := svc.Down(context.Background(), ops.ObsDownOptions{Yes: true}, &buf); err != nil {
+		t.Fatalf("Down() unexpected error: %v", err)
+	}
+
+	out := buf.String()
+	if !strings.Contains(out, "obs services") {
+		t.Errorf("expected 'obs services' in output, got:\n%s", out)
+	}
+}
+
+func TestObsServices_MatchTemplate(t *testing.T) {
+	// Drift-detection test: the static obsServices list must match the set of
+	// services with `profiles: [observability]` in the compose template.
+	// If the template gains or loses an obs service, this test will catch it.
+	data, err := templates.FS.ReadFile("docker-compose.yml.tmpl")
+	if err != nil {
+		t.Fatalf("reading compose template: %v", err)
+	}
+	content := string(data)
+
+	// Extract service names that have `profiles:\n      - observability`.
+	// Strategy: scan line-by-line. When we see `      - observability` (the
+	// profile annotation), walk backward past any indented config lines until
+	// we find a top-level service key (two-space indent + name + colon, no
+	// other characters on the line, e.g. "  prometheus:").
+	lines := strings.Split(content, "\n")
+	var templateServices []string
+	for i, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed != "- observability" {
+			continue
+		}
+		// Walk backward looking for the service-level key (2-space indent).
+		for j := i - 1; j >= 0; j-- {
+			l := lines[j]
+			// Service-level keys have exactly 2 leading spaces, a name, and
+			// a colon — e.g. "  prometheus:".
+			if len(l) > 2 && l[0] == ' ' && l[1] == ' ' && l[2] != ' ' {
+				candidate := strings.TrimSpace(l)
+				if strings.HasSuffix(candidate, ":") {
+					svcName := strings.TrimSuffix(candidate, ":")
+					if svcName != "" {
+						templateServices = append(templateServices, svcName)
+					}
+					break
+				}
+			}
+		}
+	}
+
+	wantServices := []string{"prometheus", "loki", "promtail", "otel-collector", "jaeger", "grafana"}
+
+	if len(templateServices) != len(wantServices) {
+		t.Errorf("template has %d observability services %v; obsServices list has %d %v — update obs.go",
+			len(templateServices), templateServices, len(wantServices), wantServices)
+		return
+	}
+
+	// Build a set from template services for order-independent comparison.
+	templateSet := make(map[string]bool, len(templateServices))
+	for _, s := range templateServices {
+		templateSet[s] = true
+	}
+	for _, s := range wantServices {
+		if !templateSet[s] {
+			t.Errorf("obsServices contains %q but template has no service with profiles: [observability] named %q", s, s)
+		}
 	}
 }
 

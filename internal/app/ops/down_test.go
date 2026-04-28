@@ -226,11 +226,11 @@ func TestDownService_RemoveOrphans_Forwarded(t *testing.T) {
 	}
 }
 
-func TestDownService_DoesNotPassProfiles(t *testing.T) {
+func TestDownService_DoesNotPassServices(t *testing.T) {
 	// `vibew down` tears down the whole project and must NOT restrict teardown
-	// to any profile — passing --profile would leave non-profile services
-	// running. This is the regression guard for the obs-down profile fix: only
-	// ObsService.Down should set Profiles, not the main DownService.
+	// to a subset of services — only ObsService.Down targets specific services.
+	// The main DownService must pass an empty Services slice so that
+	// docker compose down stops the entire project.
 	fake := &downCompose{}
 	svc := opsapp.NewDownService(fake)
 
@@ -238,7 +238,7 @@ func TestDownService_DoesNotPassProfiles(t *testing.T) {
 	if err := svc.Run(context.Background(), opsapp.DownOptions{}, &out); err != nil {
 		t.Fatalf("Run() unexpected error: %v", err)
 	}
-	if len(fake.capturedOp.Profiles) != 0 {
-		t.Errorf("DownService.Run() must not set Profiles, got %v", fake.capturedOp.Profiles)
+	if len(fake.capturedOp.Services) != 0 {
+		t.Errorf("DownService.Run() must not set Services, got %v", fake.capturedOp.Services)
 	}
 }

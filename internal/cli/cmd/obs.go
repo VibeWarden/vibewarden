@@ -112,6 +112,7 @@ Examples:
 // newObsDownCmd creates the "vibew obs down" subcommand.
 func newObsDownCmd() *cobra.Command {
 	var (
+		configPath    string
 		volumes       bool
 		removeOrphans bool
 		yes           bool
@@ -141,17 +142,29 @@ Examples:
 
 			isTTY := term.IsTerminal(int(os.Stdout.Fd())) //nolint:gosec // file descriptor fits in int on all supported platforms
 
+			// Derive the compose project name from the config so that
+			// volume removal constructs the correct "<project>_<volume>"
+			// reference. Config load is best-effort: if it fails we proceed
+			// with an empty project name (volumes will be skipped, not silently
+			// wrong). See the ProjectName field on ObsDownOptions.
+			var projectName string
+			if cfg, err := loadAndResolve(cmd.Context(), configPath); err == nil {
+				projectName = cfg.ComposeProjectName()
+			}
+
 			opts := opsapp.ObsDownOptions{
 				Volumes:       volumes,
 				RemoveOrphans: removeOrphans,
 				Yes:           yes,
 				In:            os.Stdin,
 				IsTTY:         isTTY,
+				ProjectName:   projectName,
 			}
 			return svc.Down(cmd.Context(), opts, cmd.OutOrStdout())
 		},
 	}
 
+	cmd.Flags().StringVar(&configPath, "config", "", "path to vibewarden.yaml (default: ./vibewarden.yaml)")
 	cmd.Flags().BoolVarP(&volumes, "volumes", "v", false, "also remove named volumes (destructive)")
 	cmd.Flags().BoolVar(&removeOrphans, "remove-orphans", false, "remove containers for services no longer in the compose file")
 	cmd.Flags().BoolVar(&yes, "yes", false, "skip confirmation prompt for --volumes")

@@ -19,3 +19,17 @@ func NewComposeAdapterForTest() (*ComposeAdapter, *bytes.Buffer) {
 	buf := &bytes.Buffer{}
 	return &ComposeAdapter{stderrSink: buf}, buf
 }
+
+// IsNoOpErrorForTest exposes the unexported isNoOpError helper so that
+// tests in the _test package can verify the no-op error classification logic.
+func IsNoOpErrorForTest(lower string) bool {
+	return isNoOpError(lower)
+}
+
+// FullVolumeNameForTest returns the fully-qualified Docker volume name that
+// downServices would pass to "docker volume rm" for the given project name and
+// relative volume name. This mirrors the construction in downServices so that
+// tests can assert the correct argv without shelling out to Docker.
+func FullVolumeNameForTest(projectName, volumeName string) string {
+	return projectName + "_" + volumeName
+}
