@@ -397,6 +397,7 @@ vibew down -v --yes
 | Grafana    | http://localhost:3001        | Anonymous access, Admin role, no login |
 | Prometheus | http://localhost:9090        | No authentication required             |
 | Loki       | http://localhost:3100/ready  | API only; query logs via Grafana       |
+| Jaeger     | http://localhost:16686       | Distributed tracing UI; port is not yet a config key |
 
 Grafana is configured with anonymous authentication so there is no login screen in
 the local dev environment. This is intentional — do not use this configuration in
