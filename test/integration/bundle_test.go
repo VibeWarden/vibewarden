@@ -61,7 +61,7 @@ func TestBundle_CLI_UpAndHealthy(t *testing.T) {
 	}
 
 	bundleDir := filepath.Join(projectDir, ".vibewarden", "bundle")
-	for _, f := range []string{"docker-compose.yml", "sample.env", ".env", "deploy.sh", "README.md"} {
+	for _, f := range []string{"docker-compose.yml", "sample.env", ".env", "README.md", "MANIFEST.md"} {
 		if _, err := os.Stat(filepath.Join(bundleDir, f)); err != nil {
 			t.Errorf("expected %s in bundle: %v", f, err)
 		}

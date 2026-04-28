@@ -1,0 +1,5 @@
+# Synthetic fixture for TestRemovedArtifacts_FlagsViolations.
+# This file intentionally contains a removed-artifact name so that the
+# positive-violation subtest can assert the guard catches it.
+# DO NOT remove this reference — it is the regression proof.
+The bundle used to include deploy.sh as a convenience script.

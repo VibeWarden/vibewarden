@@ -88,6 +88,18 @@ domain ← ports ← app ← adapters
                       ← cli
 ```
 
+## Deprecating a Named Artifact
+
+When a named artifact (CLI command, generated file, shell script, etc.) is removed:
+
+1. Add its name to `.github/removed-artifacts.txt` — one name per line.
+2. The CI guard at `internal/quality/removed_artifacts_test.go` will then fail
+   if that name appears anywhere in the repo outside the path allowlist.
+3. If the name legitimately appears in a file outside `CHANGELOG.md` / `decisions/`
+   (for example, a negative-assertion test or an explanatory doc), add that
+   file's path to `pathAllowlist` in `removed_artifacts_test.go`.
+4. Add a `CHANGELOG.md` entry under the relevant version.
+
 ## Adding a Dependency
 
 Before adding any dependency:

@@ -145,9 +145,9 @@ tls:
 		".credentials": true,
 		".env":         true,
 		// Extras (vibew bundle only):
-		"sample.env": true,
-		"deploy.sh":  true,
-		"README.md":  true,
+		"sample.env":  true,
+		"README.md":   true,
+		"MANIFEST.md": true,
 	}
 	setA := pruneSet(collectFileSet(t, outA), ignore)
 	setB := pruneSet(collectFileSet(t, outB), ignore)

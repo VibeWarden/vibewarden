@@ -2,7 +2,7 @@
 // `vibew bundle` deployment artifact.
 //
 // A Service orchestrates the pipeline that writes docker-compose.yml,
-// the merged vibewarden.yaml, sample.env, .env, deploy.sh, README.md,
+// the merged vibewarden.yaml, sample.env, .env, README.md, MANIFEST.md,
 // and (unless skipped) image.tar under a caller-supplied output
 // directory. The pipeline is purely local: no SSH connection is opened
 // and no remote state is touched — the user owns the transport. See
@@ -23,7 +23,7 @@ type Service struct {
 	generator ports.ConfigGenerator
 
 	// bundleFS is the filesystem adapter used by the bundle extras pipeline
-	// (sample.env, .env, deploy.sh, README.md). When nil, the extras pipeline
+	// (sample.env, .env, README.md, MANIFEST.md). When nil, the extras pipeline
 	// is a no-op.
 	bundleFS ports.BundleFS
 

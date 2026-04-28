@@ -451,7 +451,7 @@ func TestBundle_ImageMissing_NoFilesWritten(t *testing.T) {
 
 	// No extra files should have been written (only potentially sample.env etc
 	// are written by extras after the health check — but health check aborts first).
-	for _, name := range []string{"sample.env", ".env", "deploy.sh", "README.md"} {
+	for _, name := range []string{"sample.env", ".env", "README.md", "MANIFEST.md"} {
 		if _, ok := mem.files[t.TempDir()+"/"+name]; ok {
 			t.Errorf("file %s should not be written when image is missing", name)
 		}
