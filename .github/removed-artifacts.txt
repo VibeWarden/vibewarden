@@ -1,7 +1,11 @@
 # Removed-artifact registry for VibeWarden.
 # Each line is the literal name of an artifact (file, command, etc) that
 # used to exist but no longer does. The CI grep guard at
-# internal/quality/removed_artifacts_test.go fails when these names
-# appear outside the allowlisted paths (CHANGELOG.md, decisions/).
-# Add new entries when you remove a verb, file, or other named artifact.
+# internal/quality/removed_artifacts_test.go fails when any name appears
+# in a scanned file outside the path allowlist defined in that test file.
+# To add a new entry:
+#   1. Add the artifact name on a new line below.
+#   2. If the name legitimately appears in a file outside CHANGELOG.md /
+#      decisions/ (e.g. a negative-assertion test or an explanatory doc),
+#      add that file's path to pathAllowlist in removed_artifacts_test.go.
 deploy.sh
