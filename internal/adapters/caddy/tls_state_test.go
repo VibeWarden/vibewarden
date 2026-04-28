@@ -112,6 +112,21 @@ func TestInProcessResolver_Resolve(t *testing.T) {
 			provider: fakePeerCertProvider{leaf: makeLeaf(caddyLocalIssuerCN, fixedNow.Add(-1*time.Hour))},
 			wantKind: tlsdomain.KindSelfSignedLocal,
 		},
+		// Caddy actually stamps the leaf's issuer CN with the intermediate-CA
+		// suffix, e.g. "Caddy Local Authority - ECC Intermediate". The classifier
+		// must do a prefix match, not exact equality. Regression for #1194.
+		{
+			name:     "dev cert with intermediate-CA suffix → SelfSignedLocal",
+			cfg:      &config.Config{TLS: config.TLSConfig{Enabled: true, Provider: "self-signed"}},
+			provider: fakePeerCertProvider{leaf: makeLeaf(caddyLocalIssuerCN+" - ECC Intermediate", fixedNow.Add(8*time.Hour))},
+			wantKind: tlsdomain.KindSelfSignedLocal,
+		},
+		{
+			name:     "dev cert with RSA intermediate-CA suffix → SelfSignedLocal",
+			cfg:      &config.Config{TLS: config.TLSConfig{Enabled: true, Provider: "self-signed"}},
+			provider: fakePeerCertProvider{leaf: makeLeaf(caddyLocalIssuerCN+" - RSA Intermediate", fixedNow.Add(-1*time.Hour))},
+			wantKind: tlsdomain.KindSelfSignedLocal,
+		},
 	}
 
 	for _, tt := range tests {

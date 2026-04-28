@@ -84,7 +84,7 @@ func (r *HandshakeResolver) Resolve(ctx context.Context) (tlsdomain.State, error
 	leaf := state.PeerCertificates[0]
 
 	// Caddy internal issuer → SelfSignedLocal regardless of config.
-	if leaf.Issuer.CommonName == caddyLocalIssuerCN {
+	if tlsdomain.IsCaddyLocalIssuer(leaf.Issuer.CommonName) {
 		return tlsdomain.NewSelfSignedLocal(), nil
 	}
 

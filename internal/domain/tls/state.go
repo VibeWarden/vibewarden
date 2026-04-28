@@ -2,16 +2,25 @@ package tls
 
 import (
 	"fmt"
+	"strings"
 	"time"
 )
 
-// CaddyLocalIssuerCN is the Common Name Caddy stamps on internal self-signed
-// dev leaf certificates. It is the authoritative signal that the sidecar is
-// serving a KindSelfSignedLocal cert and that expiry heuristics must not be
-// applied. The constant lives in the domain layer so it can be imported by
-// both the caddy adapter and the app-layer fallback resolver without creating
-// an adapter → app or app → adapter dependency.
+// CaddyLocalIssuerCN is the prefix Caddy uses on the Common Name of issuers
+// stamped on its internal self-signed dev leaf certificates. The actual leaf
+// issuer is an intermediate CA whose CN is `Caddy Local Authority - ECC
+// Intermediate` (or `... - RSA Intermediate` depending on key type). The
+// prefix is the authoritative signal that the sidecar is serving a
+// KindSelfSignedLocal cert and that expiry heuristics must not be applied.
+// Callers MUST use IsCaddyLocalIssuer (prefix match), not direct equality.
 const CaddyLocalIssuerCN = "Caddy Local Authority"
+
+// IsCaddyLocalIssuer reports whether the given Issuer Common Name belongs to
+// Caddy's internal local-CA hierarchy (root or intermediate). Use this to
+// classify a leaf as KindSelfSignedLocal.
+func IsCaddyLocalIssuer(issuerCN string) bool {
+	return strings.HasPrefix(issuerCN, CaddyLocalIssuerCN)
+}
 
 // Kind identifies the TLS state variant.
 type Kind int
