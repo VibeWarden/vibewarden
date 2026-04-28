@@ -42,7 +42,7 @@ PATH A — New project:
   - AGENTS.md — conventional tool-agnostic context file read by Claude Code,
     Cursor, Aider, Continue, and any other modern coding agent
   Read AGENTS-VIBEWARDEN.md after init — it tells you what security features
-  to never reimplement. Edit cmd/myapp/main.go to build your app.
+  to never reimplement. Then build your app per the application contract in AGENTS-VIBEWARDEN.md (must serve GET /health on upstream.port). vibew does NOT scaffold app code or a Dockerfile.
 
 PATH B — Existing app (you already have source code):
 

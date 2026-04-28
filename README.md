@@ -275,9 +275,11 @@ If you need a general-purpose load balancer or a CDN edge, use the right tool fo
 | Adding the sidecar to an existing app | `vibew wrap` |
 | Adding a feature to an existing config | `vibew add <feature>` |
 
-Use `vibew init` when you have nothing yet -- it scaffolds both the app and the
-sidecar config. Use `vibew wrap` when you already have an app and just want to
-add VibeWarden. Use `vibew add` to enable individual features after the initial setup.
+Use `vibew init` when you have nothing yet -- it scaffolds the sidecar config and
+agent-instruction files (no app code, no Dockerfile; you write those per the
+application contract in AGENTS-VIBEWARDEN.md). Use `vibew wrap` when you already
+have an app and just want to add VibeWarden. Use `vibew add` to enable individual
+features after the initial setup.
 
 ---
 
