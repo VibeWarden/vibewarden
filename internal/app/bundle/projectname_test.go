@@ -53,10 +53,15 @@ func TestDeriveProjectName(t *testing.T) {
 			want:        "myproject",
 		},
 		{
+			// Since v0.19.0 (#1199), ComposeProjectName() applies sanitizeProjectName
+			// to cfg.Name (branch 1), which lowercases and replaces non-alnum chars
+			// with hyphens. SanitiseProjectName then passes those hyphens through.
+			// The result has run-on hyphens for each special char; they are valid
+			// in Docker Compose project names ([a-z0-9_-]+).
 			name:        "adversarial name is sanitised",
 			cfgName:     `myproject" && rm -rf /`,
 			projectRoot: "",
-			want:        "myprojectrm-rf",
+			want:        "myproject-----rm--rf",
 		},
 		{
 			// sanitizeProjectName (config layer) lowercases and replaces

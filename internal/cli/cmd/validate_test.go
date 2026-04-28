@@ -771,3 +771,61 @@ upstream:
 		t.Errorf("stderr should contain 'FAIL' row label, got: %q", errOut)
 	}
 }
+
+// TestValidateCmd_MigrationHint_UsesProjectDirname verifies that the migration
+// hint printed when .env carries the legacy VIBEWARDEN_APP_IMAGE=vibewarden-app:latest
+// tag uses the project directory name (not the literal "vibewarden-app") in the
+// sed command.
+//
+// Regression test for the missed callsite found in PR #1207: validate.go called
+// cfg.ComposeProjectName() before ProjectRoot was set, causing the hint to emit
+// a no-op sed command for legacy projects with no name: in vibewarden.yaml.
+// After centralizing ProjectRoot assignment in loadInternal (fix/1199), the
+// loader sets ProjectRoot from the config file path and this hint is correct.
+func TestValidateCmd_MigrationHint_UsesProjectDirname(t *testing.T) {
+	// Create a project directory with a known name so we can assert the dirname
+	// is reflected in the migration hint.
+	base := t.TempDir()
+	projectDir := filepath.Join(base, "mylegacyapp")
+	if err := os.MkdirAll(projectDir, 0o700); err != nil {
+		t.Fatalf("MkdirAll: %v", err)
+	}
+
+	// Legacy config: no name: field, so ComposeProjectName() falls back to dirname.
+	configPath := filepath.Join(projectDir, "vibewarden.yaml")
+	configContent := `server:
+  port: 8443
+upstream:
+  port: 3000
+tls:
+  enabled: false
+  provider: self-signed
+`
+	if err := os.WriteFile(configPath, []byte(configContent), 0o600); err != nil {
+		t.Fatalf("writing config: %v", err)
+	}
+
+	// .env with the legacy generic tag triggers the migration warning.
+	envPath := filepath.Join(projectDir, ".env")
+	if err := os.WriteFile(envPath, []byte("VIBEWARDEN_APP_IMAGE=vibewarden-app:latest\n"), 0o600); err != nil {
+		t.Fatalf("writing .env: %v", err)
+	}
+
+	root := cmd.NewRootCmd("test")
+	var outBuf, errBuf bytes.Buffer
+	root.SetOut(&outBuf)
+	root.SetErr(&errBuf)
+	root.SetArgs([]string{"validate", configPath})
+
+	// The command itself succeeds (valid config); only the migration hint appears.
+	_ = root.Execute()
+
+	errOut := errBuf.String()
+
+	// The sed command must replace vibewarden-app:latest with the project-scoped
+	// tag derived from the directory name, not the no-op s/vibewarden-app:latest/vibewarden-app:latest/g.
+	wantSed := "sed -i 's/vibewarden-app:latest/mylegacyapp-app:latest/g' .env"
+	if !strings.Contains(errOut, wantSed) {
+		t.Errorf("migration hint sed command not found or wrong:\ngot stderr:  %q\nwant substr: %q", errOut, wantSed)
+	}
+}

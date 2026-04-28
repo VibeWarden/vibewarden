@@ -134,9 +134,10 @@ type Config struct {
 	DeployMode bool `mapstructure:"-"`
 
 	// ProjectRoot is the absolute path to the project directory (i.e. the
-	// directory containing vibewarden.yaml). It is set programmatically at
-	// generation time so that the docker-compose.yml template can reference an
-	// absolute build context instead of fragile relative paths like "../../.".
+	// directory containing vibewarden.yaml). Set by loadInternal (and therefore
+	// by Load, LoadRaw, and LoadStrict) to the directory that contains the
+	// resolved config file. Callers of ComposeProjectName() MUST use the Config
+	// returned by a loader function — do not set this field manually.
 	// This field is not loaded from YAML.
 	ProjectRoot string `mapstructure:"-"`
 }
@@ -188,7 +189,10 @@ func sanitizeProjectName(name string) string {
 //  3. "vibewarden" as a last-resort fallback (should not happen in practice).
 func (c *Config) ComposeProjectName() string {
 	if c.Name != "" {
-		return c.Name
+		// sanitizeProjectName is applied so that a user-supplied name like
+		// "My App" is normalised to "my-app" before Docker Compose sees it.
+		// Docker Compose requires [a-z0-9_-]+ for project names.
+		return sanitizeProjectName(c.Name)
 	}
 	if c.ProjectRoot != "" {
 		if name := sanitizeProjectName(filepath.Base(c.ProjectRoot)); name != "" {

@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"github.com/spf13/viper"
@@ -61,6 +62,17 @@ func loadInternal(configPath string, validate bool) (*Config, error) {
 	var cfg Config
 	if err := v.Unmarshal(&cfg); err != nil {
 		return nil, fmt.Errorf("unmarshaling config: %w", err)
+	}
+
+	// Populate ProjectRoot from the resolved config file path so that
+	// cfg.ComposeProjectName() can use the dirname fallback for legacy projects
+	// without name: set in vibewarden.yaml. This is the single authoritative
+	// assignment; callers of ComposeProjectName() MUST use the config returned
+	// by loadInternal (or Load / LoadRaw) — do not set ProjectRoot manually.
+	if used := v.ConfigFileUsed(); used != "" {
+		if abs, err := filepath.Abs(used); err == nil {
+			cfg.ProjectRoot = filepath.Dir(abs)
+		}
 	}
 
 	// Apply conditional defaults that depend on the values of other fields.

@@ -143,9 +143,11 @@ func (s *BuildService) probeShell(ctx context.Context, image string, out io.Writ
 //
 // Priority:
 //  1. cfg.ComposeProjectName() + "-app:latest" when cfg is non-nil and
-//     ComposeProjectName() returns a non-fallback value. cfg.ProjectRoot is
-//     populated from workDir when not already set so that the dirname fallback
-//     in ComposeProjectName() fires for legacy projects without name:.
+//     ComposeProjectName() returns a non-fallback value. A copy of cfg is used
+//     so ProjectRoot can be filled from workDir as a fallback without mutating
+//     the caller's struct. Configs loaded via config.Load / config.LoadRaw
+//     already have ProjectRoot set by the loader; this guard fires only for
+//     manually constructed Config values (e.g. in tests).
 //  2. Base name of workDir (directory name), normalised to lower-case with
 //     "-app:latest" appended.
 func resolveImageTag(cfg *config.Config, workDir string) (string, error) {
@@ -155,12 +157,16 @@ func resolveImageTag(cfg *config.Config, workDir string) (string, error) {
 	}
 
 	if cfg != nil {
-		// Populate ProjectRoot from workDir so that cfg.ComposeProjectName()
-		// can use the dirname fallback for projects without name: set.
-		if cfg.ProjectRoot == "" {
-			cfg.ProjectRoot = abs
+		// Copy the struct before mutating so that setting ProjectRoot as a
+		// fallback does not silently alter the caller's *config.Config. The
+		// loader (loadInternal) sets ProjectRoot for configs loaded from disk;
+		// this guard only fires when the caller constructed a Config manually
+		// (e.g. in tests) or the config was loaded without a file path.
+		cfgCopy := *cfg
+		if cfgCopy.ProjectRoot == "" {
+			cfgCopy.ProjectRoot = abs
 		}
-		name := cfg.ComposeProjectName()
+		name := cfgCopy.ComposeProjectName()
 		if name != "" && name != "vibewarden" {
 			return name + "-app:latest", nil
 		}
