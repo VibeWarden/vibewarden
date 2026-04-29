@@ -456,6 +456,51 @@ vibew dev
 
 ---
 
+### Image identity check failed (v0.19.0+)
+
+Since v0.19.0, `vibew dev` verifies that the app image was built for the
+current project before starting the stack. Two failure variants:
+
+**Variant 1 — image built by a different project (same tag, different directory)**
+
+```
+Error: app image <tag> was built from a different project.
+  Built from: /Users/foo/old-project
+  Current:    /Users/you/current-project
+
+Rebuild with: vibew dev --rebuild
+```
+
+**Cause:** Two projects with the same directory name share the same
+`<name>-app:latest` tag. Docker reused the existing image without warning.
+
+**Variant 2 — image has no project-root label (pre-v0.19.0 or external build)**
+
+```
+Error: app image <tag> is missing the vibew project-root label.
+  This image was built before VibeWarden v0.19.0 OR by something other than vibew build.
+  Current project: /Users/you/current-project
+
+Rebuild with: vibew dev --rebuild
+```
+
+**Cause:** Images built by VibeWarden ≤ v0.18.2 carry no identity label.
+Every project hits Variant 2 on the first `vibew dev` after upgrading to v0.19.0.
+
+**Fix — both variants**
+
+```bash
+vibew build && vibew dev
+```
+
+`vibew dev --rebuild` will automate this when [#1220](https://github.com/VibeWarden/vibewarden/issues/1220) ships.
+
+**Images set via `app.image:` in vibewarden.yaml are skipped automatically** — the
+check only runs on the vibew-derived canonical tag. An INFO line is written to
+stderr so you can confirm the skip occurred.
+
+---
+
 ### Secrets plugin fails to start -- missing master key
 
 **Symptom**
