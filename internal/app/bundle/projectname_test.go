@@ -53,7 +53,7 @@ func TestDeriveProjectName(t *testing.T) {
 			want:        "myproject",
 		},
 		{
-			// Since v0.19.0 (#1199), ComposeProjectName() applies sanitizeProjectName
+			// Since v0.18.2 (#1199), ComposeProjectName() applies sanitizeProjectName
 			// to cfg.Name (branch 1), which lowercases and replaces non-alnum chars
 			// with hyphens. SanitiseProjectName then passes those hyphens through.
 			// The result has run-on hyphens for each special char; they are valid

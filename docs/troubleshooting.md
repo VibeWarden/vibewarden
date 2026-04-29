@@ -456,9 +456,9 @@ vibew dev
 
 ---
 
-### Image identity check failed (v0.19.0+)
+### Image identity check failed (v0.18.3+)
 
-Since v0.19.0, `vibew dev` verifies that the app image was built for the
+Since v0.18.3, `vibew dev` verifies that the app image was built for the
 current project before starting the stack. Two failure variants:
 
 **Variant 1 — image built by a different project (same tag, different directory)**
@@ -474,18 +474,18 @@ Rebuild with: vibew dev --rebuild
 **Cause:** Two projects with the same directory name share the same
 `<name>-app:latest` tag. Docker reused the existing image without warning.
 
-**Variant 2 — image has no project-root label (pre-v0.19.0 or external build)**
+**Variant 2 — image has no project-root label (pre-v0.18.3 or external build)**
 
 ```
 Error: app image <tag> is missing the vibew project-root label.
-  This image was built before VibeWarden v0.19.0 OR by something other than vibew build.
+  This image was built before VibeWarden v0.18.3 OR by something other than vibew build.
   Current project: /Users/you/current-project
 
 Rebuild with: vibew dev --rebuild
 ```
 
 **Cause:** Images built by VibeWarden ≤ v0.18.2 carry no identity label.
-Every project hits Variant 2 on the first `vibew dev` after upgrading to v0.19.0.
+Every project hits Variant 2 on the first `vibew dev` after upgrading to v0.18.3.
 
 **Fix — both variants**
 

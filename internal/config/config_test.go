@@ -3284,7 +3284,7 @@ func TestComposeProjectName_DifferentDirs(t *testing.T) {
 // cfg.Name nor cfg.ProjectRoot is set (e.g. a manually constructed Config in
 // a test), ComposeProjectName() returns the literal "vibewarden".
 //
-// Note: since v0.19.0 (#1199) loadInternal sets ProjectRoot from the resolved
+// Note: since v0.18.2 (#1199) loadInternal sets ProjectRoot from the resolved
 // config file path, so configs loaded via Load / LoadRaw / LoadStrict will have
 // ProjectRoot populated whenever vibewarden.yaml exists on disk. This test
 // covers the manually constructed case (no file path involved).

@@ -191,7 +191,7 @@ func sanitizeProjectName(name string) string { return SanitizeProjectName(name) 
 // Derivation order:
 //  1. The explicit Name field (set via vibewarden.yaml name: or vibew init/wrap).
 //     Since vibew init and vibew wrap always populate name:, this branch fires
-//     for all projects created with v0.19.0+.
+//     for all projects created with v0.18.2+.
 //  2. The project directory name (from ProjectRoot), lowercased and sanitized.
 //     Defensive fallback for projects that pre-date the unconditional name: write.
 //  3. "vibewarden" as a last-resort fallback (should not happen in practice).

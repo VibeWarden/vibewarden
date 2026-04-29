@@ -55,7 +55,7 @@ regenerate config files and restart the stack (blocks until Ctrl+C).
 
 Pass --rebuild to stop the stack, remove the app image, rebuild via vibew build,
 and start the stack again. This is the recovery path for the image-identity
-mismatch error introduced in v0.19.0. --rebuild and --watch are mutually exclusive.
+mismatch error introduced in v0.18.3. --rebuild and --watch are mutually exclusive.
 Pass --rebuild --volumes to also remove named volumes (Postgres data, LE certs, etc.).
 
 Examples:

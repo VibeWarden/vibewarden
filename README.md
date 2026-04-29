@@ -297,7 +297,7 @@ features after the initial setup.
 | `vibew generate` | Regenerate `docker-compose.yml` from config |
 | `vibew build` | Build the Docker image for the app |
 | `vibew dev` | Start local dev environment |
-| `vibew dev --rebuild` | Stop stack, remove app image, rebuild, start — recovery for image-identity mismatch (v0.19.0+) |
+| `vibew dev --rebuild` | Stop stack, remove app image, rebuild, start — recovery for image-identity mismatch (v0.18.3+) |
 | `vibew bundle` | Produce a self-contained Docker Compose deploy artifact under `.vibewarden/bundle/` ([walkthrough](docs/guide/bundle-to-vps.md)) |
 | `vibew status` | Show health of all components |
 | `vibew doctor` | Diagnose common issues |

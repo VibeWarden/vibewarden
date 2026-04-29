@@ -355,7 +355,7 @@ func TestBundleCmd_DotEnvPreserved(t *testing.T) {
 
 // TestRunBundle_ImageTagDerivation verifies that the image tag written into
 // sample.env/.env matches the project name derived by deriveProjectName.
-// Since v0.19.0, the derivation chain is: name: → dirname → "vibewarden".
+// Since v0.18.2, the derivation chain is: name: → dirname → "vibewarden".
 // The App.Image derivation branch has been removed (#1199).
 func TestRunBundle_ImageTagDerivation(t *testing.T) {
 	tests := []struct {
