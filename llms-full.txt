@@ -1598,6 +1598,11 @@ vibew doctor checks (in order):
   Runtime container health is NOT checked by doctor — query /_vibewarden/health
   after vibew dev is up for live runtime status.
 
+vibew doctor output notes:
+  On darwin, human-mode output appends a one-time advisory after the check table:
+    "Note (macOS): system curl uses LibreSSL which may fail handshake on the local dev cert."
+  Skipped on Linux/Windows and in JSON mode (--json).
+
 vibew doctor flags:
   --skip-le-preflight  skip the LE rate-limit CT log check for this run
 
@@ -1635,6 +1640,27 @@ vibew doctor flags:
 
   vibew generate
   vibew dev
+
+### macOS: system curl fails handshake on dev cert
+
+  Symptom: curl https://localhost:8443/ exits with LibreSSL handshake error.
+  Cause: macOS system curl is linked against LibreSSL, which rejects the Caddy
+  local-CA ECC intermediate. Linux system curl (OpenSSL) accepts it.
+  vibew doctor prints this advisory automatically on darwin after the check table.
+
+  Fix 1 — Homebrew curl (recommended):
+    brew install curl
+    /opt/homebrew/opt/curl/bin/curl --insecure https://localhost:8443/_vibewarden/health
+
+  Fix 2 — Python ssl module (no Homebrew required):
+    python3 -c '
+    import ssl, urllib.request
+    ctx = ssl._create_unverified_context()
+    print(urllib.request.urlopen("https://localhost:8443/_vibewarden/health", context=ctx).read().decode())
+    '
+
+  Applies to dev/self-signed certs only. Production Let's Encrypt certs are fine.
+  See: docs/troubleshooting.md#macos-system-curl-fails-handshake-on-dev-cert
 
 ### vibew dev: image identity check failed (v0.18.3+)
 

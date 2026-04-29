@@ -1288,6 +1288,91 @@ func TestDoctor_StackUp_GeneratedFileMissing_StillWarns(t *testing.T) {
 	}
 }
 
+// --- Tests for macOS LibreSSL advisory (#1224) ---
+
+// TestDoctorService_Run_DarwinAdvisory is a table-driven test that verifies
+// the darwin-only LibreSSL curl advisory is emitted precisely when expected:
+// darwin + human mode → present; non-darwin → absent; JSON mode → absent.
+func TestDoctorService_Run_DarwinAdvisory(t *testing.T) {
+	const advisorySubstring = "Note (macOS): system curl uses LibreSSL"
+	const troubleshootingRef = "docs/troubleshooting.md"
+
+	tests := []struct {
+		name        string
+		goos        string
+		jsonMode    bool
+		wantPresent bool
+	}{
+		{
+			name:        "darwin human mode emits advisory",
+			goos:        "darwin",
+			jsonMode:    false,
+			wantPresent: true,
+		},
+		{
+			name:        "linux omits advisory",
+			goos:        "linux",
+			jsonMode:    false,
+			wantPresent: false,
+		},
+		{
+			name:        "windows omits advisory",
+			goos:        "windows",
+			jsonMode:    false,
+			wantPresent: false,
+		},
+		{
+			name:        "darwin JSON mode omits advisory",
+			goos:        "darwin",
+			jsonMode:    true,
+			wantPresent: false,
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			restore := ops.SetGOOSForTest(tt.goos)
+			t.Cleanup(restore)
+
+			fc := noContainersCompose()
+			pc := &fakePortChecker{available: map[int]bool{8443: true}}
+			svc := ops.NewDoctorService(fc, pc)
+			cfg := doctorConfig()
+
+			opts := defaultOpts(t)
+			opts.JSON = tt.jsonMode
+
+			var buf bytes.Buffer
+			if _, err := svc.Run(context.Background(), cfg, opts, &buf); err != nil {
+				t.Fatalf("Run() unexpected error: %v", err)
+			}
+
+			out := buf.String()
+			if tt.wantPresent {
+				if !strings.Contains(out, advisorySubstring) {
+					t.Errorf("expected advisory substring %q in output\ngot:\n%s", advisorySubstring, out)
+				}
+				if !strings.Contains(out, troubleshootingRef) {
+					t.Errorf("expected troubleshooting ref %q in output\ngot:\n%s", troubleshootingRef, out)
+				}
+			} else {
+				if strings.Contains(out, "Note (macOS):") {
+					t.Errorf("expected advisory to be absent in output\ngot:\n%s", out)
+				}
+			}
+
+			// JSON mode: output must be valid JSON regardless of OS.
+			if tt.jsonMode {
+				var results []ops.CheckResult
+				if err := json.Unmarshal(buf.Bytes(), &results); err != nil {
+					t.Errorf("JSON mode output is not valid JSON: %v\nbody:\n%s", err, out)
+				}
+			}
+		})
+	}
+}
+
 // TestDoctor_ContainerHealth_AbsentInJSON is a regression guard for JSON mode:
 // no result in the JSON array may have Name == "Container health", regardless
 // of stack state. The check was deleted in #1222.

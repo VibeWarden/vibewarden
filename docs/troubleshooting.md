@@ -425,6 +425,47 @@ vibew dev
 
 ---
 
+### macOS: system curl fails handshake on dev cert
+
+**Symptom**
+
+```
+LibreSSL/3.3.6: error:06FFF064:digital envelope routines:CONF_modules_load:bad decrypt
+```
+
+`curl https://localhost:8443/` from a default macOS shell fails the TLS handshake against the Caddy local-CA dev certificate. Same command from Linux works.
+
+**Cause**
+
+macOS ships a system `curl` linked against LibreSSL, which is stricter than OpenSSL on certain self-signed certificate profiles. Caddy's local CA issues an ECC intermediate that triggers this. Not a vibew bug — works around it client-side.
+
+**Fix — Homebrew curl (recommended)**
+
+```bash
+brew install curl
+/opt/homebrew/opt/curl/bin/curl --insecure https://localhost:8443/_vibewarden/health
+```
+
+The Homebrew bottle is linked against OpenSSL and accepts the dev cert with `--insecure`. Do **not** alias `curl` to the Homebrew binary system-wide — only use it for sidecar testing.
+
+**Fix — Python `ssl` module**
+
+```bash
+python3 -c '
+import ssl, urllib.request
+ctx = ssl._create_unverified_context()
+print(urllib.request.urlopen("https://localhost:8443/_vibewarden/health", context=ctx).read().decode())
+'
+```
+
+Python's bundled OpenSSL accepts the cert when verification is disabled. Useful when you cannot install Homebrew.
+
+**Note**
+
+This applies to **dev / self-signed** certificates only. Production certs from Let's Encrypt or ZeroSSL handshake fine with macOS system curl.
+
+---
+
 ### Unhealthy containers (Kratos, Postgres)
 
 Runtime container health is no longer checked by `vibew doctor` — that check was
