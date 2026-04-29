@@ -75,6 +75,26 @@ func ProjectRootHash(projectRoot string) (hashLabel, pathLabel string, err error
 	return "sha256:" + hex.EncodeToString(sum[:]), realPath, nil
 }
 
+// BuildLabels computes the Docker label key/value pairs for the project-root
+// identity feature (ADR-100) from the given project root directory.
+//
+// Returns (nil, nil) when the hash cannot be computed (filesystem oddity) so
+// callers can proceed without labels rather than fail the build. The caller
+// should log the returned error at WARN level in that case.
+//
+// Extracted from BuildService.Run so that both BuildService and the Rebuild
+// path on DevService can stamp identical labels without duplicating logic.
+func BuildLabels(projectRoot string) (map[string]string, error) {
+	hashLabel, pathLabel, err := ProjectRootHash(projectRoot)
+	if err != nil {
+		return nil, err
+	}
+	return map[string]string{
+		LabelProjectRootHash: hashLabel,
+		LabelProjectRoot:     pathLabel,
+	}, nil
+}
+
 // VerifyAppImageIdentity inspects the named image and validates its project
 // identity labels against the current project root hash.
 //

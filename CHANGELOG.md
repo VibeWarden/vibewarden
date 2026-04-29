@@ -40,11 +40,18 @@ Recovery: rebuild via `vibew build` (or `vibew dev --rebuild` once #1220 lands).
 Custom user-managed images set via `app.image:` in vibewarden.yaml are skipped
 automatically with an informational stderr line.
 
-**Release gate:** companion issue #1220 (`vibew dev --rebuild`) ships in the same
-release as #1219. Both must merge before tagging v0.18.3. The recovery command
-in the error message above is aspirational until #1220 lands; if you need to
-ship #1219 alone, the fallback is `vibew down && docker rmi <image> && vibew build && vibew dev`
-(see the comment in `internal/app/ops/dev_format.go`).
+**Release gate satisfied by #1220.** `vibew dev --rebuild` ships in the same release
+as #1219 (both in v0.18.3). The recovery command in the error message above is live.
+
+### Added
+
+- **`vibew dev --rebuild`** — collapses the four-command rebuild dance
+  (`vibew down && docker rmi <tag> && vibew build && vibew dev`) into a single command
+  (#1220). Stops the stack, removes the resolved app image, rebuilds via `vibew build`
+  (which stamps #1219's identity labels on the new image), then starts the stack.
+  Volumes are preserved by default; pass `--rebuild --volumes` for explicit named-volume
+  reset (Postgres data, Let's Encrypt certs, etc.). This is the recovery path for
+  the image-identity mismatch block introduced by #1219 in this same release.
 
 ## [v0.18.2] — 2026-04-28
 

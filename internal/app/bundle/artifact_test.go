@@ -35,7 +35,7 @@ func TestArtifact_DeployCompose_UsesImageNotBuild(t *testing.T) {
 	outputDir := t.TempDir()
 
 	// Write a minimal vibewarden.yaml with app.build and name: set.
-	// Since v0.19.0 (#1199) vibew init always writes name:, so bundles use
+	// Since v0.18.2 (#1199) vibew init always writes name:, so bundles use
 	// cfg.Name (via ComposeProjectName) rather than the last-resort "vibewarden"
 	// fallback. The expected App.Image is therefore <name>-app:latest.
 	baseYAML := `name: myapp

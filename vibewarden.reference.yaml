@@ -60,7 +60,7 @@
 # name). You should only override it explicitly when running multiple
 # VibeWarden projects on the same machine to prevent Docker name collisions.
 #
-# Derivation order (for projects that pre-date v0.19.0 and lack this field):
+# Derivation order (for projects that pre-date v0.18.2 and lack this field):
 #   1. This field (name:)
 #   2. Current directory name (lowercased, sanitized)
 #   3. "vibewarden" (last-resort fallback)

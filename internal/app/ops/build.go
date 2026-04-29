@@ -104,15 +104,9 @@ func (s *BuildService) Run(ctx context.Context, cfg *config.Config, opts BuildOp
 	} else {
 		projectRoot = workDir
 	}
-	var buildLabels map[string]string
-	hashLabel, pathLabel, hashErr := ProjectRootHash(projectRoot)
-	if hashErr != nil {
-		slog.Warn("project-root hash unavailable; image will not carry identity labels", "error", hashErr)
-	} else {
-		buildLabels = map[string]string{
-			LabelProjectRootHash: hashLabel,
-			LabelProjectRoot:     pathLabel,
-		}
+	buildLabels, labelsErr := BuildLabels(projectRoot)
+	if labelsErr != nil {
+		slog.Warn("project-root hash unavailable; image will not carry identity labels", "error", labelsErr)
 	}
 
 	if err := s.builder.Build(ctx, tag, workDir, ports.DockerBuildOptions{

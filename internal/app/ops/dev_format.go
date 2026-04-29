@@ -18,7 +18,7 @@ import "fmt"
 // Variant 2 (unlabelled — legacy image or foreign builder):
 //
 //	Error: app image <tag> is missing the vibew project-root label.
-//	  This image was built before VibeWarden v0.19.0 OR by something other than vibew build.
+//	  This image was built before VibeWarden v0.18.3 OR by something other than vibew build.
 //	  Current project: <current-project-root>
 //
 //	Rebuild with: vibew dev --rebuild
@@ -52,7 +52,7 @@ func formatProjectRootMismatch(tag, currentProjectRoot string, identity ImageIde
 		// Variant 2: image has no vibew project-root labels at all.
 		msg = fmt.Sprintf(
 			"Error: app image %s is missing the vibew project-root label.\n"+
-				"  This image was built before VibeWarden v0.19.0 OR by something other than vibew build.\n"+
+				"  This image was built before VibeWarden v0.18.3 OR by something other than vibew build.\n"+
 				"  Current project: %s\n"+
 				"\n"+
 				"Rebuild with: vibew dev --rebuild",

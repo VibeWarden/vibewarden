@@ -60,6 +60,7 @@ type DevService struct {
 	watcher        ports.ConfigWatcher      // optional; nil disables file watching
 	imageChecker   ports.DockerImageChecker // optional; nil disables pre-flight image check
 	imageInspector ports.ImageInspector     // optional; nil disables project-root identity check
+	imageRemover   ports.DockerImageRemover // optional; nil disables image removal on --rebuild
 }
 
 // NewDevService creates a new DevService without config generation or file watching.
@@ -100,6 +101,15 @@ func (s *DevService) WithImageInspector(inspector ports.ImageInspector) *DevServ
 	return s
 }
 
+// WithImageRemover attaches a ports.DockerImageRemover to the DevService.
+// When set, Rebuild invokes Remove before calling BuildService.Run so the
+// daemon always builds a fresh image. When nil, Rebuild skips the rmi step
+// (primarily for testing without a Docker daemon).
+func (s *DevService) WithImageRemover(remover ports.DockerImageRemover) *DevService {
+	s.imageRemover = remover
+	return s
+}
+
 // DevOptions holds options for the dev command.
 type DevOptions struct {
 	// Watch enables file-system watching of vibewarden.yaml.  When true,
@@ -122,6 +132,18 @@ type DevOptions struct {
 	// docker compose up fails, in which case the captured stderr is always
 	// surfaced so users can see the actual build error.
 	Verbose bool
+
+	// Rebuild triggers the stop → rmi → build → start sequence instead of a
+	// plain compose-up. It is the recovery path for #1219's image-identity
+	// mismatch block. Mutually exclusive with Watch.
+	Rebuild bool
+
+	// RebuildVolumes controls whether named volumes are also removed during
+	// the compose-down step of the rebuild sequence. Requires Rebuild to be
+	// true. Equivalent to `vibew down --volumes` but scoped to the rebuild
+	// path; passing the flag itself is the affirmative opt-in (no second
+	// interactive prompt).
+	RebuildVolumes bool
 }
 
 // Run generates runtime config files (when a generator is configured), then

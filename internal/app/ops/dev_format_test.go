@@ -47,7 +47,7 @@ func TestFormatProjectRootMismatch_Variant2_Unlabelled(t *testing.T) {
 	}
 
 	want := "Error: app image qr-code-blackhole-app:latest is missing the vibew project-root label.\n" +
-		"  This image was built before VibeWarden v0.19.0 OR by something other than vibew build.\n" +
+		"  This image was built before VibeWarden v0.18.3 OR by something other than vibew build.\n" +
 		"  Current project: /Users/tibtof/qr-code-blackhole\n" +
 		"\n" +
 		"Rebuild with: vibew dev --rebuild"

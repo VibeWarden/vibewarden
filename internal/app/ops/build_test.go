@@ -33,7 +33,7 @@ func TestBuildService_Run_UsesComposeProjectNameFromConfig(t *testing.T) {
 	fb := &fakeBuilder{}
 	svc := ops.NewBuildService(fb)
 
-	// Use cfg.Name — the canonical resolver since v0.19.0 (#1199).
+	// Use cfg.Name — the canonical resolver since v0.18.2 (#1199).
 	// App.Image is no longer used to derive the project name.
 	cfg := &config.Config{Name: "myapp"}
 
@@ -399,7 +399,7 @@ func TestBuildService_Run_UsesPreResolvedImageTag(t *testing.T) {
 // image tag produced by `vibew build` matches what docker-compose expects:
 // <ComposeProjectName>-app:latest.
 //
-// Since v0.19.0 (#1199), App.Image is no longer part of the derivation chain.
+// Since v0.18.2 (#1199), App.Image is no longer part of the derivation chain.
 // The canonical resolver is: cfg.Name → dirname(cfg.ProjectRoot or workDir) →
 // dirname(workDir) fallback.
 //

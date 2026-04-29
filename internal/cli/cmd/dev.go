@@ -1,6 +1,7 @@
 package cmd
 
 import (
+	"errors"
 	"fmt"
 	"os"
 
@@ -27,9 +28,11 @@ import (
 //	vibew obs up
 func NewDevCmd() *cobra.Command {
 	var (
-		watch      bool
-		configPath string
-		verbose    bool
+		watch          bool
+		configPath     string
+		verbose        bool
+		rebuild        bool
+		rebuildVolumes bool
 	)
 
 	cmd := &cobra.Command{
@@ -50,11 +53,26 @@ To also start Prometheus and Grafana, run 'vibew obs up' after the stack is up.
 Pass --watch to watch vibewarden.yaml for changes and automatically
 regenerate config files and restart the stack (blocks until Ctrl+C).
 
+Pass --rebuild to stop the stack, remove the app image, rebuild via vibew build,
+and start the stack again. This is the recovery path for the image-identity
+mismatch error introduced in v0.18.3. --rebuild and --watch are mutually exclusive.
+Pass --rebuild --volumes to also remove named volumes (Postgres data, LE certs, etc.).
+
 Examples:
   vibew dev
   vibew dev --watch
-  vibew dev --config ./my-vibewarden.yaml`,
+  vibew dev --config ./my-vibewarden.yaml
+  vibew dev --rebuild
+  vibew dev --rebuild --volumes`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
+			// Flag-conflict validation before doing any I/O.
+			if rebuild && watch {
+				return errors.New("--rebuild cannot be combined with --watch")
+			}
+			if rebuildVolumes && !rebuild {
+				return errors.New("--volumes requires --rebuild")
+			}
+
 			if err := requireScaffolding(); err != nil {
 				return err
 			}
@@ -91,15 +109,27 @@ Examples:
 			// image was built from a different project (ADR-100).
 			svc = svc.WithImageInspector(opsadapter.NewImageInspectAdapter())
 
+			// Wire the image remover for the --rebuild path.
+			svc = svc.WithImageRemover(opsadapter.NewImageRemoveAdapter())
+
 			// Detect the project language to provide language-specific build
 			// instructions when the image is missing.
 			detectedLang := detectProjectLang(".")
 
 			opts := opsapp.DevOptions{
-				Watch:        watch,
-				ConfigPath:   configPath,
-				DetectedLang: detectedLang,
-				Verbose:      verbose,
+				Watch:          watch,
+				ConfigPath:     configPath,
+				DetectedLang:   detectedLang,
+				Verbose:        verbose,
+				Rebuild:        rebuild,
+				RebuildVolumes: rebuildVolumes,
+			}
+
+			if rebuild {
+				// --rebuild path: stop → rmi → build → start.
+				// Pass the DockerBuilder port directly — Rebuild stamps identity
+				// labels via BuildLabels internally, so BuildService is not needed.
+				return svc.Rebuild(cmd.Context(), cfg, opts, opsadapter.NewBuildAdapter(), cmd.OutOrStdout())
 			}
 
 			return svc.Run(cmd.Context(), cfg, opts, cmd.OutOrStdout())
@@ -109,6 +139,8 @@ Examples:
 	cmd.Flags().BoolVar(&watch, "watch", false, "watch vibewarden.yaml for changes and auto-regenerate + restart")
 	cmd.Flags().StringVar(&configPath, "config", "", "path to vibewarden.yaml (default: ./vibewarden.yaml)")
 	cmd.Flags().BoolVar(&verbose, "verbose", false, "stream docker compose stderr during successful startup (always streamed on failure)")
+	cmd.Flags().BoolVar(&rebuild, "rebuild", false, "stop stack, remove app image, rebuild via vibew build, and start (recovery for image-identity mismatch)")
+	cmd.Flags().BoolVar(&rebuildVolumes, "volumes", false, "remove named volumes during --rebuild (requires --rebuild; also removes Postgres data and LE certs)")
 
 	if err := cmd.RegisterFlagCompletionFunc("config", func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
 		return []string{"yaml", "yml"}, cobra.ShellCompDirectiveFilterFileExt
