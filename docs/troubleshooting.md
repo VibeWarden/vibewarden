@@ -420,13 +420,13 @@ Container health failures often manifest as a Kratos container in a non-healthy 
 | Postgres is not yet ready when Kratos starts | Wait 15–30 s and run `vibew doctor` again; the `depends_on: condition: service_healthy` guard retries automatically |
 | Kratos config points at the wrong DSN | Check `server.database.url` in `vibewarden.yaml` and ensure it matches the Postgres container credentials |
 | Port 4433 / 4434 bound by another process | `lsof -i :4433` — stop the conflicting process |
-| Kratos schema migration failed | `docker compose logs kratos` — look for migration errors; run `vibew generate` to regenerate the config and `docker compose up -d` to restart |
+| Kratos schema migration failed | `vibew logs kratos` — look for migration errors; run `vibew generate` to regenerate the config and `docker compose up -d` to restart |
 | Insufficient memory | Docker Desktop defaults to 2 GB RAM; increase to at least 4 GB in Docker Desktop → Settings → Resources |
 
 View Kratos logs directly:
 
 ```bash
-docker compose -f .vibewarden/generated/docker-compose.yml logs kratos --tail 50
+vibew logs kratos --tail 50
 ```
 
 ---
@@ -443,7 +443,7 @@ docker compose -f .vibewarden/generated/docker-compose.yml logs kratos --tail 50
 
 ```bash
 # Check the logs for the failing container
-docker compose -f .vibewarden/generated/docker-compose.yml logs postgres --tail 100
+vibew logs postgres --tail 100
 
 # Common fix: wipe the volume and let Postgres reinitialise
 docker compose -f .vibewarden/generated/docker-compose.yml down -v
@@ -500,6 +500,13 @@ pass `--rebuild --volumes`.
 **Images set via `app.image:` in vibewarden.yaml are skipped automatically** — the
 check only runs on the vibew-derived canonical tag. An INFO line is written to
 stderr so you can confirm the skip occurred.
+
+**After recovery, verify with logs:**
+
+```bash
+vibew logs --since 2m vibewarden    # confirm the sidecar started cleanly
+vibew logs --follow                 # stream all services to watch for restart loops
+```
 
 ---
 

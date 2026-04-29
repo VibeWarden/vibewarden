@@ -301,7 +301,7 @@ features after the initial setup.
 | `vibew bundle` | Produce a self-contained Docker Compose deploy artifact under `.vibewarden/bundle/` ([walkthrough](docs/guide/bundle-to-vps.md)) |
 | `vibew status` | Show health of all components |
 | `vibew doctor` | Diagnose common issues |
-| `vibew logs` | Pretty-print structured logs |
+| `vibew logs [--tail N] [--follow] [--since <duration>] [<service>...]` | Stream local dev-stack logs (all services interleaved by default; scope with service name args) |
 | `vibew migrate` | Apply all pending database migrations (alias for `migrate up`) |
 | `vibew migrate up` | Apply all pending database migrations |
 | `vibew migrate down` | Roll back the most recently applied migration |
