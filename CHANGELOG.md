@@ -47,6 +47,10 @@ as #1219 (both in v0.18.3). The recovery command in the error message above is l
 
 - **`vibew doctor` no longer probes runtime checks before `vibew dev` is up** (#1222). Three checks were misleading pre-stack: "Generated files", "Container health", "TLS certificate". Generated files + TLS certificate are now gated on stack-state detection (run only when `docker compose ps` returns containers); Container health is deleted entirely (covered by `/_vibewarden/health` since #1197). New `vibew doctor --help` text reflects the narrower scope: static config + Dockerfile + toolchain pre-stack; TLS + generated-files post-stack. Same misleading-warn class as the upstream-reachable check deleted in #1198.
 
+### Fixed
+
+- **`vibew bundle` no longer fires STALE warnings on a fresh build** (#1223). Root cause: `WriteInputDigest` was mutating the user's `.gitignore` to add `.vibewarden/` exclusions, which bumped the file's mtime inside the watched input set, tripping the freshness check on the next bundle. Fix: drop `.gitignore` mutation; vibew now writes `<projectRoot>/.vibewarden/.gitignore` (`*\n`) for self-contained exclusion. Freshness comparison switches from mtime to per-file SHA-256 (digest schema v2). The freshness block now lists up to 5 changed paths labeled `added`/`removed`/`modified` so users know exactly which file tripped the warning. Existing v1 digest files are treated as missing on first read — first post-upgrade bundle is FRESH baseline, no false positive.
+
 ### Added
 
 - **`vibew dev --rebuild`** — collapses the four-command rebuild dance

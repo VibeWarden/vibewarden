@@ -18,6 +18,7 @@ import (
 var hardIgnoreDirs = []string{
 	".git", ".vibewarden", "node_modules", "vendor",
 	"dist", "build", "target", ".venv", "__pycache__",
+	"bin", ".next",
 }
 
 // StalenessWalker is a consumer-side test seam: this interface is defined here
