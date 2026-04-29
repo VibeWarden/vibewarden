@@ -91,3 +91,29 @@ func TestDoctorCmd_LongDescription_MentionsHealthEndpoint(t *testing.T) {
 		t.Error("expected '_vibewarden/health' mentioned in doctor Long description as runtime health pointer")
 	}
 }
+
+// TestDoctorCmd_LongDescription_NoContainerHealth is a regression guard for
+// #1222 — the Container health check was deleted entirely (covered by
+// _vibewarden/health since #1197). The Long help text must not re-introduce the
+// check as an advertised feature. The existing "does NOT probe runtime container
+// health" disclaimer is intentional and is excluded from this guard.
+// Mirrors TestDoctorCmd_LongDescription_NoUpstreamReachable (#1198).
+func TestDoctorCmd_LongDescription_NoContainerHealth(t *testing.T) {
+	root := cmd.NewRootCmd("test")
+	doctorCmd, _, _ := root.Find([]string{"doctor"})
+
+	// These are the phrases that would appear if the check were re-added as a
+	// listed feature. The existing "does NOT probe runtime container health"
+	// disclaimer is legitimate and does not contain these substrings.
+	forbidden := []string{
+		"- Container health",
+		"Container health check",
+		"container health is",
+	}
+	long := doctorCmd.Long
+	for _, s := range forbidden {
+		if strings.Contains(strings.ToLower(long), strings.ToLower(s)) {
+			t.Errorf("doctor Long must not advertise 'container health' as a check — it was deleted in #1222\nmatched: %q\nLong:\n%s", s, long)
+		}
+	}
+}

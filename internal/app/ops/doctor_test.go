@@ -669,10 +669,13 @@ func TestDoctorService_Run_SectionHeaders(t *testing.T) {
 	if !strings.Contains(out, "Config & Docker") {
 		t.Errorf("expected 'Config & Docker' section header, got:\n%s", out)
 	}
-	// "Local Runtime" only renders when the stack is up and a TLS row is emitted.
-	// With an external provider (doctorConfig sets Provider="external"), the TLS
-	// check is skipped inside checkTLSCertValid — so Local Runtime may be absent.
-	// The section header test for Local Runtime is covered by TestDoctor_StackUp_AllOK.
+	// "Local Runtime" renders when the stack is up and checkTLSCertValid emits a
+	// row. With Provider="external" and no TLSStateResolver wired, checkTLSCertValid
+	// hits the legacy short-circuit and returns an OK result tagged sectionLocalRuntime
+	// — so the header IS present even with an external provider.
+	if !strings.Contains(out, "Local Runtime") {
+		t.Errorf("expected 'Local Runtime' section header when stack is up, got:\n%s", out)
+	}
 }
 
 func TestDoctorService_Run_JSONOutput_IncludesSection(t *testing.T) {
