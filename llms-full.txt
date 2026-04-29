@@ -1475,7 +1475,23 @@ Image health
   Warnings:     none
 ```
 
-When warnings are present, `Warnings:` is followed by indented `- ` lines.
+When STALE, `Freshness:` is followed by up to 5 changed-path lines classified as
+`added`, `removed`, or `modified`. Paths beyond the limit are summarised as
+`(and N more)`. Use `vibew bundle --build` to rebuild and clear the warning, or
+`vibew bundle --allow-stale` to suppress it for one run.
+
+```
+  Freshness:    STALE
+    - modified: Dockerfile
+    - added:    src/handler.go
+    (and 2 more)
+```
+
+Freshness is SHA-256 content-digest driven (schema v2, stored at
+`.vibewarden/.input-digest`). A missing or v1 digest file (pre-v0.19.0 install)
+is treated as a first-run baseline — the first post-upgrade bundle is always FRESH.
+
+When other warnings are present, `Warnings:` is followed by indented `- ` lines.
 No ANSI colour. Parseable by agents line-by-line.
 
 ### migrate flags

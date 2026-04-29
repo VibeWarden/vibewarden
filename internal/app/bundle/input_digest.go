@@ -1,7 +1,6 @@
 package bundle
 
 import (
-	"bufio"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -18,36 +17,69 @@ import (
 const inputDigestFileName = ".vibewarden/.input-digest"
 
 // inputDigestSchemaVersion is the schema version written to and required when
-// reading the digest file. A file carrying a different version is treated as
-// corrupt and triggers a mtime fallback.
-const inputDigestSchemaVersion = 1
-
-// inputDigestGitIgnoreLine is the line appended to the project .gitignore on
-// first write of the digest file. File-specific entry (not the whole
-// .vibewarden/ dir) so users retain visibility of any future state files.
-const inputDigestGitIgnoreLine = ".vibewarden/.input-digest"
+// reading the digest file. Files with a different version are treated as
+// missing (first-run baseline), never as an mtime fallback.
+//
+// History:
+//
+//	v1 — single "digest" field, no per-file hashes. Dropped in #1223.
+//	v2 — per-file SHA-256 in "files" array; supports changed-path rendering.
+const inputDigestSchemaVersion = 2
 
 // InputDigest is the JSON structure stored at .vibewarden/.input-digest.
 //
 // It is machine-only state: never commit, never share across machines.
 // schema_version gates future format changes. digest is the SHA-256 content
-// hash over the sorted input set. inputs is the sorted list of forward-slash
-// relative paths that contributed to the digest (diagnostic only — not
-// re-verified on read).
+// hash over the sorted input set. files is the sorted list of {path, sha256}
+// entries that contributed to the digest — used to render the changed-path
+// list in the freshness warning.
 type InputDigest struct {
-	SchemaVersion int      `json:"schema_version"`
-	Digest        string   `json:"digest"`
-	Inputs        []string `json:"inputs"`
+	SchemaVersion int             `json:"schema_version"`
+	Digest        string          `json:"digest"`
+	Files         []InputFileHash `json:"files"`
 }
+
+// InputFileHash is one entry in InputDigest.Files. Path is a forward-slash
+// relative path from the project root. Hash is "sha256:<64 hex digits>".
+type InputFileHash struct {
+	Path string `json:"path"`
+	Hash string `json:"hash"`
+}
+
+// ChangedPathKind classifies the type of change detected between two digests.
+type ChangedPathKind string
+
+const (
+	// ChangedPathAdded means the file was not present in the prior digest.
+	ChangedPathAdded ChangedPathKind = "added"
+	// ChangedPathRemoved means the file was present in the prior digest but is
+	// gone in the current digest.
+	ChangedPathRemoved ChangedPathKind = "removed"
+	// ChangedPathModified means the file exists in both digests with different
+	// content hashes.
+	ChangedPathModified ChangedPathKind = "modified"
+)
+
+// ChangedPath records a single file change between two digest snapshots.
+type ChangedPath struct {
+	// Path is the project-root-relative forward-slash path of the changed file.
+	Path string
+	// Kind classifies the change.
+	Kind ChangedPathKind
+}
+
+// maxChangedPathsRendered is the maximum number of changed paths printed in
+// the freshness block. Paths beyond this limit are summarised as "(and N more)".
+const maxChangedPathsRendered = 5
 
 // readInputDigest reads and validates the digest file at
 // <projectRoot>/.vibewarden/.input-digest.
 //
 // Returns (digest, true) when the file exists, parses as valid JSON, has
-// schema_version == 1, and carries a "sha256:<64-hex>" digest value.
-// Returns ("", false) in all other cases (missing, corrupt, wrong version,
-// malformed digest) — callers fall back to the mtime walker. Failures are
-// logged at debug level only; they must not surface as errors.
+// schema_version == 2, and carries a "sha256:<64-hex>" digest value.
+// Returns (InputDigest{}, false) in all other cases (missing, corrupt, wrong
+// version, malformed digest) — callers treat this as first-run baseline
+// (FRESH, no prior comparison). Failures are logged at debug level only.
 func readInputDigest(projectRoot string) (InputDigest, bool) {
 	path := filepath.Join(projectRoot, inputDigestFileName)
 	data, err := os.ReadFile(path) //nolint:gosec // path derived from project root
@@ -65,7 +97,8 @@ func readInputDigest(projectRoot string) (InputDigest, bool) {
 	}
 
 	if d.SchemaVersion != inputDigestSchemaVersion {
-		slog.Debug("input-digest: unsupported schema version", "path", path, "version", d.SchemaVersion)
+		slog.Debug("input-digest: unsupported schema version — treating as missing (first-run baseline)",
+			"path", path, "version", d.SchemaVersion, "supported", inputDigestSchemaVersion)
 		return InputDigest{}, false
 	}
 
@@ -80,10 +113,9 @@ func readInputDigest(projectRoot string) (InputDigest, bool) {
 // writeInputDigest writes the digest to
 // <projectRoot>/.vibewarden/.input-digest.
 //
-// A write failure is logged at warn level but does not fail the caller — the
-// next bundle run will fall back to mtime, which is the documented degraded
-// behaviour. Callers are responsible for updating .gitignore before calling
-// this function so that .gitignore participates in the digest consistently.
+// A write failure is logged at warn level but does not fail the caller. The
+// next bundle run will treat the missing file as a first-run baseline (FRESH),
+// which is the correct degraded behaviour.
 func writeInputDigest(projectRoot string, d InputDigest) {
 	vibewardenDir := filepath.Join(projectRoot, ".vibewarden")
 	if err := os.MkdirAll(vibewardenDir, 0o750); err != nil {
@@ -106,22 +138,42 @@ func writeInputDigest(projectRoot string, d InputDigest) {
 
 // computeInputDigest walks projectRoot using the same ignore rules as the
 // FileSystemStalenessWalker and computes a SHA-256 content digest over the
-// sorted set of non-ignored files.
+// sorted set of non-ignored files. The returned InputDigest is schema v2: it
+// carries a per-file SHA-256 hash in the Files array (used for changed-path
+// rendering) and a rolled-up digest for equality comparison.
 //
-// Algorithm (deterministic, platform-independent):
+// Algorithm (v2, deterministic, platform-independent):
+//
+// Step 1 — per-file hashes:
+//
+//	for each file in sort(walked_files):
+//	    fileHash = sha256(file_content)
+//	    append {path, "sha256:" + hex(fileHash)} to Files
+//
+// Step 2 — rolled-up digest:
 //
 //	h := sha256.New()
-//	for each path in sort(walked_files):
+//	for each {path, hash} in Files:
 //	    h.Write(path_bytes); h.Write(0x00)
-//	    h.Write(file_content); h.Write(0x00)
-//	return "sha256:" + hex(h.Sum(nil))
+//	    h.Write(hash_bytes); h.Write(0x00)
+//	Digest = "sha256:" + hex(h.Sum(nil))
 //
 // Path separators are normalised to forward-slash so the digest is stable
 // across operating systems.
+//
+// Symlinks are resolved via filepath.EvalSymlinks before content is read. If
+// the resolved target escapes projectRoot the entry is skipped (mirrors Docker
+// build context behaviour and prevents traversal of symlink trees outside the
+// project).
 func computeInputDigest(projectRoot string) (InputDigest, error) {
 	if _, err := os.Stat(projectRoot); os.IsNotExist(err) {
 		// Empty / missing root: return a well-formed empty digest.
-		return buildDigest(nil, nil), nil
+		return buildDigest(nil), nil
+	}
+
+	absRoot, err := filepath.EvalSymlinks(projectRoot)
+	if err != nil {
+		absRoot = projectRoot // best-effort: use as-is
 	}
 
 	pm := buildPatternMatcher(projectRoot)
@@ -134,9 +186,9 @@ func computeInputDigest(projectRoot string) (InputDigest, error) {
 
 	var entries []entry
 
-	err := filepath.WalkDir(projectRoot, func(path string, d os.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			slog.Debug("input-digest walk: skipping unreadable entry", "path", path, "err", walkErr)
+	walkErr := filepath.WalkDir(projectRoot, func(path string, d os.DirEntry, wErr error) error {
+		if wErr != nil {
+			slog.Debug("input-digest walk: skipping unreadable entry", "path", path, "err", wErr)
 			return nil
 		}
 
@@ -170,25 +222,42 @@ func computeInputDigest(projectRoot string) (InputDigest, error) {
 			}
 		}
 
-		entries = append(entries, entry{rel: rel, absPath: path})
+		// Resolve symlinks to catch loops and out-of-root targets.
+		absPath := path
+		if d.Type()&os.ModeSymlink != 0 {
+			resolved, err := filepath.EvalSymlinks(path)
+			if err != nil {
+				slog.Debug("input-digest: cannot resolve symlink, skipping", "path", path, "err", err)
+				return nil
+			}
+			// Skip if resolved target escapes project root.
+			// Use an exact-directory check: the resolved path must equal absRoot
+			// or be a strict subdirectory (prefixed by absRoot + separator).
+			// A bare HasPrefix check is vulnerable to sibling directories whose
+			// name extends the root name (e.g. /proj-secret when root=/proj).
+			if resolved != absRoot && !strings.HasPrefix(resolved, absRoot+string(os.PathSeparator)) {
+				slog.Debug("input-digest: symlink escapes project root, skipping",
+					"path", path, "resolved", resolved)
+				return nil
+			}
+			absPath = resolved
+		}
+
+		entries = append(entries, entry{rel: rel, absPath: absPath})
 		return nil
 	})
-	if err != nil {
-		slog.Debug("input-digest walk: walk error (partial result)", "root", projectRoot, "err", err)
+	if walkErr != nil {
+		slog.Debug("input-digest walk: walk error (partial result)", "root", projectRoot, "err", walkErr)
 	}
 
 	// Sort by relative path for determinism.
 	sort.Slice(entries, func(i, j int) bool { return entries[i].rel < entries[j].rel })
 
-	var paths []string
-	for _, e := range entries {
-		paths = append(paths, e.rel)
-	}
-
 	// Read contents in sorted order and hash.
 	h := sha256.New()
+	var fileHashes []InputFileHash
 	for _, e := range entries {
-		content, err := os.ReadFile(e.absPath) //nolint:gosec // absPath from WalkDir
+		content, err := os.ReadFile(e.absPath) //nolint:gosec // absPath from WalkDir or EvalSymlinks
 		if err != nil {
 			slog.Debug("input-digest: cannot read file for hashing", "path", e.absPath, "err", err)
 			continue
@@ -197,30 +266,85 @@ func computeInputDigest(projectRoot string) (InputDigest, error) {
 		h.Write([]byte{0x00})
 		h.Write(content)
 		h.Write([]byte{0x00})
+
+		fileHash := sha256.Sum256(content)
+		fileHashes = append(fileHashes, InputFileHash{
+			Path: e.rel,
+			Hash: "sha256:" + hex.EncodeToString(fileHash[:]),
+		})
 	}
 
-	return buildDigest(paths, h.Sum(nil)), nil
+	return buildDigest(fileHashes), nil
 }
 
-// buildDigest assembles an InputDigest from the sorted input list and raw
-// SHA-256 hash bytes.
-func buildDigest(inputs []string, hashBytes []byte) InputDigest {
-	var digest string
-	if hashBytes != nil {
-		digest = "sha256:" + hex.EncodeToString(hashBytes)
-	} else {
-		// Empty walk: stable empty digest.
-		empty := sha256.Sum256(nil)
-		digest = "sha256:" + hex.EncodeToString(empty[:])
+// buildDigest assembles an InputDigest from the per-file hash list.
+func buildDigest(files []InputFileHash) InputDigest {
+	// Compute rolled-up digest from all file hashes for the equality fast path.
+	h := sha256.New()
+	for _, f := range files {
+		h.Write([]byte(f.Path))
+		h.Write([]byte{0x00})
+		h.Write([]byte(f.Hash))
+		h.Write([]byte{0x00})
 	}
-	if inputs == nil {
-		inputs = []string{}
+
+	if files == nil {
+		files = []InputFileHash{}
 	}
 	return InputDigest{
 		SchemaVersion: inputDigestSchemaVersion,
-		Digest:        digest,
-		Inputs:        inputs,
+		Digest:        "sha256:" + hex.EncodeToString(h.Sum(nil)),
+		Files:         files,
 	}
+}
+
+// diffDigests computes the ordered list of changed paths between prior and
+// current digests. The result is sorted: removed first, then added, then
+// modified; alphabetically within each bucket. At most maxChangedPathsRendered
+// entries are returned; the TotalChanged field on the caller side shows the
+// total count.
+func diffDigests(prior, current InputDigest) []ChangedPath {
+	priorMap := make(map[string]string, len(prior.Files))
+	for _, f := range prior.Files {
+		priorMap[f.Path] = f.Hash
+	}
+	currentMap := make(map[string]string, len(current.Files))
+	for _, f := range current.Files {
+		currentMap[f.Path] = f.Hash
+	}
+
+	var removed, added, modified []string
+
+	for path, hash := range priorMap {
+		curHash, exists := currentMap[path]
+		if !exists {
+			removed = append(removed, path)
+		} else if curHash != hash {
+			modified = append(modified, path)
+		}
+	}
+	for path := range currentMap {
+		if _, exists := priorMap[path]; !exists {
+			added = append(added, path)
+		}
+	}
+
+	sort.Strings(removed)
+	sort.Strings(added)
+	sort.Strings(modified)
+
+	var all []ChangedPath
+	for _, p := range removed {
+		all = append(all, ChangedPath{Path: p, Kind: ChangedPathRemoved})
+	}
+	for _, p := range added {
+		all = append(all, ChangedPath{Path: p, Kind: ChangedPathAdded})
+	}
+	for _, p := range modified {
+		all = append(all, ChangedPath{Path: p, Kind: ChangedPathModified})
+	}
+
+	return all
 }
 
 // isValidDigestString reports whether s matches the pattern "sha256:<64 hex
@@ -230,11 +354,11 @@ func isValidDigestString(s string) bool {
 	if !strings.HasPrefix(s, prefix) {
 		return false
 	}
-	hex := s[len(prefix):]
-	if len(hex) != 64 {
+	hexPart := s[len(prefix):]
+	if len(hexPart) != 64 {
 		return false
 	}
-	for _, c := range hex {
+	for _, c := range hexPart {
 		if (c < '0' || c > '9') && (c < 'a' || c > 'f') && (c < 'A' || c > 'F') {
 			return false
 		}
@@ -242,68 +366,30 @@ func isValidDigestString(s string) bool {
 	return true
 }
 
-// ensureGitIgnored appends line to <projectRoot>/.gitignore when the line is
-// not already present. The operation is idempotent. Lines are compared by
-// exact string match after trimming whitespace. If .gitignore does not exist
-// it is created.
-func ensureGitIgnored(projectRoot, line string) error {
-	gitignorePath := filepath.Join(projectRoot, ".gitignore")
-
-	// Read existing lines.
-	existing, err := readGitIgnoreLines(gitignorePath)
-	if err != nil {
-		return fmt.Errorf("reading .gitignore: %w", err)
+// ensureVibewardenGitignoreFile writes <projectRoot>/.vibewarden/.gitignore
+// with the content "*\n" so that git treats the entire .vibewarden/ directory
+// as ignored without touching the user's own .gitignore. The write is
+// idempotent: if the file already exists with the exact correct content, it is
+// not rewritten (avoids bumping mtime on every bundle).
+func ensureVibewardenGitignoreFile(projectRoot string) error {
+	dir := filepath.Join(projectRoot, ".vibewarden")
+	if err := os.MkdirAll(dir, 0o750); err != nil {
+		return fmt.Errorf("creating .vibewarden dir: %w", err)
 	}
 
-	// Check if the line is already present.
-	for _, l := range existing {
-		if strings.TrimSpace(l) == strings.TrimSpace(line) {
-			return nil // already present — idempotent
-		}
+	path := filepath.Join(dir, ".gitignore")
+	const want = "*\n"
+
+	existing, err := os.ReadFile(path) //nolint:gosec // path derived from project root
+	if err == nil && string(existing) == want {
+		return nil // already correct — idempotent, do not touch
+	}
+	if err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("reading .vibewarden/.gitignore: %w", err)
 	}
 
-	// Append the line.
-	f, err := os.OpenFile(gitignorePath, os.O_CREATE|os.O_APPEND|os.O_WRONLY, 0o600) //nolint:gosec // path derived from project root
-	if err != nil {
-		return fmt.Errorf("opening .gitignore for append: %w", err)
-	}
-	defer func() { _ = f.Close() }()
-
-	// Add a trailing newline before the new line if the file is non-empty and
-	// doesn't end with a newline already.
-	if len(existing) > 0 {
-		last := existing[len(existing)-1]
-		if last != "" {
-			// The file had content; ensure we start on a fresh line.
-			if _, err := fmt.Fprintln(f, ""); err != nil {
-				return fmt.Errorf("writing newline to .gitignore: %w", err)
-			}
-		}
-	}
-
-	if _, err := fmt.Fprintln(f, line); err != nil {
-		return fmt.Errorf("appending to .gitignore: %w", err)
+	if err := os.WriteFile(path, []byte(want), 0o600); err != nil { //nolint:gosec // path derived from project root
+		return fmt.Errorf("writing .vibewarden/.gitignore: %w", err)
 	}
 	return nil
-}
-
-// readGitIgnoreLines reads all raw lines from path. Returns nil when the file
-// does not exist (not an error). Lines include their content without the
-// newline character.
-func readGitIgnoreLines(path string) ([]string, error) {
-	f, err := os.Open(path) //nolint:gosec // path derived from project root
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil, nil
-		}
-		return nil, err
-	}
-	defer func() { _ = f.Close() }()
-
-	var lines []string
-	scanner := bufio.NewScanner(f)
-	for scanner.Scan() {
-		lines = append(lines, scanner.Text())
-	}
-	return lines, scanner.Err()
 }

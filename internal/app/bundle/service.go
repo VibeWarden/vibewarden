@@ -84,29 +84,26 @@ func (s *Service) WithStalenessWalker(walker StalenessWalker) *Service {
 	return s
 }
 
-// WriteInputDigest computes the content digest for projectRoot and writes it
-// to <projectRoot>/.vibewarden/.input-digest. It also ensures the line
-// ".vibewarden/.input-digest" is present in the project .gitignore (idempotent).
+// WriteInputDigest computes the SHA-256 content digest for projectRoot and
+// writes it to <projectRoot>/.vibewarden/.input-digest (schema v2). It also
+// writes <projectRoot>/.vibewarden/.gitignore containing "*\n" so the whole
+// .vibewarden/ directory is excluded from git without touching the user's own
+// .gitignore.
 //
 // This must be called only after a successful Bundle() invocation. A write
 // failure is logged at warn level and does not return an error — the next run
-// will fall back to mtime comparison, which is the documented degraded path.
-//
-// The gitignore update happens BEFORE the digest is computed so that the
-// .gitignore file participates in the walked set on both this write and every
-// subsequent read. Without this ordering, the first write would compute a
-// digest without .gitignore (since it does not yet exist) but the second read
-// would compute a digest with .gitignore — the two would never match and every
-// run after the first would report STALE.
+// will treat the missing digest as a first-run baseline (FRESH), which is the
+// correct degraded behaviour.
 func (s *Service) WriteInputDigest(projectRoot string) {
 	if projectRoot == "" {
 		return
 	}
-	// Ensure gitignore is updated first so .gitignore participates in the
-	// digest on both this write and every future read.
-	if err := ensureGitIgnored(projectRoot, inputDigestGitIgnoreLine); err != nil {
-		slog.Warn("input-digest: cannot update .gitignore before digest write", "err", err)
-		// Continue — digest write is still attempted; next run falls back to mtime.
+	// Write the per-directory .gitignore first (idempotent) so that future git
+	// operations exclude .vibewarden/ without any modification to the user's
+	// own .gitignore.
+	if err := ensureVibewardenGitignoreFile(projectRoot); err != nil {
+		slog.Warn("input-digest: cannot write .vibewarden/.gitignore", "err", err)
+		// Continue — digest write is still attempted.
 	}
 	d, err := computeInputDigest(projectRoot)
 	if err != nil {

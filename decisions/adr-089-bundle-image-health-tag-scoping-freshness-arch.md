@@ -650,10 +650,63 @@ Integration (single `//go:build integration`): real `git init`, real
 is `encoding/json` (stdlib). Re-uses `moby/patternmatcher` already
 promoted in this ADR.
 
+## Refinement (2026-04-28, issue #1223): Digest schema v2, no mtime fallback, self-contained gitignore
+
+Three corrections to the #1146 refinement above, implemented in #1223:
+
+**1. Digest schema v2 (not v1).** The `schema_version` field in the JSON example
+above shows `1`. The actual implementation writes `schema_version: 2`, which adds
+per-file SHA-256 hashes in a `files` array (used to render the changed-path list in
+the freshness block). The format is:
+
+```json
+{
+  "schema_version": 2,
+  "digest": "sha256:<64-hex>",
+  "files": [
+    {"path": "Dockerfile", "hash": "sha256:<64-hex>"},
+    {"path": "vibewarden.production.yaml", "hash": "sha256:<64-hex>"}
+  ]
+}
+```
+
+**2. v1 digest treated as missing, not as mtime fallback.** The #1146 text says
+"schema_version != 1 → treated as missing → fall back to mtime." The #1223
+implementation treats any file with `schema_version != 2` as missing and returns a
+FRESH first-run baseline. There is no mtime fallback path — `FreshnessModeTime`
+was removed end-to-end. An existing v1 file (from a pre-#1223 install) is silently
+discarded on first read; the next bundle writes a v2 file and freshness tracking
+resumes from that point.
+
+**3. Self-contained gitignore, no user `.gitignore` mutation.** The #1146 text says
+"the bundle writer MUST append `.vibewarden/.input-digest` (or the broader
+`.vibewarden/`) to the project's `.gitignore`." The root cause of #1223 was exactly
+this: mutating the user's `.gitignore` bumped its mtime inside the freshness watch
+window, tripping STALE on the next run. The fix: `vibew bundle` writes
+`.vibewarden/.gitignore` containing `*\n` (a git per-directory ignore file). Git
+respects this and excludes the entire `.vibewarden/` directory without any change to
+the user's own `.gitignore`. The write is idempotent (existing file with correct
+content is not touched).
+
+**hardIgnoreDirs additions.** `bin` and `.next` were added to `hardIgnoreDirs` in
+#1223 to cover compiled Go binaries and Next.js build output.
+
+**Changed-path rendering.** The freshness block now lists up to 5 changed paths
+classified as `added`, `removed`, or `modified`. Example:
+
+```
+Freshness:    STALE
+  - modified: Dockerfile
+  - added:    src/handler.go
+```
+
+Paths beyond the limit are summarised as `(and N more)`.
+
 ## References
 
 - PM spec — combined across issues #1084, #1085, #1091 (2026-04-20)
 - PM spec — issue #1146 (2026-04-23) — content-hash refinement
+- PM spec — issue #1223 (2026-04-28) — STALE false-positive fix
 - ADR-082 — strict config merge / validate hook point
 - ADR-085 — `vibew bundle` compose-only contract
 - ADR-086 — sunset `vibew deploy`

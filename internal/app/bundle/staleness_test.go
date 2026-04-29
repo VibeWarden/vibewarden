@@ -84,6 +84,8 @@ func TestFileSystemStalenessWalker_HardIgnoreDirs(t *testing.T) {
 		{name: ".venv", dir: ".venv", wantSkip: true},
 		{name: "__pycache__", dir: "__pycache__", wantSkip: true},
 		{name: ".vibewarden", dir: ".vibewarden", wantSkip: true},
+		{name: "bin", dir: "bin", wantSkip: true},
+		{name: ".next", dir: ".next", wantSkip: true},
 		{name: "src (not ignored)", dir: "src", wantSkip: false},
 	}
 

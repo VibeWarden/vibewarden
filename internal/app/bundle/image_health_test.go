@@ -3,6 +3,8 @@ package bundle_test
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -106,8 +108,24 @@ func TestCheckImageHealth_FreshNoWarnings(t *testing.T) {
 	}
 }
 
-// TestCheckImageHealth_StaleImage verifies that stale detection works.
+// TestCheckImageHealth_StaleImage verifies that stale detection works when
+// source files change between two WriteInputDigest calls.
 func TestCheckImageHealth_StaleImage(t *testing.T) {
+	root := t.TempDir()
+
+	// Write a source file and record the digest.
+	mainGo := filepath.Join(root, "main.go")
+	if err := os.WriteFile(mainGo, []byte("package main\n"), 0o600); err != nil {
+		t.Fatalf("write main.go: %v", err)
+	}
+	svc := bundleapp.NewService(nil, &fakeGenerator{})
+	svc.WriteInputDigest(root)
+
+	// Modify the file so the digest will differ on the next check.
+	if err := os.WriteFile(mainGo, []byte("package main // changed\n"), 0o600); err != nil {
+		t.Fatalf("modify main.go: %v", err)
+	}
+
 	inspector := &fakeInspector{
 		info: ports.ImageInfo{
 			Digest:       "sha256:abc123",
@@ -116,22 +134,24 @@ func TestCheckImageHealth_StaleImage(t *testing.T) {
 			Created:      fixedTime,
 		},
 	}
-	walker := &fakeStalenessWalker{changedCount: 12, newest: fixedTime.Add(time.Hour)}
 
 	h, err := bundleapp.CheckImageHealth(context.Background(), bundleapp.CheckImageHealthOptions{
 		ImageTag:    "myapp-app:latest",
-		ProjectRoot: "/fake/project/root", // non-empty so walker is invoked
+		ProjectRoot: root,
 		Inspector:   inspector,
-		Walker:      walker,
+		Walker:      &fakeStalenessWalker{},
 	})
 	if err != nil {
 		t.Fatalf("CheckImageHealth() error = %v", err)
 	}
 	if !h.Freshness.Stale {
-		t.Error("expected STALE, got FRESH")
+		t.Error("expected STALE after content change, got FRESH")
 	}
-	if h.Freshness.ChangedCount != 12 {
-		t.Errorf("ChangedCount = %d, want 12", h.Freshness.ChangedCount)
+	if h.Freshness.Mode != bundleapp.FreshnessModeDigest {
+		t.Errorf("Mode = %q, want %q", h.Freshness.Mode, bundleapp.FreshnessModeDigest)
+	}
+	if h.Freshness.ChangedCount == 0 {
+		t.Error("ChangedCount = 0, want > 0")
 	}
 }
 
@@ -277,8 +297,16 @@ func TestRenderImageHealth_StaleWithWarning(t *testing.T) {
 			Created:      fixedTime,
 			SizeBytes:    50 * 1024 * 1024,
 		},
-		Target:       "linux/amd64",
-		Freshness:    bundleapp.FreshnessVerdict{Stale: true, ChangedCount: 7},
+		Target: "linux/amd64",
+		Freshness: bundleapp.FreshnessVerdict{
+			Stale:        true,
+			Mode:         bundleapp.FreshnessModeDigest,
+			ChangedCount: 2,
+			ChangedPaths: []bundleapp.ChangedPath{
+				{Path: "main.go", Kind: bundleapp.ChangedPathModified},
+				{Path: "go.mod", Kind: bundleapp.ChangedPathModified},
+			},
+		},
 		ArchMismatch: false,
 	}
 
@@ -289,8 +317,8 @@ func TestRenderImageHealth_StaleWithWarning(t *testing.T) {
 	if !strings.Contains(out, "STALE") {
 		t.Errorf("expected STALE in freshness line\noutput:\n%s", out)
 	}
-	if !strings.Contains(out, "7 source files") {
-		t.Errorf("expected changed count in output\noutput:\n%s", out)
+	if !strings.Contains(out, "main.go (modified)") {
+		t.Errorf("expected changed path in output\noutput:\n%s", out)
 	}
 	if !strings.Contains(out, "image is stale") {
 		t.Errorf("expected stale warning\noutput:\n%s", out)

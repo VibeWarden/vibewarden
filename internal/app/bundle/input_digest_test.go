@@ -17,7 +17,7 @@ import (
 // helpers
 // ---------------------------------------------------------------------------
 
-// writeDigest writes a digest file at <root>/.vibewarden/.input-digest.
+// writeDigestFile writes a digest file at <root>/.vibewarden/.input-digest.
 func writeDigestFile(t *testing.T, root string, content string) {
 	t.Helper()
 	dir := filepath.Join(root, ".vibewarden")
@@ -50,24 +50,6 @@ func digestFileExists(root string) bool {
 	path := filepath.Join(root, ".vibewarden", ".input-digest")
 	_, err := os.Stat(path)
 	return err == nil
-}
-
-// gitignoreContains reports whether root/.gitignore contains the given line.
-func gitignoreContains(t *testing.T, root, line string) bool {
-	t.Helper()
-	data, err := os.ReadFile(filepath.Join(root, ".gitignore"))
-	if err != nil {
-		if os.IsNotExist(err) {
-			return false
-		}
-		t.Fatalf("read .gitignore: %v", err)
-	}
-	for _, l := range strings.Split(string(data), "\n") {
-		if strings.TrimSpace(l) == strings.TrimSpace(line) {
-			return true
-		}
-	}
-	return false
 }
 
 // newTestFreshInspector returns a fakeInspector whose image creation time
@@ -103,15 +85,15 @@ func runHealthCheck(t *testing.T, root string, inspector *fakeInspector, walker 
 }
 
 // ---------------------------------------------------------------------------
-// Test: digest file absent — falls back to mtime
+// Test: no prior digest → first-run baseline (FRESH, not mtime)
 // ---------------------------------------------------------------------------
 
-// TestDigest_MissingFallsBackToMtime verifies that when no digest file exists,
-// the staleness verdict is computed from the mtime walker (pre-#1146 behaviour).
-func TestDigest_MissingFallsBackToMtime(t *testing.T) {
+// TestDigest_FirstRunReportsFresh verifies that when no digest file exists,
+// the verdict is FRESH with Mode=FreshnessModeBaseline (not mtime fallback).
+// This is the replacement for the removed TestDigest_MissingFallsBackToMtime.
+func TestDigest_FirstRunReportsFresh(t *testing.T) {
 	root := t.TempDir()
 
-	// Write a file with mtime after the image creation time.
 	imgCreated := time.Now().Add(-2 * time.Hour)
 	writeFileWithMtime(t, filepath.Join(root, "vibewarden.yaml"), time.Now())
 
@@ -120,23 +102,20 @@ func TestDigest_MissingFallsBackToMtime(t *testing.T) {
 
 	verdict := runHealthCheck(t, root, inspector, walker)
 
-	if !verdict.Stale {
-		t.Errorf("expected STALE via mtime fallback, got FRESH")
+	if verdict.Stale {
+		t.Errorf("expected FRESH (baseline) when no prior digest, got STALE")
 	}
-	if verdict.Mode != bundleapp.FreshnessModeTime {
-		t.Errorf("Mode = %q, want %q", verdict.Mode, bundleapp.FreshnessModeTime)
-	}
-	if verdict.ChangedCount == 0 {
-		t.Errorf("ChangedCount = 0, want > 0 in mtime mode")
+	if verdict.Mode != bundleapp.FreshnessModeBaseline {
+		t.Errorf("Mode = %q, want %q", verdict.Mode, bundleapp.FreshnessModeBaseline)
 	}
 }
 
-// TestDigest_MissingMTimeOlder verifies that when no digest file exists and
-// all source files are older than the image, verdict is FRESH via mtime.
-func TestDigest_MissingMTimeOlder(t *testing.T) {
+// TestDigest_FirstRunFreshRegardlessOfMtime verifies that even when all source
+// files are older than the image, the first-run verdict is FRESH/baseline (not
+// FRESH/mtime). The distinction matters for assertions.
+func TestDigest_FirstRunFreshRegardlessOfMtime(t *testing.T) {
 	root := t.TempDir()
 
-	// Write a file with mtime BEFORE the image creation time.
 	pastMtime := time.Now().Add(-3 * time.Hour)
 	imgCreated := time.Now().Add(-1 * time.Hour)
 	writeFileWithMtime(t, filepath.Join(root, "vibewarden.yaml"), pastMtime)
@@ -147,10 +126,10 @@ func TestDigest_MissingMTimeOlder(t *testing.T) {
 	verdict := runHealthCheck(t, root, inspector, walker)
 
 	if verdict.Stale {
-		t.Errorf("expected FRESH via mtime fallback, got STALE")
+		t.Errorf("expected FRESH (baseline), got STALE")
 	}
-	if verdict.Mode != bundleapp.FreshnessModeTime {
-		t.Errorf("Mode = %q, want %q", verdict.Mode, bundleapp.FreshnessModeTime)
+	if verdict.Mode != bundleapp.FreshnessModeBaseline {
+		t.Errorf("Mode = %q, want %q", verdict.Mode, bundleapp.FreshnessModeBaseline)
 	}
 }
 
@@ -237,17 +216,17 @@ func TestDigest_DiffersEmitsStale(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Test: corrupt digest — fallback to mtime
+// Test: corrupt digest → first-run baseline
 // ---------------------------------------------------------------------------
 
 // TestDigest_CorruptFallsBack verifies that a corrupt digest file (not valid
-// JSON) is treated as missing: falls back to mtime, no error returned.
+// JSON) is treated as missing: verdict is FRESH/baseline (not mtime fallback),
+// no error returned.
 func TestDigest_CorruptFallsBack(t *testing.T) {
 	root := t.TempDir()
 
 	writeDigestFile(t, root, "garbage {not json}")
 
-	// File with mtime AFTER image creation → mtime says STALE.
 	imgCreated := time.Now().Add(-2 * time.Hour)
 	writeFileWithMtime(t, filepath.Join(root, "main.go"), time.Now())
 
@@ -257,22 +236,26 @@ func TestDigest_CorruptFallsBack(t *testing.T) {
 	verdict := runHealthCheck(t, root, inspector, walker)
 
 	// Must not panic, must not return an error.
-	// Mode must be mtime (fallback).
-	if verdict.Mode != bundleapp.FreshnessModeTime {
-		t.Errorf("Mode = %q, want %q (corrupt digest → mtime fallback)", verdict.Mode, bundleapp.FreshnessModeTime)
+	// Mode must be baseline (not mtime — the mtime fallback is removed).
+	if verdict.Mode != bundleapp.FreshnessModeBaseline {
+		t.Errorf("Mode = %q, want %q (corrupt digest → baseline)", verdict.Mode, bundleapp.FreshnessModeBaseline)
+	}
+	if verdict.Stale {
+		t.Errorf("corrupt digest should not produce STALE, got Stale=true")
 	}
 }
 
 // ---------------------------------------------------------------------------
-// Test: schema_version mismatch — fallback
+// Test: schema_version mismatch → first-run baseline
 // ---------------------------------------------------------------------------
 
-// TestDigest_SchemaVersionMismatchFallsBack verifies that a digest file with
-// a future schema_version is treated as missing and triggers mtime fallback.
+// TestDigest_SchemaVersionMismatchFallsBack verifies that a v1 digest file is
+// treated as missing and produces FRESH/baseline (not mtime fallback or STALE).
 func TestDigest_SchemaVersionMismatchFallsBack(t *testing.T) {
 	root := t.TempDir()
 
-	content := `{"schema_version":2,"digest":"sha256:` + strings.Repeat("a", 64) + `","inputs":[]}`
+	// Write a v1-style digest (schema_version=1, old format without "files").
+	content := `{"schema_version":1,"digest":"sha256:` + strings.Repeat("a", 64) + `","inputs":[]}`
 	writeDigestFile(t, root, content)
 
 	imgCreated := time.Now().Add(-2 * time.Hour)
@@ -283,8 +266,11 @@ func TestDigest_SchemaVersionMismatchFallsBack(t *testing.T) {
 
 	verdict := runHealthCheck(t, root, inspector, walker)
 
-	if verdict.Mode != bundleapp.FreshnessModeTime {
-		t.Errorf("Mode = %q, want %q (schema mismatch → mtime fallback)", verdict.Mode, bundleapp.FreshnessModeTime)
+	if verdict.Mode != bundleapp.FreshnessModeBaseline {
+		t.Errorf("Mode = %q, want %q (schema mismatch → baseline)", verdict.Mode, bundleapp.FreshnessModeBaseline)
+	}
+	if verdict.Stale {
+		t.Errorf("v1 schema mismatch should not produce STALE, got Stale=true")
 	}
 }
 
@@ -357,44 +343,6 @@ func TestDigest_WrittenOnlyOnSuccess(t *testing.T) {
 	second := readDigestFile(t, root)
 	if first.Digest != second.Digest {
 		t.Errorf("digest changed without successful bundle: first=%s second=%s", first.Digest, second.Digest)
-	}
-}
-
-// ---------------------------------------------------------------------------
-// Test: gitignore append on first write
-// ---------------------------------------------------------------------------
-
-// TestDigest_GitIgnoreAppendOnFirstWrite verifies that WriteInputDigest adds
-// ".vibewarden/.input-digest" to the project .gitignore, idempotently.
-func TestDigest_GitIgnoreAppendOnFirstWrite(t *testing.T) {
-	root := t.TempDir()
-
-	if err := os.WriteFile(filepath.Join(root, "vibewarden.yaml"), []byte("name: test\n"), 0o600); err != nil {
-		t.Fatalf("write yaml: %v", err)
-	}
-
-	svc := bundleapp.NewService(nil, &fakeGenerator{})
-
-	// First write: .gitignore does not exist yet.
-	svc.WriteInputDigest(root)
-	if !gitignoreContains(t, root, ".vibewarden/.input-digest") {
-		t.Error("first write: .gitignore does not contain '.vibewarden/.input-digest'")
-	}
-
-	// Second write: idempotent — line must not be duplicated.
-	svc.WriteInputDigest(root)
-	data, err := os.ReadFile(filepath.Join(root, ".gitignore"))
-	if err != nil {
-		t.Fatalf("read .gitignore: %v", err)
-	}
-	count := 0
-	for _, line := range strings.Split(string(data), "\n") {
-		if strings.TrimSpace(line) == ".vibewarden/.input-digest" {
-			count++
-		}
-	}
-	if count != 1 {
-		t.Errorf("idempotent check: found %d occurrences of line, want 1\n.gitignore:\n%s", count, string(data))
 	}
 }
 
@@ -522,7 +470,7 @@ func TestDigest_GitIgnoredFileChangeDoeNotTrip(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 // TestRenderImageHealth_DigestStale verifies the freshness label for digest-
-// mode STALE does not include a file count.
+// mode STALE does not include a file count inline.
 func TestRenderImageHealth_DigestStale(t *testing.T) {
 	h := bundleapp.ImageHealth{
 		Image: ports.ImageInfo{
@@ -547,9 +495,10 @@ func TestRenderImageHealth_DigestStale(t *testing.T) {
 	if !strings.Contains(out, "STALE") {
 		t.Errorf("expected STALE in output\n%s", out)
 	}
-	// Digest mode must NOT include "N source files" — the count is not meaningful.
+	// Digest mode must NOT include "N source files" inline — the count is not
+	// meaningful in the single-line form.
 	if strings.Contains(out, "0 source files") {
-		t.Errorf("digest-mode STALE should not include file count, got:\n%s", out)
+		t.Errorf("digest-mode STALE should not include inline file count, got:\n%s", out)
 	}
 }
 
@@ -578,6 +527,35 @@ func TestRenderImageHealth_DigestFresh(t *testing.T) {
 	}
 }
 
+// TestRenderImageHealth_BaselineFresh verifies that a first-run baseline
+// verdict produces the "FRESH (no prior baseline...)" label.
+func TestRenderImageHealth_BaselineFresh(t *testing.T) {
+	h := bundleapp.ImageHealth{
+		Image: ports.ImageInfo{
+			Tag:          "test-app:latest",
+			OS:           "linux",
+			Architecture: "amd64",
+			Created:      fixedTime,
+		},
+		Target: "linux/amd64",
+		Freshness: bundleapp.FreshnessVerdict{
+			Stale: false,
+			Mode:  bundleapp.FreshnessModeBaseline,
+		},
+	}
+
+	var sb strings.Builder
+	bundleapp.RenderImageHealth(&sb, h)
+	out := sb.String()
+
+	if !strings.Contains(out, "FRESH") {
+		t.Errorf("expected FRESH in baseline output\n%s", out)
+	}
+	if !strings.Contains(out, "no prior baseline") {
+		t.Errorf("expected 'no prior baseline' annotation in baseline output\n%s", out)
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Test: CheckImageHealth with nil Walker (no project root) uses zero verdict
 // ---------------------------------------------------------------------------
@@ -597,6 +575,383 @@ func TestCheckImageHealth_NoWalkerNoVerdict(t *testing.T) {
 		t.Fatalf("CheckImageHealth: %v", err)
 	}
 	if h.Freshness.Stale {
-		t.Error("expected not stale when no walker wired")
+		t.Error("expected not stale when no project root")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Test #1223 regression: .gitignore must NOT be mutated by WriteInputDigest
+// ---------------------------------------------------------------------------
+
+// TestDigest_GitignoreNotMutatedByWriteInputDigest is the regression test for
+// #1223. The user's .gitignore must not be opened or written during
+// WriteInputDigest — that was the root cause of the self-induced staleness.
+func TestDigest_GitignoreNotMutatedByWriteInputDigest(t *testing.T) {
+	root := t.TempDir()
+
+	// Create the project .gitignore with known content and record its mtime.
+	gitignorePath := filepath.Join(root, ".gitignore")
+	if err := os.WriteFile(gitignorePath, []byte("*.log\n"), 0o600); err != nil {
+		t.Fatalf("write .gitignore: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "vibewarden.yaml"), []byte("name: test\n"), 0o600); err != nil {
+		t.Fatalf("write yaml: %v", err)
+	}
+
+	infoBeforeFirst, err := os.Stat(gitignorePath)
+	if err != nil {
+		t.Fatalf("stat .gitignore before: %v", err)
+	}
+	contentBefore, err := os.ReadFile(gitignorePath)
+	if err != nil {
+		t.Fatalf("read .gitignore before: %v", err)
+	}
+
+	svc := bundleapp.NewService(nil, &fakeGenerator{})
+	svc.WriteInputDigest(root) // first write
+
+	// The user's .gitignore must not have changed.
+	infoAfterFirst, err := os.Stat(gitignorePath)
+	if err != nil {
+		t.Fatalf("stat .gitignore after first write: %v", err)
+	}
+	if !infoAfterFirst.ModTime().Equal(infoBeforeFirst.ModTime()) {
+		t.Errorf(".gitignore mtime changed after first WriteInputDigest: before=%v after=%v",
+			infoBeforeFirst.ModTime(), infoAfterFirst.ModTime())
+	}
+	contentAfterFirst, err := os.ReadFile(gitignorePath)
+	if err != nil {
+		t.Fatalf("read .gitignore after first write: %v", err)
+	}
+	if string(contentAfterFirst) != string(contentBefore) {
+		t.Errorf(".gitignore content changed:\nbefore: %q\nafter:  %q", contentBefore, contentAfterFirst)
+	}
+
+	svc.WriteInputDigest(root) // second write (idempotent path)
+
+	infoAfterSecond, err := os.Stat(gitignorePath)
+	if err != nil {
+		t.Fatalf("stat .gitignore after second write: %v", err)
+	}
+	if !infoAfterSecond.ModTime().Equal(infoBeforeFirst.ModTime()) {
+		t.Errorf(".gitignore mtime changed after second WriteInputDigest: before=%v after=%v",
+			infoBeforeFirst.ModTime(), infoAfterSecond.ModTime())
+	}
+
+	// The per-directory .vibewarden/.gitignore must exist with "*\n".
+	vwGitignore := filepath.Join(root, ".vibewarden", ".gitignore")
+	data, err := os.ReadFile(vwGitignore)
+	if err != nil {
+		t.Fatalf(".vibewarden/.gitignore not written: %v", err)
+	}
+	if string(data) != "*\n" {
+		t.Errorf(".vibewarden/.gitignore content = %q, want %q", data, "*\n")
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Test #1223 end-to-end reproducer: self-induced staleness must not occur
+// ---------------------------------------------------------------------------
+
+// TestDigest_SelfInducedStalenessRegression is the end-to-end reproducer for
+// #1223. Two consecutive WriteInputDigest + CheckImageHealth cycles on an
+// unchanged project must both report FRESH (not STALE).
+func TestDigest_SelfInducedStalenessRegression(t *testing.T) {
+	root := t.TempDir()
+
+	// Write project files.
+	if err := os.WriteFile(filepath.Join(root, "vibewarden.yaml"), []byte("name: test\n"), 0o600); err != nil {
+		t.Fatalf("write yaml: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(root, ".gitignore"), []byte("*.log\n"), 0o600); err != nil {
+		t.Fatalf("write .gitignore: %v", err)
+	}
+
+	svc := bundleapp.NewService(nil, &fakeGenerator{})
+	imgCreated := time.Now().Add(-1 * time.Hour)
+	inspector := newTestFreshInspector(imgCreated)
+	walker := bundleapp.NewFileSystemStalenessWalker(root)
+
+	// First bundle: write digest. Verdict should be baseline FRESH.
+	svc.WriteInputDigest(root)
+	verdict1 := runHealthCheck(t, root, inspector, walker)
+	if verdict1.Stale {
+		t.Errorf("first run: expected FRESH, got STALE (mode=%s)", verdict1.Mode)
+	}
+
+	// Second bundle: no edits. WriteInputDigest must not mutate .gitignore.
+	svc.WriteInputDigest(root)
+	verdict2 := runHealthCheck(t, root, inspector, walker)
+	if verdict2.Stale {
+		t.Errorf("second run: expected FRESH (self-induced staleness regression), got STALE (mode=%s)", verdict2.Mode)
+	}
+	if verdict2.Mode != bundleapp.FreshnessModeDigest {
+		t.Errorf("second run: Mode = %q, want %q", verdict2.Mode, bundleapp.FreshnessModeDigest)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Test: changed paths listed in rendered freshness block
+// ---------------------------------------------------------------------------
+
+// TestDigest_StalePathsListedInRender verifies that when files change between
+// bundles, the rendered freshness block lists the changed paths by kind.
+func TestDigest_StalePathsListedInRender(t *testing.T) {
+	h := bundleapp.ImageHealth{
+		Image: ports.ImageInfo{
+			Tag:          "test-app:latest",
+			OS:           "linux",
+			Architecture: "amd64",
+			Created:      fixedTime,
+		},
+		Target: "linux/amd64",
+		Freshness: bundleapp.FreshnessVerdict{
+			Stale:        true,
+			Mode:         bundleapp.FreshnessModeDigest,
+			ChangedCount: 3,
+			ChangedPaths: []bundleapp.ChangedPath{
+				{Path: "removed.txt", Kind: bundleapp.ChangedPathRemoved},
+				{Path: "added.txt", Kind: bundleapp.ChangedPathAdded},
+				{Path: "main.go", Kind: bundleapp.ChangedPathModified},
+			},
+		},
+	}
+
+	var sb strings.Builder
+	bundleapp.RenderImageHealth(&sb, h)
+	out := sb.String()
+
+	for _, want := range []string{
+		"removed.txt (removed)",
+		"added.txt (added)",
+		"main.go (modified)",
+		"STALE",
+		"image is stale",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("rendered output missing %q\nfull output:\n%s", want, out)
+		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Test: changed paths capped at maxChangedPathsRendered (5)
+// ---------------------------------------------------------------------------
+
+// TestDigest_ChangedPathsCappedAt5 verifies that when more than 5 paths change,
+// the rendered block shows exactly 5 + an "(and N more)" line.
+func TestDigest_ChangedPathsCappedAt5(t *testing.T) {
+	root := t.TempDir()
+
+	// Write 12 source files and record the digest.
+	svc := bundleapp.NewService(nil, &fakeGenerator{})
+	for i := 0; i < 12; i++ {
+		name := filepath.Join(root, strings.Repeat("a", i+1)+".go")
+		if err := os.WriteFile(name, []byte("package main\n"), 0o600); err != nil {
+			t.Fatalf("write file %d: %v", i, err)
+		}
+	}
+	svc.WriteInputDigest(root)
+
+	// Modify all 12 files.
+	for i := 0; i < 12; i++ {
+		name := filepath.Join(root, strings.Repeat("a", i+1)+".go")
+		if err := os.WriteFile(name, []byte("package main // modified\n"), 0o600); err != nil {
+			t.Fatalf("modify file %d: %v", i, err)
+		}
+	}
+
+	imgCreated := time.Now().Add(-1 * time.Hour)
+	inspector := newTestFreshInspector(imgCreated)
+	walker := bundleapp.NewFileSystemStalenessWalker(root)
+
+	h, err := bundleapp.CheckImageHealth(context.Background(), bundleapp.CheckImageHealthOptions{
+		ImageTag:       "test-app:latest",
+		ProjectRoot:    root,
+		TargetPlatform: "linux/amd64",
+		Inspector:      inspector,
+		Walker:         walker,
+	})
+	if err != nil {
+		t.Fatalf("CheckImageHealth: %v", err)
+	}
+
+	if !h.Freshness.Stale {
+		t.Fatal("expected STALE after modifying 12 files, got FRESH")
+	}
+	// ChangedPaths must be capped at 5.
+	if len(h.Freshness.ChangedPaths) != 5 {
+		t.Errorf("ChangedPaths len = %d, want 5", len(h.Freshness.ChangedPaths))
+	}
+	// ChangedCount must be the full total.
+	if h.Freshness.ChangedCount != 12 {
+		t.Errorf("ChangedCount = %d, want 12", h.Freshness.ChangedCount)
+	}
+
+	// Render and verify "(and 7 more)" appears.
+	var sb strings.Builder
+	bundleapp.RenderImageHealth(&sb, h)
+	out := sb.String()
+
+	if !strings.Contains(out, "(and 7 more)") {
+		t.Errorf("expected '(and 7 more)' in rendered output\n%s", out)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Test: .vibewarden/.gitignore written idempotently
+// ---------------------------------------------------------------------------
+
+// TestDigest_VibewardenGitignoreFileWritten verifies that after WriteInputDigest,
+// <root>/.vibewarden/.gitignore exists with content "*\n", and that calling
+// WriteInputDigest again is idempotent (file not rewritten).
+func TestDigest_VibewardenGitignoreFileWritten(t *testing.T) {
+	root := t.TempDir()
+
+	if err := os.WriteFile(filepath.Join(root, "vibewarden.yaml"), []byte("name: test\n"), 0o600); err != nil {
+		t.Fatalf("write yaml: %v", err)
+	}
+
+	svc := bundleapp.NewService(nil, &fakeGenerator{})
+	svc.WriteInputDigest(root)
+
+	vwGitignore := filepath.Join(root, ".vibewarden", ".gitignore")
+	data, err := os.ReadFile(vwGitignore)
+	if err != nil {
+		t.Fatalf(".vibewarden/.gitignore not created: %v", err)
+	}
+	if string(data) != "*\n" {
+		t.Errorf("content = %q, want %q", data, "*\n")
+	}
+
+	// Record mtime after first write.
+	info1, err := os.Stat(vwGitignore)
+	if err != nil {
+		t.Fatalf("stat after first write: %v", err)
+	}
+
+	// Small sleep to ensure a mtime difference would be observable if the file
+	// were re-written.
+	time.Sleep(5 * time.Millisecond)
+
+	svc.WriteInputDigest(root) // second call — must be idempotent
+
+	info2, err := os.Stat(vwGitignore)
+	if err != nil {
+		t.Fatalf("stat after second write: %v", err)
+	}
+	if !info2.ModTime().Equal(info1.ModTime()) {
+		t.Errorf(".vibewarden/.gitignore was rewritten on second call: mtime1=%v mtime2=%v",
+			info1.ModTime(), info2.ModTime())
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Test: symlink outside project root is skipped
+// ---------------------------------------------------------------------------
+
+// TestDigest_SymlinkOutsideRootSkipped verifies that a symlink under
+// projectRoot pointing outside the project root is silently skipped by the
+// digest walker. No panic, no I/O error, and the file at the symlink target
+// does not influence the digest.
+func TestDigest_SymlinkOutsideRootSkipped(t *testing.T) {
+	root := t.TempDir()
+	outside := t.TempDir()
+
+	// Place a file inside the project root.
+	if err := os.WriteFile(filepath.Join(root, "vibewarden.yaml"), []byte("name: test\n"), 0o600); err != nil {
+		t.Fatalf("write yaml: %v", err)
+	}
+
+	// Compute digest WITHOUT symlink — this is the baseline.
+	svc := bundleapp.NewService(nil, &fakeGenerator{})
+	svc.WriteInputDigest(root)
+
+	// Place a file outside root and create a symlink inside root pointing to it.
+	outsideFile := filepath.Join(outside, "secret.txt")
+	if err := os.WriteFile(outsideFile, []byte("sensitive data\n"), 0o600); err != nil {
+		t.Fatalf("write outside file: %v", err)
+	}
+	symlink := filepath.Join(root, "escape.txt")
+	if err := os.Symlink(outsideFile, symlink); err != nil {
+		t.Fatalf("create symlink: %v", err)
+	}
+
+	// Compute digest WITH symlink — symlink must be skipped.
+	imgCreated := time.Now().Add(-1 * time.Hour)
+	inspector := newTestFreshInspector(imgCreated)
+	walker := bundleapp.NewFileSystemStalenessWalker(root)
+	verdict := runHealthCheck(t, root, inspector, walker)
+
+	// Digest must match (symlink was skipped, not included in the watched set).
+	// Because we have a prior digest (from the svc.WriteInputDigest call above),
+	// Mode must be digest. The new walk result must equal the prior digest.
+	if verdict.Stale {
+		t.Errorf("symlink outside root should not cause STALE, got Stale=true")
+	}
+	if verdict.Mode != bundleapp.FreshnessModeDigest {
+		t.Errorf("Mode = %q, want %q", verdict.Mode, bundleapp.FreshnessModeDigest)
+	}
+}
+
+// TestDigest_SymlinkPrefixExtensionRejected is the security regression test for
+// the prefix-extension symlink escape: a symlink pointing at a sibling directory
+// whose name extends the project root name (e.g. /proj-secret when root=/proj)
+// must be rejected, not admitted by a bare strings.HasPrefix check.
+//
+// This test FAILS on the pre-fix code and PASSES on the fixed code.
+func TestDigest_SymlinkPrefixExtensionRejected(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping symlink test in short mode")
+	}
+
+	// Use a shared parent so root and outside share a directory prefix.
+	parent := t.TempDir()
+	root := filepath.Join(parent, "proj")
+	outside := filepath.Join(parent, "proj-secret") // name extends root's base — the bug
+
+	if err := os.MkdirAll(root, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(outside, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Write a normal source file inside the project root.
+	if err := os.WriteFile(filepath.Join(root, "vibewarden.yaml"), []byte("name: test\n"), 0o600); err != nil {
+		t.Fatalf("write yaml: %v", err)
+	}
+
+	// Compute and store the digest without the symlink (baseline).
+	svc := bundleapp.NewService(nil, &fakeGenerator{})
+	svc.WriteInputDigest(root)
+
+	// Write a secret file in the prefix-extension sibling directory.
+	secret := filepath.Join(outside, "secret.txt")
+	if err := os.WriteFile(secret, []byte("ssh-key\n"), 0o600); err != nil {
+		t.Fatalf("write secret: %v", err)
+	}
+
+	// Symlink from inside root pointing at the secret in the sibling directory.
+	linkPath := filepath.Join(root, "leak")
+	if err := os.Symlink(secret, linkPath); err != nil {
+		t.Fatalf("create symlink: %v", err)
+	}
+
+	// The symlink target path is outside+"/secret.txt" = parent+"/proj-secret/secret.txt".
+	// A bare strings.HasPrefix(resolved, absRoot) where absRoot=parent+"/proj"
+	// incorrectly admits it because "proj-secret" starts with "proj".
+	// The fix requires absRoot+"/" as the separator-terminated prefix.
+	imgCreated := time.Now().Add(-1 * time.Hour)
+	inspector := newTestFreshInspector(imgCreated)
+	walker := bundleapp.NewFileSystemStalenessWalker(root)
+	verdict := runHealthCheck(t, root, inspector, walker)
+
+	// The symlink must be skipped — digest unchanged from baseline, verdict FRESH.
+	if verdict.Stale {
+		t.Errorf("prefix-extension symlink escape: symlink to %q should be skipped, got STALE", outside)
+	}
+	if verdict.Mode != bundleapp.FreshnessModeDigest {
+		t.Errorf("Mode = %q, want %q", verdict.Mode, bundleapp.FreshnessModeDigest)
 	}
 }
