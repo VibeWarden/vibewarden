@@ -13,6 +13,8 @@ import (
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
 
+// Note: fakeInspector is defined in image_identity_test.go (same _test package).
+
 // fakeCompose is a test double for ports.ComposeRunner.
 type fakeCompose struct {
 	upErr      error
@@ -1102,5 +1104,214 @@ func TestDevService_Freshness_NoAppContainer_Proceeds(t *testing.T) {
 	}
 	if fc.restartCalled != 0 {
 		t.Errorf("expected no Restart when app container is absent, got %d calls", fc.restartCalled)
+	}
+}
+
+// --- Image identity (project-root label) tests (ADR-100) ---
+
+// makeDevCfgWithImage returns a config with a vibew-derived app.image set
+// and a ProjectRoot rooted at dir.
+func makeDevCfgWithImage(t *testing.T, dir string) *config.Config {
+	t.Helper()
+	cfg := defaultConfig()
+	cfg.Name = "myapp"
+	cfg.ProjectRoot = dir
+	// app.image matches the canonical vibew-derived tag so the identity check runs.
+	cfg.App.Image = "myapp-app:latest"
+	return cfg
+}
+
+func TestDevService_IdentityCheck_MatchingHash_Proceeds(t *testing.T) {
+	dir := t.TempDir()
+	cfg := makeDevCfgWithImage(t, dir)
+
+	hashLabel, pathLabel, err := ops.ProjectRootHash(dir)
+	if err != nil {
+		t.Fatalf("ProjectRootHash() error: %v", err)
+	}
+
+	fi := &fakeInspector{
+		info: ports.ImageInfo{
+			Labels: map[string]string{
+				ops.LabelProjectRootHash: hashLabel,
+				ops.LabelProjectRoot:     pathLabel,
+			},
+		},
+	}
+	fc := &fakeCompose{}
+	svc := ops.NewDevService(fc).
+		WithImageChecker(&fakeImageChecker{exists: true}).
+		WithImageInspector(fi)
+
+	var buf bytes.Buffer
+	if err := svc.Run(context.Background(), cfg, ops.DevOptions{}, &buf); err != nil {
+		t.Fatalf("Run() unexpected error on matching identity: %v", err)
+	}
+	// A successful Run implies compose.Up was called (the identity check did not block).
+	// The absence of an error is sufficient — no additional assertion needed here.
+}
+
+func TestDevService_IdentityCheck_MismatchedHash_BlocksBeforeComposeUp(t *testing.T) {
+	dir := t.TempDir()
+	other := t.TempDir()
+	cfg := makeDevCfgWithImage(t, dir)
+
+	otherHash, otherPath, err := ops.ProjectRootHash(other)
+	if err != nil {
+		t.Fatalf("ProjectRootHash(other) error: %v", err)
+	}
+
+	fi := &fakeInspector{
+		info: ports.ImageInfo{
+			Labels: map[string]string{
+				ops.LabelProjectRootHash: otherHash,
+				ops.LabelProjectRoot:     otherPath,
+			},
+		},
+	}
+	fc := &fakeCompose{}
+	svc := ops.NewDevService(fc).
+		WithImageChecker(&fakeImageChecker{exists: true}).
+		WithImageInspector(fi)
+
+	var buf bytes.Buffer
+	err = svc.Run(context.Background(), cfg, ops.DevOptions{}, &buf)
+	if err == nil {
+		t.Fatal("Run() expected error for mismatched project identity, got nil")
+	}
+	if !strings.Contains(err.Error(), "was built from a different project") {
+		t.Errorf("error should mention 'was built from a different project': %v", err)
+	}
+	if !strings.Contains(err.Error(), "vibew dev --rebuild") {
+		t.Errorf("error should contain rebuild hint: %v", err)
+	}
+	// compose.Up must NOT have been called.
+	if fc.capturedComposeFile != "" {
+		t.Error("compose.Up should not have been called on identity mismatch")
+	}
+}
+
+func TestDevService_IdentityCheck_Unlabelled_BlocksBeforeComposeUp(t *testing.T) {
+	dir := t.TempDir()
+	cfg := makeDevCfgWithImage(t, dir)
+
+	// Image has no labels at all.
+	fi := &fakeInspector{
+		info: ports.ImageInfo{Labels: map[string]string{}},
+	}
+	fc := &fakeCompose{}
+	svc := ops.NewDevService(fc).
+		WithImageChecker(&fakeImageChecker{exists: true}).
+		WithImageInspector(fi)
+
+	var buf bytes.Buffer
+	err := svc.Run(context.Background(), cfg, ops.DevOptions{}, &buf)
+	if err == nil {
+		t.Fatal("Run() expected error for unlabelled image, got nil")
+	}
+	if !strings.Contains(err.Error(), "is missing the vibew project-root label") {
+		t.Errorf("error should mention missing label: %v", err)
+	}
+	if !strings.Contains(err.Error(), "vibew dev --rebuild") {
+		t.Errorf("error should contain rebuild hint: %v", err)
+	}
+	// compose.Up must NOT have been called.
+	if fc.capturedComposeFile != "" {
+		t.Error("compose.Up should not have been called on unlabelled image")
+	}
+}
+
+func TestDevService_IdentityCheck_UserSetImage_SkipsCheck(t *testing.T) {
+	dir := t.TempDir()
+	cfg := defaultConfig()
+	cfg.Name = "myapp"
+	cfg.ProjectRoot = dir
+	// User explicitly set a non-canonical image (not "myapp-app:latest").
+	cfg.App.Image = "ghcr.io/someorg/myapp:v1"
+
+	// Inspector would fail if called — any call means the check was not skipped.
+	fi := &fakeInspector{err: errors.New("should not be called")}
+	fc := &fakeCompose{}
+	svc := ops.NewDevService(fc).
+		WithImageChecker(&fakeImageChecker{exists: true}).
+		WithImageInspector(fi)
+
+	var buf bytes.Buffer
+	if err := svc.Run(context.Background(), cfg, ops.DevOptions{}, &buf); err != nil {
+		t.Fatalf("Run() unexpected error for user-set image: %v", err)
+	}
+	if !strings.Contains(buf.String(), "user-managed") {
+		t.Errorf("expected 'user-managed' info line in output:\n%s", buf.String())
+	}
+}
+
+func TestDevService_IdentityCheck_AppBuildSet_SkipsCheck(t *testing.T) {
+	dir := t.TempDir()
+	cfg := defaultConfig()
+	cfg.Name = "myapp"
+	cfg.ProjectRoot = dir
+	// app.build is set: compose builds the image; no pre-built image to check.
+	cfg.App.Build = "."
+	cfg.App.Image = "myapp-app:latest"
+
+	// Inspector should not be called.
+	fi := &fakeInspector{err: errors.New("should not be called")}
+	fc := &fakeCompose{}
+	svc := ops.NewDevService(fc).
+		WithImageChecker(&fakeImageChecker{exists: true}).
+		WithImageInspector(fi)
+
+	var buf bytes.Buffer
+	// checkAppImage skips when Build is set, and verifyAppImageIdentity should too.
+	if err := svc.Run(context.Background(), cfg, ops.DevOptions{}, &buf); err != nil {
+		t.Fatalf("Run() unexpected error when app.build is set: %v", err)
+	}
+}
+
+func TestDevService_IdentityCheck_NilInspector_SkipsCheck(t *testing.T) {
+	dir := t.TempDir()
+	cfg := makeDevCfgWithImage(t, dir)
+
+	fc := &fakeCompose{}
+	// No inspector wired — check is skipped silently.
+	svc := ops.NewDevService(fc).
+		WithImageChecker(&fakeImageChecker{exists: true})
+
+	var buf bytes.Buffer
+	if err := svc.Run(context.Background(), cfg, ops.DevOptions{}, &buf); err != nil {
+		t.Fatalf("Run() unexpected error when inspector is nil: %v", err)
+	}
+}
+
+func TestDevService_IdentityCheck_InspectorDaemonDown_GracefulDegradation(t *testing.T) {
+	dir := t.TempDir()
+	cfg := makeDevCfgWithImage(t, dir)
+
+	// Inspector returns ErrDockerUnavailable — should warn and continue, not block.
+	fi := &fakeInspector{err: ports.ErrDockerUnavailable}
+	fc := &fakeCompose{}
+	svc := ops.NewDevService(fc).
+		WithImageChecker(&fakeImageChecker{exists: true}).
+		WithImageInspector(fi)
+
+	var buf bytes.Buffer
+	if err := svc.Run(context.Background(), cfg, ops.DevOptions{}, &buf); err != nil {
+		t.Fatalf("Run() should degrade gracefully on inspector error, got: %v", err)
+	}
+}
+
+func TestDevService_IdentityCheck_InspectorGenericError_GracefulDegradation(t *testing.T) {
+	dir := t.TempDir()
+	cfg := makeDevCfgWithImage(t, dir)
+
+	fi := &fakeInspector{err: errors.New("some unexpected error")}
+	fc := &fakeCompose{}
+	svc := ops.NewDevService(fc).
+		WithImageChecker(&fakeImageChecker{exists: true}).
+		WithImageInspector(fi)
+
+	var buf bytes.Buffer
+	if err := svc.Run(context.Background(), cfg, ops.DevOptions{}, &buf); err != nil {
+		t.Fatalf("Run() should degrade gracefully on generic inspector error, got: %v", err)
 	}
 }

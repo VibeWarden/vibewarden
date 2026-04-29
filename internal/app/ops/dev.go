@@ -4,6 +4,7 @@ package ops
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -54,10 +55,11 @@ const appServiceName = "app"
 // before starting the Docker Compose stack and can watch the config file for
 // changes when --watch is enabled.
 type DevService struct {
-	compose      ports.ComposeRunner
-	generator    ports.ConfigGenerator    // optional; nil disables generation
-	watcher      ports.ConfigWatcher      // optional; nil disables file watching
-	imageChecker ports.DockerImageChecker // optional; nil disables pre-flight image check
+	compose        ports.ComposeRunner
+	generator      ports.ConfigGenerator    // optional; nil disables generation
+	watcher        ports.ConfigWatcher      // optional; nil disables file watching
+	imageChecker   ports.DockerImageChecker // optional; nil disables pre-flight image check
+	imageInspector ports.ImageInspector     // optional; nil disables project-root identity check
 }
 
 // NewDevService creates a new DevService without config generation or file watching.
@@ -85,6 +87,16 @@ func NewDevServiceWithWatcher(compose ports.ComposeRunner, generator ports.Confi
 // locally before starting the compose stack.
 func (s *DevService) WithImageChecker(checker ports.DockerImageChecker) *DevService {
 	s.imageChecker = checker
+	return s
+}
+
+// WithImageInspector attaches a ports.ImageInspector to the DevService.
+// When set, Run performs a project-root identity check after the image-existence
+// pre-flight and blocks with an actionable error when the image was built from a
+// different project (ADR-100). When nil, the identity check is skipped entirely
+// (used by tests that do not need this check).
+func (s *DevService) WithImageInspector(inspector ports.ImageInspector) *DevService {
+	s.imageInspector = inspector
 	return s
 }
 
@@ -138,6 +150,12 @@ func (s *DevService) Run(ctx context.Context, cfg *config.Config, opts DevOption
 
 	// Pre-flight: verify the app image exists when using a pre-built image.
 	if err := s.checkAppImage(ctx, cfg, opts, out); err != nil {
+		return err
+	}
+
+	// Pre-flight: verify the app image was built from this project (ADR-100).
+	// Runs after image-existence check so the image is guaranteed to be present.
+	if err := s.verifyAppImageIdentity(ctx, cfg, out); err != nil {
 		return err
 	}
 
@@ -281,6 +299,66 @@ func (s *DevService) checkAppImage(ctx context.Context, cfg *config.Config, opts
 	}
 
 	return buildMissingImageError(image, opts.DetectedLang)
+}
+
+// verifyAppImageIdentity checks that the app image was built from the current
+// project root by inspecting its org.vibewarden.project-root-hash label.
+//
+// The check is skipped (with no error) when:
+//   - s.imageInspector is nil (not wired — tests and paths without the check).
+//   - cfg.App.Image is empty or cfg.App.Build is set (compose builds the image).
+//   - the image is user-managed (app.image differs from the canonical vibew-derived tag).
+//   - ProjectRootHash returns an error (filesystem oddity — debug log, skip).
+//   - the inspector returns a non-mismatch error (graceful degradation via warn log).
+//
+// On mismatch or missing label it returns the formatted error from
+// formatProjectRootMismatch so the CLI layer can print it and exit 1.
+func (s *DevService) verifyAppImageIdentity(ctx context.Context, cfg *config.Config, out io.Writer) error {
+	if s.imageInspector == nil {
+		return nil
+	}
+	if cfg.App.Image == "" || cfg.App.Build != "" {
+		return nil
+	}
+	if isUserSetImage(cfg) {
+		// User explicitly set app.image to a non-vibew-derived tag — skip the
+		// identity check with an informational line.
+		fmt.Fprintf(out, "vibew dev: skipping image identity check (app.image is user-managed)\n")
+		return nil
+	}
+
+	expectedHash, _, err := ProjectRootHash(cfg.ProjectRoot)
+	if err != nil {
+		// Filesystem oddity: cannot compute the expected hash. Skip rather than
+		// invent a false mismatch.
+		slog.Debug("project-root hash unavailable; skipping identity check", "error", err)
+		return nil
+	}
+
+	identity, verifyErr := VerifyAppImageIdentity(ctx, s.imageInspector, cfg.App.Image, expectedHash)
+	if errors.Is(verifyErr, ErrProjectRootMismatch) {
+		return formatProjectRootMismatch(cfg.App.Image, cfg.ProjectRoot, identity)
+	}
+	if verifyErr != nil {
+		// Inspector failed for a reason other than mismatch (daemon down, etc.).
+		// Surface as a warning and continue — same graceful-degradation pattern
+		// as checkContainerFreshness.
+		slog.Warn("could not verify app image identity; skipping check", "error", verifyErr)
+	}
+	return nil
+}
+
+// isUserSetImage reports whether cfg.App.Image was authored by the user rather
+// than derived from cfg.ComposeProjectName(). Returns true when the image
+// reference does NOT match the canonical "<project>-app:latest" pattern that
+// vibew build would produce. When true, the identity check is skipped because
+// the image's labels likely belong to a different toolchain.
+func isUserSetImage(cfg *config.Config) bool {
+	if cfg.App.Image == "" {
+		return false
+	}
+	canonical := cfg.ComposeProjectName() + "-app:latest"
+	return cfg.App.Image != canonical
 }
 
 // checkContainerFreshness inspects running app containers for staleness.

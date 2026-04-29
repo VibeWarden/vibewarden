@@ -6,6 +6,21 @@ import (
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
 
+// ParseInspectOutputForTest exposes the unexported parseInspectJSON helper so
+// that tests in the _test package can exercise the JSON→ImageInfo parsing path
+// directly — specifically the Config.Labels → ImageInfo.Labels wiring — without
+// shelling out to the Docker daemon (ADR-100 test-strategy requirement).
+func ParseInspectOutputForTest(jsonBlob []byte) (ports.ImageInfo, error) {
+	return parseInspectJSON(jsonBlob)
+}
+
+// BuildDockerArgsForTest exposes the unexported buildDockerArgs helper so that
+// tests in the _test package can assert the exact argument slice produced by
+// the BuildAdapter for various DockerBuildOptions without shelling out to Docker.
+func BuildDockerArgsForTest(tag, contextDir string, opts ports.DockerBuildOptions) []string {
+	return buildDockerArgs(tag, contextDir, opts)
+}
+
 // ParseDownOutputForTest exposes the unexported parseDownOutput helper so that
 // tests in the _test package can exercise the parser directly.
 func ParseDownOutputForTest(stderr string) ports.DownResult {

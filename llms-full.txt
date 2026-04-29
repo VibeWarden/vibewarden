@@ -1345,8 +1345,8 @@ VibeWarden is operated via the `vibew` CLI. Below is the complete command list.
 | `vibew wrap` | Add VibeWarden sidecar to an existing project |
 | `vibew add <feature>` | Enable a feature (auth, rate-limiting, tls, metrics, admin) |
 | `vibew generate` | Regenerate docker-compose.yml from config |
-| `vibew build` | Build the Docker image for the app |
-| `vibew dev` | Start local dev environment |
+| `vibew build` | Build the Docker image for the app. Since v0.19.0 also stamps `org.vibewarden.project-root-hash` and `org.vibewarden.project-root` Docker labels on the produced image for identity verification by `vibew dev`. |
+| `vibew dev` | Start local dev environment. Since v0.19.0 inspects the app image's project-root-hash label before compose-up and exits 1 with an actionable message when the label is missing or belongs to a different project. Recovery: `vibew build` (or `vibew dev --rebuild` once #1220 ships). Custom images set via `app.image:` are skipped automatically with an INFO line. |
 | `vibew dev --verbose` | Start local dev environment and stream docker compose output during startup |
 | `vibew dev --watch` | Watch vibewarden.yaml for changes and auto-regenerate config files + restart the stack (blocks until Ctrl+C) |
 | `vibew obs up` | Start the Prometheus + Grafana observability stack (profile overlay on the running dev stack) |
@@ -1616,6 +1616,43 @@ vibew doctor flags:
 
   vibew generate
   vibew dev
+
+### vibew dev: image identity check failed (v0.19.0+)
+
+Since v0.19.0, `vibew dev` verifies the app image was built for the current
+project before starting the stack. Two failure variants:
+
+Variant 1 — image was built by a different project (same tag, different directory):
+
+  Error: app image <tag> was built from a different project.
+    Built from: /Users/foo/old-project
+    Current:    /Users/you/current-project
+
+  Rebuild with: vibew dev --rebuild
+
+Variant 2 — image has no project-root label (built before v0.19.0 or by another tool):
+
+  Error: app image <tag> is missing the vibew project-root label.
+    This image was built before VibeWarden v0.19.0 OR by something other than vibew build.
+    Current project: /Users/you/current-project
+
+  Rebuild with: vibew dev --rebuild
+
+Recovery in both cases:
+  vibew build && vibew dev
+
+`vibew dev --rebuild` (#1220) will automate this when it ships.
+
+Images set via `app.image:` in vibewarden.yaml (non-canonical tags) are
+skipped automatically — the check only runs on the vibew-derived tag.
+
+TRAP: upgrading from ≤ v0.18.2 to v0.19.0 hits Variant 2 on every project
+the first time — existing images are unlabelled. Run `vibew build` once per
+project after upgrading to clear the block.
+
+TRAP: if you previously used the same project directory name for two unrelated
+projects (e.g. both named "myapp"), you will hit Variant 1. Run `vibew build`
+in the current project to stamp fresh labels.
 
 ### Kratos unreachable
 

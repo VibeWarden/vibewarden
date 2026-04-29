@@ -30,6 +30,9 @@ type dockerInspectOutput struct {
 	Created      string   `json:"Created"`
 	Size         int64    `json:"Size"`
 	RepoDigests  []string `json:"RepoDigests"`
+	Config       struct {
+		Labels map[string]string `json:"Labels"`
+	} `json:"Config"`
 }
 
 // Inspect runs `docker image inspect --format '{{json .}}' <tag>` and parses
@@ -62,9 +65,24 @@ func (a *ImageInspectAdapter) Inspect(ctx context.Context, tag string) (ports.Im
 		return ports.ImageInfo{}, fmt.Errorf("docker image inspect: %w\nstderr: %s", err, stderrStr)
 	}
 
+	info, err := parseInspectJSON(stdout.Bytes())
+	if err != nil {
+		return ports.ImageInfo{}, fmt.Errorf("docker image inspect: %w", err)
+	}
+	info.Tag = tag
+	return info, nil
+}
+
+// parseInspectJSON parses the raw JSON blob produced by
+// `docker image inspect --format '{{json .}}'` into a ports.ImageInfo.
+// The tag field is NOT set here — callers must assign it after calling.
+// This helper is separated from Inspect so that export_test.go can expose it
+// for unit tests that exercise the JSON→ImageInfo path without shelling out to
+// Docker (ADR-100 test-strategy requirement).
+func parseInspectJSON(jsonBlob []byte) (ports.ImageInfo, error) {
 	var out dockerInspectOutput
-	if err := json.Unmarshal(stdout.Bytes(), &out); err != nil {
-		return ports.ImageInfo{}, fmt.Errorf("docker image inspect: parsing JSON: %w", err)
+	if err := json.Unmarshal(jsonBlob, &out); err != nil {
+		return ports.ImageInfo{}, fmt.Errorf("parsing JSON: %w", err)
 	}
 
 	created, err := time.Parse(time.RFC3339Nano, out.Created)
@@ -92,13 +110,18 @@ func (a *ImageInspectAdapter) Inspect(ctx context.Context, tag string) (ports.Im
 		digest = out.ID
 	}
 
+	labels := out.Config.Labels
+	if labels == nil {
+		labels = make(map[string]string)
+	}
+
 	return ports.ImageInfo{
-		Tag:          tag,
 		Digest:       digest,
 		OS:           out.Os,
 		Architecture: out.Architecture,
 		Created:      created.UTC(),
 		SizeBytes:    out.Size,
+		Labels:       labels,
 	}, nil
 }
 
