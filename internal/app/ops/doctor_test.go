@@ -178,11 +178,14 @@ func TestDoctorService_Run_AllPassing(t *testing.T) {
 		"Config file",
 		"Proxy port",
 		"Generated files",
-		"Container health",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("output missing %q\ngot:\n%s", want, out)
 		}
+	}
+	// Container health was deleted in #1222 — regression guard.
+	if strings.Contains(out, "Container health") {
+		t.Errorf("output must NOT contain 'Container health' (deleted check)\ngot:\n%s", out)
 	}
 }
 
@@ -358,7 +361,8 @@ func TestDoctorService_Run_ConfigPathInOutput(t *testing.T) {
 }
 
 func TestDoctorService_ChecksAreIndependent(t *testing.T) {
-	// All checks fail — report should still contain all check names.
+	// All static checks fail — report should still contain all static check names.
+	// PS fails (psErr) so stack is down → Generated files and TLS are silently skipped.
 	fc := &fakeCompose{
 		infoErr:    errors.New("docker not running"),
 		versionErr: errors.New("compose not found"),
@@ -380,17 +384,25 @@ func TestDoctorService_ChecksAreIndependent(t *testing.T) {
 		"Docker Compose",
 		"Config file",
 		"Proxy port",
-		"Generated files",
-		"Container health",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("check %q missing from output\ngot:\n%s", want, out)
 		}
 	}
+	// Container health is deleted (#1222) — regression guard.
+	if strings.Contains(out, "Container health") {
+		t.Errorf("output must NOT contain 'Container health' (deleted check)\ngot:\n%s", out)
+	}
+	// Generated files is gated on stack-up; with psErr stack is down → absent.
+	if strings.Contains(out, "Generated files") {
+		t.Errorf("output must NOT contain 'Generated files' when stack is down\ngot:\n%s", out)
+	}
 }
 
 func TestDoctorService_Run_GeneratedFileMissing_IsWarn(t *testing.T) {
-	fc := noContainersCompose()
+	// Stack is up (healthyContainersCompose) but generated file is absent →
+	// the gated check runs and emits [WARN].
+	fc := healthyContainersCompose()
 	pc := &fakePortChecker{available: map[int]bool{8443: true}}
 	svc := ops.NewDoctorService(fc, pc)
 	cfg := doctorConfig()
@@ -415,31 +427,9 @@ func TestDoctorService_Run_GeneratedFileMissing_IsWarn(t *testing.T) {
 	}
 }
 
-func TestDoctorService_Run_UnhealthyContainer_IsFail(t *testing.T) {
-	fc := &fakeCompose{
-		versionStr: "Docker Compose version v2.35.1",
-		psResult: []ports.ContainerInfo{
-			{Name: "vibewarden-proxy-1", Service: "proxy", State: "running", Health: "unhealthy"},
-		},
-	}
-	pc := &fakePortChecker{available: map[int]bool{8443: true}}
-	svc := ops.NewDoctorService(fc, pc)
-	cfg := doctorConfig()
-	var buf bytes.Buffer
-
-	allOK, err := svc.Run(context.Background(), cfg, optsWithGeneratedFile(t), &buf)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if allOK {
-		t.Error("expected allOK = false when a container is unhealthy")
-	}
-
-	out := buf.String()
-	if !strings.Contains(out, "unhealthy") {
-		t.Errorf("expected 'unhealthy' in output, got:\n%s", out)
-	}
-}
+// TestDoctorService_Run_UnhealthyContainer_IsFail is intentionally removed.
+// The Container health check was deleted in #1222 — runtime container liveness
+// is covered by /_vibewarden/health (since #1197).
 
 func TestDoctorService_Run_JSONOutput(t *testing.T) {
 	fc := noContainersCompose()
@@ -497,38 +487,20 @@ func TestDoctorService_Run_OKFAILBadgesInOutput(t *testing.T) {
 	}
 }
 
-func TestDoctorService_Run_ContainersHealthy_AllOK(t *testing.T) {
-	fc := healthyContainersCompose()
-	pc := &fakePortChecker{available: map[int]bool{8443: true}}
-	svc := ops.NewDoctorService(fc, pc)
-	cfg := doctorConfig()
-	var buf bytes.Buffer
-
-	opts := optsWithGeneratedFile(t)
-	allOK, err := svc.Run(context.Background(), cfg, opts, &buf)
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if !allOK {
-		t.Errorf("expected allOK = true when containers are healthy\noutput:\n%s", buf.String())
-	}
-
-	out := buf.String()
-	if !strings.Contains(out, "Container health") {
-		t.Errorf("expected 'Container health' check in output, got:\n%s", out)
-	}
-	if !strings.Contains(out, "running") {
-		t.Errorf("expected 'running' in container health detail, got:\n%s", out)
-	}
-}
+// TestDoctorService_Run_ContainersHealthy_AllOK is intentionally removed.
+// The Container health check was deleted in #1222. See TestDoctor_StackUp_AllOK
+// for the stack-up regression guard.
 
 // --- Tests for Layer 2: Local Runtime checks ---
+// All TLS tests use healthyContainersCompose() to simulate a running stack,
+// because the TLS check is gated on isStackRunning (#1222).
 
 func TestDoctorService_Run_TLSCertValid(t *testing.T) {
 	host, port, cleanup := startTLSTestSidecar(t, time.Now().Add(-24*time.Hour), time.Now().Add(90*24*time.Hour))
 	defer cleanup()
 
-	fc := noContainersCompose()
+	// Stack is up so TLS check runs.
+	fc := healthyContainersCompose()
 	pc := &fakePortChecker{available: map[int]bool{port: true}}
 	svc := ops.NewDoctorService(fc, pc)
 	cfg := defaultConfig()
@@ -560,7 +532,8 @@ func TestDoctorService_Run_TLSCertExpired(t *testing.T) {
 	host, port, cleanup := startTLSTestSidecar(t, time.Now().Add(-48*time.Hour), time.Now().Add(-24*time.Hour))
 	defer cleanup()
 
-	fc := noContainersCompose()
+	// Stack is up so TLS check runs.
+	fc := healthyContainersCompose()
 	pc := &fakePortChecker{available: map[int]bool{port: true}}
 	svc := ops.NewDoctorService(fc, pc)
 	cfg := defaultConfig()
@@ -589,7 +562,8 @@ func TestDoctorService_Run_TLSCertExpiringSoon(t *testing.T) {
 	host, port, cleanup := startTLSTestSidecar(t, time.Now().Add(-24*time.Hour), time.Now().Add(3*24*time.Hour))
 	defer cleanup()
 
-	fc := noContainersCompose()
+	// Stack is up so TLS check runs.
+	fc := healthyContainersCompose()
 	pc := &fakePortChecker{available: map[int]bool{port: true}}
 	svc := ops.NewDoctorService(fc, pc)
 	cfg := defaultConfig()
@@ -626,7 +600,8 @@ func TestDoctorService_Run_TLSCertSidecarUnreachable(t *testing.T) {
 		t.Fatalf("close listener: %v", err)
 	}
 
-	fc := noContainersCompose()
+	// Stack is up so TLS check runs even though the sidecar port is closed.
+	fc := healthyContainersCompose()
 	pc := &fakePortChecker{available: map[int]bool{addr.Port: true}}
 	svc := ops.NewDoctorService(fc, pc)
 	cfg := defaultConfig()
@@ -654,7 +629,8 @@ func TestDoctorService_Run_TLSCertSidecarUnreachable(t *testing.T) {
 }
 
 func TestDoctorService_Run_TLSCertNonSelfSigned_Skipped(t *testing.T) {
-	fc := noContainersCompose()
+	// Stack is up so TLS check runs (and hits the non-self-signed skip branch).
+	fc := healthyContainersCompose()
 	pc := &fakePortChecker{available: map[int]bool{8443: true}}
 	svc := ops.NewDoctorService(fc, pc)
 	cfg := doctorConfig()
@@ -677,7 +653,8 @@ func TestDoctorService_Run_TLSCertNonSelfSigned_Skipped(t *testing.T) {
 }
 
 func TestDoctorService_Run_SectionHeaders(t *testing.T) {
-	fc := noContainersCompose()
+	// Stack is up so both sections are populated.
+	fc := healthyContainersCompose()
 	pc := &fakePortChecker{available: map[int]bool{8443: true}}
 	svc := ops.NewDoctorService(fc, pc)
 	cfg := doctorConfig()
@@ -692,8 +669,12 @@ func TestDoctorService_Run_SectionHeaders(t *testing.T) {
 	if !strings.Contains(out, "Config & Docker") {
 		t.Errorf("expected 'Config & Docker' section header, got:\n%s", out)
 	}
+	// "Local Runtime" renders when the stack is up and checkTLSCertValid emits a
+	// row. With Provider="external" and no TLSStateResolver wired, checkTLSCertValid
+	// hits the legacy short-circuit and returns an OK result tagged sectionLocalRuntime
+	// — so the header IS present even with an external provider.
 	if !strings.Contains(out, "Local Runtime") {
-		t.Errorf("expected 'Local Runtime' section header, got:\n%s", out)
+		t.Errorf("expected 'Local Runtime' section header when stack is up, got:\n%s", out)
 	}
 }
 
@@ -1209,5 +1190,128 @@ func TestDoctorService_Run_LERateLimit_JSONOutput(t *testing.T) {
 	}
 	if !found {
 		t.Errorf("LE rate-limit check not found in JSON results: %s", buf.String())
+	}
+}
+
+// --- Stack-state awareness tests (#1222) ---
+
+// TestDoctor_StackDown_SkipsGenAndTLS asserts the silent-skip contract:
+// when no compose containers are detected, Generated files and TLS certificate
+// rows must be absent from the output (no misleading pre-stack WARNs).
+// Container health must also be absent (it was deleted entirely in #1222).
+func TestDoctor_StackDown_SkipsGenAndTLS(t *testing.T) {
+	fc := noContainersCompose() // PS returns nil → stack is down
+	pc := &fakePortChecker{available: map[int]bool{8443: true}}
+	svc := ops.NewDoctorService(fc, pc)
+	cfg := defaultConfig()
+	cfg.TLS.Provider = "self-signed"
+
+	var buf bytes.Buffer
+	allOK, err := svc.Run(context.Background(), cfg, defaultOpts(t), &buf)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// No FAIL rows exist → allOK must be true.
+	if !allOK {
+		t.Errorf("expected allOK = true with stack down (no FAIL-level static checks)\noutput:\n%s", buf.String())
+	}
+
+	out := buf.String()
+	for _, absent := range []string{"Generated files", "Container health", "TLS certificate"} {
+		if strings.Contains(out, absent) {
+			t.Errorf("output must NOT contain %q when stack is down (silent skip)\ngot:\n%s", absent, out)
+		}
+	}
+	// Static checks must still be present.
+	for _, present := range []string{"Config file", "Docker daemon", "Docker Compose", "Proxy port"} {
+		if !strings.Contains(out, present) {
+			t.Errorf("expected static check %q in output when stack is down\ngot:\n%s", present, out)
+		}
+	}
+}
+
+// TestDoctor_StackUp_AllOK asserts that with a healthy stack the static and
+// runtime checks all pass, and that Container health is absent (deleted in #1222).
+func TestDoctor_StackUp_AllOK(t *testing.T) {
+	fc := healthyContainersCompose() // PS returns one healthy container → stack is up
+	pc := &fakePortChecker{available: map[int]bool{8443: true}}
+	svc := ops.NewDoctorService(fc, pc)
+	cfg := doctorConfig() // TLS.Provider = "external" → TLS check skips local handshake
+
+	opts := optsWithGeneratedFile(t)
+	var buf bytes.Buffer
+	allOK, err := svc.Run(context.Background(), cfg, opts, &buf)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !allOK {
+		t.Errorf("expected allOK = true when stack is up and all checks pass\noutput:\n%s", buf.String())
+	}
+
+	out := buf.String()
+	// Generated files must appear when stack is up.
+	if !strings.Contains(out, "Generated files") {
+		t.Errorf("expected 'Generated files' check in output when stack is up\ngot:\n%s", out)
+	}
+	// Container health must be absent — regression guard against re-introducing the deleted check.
+	if strings.Contains(out, "Container health") {
+		t.Errorf("output must NOT contain 'Container health' (deleted in #1222)\ngot:\n%s", out)
+	}
+}
+
+// TestDoctor_StackUp_GeneratedFileMissing_StillWarns confirms that the
+// stack-state gate does not suppress the real signal: when the stack is up
+// but the generated file is missing, a [WARN] row must still appear.
+func TestDoctor_StackUp_GeneratedFileMissing_StillWarns(t *testing.T) {
+	fc := healthyContainersCompose() // stack is up
+	pc := &fakePortChecker{available: map[int]bool{8443: true}}
+	svc := ops.NewDoctorService(fc, pc)
+	cfg := doctorConfig()
+
+	// defaultOpts has an empty tempdir — no generated file present.
+	var buf bytes.Buffer
+	allOK, err := svc.Run(context.Background(), cfg, defaultOpts(t), &buf)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	// WARN does not cause allOK = false.
+	if !allOK {
+		t.Errorf("expected allOK = true because missing generated file is WARN\noutput:\n%s", buf.String())
+	}
+
+	out := buf.String()
+	if !strings.Contains(out, "Generated files") {
+		t.Errorf("expected 'Generated files' WARN row when stack is up but file missing\ngot:\n%s", out)
+	}
+	if !strings.Contains(out, "[WARN]") {
+		t.Errorf("expected [WARN] badge for missing generated file\ngot:\n%s", out)
+	}
+}
+
+// TestDoctor_ContainerHealth_AbsentInJSON is a regression guard for JSON mode:
+// no result in the JSON array may have Name == "Container health", regardless
+// of stack state. The check was deleted in #1222.
+func TestDoctor_ContainerHealth_AbsentInJSON(t *testing.T) {
+	fc := healthyContainersCompose()
+	pc := &fakePortChecker{available: map[int]bool{8443: true}}
+	svc := ops.NewDoctorService(fc, pc)
+	cfg := doctorConfig()
+
+	opts := optsWithGeneratedFile(t)
+	opts.JSON = true
+	var buf bytes.Buffer
+	_, err := svc.Run(context.Background(), cfg, opts, &buf)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var results []ops.CheckResult
+	if err := json.Unmarshal(buf.Bytes(), &results); err != nil {
+		t.Fatalf("JSON unmarshal failed: %v\nbody: %s", err, buf.String())
+	}
+	for _, r := range results {
+		if strings.EqualFold(r.Name, "Container health") {
+			t.Errorf("JSON output must not contain 'Container health' result (deleted in #1222): %+v", r)
+		}
 	}
 }

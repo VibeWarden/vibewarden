@@ -43,6 +43,10 @@ automatically with an informational stderr line.
 **Release gate satisfied by #1220.** `vibew dev --rebuild` ships in the same release
 as #1219 (both in v0.18.3). The recovery command in the error message above is live.
 
+### Changed
+
+- **`vibew doctor` no longer probes runtime checks before `vibew dev` is up** (#1222). Three checks were misleading pre-stack: "Generated files", "Container health", "TLS certificate". Generated files + TLS certificate are now gated on stack-state detection (run only when `docker compose ps` returns containers); Container health is deleted entirely (covered by `/_vibewarden/health` since #1197). New `vibew doctor --help` text reflects the narrower scope: static config + Dockerfile + toolchain pre-stack; TLS + generated-files post-stack. Same misleading-warn class as the upstream-reachable check deleted in #1198.
+
 ### Added
 
 - **`vibew dev --rebuild`** — collapses the four-command rebuild dance

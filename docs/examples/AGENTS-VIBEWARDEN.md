@@ -100,13 +100,14 @@ vibew logs --since 5m    # last 5 minutes
 ```
 
 `vibew doctor` checks (in order): config validity, Docker daemon, Docker Compose,
-proxy port availability, generated files, container health, ACME email, image tag
-consistency, and TLS state. The TLS state check reports one of four values:
-`Obtaining` (ACME in progress), `Obtained` (cert active and valid), `Failing`
-(ACME failed), or `SelfSignedLocal` (dev self-signed cert — no expiry warning is
-raised). `vibew status` surfaces the same TLS state in its output table. Output
-uses OK / OFF / FAIL labels; OFF means the component is disabled in config and was
-not probed. For runtime upstream health, query `_vibewarden/health` after `vibew dev` is up.
+proxy port availability, ACME email, image tag consistency, and LE rate-limit budget.
+When the dev stack is running, two additional checks are added: generated files present
+and TLS certificate valid. Pre-stack those two rows are silently skipped — no misleading
+WARNs before `vibew dev` has been started. Container health is not checked by `vibew doctor`;
+use `curl https://<your-domain>/_vibewarden/health` after `vibew dev` is up for runtime
+health (response: `{"status":"ok","components":{"upstream":"ok"}}`).
+`vibew status` surfaces component health with OK / OFF / FAIL labels; OFF means the
+component is disabled in config and was not probed.
 
 `vibew validate` now catches real next-command failures before they reach `vibew bundle` or `vibew up`: name collision (directory named "vibewarden" with no explicit `name:` set), Dockerfile EXPOSE/upstream.port mismatch, image-tag drift in `.env`, ACME-incompatible domain (localhost, IP literal, `.local`/`.test` TLD), and WAF log-mode enabled in a production config. Any of these conditions exits with code 1 and a FAIL row on stderr; fix the config or set the appropriate acknowledgement key before running the next command.
 
@@ -263,7 +264,7 @@ For now: keep one site per project. Revisit when #1169 lands.
 ## Known limitations
 
 - WAF is in `detect` mode by default (logs but does not block). Set `waf.mode: block` in vibewarden.yaml to enforce blocking.
-- `vibew doctor` checks config, Docker, ports, container health, generated files, ACME email, image tag, and TLS state (Obtaining/Obtained/Failing/SelfSignedLocal). It does not probe runtime upstream health — use `curl https://<your-domain>/_vibewarden/health` after `vibew dev` is up for that. Self-signed dev certs are identified correctly and do not trigger a spurious expiry warning. When a `Dockerfile` is present in the project root, `vibew doctor` also lints it against the contract: alpine base, `EXPOSE` matches `upstream.port`, no `HEALTHCHECK` directive, non-root `USER` (warn, non-blocking), multi-stage build for compiled languages, and builder image major.minor matches the project toolchain manifest (`go.mod`, `.nvmrc`, `pyproject.toml`). When no `Dockerfile` is present, the Dockerfile section is omitted entirely.
+- `vibew doctor` checks config, Docker, ports, ACME email, image tag, and (when the dev stack is running) generated files and local TLS cert validity. It does not probe runtime container health — use `curl https://<your-domain>/_vibewarden/health` after `vibew dev` is up for that (expected response: `{"status":"ok","components":{"upstream":"ok"}}`). Pre-stack, the generated-files and TLS rows are silently skipped to avoid misleading WARNs. When a `Dockerfile` is present in the project root, `vibew doctor` also lints it against the contract: alpine base, `EXPOSE` matches `upstream.port`, no `HEALTHCHECK` directive, non-root `USER` (warn, non-blocking), multi-stage build for compiled languages, and builder image major.minor matches the project toolchain manifest (`go.mod`, `.nvmrc`, `pyproject.toml`). When no `Dockerfile` is present, the Dockerfile section is omitted entirely.
 - Multi-site local dev works; production deploy is post-v1 (see https://github.com/VibeWarden/vibewarden/issues/1169).
 - `vibew init` does not accept `--tls` or `--domain` flags — run `vibew add tls --domain <your-domain>` after init.
 - **Image identity check (v0.18.3+):** `vibew dev` verifies the app image's `org.vibewarden.project-root-hash` label before starting the stack. If the label is missing (image built before v0.18.3) or belongs to a different project, `vibew dev` exits 1 with an actionable message. Recovery: `vibew dev --rebuild`. This catches the silent-image-collision bug where two projects with the same directory name share a `:latest` tag. TRAP: if you reused a directory name from a prior vibew project, run `vibew dev --rebuild` — the old image blocks immediately. Custom images set via `app.image:` in vibewarden.yaml bypass this check.

@@ -35,9 +35,11 @@ func NewDoctorCmd() *cobra.Command {
 		Long: `Validate VibeWarden config, Docker, generated files, and the Dockerfile contract.
 
 vibew doctor validates static configuration: vibewarden.yaml, Dockerfile contract,
-Go toolchain version, TLS state. It does NOT probe runtime upstream health — that
-is reported by /_vibewarden/health once vibew dev is up.
-Run: curl https://<your-domain>/_vibewarden/health for runtime checks.
+Go toolchain version, and (when the dev stack is running) TLS state and generated-file
+freshness. It does NOT probe runtime container health — that is reported by
+_vibewarden/health once vibew dev is up. Run:
+  curl https://<your-domain>/_vibewarden/health
+for runtime checks. (Pre-stack: doctor focuses on what you can fix without vibew dev.)
 
 Checks are organised into two layers:
 
@@ -46,14 +48,13 @@ Checks are organised into two layers:
     - Docker daemon is reachable (docker info)
     - Docker Compose v2+ is available (docker compose version)
     - Required ports are available (proxy port)
-    - Generated files are present (.vibewarden/generated/docker-compose.yml)
-    - If the stack is running: containers are healthy (docker compose ps)
     - ACME email configured when using ZeroSSL
     - Expected app image exists locally (image tag consistency)
     - LE rate-limit budget (when tls.provider is "letsencrypt")
 
-  Local Runtime (always runs):
-    - TLS certificate is valid (if self-signed)
+  When stack is running (skipped silently when vibew dev is not up):
+    - Generated files are present (.vibewarden/generated/docker-compose.yml)
+    - TLS certificate is valid (if self-signed or external resolver is wired)
 
 Each check runs independently — a failure does not stop subsequent checks.
 Exit code is 1 when any check fails.

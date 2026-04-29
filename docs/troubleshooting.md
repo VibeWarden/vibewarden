@@ -38,17 +38,19 @@ pre-flight scripts.
 | 2 | **Docker daemon** | `docker info` succeeds within 5 s |
 | 3 | **Docker Compose** | `docker compose version` returns a v2+ version string within 5 s |
 | 4 | **Proxy port** | The port configured in `server.port` (default `8443`) is not already bound |
-| 5 | **Generated files** | `.vibewarden/generated/docker-compose.yml` is present on disk |
-| 6 | **Container health** | `docker compose ps` shows all containers in `running` / `healthy` state |
-| 7 | **ACME email** | `tls.email` is set when `tls.acme_ca` contains "zerossl" (fails if missing) |
-| 8 | **Image tag** | `app.image` matches a locally available Docker image (skipped when unset) |
-| 9 | **LE rate-limit: `<domain>`** | Queries the public crt.sh CT log to count Let's Encrypt certificates issued for the registered domain in the last 168 hours. WARN at 4/5, FAIL at 5/5. Skipped when `tls.provider` is not `letsencrypt`, when `tls.acme_ca` overrides the default ACME endpoint, or when `tls.skip_rate_limit_check: true` / `--skip-le-preflight` is set. See [LE rate-limit preflight](#le-rate-limit-preflight) below. |
+| 5 | **ACME email** | `tls.email` is set when `tls.acme_ca` contains "zerossl" (fails if missing) |
+| 6 | **Image tag** | `app.image` matches a locally available Docker image (skipped when unset) |
+| 7 | **LE rate-limit: `<domain>`** | Queries the public crt.sh CT log to count Let's Encrypt certificates issued for the registered domain in the last 168 hours. WARN at 4/5, FAIL at 5/5. Skipped when `tls.provider` is not `letsencrypt`, when `tls.acme_ca` overrides the default ACME endpoint, or when `tls.skip_rate_limit_check: true` / `--skip-le-preflight` is set. See [LE rate-limit preflight](#le-rate-limit-preflight) below. |
 
-#### Layer 2: Local Runtime
+#### When the dev stack is running
+
+These checks are skipped silently when `vibew dev` has not been started yet — they require
+live containers to produce meaningful results. Start the stack first, then re-run `vibew doctor`.
 
 | # | Check name | What it tests |
 |---|------------|---------------|
-| 10 | **TLS cert valid** | Performs a live TLS handshake against the sidecar, reads the leaf certificate from the handshake, and verifies it is not expired or expiring within 7 days. Reports WARN (`sidecar not reachable — start 'vibew dev'`) when the handshake fails, so the check no longer depends on a file-on-disk at a hardcoded path (ADR-084) |
+| 8 | **Generated files** | `.vibewarden/generated/docker-compose.yml` is present on disk. Skipped when no compose containers are detected — run `vibew dev` first. |
+| 9 | **TLS cert valid** | Performs a live TLS handshake against the sidecar, reads the leaf certificate from the handshake, and verifies it is not expired or expiring within 7 days. Skipped pre-stack. For runtime container health, query `_vibewarden/health` after `vibew dev` is up (see ADR-084). |
 
 ### Severity levels
 
@@ -62,7 +64,7 @@ pre-flight scripts.
 
 ## Sample output
 
-### All checks pass
+### All checks pass (stack running)
 
 ```
 VibeWarden Doctor
@@ -71,12 +73,17 @@ VibeWarden Doctor
   [OK]            Docker daemon          running
   [OK]            Docker Compose         Docker Compose version v2.27.0
   [OK]            Proxy port             port 8443 is available
+  [OK]            ACME email             not using ZeroSSL — email not required
   [OK]            Generated files        .vibewarden/generated/docker-compose.yml
-  [OK]            Container health       4 container(s) running
+  [OK]            TLS certificate        valid until 2026-07-28
 ```
 
 ### Stack not yet started
 
+Before `vibew dev` is run, the generated-files and TLS certificate checks are silently
+skipped — they require a live stack to produce meaningful results. The output shows only
+static-config and environment checks.
+
 ```
 VibeWarden Doctor
 ─────────────────────────────────────────
@@ -84,8 +91,7 @@ VibeWarden Doctor
   [OK]            Docker daemon          running
   [OK]            Docker Compose         Docker Compose version v2.27.0
   [OK]            Proxy port             port 8443 is available
-  [WARN]          Generated files        .vibewarden/generated/docker-compose.yml not found — run 'vibewarden generate' first
-  [WARN]          Container health       no containers found — run 'vibewarden dev' to start the stack
+  [OK]            ACME email             not using ZeroSSL — email not required
 ```
 
 ### Proxy port already owned by a running `vibew dev`
@@ -101,15 +107,17 @@ VibeWarden Doctor
   [OK]            Docker daemon          running
   [OK]            Docker Compose         Docker Compose version v2.27.0
   [OK]            Proxy port             in use by local vibew dev (expected)
+  [OK]            ACME email             not using ZeroSSL — email not required
   [OK]            Generated files        .vibewarden/generated/docker-compose.yml
-  [OK]            Container health       4 container(s) running
+  [OK]            TLS certificate        valid until 2026-07-28
 ```
 
 ### Port conflict (foreign process) + Docker not running
 
 The `[FAIL] Proxy port` line only fires when the port is owned by a **non-VibeWarden**
 process (i.e., the health probe does not find a `vibewarden` signature on the port).
-A running `vibew dev` never triggers this FAIL — see the sample above.
+A running `vibew dev` never triggers this FAIL — see the sample above. With Docker
+unavailable, stack detection fails, so generated-files and TLS rows are silently absent.
 
 ```
 VibeWarden Doctor
@@ -118,8 +126,7 @@ VibeWarden Doctor
   [FAIL]          Docker daemon          not running — start Docker Desktop or the Docker service
   [FAIL]          Docker Compose         not available — install Docker Compose v2
   [FAIL]          Proxy port             port 8443 is already in use
-  [WARN]          Generated files        .vibewarden/generated/docker-compose.yml not found — run 'vibewarden generate' first
-  [WARN]          Container health       could not query containers — stack may not be running
+  [OK]            ACME email             not using ZeroSSL — email not required
 ```
 
 ### JSON output
@@ -132,35 +139,50 @@ needs to consume the results programmatically:
   {
     "name": "Config file",
     "severity": "OK",
-    "detail": "vibewarden.yaml — valid"
+    "detail": "vibewarden.yaml — valid",
+    "section": "Config & Docker"
   },
   {
     "name": "Docker daemon",
     "severity": "OK",
-    "detail": "running"
+    "detail": "running",
+    "section": "Config & Docker"
   },
   {
     "name": "Docker Compose",
     "severity": "OK",
-    "detail": "Docker Compose version v2.27.0"
+    "detail": "Docker Compose version v2.27.0",
+    "section": "Config & Docker"
   },
   {
     "name": "Proxy port",
     "severity": "OK",
-    "detail": "port 8443 is available"
+    "detail": "port 8443 is available",
+    "section": "Config & Docker"
+  },
+  {
+    "name": "ACME email",
+    "severity": "OK",
+    "detail": "not using ZeroSSL — email not required",
+    "section": "Config & Docker"
   },
   {
     "name": "Generated files",
     "severity": "OK",
-    "detail": ".vibewarden/generated/docker-compose.yml"
+    "detail": ".vibewarden/generated/docker-compose.yml",
+    "section": "Config & Docker"
   },
   {
-    "name": "Container health",
+    "name": "TLS certificate",
     "severity": "OK",
-    "detail": "4 container(s) running"
+    "detail": "valid until 2026-07-28",
+    "section": "Local Runtime"
   }
 ]
 ```
+Note: `Generated files` and `TLS certificate` only appear when `vibew dev` is running.
+Pre-stack, those rows are silently absent — no `Container health` row ever appears
+(that check was removed in v0.18.3; runtime health is at `/_vibewarden/health`).
 
 ---
 
@@ -403,43 +425,33 @@ vibew dev
 
 ---
 
-### Kratos unreachable
+### Unhealthy containers (Kratos, Postgres)
 
-Container health failures often manifest as a Kratos container in a non-healthy state:
+Runtime container health is no longer checked by `vibew doctor` — that check was
+removed in v0.18.3 (it produced misleading WARNs before `vibew dev` was started).
+Use `_vibewarden/health` or `vibew logs` to diagnose container issues after the
+stack is running.
 
-**Symptom**
+```bash
+# Check runtime health after vibew dev is up
+curl https://localhost:8443/_vibewarden/health
 
+# Stream logs for a specific service
+vibew logs kratos --tail 50
+vibew logs postgres --tail 100
 ```
-[FAIL]  Container health  unhealthy containers: [kratos (running/unhealthy)]
-```
 
-**Possible causes and fixes**
+**Common Kratos issues:**
 
 | Cause | Fix |
 |-------|-----|
-| Postgres is not yet ready when Kratos starts | Wait 15–30 s and run `vibew doctor` again; the `depends_on: condition: service_healthy` guard retries automatically |
+| Postgres is not yet ready when Kratos starts | Wait 15–30 s; the `depends_on: condition: service_healthy` guard retries automatically |
 | Kratos config points at the wrong DSN | Check `server.database.url` in `vibewarden.yaml` and ensure it matches the Postgres container credentials |
 | Port 4433 / 4434 bound by another process | `lsof -i :4433` — stop the conflicting process |
-| Kratos schema migration failed | `vibew logs kratos` — look for migration errors; run `vibew generate` to regenerate the config and `docker compose up -d` to restart |
+| Kratos schema migration failed | `vibew logs kratos` — look for migration errors; run `vibew generate` then restart |
 | Insufficient memory | Docker Desktop defaults to 2 GB RAM; increase to at least 4 GB in Docker Desktop → Settings → Resources |
 
-View Kratos logs directly:
-
-```bash
-vibew logs kratos --tail 50
-```
-
----
-
-### Containers stuck in a restart loop
-
-**Symptom**
-
-```
-[FAIL]  Container health  unhealthy containers: [postgres (restarting/)]
-```
-
-**Fix**
+**Postgres stuck in a restart loop:**
 
 ```bash
 # Check the logs for the failing container
