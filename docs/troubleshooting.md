@@ -522,6 +522,66 @@ vibew logs --follow                 # stream all services to watch for restart l
 
 ---
 
+### `vibew bundle` reports STALE
+
+**Symptom**
+
+```
+Freshness:    STALE
+  - modified: Dockerfile
+  - modified: vibewarden.production.yaml
+  - added:    src/handler.go
+  (and 2 more)
+```
+
+**Cause**
+
+One or more source files changed content since the last successful `vibew bundle` run.
+The freshness check compares a per-file SHA-256 digest of all non-ignored project files
+against the stored baseline at `.vibewarden/.input-digest`. A STALE verdict means the
+image was built before those changes — the bundle may not reflect the current source.
+
+**Fix — rebuild the image and re-bundle**
+
+```bash
+vibew bundle --build
+```
+
+`--build` runs `vibew build --platform <target>` before bundling. The freshness baseline
+is updated after a successful bundle.
+
+**Fix — suppress (when you know the image is correct)**
+
+```bash
+vibew bundle --allow-stale
+```
+
+Use `--allow-stale` when the changed files are irrelevant to the build (for example,
+documentation or test fixtures committed after the image was built intentionally).
+The STALE warning is suppressed; the bundle proceeds; the baseline is updated.
+
+**What triggers STALE**
+
+Files under the project root that are not excluded by `.gitignore`, `.dockerignore`, or
+the built-in ignore list (`.git`, `.vibewarden`, `node_modules`, `vendor`, `dist`,
+`build`, `target`, `.venv`, `__pycache__`, `bin`, `.next`). Content changes, file
+additions, and file removals all trip the check. Renaming a file appears as one removal
+and one addition.
+
+**First bundle after upgrading to v0.19.0+**
+
+The digest schema changed from v1 to v2 (per-file hashes) in v0.19.0. An existing v1
+digest file is treated as missing — the first post-upgrade bundle is always FRESH
+baseline, no false positive.
+
+**`.vibewarden/.gitignore` generated file**
+
+`vibew bundle` writes `.vibewarden/.gitignore` (containing `*`) so that git excludes
+the entire `.vibewarden/` directory without touching your own `.gitignore`. This file is
+generated and idempotent — do not edit it.
+
+---
+
 ### Secrets plugin fails to start -- missing master key
 
 **Symptom**
