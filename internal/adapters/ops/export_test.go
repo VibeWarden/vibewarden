@@ -48,3 +48,10 @@ func IsNoOpErrorForTest(lower string) bool {
 func FullVolumeNameForTest(projectName, volumeName string) string {
 	return projectName + "_" + volumeName
 }
+
+// BuildImageRmArgsForTest exposes the unexported buildImageRmArgs helper so
+// that tests in the _test package can assert the exact argument slice produced
+// by ImageRemoveAdapter without shelling out to Docker.
+func BuildImageRmArgsForTest(tag string) []string {
+	return buildImageRmArgs(tag)
+}

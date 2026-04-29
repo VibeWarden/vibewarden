@@ -35,9 +35,11 @@ type fakeCompose struct {
 	capturedDownOpts    ports.ComposeDownOptions
 	restartCalled       int
 	downCalled          int
+	upCalled            int
 }
 
 func (f *fakeCompose) Up(_ context.Context, composeFile string, profiles []string, opts ports.ComposeUpOptions) error {
+	f.upCalled++
 	f.capturedComposeFile = composeFile
 	f.capturedProfiles = profiles
 	f.capturedUpOpts = opts

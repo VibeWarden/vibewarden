@@ -245,3 +245,15 @@ type PortOwnerProbe interface {
 	// OwnerForeign (safe default) or OwnerUnknown (port free).
 	ProbeOwner(ctx context.Context, host string, port int) PortOwner
 }
+
+// DockerImageRemover removes a Docker image by tag from the local daemon.
+// Implementations shell out to "docker image rm".
+type DockerImageRemover interface {
+	// Remove deletes the image identified by tag. A missing image is NOT an
+	// error — implementations return nil so callers can invoke Remove
+	// unconditionally on the rebuild path (idempotent). All other failures
+	// (e.g. image in use by a running container, daemon unreachable) are
+	// returned as wrapped errors so the caller can decide whether to abort or
+	// log-and-continue.
+	Remove(ctx context.Context, tag string) error
+}
