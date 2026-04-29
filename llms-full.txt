@@ -1569,15 +1569,15 @@ vibew doctor checks (in order):
   Stack-state-gated (skipped silently when vibew dev is not running):
   8. Generated files — .vibewarden/generated/docker-compose.yml present
   9. TLS certificate — live TLS handshake; reports expiry state
-  10-15. Dockerfile contract checks (only when a Dockerfile is present):
-     10. Dockerfile: alpine base — final-stage FROM must be alpine-based (FAIL if not)
-     11. Dockerfile: EXPOSE port — EXPOSE must match upstream.port (FAIL on mismatch)
-     12. Dockerfile: HEALTHCHECK — no HEALTHCHECK directive allowed (FAIL if present)
-     13. Dockerfile: non-root USER — final stage must set non-root USER (WARN, non-blocking)
-     14. Dockerfile: multi-stage build — compiled languages (Go) need multi-stage (FAIL if not)
-     15. Dockerfile: <lang> toolchain version — builder FROM tag major.minor must match
-         the project manifest go.mod/nvmrc/pyproject.toml (FAIL on mismatch; OFF when
-         tag is "latest" or unrecognised, or when no manifest is found)
+  Dockerfile contract checks (always run when a Dockerfile is present):
+  10. Dockerfile: alpine base — final-stage FROM must be alpine-based (FAIL if not)
+  11. Dockerfile: EXPOSE port — EXPOSE must match upstream.port (FAIL on mismatch)
+  12. Dockerfile: HEALTHCHECK — no HEALTHCHECK directive allowed (FAIL if present)
+  13. Dockerfile: non-root USER — final stage must set non-root USER (WARN, non-blocking)
+  14. Dockerfile: multi-stage build — compiled languages (Go) need multi-stage (FAIL if not)
+  15. Dockerfile: <lang> toolchain version — builder FROM tag major.minor must match
+      the project manifest go.mod/nvmrc/pyproject.toml (FAIL on mismatch; OFF when
+      tag is "latest" or unrecognised, or when no manifest is found)
      All 6 checks are omitted when no Dockerfile is present in the project root.
   Runtime container health is NOT checked by doctor — query /_vibewarden/health
   after vibew dev is up for live runtime status.
