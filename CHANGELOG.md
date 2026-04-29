@@ -53,6 +53,7 @@ as #1219 (both in v0.18.3). The recovery command in the error message above is l
 
 ### Added
 
+- **`vibew doctor` advisory note for macOS**: system curl (LibreSSL) may fail handshake on the local dev cert. Doctor now prints a darwin-only note pointing at Homebrew curl + python3 ssl alternatives. See `docs/troubleshooting.md` for the workarounds. (#1224)
 - **`vibew dev --rebuild`** — collapses the four-command rebuild dance
   (`vibew down && docker rmi <tag> && vibew build && vibew dev`) into a single command
   (#1220). Stops the stack, removes the resolved app image, rebuilds via `vibew build`

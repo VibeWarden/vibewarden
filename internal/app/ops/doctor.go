@@ -7,6 +7,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 
@@ -18,6 +19,11 @@ import (
 	domaintlspreflight "github.com/vibewarden/vibewarden/internal/domain/tlspreflight"
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
+
+// goosFn returns the current operating system name. It is a package-level
+// function variable so tests can swap it without build tags. Production code
+// must not reference it outside this file; test helpers live in export_test.go.
+var goosFn = func() string { return runtime.GOOS }
 
 // Severity classifies the outcome of a single doctor check.
 type Severity string
@@ -145,6 +151,9 @@ func (s *DoctorService) Run(ctx context.Context, cfg *config.Config, opts Doctor
 		}
 	} else {
 		printDoctorReport(checks, out)
+		if goosFn() == "darwin" {
+			printDarwinCurlAdvisory(out)
+		}
 	}
 
 	allOK = true
@@ -550,6 +559,19 @@ func printDoctorJSON(results []CheckResult, out io.Writer) error {
 	enc := json.NewEncoder(out)
 	enc.SetIndent("", "  ")
 	return enc.Encode(results)
+}
+
+// printDarwinCurlAdvisory writes a human-readable advisory to out informing
+// macOS users that system curl (linked against LibreSSL) may fail the TLS
+// handshake against the Caddy local-CA dev certificate, and points them at
+// the Homebrew curl and python3 ssl workarounds documented in
+// docs/troubleshooting.md. The advisory is skipped in JSON mode (handled by
+// the caller) and on non-darwin platforms.
+func printDarwinCurlAdvisory(out io.Writer) {
+	fmt.Fprintln(out, "─────────────────────────────────────────")
+	fmt.Fprintln(out, "Note (macOS): system curl uses LibreSSL which may fail handshake on the local dev cert.")
+	fmt.Fprintln(out, "              Use Homebrew curl with --insecure or python3 ssl module for HTTPS testing.")
+	fmt.Fprintln(out, "              See: docs/troubleshooting.md")
 }
 
 // sanitizeOneLine trims a multiline string to its first non-empty line.
