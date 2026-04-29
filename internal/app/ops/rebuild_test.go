@@ -19,11 +19,13 @@ type rebuildFakeBuilder struct {
 	buildErr   error
 	buildCalls int
 	lastTag    string
+	lastOpts   ports.DockerBuildOptions
 }
 
-func (f *rebuildFakeBuilder) Build(_ context.Context, tag string, _ string, _ ports.DockerBuildOptions) error {
+func (f *rebuildFakeBuilder) Build(_ context.Context, tag string, _ string, opts ports.DockerBuildOptions) error {
 	f.buildCalls++
 	f.lastTag = tag
+	f.lastOpts = opts
 	return f.buildErr
 }
 
@@ -59,11 +61,6 @@ func rebuildConfig(t *testing.T) *config.Config {
 	return cfg
 }
 
-// newBuildService returns a BuildService backed by the given fake builder.
-func newBuildService(fb *rebuildFakeBuilder) *ops.BuildService {
-	return ops.NewBuildService(fb)
-}
-
 // TestRebuild_HappyPath verifies the four-line stdout template is emitted in
 // order and that down, remove, build, and up are all called.
 func TestRebuild_HappyPath(t *testing.T) {
@@ -73,10 +70,9 @@ func TestRebuild_HappyPath(t *testing.T) {
 	fb := &rebuildFakeBuilder{}
 
 	svc := ops.NewDevService(fc).WithImageRemover(fr)
-	builder := newBuildService(fb)
 
 	var buf bytes.Buffer
-	err := svc.Rebuild(context.Background(), cfg, ops.DevOptions{}, builder, &buf)
+	err := svc.Rebuild(context.Background(), cfg, ops.DevOptions{}, fb, &buf)
 	if err != nil {
 		t.Fatalf("Rebuild() unexpected error: %v", err)
 	}
@@ -128,6 +124,47 @@ func TestRebuild_HappyPath(t *testing.T) {
 	}
 	if fb.lastTag != wantTag {
 		t.Errorf("Build called with tag %q, want %q", fb.lastTag, wantTag)
+	}
+
+	// Verify up was called (symmetry with TestRebuild_BuildFailure which asserts upCalled == 0).
+	if fc.upCalled == 0 {
+		t.Error("expected compose.Up to be called in happy path")
+	}
+}
+
+// TestRebuild_BuildLabelsPresent is the arch-invariant test pinned by the
+// hexagonal refactor in #1220's reviewer round. It asserts that even when
+// Rebuild calls ports.DockerBuilder.Build directly (bypassing BuildService),
+// the project-root identity labels are still present in the DockerBuildOptions
+// passed to the builder. This guards against the regression where removing
+// BuildService from the call path would silently drop label-stamping.
+func TestRebuild_BuildLabelsPresent(t *testing.T) {
+	cfg := rebuildConfig(t)
+	fc := &fakeCompose{}
+	fr := &fakeRemover{}
+	fb := &rebuildFakeBuilder{}
+
+	svc := ops.NewDevService(fc).WithImageRemover(fr)
+
+	var buf bytes.Buffer
+	if err := svc.Rebuild(context.Background(), cfg, ops.DevOptions{}, fb, &buf); err != nil {
+		t.Fatalf("Rebuild() unexpected error: %v", err)
+	}
+
+	if fb.buildCalls == 0 {
+		t.Fatal("expected Build to be called")
+	}
+
+	// Both identity labels must be present.
+	labels := fb.lastOpts.Labels
+	if labels == nil {
+		t.Fatal("Build called with nil Labels; project-root identity labels must be set")
+	}
+	if _, ok := labels[ops.LabelProjectRootHash]; !ok {
+		t.Errorf("Build options missing label %q", ops.LabelProjectRootHash)
+	}
+	if _, ok := labels[ops.LabelProjectRoot]; !ok {
+		t.Errorf("Build options missing label %q", ops.LabelProjectRoot)
 	}
 }
 
@@ -184,7 +221,6 @@ func TestRebuild_ForeignLabelBypass(t *testing.T) {
 		WithImageChecker(&fakeImageChecker{exists: true}).
 		WithImageInspector(fiAfterBuild). // post-build inspector: correct labels
 		WithImageRemover(fr)
-	builder := newBuildService(fb)
 
 	// Confirm that without --rebuild the plain Run would fail (via the foreign inspector).
 	svcBlocking := ops.NewDevService(fc).
@@ -198,7 +234,7 @@ func TestRebuild_ForeignLabelBypass(t *testing.T) {
 
 	// Now confirm Rebuild succeeds.
 	var buf bytes.Buffer
-	err = svc.Rebuild(context.Background(), cfg, ops.DevOptions{}, builder, &buf)
+	err = svc.Rebuild(context.Background(), cfg, ops.DevOptions{}, fb, &buf)
 	if err != nil {
 		t.Fatalf("Rebuild() unexpected error with foreign-label image: %v", err)
 	}
@@ -239,11 +275,10 @@ func TestRebuild_SubsequentDevPassesIdentityCheck(t *testing.T) {
 		WithImageChecker(&fakeImageChecker{exists: true}).
 		WithImageInspector(fi).
 		WithImageRemover(fr)
-	builder := newBuildService(fb)
 
 	// Phase 1: Rebuild.
 	var buf1 bytes.Buffer
-	if err := svc.Rebuild(context.Background(), cfg, ops.DevOptions{}, builder, &buf1); err != nil {
+	if err := svc.Rebuild(context.Background(), cfg, ops.DevOptions{}, fb, &buf1); err != nil {
 		t.Fatalf("Rebuild() phase 1 error: %v", err)
 	}
 
@@ -262,10 +297,9 @@ func TestRebuild_MissingImage(t *testing.T) {
 	fr := &fakeRemover{} // returns nil — idempotent no-op
 	fb := &rebuildFakeBuilder{}
 	svc := ops.NewDevService(fc).WithImageRemover(fr)
-	builder := newBuildService(fb)
 
 	var buf bytes.Buffer
-	err := svc.Rebuild(context.Background(), cfg, ops.DevOptions{}, builder, &buf)
+	err := svc.Rebuild(context.Background(), cfg, ops.DevOptions{}, fb, &buf)
 	if err != nil {
 		t.Fatalf("Rebuild() unexpected error when image already absent: %v", err)
 	}
@@ -292,10 +326,9 @@ func TestRebuild_BuildFailure(t *testing.T) {
 	fr := &fakeRemover{}
 	fb := &rebuildFakeBuilder{buildErr: errors.New("Dockerfile not found")}
 	svc := ops.NewDevService(fc).WithImageRemover(fr)
-	builder := newBuildService(fb)
 
 	var buf bytes.Buffer
-	err := svc.Rebuild(context.Background(), cfg, ops.DevOptions{}, builder, &buf)
+	err := svc.Rebuild(context.Background(), cfg, ops.DevOptions{}, fb, &buf)
 	if err == nil {
 		t.Fatal("Rebuild() expected error on build failure, got nil")
 	}
@@ -317,10 +350,9 @@ func TestRebuild_WithVolumes(t *testing.T) {
 	fr := &fakeRemover{}
 	fb := &rebuildFakeBuilder{}
 	svc := ops.NewDevService(fc).WithImageRemover(fr)
-	builder := newBuildService(fb)
 
 	var buf bytes.Buffer
-	err := svc.Rebuild(context.Background(), cfg, ops.DevOptions{RebuildVolumes: true}, builder, &buf)
+	err := svc.Rebuild(context.Background(), cfg, ops.DevOptions{RebuildVolumes: true}, fb, &buf)
 	if err != nil {
 		t.Fatalf("Rebuild() unexpected error: %v", err)
 	}
@@ -343,10 +375,9 @@ func TestRebuild_UserSetImage(t *testing.T) {
 	fr := &fakeRemover{}
 	fb := &rebuildFakeBuilder{}
 	svc := ops.NewDevService(fc).WithImageRemover(fr)
-	builder := newBuildService(fb)
 
 	var buf bytes.Buffer
-	err := svc.Rebuild(context.Background(), cfg, ops.DevOptions{}, builder, &buf)
+	err := svc.Rebuild(context.Background(), cfg, ops.DevOptions{}, fb, &buf)
 	if err != nil {
 		t.Fatalf("Rebuild() unexpected error: %v", err)
 	}
@@ -387,10 +418,9 @@ func TestRebuild_AppBuildSet(t *testing.T) {
 	fr := &fakeRemover{}
 	fb := &rebuildFakeBuilder{}
 	svc := ops.NewDevService(fc).WithImageRemover(fr)
-	builder := newBuildService(fb)
 
 	var buf bytes.Buffer
-	err := svc.Rebuild(context.Background(), cfg, ops.DevOptions{}, builder, &buf)
+	err := svc.Rebuild(context.Background(), cfg, ops.DevOptions{}, fb, &buf)
 	if err != nil {
 		t.Fatalf("Rebuild() unexpected error: %v", err)
 	}
@@ -415,10 +445,9 @@ func TestRebuild_DownFailure(t *testing.T) {
 	fr := &fakeRemover{}
 	fb := &rebuildFakeBuilder{}
 	svc := ops.NewDevService(fc).WithImageRemover(fr)
-	builder := newBuildService(fb)
 
 	var buf bytes.Buffer
-	err := svc.Rebuild(context.Background(), cfg, ops.DevOptions{}, builder, &buf)
+	err := svc.Rebuild(context.Background(), cfg, ops.DevOptions{}, fb, &buf)
 	if err == nil {
 		t.Fatal("Rebuild() expected error on Down failure, got nil")
 	}
@@ -444,10 +473,9 @@ func TestRebuild_RemoveNonFatalFailure(t *testing.T) {
 	fr := &fakeRemover{removeErr: errors.New("image is being used by a stopped container")}
 	fb := &rebuildFakeBuilder{}
 	svc := ops.NewDevService(fc).WithImageRemover(fr)
-	builder := newBuildService(fb)
 
 	var buf bytes.Buffer
-	err := svc.Rebuild(context.Background(), cfg, ops.DevOptions{}, builder, &buf)
+	err := svc.Rebuild(context.Background(), cfg, ops.DevOptions{}, fb, &buf)
 	if err != nil {
 		t.Fatalf("Rebuild() should continue past non-fatal Remove error, got: %v", err)
 	}
@@ -471,10 +499,9 @@ func TestRebuild_NoImageRemover(t *testing.T) {
 	fb := &rebuildFakeBuilder{}
 	// No WithImageRemover call.
 	svc := ops.NewDevService(fc)
-	builder := newBuildService(fb)
 
 	var buf bytes.Buffer
-	err := svc.Rebuild(context.Background(), cfg, ops.DevOptions{}, builder, &buf)
+	err := svc.Rebuild(context.Background(), cfg, ops.DevOptions{}, fb, &buf)
 	if err != nil {
 		t.Fatalf("Rebuild() unexpected error without imageRemover: %v", err)
 	}

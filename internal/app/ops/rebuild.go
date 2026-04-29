@@ -27,11 +27,20 @@ import (
 //     always printed to document intent even when the image was already absent.
 //     Any other Remove failure is logged at WARN and execution continues — the
 //     build that follows will recreate the image regardless.
-//  4. Print "Rebuilding image..." and call builder.Run with the resolved tag
-//     (same tag as the rmi target). On build failure the stack is NOT started;
+//  4. Print "Rebuilding image..." and call builder.Build with the resolved tag
+//     (same tag as the rmi target) and the project-root identity labels
+//     computed by BuildLabels. On build failure the stack is NOT started;
 //     the error is returned to the caller.
 //  5. Print "Starting stack..." and call s.Run. The freshly-built image carries
 //     correct project-root labels so #1219's identity check passes naturally.
+//
+// builder is ports.DockerBuilder rather than *BuildService so that the
+// hexagonal boundary is respected: the app layer depends only on the port
+// interface. Label-stamping is done here via BuildLabels (same helper that
+// BuildService.Run uses internally) so that the invariant — every vibew-built
+// image carries identity labels — is preserved on the rebuild path without
+// routing through BuildService. This is the guaranteed label-stamping path
+// guarded by TestRebuild_BuildLabelsPresent.
 //
 // Exact verbose stdout template (pinned by rebuild_test.go):
 //
@@ -47,7 +56,7 @@ func (s *DevService) Rebuild(
 	ctx context.Context,
 	cfg *config.Config,
 	opts DevOptions,
-	builder *BuildService,
+	builder ports.DockerBuilder,
 	out io.Writer,
 ) error {
 	composeFile := filepath.Join(generatedOutputDir, "docker-compose.yml")
@@ -81,9 +90,22 @@ func (s *DevService) Rebuild(
 		}
 	}
 
-	// Step 4 — rebuild the image.
+	// Step 4 — rebuild the image with project-root identity labels.
+	// BuildLabels uses the same ProjectRootHash logic as BuildService.Run so
+	// the stamped labels are byte-identical to a plain "vibew build" run.
 	fmt.Fprintln(out, "Rebuilding image...")
-	if err := builder.Run(ctx, cfg, BuildOptions{ImageTag: tag}, out); err != nil {
+	projectRoot := cfg.ProjectRoot
+	if projectRoot == "" {
+		projectRoot = "."
+	}
+	labels, labelsErr := BuildLabels(projectRoot)
+	if labelsErr != nil {
+		slog.Warn("project-root hash unavailable on rebuild; image will not carry identity labels",
+			"error", labelsErr)
+	}
+	if err := builder.Build(ctx, tag, projectRoot, ports.DockerBuildOptions{
+		Labels: labels,
+	}); err != nil {
 		return fmt.Errorf("rebuilding image: %w", err)
 	}
 

@@ -127,8 +127,9 @@ Examples:
 
 			if rebuild {
 				// --rebuild path: stop → rmi → build → start.
-				builder := opsapp.NewBuildService(opsadapter.NewBuildAdapter())
-				return svc.Rebuild(cmd.Context(), cfg, opts, builder, cmd.OutOrStdout())
+				// Pass the DockerBuilder port directly — Rebuild stamps identity
+				// labels via BuildLabels internally, so BuildService is not needed.
+				return svc.Rebuild(cmd.Context(), cfg, opts, opsadapter.NewBuildAdapter(), cmd.OutOrStdout())
 			}
 
 			return svc.Run(cmd.Context(), cfg, opts, cmd.OutOrStdout())
