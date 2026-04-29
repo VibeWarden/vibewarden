@@ -52,6 +52,7 @@ as #1219 (both in v0.18.3). The recovery command in the error message above is l
   Volumes are preserved by default; pass `--rebuild --volumes` for explicit named-volume
   reset (Postgres data, Let's Encrypt certs, etc.). This is the recovery path for
   the image-identity mismatch block introduced by #1219 in this same release.
+- **`vibew logs [--tail N] [--follow] [--since <duration>] [<service>...]`** — local dev-stack logs wrapper (#1221). All services interleaved by default; positional service args (variadic, e.g. `vibew logs vibewarden app`) scope the output. `--tail` defaults to 100. `--follow` streams. `--since` accepts any duration docker compose supports. Stack-not-running emits `Stack is not running. Start with: vibew dev` (exit 1). Unknown service lists known service names. Docker unavailable maps to exit 3 via the existing `ports.ErrDockerUnavailable` sentinel.
 
 ## [v0.18.2] — 2026-04-28
 
