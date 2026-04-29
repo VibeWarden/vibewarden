@@ -12,6 +12,10 @@ This initial entry was written by hand to summarise the work leading up to v0.1.
 
 ## [Unreleased]
 
+## [v0.18.3] — 2026-04-28
+
+Theme: v0.18.2 retrospective fixes. Six retro-tagged pipelines (#1219–#1224) covering image-identity collision (the "most dangerous failure mode" of the retro), `--rebuild` recovery flag, local logs wrapper, doctor pre-stack noise reduction, bundle freshness false-positive (also fixed a security-relevant symlink-escape bug discovered during review), and macOS LibreSSL advisory. One breaking-for-existing-images change is user-visible: `vibew dev` blocks on stale images from a different project, recoverable via `vibew dev --rebuild`. See "Behavior changes" first.
+
 ### Behavior changes
 
 **`vibew dev` now blocks on stale images from a different project (#1219, ADR-100).**
