@@ -11,22 +11,21 @@ import (
 
 	"github.com/vibewarden/vibewarden/internal/app/ops"
 	"github.com/vibewarden/vibewarden/internal/config"
+	"github.com/vibewarden/vibewarden/internal/ports"
 )
 
 // fakeBuilder is a test double for ports.DockerBuilder.
 type fakeBuilder struct {
-	err              error
-	capturedTag      string
-	capturedDir      string
-	capturedNoCache  bool
-	capturedPlatform string
+	err          error
+	capturedTag  string
+	capturedDir  string
+	capturedOpts ports.DockerBuildOptions
 }
 
-func (f *fakeBuilder) Build(_ context.Context, tag string, contextDir string, noCache bool, platform string) error {
+func (f *fakeBuilder) Build(_ context.Context, tag string, contextDir string, opts ports.DockerBuildOptions) error {
 	f.capturedTag = tag
 	f.capturedDir = contextDir
-	f.capturedNoCache = noCache
-	f.capturedPlatform = platform
+	f.capturedOpts = opts
 	return f.err
 }
 
@@ -116,8 +115,8 @@ func TestBuildService_Run_PassesNoCache(t *testing.T) {
 				t.Fatalf("Run() unexpected error: %v", err)
 			}
 
-			if fb.capturedNoCache != tt.noCache {
-				t.Errorf("noCache = %v, want %v", fb.capturedNoCache, tt.noCache)
+			if fb.capturedOpts.NoCache != tt.noCache {
+				t.Errorf("noCache = %v, want %v", fb.capturedOpts.NoCache, tt.noCache)
 			}
 		})
 	}
@@ -227,8 +226,8 @@ func TestBuildService_Run_PassesPlatformToBuilder(t *testing.T) {
 				t.Fatalf("Run() unexpected error: %v", err)
 			}
 
-			if fb.capturedPlatform != tt.platform {
-				t.Errorf("platform = %q, want %q", fb.capturedPlatform, tt.platform)
+			if fb.capturedOpts.Platform != tt.platform {
+				t.Errorf("platform = %q, want %q", fb.capturedOpts.Platform, tt.platform)
 			}
 		})
 	}
@@ -462,5 +461,102 @@ func TestBuildService_Run_ImageNameMatchesComposeProjectName(t *testing.T) {
 				t.Errorf("tag = %q, want %q", fb.capturedTag, tt.wantTag)
 			}
 		})
+	}
+}
+
+// --- Label stamping tests (ADR-100) ---
+
+func TestBuildService_Run_StampsProjectRootLabels(t *testing.T) {
+	dir := t.TempDir()
+	fb := &fakeBuilder{}
+	svc := ops.NewBuildService(fb)
+
+	cfg := &config.Config{Name: "myapp", ProjectRoot: dir}
+
+	var out bytes.Buffer
+	if err := svc.Run(context.Background(), cfg, ops.BuildOptions{WorkDir: dir}, &out); err != nil {
+		t.Fatalf("Run() unexpected error: %v", err)
+	}
+
+	labels := fb.capturedOpts.Labels
+	if labels == nil {
+		t.Fatal("expected non-nil labels in BuildOptions")
+	}
+
+	hashVal, ok := labels[ops.LabelProjectRootHash]
+	if !ok {
+		t.Errorf("labels missing key %q; got: %v", ops.LabelProjectRootHash, labels)
+	}
+	if !strings.HasPrefix(hashVal, "sha256:") {
+		t.Errorf("hash label %q must start with 'sha256:'", hashVal)
+	}
+
+	if _, ok := labels[ops.LabelProjectRoot]; !ok {
+		t.Errorf("labels missing key %q; got: %v", ops.LabelProjectRoot, labels)
+	}
+}
+
+func TestBuildService_Run_LabelHashMatchesProjectRoot(t *testing.T) {
+	dir := t.TempDir()
+	fb := &fakeBuilder{}
+	svc := ops.NewBuildService(fb)
+
+	cfg := &config.Config{Name: "myapp", ProjectRoot: dir}
+
+	var out bytes.Buffer
+	if err := svc.Run(context.Background(), cfg, ops.BuildOptions{WorkDir: dir}, &out); err != nil {
+		t.Fatalf("Run() unexpected error: %v", err)
+	}
+
+	wantHash, _, err := ops.ProjectRootHash(dir)
+	if err != nil {
+		t.Fatalf("ProjectRootHash() error: %v", err)
+	}
+
+	got := fb.capturedOpts.Labels[ops.LabelProjectRootHash]
+	if got != wantHash {
+		t.Errorf("label hash = %q, want %q", got, wantHash)
+	}
+}
+
+func TestBuildService_Run_NilCfg_StampsLabelsFromWorkDir(t *testing.T) {
+	dir := t.TempDir()
+	fb := &fakeBuilder{}
+	svc := ops.NewBuildService(fb)
+
+	var out bytes.Buffer
+	if err := svc.Run(context.Background(), nil, ops.BuildOptions{WorkDir: dir}, &out); err != nil {
+		t.Fatalf("Run() unexpected error: %v", err)
+	}
+
+	labels := fb.capturedOpts.Labels
+	if labels == nil {
+		t.Fatal("expected non-nil labels when cfg is nil (uses WorkDir as projectRoot)")
+	}
+	if _, ok := labels[ops.LabelProjectRootHash]; !ok {
+		t.Errorf("labels missing key %q when cfg is nil", ops.LabelProjectRootHash)
+	}
+}
+
+func TestBuildService_Run_PreResolvedTag_StillStampsLabels(t *testing.T) {
+	dir := t.TempDir()
+	fb := &fakeBuilder{}
+	svc := ops.NewBuildService(fb)
+
+	cfg := &config.Config{ProjectRoot: dir}
+
+	var out bytes.Buffer
+	if err := svc.Run(context.Background(), cfg, ops.BuildOptions{
+		WorkDir:  dir,
+		ImageTag: "pre-resolved-tag:latest",
+	}, &out); err != nil {
+		t.Fatalf("Run() unexpected error: %v", err)
+	}
+
+	if fb.capturedTag != "pre-resolved-tag:latest" {
+		t.Errorf("tag = %q, want pre-resolved-tag:latest", fb.capturedTag)
+	}
+	if fb.capturedOpts.Labels == nil {
+		t.Fatal("expected labels to be stamped even with pre-resolved tag")
 	}
 }

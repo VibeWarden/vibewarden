@@ -131,3 +131,61 @@ func TestImageInspectAdapter_HappyPath(t *testing.T) {
 		t.Errorf("SizeBytes = %d, want 170_000_000", info.SizeBytes)
 	}
 }
+
+// TestImageInfo_Labels_RoundTrip verifies that the Labels field propagates
+// through the fake inspector, confirming the port struct field is wired.
+func TestImageInfo_Labels_RoundTrip(t *testing.T) {
+	wantLabels := map[string]string{
+		"org.vibewarden.project-root-hash": "sha256:abc123",
+		"org.vibewarden.project-root":      "/Users/foo/myapp",
+	}
+	fake := &fakeImageInspector{
+		info: ports.ImageInfo{Labels: wantLabels},
+	}
+
+	info, err := fake.Inspect(context.Background(), "myapp:latest")
+	if err != nil {
+		t.Fatalf("Inspect() error = %v", err)
+	}
+	if info.Labels == nil {
+		t.Fatal("Labels is nil, want non-nil map")
+	}
+	for k, want := range wantLabels {
+		if got := info.Labels[k]; got != want {
+			t.Errorf("Labels[%q] = %q, want %q", k, got, want)
+		}
+	}
+}
+
+// TestImageInfo_Labels_NilLabels_SafeToIterate verifies that a zero ImageInfo
+// with nil Labels does not panic when iterated. (The adapter always fills the
+// map, but callers should be safe regardless.)
+func TestImageInfo_Labels_NilLabels_SafeToIterate(t *testing.T) {
+	info := ports.ImageInfo{} // Labels is nil (zero value)
+	// Iterating a nil map in Go is safe — range produces zero iterations.
+	count := 0
+	for range info.Labels {
+		count++
+	}
+	if count != 0 {
+		t.Errorf("expected 0 iterations over nil Labels, got %d", count)
+	}
+}
+
+// TestImageInfo_EmptyLabelsMap verifies that an explicitly empty labels map
+// is distinguished from a nil map and is also safely iterable.
+func TestImageInfo_EmptyLabelsMap(t *testing.T) {
+	fake := &fakeImageInspector{
+		info: ports.ImageInfo{Labels: map[string]string{}},
+	}
+	info, err := fake.Inspect(context.Background(), "myapp:latest")
+	if err != nil {
+		t.Fatalf("Inspect() error = %v", err)
+	}
+	if info.Labels == nil {
+		t.Error("Labels should not be nil when explicitly set to empty map")
+	}
+	if len(info.Labels) != 0 {
+		t.Errorf("Labels should be empty, got %v", info.Labels)
+	}
+}

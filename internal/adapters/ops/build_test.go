@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	opsadapter "github.com/vibewarden/vibewarden/internal/adapters/ops"
+	"github.com/vibewarden/vibewarden/internal/ports"
 )
 
 // TestBuildAdapter_CancelledContextReturnsError verifies that Build returns an
@@ -19,7 +20,7 @@ func TestBuildAdapter_CancelledContextReturnsError(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel() // cancel immediately so docker exits fast
 
-	err := adapter.Build(ctx, "test-image:latest", ".", false, "")
+	err := adapter.Build(ctx, "test-image:latest", ".", ports.DockerBuildOptions{})
 	if err == nil {
 		t.Fatal("expected an error because context was cancelled before run")
 	}
@@ -36,7 +37,7 @@ func TestBuildAdapter_CancelledContextNoCacheReturnsError(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	err := adapter.Build(ctx, "test-image:latest", ".", true, "")
+	err := adapter.Build(ctx, "test-image:latest", ".", ports.DockerBuildOptions{NoCache: true})
 	if err == nil {
 		t.Fatal("expected an error because context was cancelled before run")
 	}
@@ -50,65 +51,98 @@ func TestBuildAdapter_ReturnsErrorWhenDockerMissing(t *testing.T) {
 	}
 
 	adapter := opsadapter.NewBuildAdapter()
-	err := adapter.Build(context.Background(), "test-image:latest", ".", false, "")
+	err := adapter.Build(context.Background(), "test-image:latest", ".", ports.DockerBuildOptions{})
 	if err == nil {
 		t.Fatal("expected an error when docker is not available")
 	}
 }
 
 // TestBuildArgsConstruction verifies the expected docker build args shape for
-// various input combinations without actually running docker.
+// various input combinations without actually running docker. Tests use the
+// exported BuildDockerArgsForTest helper which mirrors the adapter's internal
+// buildDockerArgs function.
 func TestBuildArgsConstruction(t *testing.T) {
 	tests := []struct {
 		name       string
 		tag        string
 		contextDir string
-		noCache    bool
-		platform   string
+		opts       ports.DockerBuildOptions
 		wantArgs   []string
 	}{
 		{
 			name:       "basic build",
 			tag:        "myapp:latest",
 			contextDir: ".",
-			noCache:    false,
+			opts:       ports.DockerBuildOptions{},
 			wantArgs:   []string{"build", "-t", "myapp:latest", "."},
 		},
 		{
 			name:       "build with no-cache",
 			tag:        "myapp:latest",
 			contextDir: ".",
-			noCache:    true,
+			opts:       ports.DockerBuildOptions{NoCache: true},
 			wantArgs:   []string{"build", "-t", "myapp:latest", "--no-cache", "."},
 		},
 		{
 			name:       "build with custom context dir",
 			tag:        "webapp:v2",
 			contextDir: "/home/user/project",
-			noCache:    false,
+			opts:       ports.DockerBuildOptions{},
 			wantArgs:   []string{"build", "-t", "webapp:v2", "/home/user/project"},
 		},
 		{
 			name:       "build with platform",
 			tag:        "myapp:latest",
 			contextDir: ".",
-			noCache:    false,
-			platform:   "linux/amd64",
+			opts:       ports.DockerBuildOptions{Platform: "linux/amd64"},
 			wantArgs:   []string{"build", "--platform", "linux/amd64", "-t", "myapp:latest", "."},
 		},
 		{
 			name:       "build with platform and no-cache",
 			tag:        "myapp:latest",
 			contextDir: ".",
-			noCache:    true,
-			platform:   "linux/arm64",
+			opts:       ports.DockerBuildOptions{Platform: "linux/arm64", NoCache: true},
 			wantArgs:   []string{"build", "--platform", "linux/arm64", "-t", "myapp:latest", "--no-cache", "."},
+		},
+		{
+			// Labels are emitted in alphabetical key order — deterministic for testing.
+			name:       "build with labels in alpha order",
+			tag:        "myapp:latest",
+			contextDir: ".",
+			opts: ports.DockerBuildOptions{
+				Labels: map[string]string{
+					"org.vibewarden.project-root":      "/Users/foo/myapp",
+					"org.vibewarden.project-root-hash": "sha256:abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890ab",
+				},
+			},
+			wantArgs: []string{
+				"build", "-t", "myapp:latest",
+				"--label", "org.vibewarden.project-root=/Users/foo/myapp",
+				"--label", "org.vibewarden.project-root-hash=sha256:abcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890ab",
+				".",
+			},
+		},
+		{
+			name:       "build with single label",
+			tag:        "myapp:latest",
+			contextDir: ".",
+			opts: ports.DockerBuildOptions{
+				Labels: map[string]string{"mykey": "myval"},
+			},
+			wantArgs: []string{"build", "-t", "myapp:latest", "--label", "mykey=myval", "."},
+		},
+		{
+			name:       "nil labels — no label flags emitted",
+			tag:        "myapp:latest",
+			contextDir: ".",
+			opts:       ports.DockerBuildOptions{Labels: nil},
+			wantArgs:   []string{"build", "-t", "myapp:latest", "."},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := buildArgs(tt.tag, tt.contextDir, tt.noCache, tt.platform)
+			got := opsadapter.BuildDockerArgsForTest(tt.tag, tt.contextDir, tt.opts)
 			if len(got) != len(tt.wantArgs) {
 				t.Fatalf("len(args) = %d, want %d\ngot:  %v\nwant: %v",
 					len(got), len(tt.wantArgs), got, tt.wantArgs)
@@ -120,19 +154,4 @@ func TestBuildArgsConstruction(t *testing.T) {
 			}
 		})
 	}
-}
-
-// buildArgs mirrors the logic in BuildAdapter.Build to allow table-driven
-// testing of the argument construction without executing docker.
-func buildArgs(tag, contextDir string, noCache bool, platform string) []string {
-	args := []string{"build"}
-	if platform != "" {
-		args = append(args, "--platform", platform)
-	}
-	args = append(args, "-t", tag)
-	if noCache {
-		args = append(args, "--no-cache")
-	}
-	args = append(args, contextDir)
-	return args
 }

@@ -12,6 +12,34 @@ This initial entry was written by hand to summarise the work leading up to v0.1.
 
 ## [Unreleased]
 
+### Behavior changes
+
+**`vibew dev` now blocks on stale images from a different project (#1219, ADR-100).**
+`vibew build` stamps two Docker labels on every produced image:
+`org.vibewarden.project-root-hash` (sha256 of the realpath — used for equality) and
+`org.vibewarden.project-root` (informational literal path — shown in error messages).
+`vibew dev` inspects these labels before compose-up and exits 1 with an actionable
+message when the label is missing or points at a different project root.
+
+This closes the v0.18.2 retro's silent-image-collision bug where a `qr-code-blackhole-app:latest`
+image from a prior unrelated project of the same directory name was silently reused,
+causing the stack to serve foreign content while reporting "healthy".
+
+**Breaking for existing local images.** Every image built by VibeWarden ≤ v0.18.2 is
+unlabelled. The first `vibew dev` after upgrading will block with:
+
+```
+Error: app image <tag> is missing the vibew project-root label.
+  This image was built before VibeWarden v0.19.0 OR by something other than vibew build.
+  Current project: <path>
+
+Rebuild with: vibew dev --rebuild
+```
+
+Recovery: rebuild via `vibew build` (or `vibew dev --rebuild` once #1220 lands).
+Custom user-managed images set via `app.image:` in vibewarden.yaml are skipped
+automatically with an informational stderr line.
+
 ## [v0.18.2] — 2026-04-28
 
 Theme: v0.18.1 retrospective fixes. Eight retro-tagged issues + two smoke catches covering health-endpoint correctness, deploy-pipeline drift, language-agnostic onboarding, and a CI guard against re-introducing removed artifacts. Two breaking changes are user-visible: the `/_vibewarden/health` JSON wire format and `vibew bundle`'s arch-mismatch behavior. See "Breaking changes" first.

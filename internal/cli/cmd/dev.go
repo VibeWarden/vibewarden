@@ -87,6 +87,10 @@ Examples:
 			// helpful message when the app image has not been built yet.
 			svc = svc.WithImageChecker(opsadapter.NewImageCheckerAdapter())
 
+			// Wire the image inspector so that `vibew dev` blocks when the app
+			// image was built from a different project (ADR-100).
+			svc = svc.WithImageInspector(opsadapter.NewImageInspectAdapter())
+
 			// Detect the project language to provide language-specific build
 			// instructions when the image is missing.
 			detectedLang := detectProjectLang(".")

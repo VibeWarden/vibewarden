@@ -6,6 +6,13 @@ import (
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
 
+// BuildDockerArgsForTest exposes the unexported buildDockerArgs helper so that
+// tests in the _test package can assert the exact argument slice produced by
+// the BuildAdapter for various DockerBuildOptions without shelling out to Docker.
+func BuildDockerArgsForTest(tag, contextDir string, opts ports.DockerBuildOptions) []string {
+	return buildDockerArgs(tag, contextDir, opts)
+}
+
 // ParseDownOutputForTest exposes the unexported parseDownOutput helper so that
 // tests in the _test package can exercise the parser directly.
 func ParseDownOutputForTest(stderr string) ports.DownResult {

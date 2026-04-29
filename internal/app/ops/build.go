@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"log/slog"
 	"path/filepath"
 	"strings"
 
@@ -92,7 +93,33 @@ func (s *BuildService) Run(ctx context.Context, cfg *config.Config, opts BuildOp
 		fmt.Fprintln(out, "Flags: --no-cache")
 	}
 
-	if err := s.builder.Build(ctx, tag, workDir, opts.NoCache, opts.Platform); err != nil {
+	// Compute project-root identity labels to stamp on the image. These are
+	// used by "vibew dev" to detect when the image was built from a different
+	// project (ADR-100). On hash failure we log a warning and proceed without
+	// labels — the build still succeeds, but "vibew dev" will block until
+	// the image is rebuilt after #1220 lands.
+	projectRoot := ""
+	if cfg != nil && cfg.ProjectRoot != "" {
+		projectRoot = cfg.ProjectRoot
+	} else {
+		projectRoot = workDir
+	}
+	var buildLabels map[string]string
+	hashLabel, pathLabel, hashErr := ProjectRootHash(projectRoot)
+	if hashErr != nil {
+		slog.Warn("project-root hash unavailable; image will not carry identity labels", "error", hashErr)
+	} else {
+		buildLabels = map[string]string{
+			LabelProjectRootHash: hashLabel,
+			LabelProjectRoot:     pathLabel,
+		}
+	}
+
+	if err := s.builder.Build(ctx, tag, workDir, ports.DockerBuildOptions{
+		NoCache:  opts.NoCache,
+		Platform: opts.Platform,
+		Labels:   buildLabels,
+	}); err != nil {
 		return err
 	}
 

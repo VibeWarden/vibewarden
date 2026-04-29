@@ -140,15 +140,29 @@ type ComposeRunner interface {
 	Logs(ctx context.Context, composeFile string, service string, tailLines int) (string, error)
 }
 
+// DockerBuildOptions holds optional arguments for DockerBuilder.Build. Defined
+// as a struct so future flags can be added without breaking callers, following
+// the ComposeUpOptions precedent.
+type DockerBuildOptions struct {
+	// NoCache passes --no-cache to docker build when true.
+	NoCache bool
+	// Platform specifies the target platform for the Docker build (e.g.
+	// "linux/amd64"). When empty, docker uses the local platform.
+	Platform string
+	// Labels is a map of Docker label keys to values, applied to the built
+	// image via repeated `--label key=value` arguments. Callers must not
+	// assume label ordering is preserved — the adapter sorts by key for
+	// deterministic argument construction.
+	Labels map[string]string
+}
+
 // DockerBuilder runs "docker build" commands.
 // Implementations shell out to the docker CLI.
 type DockerBuilder interface {
-	// Build runs "docker build -t <tag> <contextDir>".
-	// When noCache is true the --no-cache flag is passed to docker build.
-	// When platform is non-empty it is passed as --platform (e.g. "linux/amd64").
+	// Build runs "docker build -t <tag> <contextDir>" with the given options.
 	// Output from the command is streamed to stdout/stderr so the user sees
 	// progress in real time.
-	Build(ctx context.Context, tag string, contextDir string, noCache bool, platform string) error
+	Build(ctx context.Context, tag string, contextDir string, opts DockerBuildOptions) error
 }
 
 // HealthChecker performs HTTP health checks against VibeWarden endpoints.

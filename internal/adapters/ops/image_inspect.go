@@ -30,6 +30,9 @@ type dockerInspectOutput struct {
 	Created      string   `json:"Created"`
 	Size         int64    `json:"Size"`
 	RepoDigests  []string `json:"RepoDigests"`
+	Config       struct {
+		Labels map[string]string `json:"Labels"`
+	} `json:"Config"`
 }
 
 // Inspect runs `docker image inspect --format '{{json .}}' <tag>` and parses
@@ -92,6 +95,11 @@ func (a *ImageInspectAdapter) Inspect(ctx context.Context, tag string) (ports.Im
 		digest = out.ID
 	}
 
+	labels := out.Config.Labels
+	if labels == nil {
+		labels = make(map[string]string)
+	}
+
 	return ports.ImageInfo{
 		Tag:          tag,
 		Digest:       digest,
@@ -99,6 +107,7 @@ func (a *ImageInspectAdapter) Inspect(ctx context.Context, tag string) (ports.Im
 		Architecture: out.Architecture,
 		Created:      created.UTC(),
 		SizeBytes:    out.Size,
+		Labels:       labels,
 	}, nil
 }
 

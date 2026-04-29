@@ -33,6 +33,11 @@ type ImageInfo struct {
 	Created time.Time
 	// SizeBytes is the uncompressed image size in bytes.
 	SizeBytes int64
+	// Labels is the map of OCI/Docker labels stamped on the image. Keys follow
+	// reverse-DNS convention (e.g. "org.vibewarden.project-root-hash"). Always
+	// a non-nil map after a successful Inspect — callers may iterate without a
+	// nil guard. Empty when the image carries no labels.
+	Labels map[string]string
 }
 
 // Platform returns the canonical "<os>/<arch>" platform string used by Docker
