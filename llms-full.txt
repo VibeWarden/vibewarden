@@ -1346,7 +1346,9 @@ VibeWarden is operated via the `vibew` CLI. Below is the complete command list.
 | `vibew add <feature>` | Enable a feature (auth, rate-limiting, tls, metrics, admin) |
 | `vibew generate` | Regenerate docker-compose.yml from config |
 | `vibew build` | Build the Docker image for the app. Since v0.19.0 also stamps `org.vibewarden.project-root-hash` and `org.vibewarden.project-root` Docker labels on the produced image for identity verification by `vibew dev`. |
-| `vibew dev` | Start local dev environment. Since v0.19.0 inspects the app image's project-root-hash label before compose-up and exits 1 with an actionable message when the label is missing or belongs to a different project. Recovery: `vibew build` (or `vibew dev --rebuild` once #1220 ships). Custom images set via `app.image:` are skipped automatically with an INFO line. |
+| `vibew dev` | Start local dev environment. Since v0.19.0 inspects the app image's project-root-hash label before compose-up and exits 1 with an actionable message when the label is missing or belongs to a different project. Recovery: `vibew dev --rebuild`. Custom images set via `app.image:` are skipped automatically with an INFO line. |
+| `vibew dev --rebuild` | Stop the stack, remove the app image, rebuild via `vibew build`, and start the stack. Recovery path for the image-identity mismatch block (#1219). Volumes are preserved by default. |
+| `vibew dev --rebuild --volumes` | Same as `--rebuild` but also removes named volumes (Postgres data, LE certs). Data loss — opt-in only. |
 | `vibew dev --verbose` | Start local dev environment and stream docker compose output during startup |
 | `vibew dev --watch` | Watch vibewarden.yaml for changes and auto-regenerate config files + restart the stack (blocks until Ctrl+C) |
 | `vibew obs up` | Start the Prometheus + Grafana observability stack (profile overlay on the running dev stack) |
@@ -1639,19 +1641,17 @@ Variant 2 — image has no project-root label (built before v0.19.0 or by anothe
   Rebuild with: vibew dev --rebuild
 
 Recovery in both cases:
-  vibew build && vibew dev
-
-`vibew dev --rebuild` (#1220) will automate this when it ships.
+  vibew dev --rebuild
 
 Images set via `app.image:` in vibewarden.yaml (non-canonical tags) are
 skipped automatically — the check only runs on the vibew-derived tag.
 
 TRAP: upgrading from ≤ v0.18.2 to v0.19.0 hits Variant 2 on every project
-the first time — existing images are unlabelled. Run `vibew build` once per
-project after upgrading to clear the block.
+the first time — existing images are unlabelled. Run `vibew dev --rebuild` once
+per project after upgrading to clear the block.
 
 TRAP: if you previously used the same project directory name for two unrelated
-projects (e.g. both named "myapp"), you will hit Variant 1. Run `vibew build`
+projects (e.g. both named "myapp"), you will hit Variant 1. Run `vibew dev --rebuild`
 in the current project to stamp fresh labels.
 
 ### Kratos unreachable

@@ -316,6 +316,8 @@ After subsequent code changes — rebuild the image and restart the stack:
 | First run, no local toolchain needed | `vibew dev` |
 | Code change, want fast feedback | build locally, then `vibew build && vibew dev` |
 | Added a new service or changed `vibewarden.yaml` | `vibew dev` (full recreate) |
+| Upgrading from ≤ v0.18.2 — image blocks on first `vibew dev` | `vibew dev --rebuild` |
+| Image-identity mismatch error (different project same tag) | `vibew dev --rebuild` |
 
 !!! tip "Trust the self-signed certificate"
     On first run, VibeWarden generates a self-signed CA certificate so your browser

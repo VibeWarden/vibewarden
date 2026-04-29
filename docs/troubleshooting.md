@@ -490,10 +490,12 @@ Every project hits Variant 2 on the first `vibew dev` after upgrading to v0.19.0
 **Fix — both variants**
 
 ```bash
-vibew build && vibew dev
+vibew dev --rebuild
 ```
 
-`vibew dev --rebuild` will automate this when [#1220](https://github.com/VibeWarden/vibewarden/issues/1220) ships.
+`--rebuild` stops the stack, removes the app image, rebuilds via `vibew build`, and starts
+the stack. Volumes are preserved. To also reset named volumes (Postgres data, LE certs),
+pass `--rebuild --volumes`.
 
 **Images set via `app.image:` in vibewarden.yaml are skipped automatically** — the
 check only runs on the vibew-derived canonical tag. An INFO line is written to
