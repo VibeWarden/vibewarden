@@ -25,6 +25,17 @@ import "fmt"
 //
 // The wording is pinned by golden tests in dev_format_test.go. Do not change
 // without updating the tests.
+//
+// Release-ordering note: the recovery command "vibew dev --rebuild" is
+// delivered by issue #1220 in the same release cycle (v0.18.3). Both #1219
+// and #1220 MUST merge before tagging v0.18.3 — this is the merge-ordering
+// invariant for this retro batch and is enforced as a release-gate, not in
+// code. If you ever need to ship #1219 ahead of #1220, replace the recovery
+// command in both Variant 1 and Variant 2 with the fallback wording:
+//
+//	vibew down && docker rmi <image> && vibew build && vibew dev
+//
+// and update the corresponding golden tests in dev_format_test.go.
 func formatProjectRootMismatch(tag, currentProjectRoot string, identity ImageIdentity) error {
 	var msg string
 	if identity.IsLabelled() {

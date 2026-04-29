@@ -40,6 +40,12 @@ Recovery: rebuild via `vibew build` (or `vibew dev --rebuild` once #1220 lands).
 Custom user-managed images set via `app.image:` in vibewarden.yaml are skipped
 automatically with an informational stderr line.
 
+**Release gate:** companion issue #1220 (`vibew dev --rebuild`) ships in the same
+release as #1219. Both must merge before tagging v0.18.3. The recovery command
+in the error message above is aspirational until #1220 lands; if you need to
+ship #1219 alone, the fallback is `vibew down && docker rmi <image> && vibew build && vibew dev`
+(see the comment in `internal/app/ops/dev_format.go`).
+
 ## [v0.18.2] — 2026-04-28
 
 Theme: v0.18.1 retrospective fixes. Eight retro-tagged issues + two smoke catches covering health-endpoint correctness, deploy-pipeline drift, language-agnostic onboarding, and a CI guard against re-introducing removed artifacts. Two breaking changes are user-visible: the `/_vibewarden/health` JSON wire format and `vibew bundle`'s arch-mismatch behavior. See "Breaking changes" first.

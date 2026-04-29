@@ -189,3 +189,116 @@ func TestImageInfo_EmptyLabelsMap(t *testing.T) {
 		t.Errorf("Labels should be empty, got %v", info.Labels)
 	}
 }
+
+// TestParseInspectOutput_LabelsPopulated exercises the real JSON→ImageInfo
+// adapter path (parseInspectJSON via ParseInspectOutputForTest) with a JSON
+// blob containing Config.Labels populated with both vibew identity keys.
+// This guards the struct-tag / field-name wiring in dockerInspectOutput so
+// that a rename of Config or its json tags would be caught immediately.
+func TestParseInspectOutput_LabelsPopulated(t *testing.T) {
+	jsonBlob := []byte(`{
+		"Id": "sha256:deadbeef",
+		"Architecture": "amd64",
+		"Os": "linux",
+		"Created": "2026-04-19T14:02:11.123456789Z",
+		"Size": 50000000,
+		"RepoDigests": [],
+		"Config": {
+			"Labels": {
+				"org.vibewarden.project-root-hash": "sha256:abc123def456",
+				"org.vibewarden.project-root": "/Users/foo/myapp"
+			}
+		}
+	}`)
+
+	info, err := opsadapter.ParseInspectOutputForTest(jsonBlob)
+	if err != nil {
+		t.Fatalf("ParseInspectOutputForTest() error = %v", err)
+	}
+
+	if info.Labels == nil {
+		t.Fatal("Labels is nil, want non-nil map")
+	}
+
+	tests := []struct {
+		key  string
+		want string
+	}{
+		{"org.vibewarden.project-root-hash", "sha256:abc123def456"},
+		{"org.vibewarden.project-root", "/Users/foo/myapp"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.key, func(t *testing.T) {
+			got, ok := info.Labels[tt.key]
+			if !ok {
+				t.Errorf("Labels[%q] not present; got keys: %v", tt.key, info.Labels)
+				return
+			}
+			if got != tt.want {
+				t.Errorf("Labels[%q] = %q, want %q", tt.key, got, tt.want)
+			}
+		})
+	}
+
+	// Spot-check non-label fields to confirm full parsing ran.
+	if info.Architecture != "amd64" {
+		t.Errorf("Architecture = %q, want %q", info.Architecture, "amd64")
+	}
+	if info.SizeBytes != 50_000_000 {
+		t.Errorf("SizeBytes = %d, want 50_000_000", info.SizeBytes)
+	}
+}
+
+// TestParseInspectOutput_LabelsAbsent exercises the real JSON→ImageInfo
+// adapter path when Config.Labels is null (image with no labels at all).
+// The adapter must return a non-nil empty map — never nil — so that callers
+// can safely read label keys without a nil-guard.
+func TestParseInspectOutput_LabelsAbsent(t *testing.T) {
+	tests := []struct {
+		name     string
+		jsonBlob []byte
+	}{
+		{
+			name: "Config.Labels null",
+			jsonBlob: []byte(`{
+				"Id": "sha256:aabbcc",
+				"Architecture": "arm64",
+				"Os": "linux",
+				"Created": "2026-01-01T00:00:00Z",
+				"Size": 10000000,
+				"RepoDigests": [],
+				"Config": {
+					"Labels": null
+				}
+			}`),
+		},
+		{
+			name: "Config key absent entirely",
+			jsonBlob: []byte(`{
+				"Id": "sha256:112233",
+				"Architecture": "amd64",
+				"Os": "linux",
+				"Created": "2026-01-01T00:00:00Z",
+				"Size": 10000000,
+				"RepoDigests": []
+			}`),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			info, err := opsadapter.ParseInspectOutputForTest(tt.jsonBlob)
+			if err != nil {
+				t.Fatalf("ParseInspectOutputForTest() error = %v", err)
+			}
+			// Adapter must always return a non-nil map (labels = make(map[string]string)
+			// when nil) so callers never panic on key lookup.
+			if info.Labels == nil {
+				t.Error("Labels is nil, want non-nil empty map")
+			}
+			if len(info.Labels) != 0 {
+				t.Errorf("Labels = %v, want empty map", info.Labels)
+			}
+		})
+	}
+}
