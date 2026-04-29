@@ -866,7 +866,6 @@ func TestDigest_SymlinkOutsideRootSkipped(t *testing.T) {
 	// Compute digest WITHOUT symlink — this is the baseline.
 	svc := bundleapp.NewService(nil, &fakeGenerator{})
 	svc.WriteInputDigest(root)
-	digestBefore := readDigestFile(t, root)
 
 	// Place a file outside root and create a symlink inside root pointing to it.
 	outsideFile := filepath.Join(outside, "secret.txt")
@@ -893,7 +892,66 @@ func TestDigest_SymlinkOutsideRootSkipped(t *testing.T) {
 	if verdict.Mode != bundleapp.FreshnessModeDigest {
 		t.Errorf("Mode = %q, want %q", verdict.Mode, bundleapp.FreshnessModeDigest)
 	}
+}
 
-	// Also verify the digest file itself did not capture the symlink.
-	_ = digestBefore // silence unused warning; we already confirmed via verdict
+// TestDigest_SymlinkPrefixExtensionRejected is the security regression test for
+// the prefix-extension symlink escape: a symlink pointing at a sibling directory
+// whose name extends the project root name (e.g. /proj-secret when root=/proj)
+// must be rejected, not admitted by a bare strings.HasPrefix check.
+//
+// This test FAILS on the pre-fix code and PASSES on the fixed code.
+func TestDigest_SymlinkPrefixExtensionRejected(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping symlink test in short mode")
+	}
+
+	// Use a shared parent so root and outside share a directory prefix.
+	parent := t.TempDir()
+	root := filepath.Join(parent, "proj")
+	outside := filepath.Join(parent, "proj-secret") // name extends root's base — the bug
+
+	if err := os.MkdirAll(root, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(outside, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	// Write a normal source file inside the project root.
+	if err := os.WriteFile(filepath.Join(root, "vibewarden.yaml"), []byte("name: test\n"), 0o600); err != nil {
+		t.Fatalf("write yaml: %v", err)
+	}
+
+	// Compute and store the digest without the symlink (baseline).
+	svc := bundleapp.NewService(nil, &fakeGenerator{})
+	svc.WriteInputDigest(root)
+
+	// Write a secret file in the prefix-extension sibling directory.
+	secret := filepath.Join(outside, "secret.txt")
+	if err := os.WriteFile(secret, []byte("ssh-key\n"), 0o600); err != nil {
+		t.Fatalf("write secret: %v", err)
+	}
+
+	// Symlink from inside root pointing at the secret in the sibling directory.
+	linkPath := filepath.Join(root, "leak")
+	if err := os.Symlink(secret, linkPath); err != nil {
+		t.Fatalf("create symlink: %v", err)
+	}
+
+	// The symlink target path is outside+"/secret.txt" = parent+"/proj-secret/secret.txt".
+	// A bare strings.HasPrefix(resolved, absRoot) where absRoot=parent+"/proj"
+	// incorrectly admits it because "proj-secret" starts with "proj".
+	// The fix requires absRoot+"/" as the separator-terminated prefix.
+	imgCreated := time.Now().Add(-1 * time.Hour)
+	inspector := newTestFreshInspector(imgCreated)
+	walker := bundleapp.NewFileSystemStalenessWalker(root)
+	verdict := runHealthCheck(t, root, inspector, walker)
+
+	// The symlink must be skipped — digest unchanged from baseline, verdict FRESH.
+	if verdict.Stale {
+		t.Errorf("prefix-extension symlink escape: symlink to %q should be skipped, got STALE", outside)
+	}
+	if verdict.Mode != bundleapp.FreshnessModeDigest {
+		t.Errorf("Mode = %q, want %q", verdict.Mode, bundleapp.FreshnessModeDigest)
+	}
 }

@@ -138,16 +138,25 @@ func writeInputDigest(projectRoot string, d InputDigest) {
 
 // computeInputDigest walks projectRoot using the same ignore rules as the
 // FileSystemStalenessWalker and computes a SHA-256 content digest over the
-// sorted set of non-ignored files. The returned InputDigest carries a per-file
-// hash for each walked file (schema v2).
+// sorted set of non-ignored files. The returned InputDigest is schema v2: it
+// carries a per-file SHA-256 hash in the Files array (used for changed-path
+// rendering) and a rolled-up digest for equality comparison.
 //
-// Algorithm (deterministic, platform-independent):
+// Algorithm (v2, deterministic, platform-independent):
+//
+// Step 1 — per-file hashes:
+//
+//	for each file in sort(walked_files):
+//	    fileHash = sha256(file_content)
+//	    append {path, "sha256:" + hex(fileHash)} to Files
+//
+// Step 2 — rolled-up digest:
 //
 //	h := sha256.New()
-//	for each path in sort(walked_files):
+//	for each {path, hash} in Files:
 //	    h.Write(path_bytes); h.Write(0x00)
-//	    h.Write(file_content); h.Write(0x00)
-//	return "sha256:" + hex(h.Sum(nil))
+//	    h.Write(hash_bytes); h.Write(0x00)
+//	Digest = "sha256:" + hex(h.Sum(nil))
 //
 // Path separators are normalised to forward-slash so the digest is stable
 // across operating systems.
@@ -222,7 +231,11 @@ func computeInputDigest(projectRoot string) (InputDigest, error) {
 				return nil
 			}
 			// Skip if resolved target escapes project root.
-			if !strings.HasPrefix(resolved, absRoot) {
+			// Use an exact-directory check: the resolved path must equal absRoot
+			// or be a strict subdirectory (prefixed by absRoot + separator).
+			// A bare HasPrefix check is vulnerable to sibling directories whose
+			// name extends the root name (e.g. /proj-secret when root=/proj).
+			if resolved != absRoot && !strings.HasPrefix(resolved, absRoot+string(os.PathSeparator)) {
 				slog.Debug("input-digest: symlink escapes project root, skipping",
 					"path", path, "resolved", resolved)
 				return nil
