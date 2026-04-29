@@ -12,6 +12,32 @@ import (
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
 
+// stderrCapCap is the maximum number of bytes captured from docker's stderr for
+// daemon-unavailable detection. The relevant message is always in the first few
+// hundred bytes; capping at 64 KiB prevents unbounded growth during long
+// --follow sessions.
+const stderrCapCap = 64 * 1024
+
+// limitedWriter is an io.Writer that discards bytes once the underlying buffer
+// reaches cap. It always reports the full len(p) as written so that
+// io.MultiWriter does not short-circuit the other writers in the chain.
+type limitedWriter struct {
+	buf *bytes.Buffer
+	cap int
+}
+
+func (w *limitedWriter) Write(p []byte) (int, error) {
+	n := len(p)
+	remaining := w.cap - w.buf.Len()
+	if remaining > 0 {
+		if len(p) > remaining {
+			p = p[:remaining]
+		}
+		w.buf.Write(p) //nolint:errcheck // bytes.Buffer.Write never returns an error
+	}
+	return n, nil
+}
+
 // daemonUnavailableSignatures are substrings that appear in docker's stderr
 // when the daemon is not running or docker is not installed.
 var daemonUnavailableSignatures = []string{
@@ -65,14 +91,17 @@ func (a *ComposeLogsStreamAdapter) Stream(ctx context.Context, opts ports.Compos
 	cmd := a.runner(ctx, "docker", args...)
 	cmd.Stdout = opts.Stdout
 
-	// Tee stderr: forward live to opts.Stderr AND capture into a small buffer
-	// for daemon-unavailable detection. The daemon-unavailable message is
-	// always in the first few hundred bytes; we do not need a large buffer.
+	// Tee stderr: forward live to opts.Stderr AND capture into a capped buffer
+	// for daemon-unavailable detection. The cap prevents unbounded growth
+	// during long --follow sessions (container lifecycle messages accumulate).
+	// The daemon-unavailable message is always in the first few hundred bytes
+	// so stderrCapCap (64 KiB) is more than sufficient for detection.
 	var stderrBuf bytes.Buffer
+	capturer := &limitedWriter{buf: &stderrBuf, cap: stderrCapCap}
 	if opts.Stderr != nil {
-		cmd.Stderr = io.MultiWriter(opts.Stderr, &stderrBuf)
+		cmd.Stderr = io.MultiWriter(opts.Stderr, capturer)
 	} else {
-		cmd.Stderr = &stderrBuf
+		cmd.Stderr = capturer
 	}
 
 	if err := cmd.Run(); err != nil {

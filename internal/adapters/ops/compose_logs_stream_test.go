@@ -134,33 +134,13 @@ func TestBuildLogsArgs(t *testing.T) {
 // translates a "Cannot connect to the Docker daemon" stderr signature into
 // ports.ErrDockerUnavailable.
 func TestComposeLogsStreamAdapter_DockerUnavailable(t *testing.T) {
-	errMsg := "error during connect: Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?"
-
-	adapter := ops.NewComposeLogsStreamAdapterWithRunner(func(ctx context.Context, name string, args ...string) *exec.Cmd {
-		// Return a command that will fail with the given stderr message.
-		// We use the standard test helper pattern.
-		cmd := exec.CommandContext(ctx, "false") //nolint:gosec
-		// Override stderr by wrapping via a pipe — but we need stderr to show
-		// specific content. Instead, use the exported testable runner approach.
-		_ = errMsg
-		// The simplest portable approach: create a cmd that exits 1
-		// and we manually set up the stderr buf via a fake.
-		return cmd
-	})
-
-	// Since injecting stderr content via exec is complex without testmain
-	// helpers, we test the daemon-unavailable path using a more direct
-	// approach: a custom runner that simulates docker returning error text.
-	_ = adapter
-
-	// Use the exported testable constructor instead.
 	var capturedStderr bytes.Buffer
-	adapter2 := ops.NewComposeLogsStreamAdapterWithRunner(func(ctx context.Context, name string, args ...string) *exec.Cmd {
+	adapter := ops.NewComposeLogsStreamAdapterWithRunner(func(ctx context.Context, name string, args ...string) *exec.Cmd {
 		cmd := exec.CommandContext(ctx, "sh", "-c", "echo 'Cannot connect to the Docker daemon' >&2; exit 1") //nolint:gosec
 		return cmd
 	})
 
-	err := adapter2.Stream(context.Background(), ports.ComposeLogsStreamOptions{
+	err := adapter.Stream(context.Background(), ports.ComposeLogsStreamOptions{
 		ProjectName: "test",
 		ComposeFile: "/tmp/compose.yml",
 		Stdout:      &bytes.Buffer{},
