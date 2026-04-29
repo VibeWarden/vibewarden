@@ -187,8 +187,10 @@ func (s *DoctorService) runChecks(ctx context.Context, cfg *config.Config, opts 
 	results = append(results, withSection(s.checkPort(ctx, "Proxy port", proxyHost, proxyPort), sectionConfigDocker))
 
 	generatedCompose := filepath.Join(workDir, ".vibewarden", "generated", "docker-compose.yml")
-	results = append(results, withSection(checkGeneratedFiles(generatedCompose), sectionConfigDocker))
-	results = append(results, withSection(s.checkContainerHealth(ctx, generatedCompose), sectionConfigDocker))
+	stackUp := isStackRunning(ctx, s.compose, generatedCompose)
+	if stackUp {
+		results = append(results, withSection(checkGeneratedFiles(generatedCompose), sectionConfigDocker))
+	}
 	results = append(results, withSection(checkACMEEmail(cfg), sectionConfigDocker))
 	if s.imageChecker != nil && cfg.App.Image != "" {
 		results = append(results, withSection(s.checkImageTagConsistency(ctx, cfg.App.Image), sectionConfigDocker))
@@ -210,7 +212,12 @@ func (s *DoctorService) runChecks(ctx context.Context, cfg *config.Config, opts 
 	}
 
 	// --- Layer 2: Local Runtime ---
-	results = append(results, withSection(s.checkTLSCertValid(ctx, cfg, proxyHost, proxyPort), sectionLocalRuntime))
+	// TLS cert check only makes sense when the stack is running — without a
+	// live sidecar process the handshake always fails, producing misleading
+	// pre-stack WARNs. Skip entirely when no compose containers are detected.
+	if stackUp {
+		results = append(results, withSection(s.checkTLSCertValid(ctx, cfg, proxyHost, proxyPort), sectionLocalRuntime))
+	}
 
 	// --- Dockerfile contract checks ---
 	// Omitted entirely when no Dockerfile is present in the project root.
@@ -342,47 +349,19 @@ func checkGeneratedFiles(composePath string) CheckResult {
 	}
 }
 
-// checkContainerHealth runs "docker compose ps" and reports the health of each
-// container.  When no containers are running it is treated as a warning.
-func (s *DoctorService) checkContainerHealth(ctx context.Context, composePath string) CheckResult {
-	checkCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+// isStackRunning reports whether the dev compose stack has any containers.
+// It mirrors the detection in LogsStreamService — uses ComposeRunner.PS.
+// Errors are treated as "not running" (defensive — doctor should not
+// explode on a broken Docker daemon; the daemon-down condition is
+// already caught by the dedicated Docker daemon check earlier in doctor).
+func isStackRunning(ctx context.Context, runner ports.ComposeRunner, composeFile string) bool {
+	psCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-
-	containers, err := s.compose.PS(checkCtx, composePath)
+	containers, err := runner.PS(psCtx, composeFile)
 	if err != nil {
-		// PS failing is not catastrophic — the stack may not have been started.
-		return CheckResult{
-			Name:     "Container health",
-			Severity: SeverityWarn,
-			Detail:   "could not query containers — stack may not be running",
-		}
+		return false
 	}
-	if len(containers) == 0 {
-		return CheckResult{
-			Name:     "Container health",
-			Severity: SeverityWarn,
-			Detail:   "no containers found — run 'vibew dev' to start the stack",
-		}
-	}
-
-	var unhealthy []string
-	for _, c := range containers {
-		if c.State != "running" || (c.Health != "" && c.Health != "healthy") {
-			unhealthy = append(unhealthy, fmt.Sprintf("%s (%s/%s)", c.Service, c.State, c.Health))
-		}
-	}
-	if len(unhealthy) > 0 {
-		return CheckResult{
-			Name:     "Container health",
-			Severity: SeverityFail,
-			Detail:   fmt.Sprintf("unhealthy containers: %v", unhealthy),
-		}
-	}
-	return CheckResult{
-		Name:     "Container health",
-		Severity: SeverityOK,
-		Detail:   fmt.Sprintf("%d container(s) running", len(containers)),
-	}
+	return len(containers) > 0
 }
 
 // checkTLSCertValid renders the "TLS certificate" doctor check by

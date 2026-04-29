@@ -1554,32 +1554,33 @@ vibew doctor exit codes:
   1 — at least one check failed (FAIL)
 
 vibew doctor checks (in order):
+  Static checks (always run):
   1. Config file — vibewarden.yaml exists and parses
   2. Docker daemon — docker info succeeds
   3. Docker Compose — docker compose version returns v2+
   4. Proxy port — server.port not already bound
-  5. Generated files — .vibewarden/generated/docker-compose.yml present
-  6. Container health — all containers running/healthy
-  7. ACME email — tls.email set when using ZeroSSL
-  8. Image tag — app.image exists locally (skipped when unset)
-  9. LE rate-limit: <domain> — queries crt.sh CT log; counts LE certs issued in
+  5. ACME email — tls.email set when using ZeroSSL
+  6. Image tag — app.image exists locally (skipped when unset)
+  7. LE rate-limit: <domain> — queries crt.sh CT log; counts LE certs issued in
      last 168h for the registered domain; WARN at 4/5, FAIL at 5/5. Only runs
      when tls.provider=letsencrypt and no tls.acme_ca override is set. Degrades
      to WARN (not FAIL) when crt.sh is unreachable.
      Opt-out: --skip-le-preflight flag or tls.skip_rate_limit_check: true.
-  10. TLS certificate — live TLS handshake; reports expiry state
-  11-16. Dockerfile contract checks (only when a Dockerfile is present):
-     11. Dockerfile: alpine base — final-stage FROM must be alpine-based (FAIL if not)
-     12. Dockerfile: EXPOSE port — EXPOSE must match upstream.port (FAIL on mismatch)
-     13. Dockerfile: HEALTHCHECK — no HEALTHCHECK directive allowed (FAIL if present)
-     14. Dockerfile: non-root USER — final stage must set non-root USER (WARN, non-blocking)
-     15. Dockerfile: multi-stage build — compiled languages (Go) need multi-stage (FAIL if not)
-     16. Dockerfile: <lang> toolchain version — builder FROM tag major.minor must match
+  Stack-state-gated (skipped silently when vibew dev is not running):
+  8. Generated files — .vibewarden/generated/docker-compose.yml present
+  9. TLS certificate — live TLS handshake; reports expiry state
+  10-15. Dockerfile contract checks (only when a Dockerfile is present):
+     10. Dockerfile: alpine base — final-stage FROM must be alpine-based (FAIL if not)
+     11. Dockerfile: EXPOSE port — EXPOSE must match upstream.port (FAIL on mismatch)
+     12. Dockerfile: HEALTHCHECK — no HEALTHCHECK directive allowed (FAIL if present)
+     13. Dockerfile: non-root USER — final stage must set non-root USER (WARN, non-blocking)
+     14. Dockerfile: multi-stage build — compiled languages (Go) need multi-stage (FAIL if not)
+     15. Dockerfile: <lang> toolchain version — builder FROM tag major.minor must match
          the project manifest go.mod/nvmrc/pyproject.toml (FAIL on mismatch; OFF when
          tag is "latest" or unrecognised, or when no manifest is found)
      All 6 checks are omitted when no Dockerfile is present in the project root.
-  Runtime upstream health is NOT checked by doctor — query /_vibewarden/health
-  after vibew dev is up for live upstream status.
+  Runtime container health is NOT checked by doctor — query /_vibewarden/health
+  after vibew dev is up for live runtime status.
 
 vibew doctor flags:
   --skip-le-preflight  skip the LE rate-limit CT log check for this run
