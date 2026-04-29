@@ -93,7 +93,10 @@ vibew add tls --domain app.yourcompany.com  # use a real domain you control; Let
 vibew doctor             # diagnose common issues
 vibew doctor --json      # machine-readable output for AI agents
 vibew status             # check sidecar health
-vibew logs               # pretty-print structured logs
+vibew logs               # stream local dev-stack logs (all services)
+vibew logs vibewarden    # sidecar logs only
+vibew logs --follow      # stream continuously
+vibew logs --since 5m    # last 5 minutes
 ```
 
 `vibew doctor` checks (in order): config validity, Docker daemon, Docker Compose,

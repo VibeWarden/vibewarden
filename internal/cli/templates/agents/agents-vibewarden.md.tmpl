@@ -92,9 +92,8 @@ app port directly — it has no security.
 | `vibew build` | Build Docker image |
 | `vibew build --platform linux/amd64` | Build for a specific architecture |
 | `vibew bundle` | Produce a self-contained Docker Compose bundle under `.vibewarden/bundle/`; ship with `scp` + `docker compose up -d` |
-| `vibew status` | Show component health |
-Output uses OK / OFF / FAIL labels; OFF means the component is disabled in config and was not probed.
-| `vibew logs` | Tail logs |
+| `vibew status` | Show component health (OK / OFF / FAIL labels; OFF means disabled in config and not probed) |
+| `vibew logs [<service>...]` | Stream local dev-stack logs (`--tail N`, `-f`/`--follow`, `--since <duration>`); scope with service name args (`vibewarden`, `app`, `kratos`, `postgres`, `mailslurper`) |
 | `vibew doctor` | Diagnose issues |
 | `vibew token` | Generate dev JWT |
 | `vibew secret get/set/list` | Manage secrets |

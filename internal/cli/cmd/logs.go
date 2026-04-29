@@ -1,77 +1,111 @@
 package cmd
 
 import (
+	"errors"
+	"fmt"
 	"os"
 
 	"github.com/spf13/cobra"
 
-	"github.com/vibewarden/vibewarden/internal/adapters/logprint"
+	opsadapter "github.com/vibewarden/vibewarden/internal/adapters/ops"
 	opsapp "github.com/vibewarden/vibewarden/internal/app/ops"
+	"github.com/vibewarden/vibewarden/internal/ports"
 )
 
 // NewLogsCmd creates the "vibew logs" subcommand.
 //
-// Without flags the command tails recent docker compose logs for the vibewarden
-// service and pretty-prints each structured JSON line with colors. Non-JSON
-// lines (e.g. docker compose banners) are forwarded verbatim.
+// The command streams docker compose logs for the local dev stack. Stdout and
+// stderr are inherited from the parent process so --follow streams without
+// buffering. Services can be scoped by passing service names as positional
+// arguments.
 func NewLogsCmd() *cobra.Command {
 	var (
-		follow  bool
-		filter  string
-		rawJSON bool
-		verbose bool
-		stdin   bool
+		tail   int
+		follow bool
+		since  string
 	)
 
 	cmd := &cobra.Command{
-		Use:   "logs",
-		Short: "Pretty-print VibeWarden structured logs",
-		Long: `Stream and pretty-print VibeWarden's structured JSON logs.
+		Use:   "logs [<service>...]",
+		Short: "Stream local dev-stack logs",
+		Long: `Stream docker compose logs for the local VibeWarden dev stack.
 
-By default the command runs "docker compose logs vibewarden" and formats
-each line with colors and a human-friendly layout:
+All services are interleaved by default. Pass one or more service names to
+scope the output to those services only.
 
-  2026-03-26 10:30:45  INFO   [auth.session_validated]  User authenticated
-  2026-03-26 10:30:46  WARN   [rate_limit.exceeded]     Rate limit hit
-  2026-03-26 10:30:47  ERROR  [proxy.upstream_error]    Upstream returned 502
+Flags:
+  --tail N         show the last N lines per container (default 100)
+  -f, --follow     stream output continuously until Ctrl-C
+  --since <value>  show logs since a duration or RFC3339 timestamp
+                   (passed verbatim to docker compose, e.g. "5m", "1h")
 
-Non-JSON lines (docker compose banners, etc.) are printed verbatim.
+Services in the default stack:
+  vibewarden   VibeWarden sidecar (proxy, auth, TLS)
+  app          your application container
+  kratos       Ory Kratos identity server
+  postgres     PostgreSQL database
+  mailslurper  local email sink
 
-Pipe mode:
-  docker compose logs vibewarden | vibewarden logs --stdin
+If the stack has not been started yet, run: vibew dev
 
-Examples:
-  vibewarden logs
-  vibewarden logs --follow
-  vibewarden logs --filter auth
-  vibewarden logs --json
-  vibewarden logs --verbose
-  docker compose logs vibewarden | vibewarden logs --stdin`,
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			printerOpts := logprint.PrinterOptions{
-				Verbose: verbose,
-				Filter:  filter,
-				RawJSON: rawJSON,
+Tips:
+  vibew logs vibewarden       # sidecar logs only
+  vibew logs app              # app logs only
+  vibew logs --follow         # stream all services
+  vibew logs --since 5m       # last 5 minutes`,
+		Args: cobra.ArbitraryArgs,
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := requireScaffolding(); err != nil {
+				return err
 			}
-			printer := logprint.NewPrinter(printerOpts)
-			svc := opsapp.NewLogsService(printer)
-
-			logsOpts := opsapp.LogsOptions{
-				Follow: follow,
-			}
-			if stdin {
-				logsOpts.Stdin = os.Stdin
+			if err := requireConfig(""); err != nil {
+				return err
 			}
 
-			return svc.Run(cmd.Context(), logsOpts, cmd.OutOrStdout())
+			cfg, err := loadAndResolve(cmd.Context(), "")
+			if err != nil {
+				return err
+			}
+
+			compose := opsadapter.NewComposeAdapter()
+			streamer := opsadapter.NewComposeLogsStreamAdapter()
+			svc := opsapp.NewLogsStreamService(compose, streamer)
+
+			runErr := svc.Run(cmd.Context(), cfg, opsapp.LogsStreamOptions{
+				Services: args,
+				Tail:     tail,
+				Follow:   follow,
+				Since:    since,
+			}, cmd.OutOrStdout(), cmd.ErrOrStderr())
+
+			if runErr == nil {
+				return nil
+			}
+
+			// Map sentinel errors to canonical messages and exit codes.
+			if errors.Is(runErr, opsapp.ErrStackNotRunning) {
+				fmt.Fprintln(cmd.ErrOrStderr(), "Stack is not running. Start with: vibew dev")
+				os.Exit(1) //nolint:gocritic // intentional: semantic exit code 1
+			}
+
+			var unknownSvc *opsapp.ErrUnknownService
+			if errors.As(runErr, &unknownSvc) {
+				fmt.Fprintln(cmd.ErrOrStderr(), runErr.Error())
+				os.Exit(1) //nolint:gocritic // intentional: semantic exit code 1
+			}
+
+			if errors.Is(runErr, ports.ErrDockerUnavailable) {
+				fmt.Fprintln(cmd.ErrOrStderr(), "ERROR:", runErr)
+				os.Exit(3) //nolint:gocritic // intentional: semantic exit code 3
+			}
+
+			return runErr
 		},
 	}
 
-	cmd.Flags().BoolVarP(&follow, "follow", "f", false, "Follow log output (tail -f)")
-	cmd.Flags().StringVar(&filter, "filter", "", "Filter by event type prefix (e.g. auth, proxy, rate_limit)")
-	cmd.Flags().BoolVar(&rawJSON, "json", false, "Output raw JSON without pretty-printing")
-	cmd.Flags().BoolVarP(&verbose, "verbose", "v", false, "Include the event payload in the output")
-	cmd.Flags().BoolVar(&stdin, "stdin", false, "Read log lines from stdin instead of docker compose")
+	cmd.Flags().IntVar(&tail, "tail", 100, "number of lines to show from the end of the log for each container")
+	cmd.Flags().BoolVarP(&follow, "follow", "f", false, "stream log output continuously")
+	cmd.Flags().StringVar(&since, "since", "", "show logs since a duration (e.g. 5m) or RFC3339 timestamp")
 
 	return cmd
 }
