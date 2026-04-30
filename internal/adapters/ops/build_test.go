@@ -2,6 +2,10 @@ package ops_test
 
 import (
 	"context"
+	"errors"
+	"fmt"
+	"os"
+	"path/filepath"
 	"testing"
 
 	opsadapter "github.com/vibewarden/vibewarden/internal/adapters/ops"
@@ -153,5 +157,70 @@ func TestBuildArgsConstruction(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// writeFakeDockerScript writes a shell script named "docker" into dir that
+// prints msg to stderr and exits with the given code.
+func writeFakeDockerScript(t *testing.T, dir, msg string, exitCode int) {
+	t.Helper()
+	script := fmt.Sprintf("#!/bin/sh\necho '%s' >&2\nexit %d\n", msg, exitCode)
+	path := filepath.Join(dir, "docker")
+	if err := os.WriteFile(path, []byte(script), 0o755); err != nil {
+		t.Fatalf("writing fake docker script: %v", err)
+	}
+}
+
+// TestBuildAdapter_Build_DaemonNotRunning verifies that Build returns a
+// *ports.DockerUnavailableError with ErrDockerDaemonNotRunning when the docker
+// binary emits the canonical "Cannot connect to the Docker daemon" message.
+// The test injects a fake docker binary via a modified PATH.
+func TestBuildAdapter_Build_DaemonNotRunning(t *testing.T) {
+	dir := t.TempDir()
+	writeFakeDockerScript(t, dir, "Cannot connect to the Docker daemon at unix:///var/run/docker.sock. Is the docker daemon running?", 1)
+	t.Setenv("PATH", dir)
+
+	adapter := opsadapter.NewBuildAdapter()
+	err := adapter.Build(context.Background(), "test-image:latest", ".", ports.DockerBuildOptions{})
+
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !errors.Is(err, ports.ErrDockerDaemonNotRunning) {
+		t.Errorf("errors.Is(err, ErrDockerDaemonNotRunning) = false; got %v", err)
+	}
+	if !errors.Is(err, ports.ErrDockerUnavailable) {
+		t.Errorf("errors.Is(err, ErrDockerUnavailable) = false; got %v", err)
+	}
+	var de *ports.DockerUnavailableError
+	if !errors.As(err, &de) {
+		t.Error("errors.As(*DockerUnavailableError) = false")
+	}
+}
+
+// TestBuildAdapter_Build_PermissionDenied verifies that Build returns a
+// *ports.DockerUnavailableError with ErrDockerSocketPermission when the docker
+// binary emits the canonical "permission denied while trying to connect to the
+// Docker API" message. The test injects a fake docker binary via a modified PATH.
+func TestBuildAdapter_Build_PermissionDenied(t *testing.T) {
+	dir := t.TempDir()
+	writeFakeDockerScript(t, dir, "permission denied while trying to connect to the Docker API socket at unix:///var/run/docker.sock", 1)
+	t.Setenv("PATH", dir)
+
+	adapter := opsadapter.NewBuildAdapter()
+	err := adapter.Build(context.Background(), "test-image:latest", ".", ports.DockerBuildOptions{})
+
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !errors.Is(err, ports.ErrDockerSocketPermission) {
+		t.Errorf("errors.Is(err, ErrDockerSocketPermission) = false; got %v", err)
+	}
+	if !errors.Is(err, ports.ErrDockerUnavailable) {
+		t.Errorf("errors.Is(err, ErrDockerUnavailable) = false; got %v", err)
+	}
+	var de *ports.DockerUnavailableError
+	if !errors.As(err, &de) {
+		t.Error("errors.As(*DockerUnavailableError) = false")
 	}
 }

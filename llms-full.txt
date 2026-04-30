@@ -1361,7 +1361,7 @@ VibeWarden is operated via the `vibew` CLI. Below is the complete command list.
 | `vibew add <feature>` | Enable a feature (auth, rate-limiting, tls, metrics, admin) |
 | `vibew generate` | Regenerate docker-compose.yml from config |
 | `vibew build` | Build the Docker image for the app. Since v0.18.3 also stamps `org.vibewarden.project-root-hash` and `org.vibewarden.project-root` Docker labels on the produced image for identity verification by `vibew dev`. |
-| `vibew dev` | Start local dev environment. Since v0.18.3 inspects the app image's project-root-hash label before compose-up and exits 1 with an actionable message when the label is missing or belongs to a different project. Recovery: `vibew dev --rebuild`. Custom images set via `app.image:` are skipped automatically with an INFO line. |
+| `vibew dev` | Start local dev environment. Since v0.18.3 inspects the app image's project-root-hash label before compose-up and exits 1 with an actionable message when the label is missing or belongs to a different project. Recovery: `vibew dev --rebuild`. Custom images set via `app.image:` are skipped automatically with an INFO line. Docker unavailable (socket permission denied or daemon not running) exits 3 with an operator-friendly hint block. |
 | `vibew dev --rebuild` | Stop the stack, remove the app image, rebuild via `vibew build`, and start the stack. Recovery path for the image-identity mismatch block (#1219). Volumes are preserved by default. |
 | `vibew dev --rebuild --volumes` | Same as `--rebuild` but also removes named volumes (Postgres data, LE certs). Data loss — opt-in only. |
 | `vibew dev --verbose` | Start local dev environment and stream docker compose output during startup |
@@ -1369,7 +1369,7 @@ VibeWarden is operated via the `vibew` CLI. Below is the complete command list.
 | `vibew obs up` | Start the Prometheus + Grafana observability stack (profile overlay on the running dev stack) |
 | `vibew obs down` | Stop the observability stack (`-v` removes volumes; `--yes` skips confirmation) |
 | `vibew down` | Stop the local dev stack (preserves data volumes; pass `-v` to also remove volumes; pass `--yes` to skip confirmation prompt in CI/scripts) |
-| `vibew bundle` | Produce a self-contained Docker Compose deploy bundle under `.vibewarden/bundle/`. The bundle's `README.md` describes the deploy contract; operators copy the directory to a host and run `docker compose up -d`. |
+| `vibew bundle` | Produce a self-contained Docker Compose deploy bundle under `.vibewarden/bundle/`. The bundle's `README.md` describes the deploy contract; operators copy the directory to a host and run `docker compose up -d`. Docker unavailable (socket permission denied or daemon not running) exits 3 with an operator-friendly hint block. |
 | `vibew status` | Show health of all components. Rows use three text labels: OK (healthy), OFF (disabled in config — probe suppressed), FAIL (enabled but check failed). A legend line is printed below the header. TLS: KindSelfSignedLocal and KindExpiringSoon → OK with annotation; only KindFailing → FAIL. Note: `vibew status` gives a richer dev-stack overview; `vibew probe` is for one-shot HTTPS verification of the health endpoint — use probe when system curl cannot handshake the dev cert. |
 | `vibew probe` | One-shot HTTPS GET against `/_vibewarden/health` using Go's stdlib TLS stack (bypasses macOS LibreSSL friction by construction). Default: reads `server.port` from `vibewarden.yaml`, probes `https://localhost:<port>/_vibewarden/health` with `InsecureSkipVerify=true`. With `--env <name>`: loads `vibewarden.<name>.yaml`, reads `tls.domain`, probes `https://<domain>/_vibewarden/health` with full TLS verification. Boot-gap retry: when `components.upstream` is `"unknown"` (first probe cycle not yet complete), retries every 1s for up to 10s. Exit 0 when `upstream=ok`; exit 1 otherwise. Use after `vibew dev` as the canonical health check on macOS instead of `curl`. |
 | `vibew probe --env <name>` | Probe a named environment overlay. Loads `vibewarden.<name>.yaml` (must exist), reads merged `tls.domain`, probes the production endpoint with full cert verification. Exit 1 when the override file is missing or `tls.domain` is empty. TLS retry: when the probe returns a TLS handshake error (e.g. immediately after `docker compose up -d` while ACME issuance is in progress), retries every 2s for up to 30s with progress on stderr. After 30s exits 1 with actionable message: `docker compose logs vibewarden | grep -i acme`. Default mode (no `--env`) treats TLS errors as immediate failures. |
@@ -1677,10 +1677,35 @@ vibew doctor flags:
       host: host.docker.internal
       port: 3000
 
-### Docker not running
+### Docker not running (vibew doctor output)
 
   macOS: open -a Docker
   Linux: sudo systemctl start docker && sudo systemctl enable docker
+
+### Docker socket permission denied or daemon not running (vibew dev / bundle / logs)
+
+  vibew dev, vibew bundle, and vibew logs exit with code 3 when Docker is
+  unavailable, printing an operator-friendly block:
+
+    Error: Docker is unavailable.
+
+      Ensure Docker Desktop is running and your user has access to
+      the socket.
+
+      On macOS:  open Docker Desktop
+      On Linux:  sudo usermod -aG docker $USER && newgrp docker
+
+    Underlying error:
+      <raw docker stderr>
+
+  Fix — macOS (daemon not running): open -a Docker
+  Fix — Linux (socket permission denied):
+    sudo usermod -aG docker $USER && newgrp docker
+  Fix — Linux (daemon not running):
+    sudo systemctl start docker
+
+  Exit code 3 means Docker unavailable. Exit code 1 means other error.
+  vibew probe does not shell docker and never exits 3.
 
 ### Config file not found or invalid
 

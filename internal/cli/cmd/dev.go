@@ -15,6 +15,7 @@ import (
 	opsapp "github.com/vibewarden/vibewarden/internal/app/ops"
 	configtemplates "github.com/vibewarden/vibewarden/internal/config/templates"
 	"github.com/vibewarden/vibewarden/internal/domain/scaffold"
+	"github.com/vibewarden/vibewarden/internal/ports"
 )
 
 // NewDevCmd creates the "vibew dev" subcommand.
@@ -125,14 +126,21 @@ Examples:
 				RebuildVolumes: rebuildVolumes,
 			}
 
+			var runErr error
 			if rebuild {
 				// --rebuild path: stop → rmi → build → start.
 				// Pass the DockerBuilder port directly — Rebuild stamps identity
 				// labels via BuildLabels internally, so BuildService is not needed.
-				return svc.Rebuild(cmd.Context(), cfg, opts, opsadapter.NewBuildAdapter(), cmd.OutOrStdout())
+				runErr = svc.Rebuild(cmd.Context(), cfg, opts, opsadapter.NewBuildAdapter(), cmd.OutOrStdout())
+			} else {
+				runErr = svc.Run(cmd.Context(), cfg, opts, cmd.OutOrStdout())
 			}
 
-			return svc.Run(cmd.Context(), cfg, opts, cmd.OutOrStdout())
+			if runErr != nil && errors.Is(runErr, ports.ErrDockerUnavailable) {
+				renderDockerUnavailable(cmd.ErrOrStderr(), runErr)
+				os.Exit(3) //nolint:gocritic // intentional: semantic exit code 3 for docker unavailable
+			}
+			return runErr
 		},
 	}
 

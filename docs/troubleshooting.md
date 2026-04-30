@@ -400,6 +400,88 @@ On Linux you may need to install the `docker-compose-plugin` package separately.
 
 ---
 
+### Docker socket permission denied or daemon not reachable (vibew dev / bundle / logs)
+
+`vibew dev`, `vibew bundle`, and `vibew logs` shell out to Docker. When the Docker
+socket is inaccessible or the daemon is not running, these commands exit with code `3`
+and print an operator-friendly block instead of the raw Docker error.
+
+**Symptom — daemon not running**
+
+```
+Error: Docker is unavailable.
+
+  Ensure Docker Desktop is running and your user has access to
+  the socket.
+
+  On macOS:  open Docker Desktop
+  On Linux:  sudo usermod -aG docker $USER && newgrp docker
+
+Underlying error:
+  Cannot connect to the Docker daemon at unix:///var/run/docker.sock.
+  Is the docker daemon running?
+```
+
+Exit code: `3`
+
+**Symptom — socket permission denied (Linux)**
+
+```
+Error: Docker is unavailable.
+
+  Ensure Docker Desktop is running and your user has access to
+  the socket.
+
+  On macOS:  open Docker Desktop
+  On Linux:  sudo usermod -aG docker $USER && newgrp docker
+
+Underlying error:
+  permission denied while trying to connect to the Docker API socket at
+  unix:///var/run/docker.sock: dial unix /var/run/docker.sock: connect:
+  permission denied
+```
+
+Exit code: `3`
+
+**Fix — macOS: daemon not running**
+
+```bash
+open -a Docker
+# wait for the whale icon in the menu bar to stop animating
+docker info
+```
+
+**Fix — Linux: socket permission denied**
+
+Add your user to the `docker` group:
+
+```bash
+sudo usermod -aG docker $USER
+newgrp docker
+# verify
+docker info
+```
+
+The `newgrp docker` activates the new group membership for the current shell session.
+A full logout/login also works.
+
+**Fix — Linux: daemon not running**
+
+```bash
+sudo systemctl start docker
+sudo systemctl enable docker   # start on boot
+docker info
+```
+
+**Distinguishing from `vibew doctor` output**
+
+`vibew doctor` prints `[FAIL] Docker daemon not running — start Docker Desktop or the
+Docker service` in its check table. The hint block above is produced by `vibew dev`,
+`vibew bundle`, and `vibew logs` — not by `vibew doctor`. Both indicate the same root
+cause; the fix is the same.
+
+---
+
 ### Config file not found or invalid
 
 **Symptom**
@@ -816,6 +898,8 @@ Save the master key somewhere safe -- if you lose it, your secrets are unrecover
 
 ## Exit codes
 
+### `vibew doctor`
+
 | Code | Meaning |
 |------|---------|
 | `0` | All checks passed (OK or WARN only) |
@@ -826,3 +910,12 @@ This lets you gate a startup script on a clean doctor run:
 ```bash
 vibew doctor && vibew dev
 ```
+
+### `vibew dev`, `vibew bundle`, `vibew logs`
+
+| Code | Meaning |
+|------|---------|
+| `0` | Success |
+| `1` | General error (config, image identity mismatch, unknown service, etc.) |
+| `2` | Config or flag validation error |
+| `3` | Docker unavailable — socket permission denied or daemon not running. The command prints an operator-friendly hint block before exiting. See [Docker socket permission denied or daemon not reachable](#docker-socket-permission-denied-or-daemon-not-reachable-vibew-dev--bundle--logs) above. |

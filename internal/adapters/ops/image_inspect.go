@@ -56,11 +56,18 @@ func (a *ImageInspectAdapter) Inspect(ctx context.Context, tag string) (ports.Im
 		stderrStr := stderr.String()
 		// Check for docker not being found (exec.ErrNotFound) or explicit
 		// "executable file not found" before checking stderr content.
-		if isDockerNotFound(err) || strings.Contains(stderrStr, "Cannot connect to the Docker daemon") {
+		if isDockerNotFound(err) {
 			return ports.ImageInfo{}, ports.ErrDockerUnavailable
 		}
 		if strings.Contains(stderrStr, "No such image") {
 			return ports.ImageInfo{}, ports.ErrImageNotFound
+		}
+		// Classify daemon-unavailable stderr (e.g. "Cannot connect to the Docker daemon",
+		// "permission denied while trying to connect to the docker API") via the
+		// shared helper. Falls through to a generic error when no signature matches.
+		classified := ClassifyDockerError(err, stderrStr)
+		if classified != err {
+			return ports.ImageInfo{}, classified
 		}
 		return ports.ImageInfo{}, fmt.Errorf("docker image inspect: %w\nstderr: %s", err, stderrStr)
 	}

@@ -12,6 +12,10 @@ This initial entry was written by hand to summarise the work leading up to v0.1.
 
 ## [Unreleased]
 
+### Changed
+
+- **changed:** `vibew dev`, `vibew bundle`, and `vibew logs` now wrap raw Docker socket errors with an actionable operator hint (#1255). Substring detection on `permission denied while trying to connect to the docker API` and `Cannot connect to the Docker daemon` triggers a clean formatted block: "Ensure Docker Desktop is running... On macOS: open Docker Desktop. On Linux: sudo usermod -aG docker $USER && newgrp docker." Underlying error preserved below the wrapped message. `vibew probe` does not shell docker and is unaffected. New `ErrDockerSocketPermission` and `ErrDockerDaemonNotRunning` sentinels both wrap the existing `ErrDockerUnavailable` umbrella; existing `errors.Is(err, ErrDockerUnavailable)` callers continue to match. All three wired commands exit with code 3 on Docker unavailable. (retro-0.18.5 Codex finding)
+
 ## [v0.18.5] — 2026-04-30
 
 Theme: v0.18.4 retrospective fixes — first cross-vendor smoke (Codex agent) surfaced LLM-shape assumptions that prior Claude smokes had absorbed implicitly. Six retro-tagged pipelines (#1242–#1247) covering: per-env error messages on `vibew probe` (CRITICAL — was telling production users to run `vibew dev`); ACME-aware TLS retry on `vibew probe --env <name>` (30s budget); SSH placeholder bracketing + new `deploy.host` config + Codex prompt preambles ("vibew init does not scaffold", "VibeWarden does not deploy for you"); `vibew bundle --print-deploy --host --user --path` ad-hoc override; `vibew doctor --preflight <env>` pre-deploy validation; AGENTS-VIBEWARDEN.md must-know checklist at the top. CLAUDE.md gains a §Architecture principles bullet locking cross-LLM literal-vs-template clarity. No new ADRs; all changes refine the v0.18.3/v0.18.4 architecture rather than establish new patterns.
