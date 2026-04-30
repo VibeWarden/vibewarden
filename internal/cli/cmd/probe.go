@@ -60,6 +60,19 @@ Boot-gap handling:
   first upstream probe cycle), vibew probe retries every 1s for up to 10s.
   If the upstream does not converge within that window, the command exits 1.
 
+TLS retry handling (--env path only):
+  When the probe returns a TLS handshake error immediately after
+  "docker compose up -d", ACME (Let's Encrypt) issuance may still be in
+  progress. With --env set, vibew probe retries every 2s for up to 30s,
+  writing progress lines to stderr:
+    Waiting for ACME issuance... (TLS handshake failed; retrying 30s)
+    Waiting for ACME issuance... (2s elapsed)
+    ...
+  If the cert is not issued within 30s, exits 1 with an actionable message
+  pointing at: docker compose logs vibewarden | grep -i acme
+  Default mode (no --env) treats TLS errors as immediate failures — a TLS
+  error against the localhost dev cert is a real config bug, not a transient.
+
 Examples:
   vibew probe
   vibew probe --env production

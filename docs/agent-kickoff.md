@@ -41,6 +41,14 @@ on Apple Silicon (linux/arm64) for an amd64 VPS, the agent must run
 `vibew build --platform linux/amd64` before `vibew bundle`. `vibew bundle`
 hard-fails (exit 1) on arch mismatch. This matches the behavior added in #1200.
 
+Step 8 (verify deployment) runs `vibew probe --env production` after
+`docker compose up -d`. If the probe hits a TLS handshake error, ACME
+(Let's Encrypt) issuance may still be in progress. `vibew probe` retries
+automatically every 2s for up to 30s, writing progress to stderr. If the
+cert is not issued in that window, the command exits 1 with an actionable
+message. The agent should wait ~1 minute and retry the command rather than
+attempting any manual workaround.
+
 The output is stdout-only, pipeable directly into a chat box:
 
 ```
