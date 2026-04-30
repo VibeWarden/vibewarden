@@ -12,6 +12,10 @@ This initial entry was written by hand to summarise the work leading up to v0.1.
 
 ## [Unreleased]
 
+### Fixed
+
+- **fixed:** `vibew probe --env <name>` now emits a per-env error message on connection-refused. Default mode still says `Stack is not running. Start with: vibew dev`. With `--env <name>`: lists real causes (bundle not deployed, host down, DNS misconfig, sidecar exited) without suggesting `vibew dev`. New `ErrDNSFailure` sentinel surfaces DNS resolution failures separately with their own actionable message. Failure modes pinned by golden tests across all four variants. (#1242, retro-0.18.4 Codex finding)
+
 ## [v0.18.4] — 2026-04-30
 
 Theme: v0.18.3 retrospective fixes. Four retro-tagged pipelines (#1217 #1232 #1233 #1234) covering the dotfile-safe deploy contract (tar pipe replaces buggy scp glob across four surfaces — three retros flagged this), the systemic agent-kickoff-artifact pattern that makes vibewarden.dev's `/start` page fetch from main repo's release tag (eliminating drift by construction), the new `vibew probe` verb that bypasses macOS LibreSSL via Go's stdlib HTTP, and a Dockerfile-contract docs bullet about frozen-install lockfiles. Two small companion patches (#1237 release-artifacts dist path, #1238 dry-run workflow follow-up tracked separately). One ADR landed: ADR-101 (kickoff release artifacts, content authority) plus ADR-102 (vibew probe + reusable env-resolver pattern). Companion website work tracked at vibewarden/vibewarden.dev#95 — fetches the new artifacts at build time once this release is tagged.

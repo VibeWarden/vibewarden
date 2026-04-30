@@ -1,0 +1,5 @@
+ERROR: https://demo.example.com/_vibewarden/health
+  DNS does not resolve
+
+Check tls.domain in vibewarden.production.yaml and the DNS A/AAAA records
+for demo.example.com.

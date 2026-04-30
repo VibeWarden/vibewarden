@@ -15,7 +15,8 @@ import (
 // by selecting the adapter, not via flags on the port.
 type HealthProber interface {
 	// Probe performs a single HTTPS GET against url and returns the parsed
-	// body. Returns ErrProbeRefused when the connection is refused (stack not
+	// body. Returns ErrDNSFailure when the hostname cannot be resolved.
+	// Returns ErrProbeRefused when the connection is refused (stack not
 	// running). Returns ErrProbeMalformed when the body cannot be parsed as
 	// the expected wire format. Returns a *ProbeNon200Error (which wraps
 	// ErrProbeNon200) when the server returns a non-2xx status.
@@ -50,6 +51,13 @@ var (
 	// may use errors.Is to detect any non-2xx response regardless of the
 	// status code.
 	ErrProbeNon200 = errors.New("non-2xx response from health endpoint")
+
+	// ErrDNSFailure is returned when the health endpoint hostname cannot be
+	// resolved. This is distinct from ErrProbeRefused: the TCP stack was never
+	// reached because DNS lookup failed first. In production this typically
+	// means the tls.domain entry in vibewarden.<env>.yaml has no matching A/AAAA
+	// record; for localhost it indicates a broken /etc/hosts.
+	ErrDNSFailure = errors.New("DNS resolution failed")
 )
 
 // ProbeNon200Error wraps ErrProbeNon200 with the HTTP status code and a
