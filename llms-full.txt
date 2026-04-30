@@ -1373,7 +1373,8 @@ VibeWarden is operated via the `vibew` CLI. Below is the complete command list.
 | `vibew status` | Show health of all components. Rows use three text labels: OK (healthy), OFF (disabled in config — probe suppressed), FAIL (enabled but check failed). A legend line is printed below the header. TLS: KindSelfSignedLocal and KindExpiringSoon → OK with annotation; only KindFailing → FAIL. Note: `vibew status` gives a richer dev-stack overview; `vibew probe` is for one-shot HTTPS verification of the health endpoint — use probe when system curl cannot handshake the dev cert. |
 | `vibew probe` | One-shot HTTPS GET against `/_vibewarden/health` using Go's stdlib TLS stack (bypasses macOS LibreSSL friction by construction). Default: reads `server.port` from `vibewarden.yaml`, probes `https://localhost:<port>/_vibewarden/health` with `InsecureSkipVerify=true`. With `--env <name>`: loads `vibewarden.<name>.yaml`, reads `tls.domain`, probes `https://<domain>/_vibewarden/health` with full TLS verification. Boot-gap retry: when `components.upstream` is `"unknown"` (first probe cycle not yet complete), retries every 1s for up to 10s. Exit 0 when `upstream=ok`; exit 1 otherwise. Use after `vibew dev` as the canonical health check on macOS instead of `curl`. |
 | `vibew probe --env <name>` | Probe a named environment overlay. Loads `vibewarden.<name>.yaml` (must exist), reads merged `tls.domain`, probes the production endpoint with full cert verification. Exit 1 when the override file is missing or `tls.domain` is empty. TLS retry: when the probe returns a TLS handshake error (e.g. immediately after `docker compose up -d` while ACME issuance is in progress), retries every 2s for up to 30s with progress on stderr. After 30s exits 1 with actionable message: `docker compose logs vibewarden | grep -i acme`. Default mode (no `--env`) treats TLS errors as immediate failures. |
-| `vibew doctor` | Diagnose common issues; includes LE rate-limit preflight (crt.sh CT log query) when tls.provider=letsencrypt; --skip-le-preflight suppresses it |
+| `vibew doctor` | Diagnose common issues; includes LE rate-limit preflight (crt.sh CT log query) when tls.provider=letsencrypt; --skip-le-preflight suppresses it. With --preflight <env>: reads vibewarden.<env>.yaml, merges config, and runs five additional pre-deploy checks (DNS, port 443, target_platform set, image arch match, tls.email). |
+| `vibew doctor --preflight <env>` | Pre-deploy validation against a named environment. Reads `vibewarden.<env>.yaml` (must exist), merges with `vibewarden.yaml`, and runs five checks: (1) DNS resolves `tls.domain`, (2) `server.port` is 443, (3) `deploy.target_platform` is set, (4) app image arch matches `deploy.target_platform`, (5) `tls.email` is configured. Static config + Dockerfile checks still run. Uses the env-resolver from #1233 (ADR-102) and Docker image-inspect path from #1219. Exit 1 when the env file is missing — no checks run. |
 | `vibew logs [<service>...]` | Stream local dev-stack logs; all services interleaved by default. Positional args scope output (e.g. `vibew logs vibewarden app`). `--tail N` (default 100), `--follow` / `-f` for continuous streaming, `--since <duration\|RFC3339>`. Stack-not-running exits 1; unknown service exits 1; Docker unavailable exits 3. |
 | `vibew migrate` | Apply all pending database migrations (alias for migrate up) |
 | `vibew migrate up` | Apply all pending database migrations |
@@ -1629,6 +1630,15 @@ vibew doctor checks (in order):
       the project manifest go.mod/nvmrc/pyproject.toml (FAIL on mismatch; OFF when
       tag is "latest" or unrecognised, or when no manifest is found)
      All 6 checks are omitted when no Dockerfile is present in the project root.
+  Preflight checks (only when --preflight <env> is given; appended after static + Dockerfile checks):
+  P1. DNS — tls.domain resolves to at least one A/AAAA record. Uses the same env-resolver
+      as vibew probe --env (ADR-102).
+  P2. Port 443 — server.port must equal 443 for a named production environment (FAIL otherwise).
+  P3. Target platform — deploy.target_platform must be set in the merged config (FAIL if unset).
+  P4. Image arch — local app image arch matches deploy.target_platform. Uses the Docker
+      label-inspection path from vibew dev --rebuild (ADR-100; #1219).
+  P5. TLS email — tls.email must be non-empty (WARN if missing; required by Let's Encrypt).
+  Exit 1 immediately (before any checks run) when vibewarden.<env>.yaml does not exist.
   Dockerfile contract — additional invariant (not a doctor check, enforced at build time):
   - Frozen-install commands need lockfiles in the build context. If your Dockerfile
     runs a frozen-install command (npm ci, pnpm install --frozen-lockfile,
@@ -1646,6 +1656,9 @@ vibew doctor output notes:
 
 vibew doctor flags:
   --skip-le-preflight  skip the LE rate-limit CT log check for this run
+  --preflight <env>    run pre-deploy validation against a named env (reads vibewarden.<env>.yaml)
+  --config <path>      path to vibewarden.yaml (default: ./vibewarden.yaml)
+  --json               emit results as a JSON array
 
 
 ## 15. Troubleshooting

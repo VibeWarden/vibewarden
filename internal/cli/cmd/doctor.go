@@ -13,6 +13,7 @@ import (
 	caddyadapter "github.com/vibewarden/vibewarden/internal/adapters/caddy"
 	crtshAdapter "github.com/vibewarden/vibewarden/internal/adapters/crtsh"
 	opsadapter "github.com/vibewarden/vibewarden/internal/adapters/ops"
+	envapp "github.com/vibewarden/vibewarden/internal/app/env"
 	opsapp "github.com/vibewarden/vibewarden/internal/app/ops"
 	apptlspreflight "github.com/vibewarden/vibewarden/internal/app/tlspreflight"
 	"github.com/vibewarden/vibewarden/internal/config"
@@ -27,6 +28,7 @@ func NewDoctorCmd() *cobra.Command {
 		configPath      string
 		jsonOutput      bool
 		skipLEPreflight bool
+		preflightEnv    string
 	)
 
 	cmd := &cobra.Command{
@@ -68,28 +70,64 @@ tls.skip_rate_limit_check: true in vibewarden.yaml) to suppress this check.
 Note: querying crt.sh sends your domain name to a public service. The
 certificate, once issued, will be publicly visible in CT logs anyway.
 
+Use --preflight <env> to run pre-deploy validation against a named environment:
+  vibew doctor --preflight production
+
+This reads vibewarden.production.yaml, merges it with vibewarden.yaml, and runs
+five additional checks: DNS resolution of tls.domain, server.port == 443,
+deploy.target_platform is set, app image arch matches deploy.target_platform,
+and tls.email is configured for Let's Encrypt. The env file must exist.
+
 Examples:
   vibew doctor
   vibew doctor --config ./my-vibewarden.yaml
   vibew doctor --json
-  vibew doctor --skip-le-preflight`,
+  vibew doctor --skip-le-preflight
+  vibew doctor --preflight production
+  vibew doctor --preflight staging --json`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			// Load config — pass nil-safe; doctor will report missing config.
-			cfg, loadErr := config.Load(configPath)
-			if loadErr != nil {
-				// Report but don't abort — doctor can still run Docker checks.
-				fmt.Fprintf(cmd.ErrOrStderr(), "warning: could not load config: %v\n", loadErr)
-				cfg = nil
-			}
-
-			// If cfg is nil we use zero-value defaults so the service doesn't panic.
-			if cfg == nil {
-				cfg = &config.Config{}
-			}
-
 			workDir, err := os.Getwd()
 			if err != nil {
 				workDir = "."
+			}
+
+			// When --preflight <env> is provided, resolve the merged config for
+			// that environment BEFORE loading the base config. The merged config
+			// replaces the base config for ALL checks, including the static ones,
+			// so that the doctor report reflects what will be deployed. On any
+			// resolver error we exit immediately with a clear message — no checks
+			// are run (mirrors vibew probe --env behaviour per ADR-102).
+			var cfg *config.Config
+			if preflightEnv != "" {
+				resolver := envapp.NewFileResolver(workDir)
+				resolved, resolveErr := resolver.Resolve(preflightEnv)
+				if resolveErr != nil {
+					switch {
+					case errors.Is(resolveErr, envapp.ErrOverrideConfigMissing):
+						return fmt.Errorf("config file not found: vibewarden.%s.yaml: %w", preflightEnv, resolveErr)
+					case errors.Is(resolveErr, envapp.ErrBaseConfigMissing):
+						return fmt.Errorf("base config not found: vibewarden.yaml is required (run `vibew init`): %w", resolveErr)
+					default:
+						return fmt.Errorf("loading env config: %w", resolveErr)
+					}
+				}
+				cfg = resolved.Cfg
+			}
+
+			if cfg == nil {
+				// Load base config — nil-safe; doctor will report missing config.
+				var loadErr error
+				cfg, loadErr = config.Load(configPath)
+				if loadErr != nil {
+					// Report but don't abort — doctor can still run Docker checks.
+					fmt.Fprintf(cmd.ErrOrStderr(), "warning: could not load config: %v\n", loadErr)
+					cfg = nil
+				}
+			}
+
+			// If cfg is still nil we use zero-value defaults so the service doesn't panic.
+			if cfg == nil {
+				cfg = &config.Config{}
 			}
 
 			compose := opsadapter.NewComposeAdapter()
@@ -119,6 +157,15 @@ Examples:
 				WithPortOwnerProbe(ownerProbe).
 				WithTLSStateResolver(tlsResolver).
 				WithLERateLimitService(leRateLimitSvc)
+
+			// Wire the preflight section when --preflight <env> was provided.
+			if preflightEnv != "" {
+				svc = svc.WithPreflight(
+					preflightEnv,
+					opsadapter.NewDNSResolverAdapter(),
+					opsadapter.NewImageInspectAdapter(),
+				)
+			}
 
 			label := configPath
 			if label == "" {
@@ -153,6 +200,8 @@ Examples:
 	cmd.Flags().BoolVar(&jsonOutput, "json", false, "output results as JSON")
 	cmd.Flags().BoolVar(&skipLEPreflight, "skip-le-preflight", false,
 		"skip the Let's Encrypt rate-limit preflight check (equivalent to tls.skip_rate_limit_check: true)")
+	cmd.Flags().StringVar(&preflightEnv, "preflight", "",
+		"run pre-deploy validation against a named env (e.g. --preflight production reads vibewarden.production.yaml)")
 
 	return cmd
 }

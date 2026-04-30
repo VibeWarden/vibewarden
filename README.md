@@ -310,7 +310,7 @@ features after the initial setup.
 | `vibew bundle` | Produce a self-contained Docker Compose deploy artifact under `.vibewarden/bundle/` ([walkthrough](docs/guide/bundle-to-vps.md)) |
 | `vibew probe` | One-shot HTTPS health check of `/_vibewarden/health` via Go's TLS stack (bypasses macOS LibreSSL friction). `--env <name>` probes a named environment overlay. |
 | `vibew status` | Show health of all components (richer dev-stack overview; use `vibew probe` for one-shot HTTPS verification) |
-| `vibew doctor` | Diagnose common issues |
+| `vibew doctor` | Diagnose common issues. `--preflight <env>` adds pre-deploy validation (DNS, port 443, target platform, image arch, TLS email) against the named env overlay. |
 | `vibew logs [--tail N] [--follow] [--since <duration>] [<service>...]` | Stream local dev-stack logs (all services interleaved by default; scope with service name args) |
 | `vibew migrate` | Apply all pending database migrations (alias for `migrate up`) |
 | `vibew migrate up` | Apply all pending database migrations |

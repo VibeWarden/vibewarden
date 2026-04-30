@@ -41,6 +41,16 @@ on Apple Silicon (linux/arm64) for an amd64 VPS, the agent must run
 `vibew build --platform linux/amd64` before `vibew bundle`. `vibew bundle`
 hard-fails (exit 1) on arch mismatch. This matches the behavior added in #1200.
 
+Before Step 6 (`vibew bundle`), agents can optionally run
+`vibew doctor --preflight production` to catch DNS, port, architecture, and
+TLS-email mistakes early — before a multi-minute build. This reads
+`vibewarden.production.yaml`, merges it with `vibewarden.yaml`, runs the standard
+static checks against the merged config, then appends five preflight checks. It
+exits 1 on the first blocking failure. The deploy template does not mandate this
+step (bundle still hard-fails on arch mismatch independently), but agents that
+encounter a failed deploy should run `vibew doctor --preflight production` as the
+first diagnostic step.
+
 Step 8 (verify deployment) runs `vibew probe --env production` after
 `docker compose up -d`. If the probe hits a TLS handshake error, ACME
 (Let's Encrypt) issuance may still be in progress. `vibew probe` retries

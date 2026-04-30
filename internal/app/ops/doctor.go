@@ -62,6 +62,11 @@ type DoctorService struct {
 	ownerProbe     ports.PortOwnerProbe
 	tlsState       ports.TLSStateResolver   // optional; nil falls back to handshake-on-demand
 	leRateLimitSvc *apptlspreflight.Service // optional; nil skips LE rate-limit check
+
+	// preflight fields — all zero/empty means no preflight section is rendered.
+	preflightEnv       string
+	preflightDNS       ports.DNSResolver
+	preflightInspector ports.ImageInspector
 }
 
 // NewDoctorService creates a new DoctorService.
@@ -108,6 +113,23 @@ func (s *DoctorService) WithTLSStateResolver(r ports.TLSStateResolver) *DoctorSe
 func (s *DoctorService) WithLERateLimitService(svc *apptlspreflight.Service) *DoctorService {
 	cp := *s
 	cp.leRateLimitSvc = svc
+	return &cp
+}
+
+// WithPreflight returns a copy of the DoctorService configured to run the
+// pre-deploy preflight section for envName after the static checks complete.
+// The preflight section includes five checks: DNS resolution of tls.domain,
+// server.port == 443, deploy.target_platform is set, app image arch matches
+// deploy.target_platform, and tls.email is set for Let's Encrypt.
+//
+// When envName is empty, no preflight section is appended (existing behaviour
+// is preserved). Both dnsResolver and imageInspector are required when
+// envName is non-empty; nil values cause those individual checks to be skipped.
+func (s *DoctorService) WithPreflight(envName string, dnsResolver ports.DNSResolver, imageInspector ports.ImageInspector) *DoctorService {
+	cp := *s
+	cp.preflightEnv = envName
+	cp.preflightDNS = dnsResolver
+	cp.preflightInspector = imageInspector
 	return &cp
 }
 
@@ -231,6 +253,12 @@ func (s *DoctorService) runChecks(ctx context.Context, cfg *config.Config, opts 
 	// --- Dockerfile contract checks ---
 	// Omitted entirely when no Dockerfile is present in the project root.
 	results = append(results, s.checkDockerfile(ctx, workDir, cfg)...)
+
+	// --- Preflight: <env> ---
+	// Only appended when WithPreflight was called with a non-empty env name.
+	if s.preflightEnv != "" {
+		results = append(results, runPreflightChecks(ctx, cfg, s.preflightEnv, s.preflightDNS, s.preflightInspector)...)
+	}
 
 	return results
 }

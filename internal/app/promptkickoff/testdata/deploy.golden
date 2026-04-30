@@ -60,6 +60,10 @@ target (default linux/amd64). The error message prints the exact rebuild command
 Override the target via --target-platform or deploy.target_platform in
 vibewarden.production.yaml.
 
+Optional pre-bundle gate: run `vibew doctor --preflight production` before
+`vibew bundle` to catch DNS, port, arch, and TLS-email mistakes against the
+merged production config before the build starts.
+
 ## Step 7 — Deploy to your server
 
 NOTE: VibeWarden does not deploy for you. `vibew bundle` produces a
