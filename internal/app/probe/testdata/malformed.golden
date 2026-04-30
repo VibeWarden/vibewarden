@@ -1,0 +1,2 @@
+ERROR: https://app.example.com/_vibewarden/health
+Malformed response body — not the VibeWarden health wire format.

@@ -52,6 +52,7 @@ Zero-to-secure in minutes.`,
 	root.AddCommand(NewBundleCmd())
 	root.AddCommand(NewTLSCmd())
 	root.AddCommand(NewPromptTemplateCmd())
+	root.AddCommand(NewProbeCmd())
 
 	return root
 }

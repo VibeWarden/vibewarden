@@ -1,0 +1,5 @@
+https://app.example.com/_vibewarden/health
+  http_status:  502
+  body:         Bad Gateway
+
+ERROR: non-2xx response from health endpoint.

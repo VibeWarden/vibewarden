@@ -1,0 +1,7 @@
+https://localhost:8443/_vibewarden/health
+  status:               ok
+  version:              0.18.4
+  components.sidecar:   ok
+  components.upstream:  ok
+
+OK — dev stack healthy.
