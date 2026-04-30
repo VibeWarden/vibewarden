@@ -12,6 +12,10 @@ This initial entry was written by hand to summarise the work leading up to v0.1.
 
 ## [Unreleased]
 
+## [v0.18.6] — 2026-04-30
+
+Theme: single-issue patch release for the v0.18.5 Codex retro finding. `vibew dev`, `vibew bundle`, `vibew logs` now wrap raw Docker socket errors with an actionable operator hint (macOS / Linux per-OS recovery commands, original error preserved). New `ErrDockerSocketPermission` + `ErrDockerDaemonNotRunning` sentinels wrap the existing `ErrDockerUnavailable` umbrella; existing `errors.Is` callers continue to match. Substring detection consolidated into a single `ClassifyDockerError` helper (replaces the previous duplicated detection in compose-logs-stream and image-inspect adapters). 21 new tests + 4 build-adapter sad-path integration tests. No new ADRs.
+
 ### Changed
 
 - **changed:** `vibew dev`, `vibew bundle`, and `vibew logs` now wrap raw Docker socket errors with an actionable operator hint (#1255). Substring detection on `permission denied while trying to connect to the docker API` and `Cannot connect to the Docker daemon` triggers a clean formatted block: "Ensure Docker Desktop is running... On macOS: open Docker Desktop. On Linux: sudo usermod -aG docker $USER && newgrp docker." Underlying error preserved below the wrapped message. `vibew probe` does not shell docker and is unaffected. New `ErrDockerSocketPermission` and `ErrDockerDaemonNotRunning` sentinels both wrap the existing `ErrDockerUnavailable` umbrella; existing `errors.Is(err, ErrDockerUnavailable)` callers continue to match. All three wired commands exit with code 3 on Docker unavailable. (retro-0.18.5 Codex finding)
