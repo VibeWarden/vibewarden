@@ -343,7 +343,7 @@ func runBundle(cmd *cobra.Command, outputDir, imageTag, targetPlatform string, o
 	fmt.Fprintln(out, "")
 	fmt.Fprintln(out, "Next: deploy")
 	fmt.Fprintf(out, "    ssh user@host 'mkdir -p /opt/%s'\n", appName)
-	fmt.Fprintf(out, "    scp -r %s/* user@host:/opt/%s/\n", absOut, appName)
+	fmt.Fprintf(out, "    tar -czf - -C %q . | ssh user@host 'tar -xzf - -C /opt/%s/'\n", absOut, appName)
 	fmt.Fprintf(out, "    ssh user@host \"cd /opt/%s && %s\"\n", appName, dockerCmd)
 	fmt.Fprintf(out, "    curl -fsSL https://%s/_vibewarden/health\n", domain)
 	fmt.Fprintln(out, "")

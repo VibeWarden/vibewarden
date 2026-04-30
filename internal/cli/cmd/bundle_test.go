@@ -492,10 +492,11 @@ func TestBundleCmd_Overwrite_ReplacesDotEnv(t *testing.T) {
 // are substituted, (c) with --skip-image the docker load clause is absent.
 func TestBundle_Stdout_PrintsLiteralDeployCommands(t *testing.T) {
 	tests := []struct {
-		name       string
-		yaml       string
-		wantCmds   []string
-		wantAbsent []string
+		name         string
+		yaml         string
+		wantCmds     []string
+		wantAbsent   []string
+		spacedOutDir bool // when true, outDir path contains a space to exercise %q quoting
 	}{
 		{
 			name: "app name and domain substituted in next block",
@@ -503,14 +504,19 @@ func TestBundle_Stdout_PrintsLiteralDeployCommands(t *testing.T) {
 			wantCmds: []string{
 				"Next: deploy",
 				"ssh user@host 'mkdir -p /opt/myapp'",
-				"scp -r",
-				"user@host:/opt/myapp/",
+				"tar -czf - -C",
+				"| ssh user@host 'tar -xzf - -C /opt/myapp/'",
 				"docker compose up -d",
 				"curl -fsSL https://myapp.example.com/_vibewarden/health",
 			},
 			// --skip-image is always passed; docker load must not appear.
+			// The three banned artifact forms are guarded here so a regression
+			// in bundle.go (stdout surface) is caught by this forensic check.
 			wantAbsent: []string{
 				"docker load -i image.tar &&",
+				"scp -r .vibewarden/bundle/*", // dotfile-eating glob eliminated by #1217
+				"bash deploy.sh",              // already-removed artifact (#1138)
+				"./deploy.sh",                 // ditto
 			},
 		},
 		{
@@ -519,6 +525,31 @@ func TestBundle_Stdout_PrintsLiteralDeployCommands(t *testing.T) {
 			wantCmds: []string{
 				"Next: deploy",
 				"<your-domain>",
+			},
+			wantAbsent: []string{
+				"scp -r .vibewarden/bundle/*",
+				"bash deploy.sh",
+				"./deploy.sh",
+			},
+		},
+		{
+			// %q is the deliberate format verb for outDir in bundle.go. A future
+			// change back to %s would break shell word-splitting for paths with
+			// spaces. This case verifies that %q wraps the path in double-quotes
+			// so the tar invocation is valid even when outDir contains a space.
+			name:         "output path with spaces is double-quoted by %q",
+			yaml:         "name: myapp\ntls:\n  domain: myapp.example.com\nserver:\n  port: 8080\nupstream:\n  port: 3000\n",
+			spacedOutDir: true,
+			wantCmds: []string{
+				"Next: deploy",
+				// %q wraps the path in double-quotes; assert the opening quote is
+				// present immediately after "-C " so a bare %s regression is caught.
+				`tar -czf - -C "`,
+			},
+			wantAbsent: []string{
+				"scp -r .vibewarden/bundle/*",
+				"bash deploy.sh",
+				"./deploy.sh",
 			},
 		},
 	}
@@ -544,7 +575,19 @@ func TestBundle_Stdout_PrintsLiteralDeployCommands(t *testing.T) {
 			}
 			t.Cleanup(func() { _ = os.Chdir(origDir) })
 
-			outDir := filepath.Join(projDir, "out")
+			// For the spaces case, use a subdirectory whose path contains a space
+			// so that %q quoting in bundle.go is exercised. All other cases use
+			// a simple "out" directory under projDir.
+			var outDir string
+			if tt.spacedOutDir {
+				outDir = filepath.Join(base, "my project", "out")
+				if err := os.MkdirAll(outDir, 0o750); err != nil {
+					t.Fatalf("mkdir spaced outDir: %v", err)
+				}
+			} else {
+				outDir = filepath.Join(projDir, "out")
+			}
+
 			root := cmd.NewRootCmd("test")
 			// Always pass --skip-image: the test environment has no Docker daemon.
 			// The non-skip-image stdout path (docker load clause) is covered by

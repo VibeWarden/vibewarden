@@ -186,8 +186,11 @@ The bundle is just files. The contract is in `.vibewarden/bundle/README.md`:
 2. Produce the bundle: `vibew bundle`.
 3. Make sure the remote directory exists (e.g. `ssh user@host mkdir -p
    /path/to/bundle`).
-4. Copy the contents of `.vibewarden/bundle/` to the host. `scp -r` or
-   `rsync -av` both work.
+4. Copy the bundle to the host using the tar pipe (dotfile-safe — `scp -r bundle/*`
+   silently drops `.env` and `.credentials` due to POSIX glob):
+   ```bash
+   tar -czf - -C .vibewarden/bundle . | ssh user@host 'tar -xzf - -C /path/to/bundle/'
+   ```
 5. On the host, in the bundle directory: load `image.tar` (in
    registry-pull mode the image is already published — skip this step
    and let compose pull it), then `docker compose up -d`.
@@ -197,8 +200,8 @@ The bundle is just files. The contract is in `.vibewarden/bundle/README.md`:
 `vibew bundle` is deterministic (same inputs, same bytes), never opens
 an SSH connection, and never touches files outside the output
 directory. The bundle ships no shell scripts — orchestrators (systemd,
-Ansible, Kubernetes manifests) and AI agents own the `scp`/`ssh`/`docker
-compose` chain.
+Ansible, Kubernetes manifests) and AI agents own the tar pipe /
+`ssh` / `docker compose` chain.
 
 After writing files, `vibew bundle` prints a sensitive-file awareness block
 when credentials or key material are present in the output directory:

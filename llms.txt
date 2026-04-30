@@ -51,8 +51,8 @@ cd my-app && vibew wrap --upstream 3000 && vibew dev
     `vibew add rate-limiting`
     `vibew add waf`
 - `vibew bundle` — produce a self-contained Docker Compose deploy bundle
-  under `.vibewarden/bundle/`. Ship it with `scp` and run `docker compose up -d`
-  on the target host.
+  under `.vibewarden/bundle/`. Transfer with tar pipe (dotfile-safe) and run
+  `docker compose up -d` on the target host.
   Example: `vibew bundle`
 - `vibew doctor` — diagnose common configuration and runtime issues.
   Example: `vibew doctor`
@@ -61,7 +61,7 @@ cd my-app && vibew wrap --upstream 3000 && vibew dev
 - `vibew prompt-template` — print the canonical agent kickoff prompt to stdout.
   Always matches the installed vibew version. Paste the output into a chat session
   to start a new agent task correctly. Two flavors: default (dev loop only) and
-  `--deploy` (adds bundle + scp + ssh + healthcheck).
+  `--deploy` (adds bundle + tar pipe transfer + ssh + healthcheck).
   Examples:
     `vibew prompt-template --name myapp --describe "todo list app"`
     `vibew prompt-template --deploy --name myapp --describe "todo list app" --domain myapp.example.com`

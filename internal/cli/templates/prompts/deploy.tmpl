@@ -63,7 +63,7 @@ vibewarden.production.yaml.
 # Run these commands directly — no shell script wrapper.
 
   ssh user@{{.Domain}} 'mkdir -p /opt/{{.Name}}'
-  scp -r .vibewarden/bundle/* user@{{.Domain}}:/opt/{{.Name}}/
+  tar -czf - -C .vibewarden/bundle . | ssh user@{{.Domain}} 'tar -xzf - -C /opt/{{.Name}}/'
   ssh user@{{.Domain}} "cd /opt/{{.Name}} && docker load -i image.tar && docker compose up -d"
 
 ## Step 8 — Verify deployment
