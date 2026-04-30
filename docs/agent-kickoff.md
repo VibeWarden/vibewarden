@@ -26,7 +26,7 @@ so URL-discoverable consumption stays in sync.
 vibew prompt-template --name <your-project> --describe "<your description>"
 ```
 
-**Deploy flavor** (adds bundle + scp + ssh + healthcheck):
+**Deploy flavor** (adds bundle + tar pipe transfer + ssh + healthcheck):
 
 ```
 vibew prompt-template --deploy --name <your-project> --describe "<your description>" --domain <your-domain>

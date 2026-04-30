@@ -17,8 +17,8 @@ on the host:
 The bundle's `README.md` is the canonical deploy contract. It lists what
 each file is and the two non-obvious traps (the remote directory must
 exist before you copy; the healthcheck port). There is no shell script
-shipped in the bundle — operators and AI agents own the `scp`/`ssh`/`docker
-compose` chain.
+shipped in the bundle — operators and AI agents own the
+`tar`/`ssh`/`docker compose` chain.
 
 Day-two ops — restarts, log inspection, updates — are standard
 `docker compose` commands against the copied bundle directory.
@@ -32,8 +32,8 @@ On your workstation:
 - A scaffolded VibeWarden project (`vibew init` run at least once).
 - A built app image (`vibew build` run at least once when `app.build` is
   set; skip if you pull from a registry via `app.image`).
-- `scp` and `ssh` in `PATH` — the bundle uses whatever transport you
-  configure in `~/.ssh/config`.
+- `ssh` and `tar` in `PATH` — required for the tar pipe transfer. Both
+  are POSIX baseline tools present on all supported platforms.
 
 On the VPS:
 
@@ -88,9 +88,13 @@ The bundle is just files. The contract is described in
 1. Make sure the remote directory exists (e.g. `ssh user@host mkdir -p
    /path/to/bundle`). The transfer step below cannot create missing
    parent directories.
-2. Copy the contents of the bundle directory to the host. `scp -r` and
-   `rsync` both work; `rsync -av --delete` is the right choice for
-   redeploys with delta transfer.
+2. Copy the bundle to the host using the tar pipe form — it transfers
+   dotfiles (`.env`, `.credentials`) that `scp -r bundle/*` silently
+   drops due to POSIX glob expansion:
+   ```bash
+   tar -czf - -C .vibewarden/bundle . | ssh user@host 'tar -xzf - -C /path/to/bundle/'
+   ```
+   For redeploys with delta transfer, `rsync -av --delete .vibewarden/bundle/ user@host:/path/to/bundle/` also works (rsync is dotfile-safe by default).
 3. On the host, in the bundle directory: load `image.tar` into Docker
    (or, in registry-pull mode built with `--skip-image`, ensure the
    image referenced by `docker-compose.yml` is published and reachable).

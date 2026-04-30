@@ -91,7 +91,7 @@ app port directly — it has no security.
 | `vibew obs down` | Stop the observability stack (`-v` also removes volumes) |
 | `vibew build` | Build Docker image |
 | `vibew build --platform linux/amd64` | Build for a specific architecture |
-| `vibew bundle` | Produce a self-contained Docker Compose bundle under `.vibewarden/bundle/`; ship with `scp` + `docker compose up -d` |
+| `vibew bundle` | Produce a self-contained Docker Compose bundle under `.vibewarden/bundle/`; transfer with tar pipe + `docker compose up -d` |
 | `vibew status` | Show component health (OK / OFF / FAIL labels; OFF means disabled in config and not probed) |
 | `vibew logs [<service>...]` | Stream local dev-stack logs (`--tail N`, `-f`/`--follow`, `--since <duration>`); scope with service name args (`vibewarden`, `app`, `kratos`, `postgres`, `mailslurper`) |
 | `vibew doctor` | Diagnose issues |
@@ -170,8 +170,11 @@ The bundle is just files. The contract is in `.vibewarden/bundle/README.md`:
 2. Produce the bundle: `vibew bundle`.
 3. Make sure the remote directory exists (`ssh user@host mkdir -p
    /path/to/bundle`).
-4. Copy the contents of `.vibewarden/bundle/` to the host (`scp -r` or
-   `rsync -av`).
+4. Copy the bundle to the host using the tar pipe (dotfile-safe — `scp -r bundle/*`
+   silently drops `.env` and `.credentials` due to POSIX glob):
+   ```bash
+   tar -czf - -C .vibewarden/bundle . | ssh user@host 'tar -xzf - -C /path/to/bundle/'
+   ```
 5. On the host, in the bundle directory: load `image.tar` (skip in
    registry-pull mode), then `docker compose up -d`.
 6. Verify against the public URL: `curl https://yourdomain/_vibewarden/health`.
@@ -223,10 +226,10 @@ no env var, no opt-out — it is always printed when matches exist.
 
 The bundle ships no shell scripts. Vibew never opens an SSH connection
 itself — orchestrators (systemd, Ansible, Kubernetes manifests) and AI
-agents own the `scp` / `ssh` / `docker compose` chain. The two non-obvious
-traps the README calls out: the remote directory must exist before you
-copy, and the production healthcheck port is 443 (TLS), not the dev port
-8443.
+agents own the tar pipe / `ssh` / `docker compose` chain. The two
+non-obvious traps the README calls out: the remote directory must exist
+before you copy, and the production healthcheck port is 443 (TLS), not
+the dev port 8443.
 
 Day-two operations are standard docker compose against the copied bundle:
 

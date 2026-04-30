@@ -1449,7 +1449,7 @@ Output layout:
 - `vibewarden.yaml` -- merged base + prod override, strict-validated
 - `sample.env` -- regenerated every run; template for operators
 - `.env` -- first-run only; `--overwrite` to replace
-- `README.md` -- opens with a fenced bash block containing the literal deploy commands (ssh/scp/docker/curl), substituted from app.name and tls.domain; prose sections explain the non-obvious traps and read-only inspection recipes
+- `README.md` -- opens with a fenced bash block containing the literal deploy commands (tar pipe/ssh/docker/curl), substituted from app.name and tls.domain; prose sections explain the non-obvious traps and read-only inspection recipes
 - `MANIFEST.md` -- auto-generated, sorted file listing with one-line descriptions; unknown files get "bundle artifact"
 - `image.tar` -- omitted with `--skip-image`
 - `kratos/`, `.credentials` -- whatever the generator produces
@@ -1534,8 +1534,8 @@ production server -- the image must be production-ready.
 
 There is no all-in-one remote-deploy command and no shipped shell script.
 `vibew bundle` is the only supported path to a VPS; orchestrators (systemd,
-Ansible, Kubernetes manifests) and AI agents own the `scp` / `ssh` /
-`docker compose` chain. The removed `vibew deploy` command did all three
+Ansible, Kubernetes manifests) and AI agents own the tar pipe /
+`ssh` / `docker compose` chain. The removed `vibew deploy` command did all three
 steps (package, ship, start) in one SSH orchestration; the previously-shipped
 `deploy.sh` did scp + load + compose-up + healthcheck. Both are retired
 (ADR-086 sunset deploy; #1138 dropped deploy.sh after the qr-dali retro
@@ -1912,7 +1912,7 @@ The sidecar starts on localhost. Your app is proxied through it automatically.
 
 --deploy adds Steps 6–8:
 - Step 6: vibew bundle (with arch mismatch guard — see note below)
-- Step 7: scp + ssh + docker load -i image.tar + docker compose up -d
+- Step 7: tar pipe transfer (dotfile-safe) + ssh + docker load -i image.tar + docker compose up -d
 - Step 8: curl healthcheck expecting HTTP 200, `"status":"ok"`,
   `"components":{"upstream":"ok"}`
 
