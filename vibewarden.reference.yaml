@@ -1065,3 +1065,15 @@ deploy:
   #
   # Default: linux/amd64
   target_platform: linux/amd64
+
+  # SSH target substituted verbatim into the "Next: deploy" block printed by
+  # `vibew bundle` and into the bundle README's fenced deploy commands.
+  # Accepts any value ssh(1) accepts: user@host, a ~/.ssh/config alias, or an IP.
+  # VibeWarden does not validate this value — SSH surfaces auth or DNS failure
+  # with its own message.
+  #
+  # When unset (default), the three ssh lines use the bracketed placeholder
+  # `<your-ssh-user>@<your-ssh-host>` and a hint paragraph is appended.
+  #
+  # Default: "" (use bracketed placeholder)
+  # host: alice@vps.example.com

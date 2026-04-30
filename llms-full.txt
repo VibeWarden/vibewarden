@@ -1161,7 +1161,7 @@ Step 2 — Point DNS. Add A record: demo.yourdomain.com -> <server-ip>.
     # must return <server-ip>
 
 Step 3 — Install Docker on the server:
-    ssh root@<server-ip> 'curl -fsSL https://get.docker.com | sh'
+    ssh <your-ssh-user>@<your-ssh-host> 'curl -fsSL https://get.docker.com | sh'
 
 Step 4 — Set up project locally:
     curl -fsSL https://vibewarden.dev/install.sh | sh
@@ -1207,9 +1207,9 @@ Step 7 — Ship and start. The bundle is just files; the contract is in README.m
     you copy, and the production healthcheck port is 443 (TLS), not the
     dev port 8443.
 
-    ssh root@<server-ip> "mkdir -p /opt/myapp"
-    tar -czf - -C .vibewarden/bundle . | ssh root@<server-ip> 'tar -xzf - -C /opt/myapp/'
-    ssh root@<server-ip> "cd /opt/myapp && docker load -i image.tar && docker compose up -d"
+    ssh <your-ssh-user>@<your-ssh-host> "mkdir -p /opt/myapp"
+    tar -czf - -C .vibewarden/bundle . | ssh <your-ssh-user>@<your-ssh-host> 'tar -xzf - -C /opt/myapp/'
+    ssh <your-ssh-user>@<your-ssh-host> "cd /opt/myapp && docker load -i image.tar && docker compose up -d"
 
 Step 8 — Verify against the public URL (port 443, TLS):
     vibew probe --env production
@@ -1218,8 +1218,8 @@ Step 8 — Verify against the public URL (port 443, TLS):
 
 Step 9 — Subsequent deploys (after code or config changes):
     vibew bundle
-    rsync -av --delete .vibewarden/bundle/ root@<server-ip>:/opt/myapp/
-    ssh root@<server-ip> "cd /opt/myapp && docker load -i image.tar && docker compose up -d"
+    rsync -av --delete .vibewarden/bundle/ <your-ssh-user>@<your-ssh-host>:/opt/myapp/
+    ssh <your-ssh-user>@<your-ssh-host> "cd /opt/myapp && docker load -i image.tar && docker compose up -d"
 
 Note: the legacy `vibew deploy` command (one-shot SSH orchestration) was removed
 in ADR-086. The bundle pipeline above is the only supported remote workflow.
@@ -1237,10 +1237,10 @@ in ADR-086. The bundle pipeline above is the only supported remote workflow.
     Wait 1 hour. Use tls.provider: self-signed to test the rest of the stack.
 
   Container fails to start:
-    ssh root@<server-ip> 'cd /opt/myapp && docker compose logs vibewarden --tail 100'
+    ssh <your-ssh-user>@<your-ssh-host> 'cd /opt/myapp && docker compose logs vibewarden --tail 100'
 
   Full doctor output from the server:
-    ssh root@<server-ip> 'docker run --rm \
+    ssh <your-ssh-user>@<your-ssh-host> 'docker run --rm \
       -v /opt/myapp/vibewarden.production.yaml:/vibewarden.yaml:ro \
       ghcr.io/vibewarden/vibewarden:latest vibew doctor --json'
 
