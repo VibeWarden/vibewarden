@@ -12,6 +12,10 @@ This initial entry was written by hand to summarise the work leading up to v0.1.
 
 ## [Unreleased]
 
+## [v0.18.5] — 2026-04-30
+
+Theme: v0.18.4 retrospective fixes — first cross-vendor smoke (Codex agent) surfaced LLM-shape assumptions that prior Claude smokes had absorbed implicitly. Six retro-tagged pipelines (#1242–#1247) covering: per-env error messages on `vibew probe` (CRITICAL — was telling production users to run `vibew dev`); ACME-aware TLS retry on `vibew probe --env <name>` (30s budget); SSH placeholder bracketing + new `deploy.host` config + Codex prompt preambles ("vibew init does not scaffold", "VibeWarden does not deploy for you"); `vibew bundle --print-deploy --host --user --path` ad-hoc override; `vibew doctor --preflight <env>` pre-deploy validation; AGENTS-VIBEWARDEN.md must-know checklist at the top. CLAUDE.md gains a §Architecture principles bullet locking cross-LLM literal-vs-template clarity. No new ADRs; all changes refine the v0.18.3/v0.18.4 architecture rather than establish new patterns.
+
 ### Added
 
 - **`vibew doctor --preflight <env>`** (#1246) — pre-deploy validation against a named env (e.g. `--preflight production` reads `vibewarden.production.yaml`). Five new checks: DNS resolves the merged `tls.domain`, `server.port` is 443 for production, `deploy.target_platform` is set, app image arch matches `deploy.target_platform`, `tls.email` is configured (Let's Encrypt warning only). Reuses the env-resolver from #1233 and the image-inspect path from #1219. Static config + Dockerfile checks still run; preflight section appends afterward.
