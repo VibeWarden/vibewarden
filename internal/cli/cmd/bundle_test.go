@@ -699,10 +699,10 @@ func TestBundle_PrintDeploy_FlagValidationErrors(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Validation runs before scaffolding checks (requireScaffolding comes
-			// first in runBundle, but validatePrintDeployFlags is called right
-			// after the outputDir default). Use a temp dir with scaffolding so the
-			// test can observe the validation error, not the scaffolding error.
+			// validatePrintDeployFlags is the first call in runBundle, so flag
+			// validation errors surface before scaffolding checks. The project
+			// directory is still set up so the test isolates the validation path
+			// without noise from other preconditions.
 			dir := setupBundleProject(t)
 			outDir := filepath.Join(dir, "out")
 

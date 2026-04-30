@@ -180,18 +180,20 @@ supplied together. Paths with spaces in --path are not supported.`,
 //	2: image missing (ErrImageMissing)
 //	3: docker daemon unreachable (ErrDockerUnavailable)
 func runBundle(cmd *cobra.Command, outputDir, imageTag, targetPlatform string, overwrite, skipImage, build, allowStale bool, printDeploy bool, deployHost, deployUser, deployPath string) (int, error) {
+	// Validate --print-deploy flag combination FIRST — pure function, no I/O.
+	// A user who types --host/--user/--path without --print-deploy anywhere
+	// (including outside a vibewarden directory) sees the relevant flag error,
+	// not the scaffolding error.
+	if err := validatePrintDeployFlags(printDeploy, deployHost, deployUser, deployPath); err != nil {
+		return 1, err
+	}
+
 	if err := requireScaffolding(); err != nil {
 		return 1, err
 	}
 
 	if outputDir == "" {
 		outputDir = defaultBundleOutputDir
-	}
-
-	// Validate --print-deploy flag combination BEFORE any config load or bundle
-	// work. Both invalid forms exit 1 with a clear error message.
-	if err := validatePrintDeployFlags(printDeploy, deployHost, deployUser, deployPath); err != nil {
-		return 1, err
 	}
 
 	cfg, err := loadAndResolve(cmd.Context(), "")
