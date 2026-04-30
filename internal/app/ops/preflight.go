@@ -192,6 +192,23 @@ func checkImageArch(ctx context.Context, cfg *config.Config, inspector ports.Ima
 		}
 	}
 
+	// Guard: older Docker daemons sometimes omit the Os JSON field entirely,
+	// leaving info.OS == "" while info.Architecture is populated. Platform()
+	// would return "/amd64" in this case, which never equals "linux/amd64" and
+	// fires a spurious FAIL. Detect this and return WARN with a diagnostic
+	// message instead of comparing an incomplete platform string.
+	if info.OS == "" && info.Architecture != "" {
+		cfgPlatform := cfg.Deploy.TargetPlatform
+		return CheckResult{
+			Name:     "App image arch",
+			Severity: SeverityWarn,
+			Detail: fmt.Sprintf(
+				"App image arch: %s (OS field missing in image metadata; cannot verify against deploy.target_platform %s. Older Docker daemon? Rebuild with: vibew build --platform %s)",
+				info.Architecture, cfgPlatform, cfgPlatform,
+			),
+		}
+	}
+
 	imgPlatform := info.Platform()
 	cfgPlatform := cfg.Deploy.TargetPlatform
 	if cfgPlatform == "" || imgPlatform == cfgPlatform {

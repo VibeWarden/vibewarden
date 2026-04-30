@@ -52,6 +52,7 @@ func TestCheckDNSResolves_PASS_WARN_FAIL(t *testing.T) {
 		resolverErr   error
 		wantSeverity  ops.Severity
 		wantSubstr    string
+		wantNotSubstr string
 	}{
 		{
 			name:          "OK — single address",
@@ -73,6 +74,7 @@ func TestCheckDNSResolves_PASS_WARN_FAIL(t *testing.T) {
 			resolverAddrs: []string{"1.2.3.4", "5.6.7.8", "9.10.11.12"},
 			wantSeverity:  ops.SeverityOK,
 			wantSubstr:    "demo.example.com",
+			wantNotSubstr: "...",
 		},
 		{
 			name:         "WARN — NXDOMAIN error",
@@ -124,6 +126,9 @@ func TestCheckDNSResolves_PASS_WARN_FAIL(t *testing.T) {
 			out := buf.String()
 			if !strings.Contains(out, tt.wantSubstr) {
 				t.Errorf("output missing %q\ngot:\n%s", tt.wantSubstr, out)
+			}
+			if tt.wantNotSubstr != "" && strings.Contains(out, tt.wantNotSubstr) {
+				t.Errorf("output must not contain %q\ngot:\n%s", tt.wantNotSubstr, out)
 			}
 			// Verify severity via badge in human output.
 			badge := severityBadge(tt.wantSeverity)
@@ -369,6 +374,17 @@ func TestCheckImageArch_PASS_WARN_FAIL(t *testing.T) {
 			inspectorInfo:  ports.ImageInfo{OS: "linux", Architecture: "amd64"},
 			wantSeverity:   ops.SeverityOK,
 			wantSubstr:     "matches deploy.target_platform",
+		},
+		{
+			// Older Docker daemons may omit the Os JSON field; info.OS is ""
+			// but info.Architecture is populated. Platform() would return "/amd64",
+			// which never equals "linux/amd64" → spurious FAIL. Must be WARN.
+			name:           "WARN — empty OS field (older Docker daemon)",
+			appImage:       "myapp:latest",
+			targetPlatform: "linux/amd64",
+			inspectorInfo:  ports.ImageInfo{OS: "", Architecture: "amd64"},
+			wantSeverity:   ops.SeverityWarn,
+			wantSubstr:     "OS field missing in image metadata",
 		},
 	}
 

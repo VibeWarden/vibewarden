@@ -102,7 +102,14 @@ Examples:
 				resolver := envapp.NewFileResolver(workDir)
 				resolved, resolveErr := resolver.Resolve(preflightEnv)
 				if resolveErr != nil {
-					return fmt.Errorf("config file not found: vibewarden.%s.yaml", preflightEnv)
+					switch {
+					case errors.Is(resolveErr, envapp.ErrOverrideConfigMissing):
+						return fmt.Errorf("config file not found: vibewarden.%s.yaml: %w", preflightEnv, resolveErr)
+					case errors.Is(resolveErr, envapp.ErrBaseConfigMissing):
+						return fmt.Errorf("base config not found: vibewarden.yaml is required (run `vibew init`): %w", resolveErr)
+					default:
+						return fmt.Errorf("loading env config: %w", resolveErr)
+					}
 				}
 				cfg = resolved.Cfg
 			}

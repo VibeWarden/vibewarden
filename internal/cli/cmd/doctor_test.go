@@ -193,6 +193,38 @@ func TestDoctorCmd_PreflightFlag_MissingEnvFile_ErrorsClearly(t *testing.T) {
 	}
 }
 
+// TestDoctorCmd_PreflightFlag_MissingBaseConfig_ErrorsClearly verifies that
+// when vibewarden.yaml itself is absent, the error reports the base config
+// as missing — not the override file. This is the ErrBaseConfigMissing branch.
+func TestDoctorCmd_PreflightFlag_MissingBaseConfig_ErrorsClearly(t *testing.T) {
+	dir := t.TempDir()
+	// Deliberately do NOT write vibewarden.yaml — neither base nor override exists.
+
+	origWd, _ := os.Getwd()
+	if err := os.Chdir(dir); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(origWd) })
+
+	_, _, err := execDoctor(t, []string{"--preflight", "production"})
+	if err == nil {
+		t.Error("expected non-nil error when vibewarden.yaml is absent, got nil")
+	}
+	errMsg := err.Error()
+	// Must name the base config, not the override file.
+	if !strings.Contains(errMsg, "vibewarden.yaml") {
+		t.Errorf("expected error message to mention vibewarden.yaml, got: %q", errMsg)
+	}
+	// Must NOT report the override file as missing when the base is what's gone.
+	if strings.Contains(errMsg, "vibewarden.production.yaml") {
+		t.Errorf("error message must not mention vibewarden.production.yaml when the base config is missing, got: %q", errMsg)
+	}
+	// Must contain the vibew init hint.
+	if !strings.Contains(errMsg, "vibew init") {
+		t.Errorf("expected 'vibew init' hint in error message, got: %q", errMsg)
+	}
+}
+
 // TestDoctorCmd_PreflightFlag_AbsentByDefault verifies that when --preflight is
 // not set, no "Preflight:" section appears in the output.
 func TestDoctorCmd_PreflightFlag_AbsentByDefault(t *testing.T) {
