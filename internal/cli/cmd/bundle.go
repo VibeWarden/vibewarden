@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v3"
@@ -46,6 +47,12 @@ const multiSiteErrorMessage = "multi-site bundle is post-v1; see #1169 for the N
 //   - --allow-stale        suppress the stale warning; bundle proceeds regardless
 //   - --target-platform    target deployment platform (default: linux/amd64)
 //
+// New flags (#1245):
+//   - --print-deploy        substitute --host/--user/--path into the stdout "Next: deploy" block
+//   - --host                SSH host for the stdout deploy block (requires --print-deploy)
+//   - --user                SSH user for the stdout deploy block (requires --print-deploy)
+//   - --path                remote deploy path for the stdout deploy block (requires --print-deploy)
+//
 // Exit codes:
 //   - 0: success (including warnings)
 //   - 1: generic / config failure
@@ -64,6 +71,10 @@ func NewBundleCmd() *cobra.Command {
 		build          bool
 		allowStale     bool
 		targetPlatform string
+		printDeploy    bool
+		deployHost     string
+		deployUser     string
+		deployPath     string
 	)
 
 	cmd := &cobra.Command{
@@ -110,9 +121,22 @@ Examples:
   vibew bundle --output build/deploy
   vibew bundle --skip-image
   vibew bundle --image ghcr.io/acme/myapp:v1.2.3
-  vibew bundle --overwrite`,
+  vibew bundle --overwrite
+  vibew bundle --print-deploy --host 1.2.3.4 --user root --path /opt/myapp   # ad-hoc deploy block (no config mutation)
+
+Deploy block precedence ("Next: deploy" stdout):
+  1. --print-deploy --host <h> --user <u> --path <p>  (ad-hoc; affects stdout only)
+  2. deploy.host in vibewarden.production.yaml         (persistent; affects stdout AND bundle README)
+  3. bracketed placeholder + hint paragraph            (default; nothing configured)
+
+The bundle README always reflects #2 or #3 — --print-deploy is stdout-only by design,
+since the README is a versioned artifact that ships with the bundle.
+
+--print-deploy overrides any deploy.host in vibewarden.production.yaml for the
+printed "Next: deploy" block. All three sub-flags (--host, --user, --path) must be
+supplied together. Paths with spaces in --path are not supported.`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			code, err := runBundle(cmd, outputDir, imageTag, targetPlatform, overwrite, skipImage, build, allowStale)
+			code, err := runBundle(cmd, outputDir, imageTag, targetPlatform, overwrite, skipImage, build, allowStale, printDeploy, deployHost, deployUser, deployPath)
 			if err != nil {
 				// Set the process exit code for semantic exit codes (2, 3) while
 				// still surfacing the error message via cobra.
@@ -137,6 +161,11 @@ Examples:
 	cmd.Flags().BoolVar(&allowStale, "allow-stale", false, "suppress the stale-image warning (bundle proceeds regardless of freshness)")
 	cmd.Flags().StringVar(&targetPlatform, "target-platform", "",
 		"expected deployment platform, e.g. linux/arm64 (default: deploy.target_platform from vibewarden.production.yaml, or linux/amd64)")
+	cmd.Flags().BoolVar(&printDeploy, "print-deploy", false,
+		"substitute --host/--user/--path into the printed 'Next: deploy' block (overrides deploy.host from production.yaml)")
+	cmd.Flags().StringVar(&deployHost, "host", "", "SSH host to substitute into the printed deploy block (requires --print-deploy)")
+	cmd.Flags().StringVar(&deployUser, "user", "", "SSH user to substitute into the printed deploy block (requires --print-deploy)")
+	cmd.Flags().StringVar(&deployPath, "path", "", "remote deploy path to substitute into the printed deploy block, e.g. /opt/myapp (requires --print-deploy; paths with spaces are not supported)")
 
 	return cmd
 }
@@ -150,13 +179,19 @@ Examples:
 //	1: generic failure
 //	2: image missing (ErrImageMissing)
 //	3: docker daemon unreachable (ErrDockerUnavailable)
-func runBundle(cmd *cobra.Command, outputDir, imageTag, targetPlatform string, overwrite, skipImage, build, allowStale bool) (int, error) {
+func runBundle(cmd *cobra.Command, outputDir, imageTag, targetPlatform string, overwrite, skipImage, build, allowStale bool, printDeploy bool, deployHost, deployUser, deployPath string) (int, error) {
 	if err := requireScaffolding(); err != nil {
 		return 1, err
 	}
 
 	if outputDir == "" {
 		outputDir = defaultBundleOutputDir
+	}
+
+	// Validate --print-deploy flag combination BEFORE any config load or bundle
+	// work. Both invalid forms exit 1 with a clear error message.
+	if err := validatePrintDeployFlags(printDeploy, deployHost, deployUser, deployPath); err != nil {
+		return 1, err
 	}
 
 	cfg, err := loadAndResolve(cmd.Context(), "")
@@ -343,14 +378,24 @@ func runBundle(cmd *cobra.Command, outputDir, imageTag, targetPlatform string, o
 		domain = cfg.TLS.Domain
 	}
 
-	// Resolve the SSH target. When deploy.host is configured, use it verbatim.
-	// Otherwise use the bracketed placeholder — clearly not a real host — and
-	// append a hint paragraph so the user knows how to fill it in. This is the
-	// cross-LLM literal-vs-template clarity standard (#1244).
+	// Resolve the SSH target and remote path for the "Next: deploy" block.
+	// Three-way precedence (#1245):
+	//   1. --print-deploy flags (ad-hoc; stdout only — README unaffected)
+	//   2. deploy.host from config/production.yaml (persistent)
+	//   3. bracketed placeholder + hint paragraph (default)
 	const sshPlaceholder = "<your-ssh-user>@<your-ssh-host>"
 	sshTarget := sshPlaceholder
-	if cfg.Deploy.Host != "" {
+	remotePath := "/opt/" + appName // default implicit value — explicit for substitution
+	suppressHint := false
+
+	switch {
+	case printDeploy:
+		sshTarget = deployUser + "@" + deployHost
+		remotePath = deployPath
+		suppressHint = true
+	case cfg.Deploy.Host != "":
 		sshTarget = cfg.Deploy.Host
+		suppressHint = true
 	}
 
 	// Build the docker command for the "Next" block — omit docker load when
@@ -362,14 +407,14 @@ func runBundle(cmd *cobra.Command, outputDir, imageTag, targetPlatform string, o
 
 	fmt.Fprintln(out, "")
 	fmt.Fprintln(out, "Next: deploy")
-	fmt.Fprintf(out, "    ssh %s 'mkdir -p /opt/%s'\n", sshTarget, appName)
-	fmt.Fprintf(out, "    tar -czf - -C %q . | ssh %s 'tar -xzf - -C /opt/%s/'\n", absOut, sshTarget, appName)
-	fmt.Fprintf(out, "    ssh %s \"cd /opt/%s && %s\"\n", sshTarget, appName, dockerCmd)
+	fmt.Fprintf(out, "    ssh %s 'mkdir -p %s'\n", sshTarget, remotePath)
+	fmt.Fprintf(out, "    tar -czf - -C %q . | ssh %s 'tar -xzf - -C %s/'\n", absOut, sshTarget, remotePath)
+	fmt.Fprintf(out, "    ssh %s \"cd %s && %s\"\n", sshTarget, remotePath, dockerCmd)
 	fmt.Fprintf(out, "    curl -fsSL https://%s/_vibewarden/health\n", domain)
 	fmt.Fprintln(out, "")
-	// Hint paragraph — emitted only when deploy.host is unset (placeholder was
-	// used). When host is configured, the block is clean and self-explanatory.
-	if cfg.Deploy.Host == "" {
+	// Hint paragraph — emitted only when neither --print-deploy nor deploy.host
+	// resolved a real target. When a target is known, the block is self-explanatory.
+	if !suppressHint {
 		fmt.Fprintf(out, "Replace `%s` with your actual SSH target.\n", sshPlaceholder)
 		fmt.Fprintln(out, "  - Check `~/.ssh/config` for an existing alias.")
 		fmt.Fprintln(out, "  - Or set `deploy.host: user@host` in `vibewarden.production.yaml`")
@@ -378,6 +423,33 @@ func runBundle(cmd *cobra.Command, outputDir, imageTag, targetPlatform string, o
 	}
 	fmt.Fprintf(out, "See %s/README.md for context and read-only inspection commands.\n", absOut)
 	return 0, nil
+}
+
+// validatePrintDeployFlags enforces the all-or-nothing relationship between
+// --print-deploy and its three sub-flags. When --print-deploy is set, all
+// three of --host, --user, and --path must be non-empty. When --print-deploy
+// is unset, none of the three may be set.
+func validatePrintDeployFlags(printDeploy bool, host, user, path string) error {
+	if !printDeploy {
+		if host != "" || user != "" || path != "" {
+			return fmt.Errorf("--host/--user/--path require --print-deploy")
+		}
+		return nil
+	}
+	var missing []string
+	if host == "" {
+		missing = append(missing, "--host")
+	}
+	if user == "" {
+		missing = append(missing, "--user")
+	}
+	if path == "" {
+		missing = append(missing, "--path")
+	}
+	if len(missing) > 0 {
+		return fmt.Errorf("--print-deploy requires --host, --user, --path (missing: %s)", strings.Join(missing, ", "))
+	}
+	return nil
 }
 
 // bundleListing walks dir and returns a sorted slice of relative file paths

@@ -12,6 +12,10 @@ This initial entry was written by hand to summarise the work leading up to v0.1.
 
 ## [Unreleased]
 
+### Added
+
+- **`vibew bundle --print-deploy --host <h> --user <u> --path <p>`** (#1245) — ad-hoc, per-invocation override for the printed "Next: deploy" stdout block. All three sub-flags required when `--print-deploy` is set; flag wins over `deploy.host` from `vibewarden.production.yaml`. Bundle README is unaffected (config and placeholder paths only). Useful for one-off deploys and multi-host CI without mutating config. (retro-0.18.4 follow-up)
+
 ### Changed
 
 - **changed:** SSH target placeholder in vibew-emitted deploy commands is now `<your-ssh-user>@<your-ssh-host>` (was: `user@<domain>`). Codex agent followed the old form literally and hit auth failure on the v0.18.4 demo deploy. New `deploy.host` field in `vibewarden.production.yaml` (mirrors `deploy.target_platform`) — when set, `vibew bundle` stdout and bundle README substitute the configured host verbatim. Kickoff release artifacts (post-#1232) keep the bracketed placeholder forever (released-once, can't know any user's config). Two new prose preambles in the kickoff prompt clarify (a) `vibew init` does not scaffold app code/Dockerfile, (b) VibeWarden does not deploy for you. CLAUDE.md gains a §Architecture principles bullet locking the cross-LLM literal-vs-template clarity rule. (#1244, retro-0.18.4 Codex finding)
