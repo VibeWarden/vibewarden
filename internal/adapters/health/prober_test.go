@@ -2,6 +2,7 @@ package health
 
 import (
 	"context"
+	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -185,6 +186,41 @@ func TestNewLocalhostProber_InsecureSkipVerify(t *testing.T) {
 	}
 	if doc.Status != "ok" {
 		t.Errorf("status = %q, want %q", doc.Status, "ok")
+	}
+}
+
+func TestNewStrictProber_RejectsSelfSignedCert(t *testing.T) {
+	// httptest.NewTLSServer presents a self-signed certificate. NewStrictProber
+	// uses the stdlib default TLS verification (no InsecureSkipVerify), so the
+	// handshake must fail with an x509 unknown-authority error. This is the
+	// symmetric counterpart to TestNewLocalhostProber_InsecureSkipVerify and
+	// validates the --env safety property: a production probe against an invalid
+	// cert is rejected, not silently accepted.
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write(healthBody("ok", "0.18.4", map[string]string{
+			"sidecar":  "ok",
+			"upstream": "ok",
+		}))
+	}))
+	defer srv.Close()
+
+	prober := NewStrictProber(3 * time.Second)
+	_, err := prober.Probe(context.Background(), srv.URL)
+	if err == nil {
+		t.Fatal("NewStrictProber should reject a self-signed certificate, but got nil error")
+	}
+
+	// The error must be (or wrap) an x509.UnknownAuthorityError, proving that
+	// strict TLS verification is active. Accept either errors.As match or a
+	// substring check to remain robust across Go stdlib versions.
+	var unknownAuth x509.UnknownAuthorityError
+	msg := err.Error()
+	if !errors.As(err, &unknownAuth) &&
+		!strings.Contains(msg, "certificate signed by unknown authority") &&
+		!strings.Contains(msg, "x509") {
+		t.Errorf("expected x509 TLS rejection error, got: %v", err)
 	}
 }
 

@@ -34,8 +34,11 @@ func NewProbeCmd() *cobra.Command {
 	var envName string
 
 	cmd := &cobra.Command{
-		Use:   "probe [--env <name>]",
-		Short: "Probe the sidecar's /_vibewarden/health endpoint",
+		Use:           "probe [--env <name>]",
+		Short:         "Probe the sidecar's /_vibewarden/health endpoint",
+		Args:          cobra.NoArgs,
+		SilenceErrors: true,
+		SilenceUsage:  true,
 		Long: `Probe the VibeWarden sidecar's /_vibewarden/health endpoint over HTTPS.
 
 Uses Go's stdlib TLS stack, bypassing macOS LibreSSL friction with self-signed

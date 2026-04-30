@@ -46,6 +46,9 @@ func execProbe(t *testing.T, args []string) (string, string, error) {
 }
 
 func TestProbeCmd_DefaultPath_OK(t *testing.T) {
+	// httptest.NewTLSServer binds to 127.0.0.1. NewLocalhostProber probes
+	// https://localhost:<port> with InsecureSkipVerify=true, so the self-signed
+	// cert is accepted and the round-trip succeeds end-to-end.
 	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/_vibewarden/health" {
 			http.NotFound(w, r)
@@ -60,8 +63,8 @@ func TestProbeCmd_DefaultPath_OK(t *testing.T) {
 	}))
 	defer srv.Close()
 
-	// We need a vibewarden.yaml that points to our test server port.
-	// Extract the port from the test server URL.
+	// Point vibewarden.yaml at the test server's port so the prober resolves
+	// the right target.
 	addr := srv.Listener.Addr().String()
 	port := portFromAddr(t, addr)
 
@@ -69,25 +72,25 @@ func TestProbeCmd_DefaultPath_OK(t *testing.T) {
 	writeYAML(t, filepath.Join(dir, "vibewarden.yaml"),
 		"server:\n  port: "+port+"\n")
 
-	// Change into the temp dir so config.Load("") finds the file.
 	origWd, _ := os.Getwd()
 	_ = os.Chdir(dir)
 	t.Cleanup(func() { _ = os.Chdir(origWd) })
 
-	// We can't easily redirect the probe to our test server without a flag,
-	// because the prober always hits localhost:<port>. Since this test is an
-	// integration test we skip the actual network call and test via --env
-	// path separately. This test validates the command wires up correctly.
-	//
-	// However, to make this a meaningful end-to-end test, we test the --env
-	// path below where we control the target URL.
-	//
-	// For the default path we just verify that the command runs without a
-	// panic and the output contains something meaningful (the URL).
-	// The actual network result will be a refused error since localhost:<port>
-	// is not running in tests.
-	stdout, _, _ := execProbe(t, nil)
-	_ = stdout // connection refused is expected; test verifies no panic
+	stdout, _, err := execProbe(t, nil)
+	if err != nil {
+		t.Errorf("expected exit 0 for healthy stack, got error: %v", err)
+	}
+	// Rendered output must contain the URL, the upstream component line, and the
+	// dev-ok summary line.
+	if !strings.Contains(stdout, "/_vibewarden/health") {
+		t.Errorf("output missing URL; got: %q", stdout)
+	}
+	if !strings.Contains(stdout, "components.upstream:") {
+		t.Errorf("output missing components.upstream line; got: %q", stdout)
+	}
+	if !strings.Contains(stdout, "OK — dev stack healthy.") {
+		t.Errorf("output missing OK summary; got: %q", stdout)
+	}
 }
 
 func TestProbeCmd_EnvPath_OK(t *testing.T) {
@@ -189,6 +192,14 @@ func TestProbeCmd_Help(t *testing.T) {
 	}
 	if !strings.Contains(help, "--env") {
 		t.Errorf("help text should mention --env flag, got: %q", help)
+	}
+}
+
+func TestProbeCmd_RejectsPositionalArgs(t *testing.T) {
+	// cobra.NoArgs must reject any positional argument; no config file needed.
+	_, _, err := execProbe(t, []string{"accidental-arg"})
+	if err == nil {
+		t.Error("expected non-nil error when positional argument is passed, got nil")
 	}
 }
 
