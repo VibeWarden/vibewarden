@@ -922,9 +922,12 @@ func TestBundle_Readme_AlignsWithDeployTmpl(t *testing.T) {
 		}
 	}
 
-	// Forensic alignment: load all four surfaces and assert required/forbidden
-	// patterns across each one (#1217). Failures here mean a surface drifted
-	// back to the dotfile-eating scp glob or a banned artifact command.
+	// Forensic alignment: load three static surfaces and assert required/forbidden
+	// patterns across each one (#1217). The fourth surface — bundle stdout — is
+	// guarded separately by TestBundle_Stdout_PrintsLiteralDeployCommands in
+	// internal/cli/cmd/bundle_test.go, which also carries the forbidden-pattern
+	// wantAbsent assertions. Failures here mean a surface drifted back to the
+	// dotfile-eating scp glob or a banned artifact command.
 	llmsFullPath := filepath.Join(repoRoot, "llms-full.txt")
 	llmsFullBytes, err := os.ReadFile(llmsFullPath) //nolint:gosec // path derived from source tree
 	if err != nil {
