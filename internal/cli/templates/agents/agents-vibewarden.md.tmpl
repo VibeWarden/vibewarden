@@ -272,6 +272,7 @@ source of user friction. Running `vibew deploy` today prints cobra's
 - [ ] **App responds to `GET /health` with HTTP 200** on that port. The sidecar waits on this endpoint before accepting traffic; a missing or 404 `/health` hangs the stack.
 - [ ] **Multi-stage build for compiled languages** (Go, Rust, Java, etc.). Pin the **builder** image's `major.minor` to the project toolchain manifest above. The final stage copies only the compiled binary onto Alpine — no source, no toolchain.
 - [ ] **No `HEALTHCHECK` directive.** Compose owns the healthcheck (already declared in the generated `docker-compose.yml`). A Dockerfile `HEALTHCHECK` is redundant, fights compose's view of container state, and will be flagged by `vibew doctor`.
+- [ ] **Frozen-install commands need lockfiles in the build context.** If your Dockerfile runs a frozen-install command (`npm ci`, `pnpm install --frozen-lockfile`, `yarn install --frozen-lockfile`, `bun install --frozen-lockfile`, `pip-sync`, `cargo build --locked`, etc.), the corresponding lockfile (`package-lock.json`, `pnpm-lock.yaml`, `yarn.lock`, `bun.lockb`, `requirements.txt`, `Cargo.lock`) must exist in the build context. Without it, `vibew build` fails on the first run.
 
 **Strongly recommended (warned, not blocked):**
 
