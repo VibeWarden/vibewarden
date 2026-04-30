@@ -264,6 +264,16 @@ func runBundle(cmd *cobra.Command, outputDir, imageTag, targetPlatform string, o
 			cfg.TLS.Domain = prodDomain
 		}
 	}
+
+	// Mirror the same pattern for deploy.host. When set in production.yaml,
+	// vibew bundle substitutes it verbatim into the stdout block and the
+	// bundle README; otherwise, the bracketed placeholder is used with a hint
+	// paragraph. No auto-resolve from ~/.ssh/config; explicit is better.
+	if cfg.Deploy.Host == "" {
+		if prodHost := readProdDeployHost(prodConfigPath); prodHost != "" {
+			cfg.Deploy.Host = prodHost
+		}
+	}
 	bundleErr := svc.Bundle(cmd.Context(), bundleapp.BundleOptions{
 		Config:         cfg,
 		ConfigPath:     absConfig,
@@ -333,6 +343,16 @@ func runBundle(cmd *cobra.Command, outputDir, imageTag, targetPlatform string, o
 		domain = cfg.TLS.Domain
 	}
 
+	// Resolve the SSH target. When deploy.host is configured, use it verbatim.
+	// Otherwise use the bracketed placeholder — clearly not a real host — and
+	// append a hint paragraph so the user knows how to fill it in. This is the
+	// cross-LLM literal-vs-template clarity standard (#1244).
+	const sshPlaceholder = "<your-ssh-user>@<your-ssh-host>"
+	sshTarget := sshPlaceholder
+	if cfg.Deploy.Host != "" {
+		sshTarget = cfg.Deploy.Host
+	}
+
 	// Build the docker command for the "Next" block — omit docker load when
 	// --skip-image was set so the printed sequence stays valid.
 	dockerCmd := "docker load -i image.tar && docker compose up -d"
@@ -342,11 +362,20 @@ func runBundle(cmd *cobra.Command, outputDir, imageTag, targetPlatform string, o
 
 	fmt.Fprintln(out, "")
 	fmt.Fprintln(out, "Next: deploy")
-	fmt.Fprintf(out, "    ssh user@host 'mkdir -p /opt/%s'\n", appName)
-	fmt.Fprintf(out, "    tar -czf - -C %q . | ssh user@host 'tar -xzf - -C /opt/%s/'\n", absOut, appName)
-	fmt.Fprintf(out, "    ssh user@host \"cd /opt/%s && %s\"\n", appName, dockerCmd)
+	fmt.Fprintf(out, "    ssh %s 'mkdir -p /opt/%s'\n", sshTarget, appName)
+	fmt.Fprintf(out, "    tar -czf - -C %q . | ssh %s 'tar -xzf - -C /opt/%s/'\n", absOut, sshTarget, appName)
+	fmt.Fprintf(out, "    ssh %s \"cd /opt/%s && %s\"\n", sshTarget, appName, dockerCmd)
 	fmt.Fprintf(out, "    curl -fsSL https://%s/_vibewarden/health\n", domain)
 	fmt.Fprintln(out, "")
+	// Hint paragraph — emitted only when deploy.host is unset (placeholder was
+	// used). When host is configured, the block is clean and self-explanatory.
+	if cfg.Deploy.Host == "" {
+		fmt.Fprintf(out, "Replace `%s` with your actual SSH target.\n", sshPlaceholder)
+		fmt.Fprintln(out, "  - Check `~/.ssh/config` for an existing alias.")
+		fmt.Fprintln(out, "  - Or set `deploy.host: user@host` in `vibewarden.production.yaml`")
+		fmt.Fprintln(out, "    (vibew will substitute it into the bundle stdout next time).")
+		fmt.Fprintln(out, "")
+	}
 	fmt.Fprintf(out, "See %s/README.md for context and read-only inspection commands.\n", absOut)
 	return 0, nil
 }
@@ -420,4 +449,29 @@ func readProdTLSDomain(prodConfigPath string) string {
 		return ""
 	}
 	return tree.TLS.Domain
+}
+
+// readProdDeployHost reads deploy.host from a production override YAML without
+// merging the rest of the file. This mirrors readProdTLSDomain — both helpers
+// are intentionally near-identical rather than generalised into a single
+// config-driven function (YAGNI for two fields; if a third lands the refactor
+// is one commit per the architect's decision in #1244).
+// Returns "" when the file does not exist, is unreadable, or has no host.
+func readProdDeployHost(prodConfigPath string) string {
+	if prodConfigPath == "" {
+		return ""
+	}
+	data, err := os.ReadFile(prodConfigPath) //nolint:gosec // path is the resolved production config path
+	if err != nil {
+		return ""
+	}
+	var tree struct {
+		Deploy struct {
+			Host string `yaml:"host"`
+		} `yaml:"deploy"`
+	}
+	if err := yaml.Unmarshal(data, &tree); err != nil {
+		return ""
+	}
+	return tree.Deploy.Host
 }

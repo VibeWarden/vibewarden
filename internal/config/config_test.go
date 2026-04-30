@@ -3510,3 +3510,64 @@ func TestLoad_DeployBlock_MissingEntirelyUsesDefault(t *testing.T) {
 		t.Errorf("Deploy.TargetPlatform = %q, want %q", cfg.Deploy.TargetPlatform, "linux/amd64")
 	}
 }
+
+// TestLoad_DeployHost_DefaultIsEmpty verifies that when no yaml contains
+// deploy.host the field defaults to the empty string (no SSH target assumed).
+func TestLoad_DeployHost_DefaultIsEmpty(t *testing.T) {
+	dir := t.TempDir()
+	cfgPath := filepath.Join(dir, "vibewarden.yaml")
+	if err := os.WriteFile(cfgPath, []byte("server:\n  port: 8443\n"), 0o600); err != nil {
+		t.Fatalf("writing config: %v", err)
+	}
+
+	cfg, err := config.Load(cfgPath)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.Deploy.Host != "" {
+		t.Errorf("Deploy.Host = %q, want empty string (no default)", cfg.Deploy.Host)
+	}
+}
+
+// TestLoad_DeployHost_FromYAML verifies that deploy.host is populated when
+// the yaml carries the field, and that an explicit empty string in the yaml
+// returns empty (mirrors the target_platform behaviour documented above).
+func TestLoad_DeployHost_FromYAML(t *testing.T) {
+	tests := []struct {
+		name     string
+		yaml     string
+		wantHost string
+	}{
+		{
+			name:     "literal user@host from yaml",
+			yaml:     "deploy:\n  host: root@1.2.3.4\n",
+			wantHost: "root@1.2.3.4",
+		},
+		{
+			name:     "ssh alias (no @) from yaml",
+			yaml:     "deploy:\n  host: myserver\n",
+			wantHost: "myserver",
+		},
+		{
+			name:     "empty string in yaml returns empty",
+			yaml:     "deploy:\n  host: \"\"\n",
+			wantHost: "",
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			cfgPath := filepath.Join(dir, "vibewarden.yaml")
+			if err := os.WriteFile(cfgPath, []byte(tt.yaml), 0o600); err != nil {
+				t.Fatalf("writing config: %v", err)
+			}
+			cfg, err := config.Load(cfgPath)
+			if err != nil {
+				t.Fatalf("Load() error = %v", err)
+			}
+			if cfg.Deploy.Host != tt.wantHost {
+				t.Errorf("Deploy.Host = %q, want %q", cfg.Deploy.Host, tt.wantHost)
+			}
+		})
+	}
+}

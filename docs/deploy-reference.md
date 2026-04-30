@@ -16,8 +16,8 @@ is touched.
 | Before (removed) | After (supported) |
 |------------------|-------------------|
 | `vibew deploy --target ssh://user@host --config vibewarden.production.yaml` | `vibew bundle` → copy `.vibewarden/bundle/` to the host → `docker compose up -d` (see the bundle's `README.md` for the full contract) |
-| `vibew deploy status --target ssh://user@host` | `ssh user@host 'cd ~/vibewarden-bundle && docker compose ps'` |
-| `vibew deploy logs --target ssh://user@host --lines 50` | `ssh user@host 'cd ~/vibewarden-bundle && docker compose logs --tail=50'` |
+| `vibew deploy status --target ssh://user@host` | `ssh <your-ssh-user>@<your-ssh-host> 'cd ~/vibewarden-bundle && docker compose ps'` |
+| `vibew deploy logs --target ssh://user@host --lines 50` | `ssh <your-ssh-user>@<your-ssh-host> 'cd ~/vibewarden-bundle && docker compose logs --tail=50'` |
 | `vibew deploy --dry-run` | `vibew bundle` (bundle is always written locally; inspect `.vibewarden/bundle/`) |
 
 ---

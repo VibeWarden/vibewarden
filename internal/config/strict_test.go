@@ -269,3 +269,28 @@ func TestLoadStrict_DeployUnknownKey_Rejected(t *testing.T) {
 		t.Errorf("UnknownKeyError.Keys = %v, want to contain %q", unknown.Keys, "deploy.foo")
 	}
 }
+
+// TestLoadStrict_DeployHost_Accepted verifies that the new deploy.host field
+// is accepted by LoadStrict and does not trigger an UnknownKeyError. Production
+// yaml files that carry this field must load cleanly.
+func TestLoadStrict_DeployHost_Accepted(t *testing.T) {
+	dir := t.TempDir()
+	basePath := filepath.Join(dir, "vibewarden.yaml")
+	if err := os.WriteFile(basePath, []byte("server:\n  port: 8443\n"), 0o600); err != nil {
+		t.Fatalf("writing base: %v", err)
+	}
+	prodPath := filepath.Join(dir, "vibewarden.production.yaml")
+	prodYAML := "server:\n  port: 443\ndeploy:\n  target_platform: linux/amd64\n  host: alice@host.example\n"
+	if err := os.WriteFile(prodPath, []byte(prodYAML), 0o600); err != nil {
+		t.Fatalf("writing prod: %v", err)
+	}
+
+	// LoadStrict validates the schema but only loads values from the base yaml
+	// via config.Load (the prod yaml is only schema-checked, not merged into
+	// cfg). The important assertion here is that LoadStrict does NOT return an
+	// UnknownKeyError for deploy.host — the field is known and must be accepted.
+	_, err := config.LoadStrict(basePath, prodPath)
+	if err != nil {
+		t.Fatalf("LoadStrict() error = %v (deploy.host must be accepted)", err)
+	}
+}

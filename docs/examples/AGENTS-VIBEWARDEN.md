@@ -205,12 +205,12 @@ The bundle is just files. The contract is in `.vibewarden/bundle/README.md`:
 
 1. Build for the target architecture: `vibew build --platform linux/amd64`.
 2. Produce the bundle: `vibew bundle`.
-3. Make sure the remote directory exists (e.g. `ssh user@host mkdir -p
+3. Make sure the remote directory exists (e.g. `ssh <your-ssh-user>@<your-ssh-host> mkdir -p
    /path/to/bundle`).
 4. Copy the bundle to the host using the tar pipe (dotfile-safe — `scp -r bundle/*`
    silently drops `.env` and `.credentials` due to POSIX glob):
    ```bash
-   tar -czf - -C .vibewarden/bundle . | ssh user@host 'tar -xzf - -C /path/to/bundle/'
+   tar -czf - -C .vibewarden/bundle . | ssh <your-ssh-user>@<your-ssh-host> 'tar -xzf - -C /path/to/bundle/'
    ```
 5. On the host, in the bundle directory: load `image.tar` (in
    registry-pull mode the image is already published — skip this step

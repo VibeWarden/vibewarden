@@ -15,6 +15,9 @@ Verify: `vibew --version` should print a version string.
 
 ## Step 2 — Scaffold the project
 
+NOTE: `vibew init` does not create app code or a Dockerfile. You must
+provide both. AGENTS-VIBEWARDEN.md describes the contract.
+
   # Skip if you're already in the project directory:
   mkdir foo && cd foo
   vibew init --name foo --describe "bar"

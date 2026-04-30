@@ -499,24 +499,31 @@ func TestBundle_Stdout_PrintsLiteralDeployCommands(t *testing.T) {
 		spacedOutDir bool // when true, outDir path contains a space to exercise %q quoting
 	}{
 		{
-			name: "app name and domain substituted in next block",
+			name: "app name and domain substituted in next block — no deploy.host uses bracketed placeholder",
 			yaml: "name: myapp\ntls:\n  domain: myapp.example.com\nserver:\n  port: 8080\nupstream:\n  port: 3000\n",
 			wantCmds: []string{
 				"Next: deploy",
-				"ssh user@host 'mkdir -p /opt/myapp'",
+				"ssh <your-ssh-user>@<your-ssh-host> 'mkdir -p /opt/myapp'",
 				"tar -czf - -C",
-				"| ssh user@host 'tar -xzf - -C /opt/myapp/'",
+				"| ssh <your-ssh-user>@<your-ssh-host> 'tar -xzf - -C /opt/myapp/'",
 				"docker compose up -d",
 				"curl -fsSL https://myapp.example.com/_vibewarden/health",
+				// Hint paragraph must be present when deploy.host is unset.
+				"Replace `<your-ssh-user>@<your-ssh-host>` with your actual SSH target.",
+				"~/.ssh/config",
+				"deploy.host: user@host",
 			},
 			// --skip-image is always passed; docker load must not appear.
 			// The three banned artifact forms are guarded here so a regression
 			// in bundle.go (stdout surface) is caught by this forensic check.
+			// The old unbracketed placeholder forms are also forbidden (#1244).
 			wantAbsent: []string{
 				"docker load -i image.tar &&",
 				"scp -r .vibewarden/bundle/*", // dotfile-eating glob eliminated by #1217
 				"bash deploy.sh",              // already-removed artifact (#1138)
 				"./deploy.sh",                 // ditto
+				"user@<",                      // old unbracketed placeholder form (#1244)
+				"user@host 'mkdir",            // pre-#1244 literal placeholder
 			},
 		},
 		{
@@ -530,6 +537,7 @@ func TestBundle_Stdout_PrintsLiteralDeployCommands(t *testing.T) {
 				"scp -r .vibewarden/bundle/*",
 				"bash deploy.sh",
 				"./deploy.sh",
+				"user@<",
 			},
 		},
 		{
@@ -550,6 +558,27 @@ func TestBundle_Stdout_PrintsLiteralDeployCommands(t *testing.T) {
 				"scp -r .vibewarden/bundle/*",
 				"bash deploy.sh",
 				"./deploy.sh",
+				"user@<",
+			},
+		},
+		{
+			// deploy.host set in yaml substitutes verbatim; hint paragraph absent.
+			name: "deploy.host set — substituted into Next block, hint absent",
+			yaml: "name: myapp\ntls:\n  domain: myapp.example.com\nserver:\n  port: 8080\nupstream:\n  port: 3000\ndeploy:\n  host: alice@host.example\n",
+			wantCmds: []string{
+				"Next: deploy",
+				"ssh alice@host.example 'mkdir -p /opt/myapp'",
+				"| ssh alice@host.example 'tar -xzf - -C /opt/myapp/'",
+				`ssh alice@host.example "cd /opt/myapp`,
+				"curl -fsSL https://myapp.example.com/_vibewarden/health",
+			},
+			wantAbsent: []string{
+				"<your-ssh-user>@<your-ssh-host>",
+				"Replace `<your-ssh-user>",
+				"scp -r .vibewarden/bundle/*",
+				"bash deploy.sh",
+				"./deploy.sh",
+				"user@<",
 			},
 		},
 	}

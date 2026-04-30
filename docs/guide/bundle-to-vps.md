@@ -41,7 +41,7 @@ On the VPS:
 - Docker Engine 20.10+ and the Docker Compose v2 plugin installed and
   runnable by the SSH user.
 - A directory writable by the SSH user where the bundle will land. Create
-  it before copying — `ssh user@host mkdir -p /path/to/bundle` works.
+  it before copying — `ssh <your-ssh-user>@<your-ssh-host> mkdir -p /path/to/bundle` works.
 
 ---
 
@@ -85,16 +85,16 @@ same inputs produces byte-identical output (deterministic).
 The bundle is just files. The contract is described in
 `.vibewarden/bundle/README.md` and reproduced here:
 
-1. Make sure the remote directory exists (e.g. `ssh user@host mkdir -p
+1. Make sure the remote directory exists (e.g. `ssh <your-ssh-user>@<your-ssh-host> mkdir -p
    /path/to/bundle`). The transfer step below cannot create missing
    parent directories.
 2. Copy the bundle to the host using the tar pipe form — it transfers
    dotfiles (`.env`, `.credentials`) that `scp -r bundle/*` silently
    drops due to POSIX glob expansion:
    ```bash
-   tar -czf - -C .vibewarden/bundle . | ssh user@host 'tar -xzf - -C /path/to/bundle/'
+   tar -czf - -C .vibewarden/bundle . | ssh <your-ssh-user>@<your-ssh-host> 'tar -xzf - -C /path/to/bundle/'
    ```
-   For redeploys with delta transfer, `rsync -av --delete .vibewarden/bundle/ user@host:/path/to/bundle/` also works (rsync is dotfile-safe by default).
+   For redeploys with delta transfer, `rsync -av --delete .vibewarden/bundle/ <your-ssh-user>@<your-ssh-host>:/path/to/bundle/` also works (rsync is dotfile-safe by default).
 3. On the host, in the bundle directory: load `image.tar` into Docker
    (or, in registry-pull mode built with `--skip-image`, ensure the
    image referenced by `docker-compose.yml` is published and reachable).
@@ -118,10 +118,10 @@ Once the bundle is on the VPS, all subsequent operations use standard
 `docker compose`:
 
 ```bash
-ssh user@host 'cd ~/vibewarden-bundle && docker compose ps'                 # status
-ssh user@host 'cd ~/vibewarden-bundle && docker compose logs --tail=100 -f' # logs
-ssh user@host 'cd ~/vibewarden-bundle && docker compose restart vibewarden' # restart
-ssh user@host 'cd ~/vibewarden-bundle && docker compose pull && docker compose up -d'  # update
+ssh <your-ssh-user>@<your-ssh-host> 'cd ~/vibewarden-bundle && docker compose ps'                 # status
+ssh <your-ssh-user>@<your-ssh-host> 'cd ~/vibewarden-bundle && docker compose logs --tail=100 -f' # logs
+ssh <your-ssh-user>@<your-ssh-host> 'cd ~/vibewarden-bundle && docker compose restart vibewarden' # restart
+ssh <your-ssh-user>@<your-ssh-host> 'cd ~/vibewarden-bundle && docker compose pull && docker compose up -d'  # update
 ```
 
 Redeploys are `vibew bundle` → repeat the copy + `docker compose up -d`. The bundle
@@ -140,7 +140,7 @@ changed (config, image tag, overlay).
 - **TLS certificates.** `vibew bundle` emits whatever TLS config the
   merged `vibewarden.yaml` specifies. Let's Encrypt flows run on first
   container start. Verify with
-  `ssh user@host 'cd ~/vibewarden-bundle && docker compose logs vibewarden | grep -i acme'`.
+  `ssh <your-ssh-user>@<your-ssh-host> 'cd ~/vibewarden-bundle && docker compose logs vibewarden | grep -i acme'`.
 
 - **Strict config validation failures before any files are written.**
   `vibew bundle` calls `config.LoadStrict`, so unknown keys abort the
