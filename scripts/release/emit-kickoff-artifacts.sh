@@ -37,6 +37,15 @@ fi
 # Sentinels used in place of the public two-brace placeholders.
 # vwprjname survives SanitizeProjectName (lowercase alphanum only).
 # vwdomain.example.invalid is a valid FQDN for the CLI validator.
+#
+# Reserved sentinel token. Used because config.SanitizeProjectName rewrites
+# `{{prjname}}` to `prjname`, so we can't pass the literal placeholder to
+# `vibew prompt-template --name`. The sed rewrite below is unanchored — if
+# any future template line happens to contain the substring `vwprjname` it
+# would be silently corrupted. The forensic test in
+# internal/app/promptkickoff/wrapper_script_test.go::TestWrapperScript_ArtifactsPassForensicChecks
+# guards against the leakage case but pick a different sentinel here if you
+# ever introduce a template line that legitimately contains `vwprjname`.
 NAME_SENTINEL="vwprjname"
 DOMAIN_SENTINEL="vwdomain.example.invalid"
 

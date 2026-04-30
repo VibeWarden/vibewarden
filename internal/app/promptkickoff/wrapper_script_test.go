@@ -118,7 +118,10 @@ func TestWrapperScript_ArtifactsPassForensicChecks(t *testing.T) {
 
 	// Deploy-specific: post-#1138 and post-#1217 contract.
 	deployPath := filepath.Join(tmpDir, "agent-kickoff-deploy.txt")
-	deployBody, _ := os.ReadFile(deployPath)
+	deployBody, err := os.ReadFile(deployPath)
+	if err != nil {
+		t.Fatalf("read deploy artifact %s: %v", deployPath, err)
+	}
 	deploy := string(deployBody)
 
 	required := []struct {
