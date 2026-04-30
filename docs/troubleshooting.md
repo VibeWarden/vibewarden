@@ -28,6 +28,7 @@ pre-flight scripts.
 | `--config <path>` | `./vibewarden.yaml` | Path to a non-default config file |
 | `--json` | `false` | Emit results as a JSON array instead of the human-readable table |
 | `--skip-le-preflight` | `false` | Skip the Let's Encrypt rate-limit preflight check for this run |
+| `--preflight <env>` | _(unset)_ | Run pre-deploy validation against a named env. Reads `vibewarden.<env>.yaml`, merges with `vibewarden.yaml`, then appends five preflight checks. See [Pre-deploy preflight](#pre-deploy-preflight) below. |
 
 ### Checks performed (in order)
 
@@ -52,6 +53,20 @@ live containers to produce meaningful results. Start the stack first, then re-ru
 |---|------------|---------------|
 | 8 | **Generated files** | `.vibewarden/generated/docker-compose.yml` is present on disk. Skipped when no compose containers are detected — run `vibew dev` first. |
 | 9 | **TLS cert valid** | Performs a live TLS handshake against the sidecar, reads the leaf certificate from the handshake, and verifies it is not expired or expiring within 7 days. Skipped pre-stack. For runtime container health, query `_vibewarden/health` after `vibew dev` is up (see ADR-084). |
+
+#### Layer 3: Pre-deploy preflight (only with `--preflight <env>`)
+
+These checks run only when `--preflight <env>` is passed. They append after all static and Dockerfile checks. If `vibewarden.<env>.yaml` does not exist, `vibew doctor` exits 1 immediately without running any checks.
+
+| # | Check name | What it tests |
+|---|------------|---------------|
+| P1 | **DNS** | `tls.domain` resolves to at least one A or AAAA record. Uses the same env-resolver introduced in #1233 (ADR-102). |
+| P2 | **Port 443** | `server.port` equals 443. FAIL if set to any other value. |
+| P3 | **Target platform** | `deploy.target_platform` is set in the merged config. FAIL if unset. |
+| P4 | **Image arch** | The local app image architecture matches `deploy.target_platform`. Uses the Docker label-inspection path from #1219 (ADR-100). |
+| P5 | **TLS email** | `tls.email` is non-empty. WARN (non-blocking) if missing — required by Let's Encrypt but not enforced pre-deploy. |
+
+The merged config (base `vibewarden.yaml` + env overlay) is used for **all** checks, including the static Layer 1 checks, so the doctor report reflects exactly what will be deployed.
 
 ### Severity levels
 
@@ -234,6 +249,65 @@ not acceptable, use `--skip-le-preflight` or `tls.skip_rate_limit_check: true`.
   yet appear in CT logs. At 4/5 budget the WARN threshold absorbs this lag.
 - **Wildcard certificates**: `*.example.com` certs have a separate LE limit
   (10 per 7 days). This check counts only the registered-domain budget.
+
+---
+
+## Pre-deploy preflight
+
+Run `vibew doctor --preflight production` before `vibew bundle` to catch DNS, port, architecture, and TLS-email mistakes before a deploy attempt.
+
+```bash
+vibew doctor --preflight production
+```
+
+This reads `vibewarden.production.yaml`, merges it with `vibewarden.yaml`, and runs the standard static + Dockerfile checks against the merged config plus five additional preflight checks. Exit code is `0` only when all checks pass.
+
+### Usage in the deploy flow
+
+```bash
+# Optional gate before building the bundle:
+vibew doctor --preflight production
+vibew build --platform linux/amd64
+vibew bundle
+```
+
+`vibew doctor --preflight production` is not required — `vibew bundle` will still hard-fail on arch mismatch (check P4). However, running doctor first surfaces DNS and TLS-email issues before a multi-minute build.
+
+### What each preflight check catches
+
+| Check | Typical failure cause | Fix |
+|-------|----------------------|-----|
+| **P1 DNS** | `tls.domain` not yet pointing at the server | Update DNS A record; wait for TTL propagation |
+| **P2 Port 443** | `server.port` left at dev default (8443) | Set `server.port: 443` in `vibewarden.production.yaml` |
+| **P3 Target platform** | `deploy.target_platform` not set | Add `deploy.target_platform: linux/amd64` to `vibewarden.production.yaml` |
+| **P4 Image arch** | Built on Apple Silicon without `--platform linux/amd64` | Run `vibew build --platform linux/amd64` before `vibew bundle` |
+| **P5 TLS email** | `tls.email` missing | Add `tls.email: you@example.com` to `vibewarden.yaml` or the production overlay |
+
+### Error: env file not found
+
+```
+Error: config file not found: vibewarden.production.yaml
+```
+
+The named env file must exist. Create it or check the spelling:
+
+```bash
+vibew add env production   # if this command is available, or create manually
+```
+
+The file only needs the fields that differ from `vibewarden.yaml`. Minimal example:
+
+```yaml
+# vibewarden.production.yaml
+server:
+  port: 443
+tls:
+  domain: myapp.example.com
+  provider: letsencrypt
+  email: you@example.com
+deploy:
+  target_platform: linux/amd64
+```
 
 ---
 
