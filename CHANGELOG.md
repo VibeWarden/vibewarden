@@ -12,6 +12,10 @@ This initial entry was written by hand to summarise the work leading up to v0.1.
 
 ## [Unreleased]
 
+## [v0.18.4] — 2026-04-30
+
+Theme: v0.18.3 retrospective fixes. Four retro-tagged pipelines (#1217 #1232 #1233 #1234) covering the dotfile-safe deploy contract (tar pipe replaces buggy scp glob across four surfaces — three retros flagged this), the systemic agent-kickoff-artifact pattern that makes vibewarden.dev's `/start` page fetch from main repo's release tag (eliminating drift by construction), the new `vibew probe` verb that bypasses macOS LibreSSL via Go's stdlib HTTP, and a Dockerfile-contract docs bullet about frozen-install lockfiles. Two small companion patches (#1237 release-artifacts dist path, #1238 dry-run workflow follow-up tracked separately). One ADR landed: ADR-101 (kickoff release artifacts, content authority) plus ADR-102 (vibew probe + reusable env-resolver pattern). Companion website work tracked at vibewarden/vibewarden.dev#95 — fetches the new artifacts at build time once this release is tagged.
+
 ### Added
 
 - **`vibew probe [--env <name>]`** (#1233, ADR-102) — Go-stdlib HTTPS probe of `_vibewarden/health`. Default probes `https://localhost:<server.port>` with `InsecureSkipVerify` (bypasses macOS LibreSSL friction by construction). `--env <name>` resolves `vibewarden.<name>.yaml`, reads merged `tls.domain`, probes the production endpoint with full cert verification. Boot-gap retry: up to 10s when `components.upstream:"unknown"`. Generalizable env-resolver in `internal/app/env/` is available for future verbs to adopt (`vibew status --env prod`, `vibew validate --env prod`, etc.); migration of existing verbs is out of scope here.
