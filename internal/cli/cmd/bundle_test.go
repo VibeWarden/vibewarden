@@ -517,6 +517,7 @@ func TestBundle_Stdout_PrintsLiteralDeployCommands(t *testing.T) {
 			// The three banned artifact forms are guarded here so a regression
 			// in bundle.go (stdout surface) is caught by this forensic check.
 			// The old unbracketed placeholder forms are also forbidden (#1244).
+			// The literal flag name "--print-deploy" must never leak into output (#1245).
 			wantAbsent: []string{
 				"docker load -i image.tar &&",
 				"scp -r .vibewarden/bundle/*", // dotfile-eating glob eliminated by #1217
@@ -524,6 +525,7 @@ func TestBundle_Stdout_PrintsLiteralDeployCommands(t *testing.T) {
 				"./deploy.sh",                 // ditto
 				"user@<",                      // old unbracketed placeholder form (#1244)
 				"user@host 'mkdir",            // pre-#1244 literal placeholder
+				"--print-deploy",              // flag name must not leak into output (#1245)
 			},
 		},
 		{
@@ -538,6 +540,7 @@ func TestBundle_Stdout_PrintsLiteralDeployCommands(t *testing.T) {
 				"bash deploy.sh",
 				"./deploy.sh",
 				"user@<",
+				"--print-deploy",
 			},
 		},
 		{
@@ -559,6 +562,7 @@ func TestBundle_Stdout_PrintsLiteralDeployCommands(t *testing.T) {
 				"bash deploy.sh",
 				"./deploy.sh",
 				"user@<",
+				"--print-deploy",
 			},
 		},
 		{
@@ -579,6 +583,7 @@ func TestBundle_Stdout_PrintsLiteralDeployCommands(t *testing.T) {
 				"bash deploy.sh",
 				"./deploy.sh",
 				"user@<",
+				"--print-deploy",
 			},
 		},
 	}
@@ -642,6 +647,325 @@ func TestBundle_Stdout_PrintsLiteralDeployCommands(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestBundle_PrintDeploy_FlagValidationErrors verifies that invalid --print-deploy
+// flag combinations exit 1 with a clear error message before any bundle work
+// runs. All seven invalid forms are driven through root.Execute() so the full
+// cobra dispatch path is exercised.
+func TestBundle_PrintDeploy_FlagValidationErrors(t *testing.T) {
+	tests := []struct {
+		name        string
+		args        []string
+		errContains []string
+	}{
+		{
+			name:        "--print-deploy + --host + --user (missing --path)",
+			args:        []string{"bundle", "--skip-image", "--print-deploy", "--host", "h.example", "--user", "u"},
+			errContains: []string{"--print-deploy requires", "--path"},
+		},
+		{
+			name:        "--print-deploy + --host + --path (missing --user)",
+			args:        []string{"bundle", "--skip-image", "--print-deploy", "--host", "h.example", "--path", "/opt/x"},
+			errContains: []string{"--print-deploy requires", "--user"},
+		},
+		{
+			name:        "--print-deploy + --user + --path (missing --host)",
+			args:        []string{"bundle", "--skip-image", "--print-deploy", "--user", "u", "--path", "/opt/x"},
+			errContains: []string{"--print-deploy requires", "--host"},
+		},
+		{
+			name:        "--print-deploy only (all three missing)",
+			args:        []string{"bundle", "--skip-image", "--print-deploy"},
+			errContains: []string{"--print-deploy requires", "--host", "--user", "--path"},
+		},
+		{
+			name:        "--host without --print-deploy",
+			args:        []string{"bundle", "--skip-image", "--host", "h.example"},
+			errContains: []string{"require --print-deploy"},
+		},
+		{
+			name:        "--user without --print-deploy",
+			args:        []string{"bundle", "--skip-image", "--user", "alice"},
+			errContains: []string{"require --print-deploy"},
+		},
+		{
+			name:        "--path without --print-deploy",
+			args:        []string{"bundle", "--skip-image", "--path", "/opt/x"},
+			errContains: []string{"require --print-deploy"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// validatePrintDeployFlags is the first call in runBundle, so flag
+			// validation errors surface before scaffolding checks. The project
+			// directory is still set up so the test isolates the validation path
+			// without noise from other preconditions.
+			dir := setupBundleProject(t)
+			outDir := filepath.Join(dir, "out")
+
+			root := cmd.NewRootCmd("test")
+			args := append(tt.args, "--output", outDir)
+			root.SetArgs(args)
+			var out bytes.Buffer
+			root.SetOut(&out)
+			root.SetErr(&out)
+
+			err := root.Execute()
+			if err == nil {
+				t.Fatalf("expected error for args %v, got nil\nstdout: %s", tt.args, out.String())
+			}
+			for _, want := range tt.errContains {
+				if !strings.Contains(err.Error(), want) {
+					t.Errorf("error missing %q; got: %v", want, err)
+				}
+			}
+		})
+	}
+}
+
+// TestBundle_PrintDeploy_StdoutSubstitution verifies the three substitution
+// scenarios for --print-deploy: all three values substituted, flag wins over
+// deploy.host from config, and the bundle README is unaffected (Option A).
+func TestBundle_PrintDeploy_StdoutSubstitution(t *testing.T) {
+	tests := []struct {
+		name       string
+		yaml       string
+		prodYAML   string // empty = no production.yaml
+		args       []string
+		wantStdout []string
+		wantAbsent []string
+		// readmeCheck: if non-empty, assert the README does NOT contain this string.
+		readmeNotContains []string
+		// readmeContains: if non-empty, assert README DOES contain these strings.
+		readmeContains []string
+	}{
+		{
+			name:     "all three values substituted in stdout",
+			yaml:     "name: myapp\ntls:\n  domain: myapp.example.com\nserver:\n  port: 8080\nupstream:\n  port: 3000\n",
+			prodYAML: "",
+			args:     []string{"bundle", "--skip-image", "--print-deploy", "--host", "h.example", "--user", "alice", "--path", "/custom/foo"},
+			wantStdout: []string{
+				"ssh alice@h.example 'mkdir -p /custom/foo'",
+				"| ssh alice@h.example 'tar -xzf - -C /custom/foo/'",
+				`ssh alice@h.example "cd /custom/foo`,
+				"curl -fsSL https://myapp.example.com/_vibewarden/health",
+			},
+			wantAbsent: []string{
+				"<your-ssh-user>@<your-ssh-host>",
+				"Replace `<your-ssh-user>",
+				"/opt/myapp",
+			},
+		},
+		{
+			name:     "flag overrides deploy.host from production.yaml",
+			yaml:     "name: myapp\ntls:\n  domain: myapp.example.com\nserver:\n  port: 8080\nupstream:\n  port: 3000\n",
+			prodYAML: "deploy:\n  host: root@configured.example\n",
+			args:     []string{"bundle", "--skip-image", "--print-deploy", "--host", "h.example", "--user", "alice", "--path", "/custom/foo"},
+			wantStdout: []string{
+				"ssh alice@h.example",
+				"/custom/foo",
+			},
+			wantAbsent: []string{
+				"root@configured.example",
+			},
+			// README uses cfg.Deploy.Host (Option A — README is config-driven, not flag-driven).
+			readmeNotContains: []string{"alice@h.example", "/custom/foo"},
+			readmeContains:    []string{"root@configured.example"},
+		},
+		{
+			name:     "README ignores flag (Option A) — placeholder when no production.yaml",
+			yaml:     "name: myapp\ntls:\n  domain: myapp.example.com\nserver:\n  port: 8080\nupstream:\n  port: 3000\n",
+			prodYAML: "",
+			args:     []string{"bundle", "--skip-image", "--print-deploy", "--host", "h.example", "--user", "alice", "--path", "/custom/foo"},
+			wantStdout: []string{
+				"ssh alice@h.example 'mkdir -p /custom/foo'",
+			},
+			// README should not have the flag-injected values; it uses the placeholder.
+			readmeNotContains: []string{"alice@h.example", "/custom/foo"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			base := t.TempDir()
+			projDir := filepath.Join(base, "testproject")
+			if err := os.MkdirAll(projDir, 0o750); err != nil {
+				t.Fatalf("mkdir: %v", err)
+			}
+			writeScaffoldingMarker(t, projDir)
+			if err := os.WriteFile(filepath.Join(projDir, "vibewarden.yaml"), []byte(tt.yaml), 0o644); err != nil {
+				t.Fatalf("writing vibewarden.yaml: %v", err)
+			}
+			if tt.prodYAML != "" {
+				if err := os.WriteFile(filepath.Join(projDir, "vibewarden.production.yaml"), []byte(tt.prodYAML), 0o644); err != nil {
+					t.Fatalf("writing vibewarden.production.yaml: %v", err)
+				}
+			}
+
+			origDir, err := os.Getwd()
+			if err != nil {
+				t.Fatalf("getwd: %v", err)
+			}
+			if err := os.Chdir(projDir); err != nil {
+				t.Fatalf("chdir: %v", err)
+			}
+			t.Cleanup(func() { _ = os.Chdir(origDir) })
+
+			outDir := filepath.Join(projDir, "out")
+			root := cmd.NewRootCmd("test")
+			args := append(tt.args, "--output", outDir)
+			root.SetArgs(args)
+			var stdout bytes.Buffer
+			root.SetOut(&stdout)
+			root.SetErr(&stdout)
+			if err := root.Execute(); err != nil {
+				t.Fatalf("bundle: %v\nstdout:\n%s", err, stdout.String())
+			}
+
+			out := stdout.String()
+			for _, want := range tt.wantStdout {
+				if !strings.Contains(out, want) {
+					t.Errorf("stdout missing %q\nstdout:\n%s", want, out)
+				}
+			}
+			for _, absent := range tt.wantAbsent {
+				if strings.Contains(out, absent) {
+					t.Errorf("stdout must not contain %q\nstdout:\n%s", absent, out)
+				}
+			}
+
+			if len(tt.readmeNotContains) > 0 || len(tt.readmeContains) > 0 {
+				readmeBytes, readErr := os.ReadFile(filepath.Join(outDir, "README.md"))
+				if readErr != nil {
+					t.Fatalf("reading README.md: %v", readErr)
+				}
+				readme := string(readmeBytes)
+				for _, absent := range tt.readmeNotContains {
+					if strings.Contains(readme, absent) {
+						t.Errorf("README.md must not contain %q (README ignores --print-deploy flag)\nREADME:\n%s", absent, readme)
+					}
+				}
+				for _, want := range tt.readmeContains {
+					if !strings.Contains(readme, want) {
+						t.Errorf("README.md missing %q\nREADME:\n%s", want, readme)
+					}
+				}
+			}
+		})
+	}
+}
+
+// TestBundle_PrintDeploy_PathSubstitutesRemoteDir confirms that --path replaces
+// the /opt/<appname> segment in all three SSH lines and that the healthcheck
+// curl line (domain-based) is unaffected.
+func TestBundle_PrintDeploy_PathSubstitutesRemoteDir(t *testing.T) {
+	base := t.TempDir()
+	projDir := filepath.Join(base, "testproject")
+	if err := os.MkdirAll(projDir, 0o750); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	writeScaffoldingMarker(t, projDir)
+	yaml := "name: myapp\ntls:\n  domain: myapp.example.com\nserver:\n  port: 8080\nupstream:\n  port: 3000\n"
+	if err := os.WriteFile(filepath.Join(projDir, "vibewarden.yaml"), []byte(yaml), 0o644); err != nil {
+		t.Fatalf("writing vibewarden.yaml: %v", err)
+	}
+
+	origDir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(projDir); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(origDir) })
+
+	outDir := filepath.Join(projDir, "out")
+	root := cmd.NewRootCmd("test")
+	root.SetArgs([]string{
+		"bundle", "--skip-image", "--output", outDir,
+		"--print-deploy", "--host", "h.example", "--user", "u", "--path", "/custom/dir",
+	})
+	var stdout bytes.Buffer
+	root.SetOut(&stdout)
+	root.SetErr(&stdout)
+	if err := root.Execute(); err != nil {
+		t.Fatalf("bundle: %v\nstdout:\n%s", err, stdout.String())
+	}
+
+	out := stdout.String()
+
+	// All three SSH lines must use /custom/dir.
+	for _, want := range []string{
+		"'mkdir -p /custom/dir'",
+		"'tar -xzf - -C /custom/dir/'",
+		`"cd /custom/dir`,
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("stdout missing %q — --path did not substitute remote dir\nstdout:\n%s", want, out)
+		}
+	}
+
+	// The default path must not appear.
+	if strings.Contains(out, "/opt/myapp") {
+		t.Errorf("stdout still contains default /opt/myapp — --path substitution failed\nstdout:\n%s", out)
+	}
+
+	// The healthcheck curl line is domain-based, not path-based — must be unaffected.
+	if !strings.Contains(out, "curl -fsSL https://myapp.example.com/_vibewarden/health") {
+		t.Errorf("stdout missing healthcheck curl line\nstdout:\n%s", out)
+	}
+}
+
+// TestBundle_PrintDeploy_HintParagraphSuppressed confirms that the hint
+// paragraph ("Replace `<your-ssh-user>...`") is absent when --print-deploy
+// is used with valid sub-flags.
+func TestBundle_PrintDeploy_HintParagraphSuppressed(t *testing.T) {
+	base := t.TempDir()
+	projDir := filepath.Join(base, "testproject")
+	if err := os.MkdirAll(projDir, 0o750); err != nil {
+		t.Fatalf("mkdir: %v", err)
+	}
+	writeScaffoldingMarker(t, projDir)
+	yaml := "name: myapp\ntls:\n  domain: myapp.example.com\nserver:\n  port: 8080\nupstream:\n  port: 3000\n"
+	if err := os.WriteFile(filepath.Join(projDir, "vibewarden.yaml"), []byte(yaml), 0o644); err != nil {
+		t.Fatalf("writing vibewarden.yaml: %v", err)
+	}
+
+	origDir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	if err := os.Chdir(projDir); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+	t.Cleanup(func() { _ = os.Chdir(origDir) })
+
+	outDir := filepath.Join(projDir, "out")
+	root := cmd.NewRootCmd("test")
+	root.SetArgs([]string{
+		"bundle", "--skip-image", "--output", outDir,
+		"--print-deploy", "--host", "h.example", "--user", "alice", "--path", "/opt/myapp",
+	})
+	var stdout bytes.Buffer
+	root.SetOut(&stdout)
+	root.SetErr(&stdout)
+	if err := root.Execute(); err != nil {
+		t.Fatalf("bundle: %v\nstdout:\n%s", err, stdout.String())
+	}
+
+	out := stdout.String()
+	// The hint paragraph must be fully absent.
+	for _, absent := range []string{
+		"Replace `<your-ssh-user>",
+		"~/.ssh/config",
+		"deploy.host: user@host",
+	} {
+		if strings.Contains(out, absent) {
+			t.Errorf("stdout must not contain hint paragraph fragment %q when --print-deploy is set\nstdout:\n%s", absent, out)
+		}
 	}
 }
 

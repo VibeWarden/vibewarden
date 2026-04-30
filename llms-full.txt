@@ -805,6 +805,16 @@ Local observability stack (Grafana, Prometheus, Loki, Promtail).
   Typical values: linux/amd64 (most cloud VMs), linux/arm64 (Ampere/Graviton).
   Invalid values are caught as a mismatch at bundle time — no explicit validation.
 
+  deploy.host  string  ""  SSH target substituted into the "Next: deploy" stdout
+  block and bundle README. Accepts any value ssh(1) accepts: user@host, a
+  ~/.ssh/config alias, or an IP. When unset, the bracketed placeholder
+  `<your-ssh-user>@<your-ssh-host>` is used and a hint paragraph is appended.
+
+  The `--print-deploy --host/--user/--path` flags override deploy.host for
+  the stdout block only (bundle README remains config-driven or placeholder).
+  Use --print-deploy for per-invocation overrides (CI); use deploy.host for
+  persistent single-host projects.
+
 
 ### webhooks (outbound event delivery)
 
@@ -1442,9 +1452,26 @@ arch, created, size, target platform, freshness, warnings). Flags:
   > default linux/amd64. Bundle aborts (exit 1) on arch mismatch with an
   actionable rebuild command — this is the primary guard for Apple Silicon
   builds landing on amd64 VPS hosts without being noticed.
+- `--print-deploy` -- substitute `--host`, `--user`, and `--path` into the
+  printed "Next: deploy" stdout block for this invocation only. Overrides
+  `deploy.host` from vibewarden.production.yaml for stdout; bundle README is
+  unaffected (config-driven or placeholder). All three sub-flags are required
+  together when `--print-deploy` is set; any subset exits 1 with a clear error.
+  Passing `--host`/`--user`/`--path` without `--print-deploy` also exits 1.
+  Useful for one-off deploys and multi-host CI pipelines without mutating config.
+- `--host <ssh-host>` -- SSH host for the stdout deploy block (requires --print-deploy)
+- `--user <ssh-user>` -- SSH user for the stdout deploy block (requires --print-deploy)
+- `--path <remote-path>` -- remote deploy path for the stdout deploy block,
+  e.g. /opt/myapp (requires --print-deploy; paths with spaces are not supported)
+
+Deploy block precedence ("Next: deploy" stdout):
+  1. --print-deploy --host <h> --user <u> --path <p>  (ad-hoc; stdout only)
+  2. deploy.host in vibewarden.production.yaml         (persistent; stdout + README)
+  3. bracketed placeholder + hint paragraph            (default)
 
 Exit codes: 0=success (includes warnings), 1=generic failure (including arch
-mismatch), 2=image missing, 3=docker daemon unreachable.
+mismatch or invalid --print-deploy flag combination), 2=image missing, 3=docker
+daemon unreachable.
 
 Output layout:
 
@@ -1939,7 +1966,7 @@ first upstream probe cycle has not completed yet (vibew probe retries automatica
 
 --deploy adds Steps 6–9 (replacing the dev Step 6 above):
 - Step 6: vibew bundle (with arch mismatch guard — see note below)
-- Step 7: tar pipe transfer (dotfile-safe) + ssh `<your-ssh-user>@<your-ssh-host>` + docker load -i image.tar + docker compose up -d (set `deploy.host` in vibewarden.production.yaml to substitute your real SSH target)
+- Step 7: tar pipe transfer (dotfile-safe) + ssh `<your-ssh-user>@<your-ssh-host>` + docker load -i image.tar + docker compose up -d (set `deploy.host` in vibewarden.production.yaml to substitute your real SSH target persistently, or use `vibew bundle --print-deploy --host <h> --user <u> --path <p>` for a per-invocation override without mutating config)
 - Step 8: `vibew probe --env production` — canonical verification step. Falls back to
   curl healthcheck expecting HTTP 200, `"status":"ok"`, `"components":{"upstream":"ok"}`
 - Step 9 (dev only): `vibew probe` — health check after `vibew dev` (avoids LibreSSL on macOS)
