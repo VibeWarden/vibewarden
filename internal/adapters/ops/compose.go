@@ -71,16 +71,17 @@ func (c *ComposeAdapter) Up(ctx context.Context, composeFile string, profiles []
 	}
 
 	if err := cmd.Run(); err != nil {
+		captured := buf.String()
 		// Flush captured stderr to the adapter's sink so the user sees
 		// docker's real error message. When opts.Stderr was non-nil the
 		// stream was already written live — skip the dump to avoid
 		// duplication.
 		if opts.Stderr == nil {
-			if msg := strings.TrimSpace(buf.String()); msg != "" {
+			if msg := strings.TrimSpace(captured); msg != "" {
 				fmt.Fprintln(c.stderrSink, msg)
 			}
 		}
-		return fmt.Errorf("docker compose up: %w", err)
+		return fmt.Errorf("docker compose up: %w", ClassifyDockerError(err, captured))
 	}
 	return nil
 }
@@ -146,11 +147,12 @@ func (c *ComposeAdapter) downProject(ctx context.Context, composeFile string, op
 			strings.Contains(lower, "has no containers") {
 			return ports.DownResult{}, nil
 		}
+		classified := ClassifyDockerError(err, stderrText)
 		msg := strings.TrimSpace(stderrText)
 		if msg != "" {
-			return ports.DownResult{}, fmt.Errorf("docker compose down: %w\nstderr: %s", err, msg)
+			return ports.DownResult{}, fmt.Errorf("docker compose down: %w\nstderr: %s", classified, msg)
 		}
-		return ports.DownResult{}, fmt.Errorf("docker compose down: %w", err)
+		return ports.DownResult{}, fmt.Errorf("docker compose down: %w", classified)
 	}
 
 	result := parseDownOutput(stderrText)
@@ -173,13 +175,15 @@ func (c *ComposeAdapter) downServices(ctx context.Context, composeFile string, o
 	stopCmd.Stdout = nil
 	stopCmd.Stderr = &stopStderr
 	if err := stopCmd.Run(); err != nil {
-		lower := strings.ToLower(stopStderr.String())
+		stopStderrText := stopStderr.String()
+		lower := strings.ToLower(stopStderrText)
 		if !isNoOpError(lower) {
-			msg := strings.TrimSpace(stopStderr.String())
+			classified := ClassifyDockerError(err, stopStderrText)
+			msg := strings.TrimSpace(stopStderrText)
 			if msg != "" {
-				return ports.DownResult{}, fmt.Errorf("docker compose stop: %w\nstderr: %s", err, msg)
+				return ports.DownResult{}, fmt.Errorf("docker compose stop: %w\nstderr: %s", classified, msg)
 			}
-			return ports.DownResult{}, fmt.Errorf("docker compose stop: %w", err)
+			return ports.DownResult{}, fmt.Errorf("docker compose stop: %w", classified)
 		}
 		// Service not running — treat as no-op; continue to rm.
 	}
@@ -192,13 +196,15 @@ func (c *ComposeAdapter) downServices(ctx context.Context, composeFile string, o
 	rmCmd.Stdout = nil
 	rmCmd.Stderr = &rmStderr
 	if err := rmCmd.Run(); err != nil {
-		lower := strings.ToLower(rmStderr.String())
+		rmStderrText := rmStderr.String()
+		lower := strings.ToLower(rmStderrText)
 		if !isNoOpError(lower) {
-			msg := strings.TrimSpace(rmStderr.String())
+			classified := ClassifyDockerError(err, rmStderrText)
+			msg := strings.TrimSpace(rmStderrText)
 			if msg != "" {
-				return ports.DownResult{}, fmt.Errorf("docker compose rm: %w\nstderr: %s", err, msg)
+				return ports.DownResult{}, fmt.Errorf("docker compose rm: %w\nstderr: %s", classified, msg)
 			}
-			return ports.DownResult{}, fmt.Errorf("docker compose rm: %w", err)
+			return ports.DownResult{}, fmt.Errorf("docker compose rm: %w", classified)
 		}
 	}
 
@@ -278,20 +284,25 @@ func (c *ComposeAdapter) Restart(ctx context.Context, composeFile string, servic
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
-		msg := strings.TrimSpace(stderr.String())
+		captured := stderr.String()
+		classified := ClassifyDockerError(err, captured)
+		msg := strings.TrimSpace(captured)
 		if msg != "" {
-			return fmt.Errorf("docker compose up --force-recreate --build: %w\nstderr: %s", err, msg)
+			return fmt.Errorf("docker compose up --force-recreate --build: %w\nstderr: %s", classified, msg)
 		}
-		return fmt.Errorf("docker compose up --force-recreate --build: %w", err)
+		return fmt.Errorf("docker compose up --force-recreate --build: %w", classified)
 	}
 	return nil
 }
 
 // Version runs "docker compose version" and returns the raw output.
 func (c *ComposeAdapter) Version(ctx context.Context) (string, error) {
-	out, err := exec.CommandContext(ctx, "docker", "compose", "version").Output()
+	cmd := exec.CommandContext(ctx, "docker", "compose", "version")
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	out, err := cmd.Output()
 	if err != nil {
-		return "", fmt.Errorf("docker compose version: %w", err)
+		return "", fmt.Errorf("docker compose version: %w", ClassifyDockerError(err, stderr.String()))
 	}
 	return string(out), nil
 }
@@ -299,8 +310,10 @@ func (c *ComposeAdapter) Version(ctx context.Context) (string, error) {
 // Info runs "docker info" to verify the Docker daemon is reachable.
 func (c *ComposeAdapter) Info(ctx context.Context) error {
 	cmd := exec.CommandContext(ctx, "docker", "info")
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("docker info: %w", err)
+		return fmt.Errorf("docker info: %w", ClassifyDockerError(err, stderr.String()))
 	}
 	return nil
 }

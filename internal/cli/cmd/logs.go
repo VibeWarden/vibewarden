@@ -95,7 +95,7 @@ Tips:
 			}
 
 			if errors.Is(runErr, ports.ErrDockerUnavailable) {
-				fmt.Fprintln(cmd.ErrOrStderr(), "ERROR:", runErr)
+				renderDockerUnavailable(cmd.ErrOrStderr(), runErr)
 				os.Exit(3) //nolint:gocritic // intentional: semantic exit code 3
 			}
 

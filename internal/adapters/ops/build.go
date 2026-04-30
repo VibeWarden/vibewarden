@@ -1,8 +1,11 @@
 package ops
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"io"
+	"os"
 	"os/exec"
 	"sort"
 
@@ -26,12 +29,18 @@ func (b *BuildAdapter) Build(ctx context.Context, tag string, contextDir string,
 	args := buildDockerArgs(tag, contextDir, opts)
 
 	cmd := exec.CommandContext(ctx, "docker", args...) //nolint:gosec // "docker" is a hardcoded binary name; args are constructed from operator-controlled tag and contextDir, not user input
-	// Inherit the parent process's file descriptors for live output.
+	// Inherit the parent process's stdout for live progress output.
 	cmd.Stdout = nil
-	cmd.Stderr = nil
+
+	// Tee stderr: stream live to the parent's stderr AND capture into a capped
+	// buffer so we can classify daemon-unavailable errors on non-zero exit.
+	// The cap mirrors the pattern in compose_logs_stream.go (stderrCapCap).
+	var stderrBuf bytes.Buffer
+	capturer := &limitedWriter{buf: &stderrBuf, cap: stderrCapCap}
+	cmd.Stderr = io.MultiWriter(os.Stderr, capturer)
 
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("docker build: %w", err)
+		return fmt.Errorf("docker build: %w", ClassifyDockerError(err, stderrBuf.String()))
 	}
 	return nil
 }

@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"os/exec"
-	"strings"
 
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
@@ -36,14 +35,6 @@ func (w *limitedWriter) Write(p []byte) (int, error) {
 		w.buf.Write(p) //nolint:errcheck // bytes.Buffer.Write never returns an error
 	}
 	return n, nil
-}
-
-// daemonUnavailableSignatures are substrings that appear in docker's stderr
-// when the daemon is not running or docker is not installed.
-var daemonUnavailableSignatures = []string{
-	"cannot connect to the docker daemon",
-	"docker: command not found",
-	"is the docker daemon running",
 }
 
 // cmdRunner is the function signature for constructing and running an
@@ -110,14 +101,6 @@ func (a *ComposeLogsStreamAdapter) Stream(ctx context.Context, opts ports.Compos
 			return nil
 		}
 
-		// Classify daemon-unavailable stderr.
-		stderrLower := strings.ToLower(stderrBuf.String())
-		for _, sig := range daemonUnavailableSignatures {
-			if strings.Contains(stderrLower, sig) {
-				return fmt.Errorf("docker compose logs: %w", ports.ErrDockerUnavailable)
-			}
-		}
-
 		// Check for signal-related exit (SIGINT/SIGTERM when --follow is
 		// interrupted by the OS rather than context cancellation).
 		var exitErr *exec.ExitError
@@ -128,7 +111,12 @@ func (a *ComposeLogsStreamAdapter) Stream(ctx context.Context, opts ports.Compos
 			}
 		}
 
-		return fmt.Errorf("docker compose logs: %w", err)
+		// Classify daemon-unavailable stderr via the shared helper. Also
+		// handles the legacy "docker: command not found" / "is the docker
+		// daemon running" cases — if ClassifyDockerError does not match, the
+		// fallback below catches other docker-not-found patterns.
+		classified := ClassifyDockerError(err, stderrBuf.String())
+		return fmt.Errorf("docker compose logs: %w", classified)
 	}
 	return nil
 }

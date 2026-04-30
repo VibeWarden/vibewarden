@@ -3,6 +3,7 @@ package ports
 import (
 	"context"
 	"errors"
+	"fmt"
 	"time"
 )
 
@@ -14,7 +15,58 @@ var ErrImageNotFound = errors.New("docker image not found")
 // ErrDockerUnavailable is returned by ImageInspector.Inspect when the Docker
 // daemon is unreachable (not running, or docker CLI not installed). Mapped to
 // exit code 3 by the CLI layer.
+//
+// ErrDockerSocketPermission and ErrDockerDaemonNotRunning both wrap this
+// sentinel so that existing errors.Is(err, ErrDockerUnavailable) callers
+// continue to match without change.
 var ErrDockerUnavailable = errors.New("docker daemon unavailable")
+
+// ErrDockerSocketPermission is returned when docker stderr indicates the
+// process lacks permission to access the docker socket (e.g. the user is not
+// in the docker group on Linux, or Docker Desktop is not running on macOS).
+var ErrDockerSocketPermission = fmt.Errorf("docker socket permission denied: %w", ErrDockerUnavailable)
+
+// ErrDockerDaemonNotRunning is returned when docker stderr indicates the
+// daemon is not reachable (not running, or no socket at all).
+var ErrDockerDaemonNotRunning = fmt.Errorf("docker daemon not running: %w", ErrDockerUnavailable)
+
+// DockerUnavailableError is returned by docker-shelling adapters when stderr
+// matches a known unavailability signature. It carries the classified sentinel
+// (ErrDockerSocketPermission or ErrDockerDaemonNotRunning), the raw docker
+// stderr text (capped at 64 KiB) for display in the CLI renderer, and the
+// original exec error.
+//
+// errors.Is(err, ErrDockerUnavailable), errors.Is(err, ErrDockerSocketPermission),
+// and errors.Is(err, ErrDockerDaemonNotRunning) all work via the Unwrap chain.
+// errors.As(err, &DockerUnavailableError{}) lets the CLI layer extract Stderr.
+type DockerUnavailableError struct {
+	// Sentinel is one of ErrDockerSocketPermission or ErrDockerDaemonNotRunning.
+	Sentinel error
+	// Stderr is the captured stderr text from the docker command (capped).
+	Stderr string
+	// Cause is the original exec error, preserved for callers that need it.
+	Cause error
+}
+
+// Error implements the error interface. Returns the sentinel message so that
+// log output remains human-readable without the stderr payload.
+func (e *DockerUnavailableError) Error() string {
+	return e.Sentinel.Error()
+}
+
+// Is reports whether e matches target. It delegates to errors.Is on the
+// Sentinel so that errors.Is(err, ErrDockerUnavailable),
+// errors.Is(err, ErrDockerSocketPermission), and
+// errors.Is(err, ErrDockerDaemonNotRunning) all work as expected.
+func (e *DockerUnavailableError) Is(target error) bool {
+	return errors.Is(e.Sentinel, target)
+}
+
+// Unwrap returns the Sentinel, making the full ErrDockerUnavailable chain
+// reachable via errors.Unwrap.
+func (e *DockerUnavailableError) Unwrap() error {
+	return e.Sentinel
+}
 
 // ImageInfo is the value object returned by ImageInspector.Inspect. It is a
 // pure, serialisable view over `docker image inspect` output. All fields are

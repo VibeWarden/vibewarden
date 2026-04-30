@@ -143,8 +143,13 @@ supplied together. Paths with spaces in --path are not supported.`,
 				if code == 2 || code == 3 {
 					// cobra prints the error; we need to signal exit code.
 					// Use os.Exit after printing to avoid cobra's default exit-1 swallowing
-					// our carefully chosen code. We print the error ourselves first.
-					fmt.Fprintln(cmd.ErrOrStderr(), "ERROR:", err)
+					// our carefully chosen code. For exit code 3 (ErrDockerUnavailable),
+					// render the actionable operator hint; otherwise print the raw error.
+					if code == 3 {
+						renderDockerUnavailable(cmd.ErrOrStderr(), err)
+					} else {
+						fmt.Fprintln(cmd.ErrOrStderr(), "ERROR:", err)
+					}
 					os.Exit(code) //nolint:gocritic // intentional: semantic exit code required by ADR-089
 				}
 				return err
