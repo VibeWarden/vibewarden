@@ -18,6 +18,10 @@ This initial entry was written by hand to summarise the work leading up to v0.1.
 
 - **Release artifacts: `agent-kickoff-dev.txt` and `agent-kickoff-deploy.txt`** (#1232, ADR-101). Goreleaser now emits both flavors of the canonical agent kickoff prompt as release assets, with `{{prjname}}`, `{{description}}`, and `{{domain}}` two-brace placeholders for consumers to substitute. Stable URL: `https://github.com/vibewarden/vibewarden/releases/latest/download/agent-kickoff-dev.txt`. The website (vibewarden/vibewarden.dev) will fetch these at build time, replacing the hand-rolled JS template literal that drifted across three retros (vibewarden.dev#95). Forensic CI test asserts both artifacts contain the post-#1138 deploy contract (`docker load -i image.tar && docker compose up -d`), include the post-#1217 tar pipe transfer, and do NOT contain `bash deploy.sh` or the buggy `scp -r .vibewarden/bundle/*` glob form.
 
+### Documentation
+
+- **docs(#1234): AGENTS-VIBEWARDEN.md Dockerfile contract gains a "frozen-install lockfiles" bullet.** Catches the v0.18.3 retro friction where an agent's `npm ci` Dockerfile failed at build time because no `package-lock.json` was shipped. Language-agnostic by examples (npm/pnpm/yarn/bun/pip-sync/cargo --locked). Mirrored across the AGENTS template, the docs example, and llms-full.txt.
+
 ### Fixed
 
 - **fixed:** bundle stdout, bundle README, `vibew prompt-template --deploy` output, and `llms-full.txt § Agent Kickoff Prompt` all switch from `scp -r .vibewarden/bundle/* user@host:/path/` (which silently drops dotfiles like `.env`, `.credentials`, `.env.template` because shells don't include dotfiles in `*` glob) to a POSIX tar pipe: `tar -czf - -C .vibewarden/bundle . | ssh user@host 'tar -xzf - -C /opt/<app>/'`. Three retros (v0.18.1, v0.18.2, v0.18.3) flagged this; the v0.18.3 deploy shipped a "successful" stack that was missing `.env` and required manual recovery. Tar pipe is dotfile-safe by construction, single ssh connection, POSIX baseline. Forensic alignment test extended to enforce the new transfer command across all four surfaces and forbid the buggy form. (#1217)

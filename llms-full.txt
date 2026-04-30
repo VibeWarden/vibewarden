@@ -1598,6 +1598,13 @@ vibew doctor checks (in order):
       the project manifest go.mod/nvmrc/pyproject.toml (FAIL on mismatch; OFF when
       tag is "latest" or unrecognised, or when no manifest is found)
      All 6 checks are omitted when no Dockerfile is present in the project root.
+  Dockerfile contract — additional invariant (not a doctor check, enforced at build time):
+  - Frozen-install commands need lockfiles in the build context. If your Dockerfile
+    runs a frozen-install command (npm ci, pnpm install --frozen-lockfile,
+    yarn install --frozen-lockfile, bun install --frozen-lockfile, pip-sync,
+    cargo build --locked, etc.), the corresponding lockfile (package-lock.json,
+    pnpm-lock.yaml, yarn.lock, bun.lockb, requirements.txt, Cargo.lock) must exist
+    in the build context. Without it, vibew build fails on the first run.
   Runtime container health is NOT checked by doctor — query /_vibewarden/health
   after vibew dev is up for live runtime status.
 
