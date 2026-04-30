@@ -24,6 +24,10 @@ This initial entry was written by hand to summarise the work leading up to v0.1.
 
 - **changed:** SSH target placeholder in vibew-emitted deploy commands is now `<your-ssh-user>@<your-ssh-host>` (was: `user@<domain>`). Codex agent followed the old form literally and hit auth failure on the v0.18.4 demo deploy. New `deploy.host` field in `vibewarden.production.yaml` (mirrors `deploy.target_platform`) — when set, `vibew bundle` stdout and bundle README substitute the configured host verbatim. Kickoff release artifacts (post-#1232) keep the bracketed placeholder forever (released-once, can't know any user's config). Two new prose preambles in the kickoff prompt clarify (a) `vibew init` does not scaffold app code/Dockerfile, (b) VibeWarden does not deploy for you. CLAUDE.md gains a §Architecture principles bullet locking the cross-LLM literal-vs-template clarity rule. (#1244, retro-0.18.4 Codex finding)
 
+### Documentation
+
+- **docs(#1247): AGENTS-VIBEWARDEN.md gains a "Quick reference (must-know checklist)" section at the top.** 6 lines for the must-knows (bind 0.0.0.0, listen on upstream.port, GET /health, Dockerfile EXPOSE match, no app security, run doctor && dev && probe). Lets agents start before reading the longer reference. Mirrored across the canonical doc, the init template, and llms-full.txt. (#1247, retro-0.18.4 Codex follow-up #6)
+
 ### Fixed
 
 - **fixed:** `vibew probe --env <name>` now emits a per-env error message on connection-refused. Default mode still says `Stack is not running. Start with: vibew dev`. With `--env <name>`: lists real causes (bundle not deployed, host down, DNS misconfig, sidecar exited) without suggesting `vibew dev`. New `ErrDNSFailure` sentinel surfaces DNS resolution failures separately with their own actionable message. Failure modes pinned by golden tests across all four variants. (#1242, retro-0.18.4 Codex finding)

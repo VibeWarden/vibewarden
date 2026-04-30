@@ -1903,6 +1903,17 @@ JetBrains IDEs, and other editors.
 
 ## 20. AI Agent Context
 
+Quick reference (must-know checklist) — before writing any app code:
+
+  - Bind 0.0.0.0, never 127.0.0.1 or localhost
+  - Listen on $PORT or upstream.port (default 3000)
+  - Serve GET /health returning HTTP 200
+  - Dockerfile EXPOSE matches upstream.port
+  - No TLS, auth, rate-limiting, or security-header logic in the app — sidecar owns those
+  - Run: vibew doctor && vibew dev && vibew probe
+
+See Application contract and Dockerfile contract in AGENTS-VIBEWARDEN.md for full details.
+
 vibew init generates AGENTS-VIBEWARDEN.md — a tool-agnostic file that tells
 any AI coding agent (Claude Code, Cursor, Copilot, Windsurf, Aider) about
 the security sidecar. It includes:
