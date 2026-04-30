@@ -69,9 +69,15 @@ vibewarden.production.yaml.
 
 ## Step 8 — Verify deployment
 
+  vibew probe --env production
+
+Expected output ends with `OK — production stack healthy.`
+If `components.upstream` is `"unknown"`, the first health probe has not yet
+completed — vibew probe retries automatically for up to 10s.
+If it is `"failing"`, the upstream container is not accepting connections.
+
+Fallback (when vibew binary is not available on the operator machine):
+
   curl -fsSL https://demo.example.com/_vibewarden/health
 
-Expected: HTTP 200 with JSON body containing `"status":"ok"` and
-`"components":{"upstream":"ok"}`. If `components.upstream` is `"unknown"`,
-the first health probe has not yet completed — wait 10 seconds and retry.
-If it is `"failing"`, the upstream container is not accepting connections.
+Expected: HTTP 200 with JSON body `"status":"ok"`, `"components":{"upstream":"ok"}`.
