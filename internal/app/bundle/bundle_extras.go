@@ -29,6 +29,12 @@ const appPlaceholder = "<your-app>"
 // domainPlaceholder is used in README and stdout when domain is empty.
 const domainPlaceholder = "<your-domain>"
 
+// sshPlaceholder is used in README and stdout when deploy.host is unset.
+// It is clearly bracketed so LLM agents do not treat it as a literal SSH
+// target — the bracketed form is the cross-LLM literal-vs-template clarity
+// standard locked by #1244 and CLAUDE.md §Architecture principles.
+const sshPlaceholder = "<your-ssh-user>@<your-ssh-host>"
+
 // manifestVersion is set at build time via ldflags in production; defaults to
 // "dev" so unit tests produce stable deterministic output (excluding the header).
 var manifestVersion = "dev"
@@ -137,8 +143,16 @@ func (s *Service) writeBundleExtras(ctx context.Context, opts BundleOptions, out
 		domain = opts.Config.TLS.Domain
 	}
 
+	// Resolve the SSH deploy host from config. When set, the literal value is
+	// substituted verbatim into the README deploy block. When empty, the
+	// bracketed placeholder is used and a hint paragraph is appended.
+	sshHost := ""
+	if opts.Config != nil {
+		sshHost = opts.Config.Deploy.Host
+	}
+
 	// README.md — always overwrite.
-	readmeBody := renderBundleReadme(projectName, domain, opts.SkipImage)
+	readmeBody := renderBundleReadme(projectName, domain, sshHost, opts.SkipImage)
 	readmePath := filepath.Join(outDir, fileReadme)
 	if err := s.bundleFS.WriteFile(readmePath, []byte(readmeBody), 0o600); err != nil {
 		return fmt.Errorf("writing %s: %w", fileReadme, err)
@@ -294,8 +308,13 @@ func renderDotEnv(imageTag string, templateKeys []string) string {
 // It is exported so tests can call it directly to verify placeholder
 // substitution without going through the full Bundle pipeline.
 // See renderBundleReadme for the implementation.
-func RenderBundleReadme(appName, domain string, skipImage bool) string {
-	return renderBundleReadme(appName, domain, skipImage)
+//
+// sshHost is the SSH deploy target (e.g. "alice@host.example" or a
+// ~/.ssh/config alias). When empty, the bracketed placeholder
+// "<your-ssh-user>@<your-ssh-host>" is used and a hint paragraph is appended
+// after the deploy fenced block.
+func RenderBundleReadme(appName, domain, sshHost string, skipImage bool) string {
+	return renderBundleReadme(appName, domain, sshHost, skipImage)
 }
 
 // renderBundleReadme produces the README.md shipped inside the bundle.
@@ -303,10 +322,13 @@ func RenderBundleReadme(appName, domain string, skipImage bool) string {
 // fenced deploy block so agents have a literal command sequence immediately.
 //
 // appName and domain are substituted into the command block. Empty values
-// produce safe placeholders (<your-app>, <your-domain>). When skipImage is
-// true, the `docker load -i image.tar &&` clause is omitted from the deploy
-// block so the printed sequence remains valid for registry-pull mode.
-func renderBundleReadme(appName, domain string, skipImage bool) string {
+// produce safe placeholders (<your-app>, <your-domain>). When sshHost is
+// non-empty, it is substituted verbatim into all three ssh lines; otherwise
+// the bracketed placeholder "<your-ssh-user>@<your-ssh-host>" is used and a
+// hint paragraph is appended after the fenced block. When skipImage is true,
+// the `docker load -i image.tar &&` clause is omitted from the deploy block
+// so the printed sequence remains valid for registry-pull mode.
+func renderBundleReadme(appName, domain, sshHost string, skipImage bool) string {
 	app := appName
 	if app == "" {
 		app = appPlaceholder
@@ -314,6 +336,14 @@ func renderBundleReadme(appName, domain string, skipImage bool) string {
 	dom := domain
 	if dom == "" {
 		dom = domainPlaceholder
+	}
+
+	// Resolve the SSH target. When empty, use the bracketed placeholder so
+	// agents never mistake it for a real host. The hint paragraph is emitted
+	// below (outside the fenced block) only when the placeholder was chosen.
+	sshTarget := sshHost
+	if sshTarget == "" {
+		sshTarget = sshPlaceholder
 	}
 
 	// Build the deploy command block. When skipImage is true, the docker load
@@ -331,12 +361,22 @@ func renderBundleReadme(appName, domain string, skipImage bool) string {
 	b.WriteString("## Deploy\n")
 	b.WriteString("\n")
 	b.WriteString("```bash\n")
-	b.WriteString("ssh user@host 'mkdir -p /opt/" + app + "'\n")
-	b.WriteString("tar -czf - -C .vibewarden/bundle . | ssh user@host 'tar -xzf - -C /opt/" + app + "/'\n")
-	b.WriteString("ssh user@host \"cd /opt/" + app + " && " + dockerCmd + "\"\n")
+	b.WriteString("ssh " + sshTarget + " 'mkdir -p /opt/" + app + "'\n")
+	b.WriteString("tar -czf - -C .vibewarden/bundle . | ssh " + sshTarget + " 'tar -xzf - -C /opt/" + app + "/'\n")
+	b.WriteString("ssh " + sshTarget + " \"cd /opt/" + app + " && " + dockerCmd + "\"\n")
 	b.WriteString("curl -fsSL https://" + dom + "/_vibewarden/health\n")
 	b.WriteString("```\n")
 	b.WriteString("\n")
+
+	// Hint paragraph — emitted only when the placeholder was used (host unset).
+	// It is omitted when deploy.host is configured so the block is clean.
+	if sshHost == "" {
+		b.WriteString("Replace `<your-ssh-user>@<your-ssh-host>` with your actual SSH target.\n")
+		b.WriteString("  - Check `~/.ssh/config` for an existing alias.\n")
+		b.WriteString("  - Or set `deploy.host: user@host` in `vibewarden.production.yaml`\n")
+		b.WriteString("    (vibew will substitute it into the bundle stdout next time).\n")
+		b.WriteString("\n")
+	}
 
 	// Section: What this is.
 	b.WriteString("## What this is\n")
@@ -379,8 +419,8 @@ func renderBundleReadme(appName, domain string, skipImage bool) string {
 	b.WriteString("## Read-only inspection\n")
 	b.WriteString("\n")
 	b.WriteString("```bash\n")
-	b.WriteString("ssh user@host docker compose -f /opt/" + app + "/docker-compose.yml logs --tail 50\n")
-	b.WriteString("ssh user@host docker compose -f /opt/" + app + "/docker-compose.yml ps\n")
+	b.WriteString("ssh " + sshTarget + " docker compose -f /opt/" + app + "/docker-compose.yml logs --tail 50\n")
+	b.WriteString("ssh " + sshTarget + " docker compose -f /opt/" + app + "/docker-compose.yml ps\n")
 	b.WriteString("curl -fsSL https://" + dom + "/_vibewarden/health\n")
 	b.WriteString("```\n")
 	b.WriteString("\n")

@@ -10,5 +10,8 @@ deploy:
   # Target platform for `vibew bundle`. The bundle aborts if the image arch
   # does not match. Hetzner and most cloud VMs are linux/amd64.
   target_platform: linux/amd64
+  # host: user@host  # SSH target for `vibew bundle` deploy commands.
+                     # Resolves into the printed deploy block when set.
+                     # Accepts a literal user@host or an alias from ~/.ssh/config.
 
 # Add overrides below.

@@ -15,6 +15,9 @@ Verify: `vibew --version` should print a version string.
 
 ## Step 2 — Scaffold the project
 
+NOTE: `vibew init` does not create app code or a Dockerfile. You must
+provide both. AGENTS-VIBEWARDEN.md describes the contract.
+
   # Skip if you're already in the project directory:
   mkdir {{.Name}} && cd {{.Name}}
   vibew init --name {{.Name}} --describe "{{.Describe}}"
@@ -59,13 +62,22 @@ vibewarden.production.yaml.
 
 ## Step 7 — Deploy to your server
 
+NOTE: VibeWarden does not deploy for you. `vibew bundle` produces a
+self-contained bundle and prints the exact ssh / scp / docker commands.
+You run them with your own SSH target.
+
 # NOTE: this is the canonical deploy recipe defined in ADR-099.
 # The bundle README opens with this same fenced block (app.name and tls.domain substituted).
 # Run these commands directly — no shell script wrapper.
 
-  ssh user@{{.Domain}} 'mkdir -p /opt/{{.Name}}'
-  tar -czf - -C .vibewarden/bundle . | ssh user@{{.Domain}} 'tar -xzf - -C /opt/{{.Name}}/'
-  ssh user@{{.Domain}} "cd /opt/{{.Name}} && docker load -i image.tar && docker compose up -d"
+  ssh <your-ssh-user>@<your-ssh-host> 'mkdir -p /opt/{{.Name}}'
+  tar -czf - -C .vibewarden/bundle . | ssh <your-ssh-user>@<your-ssh-host> 'tar -xzf - -C /opt/{{.Name}}/'
+  ssh <your-ssh-user>@<your-ssh-host> "cd /opt/{{.Name}} && docker load -i image.tar && docker compose up -d"
+
+Replace `<your-ssh-user>@<your-ssh-host>` with your actual SSH target.
+  - Check `~/.ssh/config` for an existing alias.
+  - Or set `deploy.host: user@host` in `vibewarden.production.yaml`
+    (vibew will substitute it into the bundle stdout next time).
 
 ## Step 8 — Verify deployment
 

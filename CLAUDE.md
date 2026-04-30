@@ -76,6 +76,12 @@ their domain registrar, AWS ACM, etc.
   explicit error handling over panics.
 - **No global state**: everything passed via dependency injection.
 - **Artifact policy: real or pure-instruction, never example-shaped.** Every artifact vibew produces is either (a) **real** — validated, kept current, owned by vibew (the merged `vibewarden.yaml` inside the bundle, the deterministic `docker-compose.yml`, the cert files); or (b) **pure instruction** — documented in `AGENTS-VIBEWARDEN.md` or `docs/` as a contract or checklist the agent satisfies (the Dockerfile contract, the deploy recipe). Forbidden: example-shaped middle-ground artifacts that read like real code but rot — placeholder Dockerfiles, commented-out config stanzas, mostly-correct shell scripts. Stale generated content teaches agents the wrong thing; a sharp spec lets them get it right against current reality. Surfaced by the qr-dali deploy retro on v0.17.0.
+- **Cross-LLM literal-vs-template clarity.** Every literal-looking command
+  in a vibew-emitted artifact must either be runnable as written OR clearly
+  bracketed as a template (`<your-foo>`). LLM agents differ in how aggressively
+  they treat unbracketed identifiers as stand-ins; the safe default is to bracket.
+  Surfaced by the qr-code-azulejos retro on v0.18.4 (Codex agent followed
+  `user@<domain>` literally and got auth failure).
 
 ### Directory layout
 

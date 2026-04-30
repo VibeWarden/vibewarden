@@ -573,13 +573,13 @@ func TestBundle_Extras_Readme_FencedDeployBlock(t *testing.T) {
 		wantAbsent []string
 	}{
 		{
-			name:      "full deploy sequence",
+			name:      "full deploy sequence — no sshHost uses bracketed placeholder",
 			appName:   "myapp",
 			domain:    "example.com",
 			skipImage: false,
 			wantCmds: []string{
-				"ssh user@host 'mkdir -p /opt/myapp'",
-				"tar -czf - -C .vibewarden/bundle . | ssh user@host 'tar -xzf - -C /opt/myapp/'",
+				"ssh <your-ssh-user>@<your-ssh-host> 'mkdir -p /opt/myapp'",
+				"tar -czf - -C .vibewarden/bundle . | ssh <your-ssh-user>@<your-ssh-host> 'tar -xzf - -C /opt/myapp/'",
 				"docker load -i image.tar && docker compose up -d",
 				"curl -fsSL https://example.com/_vibewarden/health",
 			},
@@ -590,8 +590,8 @@ func TestBundle_Extras_Readme_FencedDeployBlock(t *testing.T) {
 			domain:    "example.com",
 			skipImage: true,
 			wantCmds: []string{
-				"ssh user@host 'mkdir -p /opt/myapp'",
-				"tar -czf - -C .vibewarden/bundle . | ssh user@host 'tar -xzf - -C /opt/myapp/'",
+				"ssh <your-ssh-user>@<your-ssh-host> 'mkdir -p /opt/myapp'",
+				"tar -czf - -C .vibewarden/bundle . | ssh <your-ssh-user>@<your-ssh-host> 'tar -xzf - -C /opt/myapp/'",
 				"docker compose up -d",
 				"curl -fsSL https://example.com/_vibewarden/health",
 			},
@@ -721,7 +721,7 @@ func TestBundle_Extras_Readme_PlaceholdersWhenAppOrDomainMissing(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			body := bundleapp.RenderBundleReadme(tt.appName, tt.domain, true)
+			body := bundleapp.RenderBundleReadme(tt.appName, tt.domain, "", true)
 
 			// The body must contain /opt/<wantApp> in the deploy block.
 			if !strings.Contains(body, "/opt/"+tt.wantApp) {
@@ -879,17 +879,15 @@ func TestBundle_Readme_AlignsWithDeployTmpl(t *testing.T) {
 	}
 	readmeBody := string(mem.files[filepath.Join(outDir, "README.md")])
 
-	// normalise replaces template variables and domain-as-host with the
-	// canonical forms used in the bundle README:
+	// normalise replaces template variables with concrete values so deploy.tmpl
+	// commands can be compared against the bundle README. Post-#1244 the ssh
+	// lines use the bracketed placeholder "<your-ssh-user>@<your-ssh-host>"
+	// (not the old "user@{{.Domain}}" form), so no ssh-host substitution is
+	// needed — both surfaces carry the same placeholder string verbatim.
 	//   - {{.Name}} → testApp
-	//   - user@{{.Domain}} → user@host (README never resolves the host)
-	//   - user@<testDomain> → user@host (template after first normalise)
-	//   - {{.Domain}} → testDomain (for non-host occurrences like curl URL)
-	// Order matters: replace the host patterns before the bare domain.
+	//   - {{.Domain}} → testDomain (for curl URL lines)
 	normalise := func(s string) string {
 		s = strings.ReplaceAll(s, "{{.Name}}", testApp)
-		s = strings.ReplaceAll(s, "user@{{.Domain}}", "user@host")
-		s = strings.ReplaceAll(s, "user@"+testDomain, "user@host")
 		s = strings.ReplaceAll(s, "{{.Domain}}", testDomain)
 		return s
 	}
@@ -943,11 +941,16 @@ func TestBundle_Readme_AlignsWithDeployTmpl(t *testing.T) {
 	required := []string{
 		"tar -czf - -C",
 		"tar -xzf - -C",
+		// #1244: bracketed placeholder must appear on all surfaces (when no deploy.host).
+		"<your-ssh-user>@<your-ssh-host>",
 	}
 	forbidden := []string{
 		"scp -r .vibewarden/bundle/*", // the dotfile-eating glob this issue eliminates
 		"bash deploy.sh",              // already-removed artifact (#1138)
 		"./deploy.sh",                 // ditto
+		// #1244: old unbracketed placeholder forms — Codex agents followed these literally.
+		"user@<domain>", // the original soft placeholder form
+		"user@<",        // catches any remaining unbracketed user@<...> form
 	}
 
 	for surfaceName, surfaceContent := range surfaces {
@@ -961,6 +964,75 @@ func TestBundle_Readme_AlignsWithDeployTmpl(t *testing.T) {
 				t.Errorf("forensic[%s]: forbidden pattern %q found — must not appear", surfaceName, ban)
 			}
 		}
+	}
+}
+
+// TestRenderBundleReadme_PlaceholderPath verifies that when sshHost is empty,
+// the README deploy block uses the bracketed placeholder and the hint paragraph
+// is appended after the fenced block (#1244).
+func TestRenderBundleReadme_PlaceholderPath(t *testing.T) {
+	body := bundleapp.RenderBundleReadme("myapp", "example.com", "", false)
+
+	// The bracketed placeholder must appear in all three ssh lines.
+	wantSSH := []string{
+		"ssh <your-ssh-user>@<your-ssh-host> 'mkdir -p /opt/myapp'",
+		"| ssh <your-ssh-user>@<your-ssh-host> 'tar -xzf - -C /opt/myapp/'",
+		`ssh <your-ssh-user>@<your-ssh-host> "cd /opt/myapp`,
+	}
+	for _, want := range wantSSH {
+		if !strings.Contains(body, want) {
+			t.Errorf("README missing %q in deploy block\nbody:\n%s", want, body)
+		}
+	}
+
+	// Hint paragraph must be present.
+	wantHint := []string{
+		"Replace `<your-ssh-user>@<your-ssh-host>` with your actual SSH target.",
+		"~/.ssh/config",
+		"deploy.host: user@host",
+	}
+	for _, hint := range wantHint {
+		if !strings.Contains(body, hint) {
+			t.Errorf("README missing hint %q\nbody:\n%s", hint, body)
+		}
+	}
+
+	// Old unbracketed form must not appear.
+	forbidden := []string{"user@<domain>", "user@<"}
+	for _, ban := range forbidden {
+		if strings.Contains(body, ban) {
+			t.Errorf("README must not contain %q\nbody:\n%s", ban, body)
+		}
+	}
+}
+
+// TestRenderBundleReadme_SubstitutedPath verifies that when sshHost is set,
+// the README deploy block substitutes it verbatim, no placeholder appears, and
+// no hint paragraph is emitted (#1244).
+func TestRenderBundleReadme_SubstitutedPath(t *testing.T) {
+	const host = "root@1.2.3.4"
+	body := bundleapp.RenderBundleReadme("myapp", "example.com", host, false)
+
+	// The configured host must appear in all three ssh lines.
+	wantSSH := []string{
+		"ssh root@1.2.3.4 'mkdir -p /opt/myapp'",
+		"| ssh root@1.2.3.4 'tar -xzf - -C /opt/myapp/'",
+		`ssh root@1.2.3.4 "cd /opt/myapp`,
+	}
+	for _, want := range wantSSH {
+		if !strings.Contains(body, want) {
+			t.Errorf("README missing %q in deploy block\nbody:\n%s", want, body)
+		}
+	}
+
+	// No placeholder must appear.
+	if strings.Contains(body, "<your-ssh-user>@<your-ssh-host>") {
+		t.Errorf("README must not contain bracketed placeholder when sshHost is set\nbody:\n%s", body)
+	}
+
+	// Hint paragraph must be absent.
+	if strings.Contains(body, "Replace `<your-ssh-user>") {
+		t.Errorf("README must not contain hint paragraph when sshHost is set\nbody:\n%s", body)
 	}
 }
 

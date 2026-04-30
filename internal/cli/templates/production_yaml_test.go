@@ -113,6 +113,50 @@ func TestInitProject_ProductionYAML_NoCommentedStubs(t *testing.T) {
 	})
 }
 
+// TestInitProject_ProductionYAML_HasDeployHostHint verifies that the rendered
+// init-vibewarden.production.yaml.tmpl contains the commented-out deploy.host
+// hint introduced in #1244. The hint must be a comment (not an active yaml key)
+// so fresh projects are not accidentally broken by an unpopulated host field.
+func TestInitProject_ProductionYAML_HasDeployHostHint(t *testing.T) {
+	renderer := templateadapter.NewRenderer(templates.FS)
+
+	data := domainscaffold.InitProjectData{
+		ProjectName: "myapp",
+		Port:        3000,
+		Name:        "myapp",
+	}
+
+	rendered, err := renderer.Render("init-vibewarden.production.yaml.tmpl", data)
+	if err != nil {
+		t.Fatalf("Render() error = %v", err)
+	}
+	content := string(rendered)
+
+	// Must contain the commented hint somewhere.
+	t.Run("has_deploy_host_hint", func(t *testing.T) {
+		if !strings.Contains(content, "# host: user@host") {
+			t.Errorf("rendered production.yaml missing deploy.host hint comment\n\nContent:\n%s", content)
+		}
+	})
+
+	// The hint must be a comment (leading # after optional whitespace), not
+	// an active yaml key. An active "host:" key would break strict validation
+	// for users who never fill it in — empty value passes but "user@host"
+	// would be forwarded verbatim as the SSH target.
+	t.Run("host_hint_is_comment_not_active_key", func(t *testing.T) {
+		lines := strings.Split(content, "\n")
+		for _, line := range lines {
+			trimmed := strings.TrimSpace(line)
+			// Active key: line starts with "host:" (no leading #).
+			if trimmed == "host:" || strings.HasPrefix(trimmed, "host: ") {
+				if !strings.HasPrefix(trimmed, "#") {
+					t.Errorf("deploy.host appears as active yaml key — must be commented out\nLine: %q\n\nContent:\n%s", line, content)
+				}
+			}
+		}
+	})
+}
+
 // TestInitProject_ProductionYAML_HasDeployTargetPlatform verifies that the
 // rendered init-vibewarden.production.yaml.tmpl contains deploy.target_platform
 // as an actual yaml mapping (not a comment) — guard for #1200.

@@ -1903,6 +1903,9 @@ Verify: `vibew --version` should print a version string.
 
 ## Step 2 — Scaffold the project
 
+NOTE: `vibew init` does not create app code or a Dockerfile. You must
+provide both. AGENTS-VIBEWARDEN.md describes the contract.
+
   mkdir <your-project> && cd <your-project>
   vibew init --name <your-project> --describe "<your description>"
 
@@ -1936,7 +1939,7 @@ first upstream probe cycle has not completed yet (vibew probe retries automatica
 
 --deploy adds Steps 6–9 (replacing the dev Step 6 above):
 - Step 6: vibew bundle (with arch mismatch guard — see note below)
-- Step 7: tar pipe transfer (dotfile-safe) + ssh + docker load -i image.tar + docker compose up -d
+- Step 7: tar pipe transfer (dotfile-safe) + ssh `<your-ssh-user>@<your-ssh-host>` + docker load -i image.tar + docker compose up -d (set `deploy.host` in vibewarden.production.yaml to substitute your real SSH target)
 - Step 8: `vibew probe --env production` — canonical verification step. Falls back to
   curl healthcheck expecting HTTP 200, `"status":"ok"`, `"components":{"upstream":"ok"}`
 - Step 9 (dev only): `vibew probe` — health check after `vibew dev` (avoids LibreSSL on macOS)
