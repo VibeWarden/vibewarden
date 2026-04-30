@@ -249,6 +249,19 @@ func TestHTTPProber_Probe_WithSite(t *testing.T) {
 	}
 }
 
+func TestHTTPProber_Probe_DNSFailure(t *testing.T) {
+	// nonexistent.invalid uses the RFC 6761 reserved .invalid TLD, which is
+	// guaranteed never to resolve. We expect ErrDNSFailure from the prober.
+	prober := NewStrictProber(2 * time.Second)
+	_, err := prober.Probe(context.Background(), "https://nonexistent.invalid/_vibewarden/health")
+	if err == nil {
+		t.Fatal("expected error for unresolvable hostname, got nil")
+	}
+	if !errors.Is(err, ports.ErrDNSFailure) {
+		t.Errorf("expected ErrDNSFailure, got: %v", err)
+	}
+}
+
 func TestHTTPProber_Probe_ContextCancelled(t *testing.T) {
 	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Block until the request context is cancelled.

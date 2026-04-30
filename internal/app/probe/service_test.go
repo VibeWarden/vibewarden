@@ -144,20 +144,40 @@ func TestService_AllRetriesUnknown_ReturnsBootGapExhausted(t *testing.T) {
 }
 
 func TestService_HardErrorOnFirstProbe_NoRetry(t *testing.T) {
-	prober := &fakeProber{responses: []fakeResponse{
-		{err: ports.ErrProbeRefused},
-	}}
-	svc := probe.NewService(prober).WithSleep(noSleep)
+	tests := []struct {
+		name         string
+		sentinel     error
+		wantSentinel error
+	}{
+		{
+			name:         "connection refused",
+			sentinel:     ports.ErrProbeRefused,
+			wantSentinel: ports.ErrProbeRefused,
+		},
+		{
+			name:         "DNS failure",
+			sentinel:     ports.ErrDNSFailure,
+			wantSentinel: ports.ErrDNSFailure,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			prober := &fakeProber{responses: []fakeResponse{
+				{err: tt.sentinel},
+			}}
+			svc := probe.NewService(prober).WithSleep(noSleep)
 
-	_, err := svc.Run(context.Background(), opts("https://localhost:8443/_vibewarden/health"))
-	if err == nil {
-		t.Fatal("expected error, got nil")
-	}
-	if !errors.Is(err, ports.ErrProbeRefused) {
-		t.Errorf("expected ErrProbeRefused, got: %v", err)
-	}
-	if prober.callCount != 1 {
-		t.Errorf("callCount = %d, want 1 (no retry on hard error)", prober.callCount)
+			_, err := svc.Run(context.Background(), opts("https://localhost:8443/_vibewarden/health"))
+			if err == nil {
+				t.Fatal("expected error, got nil")
+			}
+			if !errors.Is(err, tt.wantSentinel) {
+				t.Errorf("expected %v, got: %v", tt.wantSentinel, err)
+			}
+			if prober.callCount != 1 {
+				t.Errorf("callCount = %d, want 1 (no retry on hard error)", prober.callCount)
+			}
+		})
 	}
 }
 

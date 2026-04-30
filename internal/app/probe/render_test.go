@@ -153,3 +153,41 @@ func TestRender_Non200_Unwrap(t *testing.T) {
 		t.Error("ProbeNon200Error should satisfy errors.Is(err, ErrProbeNon200)")
 	}
 }
+
+// TestRender_RefusedEnv checks the per-env connection-refused message listing
+// production-specific causes (bundle not deployed, host down, DNS, sidecar).
+func TestRender_RefusedEnv(t *testing.T) {
+	result := probe.Result{
+		URL:     "https://demo.example.com/_vibewarden/health",
+		EnvName: "production",
+	}
+	runGolden(t, "refused_env", result, ports.ErrProbeRefused)
+}
+
+// TestRender_DNSFailureEnv checks the env-aware DNS-failure message pointing
+// to tls.domain in the env YAML and the A/AAAA records.
+func TestRender_DNSFailureEnv(t *testing.T) {
+	result := probe.Result{
+		URL:     "https://demo.example.com/_vibewarden/health",
+		EnvName: "production",
+	}
+	runGolden(t, "dns_failure_env", result, ports.ErrDNSFailure)
+}
+
+// TestRender_DNSFailureDefault checks the default-mode DNS-failure message
+// that flags an unexpected /etc/hosts problem (localhost always resolves).
+func TestRender_DNSFailureDefault(t *testing.T) {
+	result := probe.Result{
+		URL:     "https://localhost:8443/_vibewarden/health",
+		EnvName: "",
+	}
+	runGolden(t, "dns_failure_default", result, ports.ErrDNSFailure)
+}
+
+// TestRender_ErrDNSFailure_Sentinel is a smoke test that confirms ErrDNSFailure
+// is a properly exported sentinel that satisfies errors.Is with itself.
+func TestRender_ErrDNSFailure_Sentinel(t *testing.T) {
+	if !errors.Is(ports.ErrDNSFailure, ports.ErrDNSFailure) {
+		t.Error("ErrDNSFailure should satisfy errors.Is(err, ErrDNSFailure)")
+	}
+}

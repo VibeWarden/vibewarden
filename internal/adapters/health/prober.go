@@ -4,8 +4,10 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"strings"
 	"time"
@@ -65,6 +67,7 @@ func NewStrictProber(timeout time.Duration) *HTTPProber {
 
 // Probe performs a single HTTPS GET against url and returns the parsed
 // HealthDocument. Error semantics follow ports.HealthProber:
+//   - ports.ErrDNSFailure    — hostname does not resolve
 //   - ports.ErrProbeRefused  — connection refused
 //   - ports.ErrProbeMalformed — body cannot be decoded
 //   - *ports.ProbeNon200Error — non-2xx HTTP status
@@ -76,6 +79,12 @@ func (p *HTTPProber) Probe(ctx context.Context, url string) (ports.HealthDocumen
 
 	resp, err := p.client.Do(req)
 	if err != nil {
+		// Classify DNS failures first: net.DNSError is wrapped inside *url.Error
+		// → *net.OpError → *net.DNSError. errors.As walks the full chain.
+		var dnsErr *net.DNSError
+		if errors.As(err, &dnsErr) {
+			return ports.HealthDocument{}, ports.ErrDNSFailure
+		}
 		if isConnectionRefused(err) {
 			return ports.HealthDocument{}, ports.ErrProbeRefused
 		}

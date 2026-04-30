@@ -1,0 +1,4 @@
+ERROR: https://localhost:8443/_vibewarden/health
+  DNS does not resolve
+
+Unexpected — localhost should always resolve. Check /etc/hosts.

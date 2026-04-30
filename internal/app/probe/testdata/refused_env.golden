@@ -1,0 +1,8 @@
+ERROR: https://demo.example.com/_vibewarden/health
+  connection refused
+
+The production endpoint is not reachable. Possible causes:
+  - the bundle hasn't been deployed yet (see `vibew bundle` Next: block)
+  - the remote host is down
+  - DNS for demo.example.com doesn't resolve to the deploy host
+  - the sidecar container exited (ssh in and check `docker compose ps`)
