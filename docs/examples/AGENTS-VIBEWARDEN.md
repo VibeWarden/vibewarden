@@ -229,6 +229,11 @@ The bundle is just files. The contract is in `.vibewarden/bundle/README.md`:
    ```
    Falls back to: `curl https://yourdomain/_vibewarden/health` for non-vibew tooling.
    Port **443** in production (TLS), not the dev port 8443.
+   If a TLS handshake error occurs immediately after `docker compose up -d`, ACME
+   issuance may still be in progress — `vibew probe --env production` retries every
+   2s for up to 30s automatically. If the cert is not issued in that window, the
+   command exits 1 and prints: `docker compose logs vibewarden | grep -i acme`.
+   Wait ~1 minute and re-run.
 
 `vibew bundle` is deterministic (same inputs, same bytes), never opens
 an SSH connection, and never touches files outside the output

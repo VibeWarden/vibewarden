@@ -1,8 +1,11 @@
 package probe_test
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"fmt"
+	"strings"
 	"testing"
 	"time"
 
@@ -231,5 +234,159 @@ func TestService_ResultURL_PreservedOnError(t *testing.T) {
 	})
 	if result.URL != targetURL {
 		t.Errorf("result.URL = %q, want %q", result.URL, targetURL)
+	}
+}
+
+// tlsErr wraps ports.ErrTLSHandshake the same way the adapter does (two-level
+// wrapping) so errors.Is(err, ports.ErrTLSHandshake) returns true.
+func tlsErr() error {
+	return fmt.Errorf("%w: tls: internal error", ports.ErrTLSHandshake)
+}
+
+// TestService_TLSRetry_DefaultMode_NoRetry verifies that when EnvName is
+// empty and the first probe returns ErrTLSHandshake, the service fails fast
+// without retrying and without writing any progress messages.
+func TestService_TLSRetry_DefaultMode_NoRetry(t *testing.T) {
+	prober := &fakeProber{responses: []fakeResponse{{err: tlsErr()}}}
+	var progress bytes.Buffer
+	svc := probe.NewService(prober).WithSleep(noSleep)
+
+	_, err := svc.Run(context.Background(), probe.Options{
+		URL:            "https://example.com/_vibewarden/health",
+		EnvName:        "", // default mode — no retry
+		TLSRetryWait:   30 * time.Second,
+		TLSRetryPoll:   2 * time.Second,
+		BootGapWait:    10 * time.Second,
+		BootGapPoll:    1 * time.Second,
+		ProgressWriter: &progress,
+	})
+
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !errors.Is(err, ports.ErrTLSHandshake) {
+		t.Errorf("expected ErrTLSHandshake, got: %v", err)
+	}
+	if prober.callCount != 1 {
+		t.Errorf("callCount = %d, want 1 (no retry in default mode)", prober.callCount)
+	}
+	if progress.Len() != 0 {
+		t.Errorf("expected no progress output, got: %q", progress.String())
+	}
+}
+
+// TestService_TLSRetry_EnvMode_SuccessAfterDelay verifies that when EnvName
+// is set and the prober returns ErrTLSHandshake on the initial probe and twice
+// more inside the loop then succeeds on the fourth call, the service retries
+// and returns success. Progress messages: 1 initial "retrying 30s" + 3 elapsed
+// (one per loop iteration before the successful probe) = 4 total lines.
+func TestService_TLSRetry_EnvMode_SuccessAfterDelay(t *testing.T) {
+	// responses[0]: initial probe → TLS error → enters loop
+	// responses[1]: loop iter 1 → TLS error (continue)
+	// responses[2]: loop iter 2 → TLS error (continue)
+	// responses[3]: loop iter 3 → success
+	prober := &fakeProber{responses: []fakeResponse{
+		{err: tlsErr()},
+		{err: tlsErr()},
+		{err: tlsErr()},
+		{doc: okDoc()},
+	}}
+	var progress bytes.Buffer
+	svc := probe.NewService(prober).WithSleep(noSleep)
+
+	result, err := svc.Run(context.Background(), probe.Options{
+		URL:            "https://example.com/_vibewarden/health",
+		EnvName:        "production",
+		TLSRetryWait:   30 * time.Second,
+		TLSRetryPoll:   2 * time.Second,
+		BootGapWait:    10 * time.Second,
+		BootGapPoll:    1 * time.Second,
+		ProgressWriter: &progress,
+	})
+
+	if err != nil {
+		t.Fatalf("expected no error after TLS retry success, got: %v", err)
+	}
+	if prober.callCount != 4 {
+		t.Errorf("callCount = %d, want 4 (1 initial + 3 loop iterations)", prober.callCount)
+	}
+	if result.Doc.Components["upstream"] != "ok" {
+		t.Errorf("upstream = %q, want ok", result.Doc.Components["upstream"])
+	}
+
+	// The progress buffer must contain:
+	//   line 0: "Waiting for ACME issuance... (TLS handshake failed; retrying 30s)"
+	//   line 1: "Waiting for ACME issuance... (0s elapsed)"  — loop iter 1
+	//   line 2: "Waiting for ACME issuance... (0s elapsed)"  — loop iter 2
+	//   line 3: "Waiting for ACME issuance... (0s elapsed)"  — loop iter 3 (before success probe)
+	lines := strings.Split(strings.TrimRight(progress.String(), "\n"), "\n")
+	if len(lines) != 4 {
+		t.Fatalf("expected 4 progress lines, got %d: %v", len(lines), lines)
+	}
+	wantFirst := "Waiting for ACME issuance... (TLS handshake failed; retrying 30s)"
+	if lines[0] != wantFirst {
+		t.Errorf("progress[0] = %q, want %q", lines[0], wantFirst)
+	}
+	// Lines 1-3 must match the elapsed-time format.
+	for i, line := range lines[1:] {
+		if !strings.HasPrefix(line, "Waiting for ACME issuance... (") ||
+			!strings.HasSuffix(line, "s elapsed)") {
+			t.Errorf("progress[%d] = %q, want format 'Waiting for ACME issuance... (Ns elapsed)'", i+1, line)
+		}
+	}
+}
+
+// TestService_TLSRetry_EnvMode_Exhausted verifies that when EnvName is set
+// and the prober returns ErrTLSHandshake indefinitely, the service returns
+// ErrTLSRetryExhausted after the retry budget is exhausted.
+func TestService_TLSRetry_EnvMode_Exhausted(t *testing.T) {
+	prober := &fakeProber{responses: []fakeResponse{{err: tlsErr()}}}
+	svc := probe.NewService(prober).WithSleep(noSleep)
+
+	_, err := svc.Run(context.Background(), probe.Options{
+		URL:          "https://example.com/_vibewarden/health",
+		EnvName:      "production",
+		TLSRetryWait: 200 * time.Millisecond, // short budget for fast test
+		TLSRetryPoll: 2 * time.Second,
+		BootGapWait:  10 * time.Second,
+		BootGapPoll:  1 * time.Second,
+	})
+
+	if err == nil {
+		t.Fatal("expected ErrTLSRetryExhausted, got nil")
+	}
+	if !errors.Is(err, probe.ErrTLSRetryExhausted) {
+		t.Errorf("expected ErrTLSRetryExhausted, got: %v", err)
+	}
+}
+
+// TestService_TLSRetry_EnvMode_ErrorClassChange verifies that when the prober
+// returns ErrTLSHandshake twice then ErrProbeRefused, the TLS retry loop exits
+// immediately with ErrProbeRefused (not ErrTLSRetryExhausted).
+func TestService_TLSRetry_EnvMode_ErrorClassChange(t *testing.T) {
+	prober := &fakeProber{responses: []fakeResponse{
+		{err: tlsErr()},
+		{err: tlsErr()},
+		{err: ports.ErrProbeRefused},
+	}}
+	svc := probe.NewService(prober).WithSleep(noSleep)
+
+	_, err := svc.Run(context.Background(), probe.Options{
+		URL:          "https://example.com/_vibewarden/health",
+		EnvName:      "production",
+		TLSRetryWait: 30 * time.Second,
+		TLSRetryPoll: 2 * time.Second,
+		BootGapWait:  10 * time.Second,
+		BootGapPoll:  1 * time.Second,
+	})
+
+	if err == nil {
+		t.Fatal("expected error, got nil")
+	}
+	if !errors.Is(err, ports.ErrProbeRefused) {
+		t.Errorf("expected ErrProbeRefused on class change, got: %v", err)
+	}
+	if prober.callCount != 3 {
+		t.Errorf("callCount = %d, want 3 (1 initial + 2 retries)", prober.callCount)
 	}
 }

@@ -1,0 +1,6 @@
+ERROR: TLS handshake failed for 30s.
+
+Likely ACME (Let's Encrypt) issuance still in progress. Check:
+  ssh <host> docker compose logs vibewarden | grep -i acme
+If the cert hasn't been issued yet, retry `vibew probe --env production`
+in another minute.

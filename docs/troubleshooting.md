@@ -475,6 +475,76 @@ This applies to **dev / self-signed** certificates only. Production certs from L
 
 ---
 
+### TLS handshake error immediately after deploy (ACME issuance in progress)
+
+**Symptom**
+
+`vibew probe --env production` exits 1 with output like:
+
+```
+ERROR: TLS handshake failed for 30s.
+
+Likely ACME (Let's Encrypt) issuance still in progress. Check:
+  ssh <host> docker compose logs vibewarden | grep -i acme
+If the cert hasn't been issued yet, retry `vibew probe --env production`
+in another minute.
+```
+
+Or — before the 30s budget is exhausted — progress lines on stderr:
+
+```
+Waiting for ACME issuance... (TLS handshake failed; retrying 30s)
+Waiting for ACME issuance... (2s elapsed)
+Waiting for ACME issuance... (4s elapsed)
+...
+```
+
+**Cause**
+
+Let's Encrypt (or ZeroSSL) ACME certificate issuance typically takes 5–30 s
+after `docker compose up -d`. During that window the sidecar serves a
+self-signed fallback that the strict prober (used by `--env`) rejects.
+
+**Fix**
+
+`vibew probe --env <name>` handles this automatically. It retries every 2s
+for up to 30s. If the cert is issued within that window, the probe falls
+through to the normal boot-gap check and exits 0 on healthy.
+
+If 30s is not enough:
+
+```bash
+# Check whether ACME is still working
+ssh <your-ssh-user>@<your-ssh-host> 'docker compose logs vibewarden | grep -i acme'
+
+# Then retry
+vibew probe --env production
+```
+
+**Conditions required for the TLS retry loop to engage:**
+
+- `--env <name>` must be set. Default mode (no `--env`) treats TLS errors as
+  immediate failures — a TLS error against the localhost dev cert is a real
+  config bug (wrong CA, wrong port), not a transient.
+- The error must match a known TLS handshake substring:
+  `tls: internal error`, `tls: handshake failure`, `bad certificate`,
+  `tls: protocol version not supported`.
+- Connection-refused errors skip the TLS retry loop and use the normal
+  per-env error message.
+
+**If ACME keeps failing**
+
+```bash
+ssh <your-ssh-user>@<your-ssh-host> 'docker compose logs vibewarden --tail 100 | grep -i acme'
+```
+
+Common causes: port 80 blocked by the host firewall (ACME HTTP-01 requires
+inbound TCP 80), DNS not yet propagated (A record points to the wrong IP),
+or LE rate limit exceeded (run `vibew doctor --skip-le-preflight` to bypass
+the local check and inspect the sidecar logs directly).
+
+---
+
 ### Unhealthy containers (Kratos, Postgres)
 
 Runtime container health is no longer checked by `vibew doctor` — that check was

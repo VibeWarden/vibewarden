@@ -88,6 +88,13 @@ If `components.upstream` is `"unknown"`, the first health probe has not yet
 completed — vibew probe retries automatically for up to 10s.
 If it is `"failing"`, the upstream container is not accepting connections.
 
+If you see a TLS handshake error immediately after `docker compose up -d`,
+ACME (Let's Encrypt) cert issuance may still be in progress — vibew probe
+retries automatically for up to 30s, printing progress to stderr. If the
+cert is not issued within that window, the command exits 1 with a message
+pointing at `docker compose logs vibewarden | grep -i acme`. Wait ~1 minute
+and re-run `vibew probe --env production`.
+
 Fallback (when vibew binary is not available on the operator machine):
 
   curl -fsSL https://demo.example.com/_vibewarden/health

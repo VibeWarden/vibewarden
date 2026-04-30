@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/vibewarden/vibewarden/internal/app/probe"
 	"github.com/vibewarden/vibewarden/internal/ports"
@@ -189,5 +190,37 @@ func TestRender_DNSFailureDefault(t *testing.T) {
 func TestRender_ErrDNSFailure_Sentinel(t *testing.T) {
 	if !errors.Is(ports.ErrDNSFailure, ports.ErrDNSFailure) {
 		t.Error("ErrDNSFailure should satisfy errors.Is(err, ErrDNSFailure)")
+	}
+}
+
+// TestRender_TLSRetryExhausted verifies the golden output for
+// ErrTLSRetryExhausted with env "production" and the default 30s budget. The
+// golden file is pinned at internal/app/probe/testdata/tls_retry_exhausted.golden.
+func TestRender_TLSRetryExhausted(t *testing.T) {
+	result := probe.Result{
+		URL:            "https://demo.example.com/_vibewarden/health",
+		EnvName:        "production",
+		TLSRetryBudget: 30 * time.Second,
+	}
+	runGolden(t, "tls_retry_exhausted", result, probe.ErrTLSRetryExhausted)
+}
+
+// TestRender_TLSRetryExhausted_60s verifies that the rendered budget line
+// substitutes the actual TLSRetryBudget (60s) rather than a hardcoded constant.
+func TestRender_TLSRetryExhausted_60s(t *testing.T) {
+	result := probe.Result{
+		URL:            "https://demo.example.com/_vibewarden/health",
+		EnvName:        "production",
+		TLSRetryBudget: 60 * time.Second,
+	}
+	var buf bytes.Buffer
+	probe.Render(&buf, result, probe.ErrTLSRetryExhausted)
+	got := buf.String()
+
+	if !strings.Contains(got, "60s") {
+		t.Errorf("expected '60s' in output for 60s budget, got: %q", got)
+	}
+	if strings.Contains(got, "30s") {
+		t.Errorf("expected no hardcoded '30s' in output for 60s budget, got: %q", got)
 	}
 }

@@ -14,6 +14,8 @@ This initial entry was written by hand to summarise the work leading up to v0.1.
 
 ### Added
 
+- **`vibew probe --env <name>` retries TLS handshake errors during ACME issuance** (#1243). When the probe hits a recognised TLS handshake error (`tls: internal error`, `tls: handshake failure`, `bad certificate`, `tls: protocol version not supported`) AND `--env` is set, retry every 2s for up to 30s with progress messages on stderr. After 30s, exit 1 with an actionable message pointing at `docker compose logs vibewarden | grep -i acme`. Default mode (no `--env`) does not retry on TLS errors — localhost dev cert is from Caddy's local CA; immediate failure is a real config bug. Recovers from the v0.18.4 retro Codex finding where the first probe right after `docker compose up -d` failed during ACME issuance and the unactionable `tls: internal error` was the only signal.
+
 - **`vibew bundle --print-deploy --host <h> --user <u> --path <p>`** (#1245) — ad-hoc, per-invocation override for the printed "Next: deploy" stdout block. All three sub-flags required when `--print-deploy` is set; flag wins over `deploy.host` from `vibewarden.production.yaml`. Bundle README is unaffected (config and placeholder paths only). Useful for one-off deploys and multi-host CI without mutating config. (retro-0.18.4 follow-up)
 
 ### Changed
