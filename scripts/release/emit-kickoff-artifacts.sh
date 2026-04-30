@@ -8,7 +8,7 @@
 # Usage:
 #   ./scripts/release/emit-kickoff-artifacts.sh [OUT_DIR]
 #
-# OUT_DIR defaults to "dist". Both output files are written there:
+# OUT_DIR defaults to "release-artifacts". Both output files are written there:
 #   $OUT_DIR/agent-kickoff-dev.txt
 #   $OUT_DIR/agent-kickoff-deploy.txt
 #
@@ -22,7 +22,7 @@
 
 set -euo pipefail
 
-OUT_DIR="${1:-dist}"
+OUT_DIR="${1:-release-artifacts}"
 mkdir -p "$OUT_DIR"
 
 # Build vibew once for this run. Goreleaser may have already built it; reuse

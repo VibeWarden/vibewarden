@@ -19,7 +19,7 @@ project_name: vibewarden
 # uploaded as GitHub Release assets via release.extra_files below (ADR-101).
 before:
   hooks:
-    - bash scripts/release/emit-kickoff-artifacts.sh dist
+    - bash scripts/release/emit-kickoff-artifacts.sh release-artifacts
 
 # ---------------------------------------------------------------------------
 # Build
@@ -155,10 +155,12 @@ release:
   prerelease: auto
   name_template: "{{ .ProjectName }} {{ .Version }}"
   # Agent-kickoff canonical artifacts (ADR-101). The wrapper script writes
-  # these to dist/ in the before.hooks step above.
+  # these to release-artifacts/ in the before.hooks step above.
+  # NOTE: must NOT use dist/ — goreleaser --clean wipes dist before hooks run,
+  # then fails when hooks re-populate it ("dist is not empty").
   extra_files:
-    - glob: dist/agent-kickoff-dev.txt
-    - glob: dist/agent-kickoff-deploy.txt
+    - glob: release-artifacts/agent-kickoff-dev.txt
+    - glob: release-artifacts/agent-kickoff-deploy.txt
   header: |
     ## VibeWarden {{ .Version }}
 
