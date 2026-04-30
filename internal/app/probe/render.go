@@ -15,6 +15,7 @@ import (
 //
 //   - nil error, upstream=="ok"         → dev-ok or env-ok block + "OK" summary
 //   - ErrBootGapExhausted               → degraded block + "DEGRADED" summary
+//   - ErrTLSRetryExhausted              → "ERROR:" TLS exhausted block with ACME hint
 //   - ErrProbeRefused (EnvName=="")     → "ERROR:" URL + "Stack is not running" hint
 //   - ErrProbeRefused (EnvName!="")     → "ERROR:" URL + per-env causes list
 //   - ErrDNSFailure (EnvName=="")       → "ERROR:" URL + unexpected localhost hint
@@ -27,6 +28,8 @@ import (
 // w is stdout or stderr.
 func Render(w io.Writer, result Result, err error) {
 	switch {
+	case errors.Is(err, ErrTLSRetryExhausted):
+		renderTLSRetryExhausted(w, result)
 	case errors.Is(err, ports.ErrProbeRefused):
 		renderRefused(w, result)
 	case errors.Is(err, ports.ErrDNSFailure):
@@ -150,6 +153,21 @@ func renderNon200(w io.Writer, result Result, err error) {
 func renderGenericError(w io.Writer, result Result, err error) {
 	fmt.Fprintf(w, "ERROR: %s\n", result.URL)
 	fmt.Fprintf(w, "%v\n", err)
+}
+
+// renderTLSRetryExhausted writes the TLS-retry-exhausted error block. The
+// message points the user at docker compose logs vibewarden to check ACME
+// issuance progress.
+func renderTLSRetryExhausted(w io.Writer, result Result) {
+	envName := result.EnvName
+	if envName == "" {
+		envName = "<env>"
+	}
+	fmt.Fprintf(w, "ERROR: TLS handshake failed for 30s.\n")
+	fmt.Fprintf(w, "\nLikely ACME (Let's Encrypt) issuance still in progress. Check:\n")
+	fmt.Fprintf(w, "  ssh <host> docker compose logs vibewarden | grep -i acme\n")
+	fmt.Fprintf(w, "If the cert hasn't been issued yet, retry `vibew probe --env %s`\n", envName)
+	fmt.Fprintf(w, "in another minute.\n")
 }
 
 // isNon200 reports whether err (or any error in its chain) is a *ProbeNon200Error.

@@ -191,3 +191,14 @@ func TestRender_ErrDNSFailure_Sentinel(t *testing.T) {
 		t.Error("ErrDNSFailure should satisfy errors.Is(err, ErrDNSFailure)")
 	}
 }
+
+// TestRender_TLSRetryExhausted verifies the golden output for
+// ErrTLSRetryExhausted with env "production". The golden file is pinned at
+// internal/app/probe/testdata/tls_retry_exhausted.golden.
+func TestRender_TLSRetryExhausted(t *testing.T) {
+	result := probe.Result{
+		URL:     "https://demo.example.com/_vibewarden/health",
+		EnvName: "production",
+	}
+	runGolden(t, "tls_retry_exhausted", result, probe.ErrTLSRetryExhausted)
+}

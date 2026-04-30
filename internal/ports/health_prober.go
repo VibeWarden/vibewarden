@@ -58,6 +58,18 @@ var (
 	// means the tls.domain entry in vibewarden.<env>.yaml has no matching A/AAAA
 	// record; for localhost it indicates a broken /etc/hosts.
 	ErrDNSFailure = errors.New("DNS resolution failed")
+
+	// ErrTLSHandshake is returned when the TLS handshake fails with an error
+	// that indicates a transient ACME-issuance condition or a permanent bad
+	// certificate chain. The original underlying error is wrapped so callers
+	// can inspect the full error chain.
+	//
+	// Recognised substrings (case-sensitive):
+	//   - "tls: internal error"
+	//   - "tls: handshake failure"
+	//   - "bad certificate"
+	//   - "tls: protocol version not supported"
+	ErrTLSHandshake = errors.New("TLS handshake failed (likely transient — ACME issuance in progress, or permanent — bad cert chain)")
 )
 
 // ProbeNon200Error wraps ErrProbeNon200 with the HTTP status code and a

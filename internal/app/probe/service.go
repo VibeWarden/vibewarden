@@ -1,11 +1,13 @@
 // Package probe implements the vibew probe use case: HTTPS health probe of
-// /_vibewarden/health with a boot-gap retry policy.
+// /_vibewarden/health with a boot-gap retry policy and a TLS-handshake retry
+// policy for ACME issuance.
 package probe
 
 import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"time"
 
 	"github.com/vibewarden/vibewarden/internal/ports"
@@ -16,6 +18,12 @@ import (
 // receives the last observed Result alongside this error so it can render
 // the degraded output block before exiting 1.
 var ErrBootGapExhausted = errors.New("upstream probe has not converged within boot-gap window")
+
+// ErrTLSRetryExhausted is returned by Service.Run when the TLS-handshake
+// retry budget (default 30s) is exhausted with the endpoint still returning
+// TLS handshake errors. This typically indicates ACME (Let's Encrypt)
+// issuance is still in progress on the remote host.
+var ErrTLSRetryExhausted = errors.New("TLS handshake failed for the entire 30s retry budget")
 
 // Options is the parameter object for Service.Run. All duration fields have
 // safe defaults applied by DefaultOptions.
@@ -45,16 +53,32 @@ type Options struct {
 	// context. Not currently used to set a per-probe deadline (the HTTP client
 	// timeout set at construction handles that), but kept for future use.
 	PerProbe time.Duration
+
+	// TLSRetryWait is the total budget for retrying TLS handshake failures
+	// when EnvName is set (--env path). Default: 30s. Only engaged when the
+	// first probe returns ports.ErrTLSHandshake and EnvName != "".
+	TLSRetryWait time.Duration
+
+	// TLSRetryPoll is the interval between probes during the TLS retry loop.
+	// Default: 2s.
+	TLSRetryPoll time.Duration
+
+	// ProgressWriter receives human-readable progress lines during the TLS
+	// retry loop (e.g. "Waiting for ACME issuance... (2s elapsed)"). If nil,
+	// progress output is discarded. The CLI wires this to cmd.ErrOrStderr().
+	ProgressWriter io.Writer
 }
 
 // DefaultOptions returns Options with the production defaults.
 func DefaultOptions(url, envName string) Options {
 	return Options{
-		URL:         url,
-		EnvName:     envName,
-		BootGapWait: 10 * time.Second,
-		BootGapPoll: 1 * time.Second,
-		PerProbe:    3 * time.Second,
+		URL:          url,
+		EnvName:      envName,
+		BootGapWait:  10 * time.Second,
+		BootGapPoll:  1 * time.Second,
+		PerProbe:     3 * time.Second,
+		TLSRetryWait: 30 * time.Second,
+		TLSRetryPoll: 2 * time.Second,
 	}
 }
 
@@ -93,20 +117,41 @@ func (s *Service) WithSleep(fn func(time.Duration)) *Service {
 	return &Service{prober: s.prober, sleep: fn}
 }
 
-// Run probes opts.URL once. If the first probe's components.upstream is
-// "unknown", it retries every opts.BootGapPoll until either the upstream
-// reports a non-unknown state or opts.BootGapWait elapses. On budget
-// exhaustion it returns the last observed Result alongside ErrBootGapExhausted.
+// Run probes opts.URL once. Two retry loops may engage in sequence:
 //
-// Hard errors (ErrProbeRefused, ErrProbeMalformed, *ProbeNon200Error) are
-// returned immediately without retry.
+//  1. TLS-retry loop (--env path only): if the first probe returns
+//     ports.ErrTLSHandshake and opts.EnvName != "", retry every
+//     opts.TLSRetryPoll for up to opts.TLSRetryWait. Progress lines are
+//     written to opts.ProgressWriter. On exhaustion, returns
+//     ErrTLSRetryExhausted. On error-class change, returns the new error
+//     immediately. On success, falls through to the boot-gap loop below.
+//     Default mode (EnvName == "") treats TLS errors as hard failures.
+//
+//  2. Boot-gap loop: if components.upstream is "unknown", retry every
+//     opts.BootGapPoll for up to opts.BootGapWait. On exhaustion, returns
+//     ErrBootGapExhausted alongside the last Result.
+//
+// All other errors are returned immediately without retry.
 func (s *Service) Run(ctx context.Context, opts Options) (Result, error) {
 	result := Result{URL: opts.URL, EnvName: opts.EnvName}
 
+	pw := opts.ProgressWriter
+	if pw == nil {
+		pw = io.Discard
+	}
+
 	doc, err := s.prober.Probe(ctx, opts.URL)
 	if err != nil {
-		// Hard errors: do not retry.
-		return result, err
+		// TLS-retry loop only engages when --env is set.
+		if errors.Is(err, ports.ErrTLSHandshake) && opts.EnvName != "" {
+			doc, err = s.runTLSRetry(ctx, opts, pw)
+			if err != nil {
+				return result, err
+			}
+		} else {
+			// Hard error or default-mode TLS error: fail fast.
+			return result, err
+		}
 	}
 
 	result.Doc = doc
@@ -141,4 +186,45 @@ func (s *Service) Run(ctx context.Context, opts Options) (Result, error) {
 
 	// Budget exhausted with upstream still unknown.
 	return result, ErrBootGapExhausted
+}
+
+// runTLSRetry implements the TLS-handshake retry loop. It is called when the
+// first probe returned ports.ErrTLSHandshake and opts.EnvName != "". Progress
+// lines are written to pw every iteration.
+//
+// Returns (doc, nil) on success, ErrTLSRetryExhausted on budget exhaustion, or
+// the new error immediately when the error class changes.
+func (s *Service) runTLSRetry(ctx context.Context, opts Options, pw io.Writer) (ports.HealthDocument, error) {
+	retrySeconds := int(opts.TLSRetryWait.Seconds())
+	fmt.Fprintf(pw, "Waiting for ACME issuance... (TLS handshake failed; retrying %ds)\n", retrySeconds)
+
+	start := time.Now()
+	deadline := start.Add(opts.TLSRetryWait)
+
+	for {
+		s.sleep(opts.TLSRetryPoll)
+
+		elapsed := int(time.Since(start).Seconds())
+		fmt.Fprintf(pw, "Waiting for ACME issuance... (%ds elapsed)\n", elapsed)
+
+		if err := ctx.Err(); err != nil {
+			return ports.HealthDocument{}, fmt.Errorf("probe context cancelled during TLS retry: %w", err)
+		}
+
+		doc, err := s.prober.Probe(ctx, opts.URL)
+		if err == nil {
+			// TLS resolved — fall through to boot-gap logic.
+			return doc, nil
+		}
+
+		if !errors.Is(err, ports.ErrTLSHandshake) {
+			// Error class changed — return the new error immediately.
+			return ports.HealthDocument{}, err
+		}
+
+		if !time.Now().Before(deadline) {
+			// Budget exhausted.
+			return ports.HealthDocument{}, ErrTLSRetryExhausted
+		}
+	}
 }

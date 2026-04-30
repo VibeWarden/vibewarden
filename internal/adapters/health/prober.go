@@ -88,6 +88,9 @@ func (p *HTTPProber) Probe(ctx context.Context, url string) (ports.HealthDocumen
 		if isConnectionRefused(err) {
 			return ports.HealthDocument{}, ports.ErrProbeRefused
 		}
+		if isTLSHandshakeError(err) {
+			return ports.HealthDocument{}, fmt.Errorf("%w: %w", ports.ErrTLSHandshake, err)
+		}
 		return ports.HealthDocument{}, fmt.Errorf("executing probe request: %w", err)
 	}
 	defer func() { _ = resp.Body.Close() }()
@@ -129,6 +132,28 @@ func isConnectionRefused(err error) bool {
 	msg := err.Error()
 	return strings.Contains(msg, "connection refused") ||
 		strings.Contains(msg, "connect: connection refused")
+}
+
+// isTLSHandshakeError reports whether err contains a known TLS handshake
+// failure substring. These substrings indicate either a transient ACME
+// issuance in progress or a permanent cert-chain problem. The check is
+// case-sensitive and matches the exact strings produced by Go's crypto/tls
+// package and the BoringSSL/OpenSSL alert codes that reach the client.
+//
+// Recognised substrings:
+//   - "tls: internal error"
+//   - "tls: handshake failure"
+//   - "bad certificate"
+//   - "tls: protocol version not supported"
+func isTLSHandshakeError(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "tls: internal error") ||
+		strings.Contains(msg, "tls: handshake failure") ||
+		strings.Contains(msg, "bad certificate") ||
+		strings.Contains(msg, "tls: protocol version not supported")
 }
 
 // Compile-time assertion that HTTPProber satisfies ports.HealthProber.

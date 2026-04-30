@@ -133,6 +133,7 @@ func runProbe(cmd *cobra.Command, envName string) error {
 	svc := probeapp.NewService(prober)
 
 	opts := probeapp.DefaultOptions(targetURL, envName)
+	opts.ProgressWriter = cmd.ErrOrStderr()
 	result, probeErr := svc.Run(cmd.Context(), opts)
 	probeapp.Render(w, result, probeErr)
 

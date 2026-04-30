@@ -2,6 +2,7 @@ package health
 
 import (
 	"context"
+	"crypto/tls"
 	"crypto/x509"
 	"encoding/json"
 	"errors"
@@ -283,4 +284,146 @@ func TestHTTPProber_Probe_ContextCancelled(t *testing.T) {
 		t.Errorf("cancelled context should not produce ErrProbeRefused")
 	}
 	_ = fmt.Sprintf("%v", err) // suppress unused import warning
+}
+
+// tlsAlertServer starts a raw TCP listener that completes the TCP handshake,
+// reads (and discards) the TLS ClientHello, then responds with a TLS 1.2 alert
+// record containing the given alert code. The server URL is returned. Callers
+// must close the returned function to shut down the listener.
+//
+// TLS record structure (5-byte header + payload):
+//
+//	ContentType: 21 (alert)
+//	Version:     0x03 0x03 (TLS 1.2)
+//	Length:      0x00 0x02
+//	Level:       0x02 (fatal)
+//	Description: alertCode
+func tlsAlertServer(t *testing.T, alertCode byte) (url string, close func()) {
+	t.Helper()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("tlsAlertServer: listen: %v", err)
+	}
+	go func() {
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				return // listener closed
+			}
+			go func(c net.Conn) {
+				defer func() { _ = c.Close() }()
+				// Drain the ClientHello (up to 4 KiB is plenty).
+				buf := make([]byte, 4096)
+				_, _ = c.Read(buf)
+				// Send a fatal TLS alert.
+				alert := []byte{21, 0x03, 0x03, 0x00, 0x02, 0x02, alertCode}
+				_, _ = c.Write(alert)
+			}(conn)
+		}
+	}()
+	return "https://" + ln.Addr().String(), func() { _ = ln.Close() }
+}
+
+// TestIsTLSHandshakeError_Substrings verifies that isTLSHandshakeError returns
+// true for each of the four pinned substring patterns and false for unrelated
+// error messages.
+func TestIsTLSHandshakeError_Substrings(t *testing.T) {
+	tests := []struct {
+		name string
+		msg  string
+		want bool
+	}{
+		{"tls internal error", "Get \"https://host\": tls: internal error", true},
+		{"tls handshake failure", "Get \"https://host\": tls: handshake failure", true},
+		{"bad certificate", "Get \"https://host\": bad certificate", true},
+		{"tls protocol version not supported", "Get \"https://host\": tls: protocol version not supported", true},
+		{"connection refused", "connect: connection refused", false},
+		{"generic network error", "no route to host", false},
+		{"empty string", "", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := isTLSHandshakeError(fmt.Errorf("%s", tt.msg))
+			if got != tt.want {
+				t.Errorf("isTLSHandshakeError(%q) = %v, want %v", tt.msg, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestHTTPProber_Probe_TLSHandshakeError verifies that each of the four
+// recognised TLS handshake failure patterns causes the adapter to return
+// ports.ErrTLSHandshake. The test uses two strategies:
+//
+//  1. A raw TCP server that sends a specific TLS alert record (alert codes 40,
+//     42, 80 for handshake_failure, bad_certificate, internal_error).
+//  2. A TLS version mismatch between server (min TLS 1.3) and client (max TLS
+//     1.2) to produce "tls: protocol version not supported".
+//
+// Strategy 1 covers the exact alert-code-to-substring mapping that Go's
+// crypto/tls uses for TLS 1.2 records; strategy 2 covers the version
+// negotiation path.
+func TestHTTPProber_Probe_TLSHandshakeError(t *testing.T) {
+	// Strategy 1: raw alert servers for handshake_failure (40), bad_certificate
+	// (42), and internal_error (80). These alert codes are defined in RFC 5246 §
+	// 7.2 and produce the corresponding error string in Go's crypto/tls.
+	alertTests := []struct {
+		name       string
+		alertCode  byte
+		wantSubstr string
+	}{
+		{"tls: internal error", 80, "tls: internal error"},
+		{"tls: handshake failure", 40, "tls: handshake failure"},
+		{"bad certificate", 42, "bad certificate"},
+	}
+
+	for _, tt := range alertTests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			srvURL, closeSrv := tlsAlertServer(t, tt.alertCode)
+			defer closeSrv()
+
+			// NewLocalhostProber uses InsecureSkipVerify, but we still expect a
+			// handshake error because the server sends a fatal alert.
+			prober := NewLocalhostProber(2 * time.Second)
+			_, err := prober.Probe(context.Background(), srvURL)
+			if err == nil {
+				t.Fatalf("expected error containing %q, got nil", tt.wantSubstr)
+			}
+			if !errors.Is(err, ports.ErrTLSHandshake) {
+				t.Errorf("expected ErrTLSHandshake (substring %q), got: %v", tt.wantSubstr, err)
+			}
+		})
+	}
+
+	// Strategy 2: TLS version mismatch — server requires TLS 1.3, client only
+	// allows up to TLS 1.2 — produces "tls: protocol version not supported".
+	t.Run("tls: protocol version not supported", func(t *testing.T) {
+		// Build a TLS server that requires TLS 1.3 or higher.
+		baseSrv := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+			w.WriteHeader(http.StatusOK)
+		}))
+		baseSrv.TLS = &tls.Config{MinVersion: tls.VersionTLS13}
+		baseSrv.StartTLS()
+		defer baseSrv.Close()
+
+		// Build a client that is restricted to TLS 1.2 or lower so that the
+		// version negotiation fails.
+		client := &http.Client{
+			Timeout: 2 * time.Second,
+			Transport: &http.Transport{
+				TLSClientConfig: &tls.Config{ //nolint:gosec // test-only client restriction
+					MaxVersion: tls.VersionTLS12,
+				},
+			},
+		}
+		prober := &HTTPProber{client: client}
+		_, err := prober.Probe(context.Background(), baseSrv.URL)
+		if err == nil {
+			t.Fatal("expected TLS version error, got nil")
+		}
+		if !errors.Is(err, ports.ErrTLSHandshake) {
+			t.Errorf("expected ErrTLSHandshake for version mismatch, got: %v", err)
+		}
+	})
 }
