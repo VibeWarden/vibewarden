@@ -233,6 +233,22 @@ This command:
 Your app is protected at `https://localhost:8443`. Nothing else is required for the
 first run.
 
+    !!! tip "Health check after first run"
+        Verify the stack is healthy:
+
+        ```bash
+        vibew probe
+        ```
+
+        `vibew probe` uses Go's TLS stack and works on macOS without LibreSSL issues.
+        Expected output ends with `OK — dev stack healthy.` If you see
+        `upstream: unknown`, the boot probe has not completed yet — wait 10s and retry
+        (vibew probe retries automatically for up to 10s).
+        On non-macOS or when non-vibew tooling is needed:
+        ```bash
+        curl --insecure https://localhost:8443/_vibewarden/health
+        ```
+
 !!! warning "If your app image hasn't been built yet"
     `vibew dev` checks for the app Docker image before starting. If the image
     is missing you'll see an error like:

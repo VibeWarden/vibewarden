@@ -54,6 +54,12 @@ cd my-app && vibew wrap --upstream 3000 && vibew dev
   under `.vibewarden/bundle/`. Transfer with tar pipe (dotfile-safe) and run
   `docker compose up -d` on the target host.
   Example: `vibew bundle`
+- `vibew probe` — one-shot HTTPS health check of `/_vibewarden/health` using Go's TLS stack.
+  Bypasses macOS LibreSSL friction — use after `vibew dev` instead of curl on macOS.
+  `--env <name>` loads `vibewarden.<name>.yaml` and probes the production domain with full cert verification.
+  Examples:
+    `vibew probe`
+    `vibew probe --env production`
 - `vibew doctor` — diagnose common configuration and runtime issues.
   Example: `vibew doctor`
 - `vibew validate` — validate `vibewarden.yaml` against the config schema.

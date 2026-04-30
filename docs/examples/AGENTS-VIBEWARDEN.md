@@ -26,7 +26,7 @@ VibeWarden is language-agnostic — `vibew init` does not scaffold app code, a D
 - **Serve `GET /health` returning HTTP 200** on that same port. Any response body is acceptable — vibew checks the status code only. Without this endpoint the sidecar container never leaves the "Created" state and `vibew dev` hangs.
 - **Do not implement TLS, auth, rate-limiting, WAF, or security headers in app code** — the sidecar owns all of those (see §Security boundary rule).
 
-`vibew doctor` validates this contract statically: `EXPOSE` vs `upstream.port` match, Dockerfile structure, and TLS state. Run it before `vibew dev` if you hit a connection-refused loop. For runtime upstream health, query `_vibewarden/health` after `vibew dev` is up.
+`vibew doctor` validates this contract statically: `EXPOSE` vs `upstream.port` match, Dockerfile structure, and TLS state. Run it before `vibew dev` if you hit a connection-refused loop. For runtime upstream health, run `vibew probe` after `vibew dev` is up (preferred on macOS; bypasses LibreSSL friction).
 
 ## Sidecar-injected headers
 
@@ -69,6 +69,8 @@ vibew dev --rebuild  # stop stack, remove app image, rebuild, start — recovery
 vibew down           # stop the dev stack (preserves volumes; -v also removes volumes)
 vibew obs up         # start Prometheus + Grafana observability stack (after vibew dev)
 vibew obs down       # stop the observability stack (-v also removes volumes)
+vibew probe          # one-shot HTTPS health check after vibew dev (bypasses macOS LibreSSL friction — preferred over curl on macOS)
+vibew probe --env production  # health check against a named environment overlay
 ```
 
 ## Config changes
@@ -105,9 +107,11 @@ These filenames are public API (ADR-101). See `docs/agent-kickoff.md`.
 ## Troubleshooting
 
 ```bash
+vibew probe              # one-shot HTTPS health check (preferred on macOS — bypasses LibreSSL friction)
+vibew probe --env production  # health check for a named production environment
 vibew doctor             # diagnose common issues
 vibew doctor --json      # machine-readable output for AI agents
-vibew status             # check sidecar health
+vibew status             # check sidecar health (richer overview; probe is for one-shot HTTPS verification)
 vibew logs               # stream local dev-stack logs (all services)
 vibew logs vibewarden    # sidecar logs only
 vibew logs --follow      # stream continuously
@@ -119,8 +123,9 @@ proxy port availability, ACME email, image tag consistency, and LE rate-limit bu
 When the dev stack is running, two additional checks are added: generated files present
 and TLS certificate valid. Pre-stack those two rows are silently skipped — no misleading
 WARNs before `vibew dev` has been started. Container health is not checked by `vibew doctor`;
-use `curl https://<your-domain>/_vibewarden/health` after `vibew dev` is up for runtime
-health (response: `{"status":"ok","components":{"upstream":"ok"}}`).
+use `vibew probe` after `vibew dev` is up for runtime health (preferred on macOS; bypasses
+LibreSSL friction). For non-vibew tooling, fall back to
+`curl https://<your-domain>/_vibewarden/health` (expected: `{"status":"ok","components":{"upstream":"ok"}}`).
 `vibew status` surfaces component health with OK / OFF / FAIL labels; OFF means the
 component is disabled in config and was not probed.
 
@@ -209,7 +214,11 @@ The bundle is just files. The contract is in `.vibewarden/bundle/README.md`:
 5. On the host, in the bundle directory: load `image.tar` (in
    registry-pull mode the image is already published — skip this step
    and let compose pull it), then `docker compose up -d`.
-6. Verify against the public URL: `curl https://yourdomain/_vibewarden/health`.
+6. Verify against the public URL:
+   ```bash
+   vibew probe --env production
+   ```
+   Falls back to: `curl https://yourdomain/_vibewarden/health` for non-vibew tooling.
    Port **443** in production (TLS), not the dev port 8443.
 
 `vibew bundle` is deterministic (same inputs, same bytes), never opens
@@ -282,7 +291,7 @@ For now: keep one site per project. Revisit when #1169 lands.
 ## Known limitations
 
 - WAF is in `detect` mode by default (logs but does not block). Set `waf.mode: block` in vibewarden.yaml to enforce blocking.
-- `vibew doctor` checks config, Docker, ports, ACME email, image tag, and (when the dev stack is running) generated files and local TLS cert validity. It does not probe runtime container health — use `curl https://<your-domain>/_vibewarden/health` after `vibew dev` is up for that (expected response: `{"status":"ok","components":{"upstream":"ok"}}`). Pre-stack, the generated-files and TLS rows are silently skipped to avoid misleading WARNs. When a `Dockerfile` is present in the project root, `vibew doctor` also lints it against the contract: alpine base, `EXPOSE` matches `upstream.port`, no `HEALTHCHECK` directive, non-root `USER` (warn, non-blocking), multi-stage build for compiled languages, and builder image major.minor matches the project toolchain manifest (`go.mod`, `.nvmrc`, `pyproject.toml`). When no `Dockerfile` is present, the Dockerfile section is omitted entirely.
+- `vibew doctor` checks config, Docker, ports, ACME email, image tag, and (when the dev stack is running) generated files and local TLS cert validity. It does not probe runtime container health — use `vibew probe` after `vibew dev` is up for that (preferred on macOS; bypasses LibreSSL friction by using Go's TLS stack). On non-macOS or when non-vibew tooling needs to hit the endpoint, use `curl https://<your-domain>/_vibewarden/health` (expected response: `{"status":"ok","components":{"upstream":"ok"}}`). Pre-stack, the generated-files and TLS rows are silently skipped to avoid misleading WARNs. When a `Dockerfile` is present in the project root, `vibew doctor` also lints it against the contract: alpine base, `EXPOSE` matches `upstream.port`, no `HEALTHCHECK` directive, non-root `USER` (warn, non-blocking), multi-stage build for compiled languages, and builder image major.minor matches the project toolchain manifest (`go.mod`, `.nvmrc`, `pyproject.toml`). When no `Dockerfile` is present, the Dockerfile section is omitted entirely.
 - Multi-site local dev works; production deploy is post-v1 (see https://github.com/VibeWarden/vibewarden/issues/1169).
 - `vibew init` does not accept `--tls` or `--domain` flags — run `vibew add tls --domain <your-domain>` after init.
 - **Image identity check (v0.18.3+):** `vibew dev` verifies the app image's `org.vibewarden.project-root-hash` label before starting the stack. If the label is missing (image built before v0.18.3) or belongs to a different project, `vibew dev` exits 1 with an actionable message. Recovery: `vibew dev --rebuild`. This catches the silent-image-collision bug where two projects with the same directory name share a `:latest` tag. TRAP: if you reused a directory name from a prior vibew project, run `vibew dev --rebuild` — the old image blocks immediately. Custom images set via `app.image:` in vibewarden.yaml bypass this check.

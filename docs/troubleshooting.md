@@ -9,8 +9,9 @@ resolve the most common issues.
 
 `vibew doctor` is a first-aid command. It validates static configuration and prints a
 report so you can see exactly what is wrong before filing a bug or spending time
-searching logs. For runtime upstream health, `curl https://<your-domain>/_vibewarden/health`
-after `vibew dev` is up — doctor only validates static config.
+searching logs. For runtime upstream health, run `vibew probe` after `vibew dev` is up
+— it uses Go's TLS stack and works on macOS without LibreSSL friction. Doctor only
+validates static config.
 
 ```bash
 vibew doctor
@@ -439,7 +440,15 @@ LibreSSL/3.3.6: error:06FFF064:digital envelope routines:CONF_modules_load:bad d
 
 macOS ships a system `curl` linked against LibreSSL, which is stricter than OpenSSL on certain self-signed certificate profiles. Caddy's local CA issues an ECC intermediate that triggers this. Not a vibew bug — works around it client-side.
 
-**Fix — Homebrew curl (recommended)**
+**Primary fix — `vibew probe` (no external tools required)**
+
+```bash
+vibew probe
+```
+
+`vibew probe` uses Go's stdlib TLS stack and bypasses LibreSSL entirely. It is the canonical health check after `vibew dev` on macOS. With `--env <name>` it reads `tls.domain` from the merged config and probes the production endpoint with full cert verification.
+
+**Fallback — Homebrew curl (when non-vibew tooling must hit the endpoint)**
 
 ```bash
 brew install curl
@@ -448,7 +457,7 @@ brew install curl
 
 The Homebrew bottle is linked against OpenSSL and accepts the dev cert with `--insecure`. Do **not** alias `curl` to the Homebrew binary system-wide — only use it for sidecar testing.
 
-**Fix — Python `ssl` module**
+**Fallback — Python `ssl` module (no Homebrew required)**
 
 ```bash
 python3 -c '
@@ -458,7 +467,7 @@ print(urllib.request.urlopen("https://localhost:8443/_vibewarden/health", contex
 '
 ```
 
-Python's bundled OpenSSL accepts the cert when verification is disabled. Useful when you cannot install Homebrew.
+Python's bundled OpenSSL accepts the cert when verification is disabled. Useful when you cannot install Homebrew and do not have the `vibew` binary available.
 
 **Note**
 
@@ -474,7 +483,10 @@ Use `_vibewarden/health` or `vibew logs` to diagnose container issues after the
 stack is running.
 
 ```bash
-# Check runtime health after vibew dev is up
+# Check runtime health after vibew dev is up (vibew probe preferred on macOS)
+vibew probe
+
+# Or with curl (works on Linux; on macOS requires Homebrew curl or Python workaround)
 curl https://localhost:8443/_vibewarden/health
 
 # Stream logs for a specific service
