@@ -1,0 +1,2 @@
+ERROR: https://localhost:8443/_vibewarden/health
+Stack is not running. Start with: vibew dev

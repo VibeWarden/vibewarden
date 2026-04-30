@@ -36,3 +36,12 @@ rate-limiting, or security logic — VibeWarden handles those at the sidecar lay
   vibew dev
 
 The sidecar starts on localhost. Your app is proxied through it automatically.
+
+## Step 6 — Verify the stack
+
+  vibew probe
+
+Expected output ends with `OK — dev stack healthy.`
+On macOS, vibew probe bypasses system curl's LibreSSL limitation by using Go's
+TLS stack directly. If the output shows `upstream: unknown`, wait 10s — the
+first upstream probe cycle has not completed yet (vibew probe retries automatically).

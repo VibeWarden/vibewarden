@@ -14,6 +14,8 @@ This initial entry was written by hand to summarise the work leading up to v0.1.
 
 ### Added
 
+- **`vibew probe [--env <name>]`** (#1233, ADR-102) — Go-stdlib HTTPS probe of `_vibewarden/health`. Default probes `https://localhost:<server.port>` with `InsecureSkipVerify` (bypasses macOS LibreSSL friction by construction). `--env <name>` resolves `vibewarden.<name>.yaml`, reads merged `tls.domain`, probes the production endpoint with full cert verification. Boot-gap retry: up to 10s when `components.upstream:"unknown"`. Generalizable env-resolver in `internal/app/env/` is available for future verbs to adopt (`vibew status --env prod`, `vibew validate --env prod`, etc.); migration of existing verbs is out of scope here.
+
 - **Release artifacts: `agent-kickoff-dev.txt` and `agent-kickoff-deploy.txt`** (#1232, ADR-101). Goreleaser now emits both flavors of the canonical agent kickoff prompt as release assets, with `{{prjname}}`, `{{description}}`, and `{{domain}}` two-brace placeholders for consumers to substitute. Stable URL: `https://github.com/vibewarden/vibewarden/releases/latest/download/agent-kickoff-dev.txt`. The website (vibewarden/vibewarden.dev) will fetch these at build time, replacing the hand-rolled JS template literal that drifted across three retros (vibewarden.dev#95). Forensic CI test asserts both artifacts contain the post-#1138 deploy contract (`docker load -i image.tar && docker compose up -d`), include the post-#1217 tar pipe transfer, and do NOT contain `bash deploy.sh` or the buggy `scp -r .vibewarden/bundle/*` glob form.
 
 ### Fixed

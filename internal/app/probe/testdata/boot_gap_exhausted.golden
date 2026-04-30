@@ -1,0 +1,7 @@
+https://localhost:8443/_vibewarden/health
+  status:               degraded
+  version:              0.18.4
+  components.sidecar:   ok
+  components.upstream:  unknown
+
+DEGRADED — upstream probe has not converged within 10s. Check `vibew logs vibewarden`.
