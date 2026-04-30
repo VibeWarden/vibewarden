@@ -94,6 +94,7 @@ app port directly — it has no security.
 | `vibew build` | Build Docker image |
 | `vibew build --platform linux/amd64` | Build for a specific architecture |
 | `vibew bundle` | Produce a self-contained Docker Compose bundle under `.vibewarden/bundle/`; transfer with tar pipe + `docker compose up -d` |
+| `vibew bundle --print-deploy --host <h> --user <u> --path <p>` | Substitute an ad-hoc SSH target and remote path into the printed "Next: deploy" stdout block for this invocation only. Overrides `deploy.host` for stdout; bundle README unaffected. All three sub-flags required together. For CI or one-off multi-host deploys without mutating config. |
 | `vibew probe` | One-shot HTTPS GET against `/_vibewarden/health` using Go's stdlib TLS stack. Uses `InsecureSkipVerify=true` for localhost (bypasses macOS LibreSSL friction). Boot-gap retry: up to 10s when `upstream=unknown`. Exit 0 on healthy, exit 1 otherwise. Canonical health check after `vibew dev` — preferred over curl on macOS. |
 | `vibew probe --env <name>` | Probe named env overlay. Loads `vibewarden.<name>.yaml`, reads merged `tls.domain`, probes with full TLS verification. |
 | `vibew status` | Show component health (OK / OFF / FAIL labels; OFF means disabled in config and not probed). Richer dev-stack overview than `vibew probe`; use probe for one-shot HTTPS endpoint verification. |
@@ -209,6 +210,7 @@ Key flags:
 - `--build` — build the image first (use when it's missing or stale)
 - `--allow-stale` — suppress STALE warning when you know the image is correct
 - `--target-platform linux/<arch>` — set when your VPS arch differs from your laptop
+- `--print-deploy --host <h> --user <u> --path <p>` — substitute ad-hoc SSH target and remote path into the stdout "Next: deploy" block for this invocation only; all three sub-flags required together; overrides `deploy.host` for stdout (bundle README unaffected)
 
 Exit codes: 0=success (with or without warnings), 1=image arch does not match target platform (rebuild with `vibew build --platform <target>`), 2=image missing, 3=docker daemon unreachable.
 

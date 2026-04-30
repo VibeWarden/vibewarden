@@ -205,6 +205,14 @@ The bundle is just files. The contract is in `.vibewarden/bundle/README.md`:
 
 1. Build for the target architecture: `vibew build --platform linux/amd64`.
 2. Produce the bundle: `vibew bundle`.
+   For CI or one-off deploys to a specific host without mutating config:
+   ```bash
+   vibew bundle --print-deploy --host <ssh-host> --user <ssh-user> --path /opt/myapp
+   ```
+   This substitutes the given SSH target and remote path into the printed "Next: deploy"
+   stdout block for this invocation only. Overrides `deploy.host` from
+   `vibewarden.production.yaml` for stdout; bundle README is unaffected.
+   All three sub-flags (`--host`, `--user`, `--path`) are required together.
 3. Make sure the remote directory exists (e.g. `ssh <your-ssh-user>@<your-ssh-host> mkdir -p
    /path/to/bundle`).
 4. Copy the bundle to the host using the tar pipe (dotfile-safe — `scp -r bundle/*`

@@ -73,6 +73,15 @@ Flags you may want:
 | `--overwrite` | Replace an existing `.env` in the output dir. First run writes it; subsequent runs preserve the user's edits unless `--overwrite` is set. |
 | `--skip-image` | Do not package `image.tar`. Useful when `app.image` points at a registry the VPS can pull from. |
 | `--image <tag>` | Override the packaged image tag. Defaults to `<project>-app:latest`. |
+| `--print-deploy --host <h> --user <u> --path <p>` | Substitute an ad-hoc SSH target and remote path into the printed "Next: deploy" stdout block for this invocation only. Overrides `deploy.host` from `vibewarden.production.yaml` for stdout; the bundle README is unaffected. All three sub-flags are required together. Use this in CI pipelines or for one-off deploys to a different host without mutating config. |
+
+For a persistent single-host project, set `deploy.host` in `vibewarden.production.yaml` instead — it applies to both the stdout block and the bundle README and does not require repeating the flag on every invocation:
+
+```yaml
+# vibewarden.production.yaml
+deploy:
+  host: alice@vps.example.com
+```
 
 The command never opens an SSH connection, never calls docker on a remote
 host, and never touches files outside `--output`. Rerunning it with the

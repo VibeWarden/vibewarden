@@ -1075,5 +1075,10 @@ deploy:
   # When unset (default), the three ssh lines use the bracketed placeholder
   # `<your-ssh-user>@<your-ssh-host>` and a hint paragraph is appended.
   #
+  # Per-invocation override: `vibew bundle --print-deploy --host <h> --user <u>
+  # --path <p>` overrides this field for the stdout block only (bundle README is
+  # unaffected). Use --print-deploy for CI pipelines or one-off multi-host deploys
+  # without modifying this file.
+  #
   # Default: "" (use bracketed placeholder)
   # host: alice@vps.example.com
