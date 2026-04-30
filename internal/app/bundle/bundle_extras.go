@@ -332,7 +332,7 @@ func renderBundleReadme(appName, domain string, skipImage bool) string {
 	b.WriteString("\n")
 	b.WriteString("```bash\n")
 	b.WriteString("ssh user@host 'mkdir -p /opt/" + app + "'\n")
-	b.WriteString("scp -r .vibewarden/bundle/* user@host:/opt/" + app + "/\n")
+	b.WriteString("tar -czf - -C .vibewarden/bundle . | ssh user@host 'tar -xzf - -C /opt/" + app + "/'\n")
 	b.WriteString("ssh user@host \"cd /opt/" + app + " && " + dockerCmd + "\"\n")
 	b.WriteString("curl -fsSL https://" + dom + "/_vibewarden/health\n")
 	b.WriteString("```\n")

@@ -192,7 +192,9 @@ func TestBundle_Extras_Readme_DeployContract(t *testing.T) {
 
 			// Positive assertions: deploy commands are now required (#1204).
 			for _, want := range []string{
-				"scp ",
+				"tar -czf - -C",
+				"| ssh ",
+				"tar -xzf - -C",
 				"ssh ",
 				"docker compose up",
 				"/_vibewarden/health",
@@ -577,7 +579,7 @@ func TestBundle_Extras_Readme_FencedDeployBlock(t *testing.T) {
 			skipImage: false,
 			wantCmds: []string{
 				"ssh user@host 'mkdir -p /opt/myapp'",
-				"scp -r .vibewarden/bundle/* user@host:/opt/myapp/",
+				"tar -czf - -C .vibewarden/bundle . | ssh user@host 'tar -xzf - -C /opt/myapp/'",
 				"docker load -i image.tar && docker compose up -d",
 				"curl -fsSL https://example.com/_vibewarden/health",
 			},
@@ -589,7 +591,7 @@ func TestBundle_Extras_Readme_FencedDeployBlock(t *testing.T) {
 			skipImage: true,
 			wantCmds: []string{
 				"ssh user@host 'mkdir -p /opt/myapp'",
-				"scp -r .vibewarden/bundle/* user@host:/opt/myapp/",
+				"tar -czf - -C .vibewarden/bundle . | ssh user@host 'tar -xzf - -C /opt/myapp/'",
 				"docker compose up -d",
 				"curl -fsSL https://example.com/_vibewarden/health",
 			},
@@ -919,6 +921,44 @@ func TestBundle_Readme_AlignsWithDeployTmpl(t *testing.T) {
 			t.Errorf("deploy command from deploy.tmpl not found in bundle README\ncmd: %q\nreadme commands: %v", cmd, readmeCommands)
 		}
 	}
+
+	// Forensic alignment: load all four surfaces and assert required/forbidden
+	// patterns across each one (#1217). Failures here mean a surface drifted
+	// back to the dotfile-eating scp glob or a banned artifact command.
+	llmsFullPath := filepath.Join(repoRoot, "llms-full.txt")
+	llmsFullBytes, err := os.ReadFile(llmsFullPath) //nolint:gosec // path derived from source tree
+	if err != nil {
+		t.Fatalf("reading llms-full.txt: %v", err)
+	}
+
+	surfaces := map[string]string{
+		"bundle README": readmeBody,
+		"deploy.tmpl":   tmplContent,
+		"llms-full.txt": string(llmsFullBytes),
+	}
+
+	required := []string{
+		"tar -czf - -C",
+		"tar -xzf - -C",
+	}
+	forbidden := []string{
+		"scp -r .vibewarden/bundle/*", // the dotfile-eating glob this issue eliminates
+		"bash deploy.sh",              // already-removed artifact (#1138)
+		"./deploy.sh",                 // ditto
+	}
+
+	for surfaceName, surfaceContent := range surfaces {
+		for _, req := range required {
+			if !strings.Contains(surfaceContent, req) {
+				t.Errorf("forensic[%s]: required pattern %q not found", surfaceName, req)
+			}
+		}
+		for _, ban := range forbidden {
+			if strings.Contains(surfaceContent, ban) {
+				t.Errorf("forensic[%s]: forbidden pattern %q found — must not appear", surfaceName, ban)
+			}
+		}
+	}
 }
 
 // extractFirstFencedBlock returns the content of the first ```...``` fenced
@@ -941,13 +981,15 @@ func extractFirstFencedBlock(text string) string {
 	return text[blockStart : blockStart+closeIdx]
 }
 
-// extractDeployCommands extracts ssh/scp/docker/curl command lines from text.
+// extractDeployCommands extracts ssh/tar/docker/curl command lines from text.
 // It matches lines that look like shell commands inside fenced blocks or
 // indented recipe blocks.
 func extractDeployCommands(text string) []string {
-	// Match lines containing ssh, scp, docker load, docker compose up, or curl
-	// with _vibewarden/health. Strip leading whitespace and backtick wrappers.
-	cmdRe := regexp.MustCompile(`(?m)^\s*((?:ssh |scp |docker load|docker compose up|curl -fsSL https://\S+/_vibewarden/health)[^\n]*)`)
+	// Match lines containing ssh, tar -czf, docker load, docker compose up, or
+	// curl with _vibewarden/health. Strip leading whitespace and backtick wrappers.
+	// tar -czf is listed before ssh so the tar-pipe line (which also contains
+	// "| ssh") is captured as a single command rather than being split.
+	cmdRe := regexp.MustCompile(`(?m)^\s*((?:tar -czf |ssh |docker load|docker compose up|curl -fsSL https://\S+/_vibewarden/health)[^\n]*)`)
 	matches := cmdRe.FindAllStringSubmatch(text, -1)
 	var cmds []string
 	for _, m := range matches {

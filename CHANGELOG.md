@@ -12,6 +12,10 @@ This initial entry was written by hand to summarise the work leading up to v0.1.
 
 ## [Unreleased]
 
+### Fixed
+
+- **fixed:** bundle stdout, bundle README, `vibew prompt-template --deploy` output, and `llms-full.txt § Agent Kickoff Prompt` all switch from `scp -r .vibewarden/bundle/* user@host:/path/` (which silently drops dotfiles like `.env`, `.credentials`, `.env.template` because shells don't include dotfiles in `*` glob) to a POSIX tar pipe: `tar -czf - -C .vibewarden/bundle . | ssh user@host 'tar -xzf - -C /opt/<app>/'`. Three retros (v0.18.1, v0.18.2, v0.18.3) flagged this; the v0.18.3 deploy shipped a "successful" stack that was missing `.env` and required manual recovery. Tar pipe is dotfile-safe by construction, single ssh connection, POSIX baseline. Forensic alignment test extended to enforce the new transfer command across all four surfaces and forbid the buggy form. (#1217)
+
 ## [v0.18.3] — 2026-04-28
 
 Theme: v0.18.2 retrospective fixes. Six retro-tagged pipelines (#1219–#1224) covering image-identity collision (the "most dangerous failure mode" of the retro), `--rebuild` recovery flag, local logs wrapper, doctor pre-stack noise reduction, bundle freshness false-positive (also fixed a security-relevant symlink-escape bug discovered during review), and macOS LibreSSL advisory. One breaking-for-existing-images change is user-visible: `vibew dev` blocks on stale images from a different project, recoverable via `vibew dev --rebuild`. See "Behavior changes" first.

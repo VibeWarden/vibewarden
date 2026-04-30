@@ -503,8 +503,8 @@ func TestBundle_Stdout_PrintsLiteralDeployCommands(t *testing.T) {
 			wantCmds: []string{
 				"Next: deploy",
 				"ssh user@host 'mkdir -p /opt/myapp'",
-				"scp -r",
-				"user@host:/opt/myapp/",
+				"tar -czf - -C",
+				"| ssh user@host 'tar -xzf - -C /opt/myapp/'",
 				"docker compose up -d",
 				"curl -fsSL https://myapp.example.com/_vibewarden/health",
 			},

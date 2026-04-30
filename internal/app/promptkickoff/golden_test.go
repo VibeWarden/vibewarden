@@ -101,7 +101,8 @@ func TestDeployTemplate_ContainsRequiredCommands(t *testing.T) {
 		name    string
 		snippet string
 	}{
-		{"scp -r", "scp -r"},
+		{"tar -czf", "tar -czf - -C"},
+		{"tar -xzf", "tar -xzf - -C"},
 		{"docker load -i image.tar", "docker load -i image.tar"},
 		{"docker compose up -d", "docker compose up -d"},
 		{"healthcheck curl", "curl -fsSL https://demo.example.com/_vibewarden/health"},

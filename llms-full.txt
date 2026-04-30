@@ -1208,7 +1208,7 @@ Step 7 — Ship and start. The bundle is just files; the contract is in README.m
     dev port 8443.
 
     ssh root@<server-ip> "mkdir -p /opt/myapp"
-    scp -r .vibewarden/bundle/* root@<server-ip>:/opt/myapp/
+    tar -czf - -C .vibewarden/bundle . | ssh root@<server-ip> 'tar -xzf - -C /opt/myapp/'
     ssh root@<server-ip> "cd /opt/myapp && docker load -i image.tar && docker compose up -d"
 
 Step 8 — Verify against the public URL (port 443, TLS):
