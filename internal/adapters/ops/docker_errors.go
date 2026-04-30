@@ -12,12 +12,17 @@ import (
 // when no signature matches (including empty stderr or nil originalErr).
 //
 // Recognised signatures:
-//   - "permission denied while trying to connect to the docker API" →
+//   - "permission denied while trying to connect to the docker api" →
 //     ErrDockerSocketPermission
 //   - "unix:///" AND "permission denied" →
 //     ErrDockerSocketPermission (macOS user-socket path variant)
-//   - "Cannot connect to the Docker daemon" →
+//   - "cannot connect to the docker daemon" →
 //     ErrDockerDaemonNotRunning
+//   - "is the docker daemon running" →
+//     ErrDockerDaemonNotRunning (variant phrasing emitted by some Docker versions)
+//   - "docker: command not found" →
+//     ErrDockerDaemonNotRunning (snap-installed Docker on Ubuntu; binary missing
+//     means the daemon is unreachable — same operator hint applies)
 //
 // Precedence rule when both permission and daemon-not-running signatures appear:
 // ErrDockerSocketPermission wins. Rationale: a socket that exists but is
@@ -35,7 +40,9 @@ func ClassifyDockerError(originalErr error, stderr string) error {
 
 	hasPermissionAPI := strings.Contains(lower, "permission denied while trying to connect to the docker api")
 	hasUnixSocket := strings.Contains(lower, "unix:///") && strings.Contains(lower, "permission denied")
-	hasDaemonNotRunning := strings.Contains(lower, "cannot connect to the docker daemon")
+	hasDaemonNotRunning := strings.Contains(lower, "cannot connect to the docker daemon") ||
+		strings.Contains(lower, "is the docker daemon running") ||
+		strings.Contains(lower, "docker: command not found")
 
 	var sentinel error
 	switch {

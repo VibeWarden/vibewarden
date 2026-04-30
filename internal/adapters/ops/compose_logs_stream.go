@@ -111,10 +111,11 @@ func (a *ComposeLogsStreamAdapter) Stream(ctx context.Context, opts ports.Compos
 			}
 		}
 
-		// Classify daemon-unavailable stderr via the shared helper. Also
-		// handles the legacy "docker: command not found" / "is the docker
-		// daemon running" cases — if ClassifyDockerError does not match, the
-		// fallback below catches other docker-not-found patterns.
+		// Classify daemon-unavailable stderr via the shared helper.
+		// Recognised signatures: "cannot connect to the docker daemon",
+		// "is the docker daemon running", "docker: command not found",
+		// and the two permission-denied variants. If no signature matches,
+		// originalErr is returned unchanged.
 		classified := ClassifyDockerError(err, stderrBuf.String())
 		return fmt.Errorf("docker compose logs: %w", classified)
 	}

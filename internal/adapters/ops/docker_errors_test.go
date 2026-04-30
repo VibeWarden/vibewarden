@@ -77,6 +77,40 @@ func TestClassifyDockerError_DaemonNotRunning_LinuxFullPath(t *testing.T) {
 	}
 }
 
+func TestClassifyDockerError_DaemonNotRunning_IsTheDaemonRunning(t *testing.T) {
+	// Variant phrasing: "Is the docker daemon running?" — emitted by some Docker
+	// versions as a standalone error (not embedded in the "Cannot connect" line).
+	stderr := "Is the docker daemon running?"
+	err := ops.ClassifyDockerError(errTestSentinel, stderr)
+
+	if !errors.Is(err, ports.ErrDockerDaemonNotRunning) {
+		t.Errorf("errors.Is(err, ErrDockerDaemonNotRunning) = false; got %v", err)
+	}
+	if !errors.Is(err, ports.ErrDockerUnavailable) {
+		t.Errorf("errors.Is(err, ErrDockerUnavailable) = false; got %v", err)
+	}
+	if errors.Is(err, ports.ErrDockerSocketPermission) {
+		t.Errorf("errors.Is(err, ErrDockerSocketPermission) = true (unexpected)")
+	}
+}
+
+func TestClassifyDockerError_DaemonNotRunning_CommandNotFound(t *testing.T) {
+	// Snap-installed Docker on Ubuntu emits this when the wrapper script cannot
+	// locate the binary. Treated as daemon-not-running so the operator hint is shown.
+	stderr := "docker: command not found"
+	err := ops.ClassifyDockerError(errTestSentinel, stderr)
+
+	if !errors.Is(err, ports.ErrDockerDaemonNotRunning) {
+		t.Errorf("errors.Is(err, ErrDockerDaemonNotRunning) = false; got %v", err)
+	}
+	if !errors.Is(err, ports.ErrDockerUnavailable) {
+		t.Errorf("errors.Is(err, ErrDockerUnavailable) = false; got %v", err)
+	}
+	if errors.Is(err, ports.ErrDockerSocketPermission) {
+		t.Errorf("errors.Is(err, ErrDockerSocketPermission) = true (unexpected)")
+	}
+}
+
 func TestClassifyDockerError_BothSignatures_PermissionWins(t *testing.T) {
 	// When both permission-denied and cannot-connect appear, permission wins.
 	stderr := "Cannot connect to the Docker daemon at unix:///var/run/docker.sock: permission denied while trying to connect to the Docker API"
