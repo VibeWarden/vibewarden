@@ -15,6 +15,7 @@ Verify: `vibew --version` should print a version string.
 
 ## Step 2 — Scaffold the project
 
+  # Skip if you're already in the project directory:
   mkdir foo && cd foo
   vibew init --name foo --describe "bar"
 

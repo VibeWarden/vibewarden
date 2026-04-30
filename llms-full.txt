@@ -1923,3 +1923,11 @@ Arch mismatch (Apple Silicon building for amd64 VPS): run
 hard-fails (exit 1) on arch mismatch; the error prints the exact rebuild command.
 
 See docs/agent-kickoff.md for the full reference and deploy flavor sample.
+
+If your tooling cannot ship a vibew binary, fetch the same canonical content
+from the GitHub Release and substitute the two-brace placeholders before pasting
+to an agent:
+  https://github.com/vibewarden/vibewarden/releases/latest/download/agent-kickoff-dev.txt
+  https://github.com/vibewarden/vibewarden/releases/latest/download/agent-kickoff-deploy.txt
+Placeholders: {{prjname}} (project name), {{description}} (one-line description),
+{{domain}} (FQDN). No parsing required — plain string substitution.

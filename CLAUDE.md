@@ -101,10 +101,18 @@ decisions/              # ADRs — one file per decision (see decisions/README.m
 ```
 
 **Content authority.** The main repo is the source of truth for all LLM-consumable
-content files (`llms.txt`, `llms-full.txt`, `vibewarden.reference.yaml`). The
+content files (`llms.txt`, `llms-full.txt`, `vibewarden.reference.yaml`,
+`agent-kickoff-dev.txt`, `agent-kickoff-deploy.txt`). The
 `vibewarden/vibewarden.dev` website repo is presentation only and fetches these
 files from the main repo's latest release tag at build time. Never duplicate
 these files in the website repo — edit them here.
+
+The `agent-kickoff-{dev,deploy}.txt` artifacts are *generated* at release time
+by `scripts/release/emit-kickoff-artifacts.sh` (ADR-101). Do not hand-roll
+kickoff prompt templates anywhere — fetch from the locked public URLs:
+  https://github.com/vibewarden/vibewarden/releases/latest/download/agent-kickoff-dev.txt
+  https://github.com/vibewarden/vibewarden/releases/latest/download/agent-kickoff-deploy.txt
+Renaming these files is a breaking change; treat the filenames as public API.
 
 ---
 

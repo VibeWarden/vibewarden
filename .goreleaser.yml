@@ -13,6 +13,15 @@ version: 2
 project_name: vibewarden
 
 # ---------------------------------------------------------------------------
+# Pre-build hooks
+# ---------------------------------------------------------------------------
+# Emit agent-kickoff-{dev,deploy}.txt before the main build. These files are
+# uploaded as GitHub Release assets via release.extra_files below (ADR-101).
+before:
+  hooks:
+    - bash scripts/release/emit-kickoff-artifacts.sh dist
+
+# ---------------------------------------------------------------------------
 # Build
 # ---------------------------------------------------------------------------
 builds:
@@ -145,6 +154,11 @@ release:
   draft: false
   prerelease: auto
   name_template: "{{ .ProjectName }} {{ .Version }}"
+  # Agent-kickoff canonical artifacts (ADR-101). The wrapper script writes
+  # these to dist/ in the before.hooks step above.
+  extra_files:
+    - glob: dist/agent-kickoff-dev.txt
+    - glob: dist/agent-kickoff-deploy.txt
   header: |
     ## VibeWarden {{ .Version }}
 

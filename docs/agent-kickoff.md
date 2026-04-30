@@ -97,7 +97,52 @@ The same canonical content is included in `llms-full.txt` as
 prompt-template` would print. The binary version of `vibew prompt-template` is
 canonical — the `llms-full.txt` section is a static snapshot of the dev flavor.
 
+## Consuming via release artifacts
+
+If your tooling cannot ship a vibew binary, fetch the pre-rendered artifacts
+from the GitHub Release and substitute the two-brace placeholders:
+
+| Asset | Stable URL |
+|-------|-----------|
+| Dev flavor | `https://github.com/vibewarden/vibewarden/releases/latest/download/agent-kickoff-dev.txt` |
+| Deploy flavor | `https://github.com/vibewarden/vibewarden/releases/latest/download/agent-kickoff-deploy.txt` |
+
+Each file opens with a `#`-prefixed header describing the flavor, version, and
+source command, followed by the byte-for-byte output of `vibew prompt-template`.
+
+### Placeholder substitution
+
+Both artifacts use two-brace mustache-style placeholders:
+
+| Placeholder | Meaning |
+|-------------|---------|
+| `{{prjname}}` | Project name (lowercase, hyphenated, no spaces) |
+| `{{description}}` | One-line project description |
+| `{{domain}}` | FQDN the app will be served on (e.g. `myapp.example.com`) |
+
+Substitute before pasting to an agent — no parsing required:
+
+```js
+// JavaScript example (website / eleventy build step)
+const prompt = artifactText
+  .replaceAll("{{prjname}}", projectName)
+  .replaceAll("{{description}}", description)
+  .replaceAll("{{domain}}", domain);
+```
+
+```bash
+# Shell example
+sed -e "s/{{prjname}}/myapp/g" \
+    -e "s/{{description}}/my todo app/g" \
+    -e "s/{{domain}}/myapp.example.com/g" \
+    agent-kickoff-deploy.txt
+```
+
+These URLs are the public contract locked by ADR-101. Renaming the files is a
+breaking change for any downstream consumer (the website, third-party tools).
+
 ## Reference
 
 - ADR-099: `decisions/adr-099-vibew-prompt-template-canonical-agent-kickoff.md`
+- ADR-101: `decisions/adr-101-agent-kickoff-release-artifacts.md`
 - `vibew prompt-template --help`

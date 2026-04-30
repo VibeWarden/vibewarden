@@ -73,6 +73,7 @@ once accepted, they are not edited. If a decision is superseded, a new ADR refer
 | [098](adr-098-upstream-health-probe.md) | Upstream health probe — wire the cached background probe into `/_vibewarden/health` | #1197 |
 | [099](adr-099-vibew-prompt-template-canonical-agent-kickoff.md) | `vibew prompt-template` — canonical agent kickoff prompt owned by the binary | — |
 | [100](adr-100-image-identity-via-project-root-label.md) | Image identity via `org.vibewarden.project-root-hash` label | — |
+| [101](adr-101-agent-kickoff-release-artifacts.md) | Agent-kickoff release artifacts — main repo emits canonical kickoff prompts as release assets | #1232 |
 | [497](adr-497-graceful-shutdown-connection-draining.md) | Graceful Shutdown / Connection Draining | — |
 
 ## Numbering
