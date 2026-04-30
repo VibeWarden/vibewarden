@@ -3,6 +3,7 @@ package cmd_test
 import (
 	"bytes"
 	"encoding/json"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -231,36 +232,78 @@ func hostFromAddr(t *testing.T, addr string) string {
 	return addr[:idx]
 }
 
+// tlsAlertServer starts a raw TCP listener that accepts connections and
+// immediately sends a TLS alert record (handshake_failure, alert code 40).
+// The Go TLS client surfaces this as a "tls: handshake failure" error, which
+// matches the isTLSHandshakeError classifier and triggers the TLS retry loop.
+//
+// Returns the listener; the caller must defer listener.Close().
+func tlsAlertServer(t *testing.T) net.Listener {
+	t.Helper()
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatalf("tlsAlertServer: listen: %v", err)
+	}
+	go func() {
+		for {
+			conn, err := ln.Accept()
+			if err != nil {
+				// Listener closed — stop serving.
+				return
+			}
+			// TLS alert record: type=21 (alert), version=TLS 1.2 (0x03 0x03),
+			// length=2, level=fatal (2), description=handshake_failure (40).
+			_, _ = conn.Write([]byte{0x15, 0x03, 0x03, 0x00, 0x02, 0x02, 0x28})
+			_ = conn.Close()
+		}
+	}()
+	return ln
+}
+
 // TestProbeCmd_ProgressWriter_WiredToStderr verifies that the CLI probe command
-// wires Options.ProgressWriter to stderr (cmd.ErrOrStderr). The test exercises
-// the --env path, which is the only path where ProgressWriter is set, by
-// pointing it at a test server that terminates the TLS handshake with a fatal
-// alert. Because the strict prober uses default TLS verification, the
-// self-signed test server cert will be rejected with an x509 error before a TLS
-// alert is reached — so we validate that (a) the cobra command writes nothing to
-// stdout about progress (progress goes to stderr only) and (b) the --env staging
-// flag value flows through to the output message.
+// wires Options.ProgressWriter to stderr (not stdout). It spins up a raw TCP
+// server that responds to every TLS ClientHello with a handshake_failure alert
+// (alert code 40). The Go TLS client surfaces this as "tls: handshake failure"
+// which matches isTLSHandshakeError and triggers the TLS retry loop.
+//
+// The tls.domain config value is set to "127.0.0.1:<port>" so that the CLI
+// constructs "https://127.0.0.1:<port>/_vibewarden/health" and hits the alert
+// server. The first "Waiting for ACME issuance..." progress line is written
+// before the first sleep, so it appears on stderr even if the test finishes
+// quickly. The default 30s budget is accepted: the test is bounded by
+// -test.timeout and the alert server replies in microseconds per iteration.
+//
+// Assertions:
+//   - stderr contains "Waiting for ACME issuance" (ProgressWriter wired correctly)
+//   - stdout does NOT contain "Waiting for ACME issuance" (wiring is to stderr only)
 func TestProbeCmd_ProgressWriter_WiredToStderr(t *testing.T) {
+	ln := tlsAlertServer(t)
+	defer func() { _ = ln.Close() }()
+
+	// Use host:port as tls.domain so the CLI URL includes the port:
+	//   https://127.0.0.1:<port>/_vibewarden/health
+	domain := ln.Addr().String() // "127.0.0.1:<port>"
+
 	dir := t.TempDir()
 	writeYAML(t, filepath.Join(dir, "vibewarden.yaml"),
 		"server:\n  port: 8443\n")
-	writeYAML(t, filepath.Join(dir, "vibewarden.staging.yaml"),
-		"tls:\n  enabled: true\n  domain: 127.0.0.1\n")
+	writeYAML(t, filepath.Join(dir, "vibewarden.production.yaml"),
+		"tls:\n  enabled: true\n  domain: "+domain+"\n")
 
 	origWd, _ := os.Getwd()
 	_ = os.Chdir(dir)
 	t.Cleanup(func() { _ = os.Chdir(origWd) })
 
-	// Execute "vibew probe --env staging". The probe will fail with a TLS error
-	// (self-signed cert or connection refused). We only assert that the --env
-	// flag is accepted and that stdout does not contain progress-style output.
-	stdout, _, _ := execProbe(t, []string{"--env", "staging"})
+	stdout, stderr, _ := execProbe(t, []string{"--env", "production"})
 
-	// Progress messages are written to stderr, not stdout. Confirm stdout does
-	// not contain the "Waiting for ACME" prefix — that would indicate the
-	// ProgressWriter was incorrectly wired to stdout.
-	if strings.Contains(stdout, "Waiting for ACME") {
-		t.Errorf("stdout should not contain progress messages; got: %q", stdout)
+	// The TLS retry loop writes progress to Options.ProgressWriter, which must
+	// be wired to stderr on the --env path.
+	if !strings.Contains(stderr, "Waiting for ACME issuance") {
+		t.Errorf("stderr should contain progress message; stderr=%q stdout=%q", stderr, stdout)
+	}
+	// Progress must NOT appear on stdout — that is the wiring assertion.
+	if strings.Contains(stdout, "Waiting for ACME issuance") {
+		t.Errorf("stdout must not contain progress messages (ProgressWriter wired to stderr); stdout=%q", stdout)
 	}
 }
 

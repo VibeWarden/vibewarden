@@ -20,10 +20,11 @@ import (
 var ErrBootGapExhausted = errors.New("upstream probe has not converged within boot-gap window")
 
 // ErrTLSRetryExhausted is returned by Service.Run when the TLS-handshake
-// retry budget (default 30s) is exhausted with the endpoint still returning
-// TLS handshake errors. This typically indicates ACME (Let's Encrypt)
-// issuance is still in progress on the remote host.
-var ErrTLSRetryExhausted = errors.New("TLS handshake failed for the entire 30s retry budget")
+// retry budget is exhausted with the endpoint still returning TLS handshake
+// errors. This typically indicates ACME (Let's Encrypt) issuance is still in
+// progress on the remote host. The rendered duration comes from
+// Result.TLSRetryBudget, not from this sentinel string.
+var ErrTLSRetryExhausted = errors.New("TLS handshake retry exhausted")
 
 // Options is the parameter object for Service.Run. All duration fields have
 // safe defaults applied by DefaultOptions.
@@ -93,6 +94,12 @@ type Result struct {
 
 	// EnvName is the environment name (from --env), empty for dev/default.
 	EnvName string
+
+	// TLSRetryBudget is the total TLS-retry window configured for this run. It
+	// is populated from Options.TLSRetryWait before the TLS retry loop engages
+	// so that renderTLSRetryExhausted can substitute the actual duration rather
+	// than a hardcoded constant.
+	TLSRetryBudget time.Duration
 }
 
 // Service orchestrates the probe use case: single-shot probe + boot-gap retry.
@@ -133,7 +140,11 @@ func (s *Service) WithSleep(fn func(time.Duration)) *Service {
 //
 // All other errors are returned immediately without retry.
 func (s *Service) Run(ctx context.Context, opts Options) (Result, error) {
-	result := Result{URL: opts.URL, EnvName: opts.EnvName}
+	result := Result{
+		URL:            opts.URL,
+		EnvName:        opts.EnvName,
+		TLSRetryBudget: opts.TLSRetryWait,
+	}
 
 	pw := opts.ProgressWriter
 	if pw == nil {

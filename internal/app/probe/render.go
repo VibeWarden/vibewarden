@@ -156,14 +156,15 @@ func renderGenericError(w io.Writer, result Result, err error) {
 }
 
 // renderTLSRetryExhausted writes the TLS-retry-exhausted error block. The
-// message points the user at docker compose logs vibewarden to check ACME
-// issuance progress.
+// budget duration is read from result.TLSRetryBudget (set by Run from
+// Options.TLSRetryWait) so the output is parameterised rather than hardcoded.
 func renderTLSRetryExhausted(w io.Writer, result Result) {
 	envName := result.EnvName
 	if envName == "" {
 		envName = "<env>"
 	}
-	fmt.Fprintf(w, "ERROR: TLS handshake failed for 30s.\n")
+	budgetSec := int(result.TLSRetryBudget.Seconds())
+	fmt.Fprintf(w, "ERROR: TLS handshake failed for %ds.\n", budgetSec)
 	fmt.Fprintf(w, "\nLikely ACME (Let's Encrypt) issuance still in progress. Check:\n")
 	fmt.Fprintf(w, "  ssh <host> docker compose logs vibewarden | grep -i acme\n")
 	fmt.Fprintf(w, "If the cert hasn't been issued yet, retry `vibew probe --env %s`\n", envName)
