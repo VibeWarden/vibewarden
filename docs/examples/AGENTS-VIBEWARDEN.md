@@ -87,6 +87,21 @@ vibew add rate-limiting # enable rate limiting
 vibew add tls --domain app.yourcompany.com  # use a real domain you control; Let's Encrypt rejects example.com
 ```
 
+To regenerate this kickoff prompt (always matches the installed binary):
+
+```bash
+vibew prompt-template --name <project> --describe "<description>"
+vibew prompt-template --deploy --name <project> --describe "<description>" --domain <fqdn>
+```
+
+If your tooling cannot ship a vibew binary, fetch the pre-rendered release artifacts
+and substitute `{{prjname}}`, `{{description}}`, `{{domain}}` before pasting:
+
+- `https://github.com/vibewarden/vibewarden/releases/latest/download/agent-kickoff-dev.txt`
+- `https://github.com/vibewarden/vibewarden/releases/latest/download/agent-kickoff-deploy.txt`
+
+These filenames are public API (ADR-101). See `docs/agent-kickoff.md`.
+
 ## Troubleshooting
 
 ```bash

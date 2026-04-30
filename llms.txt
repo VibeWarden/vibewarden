@@ -66,6 +66,9 @@ cd my-app && vibew wrap --upstream 3000 && vibew dev
     `vibew prompt-template --name myapp --describe "todo list app"`
     `vibew prompt-template --deploy --name myapp --describe "todo list app" --domain myapp.example.com`
   See: docs/agent-kickoff.md and llms-full.txt § 21. Agent Kickoff Prompt.
+  Release artifacts (no binary required — substitute {{prjname}}/{{description}}/{{domain}} before use):
+    https://github.com/vibewarden/vibewarden/releases/latest/download/agent-kickoff-dev.txt
+    https://github.com/vibewarden/vibewarden/releases/latest/download/agent-kickoff-deploy.txt
 
 Full reference: https://vibewarden.dev/llms-full.txt
 

@@ -69,6 +69,8 @@ func TestRemovedArtifacts_NoForbiddenReferences(t *testing.T) {
 		"prompt_template_test.go",
 		"golden_test.go",
 		"osfs_test.go",
+		"release_artifact_test.go",
+		"wrapper_script_test.go",
 		// Explanatory docs: historical context for why an artifact was removed.
 		"docs" + string(filepath.Separator) + "agent-kickoff.md",
 		"llms-full.txt",

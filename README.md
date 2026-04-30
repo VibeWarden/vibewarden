@@ -27,6 +27,15 @@ all in a single binary that sits next to your app.
 Go to [vibewarden.dev/start](https://vibewarden.dev/start) and fill in two fields.
 The page generates a ready-to-paste prompt tailored to your app and stack.
 
+For tooling integrations that cannot ship a vibew binary, fetch the pre-rendered
+release artifacts and substitute the `{{prjname}}`, `{{description}}`, and `{{domain}}`
+placeholders before pasting:
+
+- `https://github.com/vibewarden/vibewarden/releases/latest/download/agent-kickoff-dev.txt`
+- `https://github.com/vibewarden/vibewarden/releases/latest/download/agent-kickoff-deploy.txt`
+
+These filenames are public API (ADR-101). See `docs/agent-kickoff.md` for substitution details.
+
 ---
 
 ### Path 2 — Copy a prompt template
