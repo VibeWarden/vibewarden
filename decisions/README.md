@@ -13,9 +13,9 @@ Full report: `~/notes/vibewarden/audit-adr-2026-05-03.md`
 
 Results applied 2026-05-04:
 - **42 KEEP** — load-bearing, no change to file content (other than explicit banner additions)
-- **19 DEMOTE** — content moved to `docs/internal/` or `docs/observability.md`; stubs remain at original paths
-- **10 DELETE** — replaced with tombstones (files remain, content replaced)
-- **4 SUPERSEDED/OBSOLETE** — status banners added (ADR-063, ADR-070 newly; ADR-080, ADR-081, ADR-088 already had banners)
+- **13 DEMOTE** — content moved to `docs/internal/` or `docs/observability.md`; stubs remain at original paths
+- **11 TOMBSTONE** — replaced with tombstones (files remain, content replaced; includes ADR-497 anomaly)
+- **3 STATUS BANNERS added** — ADR-058 (composition-root note), ADR-063 (Obsolete), ADR-070 (Obsolete); ADR-080, ADR-081, ADR-088 already had banners pre-audit
 
 ## Index
 

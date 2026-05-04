@@ -15,12 +15,12 @@
 **Date**: 2026-03-28
 **Issue**: #288
 
-### Context
+## Background
 
-ADR-012 and ADR-013 established the OpenTelemetry SDK as the metrics foundation. This ADR
+ADR-012 and ADR-013 established the OpenTelemetry SDK as the metrics foundation. ADR-014
 completed the migration by removing the deprecated `prometheus/client_golang` direct adapter.
 
-### What was decided
+## Changes Made
 
 - Delete `internal/adapters/metrics/prometheus.go` (replaced by `otel.go`)
 - Delete `internal/adapters/metrics/prometheus_test.go` and integration tests

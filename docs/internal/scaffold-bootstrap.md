@@ -10,20 +10,11 @@
 **Issue**: #1
 **Original status**: READY_FOR_DEV
 
-### Context
+## Background
 
-This is the foundational epic. Before any business logic can be implemented, we need:
-- Go module initialized with correct module path
-- Directory structure matching the hexagonal architecture from CLAUDE.md
-- Development tooling (Makefile, linting, CI)
-- Local dev environment (Docker Compose with Postgres, Kratos)
-- Configuration loading infrastructure
+The project scaffold established the Go module, directory structure, development tooling, and local dev environment. All subsequent work depends on this foundation.
 
-All subsequent epics depend on this scaffold being complete and correct.
-
-### Decision
-
-Implement the project scaffold with the following specifications:
+## Specification
 
 #### Go Module
 
@@ -91,18 +82,9 @@ The Makefile established in this bootstrap has evolved significantly. See the cu
 `Makefile` at the repo root for the live specification. The original targets were:
 `build`, `test`, `lint`, `run`, `docker-up`, `docker-down`, `clean`.
 
-### Consequences
+## Notes
 
-**Positive:**
-- Clean separation of concerns from day one
-- Local dev environment ready with single `docker compose up`
-- CI pipeline catches issues before merge
-
-**Negative:**
-- Many placeholder `.gitkeep` files (minor clutter)
-- Config struct has fields for features not yet implemented
-
-**Follow-up work (now implemented):**
+Follow-up work from the initial scaffold that is now implemented:
 - Caddy adapter (`internal/adapters/caddy/`)
 - Structured log schema (ADR-015)
 - Full CLI with `serve` subcommand

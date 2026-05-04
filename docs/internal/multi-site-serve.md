@@ -10,17 +10,14 @@
 **Issue**: #874
 **Original status**: Accepted (implemented in PR #879)
 
-### Context
+## Overview
 
-With the domain model (ADR-068), Caddy routes (ADR-069), deploy orchestration (ADR-070),
-and directory watcher (ADR-071) in place, ADR-072 wired everything into the CLI and
-serve entry point.
+ADR-072 wired the domain model (ADR-068), Caddy routes (ADR-069), and directory watcher
+(ADR-071) into the CLI and serve entry point. The deploy-related branching from ADR-070
+(`Detect()` / `BootstrapSidecar` / `DeployMultiApp`) was sunset by ADR-086. Only the
+serve-side wiring described below remains active.
 
-**Note**: The deploy-related branching (ADR-070's `Detect()` / `BootstrapSidecar` /
-`DeployMultiApp` flow) was sunset by ADR-086. Only the serve-side wiring described here
-remains active.
-
-### Decision (serve-side, still active)
+## Serve-Side Wiring
 
 #### Multi-site serve wiring (`cmd/vibewarden/wiring_serve_multisite.go`)
 
@@ -52,7 +49,7 @@ not in `internal/app/`.
 site in multi-app mode. With no `--app`, status shows all sites plus sidecar; logs show
 sidecar logs. (Deploy commands were sunset by ADR-086 but the flag design is recorded here.)
 
-### Consequences
+## Behavior Summary
 
 - `vibew serve` auto-detects mode from directory layout; no config flag needed.
 - Backward compatible: existing single-app workflows are unchanged.

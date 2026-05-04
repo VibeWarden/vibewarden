@@ -16,17 +16,12 @@
 **Date**: 2026-04-20
 **Issue**: #1026
 
-### Context
+## Overview
 
 Let's Encrypt occasionally suffers outages or rate-limits. Caddy natively supports multiple
-ACME issuers per automation policy, trying each in sequence when the previous fails.
-ADR-079 introduced a 3-issuer ACME fallback chain for `provider: letsencrypt`.
-
-### Decision
-
-Introduce a 3-issuer ACME fallback chain for the default `provider: letsencrypt`
-configuration, and add first-class provider values for `zerossl`, `buypass`, and
-`letsencrypt-staging`.
+ACME issuers per automation policy, trying each in sequence when the previous fails. ADR-079
+introduced a 3-issuer ACME fallback chain for `provider: letsencrypt` and added first-class
+provider values for `zerossl`, `buypass`, and `letsencrypt-staging`.
 
 #### New provider constants (in `internal/ports/proxy.go`)
 

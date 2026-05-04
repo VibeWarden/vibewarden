@@ -8,20 +8,14 @@
 
 ## From ADR-020 — Inject trace_id and span_id into slog context
 
-**Date**: 2026-03-28
-**Issue**: #308
+**Date**: 2026-03-28 | **Issue**: #308
 
-### Context
+ADR-019 introduced `TracingMiddleware` which creates a span per request. ADR-020 extended
+`SlogEventLogger.Log()` to extract and inject trace context into every log line for request
+correlation.
 
-ADR-019 introduced `TracingMiddleware` which creates a span for each request and stores
-the span context in the request context. ADR-020 extended `SlogEventLogger.Log()` to
-extract and inject the trace context into every log line for request correlation.
-
-### Decision
-
-Modify `SlogEventLogger.Log()` to check `trace.SpanContextFromContext(ctx)`. If the
-span context is valid, append `trace_id` (32-char hex) and `span_id` (16-char hex) as
-slog attributes.
+`SlogEventLogger.Log()` checks `trace.SpanContextFromContext(ctx)`. When the span context
+is valid, it appends `trace_id` (32-char hex) and `span_id` (16-char hex) as slog attributes.
 
 **Key implementation details:**
 
@@ -42,19 +36,13 @@ The last two fields are absent when tracing is disabled.
 
 ## From ADR-021 — Include trace_id in JSON Error Responses
 
-**Date**: 2026-03-28
-**Issue**: #309
+**Date**: 2026-03-28 | **Issue**: #309
 
-### Context
+ADR-021 completed the correlation loop: error responses (429, 403, 503, 401) include the
+same `trace_id` that appears in the corresponding log line.
 
-ADR-021 completed the correlation loop: error responses (429, 403, 503, 401) now include
-the same `trace_id` that appears in the corresponding log line.
-
-### Decision
-
-Create `internal/middleware/error_response.go` with `WriteErrorResponse` and
-`WriteRateLimitResponse` helpers. All middleware and handlers that return error responses
-use this helper.
+`internal/middleware/error_response.go` provides `WriteErrorResponse` and
+`WriteRateLimitResponse` helpers used by all middleware and handlers.
 
 **Correlation ID strategy:**
 

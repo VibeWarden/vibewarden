@@ -617,6 +617,12 @@ This observability stack is intended for **local development only**. For product
 
 ---
 
+## Implementation History
+
+The sections below record the key implementation decisions behind VibeWarden's telemetry
+architecture. They are retained as internal reference for contributors; they were relocated
+from `decisions/` on 2026-05-04 (stubs remain at the original ADR paths).
+
 ## From ADR-013 — OTLP Exporter Configuration and Telemetry Plugin Refactor
 
 > Relocated from `decisions/adr-013-otlp-exporter-configuration-and-telemetry-plugin-refactor.md`

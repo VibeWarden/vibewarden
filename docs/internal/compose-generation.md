@@ -6,20 +6,12 @@
 
 ---
 
-## From ADR-006 — Add User App Service to Generated docker-compose.yml
+## User App Service in Generated docker-compose.yml
 
-**Date**: 2026-03-28
-**Issue**: #279
+**Source**: ADR-006 | **Date**: 2026-03-28 | **Issue**: #279
 
-### Context
-
-The generated `docker-compose.yml` originally included only the VibeWarden sidecar and
-Kratos. This section documents the decision to add the user's own application service
-automatically.
-
-### Decision
-
-An `app` section in `vibewarden.yaml` configures how the user's application is included.
+The generated `docker-compose.yml` includes the user's own application service automatically.
+An `app` section in `vibewarden.yaml` controls how it is included.
 Two modes:
 
 1. **Dev mode** (`app.build`): Build the app from local Dockerfile
@@ -47,19 +39,12 @@ When both are set, `app.build` takes precedence (dev mode first).
 
 ---
 
-## From ADR-007 — Add Plugin-Dependent Services to Generated docker-compose.yml (OpenBao, Redis)
+## Plugin-Dependent Services (OpenBao, Redis)
 
-**Date**: 2026-03-28
-**Issue**: #281
-
-### Context
+**Source**: ADR-007 | **Date**: 2026-03-28 | **Issue**: #281
 
 When plugins like `secrets` (OpenBao) or `rate-limiting` with Redis backend are enabled,
-users previously had to manually add those infrastructure services.
-
-### Decision
-
-Extend the `docker-compose.yml.tmpl` template to conditionally include:
+the `docker-compose.yml.tmpl` template conditionally includes:
 - **OpenBao** when `secrets.enabled: true`
 - **Redis** when `rate_limit.store: redis`
 
@@ -90,20 +75,12 @@ These helpers are registered as template `FuncMap` entries in the template adapt
 
 ---
 
-## From ADR-008 — Add Observability Profile to Generated docker-compose.yml
+## Observability Profile
 
-**Date**: 2026-03-28
-**Issue**: #282
+**Source**: ADR-008 | **Date**: 2026-03-28 | **Issue**: #282
 
-### Context
-
-The observability stack (Prometheus, Grafana, Loki, Promtail) was originally hand-crafted
-in the `observability/` directory. This section documents making it generated from templates.
-
-### Decision
-
-Add an `observability` config section to `vibewarden.yaml` and generate all observability
-config files from templates based on the working configs in `observability/`.
+The observability stack (Prometheus, Grafana, Loki, Promtail) is generated from templates.
+An `observability` config section in `vibewarden.yaml` controls what is generated.
 
 #### Config
 

@@ -9,16 +9,16 @@
 **Date**: 2026-04-03
 **Issue**: #632
 
-### Context
+## Background
 
 The original `vibew init` scaffolding generated agent instruction files inside
-`.claude/agents/` (architect.md, dev.md, reviewer.md). This approach conflicted with
-user customizations and was incompatible with the emerging `AGENTS.md` convention
-used by Claude, Cursor, Windsurf, and other AI coding tools.
+`.claude/agents/`. This approach conflicted with user customizations and was
+incompatible with the `AGENTS.md` convention used by Claude, Cursor, Windsurf,
+and other AI coding tools.
 
-### Decision
+## Two-File Approach
 
-Replace `.claude/agents/` generation with a two-file approach:
+`vibew init` now generates:
 
 1. **`AGENTS-VIBEWARDEN.md`** — fully owned by vibew, always regenerated on `vibew init --force`
 2. **`AGENTS.md`** — user-owned, contains a reference line to `AGENTS-VIBEWARDEN.md`

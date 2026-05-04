@@ -6,18 +6,13 @@
 
 ## From ADR-010 — Add `vibew secret get` and `vibew secret list` Commands
 
-**Date**: 2026-03-28
-**Issue**: #286
+**Date**: 2026-03-28 | **Issue**: #286
 
-### Context
-
-With the no-secrets-on-disk approach from ADR-009, credentials are randomly generated per
-`vibewarden generate` run and seeded into OpenBao. Users need a simple way to retrieve
+With the no-secrets-on-disk approach (ADR-009), credentials are randomly generated per
+`vibewarden generate` run and seeded into OpenBao. These two subcommands let users retrieve
 them for debugging or connecting external tools.
 
-### Decision
-
-Add two subcommands to the existing `vibew secret` command group:
+### Commands
 
 - `vibew secret get <alias-or-path>` — retrieve credentials for a service or path
 - `vibew secret list` — show all managed secret paths
