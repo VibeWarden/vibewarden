@@ -2,7 +2,7 @@
 
 **Date**: 2026-04-15
 **Issue**: #872
-**Status**: Accepted (implemented in PR #877)
+**Status**: Obsolete — the `Detect` / `BootstrapSidecar` / `DeployMultiApp` flow was sunset alongside the rest of `vibew deploy` by ADR-086 (#1138). Kept as historical record.
 
 ### Context
 

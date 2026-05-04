@@ -1581,7 +1581,7 @@ Running `vibew deploy` today prints cobra's `unknown command "deploy"` error.
 See CHANGELOG and ADR-086 for the rationale.
 
 After writing files, `vibew bundle` prints a sensitive-file awareness block
-when credentials or key material exist in the output directory (ADR-094).
+when credentials or key material exist in the output directory.
 The block appears after the `Contents:` listing, before the `Next:` hint:
 
 ```

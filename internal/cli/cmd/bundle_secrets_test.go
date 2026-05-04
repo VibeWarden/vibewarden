@@ -146,8 +146,7 @@ func TestDetectSensitiveFiles_NoMatches_ReturnsEmpty(t *testing.T) {
 
 func TestDetectSensitiveFiles_FirstMatchWins_KratosDotEnv(t *testing.T) {
 	// A file kratos/.env matches the basename .env rule (first in table),
-	// not the generic "kratos/" fallback. This verifies first-match-wins
-	// ordering per ADR-094.
+	// not the generic "kratos/" fallback. This verifies first-match-wins ordering.
 	dir := t.TempDir()
 	writeFiles(t, dir, map[string]string{
 		"kratos/.env": "KRATOS_COOKIE_SECRET=abc\n",

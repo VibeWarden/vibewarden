@@ -1,7 +1,7 @@
 # ADR-063: vibew deploy core — SSH + rsync remote deployment
 
 **Date**: 2026-04-03
-**Status**: Accepted
+**Status**: Obsolete — `vibew deploy` core was sunset by ADR-086 (#1138). Kept as historical record of the SSH-based deploy design.
 
 ### Context
 

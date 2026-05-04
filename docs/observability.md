@@ -614,3 +614,84 @@ This observability stack is intended for **local development only**. For product
 - Consider using the VibeWarden Fleet dashboard (Pro tier) at
   `app.vibewarden.dev`, which aggregates metrics and logs from multiple
   VibeWarden instances without requiring you to run your own Prometheus/Grafana.
+
+---
+
+## From ADR-013 — OTLP Exporter Configuration and Telemetry Plugin Refactor
+
+> Relocated from `decisions/adr-013-otlp-exporter-configuration-and-telemetry-plugin-refactor.md`
+> on 2026-05-04. Stub at that path remains stable for existing PR references.
+
+**Date**: 2026-03-28 | **Issue**: #287
+
+ADR-013 introduced push-based OTLP export as the primary telemetry path alongside the
+existing Prometheus pull-based export. Key decisions:
+
+- `TelemetryConfig` section replaces the narrower `MetricsConfig` (legacy `metrics:` config
+  is still accepted but migrated with a deprecation warning via `config.MigrateLegacyMetrics`).
+- OTLP HTTP exporter (`otlpmetrichttp`) pushes metrics on a configurable interval (default 30s).
+- Both exporters can run simultaneously (dual-mode).
+- At least one exporter must be enabled; `provider.Init` returns an error otherwise.
+- `grpc` protocol was reserved for future use; only `http` is implemented.
+
+**Example configurations** are in the main `vibewarden.yaml` documentation — see `docs/configuration.md`.
+
+**Migration path from `metrics:` to `telemetry:`:**
+
+```yaml
+# Legacy (still works, triggers deprecation warning in logs):
+metrics:
+  enabled: true
+  path_patterns: ["/users/:id"]
+
+# Current form:
+telemetry:
+  enabled: true
+  path_patterns: ["/users/:id"]
+  prometheus:
+    enabled: true
+  otlp:
+    enabled: false
+```
+
+---
+
+## From ADR-016 — OTel Collector in Docker Compose Observability Stack
+
+> Relocated from `decisions/adr-016-otel-collector-in-docker-compose-observability-stack.md`
+> on 2026-05-04. Stub at that path remains stable for existing PR references.
+
+**Date**: 2026-03-28 | **Issue**: #290
+
+ADR-016 added the OpenTelemetry Collector Contrib as the telemetry hub in the Docker Compose
+observability stack.
+
+**Architecture (current):**
+
+```
+VibeWarden --OTLP--> OTel Collector (port 4318)
+                           |-- metrics --> :8889/metrics <-- Prometheus scrapes
+                           |-- logs   --> Loki (port 3100)
+Docker containers (app, kratos, etc.)
+    |-- Docker logs --> Promtail --> Loki
+```
+
+**Key decisions from ADR-016:**
+
+- Use `otel/opentelemetry-collector-contrib` image (Apache 2.0; needed for `lokiexporter`).
+- Collector exposes a `/metrics` endpoint that Prometheus scrapes (not remote write).
+  This keeps Prometheus in its natural pull mode.
+- Promtail continues collecting logs for non-VibeWarden containers (app, kratos, etc.).
+  The OTel Collector handles only VibeWarden's structured event logs via OTLP.
+- Collector port 4318 (OTLP HTTP) — standard OTLP HTTP port, only within Docker network.
+- Collector Prometheus exporter on port 8889 — Prometheus scrapes this, not VibeWarden directly.
+
+**Environment variables set by docker-compose when observability profile is active:**
+
+| Variable | Value |
+|----------|-------|
+| `VIBEWARDEN_TELEMETRY_OTLP_ENABLED` | `true` |
+| `VIBEWARDEN_TELEMETRY_OTLP_ENDPOINT` | `http://otel-collector:4318` |
+| `VIBEWARDEN_TELEMETRY_LOGS_OTLP` | `true` |
+
+Users with an existing collector can override these to point to their own endpoint.

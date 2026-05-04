@@ -92,7 +92,7 @@ func TestDeriveProjectName(t *testing.T) {
 
 // TestDeriveProjectName_MatchesComposeProjectName verifies that DeriveProjectName
 // returns the same value as SanitiseProjectName(cfg.ComposeProjectName()) for
-// all inputs — the two resolvers must be byte-equal (ADR-093, #1199).
+// all inputs — the two resolvers must be byte-equal (#1199).
 func TestDeriveProjectName_MatchesComposeProjectName(t *testing.T) {
 	tests := []struct {
 		name        string

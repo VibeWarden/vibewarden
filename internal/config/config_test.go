@@ -3295,7 +3295,7 @@ func TestComposeProjectName_FallsBackToVibewardenWhenProjectRootEmpty(t *testing
 	// to prevent a blank project name from reaching Docker Compose.
 	got := cfg.ComposeProjectName()
 	if got != "vibewarden" {
-		t.Errorf("ComposeProjectName() with empty sources = %q, want %q (guard test — see ADR-093)", got, "vibewarden")
+		t.Errorf("ComposeProjectName() with empty sources = %q, want %q (guard test — last-resort fallback must be 'vibewarden')", got, "vibewarden")
 	}
 }
 

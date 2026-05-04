@@ -345,8 +345,8 @@ app:
 	}
 
 	// Write production override. tls.email and tls.acme_ca are the ADR-082
-	// regression guards — fields added by ADR-078/ADR-079 that the old
-	// hand-written allow-list silently dropped (#1053).
+	// regression guards — fields that the old hand-written allow-list silently
+	// dropped (#1053; tls.email wired in #1027, acme fallback chain in #1026).
 	prodYAML := `server:
   port: 443
 tls:

@@ -143,7 +143,7 @@ func (s *ObsService) Down(ctx context.Context, opts ObsDownOptions, out io.Write
 	// Use service-targeted stop+rm instead of `compose down --profile observability`.
 	// docker compose's --profile flag is an activation mechanism for `up`, not a
 	// scope limiter for `down` — passing --profile to `down` stops ALL services
-	// in the project regardless of profile. See ADR-097.
+	// in the project regardless of profile (fix for #1177).
 	result, err := s.compose.Down(ctx, composeFile, ports.ComposeDownOptions{
 		Volumes:     opts.Volumes,
 		Services:    obsServices,
