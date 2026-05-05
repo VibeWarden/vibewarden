@@ -1167,7 +1167,7 @@ resilience:
 #   endpoints:
 #     - url: "https://hooks.slack.com/services/T000/B000/xxx"
 #       events: ["waf.detection", "auth.blocked", "rate_limit.exceeded"]
-#       format: slack
+#       format: slack   # Accepted values: raw (default), slack, discord
 #       timeout_seconds: 10
 #     - url: "https://audit.example.com/events"
 #       events: ["*"]

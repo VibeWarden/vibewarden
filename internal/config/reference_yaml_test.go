@@ -1,6 +1,7 @@
 package config_test
 
 import (
+	"os"
 	"path/filepath"
 	"runtime"
 	"testing"
@@ -85,6 +86,59 @@ func TestReferenceYAML_UnmarshalsCleanly(t *testing.T) {
 		t.Run(tt.field, func(t *testing.T) {
 			if tt.got != tt.want {
 				t.Errorf("cfg.%s = %v, want %v", tt.field, tt.got, tt.want)
+			}
+		})
+	}
+}
+
+// TestSetDefaults_EmptyYAML verifies that setDefaults() registers values that
+// a user with an empty vibewarden.yaml (no relevant section at all) would
+// receive. This catches "default-lie" bugs where the reference YAML documents
+// a non-zero default but setDefaults() never registers it — causing users who
+// omit the section to get the Go zero-value instead.
+//
+// Previously, audit.enabled and all resilience.circuit_breaker.* /
+// resilience.retry.* fields were undeclared in setDefaults(), meaning a user
+// without an audit: or resilience: block got audit disabled and numeric
+// thresholds of 0. This test pins the fix.
+func TestSetDefaults_EmptyYAML(t *testing.T) {
+	dir := t.TempDir()
+	emptyYAML := filepath.Join(dir, "vibewarden.yaml")
+	if err := os.WriteFile(emptyYAML, []byte("# empty\n"), 0600); err != nil {
+		t.Fatalf("writing empty yaml: %v", err)
+	}
+
+	cfg, err := config.LoadRaw(emptyYAML)
+	if err != nil {
+		t.Fatalf("LoadRaw(empty yaml) error: %v", err)
+	}
+
+	tests := []struct {
+		field string
+		got   any
+		want  any
+	}{
+		// audit defaults — safety-critical: audit must be ON by default.
+		{"audit.enabled", cfg.Audit.Enabled, true},
+		{"audit.output", cfg.Audit.Output, "stdout"},
+
+		// resilience.circuit_breaker defaults.
+		{"resilience.circuit_breaker.enabled", cfg.Resilience.CircuitBreaker.Enabled, false},
+		{"resilience.circuit_breaker.threshold", cfg.Resilience.CircuitBreaker.Threshold, 5},
+		{"resilience.circuit_breaker.timeout", cfg.Resilience.CircuitBreaker.Timeout, "60s"},
+
+		// resilience.retry defaults.
+		{"resilience.retry.enabled", cfg.Resilience.Retry.Enabled, false},
+		{"resilience.retry.max_attempts", cfg.Resilience.Retry.MaxAttempts, 3},
+		{"resilience.retry.backoff", cfg.Resilience.Retry.InitialBackoff, "100ms"},
+		{"resilience.retry.max_backoff", cfg.Resilience.Retry.MaxBackoff, "10s"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.field, func(t *testing.T) {
+			if tt.got != tt.want {
+				t.Errorf("empty-yaml cfg.%s = %v, want %v (setDefaults() not registering this key?)",
+					tt.field, tt.got, tt.want)
 			}
 		})
 	}

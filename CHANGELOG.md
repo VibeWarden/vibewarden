@@ -14,7 +14,7 @@ This initial entry was written by hand to summarise the work leading up to v0.1.
 
 ### Documentation
 
-- **docs(#1272): init template — image tag derivation chain step 2 fix.** The previous wording would lead AI agents constructing tags via the wrong derivation. The template claimed `app.image` (with registry/tag stripped) was step 2 of the project-name chain; the actual code (`ComposeProjectName`) uses the directory name (cwd-basename) as step 2. New wording matches `docs/examples/AGENTS-VIBEWARDEN.md` and the authoritative code.
+- **docs(#1270): vibewarden.reference.yaml — add 13 previously-missing top-level config sections.** Brings the reference file to full coverage of fields documented in llms-full.txt or defined in internal/config Go structs. Also fixes a class of latent default-bugs surfaced by the new TestReferenceYAML_UnmarshalsCleanly test: audit.enabled, audit.output, and resilience.circuit_breaker/retry fields now apply their documented defaults via setDefaults(), where previously they were silently zero.
 
 ### Security
 
