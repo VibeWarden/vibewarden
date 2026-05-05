@@ -307,6 +307,43 @@ func TestProbeCmd_ProgressWriter_WiredToStderr(t *testing.T) {
 	}
 }
 
+// TestProbeCmd_EnvPathTraversal verifies that the CLI rejects env names that
+// contain path-traversal sequences, slashes, dots, or other characters outside
+// [a-zA-Z0-9_-]. This is an end-to-end integration test: the rejection must
+// happen before any filesystem read so that no file outside the project root is
+// ever accessed, regardless of the host filesystem layout.
+func TestProbeCmd_EnvPathTraversal(t *testing.T) {
+	dir := t.TempDir()
+	writeYAML(t, filepath.Join(dir, "vibewarden.yaml"),
+		"server:\n  port: 8443\n")
+
+	origWd, _ := os.Getwd()
+	_ = os.Chdir(dir)
+	t.Cleanup(func() { _ = os.Chdir(origWd) })
+
+	badNames := []string{
+		"../etc/passwd",
+		"../../foo",
+		"foo/bar",
+		"..",
+		".",
+		".hidden",
+		`foo\bar`,
+		"foo bar",
+		"foo@bar",
+	}
+
+	for _, bad := range badNames {
+		bad := bad
+		t.Run(bad, func(t *testing.T) {
+			_, _, err := execProbe(t, []string{"--env", bad})
+			if err == nil {
+				t.Errorf("--env %q: expected error, got nil -- path traversal not blocked", bad)
+			}
+		})
+	}
+}
+
 // TestProbeCmd_EnvFlagFlowsToOutput verifies that the --env flag value is
 // echoed in the rendered output (e.g. in the TLS exhausted or refused message).
 func TestProbeCmd_EnvFlagFlowsToOutput(t *testing.T) {
