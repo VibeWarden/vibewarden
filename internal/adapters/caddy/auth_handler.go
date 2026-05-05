@@ -129,11 +129,16 @@ func (h *AuthHandler) UnmarshalJSON(data []byte) error {
 }
 
 // isPublicPath checks if the request path matches any public path pattern.
+//
+// For wildcard patterns ending in "/*" the prefix boundary is enforced: a
+// pattern "/auth/*" matches "/auth", "/auth/", and "/auth/login", but NOT
+// "/auth-evil" or "/authentic". The check requires either an exact prefix
+// match or a match followed by a slash separator.
 func (h *AuthHandler) isPublicPath(reqPath string) bool {
 	for _, p := range h.Config.PublicPaths {
 		if strings.HasSuffix(p, "/*") {
 			prefix := strings.TrimSuffix(p, "/*")
-			if strings.HasPrefix(reqPath, prefix) {
+			if reqPath == prefix || strings.HasPrefix(reqPath, prefix+"/") {
 				return true
 			}
 		}
@@ -146,6 +151,18 @@ func (h *AuthHandler) isPublicPath(reqPath string) bool {
 		}
 	}
 	return false
+}
+
+// stripXUserHeaders removes all request headers whose name starts with
+// "X-User-". It must be called at the top of ServeHTTP before any session
+// validation so that a client cannot impersonate an authenticated user by
+// injecting these headers directly.
+func stripXUserHeaders(r *http.Request) {
+	for key := range r.Header {
+		if strings.HasPrefix(key, "X-User-") {
+			delete(r.Header, key)
+		}
+	}
 }
 
 // kratosWhoamiResponse mirrors the relevant fields from the Kratos
@@ -304,6 +321,11 @@ func (h *AuthHandler) matchRequiredRole(reqPath string) (string, bool) {
 
 // ServeHTTP implements caddyhttp.MiddlewareHandler.
 func (h *AuthHandler) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddyhttp.Handler) error {
+	// Strip all X-User-* headers from the incoming request before any session
+	// validation. This is the Go-layer defence-in-depth complement to the
+	// Caddy-layer wildcard delete in buildUserHeaderStripHandler.
+	stripXUserHeaders(r)
+
 	// Public paths: optional auth — check session if cookie present, set
 	// headers if valid, but never redirect or block the request.
 	if h.isPublicPath(r.URL.Path) {

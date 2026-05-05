@@ -81,6 +81,35 @@ func TestBuildCatchAllHandlers_FullChainOrder(t *testing.T) {
 	}
 }
 
+// TestBuildUserHeaderStripHandler_WildcardPattern verifies that
+// buildUserHeaderStripHandler emits a single wildcard regex delete pattern
+// ("~^X-User-") so that ALL X-User-* headers are stripped, including
+// X-User-Name which was previously missing from the hardcoded list.
+//
+// Regression test for #1264 (Part A).
+func TestBuildUserHeaderStripHandler_WildcardPattern(t *testing.T) {
+	h := buildUserHeaderStripHandler()
+
+	if h["handler"] != "headers" {
+		t.Fatalf("handler = %q, want %q", h["handler"], "headers")
+	}
+	req, ok := h["request"].(map[string]any)
+	if !ok {
+		t.Fatal("request field is not a map")
+	}
+	del, ok := req["delete"].([]string)
+	if !ok {
+		t.Fatalf("delete field is not []string, got %T", req["delete"])
+	}
+	if len(del) != 1 {
+		t.Fatalf("delete has %d entries, want 1 (wildcard pattern)", len(del))
+	}
+	const wantPattern = "~^X-User-"
+	if del[0] != wantPattern {
+		t.Errorf("delete[0] = %q, want %q", del[0], wantPattern)
+	}
+}
+
 // TestApplyAutomaticHTTPS verifies the automatic_https field is set correctly
 // for each TLS provider combination.
 func TestApplyAutomaticHTTPS(t *testing.T) {

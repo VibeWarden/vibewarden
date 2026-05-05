@@ -1064,7 +1064,11 @@ func TestBuildCaddyConfig_UserHeaderStripIsFirst(t *testing.T) {
 }
 
 // TestBuildCaddyConfig_UserHeaderStripDeletesCorrectHeaders verifies that the
-// strip handler targets exactly X-User-Id, X-User-Email, X-User-Verified, and X-User-Role.
+// strip handler uses a single wildcard regex pattern ("~^X-User-") that matches
+// all X-User-* headers, replacing the old hardcoded 4-entry list.
+//
+// Updated for #1264 (Part A): wildcard pattern covers X-User-Name and any
+// future X-User-* additions without requiring code changes.
 func TestBuildCaddyConfig_UserHeaderStripDeletesCorrectHeaders(t *testing.T) {
 	cfg := &ports.ProxyConfig{
 		ListenAddr:   "127.0.0.1:8080",
@@ -1097,18 +1101,12 @@ func TestBuildCaddyConfig_UserHeaderStripDeletesCorrectHeaders(t *testing.T) {
 	if !ok {
 		t.Fatal("handlers[0].request.delete is not []string")
 	}
-
-	wantDeleted := map[string]bool{
-		"X-User-Id":       true,
-		"X-User-Email":    true,
-		"X-User-Verified": true,
-		"X-User-Role":     true,
+	if len(deleted) != 1 {
+		t.Fatalf("delete list has %d entries, want 1 (wildcard pattern)", len(deleted))
 	}
-	for _, h := range deleted {
-		delete(wantDeleted, h)
-	}
-	if len(wantDeleted) > 0 {
-		t.Errorf("missing headers in delete list: %v", wantDeleted)
+	const wantPattern = "~^X-User-"
+	if deleted[0] != wantPattern {
+		t.Errorf("delete[0] = %q, want %q", deleted[0], wantPattern)
 	}
 }
 
