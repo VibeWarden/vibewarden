@@ -24,6 +24,8 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/url"
+	"strings"
 	"time"
 )
 
@@ -264,11 +266,55 @@ func applyDefaults(cfg *AuthUIConfig) {
 
 // returnToQuery extracts the return_to query parameter from r and returns
 // a ready-to-append query string fragment like "?return_to=%2Fdashboard",
-// or an empty string when the parameter is absent or empty.
+// or an empty string when the parameter is absent, empty, or not a safe
+// same-origin relative path.
+//
+// Security: only values that are relative paths (no scheme, no host) are
+// accepted. Values starting with "//" or "/\" are rejected even though
+// url.Parse may classify them as scheme-less, because browsers interpret
+// "//evil.com" as a protocol-relative URL pointing to an external host.
+// "javascript:" URIs and any other value with a non-empty Scheme or Host
+// are also rejected. This prevents open-redirect attacks where an attacker
+// supplies an absolute external URL as return_to.
 func returnToQuery(r *http.Request) string {
 	v := r.URL.Query().Get("return_to")
-	if v == "" {
+	if !isSafeReturnTo(v) {
 		return ""
 	}
-	return "?return_to=" + v
+	return "?return_to=" + url.QueryEscape(v)
+}
+
+// isSafeReturnTo reports whether v is safe to use as a return_to redirect
+// target. It accepts only relative paths that start with "/" and are not
+// protocol-relative ("//…") or Windows-style path-separator tricks ("/\…").
+// Any value with a URL scheme (e.g. "https:", "javascript:") or a host
+// component is rejected. An empty string is rejected (callers handle the
+// absence of return_to separately).
+func isSafeReturnTo(v string) bool {
+	if v == "" {
+		return false
+	}
+	// Reject protocol-relative URLs ("//evil.com") and backslash variants
+	// ("/\evil.com") before url.Parse, because some browsers treat these as
+	// absolute URLs pointing to external hosts.
+	if strings.HasPrefix(v, "//") || strings.HasPrefix(v, "/\\") {
+		return false
+	}
+	// Reject anything that doesn't start with "/" — relative paths without a
+	// leading slash could be resolved relative to the current page in ways that
+	// surprise callers.
+	if !strings.HasPrefix(v, "/") {
+		return false
+	}
+	// Reject values containing newlines or carriage returns (HTTP header
+	// injection / log injection defence).
+	if strings.ContainsAny(v, "\r\n") {
+		return false
+	}
+	parsed, err := url.Parse(v)
+	if err != nil {
+		return false
+	}
+	// After url.Parse a safe relative path must have an empty Scheme and Host.
+	return parsed.Scheme == "" && parsed.Host == ""
 }
