@@ -158,9 +158,17 @@ release:
   # these to release-artifacts/ in the before.hooks step above.
   # NOTE: must NOT use dist/ — goreleaser --clean wipes dist before hooks run,
   # then fails when hooks re-populate it ("dist is not empty").
+  #
+  # Content-authority files (issue #1316): llms-full.txt, llms.txt, and
+  # vibewarden.reference.yaml live at the repo root and are uploaded as release
+  # assets so the website (vibewarden.dev) can curl them at build time, eliminating
+  # the silent drift that bit v0.18.7. Mirrors the ADR-101 pattern.
   extra_files:
     - glob: release-artifacts/agent-kickoff-dev.txt
     - glob: release-artifacts/agent-kickoff-deploy.txt
+    - glob: llms-full.txt
+    - glob: llms.txt
+    - glob: vibewarden.reference.yaml
   header: |
     ## VibeWarden {{ .Version }}
 
