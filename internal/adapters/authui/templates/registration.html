@@ -176,7 +176,30 @@
 (function () {
   const kratosBase = '';
   const params = new URLSearchParams(window.location.search);
-  const returnTo = params.get('return_to') || '/';
+
+  // safeReturnTo validates that a return_to value is a same-origin relative
+  // path. It mirrors the server-side isSafeReturnTo rules in handler.go:
+  //   - must start with "/"
+  //   - must not start with "//" (protocol-relative) or "/\" (backslash trick)
+  //   - must not contain a scheme (URL() would expose via .protocol !== ":")
+  //   - falls back to "/" on any invalid input
+  function safeReturnTo(raw) {
+    if (!raw || typeof raw !== 'string') return '/';
+    if (!raw.startsWith('/')) return '/';
+    if (raw.startsWith('//') || raw.startsWith('/\\')) return '/';
+    try {
+      // URL() requires an absolute base; use a dummy origin so we can inspect
+      // the parsed result. If the path escapes to a different host or carries a
+      // real scheme the check below will catch it.
+      const parsed = new URL(raw, window.location.origin);
+      if (parsed.origin !== window.location.origin) return '/';
+    } catch (_) {
+      return '/';
+    }
+    return raw;
+  }
+
+  const returnTo = safeReturnTo(params.get('return_to'));
 
   function showError(msg) {
     const box = document.getElementById('error-box');
