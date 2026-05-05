@@ -2,4 +2,6 @@
 
 **Status**: Removed 2026-05-04 — language-specific scaffolding was abandoned in favor of the language-agnostic Application contract.
 
-See `docs/examples/AGENTS-VIBEWARDEN.md` § Application contract and CLAUDE.md § Architecture principles for the current language-neutral approach. The language-pack model described in this ADR is no longer implemented.
+**Superseded by:** the language-agnostic Application contract — see `docs/examples/AGENTS-VIBEWARDEN.md` § Application contract and CLAUDE.md § Architecture principles.
+
+The language-pack model described in this ADR is no longer implemented.
