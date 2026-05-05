@@ -53,6 +53,10 @@ When auth is enabled, read user identity from these headers:
 - `X-User-Verified` — email verification status ("true"/"false")
 - `X-User-Role` — user role from Kratos identity traits ("user", "admin", or "moderator"; defaults to "user")
 
+The sidecar strips ALL incoming X-User-* headers from the client request
+before validation and re-injects only the verified headers listed above after
+a successful auth check. App code must not perform its own X-User-* stripping.
+
 Role-based path restrictions can be configured in vibewarden.yaml via
 `auth.role_paths` (only when `auth.mode: kratos`). Requests to restricted
 paths by users without the required role receive HTTP 403.

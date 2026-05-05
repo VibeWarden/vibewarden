@@ -426,7 +426,7 @@ auth:
 
   # List of URL path glob patterns that bypass authentication entirely.
   # The /_vibewarden/* prefix is always public (health check etc.).
-  # Add your app's public routes here. A trailing /* does prefix matching (e.g. /static/* matches /static/foo/bar).
+  # Add your app's public routes here. Glob patterns; trailing /* matches the prefix and any subpath. Path-segment-aware: /auth/* matches /auth, /auth/, /auth/login but NOT /auth-evil or /authentic.
   # Example:
   #   public_paths:
   #     - "/static/*"

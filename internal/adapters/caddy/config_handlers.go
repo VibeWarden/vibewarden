@@ -18,15 +18,16 @@ var defaultCompressionAlgorithms = []string{"zstd", "gzip"}
 // impersonating an authenticated user by injecting them directly. VibeWarden
 // re-injects them only after a valid session has been verified.
 //
-// The tilde prefix ("~^X-User-") instructs Caddy to treat the value as a regular
-// expression, matching all headers whose names start with "X-User-". This ensures
-// that headers added in the future (e.g. X-User-Name) are also stripped without
-// requiring changes to this function.
+// The pattern "x-user-*" uses Caddy's suffix-wildcard glob syntax (end with "*"
+// means "prefix match"). Caddy lowercases both the pattern and the existing header
+// name before comparing, so "x-user-*" matches X-User-Id, X-User-Email,
+// X-User-Name, and any future X-User-* additions without requiring changes here.
+// See: caddyserver/caddy/v2/modules/caddyhttp/headers/headers.go — Delete field.
 func buildUserHeaderStripHandler() map[string]any {
 	return map[string]any{
 		"handler": "headers",
 		"request": map[string]any{
-			"delete": []string{"~^X-User-"},
+			"delete": []string{"x-user-*"},
 		},
 	}
 }

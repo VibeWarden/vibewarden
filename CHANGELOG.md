@@ -16,6 +16,7 @@ This initial entry was written by hand to summarise the work leading up to v0.1.
 
 - **fix(#1267): authui — `return_to` parameter validates same-origin to close open-redirect vector.** Server-side `isSafeReturnTo` and client-side `safeReturnTo()` both reject external URLs, protocol-relative URLs, backslash variants, and CRLF-injected paths. Affected pages: `/auth/login`, `/auth/registration`.
 - **fix(#1269): reject env names containing path-traversal sequences in `vibew probe --env` and `vibew doctor --preflight`.** New `validateEnvName` (`^[a-zA-Z0-9_-]+$`) returns `ErrInvalidEnvName`; defense-in-depth: resolved path is verified inside project root after `filepath.EvalSymlinks` to block symlink-escape via legitimately-named override files.
+- **fix(#1264): caddy auth handlers — strip ALL X-User-* headers from incoming requests + fix public-path prefix matching.** Closes identity-spoofing via forged X-User-* values in JWT mode (notably X-User-Name) and public-path bypass via prefix-sibling paths (e.g. /auth-evil matching /auth/*). Both Caddy-layer (config_handlers.go x-user-* glob) and Go-layer (stripXUserHeaders defense-in-depth) defenses now active.
 
 ## [v0.18.7] — 2026-05-05
 

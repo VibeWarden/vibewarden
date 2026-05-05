@@ -1064,11 +1064,12 @@ func TestBuildCaddyConfig_UserHeaderStripIsFirst(t *testing.T) {
 }
 
 // TestBuildCaddyConfig_UserHeaderStripDeletesCorrectHeaders verifies that the
-// strip handler uses a single wildcard regex pattern ("~^X-User-") that matches
+// strip handler uses Caddy's suffix-wildcard glob pattern ("x-user-*") to match
 // all X-User-* headers, replacing the old hardcoded 4-entry list.
 //
-// Updated for #1264 (Part A): wildcard pattern covers X-User-Name and any
-// future X-User-* additions without requiring code changes.
+// Updated for #1264 review: wildcard uses Caddy glob syntax, NOT tilde-prefix
+// regex. "~^x-user-" is silently a no-op in Caddy (falls through to hdr.Del
+// with the literal pattern string).
 func TestBuildCaddyConfig_UserHeaderStripDeletesCorrectHeaders(t *testing.T) {
 	cfg := &ports.ProxyConfig{
 		ListenAddr:   "127.0.0.1:8080",
@@ -1104,9 +1105,11 @@ func TestBuildCaddyConfig_UserHeaderStripDeletesCorrectHeaders(t *testing.T) {
 	if len(deleted) != 1 {
 		t.Fatalf("delete list has %d entries, want 1 (wildcard pattern)", len(deleted))
 	}
-	const wantPattern = "~^X-User-"
+	// Must be Caddy suffix-wildcard glob. Tilde-prefix regex is not supported
+	// by the Caddy headers module and silently does nothing.
+	const wantPattern = "x-user-*"
 	if deleted[0] != wantPattern {
-		t.Errorf("delete[0] = %q, want %q", deleted[0], wantPattern)
+		t.Errorf("delete[0] = %q, want %q (NOTE: tilde-prefix regex patterns are not supported by Caddy headers module)", deleted[0], wantPattern)
 	}
 }
 

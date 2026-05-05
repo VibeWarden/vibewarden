@@ -323,7 +323,10 @@ When neither build nor image is set, VibeWarden falls back to host.docker.intern
 
   auth.enabled              bool     false                        Enable auth middleware
   auth.mode                 string   none                         none, kratos, jwt, api-key
-  auth.public_paths         list     []                           Glob patterns bypassing auth
+  auth.public_paths         list     []                           Glob patterns bypassing auth. A trailing /*
+                                                                 matches the prefix and any sub-path but NOT
+                                                                 URL-space siblings: /auth/* matches /auth,
+                                                                 /auth/, and /auth/login but NOT /auth-evil.
   auth.session_cookie_name  string   ory_kratos_session           Kratos session cookie name
   auth.login_url            string   /self-service/login/browser  Redirect for unauthed users
   auth.on_kratos_unavailable string  503                          503 or allow_public
@@ -366,6 +369,11 @@ When neither build nor image is set, VibeWarden falls back to host.docker.intern
 
   Array claims (e.g. roles: ["admin","read"]) are joined with comma:
   X-User-Roles: admin,read
+
+  Security: VibeWarden strips ALL incoming X-User-* headers from the client
+  request before any auth validation. Upstream app code must read only the
+  headers VibeWarden injects after validation; any client-supplied X-User-*
+  value is discarded unconditionally.
 
 ### auth.api_key (used when auth.mode: api-key)
 
