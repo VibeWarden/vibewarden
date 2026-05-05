@@ -12,6 +12,16 @@ This initial entry was written by hand to summarise the work leading up to v0.1.
 
 ## [Unreleased]
 
+## [v0.18.7] — 2026-05-05
+
+Theme: doc-lie criticals from the 2026-05-03 cross-cutting audit (#1265, #1266, #1268). Three single-line fixes to surfaces that misled AI agents and operators. No code changes.
+
+### Fixed
+
+- **fix(#1265): `llms-full.txt` no longer claims `vibew init` generates the `/health` endpoint.** Stale line removed (was directly contradicting the post-#1202 Application contract). The example Python snippet stands on its own.
+- **fix(#1266): CHANGELOG v0.18.3 image-identity error message now correctly cites v0.18.3 instead of v0.19.0.** The runtime error and `docs/troubleshooting.md` already had the right version; only the CHANGELOG block was wrong.
+- **fix(#1268): `llms-full.txt` `security_headers.content_security_policy` default is now documented as `""` (disabled).** The previous documented default suggested CSP was set out of the box; the actual code default in `internal/config/config.go` is empty. `vibewarden.reference.yaml` already documented this correctly.
+
 ### Changed
 
 - **chore: ADR audit cleanup** — applied the 2026-05-03 ADR audit (full report at `~/notes/vibewarden/audit-adr-2026-05-03.md`). 13 ADRs demoted to `docs/internal/` or `docs/observability.md`, 11 replaced with tombstones (includes ADR-497 anomaly), 3 ADRs gain new Status banners (ADR-058, ADR-063, ADR-070). ADR numbers remain stable (no renumbering); existing PR / commit references continue to resolve to demoted stubs or tombstones. ADR-074 missing-reference clarification added to `decisions/README.md`. Active ADR count drops to 42 KEEP; 3 pre-existing historical banners (ADR-080, ADR-081, ADR-088) unchanged. (Audit report: `~/notes/vibewarden/audit-adr-2026-05-03.md`.)
@@ -88,7 +98,7 @@ unlabelled. The first `vibew dev` after upgrading will block with:
 
 ```
 Error: app image <tag> is missing the vibew project-root label.
-  This image was built before VibeWarden v0.19.0 OR by something other than vibew build.
+  This image was built before VibeWarden v0.18.3 OR by something other than vibew build.
   Current project: <path>
 
 Rebuild with: vibew dev --rebuild

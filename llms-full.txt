@@ -168,8 +168,6 @@ Example (Python/Flask):
   @app.route('/health')
   def health(): return {'status': 'ok'}
 
-If you used `vibew init`, this endpoint is already included in the generated code.
-
 
 ## 4. How It Works (Architecture)
 
@@ -489,7 +487,7 @@ When neither build nor image is set, VibeWarden falls back to host.docker.intern
   security_headers.hsts_preload                    bool     false
   security_headers.content_type_nosniff            bool     true
   security_headers.frame_option                    string   DENY
-  security_headers.content_security_policy         string   "default-src 'self'; style-src 'self' 'unsafe-inline'"
+  security_headers.content_security_policy         string   ""  (disabled by default; set to enable)
   security_headers.referrer_policy                 string   strict-origin-when-cross-origin
   security_headers.permissions_policy              string   ""
   security_headers.cross_origin_opener_policy      string   same-origin
