@@ -12,10 +12,22 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
+	"strings"
 
 	bundleapp "github.com/vibewarden/vibewarden/internal/app/bundle"
 	"github.com/vibewarden/vibewarden/internal/config"
 )
+
+// envNameRE is the allowlist pattern for env names passed via --env.
+// Only alphanumerics, hyphens, and underscores are permitted; no slashes,
+// dots, NUL bytes, or other path-significant characters.
+var envNameRE = regexp.MustCompile(`^[a-zA-Z0-9_-]+$`)
+
+// ErrInvalidEnvName is returned when the env name contains characters that
+// are not permitted (path-traversal sequences, slashes, dots, NUL bytes, or
+// any character outside [a-zA-Z0-9_-]).
+var ErrInvalidEnvName = errors.New("invalid env name: must match [a-zA-Z0-9_-]+")
 
 // Sentinel errors returned by Resolver implementations.
 var (
@@ -80,10 +92,18 @@ func NewFileResolver(projectRoot string) *FileResolver {
 // When name is non-empty, vibewarden.<name>.yaml must exist in ProjectRoot and
 // is deep-merged on top of vibewarden.yaml via bundleapp.LoadMergedConfig.
 //
+// Returns ErrInvalidEnvName when name contains characters outside [a-zA-Z0-9_-]
+// (including path-traversal sequences, slashes, dots, NUL bytes, or a leading dot).
 // Returns ErrBaseConfigMissing when vibewarden.yaml cannot be found.
 // Returns ErrOverrideConfigMissing when name is non-empty and the override
 // file does not exist.
 func (r *FileResolver) Resolve(name string) (Resolved, error) {
+	if name != "" {
+		if err := validateEnvName(name); err != nil {
+			return Resolved{}, err
+		}
+	}
+
 	root, err := r.projectRoot()
 	if err != nil {
 		return Resolved{}, fmt.Errorf("resolving project root: %w", err)
@@ -111,6 +131,16 @@ func (r *FileResolver) Resolve(name string) (Resolved, error) {
 	}
 
 	overridePath := filepath.Join(root, "vibewarden."+name+".yaml")
+
+	// Defense-in-depth: verify the resolved override path has not escaped the
+	// project root. filepath.Rel returns a path starting with ".." when the
+	// target is outside the base. This guard catches any edge cases that slip
+	// past the name allowlist (e.g. symlinks that the allowlist cannot see).
+	rel, relErr := filepath.Rel(root, overridePath)
+	if relErr != nil || strings.HasPrefix(rel, "..") {
+		return Resolved{}, fmt.Errorf("%w: resolved path escapes project root", ErrInvalidEnvName)
+	}
+
 	if _, err := os.Stat(overridePath); err != nil {
 		if os.IsNotExist(err) {
 			return Resolved{}, fmt.Errorf("%w: %s", ErrOverrideConfigMissing, overridePath)
@@ -129,6 +159,23 @@ func (r *FileResolver) Resolve(name string) (Resolved, error) {
 		OverridePath: overridePath,
 		EnvName:      name,
 	}, nil
+}
+
+// validateEnvName returns ErrInvalidEnvName when name is empty, contains NUL
+// bytes, or contains any character outside the allowlist [a-zA-Z0-9_-].
+// The env name is intended to be a single identifier token, not a path
+// component.
+func validateEnvName(name string) error {
+	if name == "" {
+		return fmt.Errorf("%w: name must not be empty", ErrInvalidEnvName)
+	}
+	if strings.ContainsRune(name, 0) {
+		return fmt.Errorf("%w: name contains NUL byte", ErrInvalidEnvName)
+	}
+	if !envNameRE.MatchString(name) {
+		return fmt.Errorf("%w: got %q", ErrInvalidEnvName, name)
+	}
+	return nil
 }
 
 // projectRoot returns the effective project root, resolving empty to os.Getwd.

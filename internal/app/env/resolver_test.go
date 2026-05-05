@@ -154,3 +154,79 @@ func TestFileResolver_BasePath_IsAbsolute(t *testing.T) {
 		t.Errorf("BasePath %q is not absolute", resolved.BasePath)
 	}
 }
+
+// TestValidateEnvName_RejectsTraversalNames covers the full set of malicious
+// and malformed env name inputs that must be rejected before any filesystem
+// access occurs. Each bad name must return ErrInvalidEnvName.
+func TestValidateEnvName_RejectsTraversalNames(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, "vibewarden.yaml"), minimalBase(8443))
+	r := envpkg.NewFileResolver(dir)
+
+	tests := []struct {
+		name  string
+		input string
+	}{
+		{"dot-dot", ".."},
+		{"dot-dot-slash", "../etc/passwd"},
+		{"deep traversal", "../../foo"},
+		{"slash in name", "foo/bar"},
+		{"backslash in name", `foo\bar`},
+		{"leading dot", ".hidden"},
+		{"nul byte", "foo\x00bar"},
+		{"space", "foo bar"},
+		{"at sign", "foo@bar"},
+		{"colon", "foo:bar"},
+		{"single dot", "."},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			_, err := r.Resolve(tt.input)
+			if err == nil {
+				t.Errorf("Resolve(%q) expected error, got nil -- path traversal not blocked", tt.input)
+				return
+			}
+			if !errors.Is(err, envpkg.ErrInvalidEnvName) {
+				t.Errorf("Resolve(%q) expected ErrInvalidEnvName, got: %v", tt.input, err)
+			}
+		})
+	}
+}
+
+// TestValidateEnvName_AcceptsLegitimateNames verifies that well-formed env
+// names are accepted by the resolver given a matching override file exists.
+func TestValidateEnvName_AcceptsLegitimateNames(t *testing.T) {
+	tests := []struct {
+		name    string
+		envName string
+	}{
+		{"simple", "prod"},
+		{"hyphen", "staging-eu"},
+		{"underscore", "local_dev"},
+		{"mixed case", "StageUS"},
+		{"digits", "env01"},
+		{"all allowed chars", "My-Env_123"},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			writeFile(t, filepath.Join(dir, "vibewarden.yaml"), minimalBase(8443))
+			writeFile(t, filepath.Join(dir, "vibewarden."+tt.envName+".yaml"),
+				"tls:\n  domain: example.com\n")
+
+			r := envpkg.NewFileResolver(dir)
+			resolved, err := r.Resolve(tt.envName)
+			if err != nil {
+				t.Errorf("Resolve(%q) unexpected error: %v", tt.envName, err)
+				return
+			}
+			if resolved.EnvName != tt.envName {
+				t.Errorf("EnvName = %q, want %q", resolved.EnvName, tt.envName)
+			}
+		})
+	}
+}
