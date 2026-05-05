@@ -514,8 +514,11 @@ runs the standard static checks plus five additional pre-deploy checks:
 4. App image architecture matches `deploy.target_platform`
 5. `tls.email` is configured for Let's Encrypt
 
-Exit code is `0` only when all checks pass. The env file (`vibewarden.production.yaml`)
-must exist — if it is missing, doctor exits 1 immediately without running any checks.
+Exit code is `1` only when a FAIL-severity check is encountered. Of the five preflight
+checks, P3 (`deploy.target_platform` unset) and P4 (image arch mismatch) are
+FAIL-severity; P1 (DNS), P2 (port 443), and P5 (TLS email) are WARN-only and do not
+produce exit 1. The env file (`vibewarden.production.yaml`) must exist — if it is
+missing, doctor exits 1 immediately without running any checks.
 
 Run `vibew doctor --preflight production` before `vibew bundle` to surface DNS,
 port, architecture, and TLS-email issues before a multi-minute build attempt.
@@ -526,8 +529,12 @@ Then produce the deployment bundle:
 ./vibew bundle
 ```
 
-The bundle is written to `.vibewarden/bundle/` and the "Next: deploy" block printed
-to stdout contains the exact `ssh` + `tar` + `docker compose` commands for your host.
+The bundle is written to `.vibewarden/bundle/`. When `deploy.host` is set in
+`vibewarden.production.yaml`, the "Next: deploy" block printed to stdout contains the
+exact `ssh` + `tar` + `docker compose` commands ready to run. When `deploy.host` is
+unset (the default at this point in setup), the block prints bracketed placeholders
+(`<your-ssh-user>@<your-ssh-host>`) with a configuration hint — substitute the values
+before running.
 
 For one-off deploys or CI pipelines where you want to supply the SSH target without
 setting `deploy.host` in config, use `--print-deploy`:
@@ -540,8 +547,7 @@ All three sub-flags (`--host`, `--user`, `--path`) are required when `--print-de
 is set. This overrides `deploy.host` from `vibewarden.production.yaml` for the printed
 block only — the bundle README and all bundle files are unaffected.
 
-See `docs/troubleshooting.md §Pre-deploy preflight` for the full preflight check
-reference.
+See [Pre-deploy preflight](troubleshooting.md#pre-deploy-preflight) for the full preflight check reference.
 
 ### Validate your config
 
