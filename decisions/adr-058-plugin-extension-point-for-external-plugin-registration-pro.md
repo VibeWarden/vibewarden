@@ -4,6 +4,8 @@
 **Issue**: #575
 **Status**: Accepted
 
+**Note (2026-04-15):** Per ADR-067 the `RunServe` orchestration moved out of `internal/app/serve/` into `cmd/vibewarden/wiring_serve.go`. The `PluginRegistrar` extension contract recorded here is unchanged; only the composition-root location moved.
+
 ### Context
 
 The VibeWarden Pro binary needs to register additional plugins alongside the OSS

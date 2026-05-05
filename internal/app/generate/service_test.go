@@ -1189,7 +1189,8 @@ func TestGenerate_Observability_ComposeDependsOn(t *testing.T) {
 func TestGenerate_Observability_AlwaysPresent_WithProfile(t *testing.T) {
 	// Obs services are always emitted in the compose file, even when
 	// cfg.Observability.Enabled is false. They are inert until the
-	// observability profile is activated via `vibew obs up`. See ADR-097.
+	// observability profile is activated via `vibew obs up` (obs services
+	// emitted unconditionally, fixes #1176/#1177).
 	cfg := &config.Config{
 		Server:        config.ServerConfig{Host: "127.0.0.1", Port: 8080},
 		Upstream:      config.UpstreamConfig{Host: "127.0.0.1", Port: 3000},
@@ -1472,7 +1473,7 @@ func TestGenerate_Jaeger_OtelCollector_TracesPipeline(t *testing.T) {
 func TestGenerate_Jaeger_AlwaysPresent_WithObsProfile(t *testing.T) {
 	// jaeger is always present in the compose file — it is part of the
 	// observability profile and is inert until `vibew obs up` is run.
-	// See ADR-097: obs services are emitted unconditionally, gated by profile.
+	// Obs services are emitted unconditionally, gated by profile (fixes #1176/#1177).
 	cfg := &config.Config{} // observability not enabled in config
 	compose := renderCompose(t, cfg)
 

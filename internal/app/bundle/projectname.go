@@ -8,7 +8,8 @@ import (
 
 // DeriveProjectName returns the project name for use in Docker image tags and
 // bundle directory naming. It is a thin sanitising wrapper around
-// cfg.ComposeProjectName(), which is the canonical resolver since ADR-093.
+// cfg.ComposeProjectName(), which is the canonical resolver (image-name resolution
+// unified across vibew bundle and --build; cwd-basename fallback).
 //
 // cfg.ComposeProjectName() already applies the full derivation chain:
 //  1. cfg.Name (always populated by vibew init / vibew wrap since v0.19.0).

@@ -12,6 +12,10 @@ This initial entry was written by hand to summarise the work leading up to v0.1.
 
 ## [Unreleased]
 
+### Changed
+
+- **chore: ADR audit cleanup** — applied the 2026-05-03 ADR audit (full report at `~/notes/vibewarden/audit-adr-2026-05-03.md`). 13 ADRs demoted to `docs/internal/` or `docs/observability.md`, 11 replaced with tombstones (includes ADR-497 anomaly), 3 ADRs gain new Status banners (ADR-058, ADR-063, ADR-070). ADR numbers remain stable (no renumbering); existing PR / commit references continue to resolve to demoted stubs or tombstones. ADR-074 missing-reference clarification added to `decisions/README.md`. Active ADR count drops to 42 KEEP; 3 pre-existing historical banners (ADR-080, ADR-081, ADR-088) unchanged. (Audit report: `~/notes/vibewarden/audit-adr-2026-05-03.md`.)
+
 ## [v0.18.6] — 2026-04-30
 
 Theme: single-issue patch release for the v0.18.5 Codex retro finding. `vibew dev`, `vibew bundle`, `vibew logs` now wrap raw Docker socket errors with an actionable operator hint (macOS / Linux per-OS recovery commands, original error preserved). New `ErrDockerSocketPermission` + `ErrDockerDaemonNotRunning` sentinels wrap the existing `ErrDockerUnavailable` umbrella; existing `errors.Is` callers continue to match. Substring detection consolidated into a single `ClassifyDockerError` helper (replaces the previous duplicated detection in compose-logs-stream and image-inspect adapters). 21 new tests + 4 build-adapter sad-path integration tests. No new ADRs.

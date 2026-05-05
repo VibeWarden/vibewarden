@@ -205,7 +205,7 @@ func TestBundle_Extras_Readme_DeployContract(t *testing.T) {
 				"image.tar",
 				"sample.env",
 				".env",
-				// ADR-094: Secrets section must be present.
+				// Secrets awareness block must be present (see internal/cli/cmd/bundle_secrets.go).
 				"## Secrets",
 				".credentials",
 				"transport is untrusted",

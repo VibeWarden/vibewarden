@@ -20,8 +20,7 @@ type sensitiveFile struct {
 }
 
 // detectSensitiveFiles walks rootDir recursively and returns a sorted slice of
-// sensitive files found under it. The detection rules implement ADR-094's
-// first-match-wins table:
+// sensitive files found under it. The detection uses a first-match-wins table:
 //
 //  1. basename .env → generated environment variables
 //  2. basename .credentials → Kratos admin credentials
@@ -69,9 +68,9 @@ func detectSensitiveFiles(rootDir string) ([]sensitiveFile, error) {
 	return matches, nil
 }
 
-// classifySensitiveFile applies the ADR-094 first-match-wins rule table to a
-// single relative path (slash-separated) and returns the description when any
-// rule fires. The bool return is false when no rule matches.
+// classifySensitiveFile applies the first-match-wins rule table to a single
+// relative path (slash-separated) and returns the description when any rule
+// fires. The bool return is false when no rule matches.
 func classifySensitiveFile(rel string) (string, bool) {
 	base := filepath.Base(rel)
 
@@ -110,7 +109,7 @@ func classifySensitiveFile(rel string) (string, bool) {
 }
 
 // renderSensitiveBlock writes the awareness block to w when matches is
-// non-empty. The output format is stable (ADR-094):
+// non-empty. The output format is stable:
 //
 //	Sensitive files in this bundle:
 //	  <relpath>  — <description>

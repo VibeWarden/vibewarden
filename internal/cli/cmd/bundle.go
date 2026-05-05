@@ -363,7 +363,7 @@ func runBundle(cmd *cobra.Command, outputDir, imageTag, targetPlatform string, o
 		fmt.Fprintf(out, "  %s\n", f)
 	}
 
-	// Post-bundle sensitive-file awareness block (ADR-094). Scans the output
+	// Post-bundle sensitive-file awareness block. Scans the output
 	// directory after writing and prints a stable block when any credential or
 	// key files are detected. Empty result → block is omitted entirely.
 	sensitive, scanErr := detectSensitiveFiles(absOut)

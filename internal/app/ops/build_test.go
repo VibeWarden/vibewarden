@@ -344,9 +344,8 @@ func TestBuildService_ShellProber_NilProber_NoWarning(t *testing.T) {
 
 // TestBuildService_Run_UsesPreResolvedImageTag verifies that when
 // BuildOptions.ImageTag is set the BuildService uses it verbatim and does NOT
-// run its own resolveImageTag chain. This is the ADR-093 short-circuit that
-// lets vibew bundle --build pass the already-resolved tag so the build step
-// and the bundle lookup always agree.
+// run its own resolveImageTag chain. This short-circuit lets vibew bundle --build
+// pass the already-resolved tag so the build step and the bundle lookup always agree.
 func TestBuildService_Run_UsesPreResolvedImageTag(t *testing.T) {
 	tests := []struct {
 		name        string

@@ -309,7 +309,7 @@ func TestObsService_Down_WithVolumes_ForwardsFlag(t *testing.T) {
 
 func TestObsService_Down_DoesNotForwardRemoveOrphans(t *testing.T) {
 	// RemoveOrphans is a project-level concept and must NOT be forwarded when
-	// the adapter is performing service-targeted teardown. See ADR-097.
+	// the adapter is performing service-targeted teardown (fix for #1177).
 	fc := &fakeCompose{}
 	svc := ops.NewObsService(fc, nil)
 	var buf bytes.Buffer
@@ -355,7 +355,7 @@ func TestObsService_Down_ComposeError_ReturnsError(t *testing.T) {
 func TestObsService_Down_PassesObsServices(t *testing.T) {
 	// obs down must perform a service-targeted teardown using the static obs
 	// service list — NOT compose down --profile observability, which would
-	// remove all services in the project. See ADR-097.
+	// remove all services in the project (fix for #1177).
 	fc := &fakeCompose{}
 	svc := ops.NewObsService(fc, nil)
 	var buf bytes.Buffer

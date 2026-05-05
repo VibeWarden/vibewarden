@@ -291,7 +291,7 @@ func (s *Service) Generate(ctx context.Context, input ports.GeneratorInput, outp
 	// Generate observability configs unconditionally so bind-mount sources are
 	// regular files before Docker Compose can auto-create them as directories.
 	// The configs are inert until the obs profile is activated via `vibew obs up`.
-	// See ADR-097 — mirrors the symmetric gate removal from PR #1182.
+	// Profile gate was removed in PR #1182 (fixes #1176/#1177 — obs up no-op).
 	if err := s.generateObservability(cfg, outputDir); err != nil {
 		return fmt.Errorf("generating observability configs: %w", err)
 	}
