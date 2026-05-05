@@ -81,6 +81,42 @@ func TestBuildCatchAllHandlers_FullChainOrder(t *testing.T) {
 	}
 }
 
+// TestBuildUserHeaderStripHandler_WildcardPattern verifies that
+// buildUserHeaderStripHandler emits a single Caddy suffix-wildcard delete pattern
+// ("x-user-*") so that ALL X-User-* headers are stripped, including
+// X-User-Name which was previously missing from the hardcoded list.
+//
+// The pattern uses Caddy's glob syntax (strings.HasSuffix(fieldName, "*")),
+// NOT tilde-prefix regex notation. Tilde patterns fall through to the default
+// case in Caddy's header-ops loop and call hdr.Del("~^x-user-") — a no-op
+// because no header has that literal name.
+//
+// Regression test for #1264 (Part A).
+func TestBuildUserHeaderStripHandler_WildcardPattern(t *testing.T) {
+	h := buildUserHeaderStripHandler()
+
+	if h["handler"] != "headers" {
+		t.Fatalf("handler = %q, want %q", h["handler"], "headers")
+	}
+	req, ok := h["request"].(map[string]any)
+	if !ok {
+		t.Fatal("request field is not a map")
+	}
+	del, ok := req["delete"].([]string)
+	if !ok {
+		t.Fatalf("delete field is not []string, got %T", req["delete"])
+	}
+	if len(del) != 1 {
+		t.Fatalf("delete has %d entries, want 1 (wildcard pattern)", len(del))
+	}
+	// Must be Caddy suffix-wildcard glob, NOT a tilde-prefix regex pattern.
+	// "~^x-user-" is silently a no-op in Caddy's headers module.
+	const wantPattern = "x-user-*"
+	if del[0] != wantPattern {
+		t.Errorf("delete[0] = %q, want %q (NOTE: tilde-prefix regex patterns are not supported by Caddy headers module)", del[0], wantPattern)
+	}
+}
+
 // TestApplyAutomaticHTTPS verifies the automatic_https field is set correctly
 // for each TLS provider combination.
 func TestApplyAutomaticHTTPS(t *testing.T) {

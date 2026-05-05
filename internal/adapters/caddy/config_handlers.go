@@ -10,18 +10,24 @@ import (
 // CompressionConfig.Algorithms is empty.
 var defaultCompressionAlgorithms = []string{"zstd", "gzip"}
 
-// buildUserHeaderStripHandler creates a Caddy headers handler that deletes the
-// X-User-Id, X-User-Email, X-User-Verified, and X-User-Role request headers.
+// buildUserHeaderStripHandler creates a Caddy headers handler that deletes all
+// X-User-* request headers.
 //
 // This handler must be placed as the very first handler in every route's chain.
 // Removing these headers on every inbound request prevents a client from
 // impersonating an authenticated user by injecting them directly. VibeWarden
 // re-injects them only after a valid session has been verified.
+//
+// The pattern "x-user-*" uses Caddy's suffix-wildcard glob syntax (end with "*"
+// means "prefix match"). Caddy lowercases both the pattern and the existing header
+// name before comparing, so "x-user-*" matches X-User-Id, X-User-Email,
+// X-User-Name, and any future X-User-* additions without requiring changes here.
+// See: caddyserver/caddy/v2/modules/caddyhttp/headers/headers.go — Delete field.
 func buildUserHeaderStripHandler() map[string]any {
 	return map[string]any{
 		"handler": "headers",
 		"request": map[string]any{
-			"delete": []string{"X-User-Id", "X-User-Email", "X-User-Verified", "X-User-Role"},
+			"delete": []string{"x-user-*"},
 		},
 	}
 }

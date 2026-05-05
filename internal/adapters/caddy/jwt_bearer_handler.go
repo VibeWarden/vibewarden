@@ -92,11 +92,16 @@ func (h *JWTBearerHandler) fetchJWKS() (*jose.JSONWebKeySet, error) {
 }
 
 // isPublicPath checks if the request path matches any public path pattern.
+//
+// For wildcard patterns ending in "/*" the prefix boundary is enforced: a
+// pattern "/auth/*" matches "/auth", "/auth/", and "/auth/login", but NOT
+// "/auth-evil" or "/authentic". The check requires either an exact prefix
+// match or a match followed by a slash separator.
 func (h *JWTBearerHandler) isPublicPath(reqPath string) bool {
 	for _, p := range h.Config.PublicPaths {
 		if strings.HasSuffix(p, "/*") {
 			prefix := strings.TrimSuffix(p, "/*")
-			if strings.HasPrefix(reqPath, prefix) {
+			if reqPath == prefix || strings.HasPrefix(reqPath, prefix+"/") {
 				return true
 			}
 		}
@@ -113,6 +118,11 @@ func (h *JWTBearerHandler) isPublicPath(reqPath string) bool {
 
 // ServeHTTP implements caddyhttp.MiddlewareHandler.
 func (h *JWTBearerHandler) ServeHTTP(w http.ResponseWriter, r *http.Request, next caddyhttp.Handler) error {
+	// Strip all X-User-* headers from the incoming request before JWT
+	// validation. Reuses stripXUserHeaders defined in auth_handler.go
+	// (same package) for defence-in-depth against header injection.
+	stripXUserHeaders(r)
+
 	// Skip public paths.
 	if h.isPublicPath(r.URL.Path) {
 		return next.ServeHTTP(w, r)

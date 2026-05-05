@@ -1418,3 +1418,191 @@ func TestMatchRequiredRole_NoRolePaths(t *testing.T) {
 		t.Error("matchRequiredRole() ok = true with empty RolePaths, want false")
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Security regression tests — #1264
+// ---------------------------------------------------------------------------
+
+// TestAuthHandler_isPublicPath_PrefixBoundaryBypass verifies that a URL-space
+// sibling (e.g. "/auth-evil") is NOT matched by a wildcard public-path rule
+// (e.g. "/auth/*"). Fixes the bare-prefix check that treated strings.HasPrefix
+// as a path match.
+func TestAuthHandler_isPublicPath_PrefixBoundaryBypass(t *testing.T) {
+	h := &AuthHandler{Config: AuthHandlerConfig{
+		PublicPaths: []string{"/auth/*", "/public/*"},
+	}}
+
+	tests := []struct {
+		path    string
+		want    bool
+		comment string
+	}{
+		{"/auth/login", true, "sub-path of /auth/* must match"},
+		{"/auth/", true, "trailing slash of /auth/* must match"},
+		{"/auth", true, "exact prefix /auth must match"},
+		{"/auth-evil", false, "sibling prefix /auth-evil must NOT match /auth/*"},
+		{"/authentic", false, "sibling prefix /authentic must NOT match /auth/*"},
+		{"/public/page", true, "sub-path of /public/* must match"},
+		{"/public-secret", false, "sibling /public-secret must NOT match /public/*"},
+		{"/public-secret/admin", false, "deep sibling must NOT match /public/*"},
+		{"/other", false, "unrelated path must not match"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.path, func(t *testing.T) {
+			got := h.isPublicPath(tt.path)
+			if got != tt.want {
+				t.Errorf("isPublicPath(%q) = %v, want %v — %s", tt.path, got, tt.want, tt.comment)
+			}
+		})
+	}
+}
+
+// TestStripXUserHeaders verifies that stripXUserHeaders removes every header
+// whose canonical name begins with "X-User-" and does not touch other headers.
+func TestStripXUserHeaders(t *testing.T) {
+	tests := []struct {
+		name       string
+		incoming   map[string]string
+		wantAbsent []string
+		wantKept   []string
+	}{
+		{
+			name: "strips all X-User-* variants",
+			incoming: map[string]string{
+				"X-User-Id":       "usr-123",
+				"X-User-Email":    "evil@example.com",
+				"X-User-Verified": "true",
+				"X-User-Role":     "admin",
+				"X-User-Name":     "injected-admin",
+			},
+			wantAbsent: []string{
+				"X-User-Id", "X-User-Email", "X-User-Verified", "X-User-Role", "X-User-Name",
+			},
+		},
+		{
+			name: "does not strip unrelated headers",
+			incoming: map[string]string{
+				"X-User-Id":      "usr-456",
+				"Authorization":  "Bearer tok",
+				"X-Request-Id":   "req-1",
+				"Content-Length": "0",
+			},
+			wantAbsent: []string{"X-User-Id"},
+			wantKept:   []string{"Authorization", "X-Request-Id", "Content-Length"},
+		},
+		{
+			name:       "no X-User-* headers — no-op",
+			incoming:   map[string]string{"Accept": "application/json"},
+			wantAbsent: nil,
+			wantKept:   []string{"Accept"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req, _ := http.NewRequest(http.MethodGet, "/", nil)
+			for k, v := range tt.incoming {
+				req.Header.Set(k, v)
+			}
+
+			stripXUserHeaders(req)
+
+			for _, absent := range tt.wantAbsent {
+				if got := req.Header.Get(absent); got != "" {
+					t.Errorf("header %q = %q after strip, want empty", absent, got)
+				}
+			}
+			for _, kept := range tt.wantKept {
+				if got := req.Header.Get(kept); got == "" {
+					t.Errorf("header %q was stripped but should not have been", kept)
+				}
+			}
+		})
+	}
+}
+
+// TestAuthHandler_ServeHTTP_StripsForggedXUserHeaders verifies that forged
+// X-User-* headers sent by a client do not reach the upstream application,
+// even for the X-User-Name header that was not in the original strip list.
+//
+// The fake Kratos returns verified=false and role="user" so that forged
+// values ("true", "admin") are distinguishable from the real handler-set values.
+//
+// Regression test for #1264 (Part A).
+func TestAuthHandler_ServeHTTP_StripsForggedXUserHeaders(t *testing.T) {
+	// Fake Kratos that returns a valid session with verified=false and no role.
+	// This makes forged "true"/"admin" values distinguishable from the real
+	// handler-set "false"/"user" values.
+	kratosServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{
+			"active": true,
+			"identity": {
+				"id": "real-user-id",
+				"traits": {"email": "real@example.com"},
+				"verifiable_addresses": [
+					{"value": "real@example.com", "via": "email", "verified": false}
+				]
+			}
+		}`))
+	}))
+	defer kratosServer.Close()
+
+	h := &AuthHandler{Config: AuthHandlerConfig{
+		CookieName: "ory_kratos_session",
+		LoginURL:   "/login",
+		KratosURL:  kratosServer.URL,
+	}}
+	if err := h.Provision(gocaddy.Context{}); err != nil {
+		t.Fatalf("Provision() error = %v", err)
+	}
+
+	// forgedHeaders maps each header name to a forged value that differs from
+	// what the handler legitimately sets:
+	//   X-User-Id       real="real-user-id"  forged="forged-id"
+	//   X-User-Email    real="real@example.com" forged="forged@evil.com"
+	//   X-User-Verified real="false"          forged="true"
+	//   X-User-Role     real="user"           forged="admin"
+	//   X-User-Name     real=(not set)        forged="injected-admin"
+	forgedHeaders := []struct {
+		name  string
+		value string
+	}{
+		{"X-User-Id", "forged-id"},
+		{"X-User-Email", "forged@evil.com"},
+		{"X-User-Verified", "true"},
+		{"X-User-Role", "admin"},
+		{"X-User-Name", "injected-admin"},
+	}
+
+	for _, fh := range forgedHeaders {
+		t.Run("forged "+fh.name+" stripped", func(t *testing.T) {
+			var capturedHeaders http.Header
+			next := caddyhttp.HandlerFunc(func(w http.ResponseWriter, r *http.Request) error {
+				capturedHeaders = r.Header.Clone()
+				w.WriteHeader(http.StatusOK)
+				return nil
+			})
+
+			req := httptest.NewRequest(http.MethodGet, "/protected", nil)
+			req.AddCookie(&http.Cookie{Name: "ory_kratos_session", Value: "valid-token"})
+			// Inject the forged header — simulates a client bypass attempt.
+			req.Header.Set(fh.name, fh.value)
+			w := httptest.NewRecorder()
+
+			if err := h.ServeHTTP(w, req, next); err != nil {
+				t.Fatalf("ServeHTTP() error = %v", err)
+			}
+			if capturedHeaders == nil {
+				t.Fatal("next handler was not called")
+			}
+			// The value reaching upstream must be the real value set by the
+			// handler (or absent), never the forged client value.
+			got := capturedHeaders.Get(fh.name)
+			if got == fh.value {
+				t.Errorf("header %q = %q (forged value) reached upstream; expected it to be stripped and overwritten", fh.name, fh.value)
+			}
+		})
+	}
+}
