@@ -103,6 +103,8 @@ Examples:
 				resolved, resolveErr := resolver.Resolve(preflightEnv)
 				if resolveErr != nil {
 					switch {
+					case errors.Is(resolveErr, envapp.ErrInvalidEnvName):
+						return fmt.Errorf("invalid --preflight value %q: env name must match [a-zA-Z0-9_-]+ (alphanumerics, hyphens, underscores)", preflightEnv)
 					case errors.Is(resolveErr, envapp.ErrOverrideConfigMissing):
 						return fmt.Errorf("config file not found: vibewarden.%s.yaml: %w", preflightEnv, resolveErr)
 					case errors.Is(resolveErr, envapp.ErrBaseConfigMissing):
@@ -201,7 +203,7 @@ Examples:
 	cmd.Flags().BoolVar(&skipLEPreflight, "skip-le-preflight", false,
 		"skip the Let's Encrypt rate-limit preflight check (equivalent to tls.skip_rate_limit_check: true)")
 	cmd.Flags().StringVar(&preflightEnv, "preflight", "",
-		"run pre-deploy validation against a named env (e.g. --preflight production reads vibewarden.production.yaml)")
+		"run pre-deploy validation against a named env (alphanumerics, hyphens, underscores only — e.g. production, staging-eu); reads vibewarden.<name>.yaml and runs pre-deploy checks")
 
 	return cmd
 }

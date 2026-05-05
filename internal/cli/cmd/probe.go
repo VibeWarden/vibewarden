@@ -82,7 +82,7 @@ Examples:
 		},
 	}
 
-	cmd.Flags().StringVar(&envName, "env", "", "environment name; loads vibewarden.<name>.yaml and probes tls.domain")
+	cmd.Flags().StringVar(&envName, "env", "", "environment name (alphanumerics, hyphens, underscores only — e.g. production, staging-eu); loads vibewarden.<name>.yaml and probes tls.domain")
 
 	return cmd
 }
@@ -126,13 +126,16 @@ func runProbe(cmd *cobra.Command, envName string) error {
 	resolver := envapp.NewFileResolver(cwd)
 	resolved, err := resolver.Resolve(envName)
 	if err != nil {
-		if errors.Is(err, envapp.ErrOverrideConfigMissing) {
+		switch {
+		case errors.Is(err, envapp.ErrInvalidEnvName):
+			return fmt.Errorf("invalid --env value %q: env name must match [a-zA-Z0-9_-]+ (alphanumerics, hyphens, underscores)", envName)
+		case errors.Is(err, envapp.ErrOverrideConfigMissing):
 			return fmt.Errorf("config file not found: vibewarden.%s.yaml", envName)
-		}
-		if errors.Is(err, envapp.ErrBaseConfigMissing) {
+		case errors.Is(err, envapp.ErrBaseConfigMissing):
 			return fmt.Errorf("config file not found: vibewarden.yaml")
+		default:
+			return fmt.Errorf("resolving env %q: %w", envName, err)
 		}
-		return fmt.Errorf("resolving env %q: %w", envName, err)
 	}
 
 	domain := resolved.Cfg.TLS.Domain

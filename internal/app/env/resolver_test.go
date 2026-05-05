@@ -195,6 +195,42 @@ func TestValidateEnvName_RejectsTraversalNames(t *testing.T) {
 	}
 }
 
+// TestFileResolver_Resolve_SymlinkEscape verifies that a legitimately-named
+// override file that is a symlink pointing outside the project root is rejected
+// by the EvalSymlinks containment check, not just by the name allowlist.
+//
+// This test guards the defense-in-depth layer added for CVE fix #1269: a name
+// like "prod" passes the allowlist, so vibewarden.prod.yaml is a valid path.
+// But if that file is a symlink to /etc/passwd, the resolver must reject it
+// before LoadMergedConfig reads through the symlink.
+func TestFileResolver_Resolve_SymlinkEscape(t *testing.T) {
+	root := t.TempDir()
+	outside := t.TempDir()
+
+	// Create a target file outside the project root with sentinel content.
+	sentinel := "SENTINEL_CONTENT_MUST_NOT_BE_READ"
+	targetFile := filepath.Join(outside, "secret.yaml")
+	writeFile(t, targetFile, sentinel)
+
+	// Also write a valid vibewarden.yaml so the base-config check passes.
+	writeFile(t, filepath.Join(root, "vibewarden.yaml"), minimalBase(8443))
+
+	// Create a symlink inside the project root that points to the outside target.
+	symlinkPath := filepath.Join(root, "vibewarden.prod.yaml")
+	if err := os.Symlink(targetFile, symlinkPath); err != nil {
+		t.Fatalf("os.Symlink: %v", err)
+	}
+
+	r := envpkg.NewFileResolver(root)
+	_, err := r.Resolve("prod")
+	if err == nil {
+		t.Fatal("Resolve(\"prod\") expected error for symlink escape, got nil")
+	}
+	if !errors.Is(err, envpkg.ErrInvalidEnvName) {
+		t.Errorf("expected ErrInvalidEnvName, got: %v", err)
+	}
+}
+
 // TestValidateEnvName_AcceptsLegitimateNames verifies that well-formed env
 // names are accepted by the resolver given a matching override file exists.
 func TestValidateEnvName_AcceptsLegitimateNames(t *testing.T) {

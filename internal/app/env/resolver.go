@@ -133,11 +133,31 @@ func (r *FileResolver) Resolve(name string) (Resolved, error) {
 	overridePath := filepath.Join(root, "vibewarden."+name+".yaml")
 
 	// Defense-in-depth: verify the resolved override path has not escaped the
-	// project root. filepath.Rel returns a path starting with ".." when the
-	// target is outside the base. This guard catches any edge cases that slip
-	// past the name allowlist (e.g. symlinks that the allowlist cannot see).
-	rel, relErr := filepath.Rel(root, overridePath)
-	if relErr != nil || strings.HasPrefix(rel, "..") {
+	// project root. When the file already exists we call filepath.EvalSymlinks
+	// to dereference any symlink (e.g. vibewarden.prod.yaml → /etc/passwd).
+	// Only when the file exists: EvalSymlinks errors on missing paths, and a
+	// missing file is safe — the read below will fail with "file not found".
+	// We also resolve the root itself so that platform symlinks (e.g. macOS
+	// /var → /private/var inside t.TempDir()) do not cause false positives.
+	// When the file is absent, containment is computed against the real root
+	// using a path re-joined from the resolved root (never the raw name).
+	realRoot := root
+	if rr, evalErr := filepath.EvalSymlinks(root); evalErr == nil {
+		realRoot = rr
+	}
+	// containmentTarget is what we actually check for containment. When the
+	// file is missing we re-join from realRoot so both sides of Rel share the
+	// same symlink resolution (avoids /var vs /private/var mismatches on macOS).
+	containmentTarget := filepath.Join(realRoot, "vibewarden."+name+".yaml")
+	if _, statErr := os.Stat(overridePath); statErr == nil {
+		resolved, evalErr := filepath.EvalSymlinks(overridePath)
+		if evalErr != nil {
+			return Resolved{}, fmt.Errorf("resolving override path %s: %w", overridePath, evalErr)
+		}
+		containmentTarget = resolved
+	}
+	rel, relErr := filepath.Rel(realRoot, containmentTarget)
+	if relErr != nil || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || rel == ".." {
 		return Resolved{}, fmt.Errorf("%w: resolved path escapes project root", ErrInvalidEnvName)
 	}
 
