@@ -497,6 +497,52 @@ the production overrides (letsencrypt, port 443) are merged automatically.
 See the [Production Deployment guide](production-deployment.md) for the full
 production checklist.
 
+### Pre-deploy validation
+
+Before bundling, run the preflight check against your production environment:
+
+```bash
+./vibew doctor --preflight production
+```
+
+This reads `vibewarden.production.yaml`, merges it with `vibewarden.yaml`, and
+runs the standard static checks plus five additional pre-deploy checks:
+
+1. DNS resolves `tls.domain`
+2. `server.port` is 443
+3. `deploy.target_platform` is set
+4. App image architecture matches `deploy.target_platform`
+5. `tls.email` is configured for Let's Encrypt
+
+Exit code is `0` only when all checks pass. The env file (`vibewarden.production.yaml`)
+must exist — if it is missing, doctor exits 1 immediately without running any checks.
+
+Run `vibew doctor --preflight production` before `vibew bundle` to surface DNS,
+port, architecture, and TLS-email issues before a multi-minute build attempt.
+
+Then produce the deployment bundle:
+
+```bash
+./vibew bundle
+```
+
+The bundle is written to `.vibewarden/bundle/` and the "Next: deploy" block printed
+to stdout contains the exact `ssh` + `tar` + `docker compose` commands for your host.
+
+For one-off deploys or CI pipelines where you want to supply the SSH target without
+setting `deploy.host` in config, use `--print-deploy`:
+
+```bash
+./vibew bundle --print-deploy --host <your-ssh-host> --user <your-ssh-user> --path /opt/myapp
+```
+
+All three sub-flags (`--host`, `--user`, `--path`) are required when `--print-deploy`
+is set. This overrides `deploy.host` from `vibewarden.production.yaml` for the printed
+block only — the bundle README and all bundle files are unaffected.
+
+See `docs/troubleshooting.md §Pre-deploy preflight` for the full preflight check
+reference.
+
 ### Validate your config
 
 ```bash
