@@ -12,6 +12,10 @@ This initial entry was written by hand to summarise the work leading up to v0.1.
 
 ## [Unreleased]
 
+### Documentation
+
+- **docs(#1272): init template — image tag derivation chain step 2 fix.** The previous wording would lead AI agents constructing tags via the wrong derivation. The template claimed `app.image` (with registry/tag stripped) was step 2 of the project-name chain; the actual code (`ComposeProjectName`) uses the directory name (cwd-basename) as step 2. New wording matches `docs/examples/AGENTS-VIBEWARDEN.md` and the authoritative code.
+
 ### Security
 
 - **fix(#1271): config — validate Deploy.Host (allowlist regex) + shell-quote in bundle output and stdout.** Closes shell-injection vector via crafted Deploy.Host values flowing into SSH command strings. Three-layer defense: config-load validation (rejects shell metacharacters), POSIX shell-quoting helper (`config.ShellQuoteSingleDeploy`, with `'\''` escape for embedded single-quotes) applied at all 5 SSH command emission sites, and `deploy.tmpl` uses single-quoted SSH target placeholders. Duplicate `shellQuoteSSHTarget` in `bundle_extras.go` replaced with the single canonical `config.ShellQuoteSingleDeploy`.
