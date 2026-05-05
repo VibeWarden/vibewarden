@@ -15,6 +15,7 @@ This initial entry was written by hand to summarise the work leading up to v0.1.
 ### Documentation
 
 - **docs(#1270): vibewarden.reference.yaml — add 13 previously-missing top-level config sections.** Brings the reference file to full coverage of fields documented in llms-full.txt or defined in internal/config Go structs. Also fixes a class of latent default-bugs surfaced by the new TestReferenceYAML_UnmarshalsCleanly test: audit.enabled, audit.output, and resilience.circuit_breaker/retry fields now apply their documented defaults via setDefaults(), where previously they were silently zero.
+- **docs(#1286): getting-started — document `vibew doctor --preflight` and `vibew bundle --print-deploy`.** Two pre-deploy verification commands were absent from the operator quick-start despite being part of the standard deploy loop. Added a "Pre-deploy validation" section between "Enable TLS for production" and "Validate your config" covering: `vibew doctor --preflight production` (five pre-deploy checks against the merged production config), `vibew bundle` (bundle step), and `vibew bundle --print-deploy --host <h> --user <u> --path <p>` (ad-hoc SSH override for CI / one-off deploys). Also corrects P2-severity drift in `docs/troubleshooting.md` and `llms-full.txt` (P2 is WARN, not FAIL — code is canonical).
 
 ### Security
 
