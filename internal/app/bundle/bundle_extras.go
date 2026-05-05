@@ -10,6 +10,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/vibewarden/vibewarden/internal/config"
 )
 
 // bundleExtraFiles are the file names written by writeBundleExtras. They
@@ -345,6 +347,12 @@ func renderBundleReadme(appName, domain, sshHost string, skipImage bool) string 
 	if sshTarget == "" {
 		sshTarget = sshPlaceholder
 	}
+	// Single-quote the SSH target for safe shell interpolation. This is
+	// defence-in-depth: ValidateDeployHost already rejects metacharacters at
+	// config-load time, but wrapping in POSIX single-quotes (with '\'' escape
+	// for embedded single-quotes) ensures the value cannot be interpreted as
+	// shell code even if validation is bypassed.
+	quotedTarget := config.ShellQuoteSingleDeploy(sshTarget)
 
 	// Build the deploy command block. When skipImage is true, the docker load
 	// clause is omitted so the sequence is valid for registry-pull mode.
@@ -361,9 +369,9 @@ func renderBundleReadme(appName, domain, sshHost string, skipImage bool) string 
 	b.WriteString("## Deploy\n")
 	b.WriteString("\n")
 	b.WriteString("```bash\n")
-	b.WriteString("ssh " + sshTarget + " 'mkdir -p /opt/" + app + "'\n")
-	b.WriteString("tar -czf - -C .vibewarden/bundle . | ssh " + sshTarget + " 'tar -xzf - -C /opt/" + app + "/'\n")
-	b.WriteString("ssh " + sshTarget + " \"cd /opt/" + app + " && " + dockerCmd + "\"\n")
+	b.WriteString("ssh " + quotedTarget + " 'mkdir -p /opt/" + app + "'\n")
+	b.WriteString("tar -czf - -C .vibewarden/bundle . | ssh " + quotedTarget + " 'tar -xzf - -C /opt/" + app + "/'\n")
+	b.WriteString("ssh " + quotedTarget + " \"cd /opt/" + app + " && " + dockerCmd + "\"\n")
 	b.WriteString("curl -fsSL https://" + dom + "/_vibewarden/health\n")
 	b.WriteString("```\n")
 	b.WriteString("\n")
@@ -419,8 +427,8 @@ func renderBundleReadme(appName, domain, sshHost string, skipImage bool) string 
 	b.WriteString("## Read-only inspection\n")
 	b.WriteString("\n")
 	b.WriteString("```bash\n")
-	b.WriteString("ssh " + sshTarget + " docker compose -f /opt/" + app + "/docker-compose.yml logs --tail 50\n")
-	b.WriteString("ssh " + sshTarget + " docker compose -f /opt/" + app + "/docker-compose.yml ps\n")
+	b.WriteString("ssh " + quotedTarget + " docker compose -f /opt/" + app + "/docker-compose.yml logs --tail 50\n")
+	b.WriteString("ssh " + quotedTarget + " docker compose -f /opt/" + app + "/docker-compose.yml ps\n")
 	b.WriteString("curl -fsSL https://" + dom + "/_vibewarden/health\n")
 	b.WriteString("```\n")
 	b.WriteString("\n")

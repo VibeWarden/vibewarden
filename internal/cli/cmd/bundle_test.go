@@ -503,9 +503,9 @@ func TestBundle_Stdout_PrintsLiteralDeployCommands(t *testing.T) {
 			yaml: "name: myapp\ntls:\n  domain: myapp.example.com\nserver:\n  port: 8080\nupstream:\n  port: 3000\n",
 			wantCmds: []string{
 				"Next: deploy",
-				"ssh <your-ssh-user>@<your-ssh-host> 'mkdir -p /opt/myapp'",
+				"ssh '<your-ssh-user>@<your-ssh-host>' 'mkdir -p /opt/myapp'",
 				"tar -czf - -C",
-				"| ssh <your-ssh-user>@<your-ssh-host> 'tar -xzf - -C /opt/myapp/'",
+				"| ssh '<your-ssh-user>@<your-ssh-host>' 'tar -xzf - -C /opt/myapp/'",
 				"docker compose up -d",
 				"curl -fsSL https://myapp.example.com/_vibewarden/health",
 				// Hint paragraph must be present when deploy.host is unset.
@@ -571,9 +571,9 @@ func TestBundle_Stdout_PrintsLiteralDeployCommands(t *testing.T) {
 			yaml: "name: myapp\ntls:\n  domain: myapp.example.com\nserver:\n  port: 8080\nupstream:\n  port: 3000\ndeploy:\n  host: alice@host.example\n",
 			wantCmds: []string{
 				"Next: deploy",
-				"ssh alice@host.example 'mkdir -p /opt/myapp'",
-				"| ssh alice@host.example 'tar -xzf - -C /opt/myapp/'",
-				`ssh alice@host.example "cd /opt/myapp`,
+				"ssh 'alice@host.example' 'mkdir -p /opt/myapp'",
+				"| ssh 'alice@host.example' 'tar -xzf - -C /opt/myapp/'",
+				`ssh 'alice@host.example' "cd /opt/myapp`,
 				"curl -fsSL https://myapp.example.com/_vibewarden/health",
 			},
 			wantAbsent: []string{
@@ -748,9 +748,9 @@ func TestBundle_PrintDeploy_StdoutSubstitution(t *testing.T) {
 			prodYAML: "",
 			args:     []string{"bundle", "--skip-image", "--print-deploy", "--host", "h.example", "--user", "alice", "--path", "/custom/foo"},
 			wantStdout: []string{
-				"ssh alice@h.example 'mkdir -p /custom/foo'",
-				"| ssh alice@h.example 'tar -xzf - -C /custom/foo/'",
-				`ssh alice@h.example "cd /custom/foo`,
+				"ssh 'alice@h.example' 'mkdir -p /custom/foo'",
+				"| ssh 'alice@h.example' 'tar -xzf - -C /custom/foo/'",
+				`ssh 'alice@h.example' "cd /custom/foo`,
 				"curl -fsSL https://myapp.example.com/_vibewarden/health",
 			},
 			wantAbsent: []string{
@@ -765,7 +765,7 @@ func TestBundle_PrintDeploy_StdoutSubstitution(t *testing.T) {
 			prodYAML: "deploy:\n  host: root@configured.example\n",
 			args:     []string{"bundle", "--skip-image", "--print-deploy", "--host", "h.example", "--user", "alice", "--path", "/custom/foo"},
 			wantStdout: []string{
-				"ssh alice@h.example",
+				"ssh 'alice@h.example'",
 				"/custom/foo",
 			},
 			wantAbsent: []string{
@@ -773,7 +773,7 @@ func TestBundle_PrintDeploy_StdoutSubstitution(t *testing.T) {
 			},
 			// README uses cfg.Deploy.Host (Option A — README is config-driven, not flag-driven).
 			readmeNotContains: []string{"alice@h.example", "/custom/foo"},
-			readmeContains:    []string{"root@configured.example"},
+			readmeContains:    []string{"'root@configured.example'"},
 		},
 		{
 			name:     "README ignores flag (Option A) — placeholder when no production.yaml",
@@ -781,7 +781,7 @@ func TestBundle_PrintDeploy_StdoutSubstitution(t *testing.T) {
 			prodYAML: "",
 			args:     []string{"bundle", "--skip-image", "--print-deploy", "--host", "h.example", "--user", "alice", "--path", "/custom/foo"},
 			wantStdout: []string{
-				"ssh alice@h.example 'mkdir -p /custom/foo'",
+				"ssh 'alice@h.example' 'mkdir -p /custom/foo'",
 			},
 			// README should not have the flag-injected values; it uses the placeholder.
 			readmeNotContains: []string{"alice@h.example", "/custom/foo"},

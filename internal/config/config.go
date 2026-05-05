@@ -282,6 +282,7 @@ func (c *Config) Validate() error {
 	if c.Egress.Enabled {
 		errs = append(errs, validateEgressConfig(c.Egress)...)
 	}
+	errs = append(errs, validateDeploy(c)...)
 
 	if len(errs) > 0 {
 		return fmt.Errorf("%s", strings.Join(errs, "; "))

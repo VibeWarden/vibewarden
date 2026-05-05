@@ -578,8 +578,8 @@ func TestBundle_Extras_Readme_FencedDeployBlock(t *testing.T) {
 			domain:    "example.com",
 			skipImage: false,
 			wantCmds: []string{
-				"ssh <your-ssh-user>@<your-ssh-host> 'mkdir -p /opt/myapp'",
-				"tar -czf - -C .vibewarden/bundle . | ssh <your-ssh-user>@<your-ssh-host> 'tar -xzf - -C /opt/myapp/'",
+				"ssh '<your-ssh-user>@<your-ssh-host>' 'mkdir -p /opt/myapp'",
+				"tar -czf - -C .vibewarden/bundle . | ssh '<your-ssh-user>@<your-ssh-host>' 'tar -xzf - -C /opt/myapp/'",
 				"docker load -i image.tar && docker compose up -d",
 				"curl -fsSL https://example.com/_vibewarden/health",
 			},
@@ -590,8 +590,8 @@ func TestBundle_Extras_Readme_FencedDeployBlock(t *testing.T) {
 			domain:    "example.com",
 			skipImage: true,
 			wantCmds: []string{
-				"ssh <your-ssh-user>@<your-ssh-host> 'mkdir -p /opt/myapp'",
-				"tar -czf - -C .vibewarden/bundle . | ssh <your-ssh-user>@<your-ssh-host> 'tar -xzf - -C /opt/myapp/'",
+				"ssh '<your-ssh-user>@<your-ssh-host>' 'mkdir -p /opt/myapp'",
+				"tar -czf - -C .vibewarden/bundle . | ssh '<your-ssh-user>@<your-ssh-host>' 'tar -xzf - -C /opt/myapp/'",
 				"docker compose up -d",
 				"curl -fsSL https://example.com/_vibewarden/health",
 			},
@@ -975,9 +975,9 @@ func TestRenderBundleReadme_PlaceholderPath(t *testing.T) {
 
 	// The bracketed placeholder must appear in all three ssh lines.
 	wantSSH := []string{
-		"ssh <your-ssh-user>@<your-ssh-host> 'mkdir -p /opt/myapp'",
-		"| ssh <your-ssh-user>@<your-ssh-host> 'tar -xzf - -C /opt/myapp/'",
-		`ssh <your-ssh-user>@<your-ssh-host> "cd /opt/myapp`,
+		"ssh '<your-ssh-user>@<your-ssh-host>' 'mkdir -p /opt/myapp'",
+		"| ssh '<your-ssh-user>@<your-ssh-host>' 'tar -xzf - -C /opt/myapp/'",
+		`ssh '<your-ssh-user>@<your-ssh-host>' "cd /opt/myapp`,
 	}
 	for _, want := range wantSSH {
 		if !strings.Contains(body, want) {
@@ -1015,9 +1015,9 @@ func TestRenderBundleReadme_SubstitutedPath(t *testing.T) {
 
 	// The configured host must appear in all three ssh lines.
 	wantSSH := []string{
-		"ssh root@1.2.3.4 'mkdir -p /opt/myapp'",
-		"| ssh root@1.2.3.4 'tar -xzf - -C /opt/myapp/'",
-		`ssh root@1.2.3.4 "cd /opt/myapp`,
+		"ssh 'root@1.2.3.4' 'mkdir -p /opt/myapp'",
+		"| ssh 'root@1.2.3.4' 'tar -xzf - -C /opt/myapp/'",
+		`ssh 'root@1.2.3.4' "cd /opt/myapp`,
 	}
 	for _, want := range wantSSH {
 		if !strings.Contains(body, want) {
