@@ -74,9 +74,15 @@ func ValidateDeployHost(host string) error {
 }
 
 // ShellQuoteSingleDeploy wraps a deploy host value in POSIX single-quotes for
-// safe interpolation into shell command strings.
+// safe interpolation into shell command strings. Embedded single-quotes are
+// escaped using the POSIX end-quote + backslash-single-quote + re-open-quote
+// idiom so the result is always valid shell regardless of input content. This
+// is defence-in-depth: ValidateDeployHost already rejects values containing
+// single-quotes at config-load time, but the escape ensures safety at any
+// future call site that bypasses validation.
 func ShellQuoteSingleDeploy(host string) string {
-	return "'" + host + "'"
+	safe := strings.ReplaceAll(host, "'", `'\''`)
+	return "'" + safe + "'"
 }
 
 // validateDeploy validates the deploy section of Config and returns a slice of

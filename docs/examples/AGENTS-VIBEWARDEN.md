@@ -219,6 +219,13 @@ and fails with exit code 1 before writing any files if they do not match. The er
 message contains the exact rebuild command to run. Set `deploy.target_platform:
 linux/arm64` in `vibewarden.production.yaml` if your VPS is Ampere/Graviton.
 
+**deploy.host validation:** `deploy.host` is validated at config-load time against
+an allowlist of DNS-name characters; values containing shell metacharacters (`;`,
+`&`, `|`, `$`, backtick, quotes, whitespace, etc.) are rejected with a clear error.
+Accepted forms: `user@host`, `~/.ssh/config` alias (no @), bare IPv4, `host:port`,
+`user@host:port`. An empty `deploy.host` (the default) bypasses validation and uses
+the bracketed placeholder.
+
 ## Deploying to a VPS
 
 The bundle is just files. The contract is in `.vibewarden/bundle/README.md`:

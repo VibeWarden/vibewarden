@@ -83,6 +83,11 @@ deploy:
   host: alice@vps.example.com
 ```
 
+`deploy.host` is validated at config-load time: accepted forms are `user@host`,
+`~/.ssh/config` aliases (no `@`), bare IPv4, `host:port`, and `user@host:port`.
+Values containing shell metacharacters (`;`, `&`, `|`, `$`, backtick, quotes,
+whitespace) are rejected with a clear error before the bundle is written.
+
 The command never opens an SSH connection, never calls docker on a remote
 host, and never touches files outside `--output`. Rerunning it with the
 same inputs produces byte-identical output (deterministic).

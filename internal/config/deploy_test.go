@@ -147,6 +147,13 @@ func TestShellQuoteSingleDeploy(t *testing.T) {
 		{"IPv4 with port", "1.2.3.4:22", "'1.2.3.4:22'"},
 		{"placeholder value", "<your-ssh-user>@<your-ssh-host>", "'<your-ssh-user>@<your-ssh-host>'"},
 		{"empty string", "", "''"},
+		// POSIX '\'' escape for embedded single-quotes (defence-in-depth: the
+		// allowlist rejects these at config-load time, but the quoting function
+		// must produce valid shell for any input including hypothetical bypass).
+		{"embedded single-quote", "host'evil", `'host'\''evil'`},
+		{"multiple embedded single-quotes", "a'b'c", `'a'\''b'\''c'`},
+		{"leading single-quote", "'host", `''\''host'`},
+		{"trailing single-quote", "host'", `'host'\'''`},
 	}
 
 	for _, tt := range tests {

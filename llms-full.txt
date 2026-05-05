@@ -803,10 +803,13 @@ Local observability stack (Grafana, Prometheus, Loki, Promtail).
   Typical values: linux/amd64 (most cloud VMs), linux/arm64 (Ampere/Graviton).
   Invalid values are caught as a mismatch at bundle time — no explicit validation.
 
-  deploy.host  string  ""  SSH target substituted into the "Next: deploy" stdout
-  block and bundle README. Accepts any value ssh(1) accepts: user@host, a
-  ~/.ssh/config alias, or an IP. When unset, the bracketed placeholder
-  `<your-ssh-user>@<your-ssh-host>` is used and a hint paragraph is appended.
+  deploy.host  string  ""  SSH target substituted (single-quoted) into the
+  "Next: deploy" stdout block and bundle README. Validated at config-load time
+  against an allowlist (DNS names, IPv4, optional user@ and :port); shell
+  metacharacters are rejected with a clear error. Accepted forms: user@host,
+  ~/.ssh/config alias (no @), bare IPv4, host:port, user@host:port. When unset,
+  the bracketed placeholder `<your-ssh-user>@<your-ssh-host>` is used and a
+  hint paragraph is appended.
 
   The `--print-deploy --host/--user/--path` flags override deploy.host for
   the stdout block only (bundle README remains config-driven or placeholder).
@@ -1215,9 +1218,9 @@ Step 7 — Ship and start. The bundle is just files; the contract is in README.m
     you copy, and the production healthcheck port is 443 (TLS), not the
     dev port 8443.
 
-    ssh <your-ssh-user>@<your-ssh-host> "mkdir -p /opt/myapp"
-    tar -czf - -C .vibewarden/bundle . | ssh <your-ssh-user>@<your-ssh-host> 'tar -xzf - -C /opt/myapp/'
-    ssh <your-ssh-user>@<your-ssh-host> "cd /opt/myapp && docker load -i image.tar && docker compose up -d"
+    ssh '<your-ssh-user>@<your-ssh-host>' 'mkdir -p /opt/myapp'
+    tar -czf - -C .vibewarden/bundle . | ssh '<your-ssh-user>@<your-ssh-host>' 'tar -xzf - -C /opt/myapp/'
+    ssh '<your-ssh-user>@<your-ssh-host>' "cd /opt/myapp && docker load -i image.tar && docker compose up -d"
 
 Step 8 — Verify against the public URL (port 443, TLS):
     vibew probe --env production
@@ -1231,7 +1234,7 @@ Step 8 — Verify against the public URL (port 443, TLS):
 Step 9 — Subsequent deploys (after code or config changes):
     vibew bundle
     rsync -av --delete .vibewarden/bundle/ <your-ssh-user>@<your-ssh-host>:/opt/myapp/
-    ssh <your-ssh-user>@<your-ssh-host> "cd /opt/myapp && docker load -i image.tar && docker compose up -d"
+    ssh '<your-ssh-user>@<your-ssh-host>' "cd /opt/myapp && docker load -i image.tar && docker compose up -d"
 
 Note: the legacy `vibew deploy` command (one-shot SSH orchestration) was removed
 in ADR-086. The bundle pipeline above is the only supported remote workflow.

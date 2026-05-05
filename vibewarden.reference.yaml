@@ -1066,11 +1066,12 @@ deploy:
   # Default: linux/amd64
   target_platform: linux/amd64
 
-  # SSH target substituted verbatim into the "Next: deploy" block printed by
-  # `vibew bundle` and into the bundle README's fenced deploy commands.
-  # Accepts any value ssh(1) accepts: user@host, a ~/.ssh/config alias, or an IP.
-  # VibeWarden does not validate this value — SSH surfaces auth or DNS failure
-  # with its own message.
+  # SSH target substituted (single-quoted) into the "Next: deploy" block printed
+  # by `vibew bundle` and into the bundle README's fenced deploy commands.
+  # Validated against an allowlist at config-load time (no shell metacharacters).
+  # Accepted forms: user@host, ~/.ssh/config alias (no @), bare IPv4, host:port,
+  # user@host:port. Shell metacharacters (;, &, |, $, backtick, quotes, etc.)
+  # are rejected with a clear error.
   #
   # When unset (default), the three ssh lines use the bracketed placeholder
   # `<your-ssh-user>@<your-ssh-host>` and a hint paragraph is appended.

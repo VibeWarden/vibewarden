@@ -74,9 +74,9 @@ You run them with your own SSH target.
 # The bundle README opens with this same fenced block (app.name and tls.domain substituted).
 # Run these commands directly — no shell script wrapper.
 
-  ssh <your-ssh-user>@<your-ssh-host> 'mkdir -p /opt/foo'
-  tar -czf - -C .vibewarden/bundle . | ssh <your-ssh-user>@<your-ssh-host> 'tar -xzf - -C /opt/foo/'
-  ssh <your-ssh-user>@<your-ssh-host> "cd /opt/foo && docker load -i image.tar && docker compose up -d"
+  ssh '<your-ssh-user>@<your-ssh-host>' 'mkdir -p /opt/foo'
+  tar -czf - -C .vibewarden/bundle . | ssh '<your-ssh-user>@<your-ssh-host>' 'tar -xzf - -C /opt/foo/'
+  ssh '<your-ssh-user>@<your-ssh-host>' "cd /opt/foo && docker load -i image.tar && docker compose up -d"
 
 Replace `<your-ssh-user>@<your-ssh-host>` with your actual SSH target.
   - Check `~/.ssh/config` for an existing alias.

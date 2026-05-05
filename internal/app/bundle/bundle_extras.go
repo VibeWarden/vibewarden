@@ -10,6 +10,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/vibewarden/vibewarden/internal/config"
 )
 
 // bundleExtraFiles are the file names written by writeBundleExtras. They
@@ -304,15 +306,6 @@ func renderDotEnv(imageTag string, templateKeys []string) string {
 	return renderSampleEnv(imageTag, templateKeys)
 }
 
-// shellQuoteSSHTarget wraps an SSH target value in POSIX single-quotes for
-// safe interpolation into shell command strings. This is defence-in-depth:
-// ValidateDeployHost already rejects metacharacters at config-load time, but
-// wrapping in POSIX single-quotes ensures the value cannot be interpreted as
-// shell code even if validation is bypassed.
-func shellQuoteSSHTarget(host string) string {
-	return "'" + host + "'"
-}
-
 // RenderBundleReadme produces the README.md shipped inside the bundle.
 // It is exported so tests can call it directly to verify placeholder
 // substitution without going through the full Bundle pipeline.
@@ -356,9 +349,10 @@ func renderBundleReadme(appName, domain, sshHost string, skipImage bool) string 
 	}
 	// Single-quote the SSH target for safe shell interpolation. This is
 	// defence-in-depth: ValidateDeployHost already rejects metacharacters at
-	// config-load time, but wrapping in POSIX single-quotes ensures the value
-	// cannot be interpreted as shell code even if validation is bypassed.
-	quotedTarget := shellQuoteSSHTarget(sshTarget)
+	// config-load time, but wrapping in POSIX single-quotes (with '\'' escape
+	// for embedded single-quotes) ensures the value cannot be interpreted as
+	// shell code even if validation is bypassed.
+	quotedTarget := config.ShellQuoteSingleDeploy(sshTarget)
 
 	// Build the deploy command block. When skipImage is true, the docker load
 	// clause is omitted so the sequence is valid for registry-pull mode.
