@@ -166,6 +166,42 @@ func TestAgentsVibewardenTemplate_EjectRowDisambiguated(t *testing.T) {
 	}
 }
 
+// TestAgentsVibewardenTemplate_ImageTagDerivationChain verifies that the rendered
+// agents-vibewarden.md.tmpl describes the correct 3-step project-name derivation
+// chain (name field → cwd-basename → "vibewarden" last-resort) and does NOT
+// contain the incorrect step 2 that claimed app.image was used (#1272).
+func TestAgentsVibewardenTemplate_ImageTagDerivationChain(t *testing.T) {
+	renderer := templateadapter.NewRenderer(templates.FS)
+
+	out, err := renderer.Render("agents/agents-vibewarden.md.tmpl", domainscaffold.InitProjectData{
+		ProjectName: "testapp",
+		Port:        3000,
+	})
+	if err != nil {
+		t.Fatalf("Render() error = %v", err)
+	}
+	rendered := string(out)
+
+	// The wrong step 2 must not appear — it would instruct agents that app.image
+	// affects the project name, which is false (see ComposeProjectName in config.go).
+	wrongStep2 := "app.image` with registry prefix and tag stripped"
+	if strings.Contains(rendered, wrongStep2) {
+		t.Errorf("agents-vibewarden.md.tmpl contains wrong step 2 %q — remove app.image from derivation chain (#1272)", wrongStep2)
+	}
+
+	// The correct chain must be present.
+	mustContain := []string{
+		"name` field in vibewarden.yaml",
+		"cwd-basename fallback",
+		`"vibewarden"`,
+	}
+	for _, want := range mustContain {
+		if !strings.Contains(rendered, want) {
+			t.Errorf("agents-vibewarden.md.tmpl missing expected derivation chain text %q", want)
+		}
+	}
+}
+
 // TestAgentContextTemplates_AgentsMd verifies that agents/agents.md.tmpl renders
 // the expected reference to AGENTS-VIBEWARDEN.md.
 func TestAgentContextTemplates_AgentsMd(t *testing.T) {
