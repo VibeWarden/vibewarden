@@ -263,6 +263,31 @@ tls:
   # Equivalent to passing --skip-le-preflight on the CLI.
   skip_rate_limit_check: false
 
+  # Certificate expiry monitoring — warns before your certificate expires.
+  # VibeWarden checks the expiry of the active TLS certificate in the background
+  # and emits structured log events when the certificate is approaching expiry.
+  #
+  # Events emitted:
+  #   tls.cert_monitoring.warning  — when < warning_threshold remains (default: 30 days)
+  #   tls.cert_monitoring.critical — when < critical_threshold remains (default: 7 days)
+  cert_monitoring:
+    # Enable certificate expiry monitoring.
+    # Default: true (when tls.enabled is true).
+    enabled: true
+
+    # How often the monitor checks certificate expiry.
+    # Go duration string. Default: "6h"
+    check_interval: "6h"
+
+    # Time-before-expiry that triggers a warning event.
+    # Go duration string. Default: "720h" (30 days)
+    warning_threshold: "720h"
+
+    # Time-before-expiry that triggers a critical event and degrades the
+    # /_vibewarden/health endpoint to "degraded".
+    # Go duration string. Default: "168h" (7 days)
+    critical_threshold: "168h"
+
 # Ory Kratos (identity/auth) settings
 kratos:
   # Kratos public API (user-facing flows). When set, VibeWarden automatically:
@@ -602,6 +627,11 @@ log:
   level: "info"
   # Format: json (recommended) or text
   format: "json"
+  # Enable access logging of every completed HTTP request.
+  # When true, each request is logged at INFO level with method, path, status,
+  # duration, client IP, request ID, user agent, and bytes written.
+  # Default: true
+  access_log: true
 
 # Admin API (for user management, metrics, etc.)
 admin:
@@ -1083,3 +1113,289 @@ deploy:
   #
   # Default: "" (use bracketed placeholder)
   # host: alice@vps.example.com
+
+# Upstream resilience — timeout, circuit breaker, and retry.
+# Controls what happens when the upstream is slow or failing.
+resilience:
+  # Maximum time to wait for the upstream application to respond.
+  # A value of "0" or "" disables the timeout (no limit — not recommended).
+  # Go duration string. Default: "30s"
+  timeout: "30s"
+
+  # Circuit breaker — automatically stop sending requests to a failing upstream.
+  # When Open, requests fail fast with 503 without hitting the upstream.
+  # After Timeout, one probe request is allowed (HalfOpen). On success, the
+  # circuit closes; on failure, the timer resets.
+  circuit_breaker:
+    # Enable the circuit breaker middleware. Default: false
+    enabled: false
+
+    # Consecutive failures required to trip the circuit from Closed to Open.
+    # Must be > 0 when enabled. Default: 5
+    threshold: 5
+
+    # How long the circuit stays Open before allowing a probe request.
+    # Go duration string. Default: "60s"
+    timeout: "60s"
+
+  # Retry with exponential backoff — retry idempotent upstream requests on
+  # transient errors before returning an error to the client.
+  retry:
+    # Enable the retry middleware. Default: false
+    enabled: false
+
+    # Total number of attempts including the initial request.
+    # Must be >= 2 when enabled. Default: 3
+    max_attempts: 3
+
+    # Wait before the first retry. Go duration string. Default: "100ms"
+    backoff: "100ms"
+
+    # Upper bound on computed backoff. Go duration string. Default: "10s"
+    max_backoff: "10s"
+
+    # HTTP status codes that trigger a retry.
+    # Default: [502, 503, 504]
+    retry_on: [502, 503, 504]
+
+# Webhooks — deliver VibeWarden structured events to external endpoints.
+# Useful for alerting, audit pipelines, and SIEM integration.
+#
+# Example: send security events to a Slack webhook and an audit log service.
+#
+# webhooks:
+#   endpoints:
+#     - url: "https://hooks.slack.com/services/T000/B000/xxx"
+#       events: ["waf.detection", "auth.blocked", "rate_limit.exceeded"]
+#       format: slack
+#       timeout_seconds: 10
+#     - url: "https://audit.example.com/events"
+#       events: ["*"]
+#       format: raw
+#       timeout_seconds: 5
+webhooks:
+  # List of outbound webhook endpoints. Default: []
+  endpoints: []
+
+  # Inbound webhook signature verification.
+  # Protects webhook receiver endpoints from unauthenticated senders.
+  # When enabled, requests to listed paths must carry a valid HMAC signature
+  # in the provider-specific header.
+  signature_verification:
+    # Enable inbound signature verification. Default: false
+    enabled: false
+
+    # Per-path signature rules (evaluated in order).
+    # Example:
+    #   paths:
+    #     - path: /webhooks/stripe
+    #       provider: stripe
+    #       secret_env_var: STRIPE_WEBHOOK_SECRET
+    #     - path: /webhooks/github
+    #       provider: github
+    #       secret_env_var: GITHUB_WEBHOOK_SECRET
+    #     - path: /webhooks/custom
+    #       provider: generic
+    #       secret_env_var: MY_WEBHOOK_SECRET
+    #       header: X-Hub-Signature-256
+    #
+    # Accepted providers: stripe, github, slack, twilio, generic
+    paths: []
+
+# Overrides — escape hatches for advanced users.
+# Paths here tell VibeWarden to use hand-crafted config files instead of
+# auto-generating them. Only set a field when you need full control over
+# the corresponding file. Most projects do not need this section.
+#
+# overrides:
+#   # Path to a custom kratos.yml. When set, VibeWarden mounts this file into
+#   # the Kratos container instead of generating one from the auth.* settings.
+#   kratos_config: "./config/kratos.yml"
+#
+#   # Path to a custom docker-compose.yml. When set, `vibew generate` writes
+#   # this file verbatim rather than generating one from vibewarden.yaml.
+#   compose_file: "./docker-compose.override.yml"
+#
+#   # Path to a custom Kratos identity schema JSON file. When set, this
+#   # overrides the preset selected by auth.identity_schema.
+#   identity_schema: "./config/identity.schema.json"
+overrides:
+  # Path to a custom kratos.yml. Default: "" (auto-generate)
+  kratos_config: ""
+
+  # Path to a custom docker-compose.yml. Default: "" (auto-generate)
+  compose_file: ""
+
+  # Path to a custom Kratos identity schema JSON file. Default: "" (use preset)
+  identity_schema: ""
+
+# Observability stack — optional Prometheus, Grafana, Loki, and Promtail
+# containers generated under the "observability" Docker Compose profile.
+# Start with: docker compose --profile observability up -d
+#
+# This section controls port bindings and data retention. For exporting
+# metrics to an external backend, configure telemetry.otlp instead.
+#
+# See docs/observability.md for a full setup guide.
+observability:
+  # Enable the observability stack (default: false).
+  # When true, `vibew generate` adds Prometheus, Grafana, Loki, Promtail,
+  # and OTel Collector services under the "observability" Compose profile.
+  enabled: false
+
+  # Host port for Grafana (default: 3001).
+  # Avoids conflict with common app ports like 3000.
+  grafana_port: 3001
+
+  # Host port for Prometheus (default: 9090).
+  prometheus_port: 9090
+
+  # Host port for Loki (default: 3100).
+  loki_port: 3100
+
+  # How long Loki retains log data in days (default: 7).
+  retention_days: 7
+
+# Audit log — security-relevant event sink.
+# VibeWarden emits structured JSONL audit events for authentication decisions,
+# WAF detections, rate limit hits, and admin API calls. By default these appear
+# in the standard log output (alongside all other log lines).
+#
+# Use this section to redirect audit events to a dedicated file or to disable
+# them entirely for environments where audit logging is handled externally.
+audit:
+  # Enable the audit log sink. Default: true
+  # When true, every security-relevant event is written to the configured output.
+  enabled: true
+
+  # Destination for audit events.
+  # Accepted values:
+  #   "stdout"       — write JSONL to standard output (default, mixed with slog output)
+  #   <file path>   — append JSONL to this file (created on first write, 0600 permissions)
+  #
+  # Default: "stdout"
+  output: "stdout"
+
+# Input validation — enforce request size limits before the upstream sees them.
+# Rejects oversized URLs, query strings, and headers with 400 Bad Request.
+# Complements body_size (which handles the request body).
+#
+# Use this to harden against denial-of-service via crafted long URLs and
+# excessive header counts.
+input_validation:
+  # Enable the input validation middleware. Default: false
+  enabled: false
+
+  # Maximum raw request URI length in bytes (path + query string).
+  # Zero disables this check. Default: 2048
+  max_url_length: 2048
+
+  # Maximum query string length in bytes (not including the leading "?").
+  # Zero disables this check. Default: 2048
+  max_query_string_length: 2048
+
+  # Maximum number of request headers allowed per request.
+  # Zero disables this check. Default: 100
+  max_header_count: 100
+
+  # Maximum byte length of any single header value.
+  # Zero disables this check. Default: 8192
+  max_header_size: 8192
+
+  # Per-path overrides — first matching entry wins.
+  # Non-zero fields override the global limits for requests matching the path glob.
+  # Example:
+  #   path_overrides:
+  #     - path: "/api/upload"
+  #       max_url_length: 4096
+  #     - path: "/static/*"
+  #       max_header_count: 50
+  path_overrides: []
+
+# Error pages — serve custom HTML or JSON error bodies for specific HTTP status codes.
+# When enabled, VibeWarden serves files from `directory` instead of the default
+# JSON error body for auth failures, rate limit rejections, WAF blocks, etc.
+#
+# File naming convention: <status_code>.<ext>
+#   - 401.html, 403.html, 429.html, 503.html
+#   - 400.json, 503.json
+# Content-Type is inferred from the file extension.
+# When no file matches a status code, VibeWarden falls back to its built-in JSON response.
+#
+# error_pages:
+#   enabled: true
+#   directory: "./error-pages"
+error_pages:
+  # Enable custom error pages. Default: false
+  enabled: false
+
+  # Path to the directory containing custom error page files.
+  # Required when enabled is true.
+  # Default: "" (required when enabled)
+  directory: ""
+
+# Maintenance mode — return 503 Service Unavailable for all requests.
+# Useful for planned downtime, database migrations, and deployments.
+# /_vibewarden/* paths (health check, metrics) are always exempt.
+#
+# Enable at runtime via: VIBEWARDEN_MAINTENANCE_ENABLED=true
+maintenance:
+  # Enable maintenance mode. Default: false
+  enabled: false
+
+  # Message returned to clients in the 503 response body.
+  # Default: "Service is under maintenance"
+  message: "Service is under maintenance"
+
+# Response compression — compress outbound response bodies.
+# VibeWarden negotiates the best algorithm with the client via Accept-Encoding.
+# Compression is enabled by default — it reduces bandwidth and improves latency
+# for text responses (HTML, JSON, CSS, JS) at minimal CPU cost.
+compression:
+  # Enable response compression. Default: true
+  enabled: true
+
+  # Ordered list of compression algorithms to offer.
+  # Caddy picks the first algorithm the client's Accept-Encoding supports.
+  # Valid values: "zstd", "gzip"
+  # Default: ["zstd", "gzip"]
+  algorithms: ["zstd", "gzip"]
+
+# Response headers — inject, overwrite, or remove headers on every proxied response.
+# Applied after all other middleware including security_headers.
+# Use this for custom branding headers, cache-control directives, or removing
+# server-identification headers that security_headers does not cover.
+#
+# Operations are applied in order: remove → set → add.
+#
+# response_headers:
+#   set:
+#     Cache-Control: "no-store"
+#     X-Powered-By: "vibewarden"
+#   add:
+#     Vary: "Accept-Encoding"
+#   remove:
+#     - X-AspNet-Version
+#     - X-Generator
+response_headers:
+  # Headers to overwrite (or create when absent). Default: {}
+  set: {}
+
+  # Headers to append (or create when absent). Default: {}
+  add: {}
+
+  # Header names to remove from every response. Default: []
+  remove: []
+
+# Config file watcher — hot reload vibewarden.yaml without restarting.
+# When a change is detected, VibeWarden re-reads and validates the config.
+# If the new config is invalid, the reload is rejected and the current config
+# remains active (a structured error event is emitted).
+watch:
+  # Enable config file watching. Default: true
+  enabled: true
+
+  # How long to wait after the last file change before triggering a reload.
+  # Prevents rapid successive reloads during editor saves.
+  # Go duration string. Default: "500ms"
+  debounce: "500ms"
