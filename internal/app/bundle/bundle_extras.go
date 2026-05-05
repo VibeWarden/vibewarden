@@ -304,6 +304,15 @@ func renderDotEnv(imageTag string, templateKeys []string) string {
 	return renderSampleEnv(imageTag, templateKeys)
 }
 
+// shellQuoteSSHTarget wraps an SSH target value in POSIX single-quotes for
+// safe interpolation into shell command strings. This is defence-in-depth:
+// ValidateDeployHost already rejects metacharacters at config-load time, but
+// wrapping in POSIX single-quotes ensures the value cannot be interpreted as
+// shell code even if validation is bypassed.
+func shellQuoteSSHTarget(host string) string {
+	return "'" + host + "'"
+}
+
 // RenderBundleReadme produces the README.md shipped inside the bundle.
 // It is exported so tests can call it directly to verify placeholder
 // substitution without going through the full Bundle pipeline.
@@ -345,6 +354,11 @@ func renderBundleReadme(appName, domain, sshHost string, skipImage bool) string 
 	if sshTarget == "" {
 		sshTarget = sshPlaceholder
 	}
+	// Single-quote the SSH target for safe shell interpolation. This is
+	// defence-in-depth: ValidateDeployHost already rejects metacharacters at
+	// config-load time, but wrapping in POSIX single-quotes ensures the value
+	// cannot be interpreted as shell code even if validation is bypassed.
+	quotedTarget := shellQuoteSSHTarget(sshTarget)
 
 	// Build the deploy command block. When skipImage is true, the docker load
 	// clause is omitted so the sequence is valid for registry-pull mode.
@@ -361,9 +375,9 @@ func renderBundleReadme(appName, domain, sshHost string, skipImage bool) string 
 	b.WriteString("## Deploy\n")
 	b.WriteString("\n")
 	b.WriteString("```bash\n")
-	b.WriteString("ssh " + sshTarget + " 'mkdir -p /opt/" + app + "'\n")
-	b.WriteString("tar -czf - -C .vibewarden/bundle . | ssh " + sshTarget + " 'tar -xzf - -C /opt/" + app + "/'\n")
-	b.WriteString("ssh " + sshTarget + " \"cd /opt/" + app + " && " + dockerCmd + "\"\n")
+	b.WriteString("ssh " + quotedTarget + " 'mkdir -p /opt/" + app + "'\n")
+	b.WriteString("tar -czf - -C .vibewarden/bundle . | ssh " + quotedTarget + " 'tar -xzf - -C /opt/" + app + "/'\n")
+	b.WriteString("ssh " + quotedTarget + " \"cd /opt/" + app + " && " + dockerCmd + "\"\n")
 	b.WriteString("curl -fsSL https://" + dom + "/_vibewarden/health\n")
 	b.WriteString("```\n")
 	b.WriteString("\n")
@@ -419,8 +433,8 @@ func renderBundleReadme(appName, domain, sshHost string, skipImage bool) string 
 	b.WriteString("## Read-only inspection\n")
 	b.WriteString("\n")
 	b.WriteString("```bash\n")
-	b.WriteString("ssh " + sshTarget + " docker compose -f /opt/" + app + "/docker-compose.yml logs --tail 50\n")
-	b.WriteString("ssh " + sshTarget + " docker compose -f /opt/" + app + "/docker-compose.yml ps\n")
+	b.WriteString("ssh " + quotedTarget + " docker compose -f /opt/" + app + "/docker-compose.yml logs --tail 50\n")
+	b.WriteString("ssh " + quotedTarget + " docker compose -f /opt/" + app + "/docker-compose.yml ps\n")
 	b.WriteString("curl -fsSL https://" + dom + "/_vibewarden/health\n")
 	b.WriteString("```\n")
 	b.WriteString("\n")

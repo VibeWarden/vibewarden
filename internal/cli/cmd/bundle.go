@@ -412,11 +412,14 @@ func runBundle(cmd *cobra.Command, outputDir, imageTag, targetPlatform string, o
 		dockerCmd = "docker compose up -d"
 	}
 
+	// Single-quote the SSH target for safe shell interpolation. This is
+	// defence-in-depth alongside ValidateDeployHost's input validation.
+	quotedSSHTarget := config.ShellQuoteSingleDeploy(sshTarget)
 	fmt.Fprintln(out, "")
 	fmt.Fprintln(out, "Next: deploy")
-	fmt.Fprintf(out, "    ssh %s 'mkdir -p %s'\n", sshTarget, remotePath)
-	fmt.Fprintf(out, "    tar -czf - -C %q . | ssh %s 'tar -xzf - -C %s/'\n", absOut, sshTarget, remotePath)
-	fmt.Fprintf(out, "    ssh %s \"cd %s && %s\"\n", sshTarget, remotePath, dockerCmd)
+	fmt.Fprintf(out, "    ssh %s 'mkdir -p %s'\n", quotedSSHTarget, remotePath)
+	fmt.Fprintf(out, "    tar -czf - -C %q . | ssh %s 'tar -xzf - -C %s/'\n", absOut, quotedSSHTarget, remotePath)
+	fmt.Fprintf(out, "    ssh %s \"cd %s && %s\"\n", quotedSSHTarget, remotePath, dockerCmd)
 	fmt.Fprintf(out, "    curl -fsSL https://%s/_vibewarden/health\n", domain)
 	fmt.Fprintln(out, "")
 	// Hint paragraph — emitted only when neither --print-deploy nor deploy.host
