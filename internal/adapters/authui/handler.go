@@ -281,7 +281,7 @@ func returnToQuery(r *http.Request) string {
 	if !isSafeReturnTo(v) {
 		return ""
 	}
-	return "?return_to=" + v
+	return "?return_to=" + url.QueryEscape(v)
 }
 
 // isSafeReturnTo reports whether v is safe to use as a return_to redirect

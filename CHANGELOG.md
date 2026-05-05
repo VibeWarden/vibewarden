@@ -12,6 +12,10 @@ This initial entry was written by hand to summarise the work leading up to v0.1.
 
 ## [Unreleased]
 
+### Security
+
+- **fix(#1267): authui — `return_to` parameter validates same-origin to close open-redirect vector.** Server-side `isSafeReturnTo` and client-side `safeReturnTo()` both reject external URLs, protocol-relative URLs, backslash variants, and CRLF-injected paths. Affected pages: `/auth/login`, `/auth/registration`.
+
 ## [v0.18.7] — 2026-05-05
 
 Theme: doc-lie criticals from the 2026-05-03 cross-cutting audit (#1265, #1266, #1268). Three single-line fixes to surfaces that misled AI agents and operators. No code changes.

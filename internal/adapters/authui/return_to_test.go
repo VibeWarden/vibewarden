@@ -2,8 +2,10 @@ package authui
 
 import (
 	"context"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 )
 
@@ -69,22 +71,23 @@ func TestReturnToQuery_ServerSide(t *testing.T) {
 	tests := []struct {
 		name      string
 		returnTo  string
+		rawQuery  string // optional: when set, overrides default URL building
 		wantQuery string
 	}{
 		{
 			name:      "safe path propagated",
 			returnTo:  "/dashboard",
-			wantQuery: "?return_to=/dashboard",
+			wantQuery: "?return_to=%2Fdashboard",
 		},
 		{
 			name:      "safe root path propagated",
 			returnTo:  "/",
-			wantQuery: "?return_to=/",
+			wantQuery: "?return_to=%2F",
 		},
 		{
 			name:      "safe path with query params propagated",
 			returnTo:  "/search?q=hello",
-			wantQuery: "?return_to=/search?q=hello",
+			wantQuery: "?return_to=%2Fsearch%3Fq%3Dhello",
 		},
 		{
 			name:      "external https URL rejected",
@@ -109,6 +112,7 @@ func TestReturnToQuery_ServerSide(t *testing.T) {
 		{
 			name:      "newline injection rejected",
 			returnTo:  "/path\nhttp://evil.com",
+			rawQuery:  "return_to=/path%0ahttp://evil.com",
 			wantQuery: "",
 		},
 		{
@@ -123,20 +127,15 @@ func TestReturnToQuery_ServerSide(t *testing.T) {
 			// Build request by setting RawQuery directly to avoid httptest.NewRequest
 			// panicking on control characters (newlines) in the URL string.
 			r := httptest.NewRequest(http.MethodGet, "/_vibewarden/login", nil)
-			if tt.returnTo != "" {
-				// Use url.Values to encode the value exactly as a browser would
-				// send it, then override with the raw value so control-char cases
-				// actually reach the validation logic unencoded.
+			if tt.rawQuery != "" {
+				// Use the caller-supplied raw query verbatim so control-char
+				// cases reach isSafeReturnTo unencoded, simulating an attacker
+				// who bypasses normal URL encoding.
+				r.URL.RawQuery = tt.rawQuery
+			} else if tt.returnTo != "" {
 				q := r.URL.Query()
 				q.Set("return_to", tt.returnTo)
 				r.URL.RawQuery = q.Encode()
-				// For payloads containing control characters the encoded form
-				// would be percent-escaped and never reach isSafeReturnTo's
-				// newline check via Query().Get(). Simulate an attacker who
-				// bypasses encoding by setting RawQuery directly.
-				if tt.returnTo == "/path\nhttp://evil.com" {
-					r.URL.RawQuery = "return_to=/path%0ahttp://evil.com"
-				}
 			}
 			got := returnToQuery(r)
 			if got != tt.wantQuery {
@@ -184,27 +183,17 @@ func TestReturnToQuery_ExternalURLDroppedFromPage(t *testing.T) {
 				}
 				defer resp.Body.Close() //nolint:errcheck
 
-				var buf [32768]byte
-				n, _ := resp.Body.Read(buf[:])
-				body := string(buf[:n])
+				bodyBytes, err := io.ReadAll(resp.Body)
+				if err != nil {
+					t.Fatalf("reading body: %v", err)
+				}
+				body := string(bodyBytes)
 
 				// The external payload must not appear anywhere in the page HTML.
-				if contains(body, payload) {
+				if strings.Contains(body, payload) {
 					t.Errorf("page %s leaked external return_to %q into body", pg.path, payload)
 				}
 			})
 		}
 	}
-}
-
-// contains is a substring check to avoid importing strings in this file.
-func contains(s, substr string) bool {
-	return len(substr) > 0 && len(s) >= len(substr) && func() bool {
-		for i := 0; i <= len(s)-len(substr); i++ {
-			if s[i:i+len(substr)] == substr {
-				return true
-			}
-		}
-		return false
-	}()
 }
