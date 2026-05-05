@@ -61,7 +61,7 @@ These checks run only when `--preflight <env>` is passed. They append after all 
 | # | Check name | What it tests |
 |---|------------|---------------|
 | P1 | **DNS** | `tls.domain` resolves to at least one A or AAAA record. Uses the same env-resolver introduced in #1233 (ADR-102). |
-| P2 | **Port 443** | `server.port` equals 443. FAIL if set to any other value. |
+| P2 | **Port 443** | `server.port` equals 443. WARN if set to any other value (non-blocking). |
 | P3 | **Target platform** | `deploy.target_platform` is set in the merged config. FAIL if unset. |
 | P4 | **Image arch** | The local app image architecture matches `deploy.target_platform`. Uses the Docker label-inspection path from #1219 (ADR-100). |
 | P5 | **TLS email** | `tls.email` is non-empty. WARN (non-blocking) if missing — required by Let's Encrypt but not enforced pre-deploy. |
@@ -260,7 +260,7 @@ Run `vibew doctor --preflight production` before `vibew bundle` to catch DNS, po
 vibew doctor --preflight production
 ```
 
-This reads `vibewarden.production.yaml`, merges it with `vibewarden.yaml`, and runs the standard static + Dockerfile checks against the merged config plus five additional preflight checks. Exit code is `0` only when all checks pass.
+This reads `vibewarden.production.yaml`, merges it with `vibewarden.yaml`, and runs the standard static + Dockerfile checks against the merged config plus five additional preflight checks. Exit code is `1` only when a FAIL-severity check is encountered. P3 (`deploy.target_platform` unset) and P4 (image arch mismatch) are FAIL-severity; P1 (DNS), P2 (port 443), and P5 (TLS email) are WARN-only and do not produce exit 1.
 
 ### Usage in the deploy flow
 

@@ -1642,7 +1642,7 @@ vibew doctor checks (in order):
   Preflight checks (only when --preflight <env> is given; appended after static + Dockerfile checks):
   P1. DNS — tls.domain resolves to at least one A/AAAA record. Uses the same env-resolver
       as vibew probe --env (ADR-102).
-  P2. Port 443 — server.port must equal 443 for a named production environment (FAIL otherwise).
+  P2. Port 443 — server.port must equal 443 for a named production environment (WARN otherwise; non-blocking).
   P3. Target platform — deploy.target_platform must be set in the merged config (FAIL if unset).
   P4. Image arch — local app image arch matches deploy.target_platform. Uses the Docker
       label-inspection path from vibew dev --rebuild (ADR-100; #1219).
