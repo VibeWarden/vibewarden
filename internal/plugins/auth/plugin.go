@@ -565,10 +565,12 @@ func (p *Plugin) ContributeCaddyRoutes() []ports.CaddyRoute {
 // handler is returned (Priority 40). This handler validates the Bearer token
 // from the Authorization header against the auto-generated dev JWKS.
 //
-// For ModeAPIKey, an api_key_auth handler is returned (Priority 35). This
+// For ModeAPIKey, an api_key_auth handler is returned (Priority 36). This
 // handler validates the API key from the configured header and enforces scope
-// rules. The actual key validation is performed by the ports.APIKeyValidator
-// injected into RuntimeServices by the composition root.
+// rules. Priority 36 places it unambiguously after secrets/webhooksig (35)
+// and before the Kratos/JWT auth handlers (38+). The actual key validation is
+// performed by the ports.APIKeyValidator injected into RuntimeServices by the
+// composition root.
 //
 // Returns nil when the plugin is disabled or when Mode is ModeNone.
 func (p *Plugin) ContributeCaddyHandlers() []ports.CaddyHandler {
@@ -587,10 +589,12 @@ func (p *Plugin) ContributeCaddyHandlers() []ports.CaddyHandler {
 		}
 	}
 
-	// API key mode: contribute the api_key_auth handler at priority 35.
+	// API key mode: contribute the api_key_auth handler at priority 36.
+	// Priority 36 is unique in the handler budget: after secrets/webhooksig (35)
+	// and before Kratos/JWT auth handlers (38+). See ADR-103.
 	if mode == ModeAPIKey {
 		return []ports.CaddyHandler{
-			{Handler: buildAPIKeyHandler(p.cfg.APIKey), Priority: 35},
+			{Handler: buildAPIKeyHandler(p.cfg.APIKey), Priority: 36},
 		}
 	}
 

@@ -48,8 +48,10 @@ type APIKeyScopeRuleConfig struct {
 // authentication on proxied requests.
 //
 // It is registered under the Caddy module ID "http.handlers.api_key_auth" and
-// sits at priority 35 in the catch-all handler chain — between rate-limit (30)
-// and the Kratos/JWT auth handlers (40+).
+// sits at priority 36 in the catch-all handler chain — uniquely after
+// secrets/webhooksig handlers (35) and before the Kratos/JWT auth handlers
+// (38+). Rate-limiting runs later at priority 50. See ADR-103 for the full
+// priority budget rationale.
 //
 // The handler delegates all enforcement logic to middleware.APIKeyMiddleware,
 // which reads the configured header, validates via the injected

@@ -57,7 +57,7 @@ pattern as `jwt_bearer_handler.go` and `ratelimit_handler.go`:
   on the fly with the provisioned validator, the event logger, the audit
   logger, and the drop counter (all from RuntimeServices).
 - `init()` registers the module with Caddy.
-- Priority 35 — sits between rate-limit (20) and Kratos/JWT handlers (40+).
+- Priority 36 — sits after secrets/webhooksig handlers (35) and before Kratos/JWT handlers (38+). Rate-limiting runs later at priority 50.
 
 #### `RuntimeServices` addition
 
