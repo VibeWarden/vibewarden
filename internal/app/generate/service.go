@@ -303,7 +303,7 @@ func (s *Service) Generate(ctx context.Context, input ports.GeneratorInput, outp
 		if err := s.renderer.RenderToFile("seed-users.sh.tmpl", cfg, seedUsersPath, true); err != nil {
 			return fmt.Errorf("rendering seed-users.sh: %w", err)
 		}
-		if err := os.Chmod(seedUsersPath, 0o750); err != nil { //nolint:gosec // seed-users.sh must be executable; 0o750 is intentional for a shell script
+		if err := os.Chmod(seedUsersPath, 0o755); err != nil { //nolint:gosec // seed-users.sh must be world-executable; curlimages/curl runs as UID 100 (not in owner group)
 			return fmt.Errorf("setting seed-users.sh permissions: %w", err)
 		}
 	}

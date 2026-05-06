@@ -2300,6 +2300,63 @@ func TestGenerate_SeedUsers_WrittenToScriptsSubdir(t *testing.T) {
 	}
 }
 
+// TestGenerate_SeedUsersFile_Permissions is the regression gate for issue #1346.
+// seed-users.sh must be written with 0755 (rwxr-xr-x) so that the seed-users
+// container (curlimages/curl, UID 100, not in owner group) can execute it.
+// The wave-4 fix #1335 wrote 0750 (rwxr-x---), breaking execution on every fresh deploy.
+func TestGenerate_SeedUsersFile_Permissions(t *testing.T) {
+	outputDir := t.TempDir()
+	cfg := &config.Config{
+		Server:   config.ServerConfig{Host: "127.0.0.1", Port: 8080},
+		Upstream: config.UpstreamConfig{Host: "127.0.0.1", Port: 3000},
+		Auth: config.AuthConfig{
+			Mode:           config.AuthModeKratos,
+			IdentitySchema: "email_password",
+			SeedDemoUsers:  true,
+		},
+	}
+
+	svc := generate.NewService(realRenderer())
+	if err := svc.Generate(context.Background(), cfg.ToGeneratorInput(), outputDir); err != nil {
+		t.Fatalf("Generate() unexpected error: %v", err)
+	}
+
+	seedUsersPath := filepath.Join(outputDir, "scripts", "seed-users.sh")
+	info, err := os.Stat(seedUsersPath)
+	if err != nil {
+		t.Fatalf("expected scripts/seed-users.sh to exist: %v", err)
+	}
+	if perm := info.Mode().Perm(); perm != 0o755 {
+		t.Errorf("scripts/seed-users.sh permissions = %04o, want 0755 — curlimages/curl (UID 100) must be able to execute it (issue #1346)", perm)
+	}
+}
+
+// TestGenerate_SeedSecretsFile_Permissions verifies that seed-secrets.sh is
+// written with 0750 (rwxr-x---). The seed-secrets container uses
+// quay.io/openbao/openbao which runs as root, so 0750 is sufficient and
+// intentional (defence-in-depth: no world-read for the secrets script).
+func TestGenerate_SeedSecretsFile_Permissions(t *testing.T) {
+	headers := []config.SecretsHeaderInjection{
+		{SecretPath: "app/api-key", SecretKey: "value", Header: "X-API-Key"},
+	}
+	cfg := secretsConfig(true, headers, nil)
+
+	outputDir := t.TempDir()
+	svc := generate.NewService(realRenderer())
+	if err := svc.Generate(context.Background(), cfg.ToGeneratorInput(), outputDir); err != nil {
+		t.Fatalf("Generate() unexpected error: %v", err)
+	}
+
+	seedPath := filepath.Join(outputDir, "seed-secrets.sh")
+	info, err := os.Stat(seedPath)
+	if err != nil {
+		t.Fatalf("expected seed-secrets.sh to exist: %v", err)
+	}
+	if perm := info.Mode().Perm(); perm != 0o750 {
+		t.Errorf("seed-secrets.sh permissions = %04o, want 0750", perm)
+	}
+}
+
 // TestGenerate_SeedUsers_NotWrittenWhenSeedDemoUsersFalse verifies that when
 // auth.seed_demo_users is false (the default), scripts/seed-users.sh is NOT
 // written even though auth.mode is "kratos" and Kratos is local. This ensures
