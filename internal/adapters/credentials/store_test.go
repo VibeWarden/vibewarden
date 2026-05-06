@@ -19,7 +19,7 @@ func sampleCreds() *generate.GeneratedCredentials {
 		KratosCookieSecret:   "cookie_secret_32chars_xyzabcdefg",
 		KratosCipherSecret:   "cipher_secret_32chars_xyzabcdefg",
 		GrafanaAdminPassword: "grafana_pass_24chars_xyz",
-		OpenBaoDevRootToken:  "openbao_token_32chars_xyzabcdefg",
+		OpenBaoProdToken:     "openbao_token_32chars_xyzabcdefg",
 	}
 }
 
@@ -82,7 +82,7 @@ func TestStore_Write_DotenvFormat(t *testing.T) {
 		"KRATOS_SECRETS_COOKIE":  creds.KratosCookieSecret,
 		"KRATOS_SECRETS_CIPHER":  creds.KratosCipherSecret,
 		"GRAFANA_ADMIN_PASSWORD": creds.GrafanaAdminPassword,
-		"OPENBAO_DEV_ROOT_TOKEN": creds.OpenBaoDevRootToken,
+		"OPENBAO_ROOT_TOKEN":     creds.OpenBaoProdToken,
 	}
 
 	found := make(map[string]string)
@@ -137,7 +137,7 @@ func TestStore_Read_ParsesCorrectly(t *testing.T) {
 		{"KratosCookieSecret", got.KratosCookieSecret, original.KratosCookieSecret},
 		{"KratosCipherSecret", got.KratosCipherSecret, original.KratosCipherSecret},
 		{"GrafanaAdminPassword", got.GrafanaAdminPassword, original.GrafanaAdminPassword},
-		{"OpenBaoDevRootToken", got.OpenBaoDevRootToken, original.OpenBaoDevRootToken},
+		{"OpenBaoProdToken", got.OpenBaoProdToken, original.OpenBaoProdToken},
 	}
 
 	for _, tt := range tests {
@@ -175,7 +175,7 @@ POSTGRES_PASSWORD=testpass
 KRATOS_SECRETS_COOKIE=testcookie
 KRATOS_SECRETS_CIPHER=testcipher
 GRAFANA_ADMIN_PASSWORD=testgrafana
-OPENBAO_DEV_ROOT_TOKEN=testtoken
+OPENBAO_ROOT_TOKEN=testtoken
 `
 	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
 		t.Fatalf("WriteFile: %v", err)
@@ -194,6 +194,59 @@ OPENBAO_DEV_ROOT_TOKEN=testtoken
 	}
 	if got.KratosCookieSecret != "testcookie" {
 		t.Errorf("KratosCookieSecret = %q, want %q", got.KratosCookieSecret, "testcookie")
+	}
+}
+
+// TestStore_Read_DeprecatedOpenBaoDevRootToken verifies that .credentials files
+// written with the deprecated OPENBAO_DEV_ROOT_TOKEN key (v0.18 and earlier)
+// are still parsed correctly into OpenBaoProdToken — backward-compatibility
+// for one minor release per ADR-104 (issue #1345).
+func TestStore_Read_DeprecatedOpenBaoDevRootToken(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, ".credentials")
+
+	// A .credentials file from v0.18 using the old key name.
+	content := "POSTGRES_PASSWORD=pg\nOPENBAO_DEV_ROOT_TOKEN=old-token-value\n"
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	s := credentials.NewStore()
+	ctx := context.Background()
+
+	got, err := s.Read(ctx, dir)
+	if err != nil {
+		t.Fatalf("Read() unexpected error: %v", err)
+	}
+
+	// The deprecated key must be recognised and mapped to OpenBaoProdToken.
+	if got.OpenBaoProdToken != "old-token-value" {
+		t.Errorf("OpenBaoProdToken = %q, want %q (from deprecated OPENBAO_DEV_ROOT_TOKEN key)", got.OpenBaoProdToken, "old-token-value")
+	}
+}
+
+// TestStore_Read_NewKeyTakesPrecedenceOverDeprecated verifies that when both
+// OPENBAO_ROOT_TOKEN (new) and OPENBAO_DEV_ROOT_TOKEN (deprecated) appear in
+// a .credentials file, the new key wins (ADR-104).
+func TestStore_Read_NewKeyTakesPrecedenceOverDeprecated(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, ".credentials")
+
+	content := "OPENBAO_ROOT_TOKEN=new-token\nOPENBAO_DEV_ROOT_TOKEN=old-token\n"
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatalf("WriteFile: %v", err)
+	}
+
+	s := credentials.NewStore()
+	ctx := context.Background()
+
+	got, err := s.Read(ctx, dir)
+	if err != nil {
+		t.Fatalf("Read() unexpected error: %v", err)
+	}
+
+	if got.OpenBaoProdToken != "new-token" {
+		t.Errorf("OpenBaoProdToken = %q, want %q (new key must win)", got.OpenBaoProdToken, "new-token")
 	}
 }
 

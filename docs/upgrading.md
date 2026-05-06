@@ -146,6 +146,34 @@ a **two-release deprecation cycle**:
 
 ## Config migration
 
+### `OPENBAO_DEV_ROOT_TOKEN` → `OPENBAO_ROOT_TOKEN` (v0.19, removed in v0.20)
+
+The credential key written to `.credentials` was renamed from `OPENBAO_DEV_ROOT_TOKEN`
+to `OPENBAO_ROOT_TOKEN`. The misleading `DEV_` prefix implied the token was only for
+dev use — it was always the credential used in prod contexts too.
+
+The old name is still recognised by `vibew bundle` until v0.20. `vibew bundle` prints
+a deprecation warning when `OPENBAO_DEV_ROOT_TOKEN=` is detected in `.credentials` and
+continues to work until v0.20.
+
+**Migration steps:**
+
+1. Open `.credentials` in your project directory.
+2. Rename the `OPENBAO_DEV_ROOT_TOKEN=` line to `OPENBAO_ROOT_TOKEN=`.
+3. Re-run `vibew bundle` to regenerate the bundle with the new key name.
+
+**Warning — production deployments:** In v0.19+, `seed-secrets.sh` writes
+`OPENBAO_UNSEAL_KEY` into `.credentials` on first boot. This key is required to
+unseal the vault after every host reboot. Back up `.credentials` before editing or
+re-generating it. Do not overwrite the host `.credentials` by copying a freshly
+generated bundle `.credentials` — the new file will not contain the `OPENBAO_UNSEAL_KEY`
+written at boot time.
+
+If `OPENBAO_UNSEAL_KEY` is lost, see the [OpenBao: unseal key missing](troubleshooting.md#openbao-unseal-key-missing-after-host-reboot-or-bundle-re-run)
+troubleshooting entry for the recovery procedure.
+
+---
+
 ### `metrics:` → `telemetry:` (deprecated)
 
 The `metrics:` block was replaced by `telemetry:` to reflect VibeWarden's move to

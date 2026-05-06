@@ -1522,7 +1522,7 @@ func fixedCreds() *gendomain.GeneratedCredentials {
 		KratosCookieSecret:   "fixed_cookie_secret_32chars_abcd",
 		KratosCipherSecret:   "fixed_cipher_secret_32chars_abcd",
 		GrafanaAdminPassword: "fixed_grafana_pass24ab",
-		OpenBaoDevRootToken:  "fixed_openbao_token_32chars_abcd",
+		OpenBaoProdToken:     "fixed_openbao_token_32chars_abcd",
 	}
 }
 
@@ -1700,7 +1700,8 @@ func TestGenerate_EnvTemplateNoSecrets(t *testing.T) {
 		"KRATOS_SECRETS_COOKIE=",
 		"KRATOS_SECRETS_CIPHER=",
 		"GRAFANA_ADMIN_PASSWORD=",
-		"OPENBAO_DEV_ROOT_TOKEN=",
+		"OPENBAO_ROOT_TOKEN=",
+		"OPENBAO_DEV_ROOT_TOKEN=", // old deprecated name must also be absent
 	}
 	for _, key := range forbiddenKeys {
 		if bytes.Contains(data, []byte(key)) {
@@ -2476,5 +2477,219 @@ func TestGenerate_Compose_SeedUsersVolume_IsRelativePath(t *testing.T) {
 		if bytes.Contains(compose, []byte(pattern)) {
 			t.Errorf("docker-compose.yml seed-users volume contains forbidden absolute path %q — bundle would fail on Linux (issue #1335)\ngot:\n%s", pattern, compose)
 		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// ADR-104: OpenBao prod init+unseal via seed-secrets — artifact tests
+// ---------------------------------------------------------------------------
+
+// TestGenerate_OpenBaoHealthcheck_UsesHTTPAPI is the regression guard for
+// ADR-104 failure mode 1: the openbao healthcheck used to call `bao status`
+// which exits 2 when uninitialised, blocking the docker-compose healthcheck
+// on every fresh prod deploy. The fix replaces it with an HTTP API probe
+// that accepts all non-error vault states via uninitcode=200&sealedcode=200.
+func TestGenerate_OpenBaoHealthcheck_UsesHTTPAPI(t *testing.T) {
+	tests := []struct {
+		name string
+		cfg  *config.Config
+	}{
+		{
+			name: "dev profile",
+			cfg:  secretsConfig(true, nil, nil),
+		},
+		{
+			name: "prod profile",
+			cfg:  prodSecretsConfig(),
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			compose := renderCompose(t, tt.cfg)
+
+			// Must use HTTP API with permissive status codes.
+			if !bytes.Contains(compose, []byte("uninitcode=200")) {
+				t.Errorf("openbao healthcheck must use HTTP API with uninitcode=200 (%s)\ngot:\n%s", tt.name, compose)
+			}
+			if !bytes.Contains(compose, []byte("sealedcode=200")) {
+				t.Errorf("openbao healthcheck must use HTTP API with sealedcode=200 (%s)\ngot:\n%s", tt.name, compose)
+			}
+			if !bytes.Contains(compose, []byte("/v1/sys/health")) {
+				t.Errorf("openbao healthcheck must call /v1/sys/health (%s)\ngot:\n%s", tt.name, compose)
+			}
+
+			// Must NOT use bao status (the old broken healthcheck).
+			if bytes.Contains(compose, []byte("bao status")) {
+				t.Errorf("openbao healthcheck must not use 'bao status' — it exits 2 when uninitialised (%s)\ngot:\n%s", tt.name, compose)
+			}
+		})
+	}
+}
+
+// TestGenerate_SeedSecrets_ProdProfile_HasInitBlock verifies that the rendered
+// seed-secrets.sh contains the prod-mode init+unseal preamble (ADR-104).
+// This is the artifact test that pins the init block to the prod profile.
+func TestGenerate_SeedSecrets_ProdProfile_HasInitBlock(t *testing.T) {
+	headers := []config.SecretsHeaderInjection{
+		{SecretPath: "app/api-key", SecretKey: "value", Header: "X-API-Key"},
+	}
+	cfg := secretsConfig(true, headers, nil)
+	cfg.Profile = "prod"
+
+	outputDir := t.TempDir()
+	svc := generate.NewService(realRenderer())
+	if err := svc.Generate(context.Background(), cfg.ToGeneratorInput(), outputDir); err != nil {
+		t.Fatalf("Generate() unexpected error: %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(outputDir, "seed-secrets.sh"))
+	if err != nil {
+		t.Fatalf("reading seed-secrets.sh: %v", err)
+	}
+
+	// Must contain the init and unseal commands in the prod preamble.
+	if !bytes.Contains(data, []byte("bao operator init")) {
+		t.Errorf("seed-secrets.sh (prod) must contain 'bao operator init'\ngot:\n%s", data)
+	}
+	if !bytes.Contains(data, []byte("bao operator unseal")) {
+		t.Errorf("seed-secrets.sh (prod) must contain 'bao operator unseal'\ngot:\n%s", data)
+	}
+	// Must be gated on VIBEWARDEN_PROFILE=prod (shell runtime gate).
+	if !bytes.Contains(data, []byte("VIBEWARDEN_PROFILE")) {
+		t.Errorf("seed-secrets.sh prod block must reference VIBEWARDEN_PROFILE\ngot:\n%s", data)
+	}
+}
+
+// TestGenerate_SeedSecrets_DevProfile_NoInitBlock verifies that the rendered
+// seed-secrets.sh gates the init+unseal block on VIBEWARDEN_PROFILE=prod even
+// when generated with dev profile (ADR-104 — runtime gate, not template gate).
+func TestGenerate_SeedSecrets_DevProfile_NoInitBlock(t *testing.T) {
+	headers := []config.SecretsHeaderInjection{
+		{SecretPath: "app/api-key", SecretKey: "value", Header: "X-API-Key"},
+	}
+	cfg := secretsConfig(true, headers, nil)
+	cfg.Profile = "dev"
+
+	outputDir := t.TempDir()
+	svc := generate.NewService(realRenderer())
+	if err := svc.Generate(context.Background(), cfg.ToGeneratorInput(), outputDir); err != nil {
+		t.Fatalf("Generate() unexpected error: %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(outputDir, "seed-secrets.sh"))
+	if err != nil {
+		t.Fatalf("reading seed-secrets.sh: %v", err)
+	}
+
+	// The template uses a shell if-gate (runtime), not a Go template conditional,
+	// so the init block text is always present but only executes in prod.
+	// Assert the gate is present.
+	if !bytes.Contains(data, []byte("VIBEWARDEN_PROFILE")) {
+		t.Errorf("seed-secrets.sh must contain VIBEWARDEN_PROFILE gate\ngot:\n%s", data)
+	}
+}
+
+// TestGenerate_SeedSecrets_HasWgetWaitLoop verifies that the wait loop uses
+// wget (HTTP API) rather than `bao status` (ADR-104 failure mode 2).
+func TestGenerate_SeedSecrets_HasWgetWaitLoop(t *testing.T) {
+	headers := []config.SecretsHeaderInjection{
+		{SecretPath: "app/api-key", SecretKey: "value", Header: "X-API-Key"},
+	}
+	cfg := secretsConfig(true, headers, nil)
+
+	outputDir := t.TempDir()
+	svc := generate.NewService(realRenderer())
+	if err := svc.Generate(context.Background(), cfg.ToGeneratorInput(), outputDir); err != nil {
+		t.Fatalf("Generate() unexpected error: %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(outputDir, "seed-secrets.sh"))
+	if err != nil {
+		t.Fatalf("reading seed-secrets.sh: %v", err)
+	}
+
+	// Wait loop must use wget + HTTP API, not `bao status`.
+	if !bytes.Contains(data, []byte("wget")) {
+		t.Errorf("seed-secrets.sh wait loop must use wget (HTTP API)\ngot:\n%s", data)
+	}
+	if !bytes.Contains(data, []byte("/v1/sys/health")) {
+		t.Errorf("seed-secrets.sh wait loop must probe /v1/sys/health\ngot:\n%s", data)
+	}
+}
+
+// TestGenerate_SeedSecrets_Compose_HasVIBEWARDEN_PROFILE verifies that the
+// seed-secrets Compose service exposes VIBEWARDEN_PROFILE so the script can
+// branch on prod vs dev (ADR-104).
+func TestGenerate_SeedSecrets_Compose_HasVIBEWARDEN_PROFILE(t *testing.T) {
+	headers := []config.SecretsHeaderInjection{
+		{SecretPath: "app/api-key", SecretKey: "value", Header: "X-API-Key"},
+	}
+	cfg := secretsConfig(true, headers, nil)
+	cfg.Profile = "prod"
+	compose := renderCompose(t, cfg)
+
+	if !bytes.Contains(compose, []byte("VIBEWARDEN_PROFILE:")) {
+		t.Errorf("seed-secrets service must expose VIBEWARDEN_PROFILE env var\ngot:\n%s", compose)
+	}
+}
+
+// TestGenerate_CredentialsEnvFile_ContainsOPENBAO_ROOT_TOKEN verifies that
+// the .env file written by Generate uses OPENBAO_ROOT_TOKEN (not the deprecated
+// OPENBAO_DEV_ROOT_TOKEN) so Docker Compose variable interpolation works
+// with the renamed credential (ADR-104).
+func TestGenerate_CredentialsEnvFile_ContainsOPENBAO_ROOT_TOKEN(t *testing.T) {
+	outputDir := t.TempDir()
+	svc := generate.NewServiceWithCredentials(
+		realRenderer(),
+		&fakeCredentialGenerator{creds: fixedCreds()},
+		&fakeCredentialStore{},
+	)
+	cfg := minimalConfig()
+
+	if err := svc.Generate(context.Background(), cfg.ToGeneratorInput(), outputDir); err != nil {
+		t.Fatalf("Generate() unexpected error: %v", err)
+	}
+
+	envData, err := os.ReadFile(filepath.Join(outputDir, ".env"))
+	if err != nil {
+		t.Fatalf("reading .env: %v", err)
+	}
+
+	if !bytes.Contains(envData, []byte("OPENBAO_ROOT_TOKEN=")) {
+		t.Errorf(".env must contain OPENBAO_ROOT_TOKEN=\ngot:\n%s", envData)
+	}
+	if bytes.Contains(envData, []byte("OPENBAO_DEV_ROOT_TOKEN=")) {
+		t.Errorf(".env must NOT contain deprecated OPENBAO_DEV_ROOT_TOKEN=\ngot:\n%s", envData)
+	}
+}
+
+// TestGenerate_NoStaleDevTokenName verifies that neither the rendered
+// docker-compose.yml nor seed-secrets.sh contain OPENBAO_DEV_ROOT_TOKEN in
+// their variable references (ADR-104 migration check).
+func TestGenerate_NoStaleDevTokenName(t *testing.T) {
+	headers := []config.SecretsHeaderInjection{
+		{SecretPath: "app/api-key", SecretKey: "value", Header: "X-API-Key"},
+	}
+	cfg := prodSecretsConfig()
+	cfg.Secrets.Inject.Headers = headers
+
+	compose := renderCompose(t, cfg)
+	if bytes.Contains(compose, []byte("OPENBAO_DEV_ROOT_TOKEN")) {
+		t.Errorf("docker-compose.yml must not contain stale OPENBAO_DEV_ROOT_TOKEN\ngot:\n%s", compose)
+	}
+
+	outputDir := t.TempDir()
+	svc := generate.NewService(realRenderer())
+	if err := svc.Generate(context.Background(), cfg.ToGeneratorInput(), outputDir); err != nil {
+		t.Fatalf("Generate() unexpected error: %v", err)
+	}
+
+	seedData, err := os.ReadFile(filepath.Join(outputDir, "seed-secrets.sh"))
+	if err != nil {
+		t.Fatalf("reading seed-secrets.sh: %v", err)
+	}
+	if bytes.Contains(seedData, []byte("OPENBAO_DEV_ROOT_TOKEN")) {
+		t.Errorf("seed-secrets.sh must not contain stale OPENBAO_DEV_ROOT_TOKEN\ngot:\n%s", seedData)
 	}
 }

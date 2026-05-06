@@ -152,10 +152,11 @@ flowchart TD
 docker compose up -d
 ```
 
-OpenBao starts in dev mode (auto-unsealed, in-memory). The `openbao-bootstrap` container enables the KV v2 engine, creates a policy, and creates an AppRole for VibeWarden.
+OpenBao starts in dev mode (auto-unsealed, in-memory). The `seed-secrets` container
+enables the KV v2 engine and seeds initial secrets.
 
 ```bash
-docker compose logs openbao-bootstrap
+docker compose logs seed-secrets
 ```
 
 Copy the printed `role_id` and `secret_id`.
@@ -637,9 +638,30 @@ vibew secret generate --length 64
 
 ### OpenBao seal/unseal
 
-In production, OpenBao starts **sealed**. It cannot serve requests until unsealed with Shamir keys (or an auto-unseal provider like AWS KMS or cloud HSM).
+In production, OpenBao starts **sealed**. It cannot serve requests until unsealed.
 
-**First-time initialisation:**
+**vibew bundle path (single-node VPS — default):**
+
+`seed-secrets.sh` initialises and unseals OpenBao automatically on first boot when
+`VIBEWARDEN_PROFILE=prod`. A single unseal key (1-of-1 shares) is generated and
+written to `.credentials` on the host alongside all other secrets. No manual
+`bao operator init` step is required.
+
+Back up `.credentials` after the first successful `docker compose up -d`. If
+`OPENBAO_UNSEAL_KEY` is lost, the vault cannot be unsealed after a host reboot and
+all secrets become inaccessible. See [Troubleshooting](../troubleshooting.md) for the
+recovery procedure.
+
+Do not overwrite `.credentials` by re-running `vibew bundle` after a prod deploy.
+`vibew bundle` regenerates `.credentials` with a new placeholder token but without
+the `OPENBAO_UNSEAL_KEY` written at boot time. If you must re-bundle, copy the
+`OPENBAO_ROOT_TOKEN` and `OPENBAO_UNSEAL_KEY` lines from the existing host
+`.credentials` into the new file before re-deploying.
+
+**Manual path (when not using vibew bundle):**
+
+For deployments that do not use the generated bundle, initialise and unseal manually
+using the standard Shamir key ceremony:
 
 ```bash
 # Initialize OpenBao (generates unseal keys and root token)
@@ -653,7 +675,8 @@ bao operator unseal <key-3>
 
 Store each unseal key with a different team member. Never store them together or in plaintext.
 
-**Auto-unseal** is strongly recommended for production:
+**Auto-unseal** is recommended for production deployments that require operator-free
+restarts:
 
 ```hcl
 # openbao.hcl

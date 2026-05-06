@@ -57,7 +57,10 @@ var wellKnownAliases = []WellKnownAlias{
 		OpenBaoPath: "", // root token is not stored in OpenBao itself
 		DynamicRole: "",
 		CredentialsFileKeys: map[string]string{
-			"OPENBAO_DEV_ROOT_TOKEN": "dev_root_token",
+			// OPENBAO_ROOT_TOKEN is the canonical name (v0.19+).
+			// OPENBAO_DEV_ROOT_TOKEN is the deprecated name (v0.18 and earlier) —
+			// the store.Read fallback populates OpenBaoProdToken from it until v0.20.
+			"OPENBAO_ROOT_TOKEN": "root_token",
 		},
 		EnvPrefix: "OPENBAO_",
 	},

@@ -233,12 +233,14 @@ func (s *Service) tryCredentialsFile(ctx context.Context, alias *domainsecret.We
 	}
 
 	// Build the credential map from the file values using the alias key mapping.
+	// OPENBAO_ROOT_TOKEN is the canonical name (v0.19+); the store.Read fallback
+	// already resolves the deprecated OPENBAO_DEV_ROOT_TOKEN into OpenBaoProdToken.
 	credMap := map[string]string{
 		"POSTGRES_PASSWORD":      creds.PostgresPassword,
 		"KRATOS_SECRETS_COOKIE":  creds.KratosCookieSecret,
 		"KRATOS_SECRETS_CIPHER":  creds.KratosCipherSecret,
 		"GRAFANA_ADMIN_PASSWORD": creds.GrafanaAdminPassword,
-		"OPENBAO_DEV_ROOT_TOKEN": creds.OpenBaoDevRootToken,
+		"OPENBAO_ROOT_TOKEN":     creds.OpenBaoProdToken,
 	}
 
 	out := make(map[string]string, len(alias.CredentialsFileKeys))

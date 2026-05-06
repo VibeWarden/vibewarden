@@ -44,7 +44,7 @@ func TestResolveAlias_WellKnown(t *testing.T) {
 			input:           "openbao",
 			wantOpenBaoPath: "",
 			wantDynamicRole: "",
-			wantCredKeys:    []string{"OPENBAO_DEV_ROOT_TOKEN"},
+			wantCredKeys:    []string{"OPENBAO_ROOT_TOKEN"},
 			wantEnvPrefix:   "OPENBAO_",
 		},
 	}

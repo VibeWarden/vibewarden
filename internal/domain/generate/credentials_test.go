@@ -12,7 +12,7 @@ func TestGeneratedCredentials_FieldsAccessible(t *testing.T) {
 		KratosCookieSecret:   "cookie-secret",
 		KratosCipherSecret:   "cipher-secret",
 		GrafanaAdminPassword: "grafana-pass",
-		OpenBaoDevRootToken:  "bao-token",
+		OpenBaoProdToken:     "bao-token",
 	}
 
 	tests := []struct {
@@ -24,7 +24,7 @@ func TestGeneratedCredentials_FieldsAccessible(t *testing.T) {
 		{"KratosCookieSecret", creds.KratosCookieSecret, "cookie-secret"},
 		{"KratosCipherSecret", creds.KratosCipherSecret, "cipher-secret"},
 		{"GrafanaAdminPassword", creds.GrafanaAdminPassword, "grafana-pass"},
-		{"OpenBaoDevRootToken", creds.OpenBaoDevRootToken, "bao-token"},
+		{"OpenBaoProdToken", creds.OpenBaoProdToken, "bao-token"},
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
