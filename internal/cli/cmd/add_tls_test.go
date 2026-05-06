@@ -139,6 +139,33 @@ func TestAddTLSCmd_AutoProvider(t *testing.T) {
 			notInProd:  []string{"provider: letsencrypt"},
 			wantInProd: []string{"domain: localhost"},
 		},
+		// Regression tests for #1336: vibew add tls must write profile: prod and
+		// deploy.target_platform so vibew bundle never emits bracketed SSH placeholders
+		// when the operator copies the output verbatim.
+		{
+			name:             "#1336 — fresh file always contains profile: prod",
+			base:             tlsMinimalBase,
+			args:             []string{"--domain", "example.com"},
+			wantInProd:       []string{"profile: prod"},
+			wantNoStderrHint: true,
+		},
+		{
+			name:             "#1336 — fresh file always contains deploy.target_platform: linux/amd64",
+			base:             tlsMinimalBase,
+			args:             []string{"--domain", "example.com"},
+			wantInProd:       []string{"target_platform: linux/amd64"},
+			wantNoStderrHint: true,
+		},
+		{
+			name: "#1336 — LE-incompatible domain still writes profile: prod and deploy.target_platform",
+			base: tlsMinimalBase,
+			args: []string{"--domain", "localhost"},
+			wantInProd: []string{
+				"profile: prod",
+				"target_platform: linux/amd64",
+			},
+			wantStderrContains: "--provider",
+		},
 	}
 
 	for _, tt := range tests {

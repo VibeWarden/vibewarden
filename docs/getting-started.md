@@ -487,12 +487,35 @@ See the [Observability guide](observability.md) for details.
 ### Enable TLS for production
 
 ```bash
-./vibew add tls --domain app.yourcompany.com
+./vibew add tls --domain app.yourcompany.com --email ops@yourcompany.com
 ```
 
 This sets `tls.provider: letsencrypt` and `tls.domain` in `vibewarden.yaml` and
-writes the domain to `vibewarden.production.yaml`. When you run `vibew bundle`,
-the production overrides (letsencrypt, port 443) are merged automatically.
+writes the following fields to `vibewarden.production.yaml`:
+
+| Field | Value | Purpose |
+|-------|-------|---------|
+| `profile` | `prod` | Marks the file as a production override |
+| `server.port` | `443` | Standard HTTPS port |
+| `deploy.target_platform` | `linux/amd64` | Prevents bracketed arch placeholder in `vibew bundle` output |
+| `tls.domain` | the `--domain` value | Real domain for Let's Encrypt and healthcheck URL |
+| `tls.provider` | `letsencrypt` | ACME provider (auto-derived for public domains) |
+
+After running `vibew add tls`, set `deploy.host` in `vibewarden.production.yaml`
+before running `vibew bundle`. Without it, `vibew bundle` prints SSH commands with
+`<your-ssh-user>@<your-ssh-host>` bracketed placeholders — copy-pasting them
+verbatim fails:
+
+```yaml
+# vibewarden.production.yaml  (edit after vibew add tls)
+deploy:
+  # Replace placeholders with your real SSH target before vibew bundle.
+  target_platform: linux/amd64
+  host: <your-ssh-user>@<your-server-ip>
+```
+
+When `deploy.host` is set, `vibew bundle` substitutes it into all three SSH
+command lines, producing output that is ready to run without any edits.
 
 See the [Production Deployment guide](production-deployment.md) for the full
 production checklist.
