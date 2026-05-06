@@ -622,6 +622,38 @@ func TestPlugin_ContributeCaddyHandlers_JWTDevMode_HasJWTBearerHandler(t *testin
 	}
 }
 
+// TestPlugin_ContributeCaddyHandlers_APIKeyMode_Priority pins the api_key_auth
+// handler priority to 36. Priority 36 is the sole value that places the API
+// key gate unambiguously after secrets/webhooksig handlers (35) and before
+// Kratos/JWT auth handlers (38+) in the non-stable sort.Slice ordering used by
+// the Caddy config builder. If this test fails a contributor changed the
+// priority without consulting the handler budget — update ADR-103 first.
+func TestPlugin_ContributeCaddyHandlers_APIKeyMode_Priority(t *testing.T) {
+	cfg := auth.Config{
+		Enabled: true,
+		Mode:    auth.ModeAPIKey,
+	}
+	p := auth.New(cfg, discardLogger(), nil)
+	if err := p.Init(context.Background()); err != nil {
+		t.Fatalf("Init() error: %v", err)
+	}
+	defer func() { _ = p.Stop(context.Background()) }() //nolint:errcheck
+
+	handlers := p.ContributeCaddyHandlers()
+	if len(handlers) == 0 {
+		t.Fatal("ContributeCaddyHandlers() returned empty slice for api-key mode")
+	}
+
+	const wantPriority = 36
+	if handlers[0].Priority != wantPriority {
+		t.Errorf("api_key_auth handler Priority = %d, want %d (ADR-103 priority budget)",
+			handlers[0].Priority, wantPriority)
+	}
+	if got := handlers[0].Handler["handler"]; got != "api_key_auth" {
+		t.Errorf("handler type = %q, want %q", got, "api_key_auth")
+	}
+}
+
 func TestPlugin_ContributeCaddyHandlers_JWTDevMode_PublicPathsIncludeVibewardenPrefix(t *testing.T) {
 	cfg := auth.Config{
 		Enabled: true,

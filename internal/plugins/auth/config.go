@@ -103,12 +103,44 @@ type Config struct {
 	// Only valid when Mode is ModeKratos.
 	RolePaths map[string][]string
 
+	// APIKey holds settings used when Mode is ModeAPIKey.
+	// The Header and ScopeRules fields configure the API key extraction and
+	// scope-based authorization rules evaluated by APIKeyHandler.
+	APIKey APIKeyPluginConfig
+
 	// UI holds configuration for the built-in auth UI pages.
 	// When UI.Mode is "built-in" (the default), VibeWarden serves its own
 	// login, registration, recovery, and verification pages.
 	// When UI.Mode is "custom", the operator provides their own pages and
 	// the built-in handler is not mounted.
 	UI UIConfig
+}
+
+// APIKeyScopeRule is the plugin-layer representation of a single API key scope
+// rule. It mirrors config.APIKeyScopeRule but is defined here to keep the
+// plugins layer free of a direct config package dependency.
+type APIKeyScopeRule struct {
+	// Path is a glob pattern matched against the request URL path.
+	Path string
+
+	// Methods restricts which HTTP methods the rule applies to. Empty means all.
+	Methods []string
+
+	// RequiredScopes is the set of scope strings the API key must hold.
+	RequiredScopes []string
+}
+
+// APIKeyPluginConfig holds API-key-specific settings for the auth plugin.
+// It mirrors a subset of config.APIKeyConfig but is defined here to keep the
+// plugins layer free of a direct config package dependency.
+type APIKeyPluginConfig struct {
+	// Header is the request header from which the API key is extracted.
+	// Defaults to "X-API-Key" when empty.
+	Header string
+
+	// ScopeRules is the ordered list of path+method authorization rules.
+	// Rules are evaluated in order; the first matching rule wins.
+	ScopeRules []APIKeyScopeRule
 }
 
 // UIConfig holds theming and mode settings for the built-in auth UI pages.

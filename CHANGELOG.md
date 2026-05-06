@@ -16,6 +16,10 @@ This initial entry was written by hand to summarise the work leading up to v0.1.
 
 - **fix(#1304): cap TLS retry loop at a hard iteration ceiling.** Previously the retry path spun 500K–750K iterations on persistent failure with no cap, observable in the exhaustion test (the `noSleep` test seam removes the natural pacing of `time.Sleep`). New `MaxIterations(budget, poll)` helper returns `floor(budget/poll) + 2` and gates both `runTLSRetry` and the boot-gap loop. Production iteration counts stay in the low tens (30s budget / 2s poll → 17 max). Returns `ErrTLSRetryExhausted` cleanly after the cap is hit.
 
+### Added
+
+- **feat(#1302): wire `api-key` auth mode into Caddy handler chain.** New Caddy module `http.handlers.api_key_auth` (priority 36) consumes `ports.APIKeyValidator` via `RuntimeServices`. When `auth.mode: api-key` is set, `ContributeCaddyHandlers` returns an `APIKeyHandler` at priority 36 (after secrets/webhooksig at 35, before Kratos/JWT auth handlers at 38+; rate-limiting runs later at 50). The handler fails closed (HTTP 500) when no validator is present. The composition root wires a `ConfigValidator` from `cfg.Auth.APIKey.Keys` when the mode is active. Architecture invariant test `TestAuthModes_AllModesHaveHandlerOrAreNone` pins that every non-None auth mode must contribute at least one Caddy handler.
+
 ### Documentation
 
 - **docs(#1270): vibewarden.reference.yaml — add 13 previously-missing top-level config sections.** Brings the reference file to full coverage of fields documented in llms-full.txt or defined in internal/config Go structs. Also fixes a class of latent default-bugs surfaced by the new TestReferenceYAML_UnmarshalsCleanly test: audit.enabled, audit.output, and resilience.circuit_breaker/retry fields now apply their documented defaults via setDefaults(), where previously they were silently zero.
@@ -28,6 +32,7 @@ This initial entry was written by hand to summarise the work leading up to v0.1.
 - **fix(#1269): reject env names containing path-traversal sequences in `vibew probe --env` and `vibew doctor --preflight`.** New `validateEnvName` (`^[a-zA-Z0-9_-]+$`) returns `ErrInvalidEnvName`; defense-in-depth: resolved path is verified inside project root after `filepath.EvalSymlinks` to block symlink-escape via legitimately-named override files.
 - **fix(#1301): consolidate env override path resolution through `env.FileResolver`.** `vibew bundle` (`prodConfigPathForEnv`) and `vibew validate` (`discoverProdOverride`) previously built the production override path inline, bypassing the resolver's allowlist and `filepath.EvalSymlinks` containment check added in #1269. Both callers now route through `resolveEnvOverridePath` backed by `env.FileResolver.ResolvePath` — single source of truth for env-name validation. A new `ResolvePath` method is added alongside the existing `Resolve`; it applies the same security checks but skips the lenient `LoadMergedConfig` step so callers can use their own strict loader (`config.LoadStrict` for validate, `LoadMergedConfig` for bundle).
 - **fix(#1264): caddy auth handlers — strip ALL X-User-* headers from incoming requests + fix public-path prefix matching.** Closes identity-spoofing via forged X-User-* values in JWT mode (notably X-User-Name) and public-path bypass via prefix-sibling paths (e.g. /auth-evil matching /auth/*). Both Caddy-layer (config_handlers.go x-user-* glob) and Go-layer (stripXUserHeaders defense-in-depth) defenses now active.
+- **fix(#1302): `auth.mode: api-key` is now actually enforced.** Previously this mode was a no-op — the validator existed but no Caddy handler invoked it, so services configured with `auth.mode: api-key` were silently unauthenticated. This release wires `APIKeyHandler` into the Caddy chain at priority 36, closing the gap. No config changes required. Operators upgrading must ensure clients have valid API keys before deploy; previously-passing unauthenticated requests will now be rejected with 401. Closes a latent OWASP A01:2021 (Broken Access Control) gap. ADR-103.
 
 ### Added
 
@@ -39,6 +44,7 @@ This initial entry was written by hand to summarise the work leading up to v0.1.
 
 ### Removed
 
+- **chore(#1302): delete orphan `internal/adapters/logprint/` package.** Zero callers in the main module. The package was superseded by `internal/adapters/log/` (slog-based) and was the only reason `fatih/color` would have remained exclusively as a logprint dependency. Removed `printer.go` and `printer_test.go`.
 - **chore(#1300): remove dead StateSync port + adapters + domain/sync.** Zero external callers. Cross-instance state-sync was scoped under `epic:state-sync` but never wired into any handler chain. Files removed: `internal/ports/statesync.go`, `internal/adapters/statesync/` (5 files), `internal/domain/sync/` (2 files). `redis/go-redis` remains in go.mod (used by ratelimit adapter and plugin).
 
 ## [v0.18.7] — 2026-05-05

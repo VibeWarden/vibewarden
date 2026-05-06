@@ -89,6 +89,7 @@ Results applied 2026-05-04:
 | [100](adr-100-image-identity-via-project-root-label.md) | Image identity via `org.vibewarden.project-root-hash` label | — | |
 | [101](adr-101-agent-kickoff-release-artifacts.md) | Agent-kickoff release artifacts — main repo emits canonical kickoff prompts as release assets | #1232 | |
 | [102](adr-102-vibew-probe-go-stdlib-health-probe-and-env-resolver.md) | `vibew probe [--env <name>]` — Go-stdlib HTTPS probe of `/_vibewarden/health` and a generalisable env-resolver | #1233 | |
+| [103](adr-103-wire-api-key-auth-mode-into-caddy-handler-chain.md) | Wire `api-key` auth mode into Caddy handler chain | #1302 | |
 | [497](adr-497-graceful-shutdown-connection-draining.md) | Graceful Shutdown / Connection Draining | — | Removed 2026-05-04 — see tombstone (anomalous number, paste of issue #497) |
 
 ## Numbering
@@ -102,4 +103,4 @@ never written. ADR-076 references it (`(ADR-074, internal/adapters/builtin/store
 context only. The decision is inlined in `internal/adapters/builtin/store.go` code comments.
 
 **ADR-497 anomaly**: Number 497 is almost certainly a mis-paste of issue #497. The file
-was tombstoned in the 2026-05-03 audit. The next real ADR number in sequence is 103.
+was tombstoned in the 2026-05-03 audit. The next real ADR number in sequence is 104.

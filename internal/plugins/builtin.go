@@ -231,6 +231,14 @@ func RegisterBuiltinPlugins(
 			}
 		}
 	}
+	apiKeyScopeRules := make([]authplugin.APIKeyScopeRule, len(cfg.Auth.APIKey.ScopeRules))
+	for i, r := range cfg.Auth.APIKey.ScopeRules {
+		apiKeyScopeRules[i] = authplugin.APIKeyScopeRule{
+			Path:           r.Path,
+			Methods:        r.Methods,
+			RequiredScopes: r.RequiredScopes,
+		}
+	}
 	registry.Register(authplugin.New(authplugin.Config{
 		Enabled:           cfg.Auth.Active(),
 		Mode:              authplugin.Mode(cfg.Auth.Mode),
@@ -246,6 +254,10 @@ func RegisterBuiltinPlugins(
 			IssuerURL: cfg.Auth.JWT.IssuerURL,
 			Issuer:    cfg.Auth.JWT.Issuer,
 			Audience:  cfg.Auth.JWT.Audience,
+		},
+		APIKey: authplugin.APIKeyPluginConfig{
+			Header:     cfg.Auth.APIKey.Header,
+			ScopeRules: apiKeyScopeRules,
 		},
 	}, logger, authIdentityProvider))
 
