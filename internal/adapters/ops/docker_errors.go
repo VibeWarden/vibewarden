@@ -6,21 +6,28 @@ import (
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
 
-// ClassifyDockerError inspects stderr captured from a docker shell-out and
-// returns a *ports.DockerUnavailableError wrapping the most specific sentinel
-// when a known unavailability signature is detected, or originalErr unchanged
-// when no signature matches (including empty stderr or nil originalErr).
+// ClassifyDockerError inspects the error message and stderr captured from a
+// docker shell-out and returns a *ports.DockerUnavailableError wrapping the
+// most specific sentinel when a known unavailability signature is detected, or
+// originalErr unchanged when no signature matches (including empty stderr or
+// nil originalErr).
 //
-// Recognised signatures:
-//   - "permission denied while trying to connect to the docker api" →
+// This is the single canonical place where Docker error detection lives.
+// Do not add docker-binary-absent or daemon-unavailable string checks anywhere
+// else in the codebase — extend this function instead.
+//
+// Recognised signatures (checked in precedence order):
+//   - err.Error() contains "executable file not found" →
+//     ErrDockerUnavailable (docker binary absent from PATH)
+//   - stderr contains "permission denied while trying to connect to the docker api" →
 //     ErrDockerSocketPermission
-//   - "unix:///" AND "permission denied" →
+//   - stderr contains "unix:///" AND "permission denied" →
 //     ErrDockerSocketPermission (macOS user-socket path variant)
-//   - "cannot connect to the docker daemon" →
+//   - stderr contains "cannot connect to the docker daemon" →
 //     ErrDockerDaemonNotRunning
-//   - "is the docker daemon running" →
+//   - stderr contains "is the docker daemon running" →
 //     ErrDockerDaemonNotRunning (variant phrasing emitted by some Docker versions)
-//   - "docker: command not found" →
+//   - stderr contains "docker: command not found" →
 //     ErrDockerDaemonNotRunning (snap-installed Docker on Ubuntu; binary missing
 //     means the daemon is unreachable — same operator hint applies)
 //
@@ -34,6 +41,16 @@ import (
 func ClassifyDockerError(originalErr error, stderr string) error {
 	if originalErr == nil {
 		return nil
+	}
+
+	// Check the error message itself for binary-not-found before inspecting
+	// stderr — exec.ErrNotFound / LookPath embeds this signature in the error.
+	if strings.Contains(originalErr.Error(), "executable file not found") {
+		return &ports.DockerUnavailableError{
+			Sentinel: ports.ErrDockerUnavailable,
+			Stderr:   stderr,
+			Cause:    originalErr,
+		}
 	}
 
 	lower := strings.ToLower(stderr)

@@ -12,6 +12,10 @@ This initial entry was written by hand to summarise the work leading up to v0.1.
 
 ## [Unreleased]
 
+### Fixed
+
+- **fix(#1304): cap TLS retry loop at N iterations + exponential backoff.** Previously the retry path spun ~500K iterations on persistent failure with no cap, observable in the exhaustion test. New cap returns a clear error after exhaustion; backoff between attempts prevents CPU-melt under network instability.
+
 ### Documentation
 
 - **docs(#1270): vibewarden.reference.yaml — add 13 previously-missing top-level config sections.** Brings the reference file to full coverage of fields documented in llms-full.txt or defined in internal/config Go structs. Also fixes a class of latent default-bugs surfaced by the new TestReferenceYAML_UnmarshalsCleanly test: audit.enabled, audit.output, and resilience.circuit_breaker/retry fields now apply their documented defaults via setDefaults(), where previously they were silently zero.
@@ -24,8 +28,13 @@ This initial entry was written by hand to summarise the work leading up to v0.1.
 - **fix(#1269): reject env names containing path-traversal sequences in `vibew probe --env` and `vibew doctor --preflight`.** New `validateEnvName` (`^[a-zA-Z0-9_-]+$`) returns `ErrInvalidEnvName`; defense-in-depth: resolved path is verified inside project root after `filepath.EvalSymlinks` to block symlink-escape via legitimately-named override files.
 - **fix(#1264): caddy auth handlers — strip ALL X-User-* headers from incoming requests + fix public-path prefix matching.** Closes identity-spoofing via forged X-User-* values in JWT mode (notably X-User-Name) and public-path bypass via prefix-sibling paths (e.g. /auth-evil matching /auth/*). Both Caddy-layer (config_handlers.go x-user-* glob) and Go-layer (stripXUserHeaders defense-in-depth) defenses now active.
 
+### Added
+
+- **test(#1303): four cross-cutting architecture invariants now enforced in `test/architecture/`.** Previously these patterns were enforced by code review only. Tests cover: (1) `TestDomainPackages_NoExternalImports` — no domain file may import adapters/app/cli/ports/plugins/middleware (single pre-approved exception: `internal/domain/site/site.go → internal/config` per ADR-068); (2) `TestConfigPackage_NoOuterLayerImports` — `internal/config` must not import outer layers; (3) `TestDockerErrorDetection_OnlyInClassifyDockerError` — all docker error string matching lives exclusively in `ClassifyDockerError`; (4) `TestLoadMergedConfig_RestrictedCallers` — `LoadMergedConfig` callers restricted to the approved allow-list (definition, bundle.go, env/resolver.go; `validate.go` included with a `TODO(#1301)` until that bypass is migrated). Pre-work: inline `isDockerNotFound` check in `image_inspect.go:145` migrated into `ClassifyDockerError` in `docker_errors.go`, consolidating all docker binary-absent detection into the canonical seam.
+
 ### Changed
 
+- **chore(#1290): upgrade Ory Kratos image v1.3.1 → v26.2.0.** Catches up on 24+ CalVer versions of security/bugfixes. Five files updated (docker-compose.yml, two templates, dev/kratos/kratos.yml, integration test image). All five REST endpoints we depend on are signature-stable; v25→v26 breaking changes are confined to self-service UI flow behavior we don't consume. Integration tests at `go test -tags integration ./internal/adapters/kratos/...` are the acceptance gate.
 - **chore(#1316): publish `llms-full.txt`, `llms.txt`, and `vibewarden.reference.yaml` as GitHub Release assets.** The website (vibewarden.dev) will fetch these at build time, eliminating the silent drift that bit v0.18.7. Mirrors the ADR-101 pattern already used for `agent-kickoff-{dev,deploy}.txt`. A new architecture invariant test (`test/architecture/release_assets_test.go`) fails the build if any of these files is absent or empty from the repo root.
 
 ### Removed
