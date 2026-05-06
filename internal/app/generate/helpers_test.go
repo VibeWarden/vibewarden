@@ -191,12 +191,28 @@ func TestNeedsSeedUsers(t *testing.T) {
 		want bool
 	}{
 		{
-			name: "kratos mode local returns true",
+			name: "kratos mode local with seed_demo_users true returns true",
+			cfg: &config.Config{
+				Auth:   config.AuthConfig{Mode: config.AuthModeKratos, SeedDemoUsers: true},
+				Kratos: config.KratosConfig{External: false},
+			},
+			want: true,
+		},
+		{
+			name: "kratos mode local without seed_demo_users (default false) returns false",
 			cfg: &config.Config{
 				Auth:   config.AuthConfig{Mode: config.AuthModeKratos},
 				Kratos: config.KratosConfig{External: false},
 			},
-			want: true,
+			want: false,
+		},
+		{
+			name: "kratos mode external with seed_demo_users true returns false",
+			cfg: &config.Config{
+				Auth:   config.AuthConfig{Mode: config.AuthModeKratos, SeedDemoUsers: true},
+				Kratos: config.KratosConfig{External: true},
+			},
+			want: false,
 		},
 		{
 			name: "kratos mode external returns false",

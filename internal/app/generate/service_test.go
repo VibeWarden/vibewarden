@@ -2285,6 +2285,7 @@ func TestGenerate_SeedUsers_WrittenToScriptsSubdir(t *testing.T) {
 		Auth: config.AuthConfig{
 			Mode:           config.AuthModeKratos,
 			IdentitySchema: "email_password",
+			SeedDemoUsers:  true,
 		},
 	}
 
@@ -2296,6 +2297,34 @@ func TestGenerate_SeedUsers_WrittenToScriptsSubdir(t *testing.T) {
 	seedUsersPath := filepath.Join(outputDir, "scripts", "seed-users.sh")
 	if _, err := os.Stat(seedUsersPath); os.IsNotExist(err) {
 		t.Errorf("expected scripts/seed-users.sh to exist at %s", seedUsersPath)
+	}
+}
+
+// TestGenerate_SeedUsers_NotWrittenWhenSeedDemoUsersFalse verifies that when
+// auth.seed_demo_users is false (the default), scripts/seed-users.sh is NOT
+// written even though auth.mode is "kratos" and Kratos is local. This ensures
+// greenfield projects do not receive demo vibewarden.dev credentials in their
+// Kratos instance unless they explicitly opt in.
+func TestGenerate_SeedUsers_NotWrittenWhenSeedDemoUsersFalse(t *testing.T) {
+	outputDir := t.TempDir()
+	cfg := &config.Config{
+		Server:   config.ServerConfig{Host: "127.0.0.1", Port: 8080},
+		Upstream: config.UpstreamConfig{Host: "127.0.0.1", Port: 3000},
+		Auth: config.AuthConfig{
+			Mode:           config.AuthModeKratos,
+			IdentitySchema: "email_password",
+			// SeedDemoUsers deliberately left false (zero value = default)
+		},
+	}
+
+	svc := generate.NewService(realRenderer())
+	if err := svc.Generate(context.Background(), cfg.ToGeneratorInput(), outputDir); err != nil {
+		t.Fatalf("Generate() unexpected error: %v", err)
+	}
+
+	seedUsersPath := filepath.Join(outputDir, "scripts", "seed-users.sh")
+	if _, err := os.Stat(seedUsersPath); err == nil {
+		t.Errorf("scripts/seed-users.sh should NOT exist when auth.seed_demo_users is false (default)")
 	}
 }
 
@@ -2315,6 +2344,7 @@ func TestGenerate_SeedUsers_NotWrittenWhenExternal(t *testing.T) {
 		Auth: config.AuthConfig{
 			Mode:           config.AuthModeKratos,
 			IdentitySchema: "email_password",
+			SeedDemoUsers:  true, // even with opt-in set, external=true must block generation
 		},
 	}
 
@@ -2367,6 +2397,7 @@ func TestGenerate_Compose_SeedUsersVolume_IsRelativePath(t *testing.T) {
 		Auth: config.AuthConfig{
 			Mode:           config.AuthModeKratos,
 			IdentitySchema: "email_password",
+			SeedDemoUsers:  true,
 		},
 	}
 

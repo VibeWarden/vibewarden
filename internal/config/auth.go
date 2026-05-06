@@ -328,6 +328,16 @@ type AuthConfig struct {
 	//       - /admin/moderation/*
 	RolePaths map[string][]string `mapstructure:"role_paths"`
 
+	// SeedDemoUsers controls whether the bundle generator writes
+	// scripts/seed-users.sh into the generated output directory.
+	// When true (and auth.mode is "kratos" and kratos.external is false),
+	// the script is generated and mounted into the seed-users init container.
+	// It seeds demo Kratos identities (demo@vibewarden.dev, alice@vibewarden.dev)
+	// on first boot and is only useful for demos or local testing.
+	//
+	// Default: false. Never enable in production.
+	SeedDemoUsers bool `mapstructure:"seed_demo_users"`
+
 	// UI holds theme and URL settings for the built-in or custom auth pages.
 	UI AuthUIConfig `mapstructure:"ui"`
 }

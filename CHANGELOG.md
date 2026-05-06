@@ -18,6 +18,12 @@ This initial entry was written by hand to summarise the work leading up to v0.1.
 - **fix(#1334): bundle — remove `disable_mlock = false` from generated `openbao/config.hcl`.** OpenBao 2.2.0+ rejects this directive ("OpenBao has dropped support for mlock"). Every Linux deploy with `secrets.provider: openbao` (i.e., every default deploy) failed at startup. Surfaced by the v0.19 smoke test on demo.vibewarden.dev (Hetzner).
 - **fix(#1336): `vibew add tls` now writes `profile: prod` + `deploy:` scaffolding into the generated production override.** Previously the generated `vibewarden.production.yaml` contained only `server.port` and `tls.*` fields. Operators who ran `vibew bundle` next received SSH commands with bracketed `<your-ssh-user>@<your-ssh-host>` placeholders that copy-paste verbatim into auth failure — violating the cross-LLM literal-vs-template clarity rule (v0.18.4 retro). Now `vibew add tls` always upserts `profile: prod` and `deploy.target_platform: linux/amd64` into `vibewarden.production.yaml`. A commented-out `# host:` hint is seeded into freshly-created files. Operators only need to fill in `deploy.host` before running `vibew bundle` — all other fields are complete.
 
+### Added
+
+- **feat(#1335): new `auth.seed_demo_users: bool` config field (default `false`).** When `true` (and `auth.mode: kratos`, `kratos.external: false`), the bundle generator writes `scripts/seed-users.sh` — a script that seeds demo Kratos identities (`demo@vibewarden.dev`, `alice@vibewarden.dev`) on first deploy. Off by default so greenfield projects never receive demo vibewarden.dev credentials in their Kratos instance. The `examples/demo-app` sets `auth.seed_demo_users: true`; all other projects must opt in explicitly. Never enable in production.
+
+### Fixed (continued)
+
 - **fix(#1304): cap TLS retry loop at a hard iteration ceiling.** Previously the retry path spun 500K–750K iterations on persistent failure with no cap, observable in the exhaustion test (the `noSleep` test seam removes the natural pacing of `time.Sleep`). New `MaxIterations(budget, poll)` helper returns `floor(budget/poll) + 2` and gates both `runTLSRetry` and the boot-gap loop. Production iteration counts stay in the low tens (30s budget / 2s poll → 17 max). Returns `ErrTLSRetryExhausted` cleanly after the cap is hit.
 
 ### Added
