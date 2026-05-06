@@ -40,6 +40,7 @@ This initial entry was written by hand to summarise the work leading up to v0.1.
 
 ### Changed
 
+- **chore(#1290): upgrade Ory Kratos image v1.3.1 → v26.2.0.** Catches up on 24+ CalVer versions of security/bugfixes. Five files updated (docker-compose.yml, two templates, dev/kratos/kratos.yml, integration test image). All five REST endpoints we depend on are signature-stable; v25→v26 breaking changes are confined to self-service UI flow behavior we do not consume. Integration test migrate-first pattern added (`migrateKratos`) to handle v26.2.0's 338 migrations without exceeding the serve-container startup timeout.
 - **chore(#1316): publish `llms-full.txt`, `llms.txt`, and `vibewarden.reference.yaml` as GitHub Release assets.** The website (vibewarden.dev) will fetch these at build time, eliminating the silent drift that bit v0.18.7. Mirrors the ADR-101 pattern already used for `agent-kickoff-{dev,deploy}.txt`. A new architecture invariant test (`test/architecture/release_assets_test.go`) fails the build if any of these files is absent or empty from the repo root.
 
 ### Removed

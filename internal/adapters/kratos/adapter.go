@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/vibewarden/vibewarden/internal/domain/identity"
@@ -132,9 +133,13 @@ func (a *Adapter) Authenticate(ctx context.Context, r *http.Request) identity.Au
 	return identity.Success(ident)
 }
 
-// CheckSession calls the Kratos GET /sessions/whoami endpoint, passing the
-// session cookie in the Cookie request header, and maps the response to a
-// ports.Session. It is used internally by Authenticate.
+// CheckSession calls the Kratos GET /sessions/whoami endpoint and maps the
+// response to a ports.Session. It is used internally by Authenticate.
+//
+// sessionCookie can be either a cookie pair ("ory_kratos_session=<value>",
+// used by browser flows) or a raw API session token ("ory_st_*", used by
+// API flows). Kratos v25+ uses X-Session-Token for API tokens; cookie format
+// is used for browser sessions. The format is detected automatically.
 //
 // TODO(#1106): remove once no external caller depends on this method.
 //
@@ -153,8 +158,15 @@ func (a *Adapter) CheckSession(ctx context.Context, sessionCookie string) (*port
 	if err != nil {
 		return nil, fmt.Errorf("building whoami request: %w", err)
 	}
-	req.Header.Set("Cookie", sessionCookie)
 	req.Header.Set("Accept", "application/json")
+	// Detect whether the caller provided a cookie pair ("name=value") or a raw
+	// API session token. Kratos v25+ API tokens start with "ory_st_" and must
+	// be sent via X-Session-Token; browser session cookies use the Cookie header.
+	if strings.HasPrefix(sessionCookie, "ory_st_") {
+		req.Header.Set("X-Session-Token", sessionCookie)
+	} else {
+		req.Header.Set("Cookie", sessionCookie)
+	}
 
 	resp, err := a.client.Do(req)
 	if err != nil {

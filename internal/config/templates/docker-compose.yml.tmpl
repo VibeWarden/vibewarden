@@ -166,7 +166,7 @@ services:
       retries: 10
 
   kratos-migrate:
-    image: oryd/kratos:v1.3.1
+    image: oryd/kratos:v26.2.0
     restart: "no"
     command: migrate sql -e --yes
     env_file:
@@ -183,7 +183,7 @@ services:
 {{- end }}
 
   kratos:
-    image: oryd/kratos:v1.3.1
+    image: oryd/kratos:v26.2.0
     restart: unless-stopped
     command: serve --config /etc/kratos/kratos.yml --dev
     env_file:

@@ -28,19 +28,24 @@ type kratosCreateIdentityRequest struct {
 	Traits   map[string]any `json:"traits"`
 }
 
-// kratosPatchIdentityRequest is the body sent to PATCH /admin/identities/:id.
-type kratosPatchIdentityRequest struct {
-	State string `json:"state"`
+// kratosPatchOp is a single JSON Patch operation as defined in RFC 6902.
+// Kratos v25+ requires JSON Patch format for PATCH /admin/identities/:id.
+type kratosPatchOp struct {
+	Op    string `json:"op"`
+	Path  string `json:"path"`
+	Value string `json:"value"`
 }
 
-// kratosRecoveryLinkRequest is the body sent to POST /admin/recovery/link.
-type kratosRecoveryLinkRequest struct {
+// kratosRecoveryCodeRequest is the body sent to POST /admin/recovery/code.
+// This endpoint replaced POST /admin/recovery/link in Kratos v25.
+type kratosRecoveryCodeRequest struct {
 	IdentityID string `json:"identity_id"`
 }
 
-// kratosRecoveryLinkResponse mirrors the response from POST /admin/recovery/link.
-type kratosRecoveryLinkResponse struct {
+// kratosRecoveryCodeResponse mirrors the response from POST /admin/recovery/code.
+type kratosRecoveryCodeResponse struct {
 	RecoveryLink string `json:"recovery_link"`
+	RecoveryCode string `json:"recovery_code"`
 }
 
 // AdminAdapter implements ports.UserAdmin using the Ory Kratos admin API.
@@ -68,17 +73,22 @@ func NewAdminAdapter(adminURL string, timeout time.Duration, logger *slog.Logger
 
 // ListUsers implements ports.UserAdmin.
 // It calls GET /admin/identities with per_page and page query parameters.
+// Kratos v25+ uses 0-indexed pages; ports.Pagination.Page is 1-indexed, so
+// the adapter subtracts 1 before sending.
 func (a *AdminAdapter) ListUsers(ctx context.Context, pagination ports.Pagination) (*ports.PaginatedUsers, error) {
 	page := pagination.Page
 	if page < 1 {
 		page = 1
 	}
+	// Convert to 0-indexed page offset required by Kratos v25+.
+	kratosPage := page - 1
+
 	perPage := pagination.PerPage
 	if perPage < 1 {
 		perPage = 25
 	}
 
-	endpoint := fmt.Sprintf("%s/admin/identities?page=%d&per_page=%d", a.adminURL, page, perPage)
+	endpoint := fmt.Sprintf("%s/admin/identities?page=%d&per_page=%d", a.adminURL, kratosPage, perPage)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
@@ -148,7 +158,8 @@ func (a *AdminAdapter) GetUser(ctx context.Context, id string) (*user.User, erro
 
 // InviteUser implements ports.UserAdmin.
 // It calls POST /admin/identities to create the identity, then
-// POST /admin/recovery/link to obtain a one-time recovery link.
+// POST /admin/recovery/code to obtain a one-time recovery link.
+// The /admin/recovery/link endpoint was removed in Kratos v25.
 func (a *AdminAdapter) InviteUser(ctx context.Context, email string) (*ports.InviteResult, error) {
 	// Step 1: Create the identity.
 	createBody := kratosCreateIdentityRequest{
@@ -207,10 +218,14 @@ func (a *AdminAdapter) InviteUser(ctx context.Context, email string) (*ports.Inv
 }
 
 // DeactivateUser implements ports.UserAdmin.
-// It calls PATCH /admin/identities/:id with state=inactive.
+// It calls PATCH /admin/identities/:id with a JSON Patch payload (RFC 6902).
+// Kratos v25+ requires Content-Type: application/json-patch+json and a JSON
+// Patch array; the earlier plain-object body format returns 400.
 func (a *AdminAdapter) DeactivateUser(ctx context.Context, id string) error {
-	patchBody := kratosPatchIdentityRequest{State: "inactive"}
-	bodyBytes, err := json.Marshal(patchBody)
+	patchOps := []kratosPatchOp{
+		{Op: "replace", Path: "/state", Value: "inactive"},
+	}
+	bodyBytes, err := json.Marshal(patchOps)
 	if err != nil {
 		return fmt.Errorf("marshalling patch identity request: %w", err)
 	}
@@ -220,7 +235,7 @@ func (a *AdminAdapter) DeactivateUser(ctx context.Context, id string) error {
 	if err != nil {
 		return fmt.Errorf("building patch identity request: %w", err)
 	}
-	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Content-Type", "application/json-patch+json")
 	req.Header.Set("Accept", "application/json")
 
 	resp, err := a.client.Do(req)
@@ -240,39 +255,41 @@ func (a *AdminAdapter) DeactivateUser(ctx context.Context, id string) error {
 	return nil
 }
 
-// generateRecoveryLink calls POST /admin/recovery/link for the given identity ID
-// and returns the one-time link.
+// generateRecoveryLink calls POST /admin/recovery/code for the given identity
+// ID and returns the one-time recovery link. The /admin/recovery/link endpoint
+// was removed in Kratos v25; /admin/recovery/code is its replacement and
+// returns the same recovery_link field alongside a recovery_code.
 func (a *AdminAdapter) generateRecoveryLink(ctx context.Context, identityID string) (string, error) {
-	body := kratosRecoveryLinkRequest{IdentityID: identityID}
+	body := kratosRecoveryCodeRequest{IdentityID: identityID}
 	bodyBytes, err := json.Marshal(body)
 	if err != nil {
-		return "", fmt.Errorf("marshalling recovery link request: %w", err)
+		return "", fmt.Errorf("marshalling recovery code request: %w", err)
 	}
 
-	endpoint := fmt.Sprintf("%s/admin/recovery/link", a.adminURL)
+	endpoint := fmt.Sprintf("%s/admin/recovery/code", a.adminURL)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, endpoint, bytes.NewReader(bodyBytes))
 	if err != nil {
-		return "", fmt.Errorf("building recovery link request: %w", err)
+		return "", fmt.Errorf("building recovery code request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
 
 	resp, err := a.client.Do(req)
 	if err != nil {
-		return "", a.wrapNetworkError(ctx, "recovery link", endpoint, err)
+		return "", a.wrapNetworkError(ctx, "recovery code", endpoint, err)
 	}
 	defer func() { _ = resp.Body.Close() }() //nolint:errcheck // response body close error is not actionable
 
-	if err := a.checkAdminError(ctx, resp, "recovery link"); err != nil {
+	if err := a.checkAdminError(ctx, resp, "recovery code"); err != nil {
 		return "", err
 	}
 
-	var linkResp kratosRecoveryLinkResponse
-	if err := json.NewDecoder(resp.Body).Decode(&linkResp); err != nil {
-		return "", fmt.Errorf("decoding recovery link response: %w", err)
+	var codeResp kratosRecoveryCodeResponse
+	if err := json.NewDecoder(resp.Body).Decode(&codeResp); err != nil {
+		return "", fmt.Errorf("decoding recovery code response: %w", err)
 	}
 
-	return linkResp.RecoveryLink, nil
+	return codeResp.RecoveryLink, nil
 }
 
 // checkAdminError inspects resp.StatusCode and returns the appropriate sentinel

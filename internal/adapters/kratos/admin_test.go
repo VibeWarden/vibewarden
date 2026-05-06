@@ -63,7 +63,8 @@ func TestAdminAdapter_ListUsers_Success(t *testing.T) {
 }
 
 func TestAdminAdapter_ListUsers_DefaultPagination(t *testing.T) {
-	// Verify that zero-value pagination is normalised to page=1 per_page=25.
+	// Verify that zero-value pagination sends page=0 (Kratos v25+ 0-indexed)
+	// and per_page=25 to the Kratos API.
 	var gotPage, gotPerPage string
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -79,8 +80,9 @@ func TestAdminAdapter_ListUsers_DefaultPagination(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListUsers() error = %v", err)
 	}
-	if gotPage != "1" {
-		t.Errorf("page = %q, want %q", gotPage, "1")
+	// Kratos v25+ uses 0-indexed pages; Pagination.Page=1 (normalised default) maps to page=0.
+	if gotPage != "0" {
+		t.Errorf("page = %q, want %q", gotPage, "0")
 	}
 	if gotPerPage != "25" {
 		t.Errorf("per_page = %q, want %q", gotPerPage, "25")
@@ -204,9 +206,10 @@ func TestAdminAdapter_InviteUser_Success(t *testing.T) {
 			w.WriteHeader(http.StatusCreated)
 			_ = json.NewEncoder(w).Encode(identityFixture(newID, "new@example.com", "active"))
 
-		case r.Method == http.MethodPost && r.URL.Path == "/admin/recovery/link":
+		case r.Method == http.MethodPost && r.URL.Path == "/admin/recovery/code":
 			w.Header().Set("Content-Type", "application/json")
-			_ = json.NewEncoder(w).Encode(map[string]any{"recovery_link": wantLink})
+			w.WriteHeader(http.StatusCreated)
+			_ = json.NewEncoder(w).Encode(map[string]any{"recovery_link": wantLink, "recovery_code": "123456"})
 
 		default:
 			http.NotFound(w, r)
@@ -243,7 +246,7 @@ func TestAdminAdapter_InviteUser_RecoveryLinkFailureIsNonFatal(t *testing.T) {
 			w.WriteHeader(http.StatusCreated)
 			_ = json.NewEncoder(w).Encode(identityFixture(newID, "fragile@example.com", "active"))
 
-		case r.Method == http.MethodPost && r.URL.Path == "/admin/recovery/link":
+		case r.Method == http.MethodPost && r.URL.Path == "/admin/recovery/code":
 			w.WriteHeader(http.StatusInternalServerError)
 
 		default:
@@ -307,13 +310,14 @@ func TestAdminAdapter_InviteUser_ServerError(t *testing.T) {
 func TestAdminAdapter_DeactivateUser_Success(t *testing.T) {
 	const identityID = "c1b2c3d4-e5f6-7890-abcd-ef1234567890"
 
-	var gotMethod, gotPath string
-	var gotBody map[string]any
+	var gotMethod, gotPath, gotContentType string
+	var gotPatchOps []map[string]any
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		gotMethod = r.Method
 		gotPath = r.URL.Path
-		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		gotContentType = r.Header.Get("Content-Type")
+		_ = json.NewDecoder(r.Body).Decode(&gotPatchOps)
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		_ = json.NewEncoder(w).Encode(identityFixture(identityID, "dave@example.com", "inactive"))
@@ -332,8 +336,20 @@ func TestAdminAdapter_DeactivateUser_Success(t *testing.T) {
 	if gotPath != "/admin/identities/"+identityID {
 		t.Errorf("path = %q, want /admin/identities/%s", gotPath, identityID)
 	}
-	if gotBody["state"] != "inactive" {
-		t.Errorf("body.state = %v, want \"inactive\"", gotBody["state"])
+	if gotContentType != "application/json-patch+json" {
+		t.Errorf("Content-Type = %q, want application/json-patch+json", gotContentType)
+	}
+	if len(gotPatchOps) != 1 {
+		t.Fatalf("patch ops count = %d, want 1", len(gotPatchOps))
+	}
+	if gotPatchOps[0]["op"] != "replace" {
+		t.Errorf("patch op = %q, want \"replace\"", gotPatchOps[0]["op"])
+	}
+	if gotPatchOps[0]["path"] != "/state" {
+		t.Errorf("patch path = %q, want \"/state\"", gotPatchOps[0]["path"])
+	}
+	if gotPatchOps[0]["value"] != "inactive" {
+		t.Errorf("patch value = %v, want \"inactive\"", gotPatchOps[0]["value"])
 	}
 }
 

@@ -13,7 +13,7 @@
 # hostname, but it can reach localhost:8080 which is the published VibeWarden
 # port.
 
-version: v1.3.1
+version: v26.2.0
 
 # DSN is overridden by the DSN environment variable in docker-compose.yml.
 # "memory" is the fallback for non-Docker usage (e.g. testcontainers tests).
