@@ -12,6 +12,10 @@ This initial entry was written by hand to summarise the work leading up to v0.1.
 
 ## [Unreleased]
 
+### Fixed
+
+- **fix(#1304): cap TLS retry loop at N iterations + exponential backoff.** Previously the retry path spun ~500K iterations on persistent failure with no cap, observable in the exhaustion test. New cap returns a clear error after exhaustion; backoff between attempts prevents CPU-melt under network instability.
+
 ### Documentation
 
 - **docs(#1270): vibewarden.reference.yaml — add 13 previously-missing top-level config sections.** Brings the reference file to full coverage of fields documented in llms-full.txt or defined in internal/config Go structs. Also fixes a class of latent default-bugs surfaced by the new TestReferenceYAML_UnmarshalsCleanly test: audit.enabled, audit.output, and resilience.circuit_breaker/retry fields now apply their documented defaults via setDefaults(), where previously they were silently zero.

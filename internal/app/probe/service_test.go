@@ -390,3 +390,117 @@ func TestService_TLSRetry_EnvMode_ErrorClassChange(t *testing.T) {
 		t.Errorf("callCount = %d, want 3 (1 initial + 2 retries)", prober.callCount)
 	}
 }
+
+// TestMaxIterations verifies the MaxIterations helper used to cap retry loops.
+func TestMaxIterations(t *testing.T) {
+	tests := []struct {
+		name    string
+		budget  time.Duration
+		poll    time.Duration
+		wantMin int
+		wantMax int
+	}{
+		{
+			name:    "production TLS defaults 30s/2s",
+			budget:  30 * time.Second,
+			poll:    2 * time.Second,
+			wantMin: 15, // floor(30/2)=15, +2 margin = 17
+			wantMax: 20,
+		},
+		{
+			name:    "production boot-gap defaults 10s/1s",
+			budget:  10 * time.Second,
+			poll:    1 * time.Second,
+			wantMin: 10, // floor(10/1)=10, +2 margin = 12
+			wantMax: 15,
+		},
+		{
+			name:    "test budget 200ms/2s (poll larger than budget)",
+			budget:  200 * time.Millisecond,
+			poll:    2 * time.Second,
+			wantMin: 1,
+			wantMax: 5,
+		},
+		{
+			name:    "zero poll returns 1",
+			budget:  10 * time.Second,
+			poll:    0,
+			wantMin: 1,
+			wantMax: 1,
+		},
+		{
+			name:    "equal budget and poll",
+			budget:  5 * time.Second,
+			poll:    5 * time.Second,
+			wantMin: 1,
+			wantMax: 5,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := probe.MaxIterations(tt.budget, tt.poll)
+			if got < tt.wantMin {
+				t.Errorf("MaxIterations(%v, %v) = %d, want >= %d", tt.budget, tt.poll, got, tt.wantMin)
+			}
+			if got > tt.wantMax {
+				t.Errorf("MaxIterations(%v, %v) = %d, want <= %d", tt.budget, tt.poll, got, tt.wantMax)
+			}
+		})
+	}
+}
+
+// TestService_TLSRetry_IterationCapEnforced verifies that with a no-op sleep
+// the TLS retry loop terminates after a bounded number of probe calls.
+// Before the fix, ~750,000 iterations were observed for a 200ms budget.
+func TestService_TLSRetry_IterationCapEnforced(t *testing.T) {
+	prober := &fakeProber{responses: []fakeResponse{{err: tlsErr()}}}
+	svc := probe.NewService(prober).WithSleep(noSleep)
+
+	// budget=200ms, poll=2s → MaxIterations returns floor(0.1)+2 = 2
+	_, err := svc.Run(context.Background(), probe.Options{
+		URL:          "https://example.com/_vibewarden/health",
+		EnvName:      "production",
+		TLSRetryWait: 200 * time.Millisecond,
+		TLSRetryPoll: 2 * time.Second,
+		BootGapWait:  10 * time.Second,
+		BootGapPoll:  1 * time.Second,
+	})
+
+	if !errors.Is(err, probe.ErrTLSRetryExhausted) {
+		t.Fatalf("expected ErrTLSRetryExhausted, got: %v", err)
+	}
+
+	// 1 initial probe + at most MaxIterations(200ms, 2s) loop probes = at most 3.
+	// Without the iteration cap this would be ~750,000.
+	const maxExpectedCalls = 20
+	if prober.callCount > maxExpectedCalls {
+		t.Errorf("callCount = %d, want <= %d (iteration cap not enforced — busy-spin bug)", prober.callCount, maxExpectedCalls)
+	}
+}
+
+// TestService_BootGap_IterationCapEnforced verifies that with a no-op sleep
+// the boot-gap loop terminates after a bounded number of probe calls.
+// Before the fix, ~500,000 iterations were observed for a 200ms budget.
+func TestService_BootGap_IterationCapEnforced(t *testing.T) {
+	prober := &fakeProber{responses: []fakeResponse{{doc: unknownDoc()}}}
+	svc := probe.NewService(prober).WithSleep(noSleep)
+
+	// budget=200ms, poll=100ms → MaxIterations returns floor(2)+2 = 4
+	_, err := svc.Run(context.Background(), probe.Options{
+		URL:         "https://example.com/_vibewarden/health",
+		BootGapWait: 200 * time.Millisecond,
+		BootGapPoll: 100 * time.Millisecond,
+		PerProbe:    3 * time.Second,
+	})
+
+	if !errors.Is(err, probe.ErrBootGapExhausted) {
+		t.Fatalf("expected ErrBootGapExhausted, got: %v", err)
+	}
+
+	// 1 initial probe + at most MaxIterations(200ms, 100ms) loop probes = at most 5.
+	// Without the iteration cap this would be ~500,000.
+	const maxExpectedCalls = 20
+	if prober.callCount > maxExpectedCalls {
+		t.Errorf("callCount = %d, want <= %d (iteration cap not enforced — busy-spin bug)", prober.callCount, maxExpectedCalls)
+	}
+}
