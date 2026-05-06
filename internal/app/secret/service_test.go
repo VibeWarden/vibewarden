@@ -186,7 +186,7 @@ func TestService_Get_OpenBaoAlias_NoOpenBaoPath(t *testing.T) {
 	// The "openbao" alias has no OpenBaoPath — must read from .credentials.
 	store := &fakeSecretStore{} // healthy, but shouldn't be called
 	credStore := &fakeCredentialStore{
-		creds: &generate.GeneratedCredentials{OpenBaoDevRootToken: "my-root-token"},
+		creds: &generate.GeneratedCredentials{OpenBaoProdToken: "my-root-token"},
 	}
 	svc := appsecret.NewService(store, credStore, "/tmp")
 
@@ -197,8 +197,8 @@ func TestService_Get_OpenBaoAlias_NoOpenBaoPath(t *testing.T) {
 	if got.Source != domainsecret.SourceCredentialsFile {
 		t.Errorf("Source = %q, want %q", got.Source, domainsecret.SourceCredentialsFile)
 	}
-	if got.Data["dev_root_token"] != "my-root-token" {
-		t.Errorf("Data[dev_root_token] = %q, want %q", got.Data["dev_root_token"], "my-root-token")
+	if got.Data["root_token"] != "my-root-token" {
+		t.Errorf("Data[root_token] = %q, want %q", got.Data["root_token"], "my-root-token")
 	}
 }
 

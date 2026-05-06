@@ -44,9 +44,9 @@ POSTGRES_PASSWORD=%s
 KRATOS_SECRETS_COOKIE=%s
 KRATOS_SECRETS_CIPHER=%s
 GRAFANA_ADMIN_PASSWORD=%s
-OPENBAO_DEV_ROOT_TOKEN=%s
+OPENBAO_ROOT_TOKEN=%s
 `, creds.PostgresPassword, creds.KratosCookieSecret, creds.KratosCipherSecret,
-		creds.GrafanaAdminPassword, creds.OpenBaoDevRootToken)
+		creds.GrafanaAdminPassword, creds.OpenBaoProdToken)
 
 	if err := os.WriteFile(path, []byte(content), permSecretFile); err != nil {
 		return fmt.Errorf("writing credentials file: %w", err)
@@ -82,11 +82,20 @@ func (s *Store) Read(_ context.Context, outputDir string) (*generate.GeneratedCr
 		return nil, fmt.Errorf("reading credentials file: %w", err)
 	}
 
+	// Prefer OPENBAO_ROOT_TOKEN (new name, v0.19+). Fall back to the deprecated
+	// OPENBAO_DEV_ROOT_TOKEN for one minor release (until v0.20). The caller
+	// is responsible for emitting a deprecation warning when the old name is
+	// detected — see vibew bundle's credential-load path.
+	openBaoToken := values["OPENBAO_ROOT_TOKEN"]
+	if openBaoToken == "" {
+		openBaoToken = values["OPENBAO_DEV_ROOT_TOKEN"]
+	}
+
 	return &generate.GeneratedCredentials{
 		PostgresPassword:     values["POSTGRES_PASSWORD"],
 		KratosCookieSecret:   values["KRATOS_SECRETS_COOKIE"],
 		KratosCipherSecret:   values["KRATOS_SECRETS_CIPHER"],
 		GrafanaAdminPassword: values["GRAFANA_ADMIN_PASSWORD"],
-		OpenBaoDevRootToken:  values["OPENBAO_DEV_ROOT_TOKEN"],
+		OpenBaoProdToken:     openBaoToken,
 	}, nil
 }

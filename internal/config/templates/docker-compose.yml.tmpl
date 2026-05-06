@@ -95,7 +95,7 @@ services:
       - VIBEWARDEN_UPSTREAM_PORT={{ .Upstream.Port }}
 {{- if .Secrets.Enabled }}
       - VIBEWARDEN_SECRETS_OPENBAO_ADDRESS=http://openbao:8200
-      - VIBEWARDEN_SECRETS_OPENBAO_AUTH_TOKEN=${OPENBAO_DEV_ROOT_TOKEN}
+      - VIBEWARDEN_SECRETS_OPENBAO_AUTH_TOKEN=${OPENBAO_ROOT_TOKEN}
 {{- end }}
 {{- if eq .RateLimit.Store "redis" }}
 {{- if .RateLimit.Redis.HasExternalURL }}
@@ -231,7 +231,7 @@ services:
     env_file:
       - ./.credentials
     environment:
-      BAO_DEV_ROOT_TOKEN_ID: ${OPENBAO_DEV_ROOT_TOKEN}
+      BAO_DEV_ROOT_TOKEN_ID: ${OPENBAO_ROOT_TOKEN}
       BAO_DEV_LISTEN_ADDRESS: "0.0.0.0:8200"
 {{- end }}
     ports:
@@ -239,11 +239,11 @@ services:
     networks:
       - {{ .InternalNetworkName }}
     healthcheck:
-      test: ["CMD-SHELL", "BAO_ADDR=http://127.0.0.1:8200 bao status"]
+      test: ["CMD-SHELL", "wget -q --spider 'http://127.0.0.1:8200/v1/sys/health?uninitcode=200&sealedcode=200&standbyok=true' || exit 1"]
       interval: 10s
       timeout: 5s
-      retries: 5
-      start_period: 5s
+      retries: 12
+      start_period: 10s
 {{- end }}
 {{- if and .Secrets.Enabled (or (len .Secrets.Inject.Headers) (len .Secrets.Inject.Env)) }}
 
@@ -253,10 +253,11 @@ services:
       - ./.credentials
     environment:
       BAO_ADDR: http://openbao:8200
-      BAO_TOKEN: ${OPENBAO_DEV_ROOT_TOKEN}
+      BAO_TOKEN: ${OPENBAO_ROOT_TOKEN}
+      VIBEWARDEN_PROFILE: ${VIBEWARDEN_PROFILE}
     volumes:
       - ./seed-secrets.sh:/seed-secrets.sh:ro
-      - ./.credentials:/.credentials:ro
+      - ./.credentials:/.credentials
     entrypoint: sh
     command: /seed-secrets.sh
     depends_on:

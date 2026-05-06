@@ -17,6 +17,16 @@ type GeneratedCredentials struct {
 	// GrafanaAdminPassword is the Grafana admin password (24 chars).
 	GrafanaAdminPassword string
 
-	// OpenBaoDevRootToken is the OpenBao dev mode root token (32 chars).
-	OpenBaoDevRootToken string
+	// OpenBaoProdToken is the initial OpenBao root token written to .credentials at
+	// bundle time. In dev mode OpenBao accepts it via BAO_DEV_ROOT_TOKEN_ID. In prod
+	// mode this value is a placeholder — seed-secrets.sh replaces it with the real
+	// root token produced by `bao operator init` on first boot and writes it back to
+	// .credentials as OPENBAO_ROOT_TOKEN.
+	//
+	// Deprecated field name: previously named OpenBaoDevRootToken, previously stored
+	// in .credentials as OPENBAO_DEV_ROOT_TOKEN. The env var was renamed to
+	// OPENBAO_ROOT_TOKEN in v0.19 (issue #1345). The old name is still recognised in
+	// .credentials files for one minor release (until v0.20) via a deprecation warning
+	// emitted by `vibew bundle`.
+	OpenBaoProdToken string
 }

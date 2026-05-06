@@ -34,7 +34,7 @@ func TestGenerator_Generate_ReturnsUniqueValues(t *testing.T) {
 		{"KratosCookieSecret", creds1.KratosCookieSecret, creds2.KratosCookieSecret},
 		{"KratosCipherSecret", creds1.KratosCipherSecret, creds2.KratosCipherSecret},
 		{"GrafanaAdminPassword", creds1.GrafanaAdminPassword, creds2.GrafanaAdminPassword},
-		{"OpenBaoDevRootToken", creds1.OpenBaoDevRootToken, creds2.OpenBaoDevRootToken},
+		{"OpenBaoProdToken", creds1.OpenBaoProdToken, creds2.OpenBaoProdToken},
 	}
 
 	for _, tt := range tests {
@@ -64,7 +64,7 @@ func TestGenerator_Generate_CorrectLengths(t *testing.T) {
 		{"KratosCookieSecret", creds.KratosCookieSecret, 32},
 		{"KratosCipherSecret", creds.KratosCipherSecret, 32},
 		{"GrafanaAdminPassword", creds.GrafanaAdminPassword, 24},
-		{"OpenBaoDevRootToken", creds.OpenBaoDevRootToken, 32},
+		{"OpenBaoProdToken", creds.OpenBaoProdToken, 32},
 	}
 
 	for _, tt := range tests {
@@ -93,7 +93,7 @@ func TestGenerator_Generate_URLSafeCharacters(t *testing.T) {
 		{"KratosCookieSecret", creds.KratosCookieSecret},
 		{"KratosCipherSecret", creds.KratosCipherSecret},
 		{"GrafanaAdminPassword", creds.GrafanaAdminPassword},
-		{"OpenBaoDevRootToken", creds.OpenBaoDevRootToken},
+		{"OpenBaoProdToken", creds.OpenBaoProdToken},
 	}
 
 	for _, tt := range tests {

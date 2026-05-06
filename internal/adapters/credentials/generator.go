@@ -50,7 +50,7 @@ func (g *Generator) Generate(_ context.Context) (*generate.GeneratedCredentials,
 		KratosCookieSecret:   cookie,
 		KratosCipherSecret:   cipher,
 		GrafanaAdminPassword: grafana,
-		OpenBaoDevRootToken:  bao,
+		OpenBaoProdToken:     bao,
 	}, nil
 }
 

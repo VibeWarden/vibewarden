@@ -90,6 +90,7 @@ Results applied 2026-05-04:
 | [101](adr-101-agent-kickoff-release-artifacts.md) | Agent-kickoff release artifacts — main repo emits canonical kickoff prompts as release assets | #1232 | |
 | [102](adr-102-vibew-probe-go-stdlib-health-probe-and-env-resolver.md) | `vibew probe [--env <name>]` — Go-stdlib HTTPS probe of `/_vibewarden/health` and a generalisable env-resolver | #1233 | |
 | [103](adr-103-wire-api-key-auth-mode-into-caddy-handler-chain.md) | Wire `api-key` auth mode into Caddy handler chain | #1302 | |
+| [104](adr-104-openbao-prod-init-unseal-via-seed-secrets.md) | OpenBao prod init+unseal via seed-secrets init container | #1345 | |
 | [497](adr-497-graceful-shutdown-connection-draining.md) | Graceful Shutdown / Connection Draining | — | Removed 2026-05-04 — see tombstone (anomalous number, paste of issue #497) |
 
 ## Numbering

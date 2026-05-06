@@ -3,6 +3,7 @@ package cmd
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -236,6 +237,12 @@ func runBundle(cmd *cobra.Command, outputDir, imageTag, targetPlatform string, o
 	if multisiteapp.IsProject(absConfig) {
 		return 1, fmt.Errorf("%s", multiSiteErrorMessage)
 	}
+
+	// Deprecation warning: OPENBAO_DEV_ROOT_TOKEN → OPENBAO_ROOT_TOKEN (#1345).
+	// Scan the project's .credentials file for the old key name and warn the
+	// operator. The old name is still recognised by the credentials store for
+	// one minor release (v0.19); it will be removed in v0.20.
+	warnDeprecatedOpenBaoToken(filepath.Join(filepath.Dir(absConfig), ".credentials"), cmd.ErrOrStderr())
 
 	projectName := deriveProjectName(cfg, absConfig)
 	if projectName == "" {
@@ -554,6 +561,26 @@ func readProdTLSDomain(prodConfigPath string) string {
 		return ""
 	}
 	return tree.TLS.Domain
+}
+
+// warnDeprecatedOpenBaoToken scans a .credentials file for the deprecated
+// OPENBAO_DEV_ROOT_TOKEN env key and emits a deprecation warning to w when
+// found. The old key is still recognised by the credentials store for one
+// minor release (v0.19); it will be removed in v0.20 (issue #1345).
+//
+// Scan errors and missing files are silently ignored — this is advisory only.
+func warnDeprecatedOpenBaoToken(credentialsPath string, w io.Writer) {
+	data, err := os.ReadFile(credentialsPath) //nolint:gosec // credentialsPath is constructed from trusted project root
+	if err != nil {
+		return // file absent or unreadable — nothing to warn about
+	}
+	if strings.Contains(string(data), "OPENBAO_DEV_ROOT_TOKEN=") {
+		fmt.Fprintln(w, "DEPRECATION WARNING: .credentials contains OPENBAO_DEV_ROOT_TOKEN (renamed to OPENBAO_ROOT_TOKEN in v0.19).")
+		fmt.Fprintln(w, "  The old name is still recognised until v0.20. To migrate:")
+		fmt.Fprintln(w, "  1. Replace OPENBAO_DEV_ROOT_TOKEN= with OPENBAO_ROOT_TOKEN= in .credentials")
+		fmt.Fprintln(w, "  2. Re-run 'vibew bundle' to regenerate the bundle with the new name.")
+		fmt.Fprintln(w, "  Support for OPENBAO_DEV_ROOT_TOKEN will be removed in v0.20.")
+	}
 }
 
 // readProdDeployHost reads deploy.host from a production override YAML without
