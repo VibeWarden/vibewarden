@@ -120,7 +120,20 @@ Examples:
 			// production override (when discovered) so typos like tls.dmain fail
 			// loudly at validate time instead of being silently dropped at merge
 			// time. The runtime loader (config.Load) stays lenient per ADR-065.
-			prodPath := discoverProdOverride(configPath)
+			//
+			// Resolve the production override through env.FileResolver (ADR-102,
+			// #1301) — the resolver applies allowlist + EvalSymlinks containment
+			// (#1269) before returning the path. resolveEnvOverridePath is defined
+			// in bundle.go (same package cmd).
+			searchDir := "."
+			if configPath != "" {
+				searchDir = filepath.Dir(configPath)
+			} else {
+				if cwd, cwdErr := os.Getwd(); cwdErr == nil {
+					searchDir = cwd
+				}
+			}
+			prodPath := resolveEnvOverridePath(searchDir, "production")
 			cfg, err := config.LoadStrict(configPath, prodPath)
 			if err != nil {
 				var unknown *config.UnknownKeyError
@@ -245,31 +258,6 @@ func detectLegacyAppImage(configDir string) bool {
 		}
 	}
 	return false
-}
-
-// discoverProdOverride returns the path to vibewarden.production.yaml that
-// sits next to configPath, when it exists. When configPath is empty, the
-// working directory (os.Getwd()) is used as the search base so that bare
-// `vibew validate` (no --config flag) also discovers production overrides.
-// The empty string is returned when the override file does not exist, the
-// working directory cannot be determined, or the directory cannot be read.
-// Strict validation still succeeds when no override is present.
-func discoverProdOverride(configPath string) string {
-	var dir string
-	if configPath == "" {
-		cwd, err := os.Getwd()
-		if err != nil {
-			return ""
-		}
-		dir = cwd
-	} else {
-		dir = filepath.Dir(configPath)
-	}
-	candidate := filepath.Join(dir, "vibewarden.production.yaml")
-	if _, err := os.Stat(candidate); err != nil {
-		return ""
-	}
-	return candidate
 }
 
 // validateConfig checks semantic constraints on cfg that cannot be expressed

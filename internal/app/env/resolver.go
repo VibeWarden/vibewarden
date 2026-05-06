@@ -181,6 +181,63 @@ func (r *FileResolver) Resolve(name string) (Resolved, error) {
 	}, nil
 }
 
+// ResolvePath applies the same allowlist and EvalSymlinks containment checks
+// as Resolve but returns only the override path without loading or validating
+// the merged configuration. This is used by callers (e.g. vibew bundle, vibew
+// validate) that need the validated path so they can load the config with their
+// own stricter loader (e.g. config.LoadStrict) rather than the lenient
+// bundleapp.LoadMergedConfig used inside Resolve.
+//
+// When name is empty or the override file is absent, ResolvePath returns ("",
+// nil) — absent override is not an error at this level; callers decide whether
+// to treat it as "base-only" mode.
+//
+// Returns ErrInvalidEnvName when name fails the allowlist or the resolved path
+// escapes ProjectRoot (path-traversal / symlink escape). Returns a non-nil
+// error for I/O failures (stat, EvalSymlinks) other than file-not-found.
+func (r *FileResolver) ResolvePath(name string) (string, error) {
+	if name == "" {
+		return "", nil
+	}
+	if err := validateEnvName(name); err != nil {
+		return "", err
+	}
+
+	root, err := r.projectRoot()
+	if err != nil {
+		return "", fmt.Errorf("resolving project root: %w", err)
+	}
+
+	overridePath := filepath.Join(root, "vibewarden."+name+".yaml")
+
+	// EvalSymlinks containment check — mirrors Resolve's defence-in-depth.
+	realRoot := root
+	if rr, evalErr := filepath.EvalSymlinks(root); evalErr == nil {
+		realRoot = rr
+	}
+	containmentTarget := filepath.Join(realRoot, "vibewarden."+name+".yaml")
+	if _, statErr := os.Stat(overridePath); statErr == nil {
+		resolved, evalErr := filepath.EvalSymlinks(overridePath)
+		if evalErr != nil {
+			return "", fmt.Errorf("resolving override path %s: %w", overridePath, evalErr)
+		}
+		containmentTarget = resolved
+	}
+	rel, relErr := filepath.Rel(realRoot, containmentTarget)
+	if relErr != nil || strings.HasPrefix(rel, ".."+string(filepath.Separator)) || rel == ".." {
+		return "", fmt.Errorf("%w: resolved path escapes project root", ErrInvalidEnvName)
+	}
+
+	// Return the path only when the file exists.
+	if _, err := os.Stat(overridePath); err != nil {
+		if os.IsNotExist(err) {
+			return "", nil // absent override — base-only mode
+		}
+		return "", fmt.Errorf("accessing override config %s: %w", overridePath, err)
+	}
+	return overridePath, nil
+}
+
 // validateEnvName returns ErrInvalidEnvName when name is empty, contains NUL
 // bytes, or contains any character outside the allowlist [a-zA-Z0-9_-].
 // The env name is intended to be a single identifier token, not a path
