@@ -231,6 +231,129 @@ func TestFileResolver_Resolve_SymlinkEscape(t *testing.T) {
 	}
 }
 
+// TestResolvePath_ReturnsPathWithoutLoadingConfig verifies that ResolvePath
+// returns the override path for a valid env name even when the override file
+// contains unknown YAML keys that would cause config.Load / LoadMergedConfig
+// to fail validation. This is the primary regression guard for #1301: callers
+// such as vibew validate must receive the path so they can run their own
+// stricter loader (config.LoadStrict) rather than have the lenient merge
+// pre-validate and silently swallow the typo.
+func TestResolvePath_ReturnsPathWithoutLoadingConfig(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, "vibewarden.yaml"),
+		"server:\n  port: 8080\nupstream:\n  port: 3000\n")
+	// Unknown key tls.dmain would cause Resolve to fail via LoadMergedConfig+Validate.
+	writeFile(t, filepath.Join(dir, "vibewarden.production.yaml"),
+		"tls:\n  provider: letsencrypt\n  dmain: example.com\n")
+
+	r := envpkg.NewFileResolver(dir)
+	got, err := r.ResolvePath("production")
+	if err != nil {
+		t.Fatalf("ResolvePath(\"production\") unexpected error: %v", err)
+	}
+	want := filepath.Join(dir, "vibewarden.production.yaml")
+	if got != want {
+		t.Errorf("ResolvePath(\"production\") = %q, want %q", got, want)
+	}
+}
+
+// TestResolvePath_EmptyName returns empty path without error.
+func TestResolvePath_EmptyName(t *testing.T) {
+	dir := t.TempDir()
+	r := envpkg.NewFileResolver(dir)
+	got, err := r.ResolvePath("")
+	if err != nil {
+		t.Fatalf("ResolvePath(\"\") unexpected error: %v", err)
+	}
+	if got != "" {
+		t.Errorf("ResolvePath(\"\") = %q, want empty", got)
+	}
+}
+
+// TestResolvePath_AbsentOverride returns empty path without error when the
+// override file does not exist — base-only mode.
+func TestResolvePath_AbsentOverride(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, "vibewarden.yaml"), minimalBase(8443))
+	r := envpkg.NewFileResolver(dir)
+	got, err := r.ResolvePath("production")
+	if err != nil {
+		t.Fatalf("ResolvePath(\"production\") unexpected error: %v", err)
+	}
+	if got != "" {
+		t.Errorf("ResolvePath(\"production\") = %q, want empty (absent override)", got)
+	}
+}
+
+// TestResolvePath_MaliciousName verifies traversal names are rejected.
+func TestResolvePath_MaliciousName(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, "vibewarden.yaml"), minimalBase(8443))
+	r := envpkg.NewFileResolver(dir)
+
+	malicious := []string{
+		"../etc/passwd",
+		"../../foo",
+		"foo/bar",
+		".hidden",
+		"foo\x00bar",
+		".",
+		"..",
+	}
+	for _, name := range malicious {
+		_, err := r.ResolvePath(name)
+		if err == nil {
+			t.Errorf("ResolvePath(%q) expected error, got nil", name)
+			continue
+		}
+		if !errors.Is(err, envpkg.ErrInvalidEnvName) {
+			t.Errorf("ResolvePath(%q) expected ErrInvalidEnvName, got: %v", name, err)
+		}
+	}
+}
+
+// TestResolvePath_SymlinkEscape verifies a symlink pointing outside project
+// root is rejected by the containment check.
+func TestResolvePath_SymlinkEscape(t *testing.T) {
+	root := t.TempDir()
+	outside := t.TempDir()
+
+	writeFile(t, filepath.Join(root, "vibewarden.yaml"), minimalBase(8443))
+	writeFile(t, filepath.Join(outside, "secret.yaml"), "SENTINEL")
+
+	symlinkPath := filepath.Join(root, "vibewarden.prod.yaml")
+	if err := os.Symlink(filepath.Join(outside, "secret.yaml"), symlinkPath); err != nil {
+		t.Fatalf("os.Symlink: %v", err)
+	}
+
+	r := envpkg.NewFileResolver(root)
+	_, err := r.ResolvePath("prod")
+	if err == nil {
+		t.Fatal("ResolvePath(\"prod\") expected error for symlink escape, got nil")
+	}
+	if !errors.Is(err, envpkg.ErrInvalidEnvName) {
+		t.Errorf("expected ErrInvalidEnvName, got: %v", err)
+	}
+}
+
+// TestResolvePath_ValidOverride verifies a legitimate override returns its path.
+func TestResolvePath_ValidOverride(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, "vibewarden.yaml"), minimalBase(8443))
+	writeFile(t, filepath.Join(dir, "vibewarden.staging.yaml"),
+		"server:\n  port: 9443\n")
+
+	r := envpkg.NewFileResolver(dir)
+	got, err := r.ResolvePath("staging")
+	if err != nil {
+		t.Fatalf("ResolvePath(\"staging\") unexpected error: %v", err)
+	}
+	want := filepath.Join(dir, "vibewarden.staging.yaml")
+	if got != want {
+		t.Errorf("ResolvePath(\"staging\") = %q, want %q", got, want)
+	}
+}
+
 // TestValidateEnvName_AcceptsLegitimateNames verifies that well-formed env
 // names are accepted by the resolver given a matching override file exists.
 func TestValidateEnvName_AcceptsLegitimateNames(t *testing.T) {

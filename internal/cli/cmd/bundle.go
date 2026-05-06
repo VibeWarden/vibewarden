@@ -16,6 +16,7 @@ import (
 	opsadapter "github.com/vibewarden/vibewarden/internal/adapters/ops"
 	templateadapter "github.com/vibewarden/vibewarden/internal/adapters/template"
 	bundleapp "github.com/vibewarden/vibewarden/internal/app/bundle"
+	envapp "github.com/vibewarden/vibewarden/internal/app/env"
 	generateapp "github.com/vibewarden/vibewarden/internal/app/generate"
 	multisiteapp "github.com/vibewarden/vibewarden/internal/app/multisite"
 	opsapp "github.com/vibewarden/vibewarden/internal/app/ops"
@@ -212,7 +213,13 @@ func runBundle(cmd *cobra.Command, outputDir, imageTag, targetPlatform string, o
 	if err != nil {
 		absConfig = defaultConfigName
 	}
-	prodConfigPath := prodConfigPathForEnv(absConfig, "production")
+
+	// Resolve the production override path through env.FileResolver (ADR-102,
+	// #1301). This applies allowlist + EvalSymlinks containment (#1269) before
+	// returning the path, closing the bypass that prodConfigPathForEnv() had.
+	// ErrOverrideConfigMissing is the normal "no production.yaml" case — treated
+	// as empty (no override), matching the previous prodConfigPathForEnv behaviour.
+	prodConfigPath := resolveEnvOverridePath(filepath.Dir(absConfig), "production")
 
 	// Strict schema check — unknown keys in either file abort before we
 	// write anything. This is the #1053 regression guard for bundle.
@@ -495,17 +502,33 @@ func deriveProjectName(cfg *config.Config, absConfig string) string {
 	return bundleapp.DeriveProjectName(cfg, absConfig)
 }
 
-// prodConfigPathForEnv returns the path to the environment-specific production
-// override file (e.g. vibewarden.production.yaml) based on the base config
-// path. When the computed file does not exist, an empty string is returned
-// (no override).
-func prodConfigPathForEnv(configPath, envName string) string {
-	dir := filepath.Dir(configPath)
-	prodFile := filepath.Join(dir, "vibewarden."+envName+".yaml")
-	if _, err := os.Stat(prodFile); err == nil {
-		return prodFile
+// resolveEnvOverridePath locates the vibewarden.<envName>.yaml file inside
+// projectRoot using env.FileResolver.ResolvePath (ADR-102, #1301). It applies
+// the canonical allowlist + EvalSymlinks containment check (#1269) before
+// returning the path. The config is NOT loaded here — callers are responsible
+// for loading with their preferred strictness (config.LoadStrict for validate,
+// bundleapp.LoadMergedConfig for bundle).
+//
+// When the override file is absent, or when the env name or resolved path
+// fails validation, the empty string is returned — callers treat "" as "no
+// production override". This matches the previous prodConfigPathForEnv
+// behaviour for the absent-file case while adding path-traversal defence.
+func resolveEnvOverridePath(projectRoot, envName string) string {
+	r := envapp.NewFileResolver(projectRoot)
+	// ResolvePath applies the allowlist + EvalSymlinks containment checks
+	// (#1269) but does NOT load or validate the merged config — that is the
+	// caller's responsibility (vibew validate uses config.LoadStrict; vibew
+	// bundle uses bundleapp.LoadMergedConfig). Using Resolve here would cause
+	// the lenient bundleapp.LoadMergedConfig to silently swallow prod-override
+	// typos before config.LoadStrict can reject them (#1301).
+	path, err := r.ResolvePath(envName)
+	if err != nil {
+		// ErrInvalidEnvName covers path-traversal / allowlist / symlink-escape
+		// failures. Any other error is an I/O problem we treat as "no override".
+		// Both cases degrade to base-only — the caller decides what to do next.
+		return ""
 	}
-	return ""
+	return path
 }
 
 // readProdTLSDomain reads tls.domain from a production override YAML without

@@ -1,114 +1,183 @@
 package cmd
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"testing"
+
+	envapp "github.com/vibewarden/vibewarden/internal/app/env"
 )
 
-// TestDiscoverProdOverride covers every branch of the auto-discovery helper
-// used by `vibew validate`. The helper's contract: when configPath is non-empty,
-// look for the sibling vibewarden.production.yaml. When configPath is empty,
-// resolve against os.Getwd(). Return the empty string when the override is
-// absent, the directory cannot be read, or os.Getwd() fails.
-func TestDiscoverProdOverride(t *testing.T) {
+// TestResolveEnvOverridePath covers the canonical env-override resolution that
+// now backs both `vibew bundle` and `vibew validate` (ADR-102, #1301).
+// resolveEnvOverridePath delegates to env.FileResolver which enforces the
+// allowlist + EvalSymlinks containment check (#1269).
+func TestResolveEnvOverridePath(t *testing.T) {
 	tests := []struct {
-		name   string
-		setup  func(t *testing.T) string // returns configPath
-		want   func(t *testing.T, dir string) string
-		expect string // literal value when setup returns no dir; "" means use want fn
+		name      string
+		setup     func(t *testing.T) (projectRoot string)
+		envName   string
+		wantEmpty bool
+		wantPath  func(projectRoot string) string // only checked when wantEmpty == false
 	}{
 		{
-			// empty configPath → falls through to os.Getwd(). The package test
-			// directory does not contain vibewarden.production.yaml so the result
-			// is "". For positive cwd cases see TestDiscoverProdOverride_EmptyCwdWithOverride.
-			name:  "empty input returns empty (no prod override in cwd)",
-			setup: func(_ *testing.T) string { return "" },
-			want:  func(_ *testing.T, _ string) string { return "" },
-		},
-		{
-			name: "base config missing returns empty",
-			setup: func(t *testing.T) string {
-				// Return a path inside an empty tempdir that doesn't exist.
-				return filepath.Join(t.TempDir(), "missing.yaml")
-			},
-			want: func(_ *testing.T, _ string) string { return "" },
-		},
-		{
-			name: "base config present but no sibling prod returns empty",
+			name: "override absent returns empty",
 			setup: func(t *testing.T) string {
 				dir := t.TempDir()
-				basePath := filepath.Join(dir, "vibewarden.yaml")
-				if err := os.WriteFile(basePath, []byte("server:\n  port: 8443\n"), 0o600); err != nil {
+				if err := os.WriteFile(filepath.Join(dir, "vibewarden.yaml"), []byte("server:\n  port: 8443\n"), 0o600); err != nil {
 					t.Fatalf("writing base: %v", err)
 				}
-				return basePath
+				return dir
 			},
-			want: func(_ *testing.T, _ string) string { return "" },
+			envName:   "production",
+			wantEmpty: true,
 		},
 		{
-			name: "base config with sibling prod returns prod path",
+			name: "override present returns its path",
 			setup: func(t *testing.T) string {
 				dir := t.TempDir()
-				basePath := filepath.Join(dir, "vibewarden.yaml")
-				if err := os.WriteFile(basePath, []byte("server:\n  port: 8443\n"), 0o600); err != nil {
+				if err := os.WriteFile(filepath.Join(dir, "vibewarden.yaml"), []byte("server:\n  port: 8443\n"), 0o600); err != nil {
 					t.Fatalf("writing base: %v", err)
 				}
-				prodPath := filepath.Join(dir, "vibewarden.production.yaml")
-				if err := os.WriteFile(prodPath, []byte("server:\n  port: 443\n"), 0o600); err != nil {
+				if err := os.WriteFile(filepath.Join(dir, "vibewarden.production.yaml"), []byte("server:\n  port: 443\n"), 0o600); err != nil {
 					t.Fatalf("writing prod: %v", err)
 				}
-				return basePath
+				return dir
 			},
-			want: func(_ *testing.T, basePath string) string {
-				return filepath.Join(filepath.Dir(basePath), "vibewarden.production.yaml")
-			},
+			envName:   "production",
+			wantEmpty: false,
+			wantPath:  func(root string) string { return filepath.Join(root, "vibewarden.production.yaml") },
 		},
 		{
-			name: "sibling directory instead of file returns empty",
+			name: "base config absent returns empty",
+			setup: func(t *testing.T) string {
+				// Empty dir — no vibewarden.yaml, no override.
+				return t.TempDir()
+			},
+			envName:   "production",
+			wantEmpty: true,
+		},
+		{
+			name: "staging override returns its path",
 			setup: func(t *testing.T) string {
 				dir := t.TempDir()
-				basePath := filepath.Join(dir, "vibewarden.yaml")
-				if err := os.WriteFile(basePath, []byte("server:\n  port: 8443\n"), 0o600); err != nil {
+				if err := os.WriteFile(filepath.Join(dir, "vibewarden.yaml"), []byte("server:\n  port: 8443\n"), 0o600); err != nil {
 					t.Fatalf("writing base: %v", err)
 				}
-				// Create a directory with the exact override filename: stat
-				// succeeds, but discoverProdOverride's contract (a readable
-				// override file) is not met. Current helper returns the
-				// directory path — this test documents that behaviour; if
-				// the implementation tightens to require a regular file,
-				// update this case accordingly.
-				if err := os.Mkdir(filepath.Join(dir, "vibewarden.production.yaml"), 0o700); err != nil {
-					t.Fatalf("mkdir override dir: %v", err)
+				if err := os.WriteFile(filepath.Join(dir, "vibewarden.staging.yaml"), []byte("server:\n  port: 9443\n"), 0o600); err != nil {
+					t.Fatalf("writing staging: %v", err)
 				}
-				return basePath
+				return dir
 			},
-			want: func(_ *testing.T, basePath string) string {
-				return filepath.Join(filepath.Dir(basePath), "vibewarden.production.yaml")
-			},
+			envName:   "staging",
+			wantEmpty: false,
+			wantPath:  func(root string) string { return filepath.Join(root, "vibewarden.staging.yaml") },
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			basePath := tt.setup(t)
-			got := discoverProdOverride(basePath)
-			want := tt.want(t, basePath)
+			root := tt.setup(t)
+			got := resolveEnvOverridePath(root, tt.envName)
+			if tt.wantEmpty {
+				if got != "" {
+					t.Errorf("resolveEnvOverridePath(%q, %q) = %q, want empty", root, tt.envName, got)
+				}
+				return
+			}
+			want := tt.wantPath(root)
 			if got != want {
-				t.Errorf("discoverProdOverride(%q) = %q, want %q", basePath, got, want)
+				t.Errorf("resolveEnvOverridePath(%q, %q) = %q, want %q", root, tt.envName, got, want)
 			}
 		})
 	}
 }
 
-// TestDiscoverProdOverride_EmptyCwdWithOverride verifies that
-// discoverProdOverride("") resolves against os.Getwd() and returns the
-// absolute path when vibewarden.production.yaml exists in cwd.
-func TestDiscoverProdOverride_EmptyCwdWithOverride(t *testing.T) {
+// TestResolveEnvOverridePath_MaliciousEnvName verifies that resolveEnvOverridePath
+// blocks path-traversal env names — same as direct env.FileResolver use — because
+// it delegates to the resolver rather than building paths inline (#1301, #1269).
+func TestResolveEnvOverridePath_MaliciousEnvName(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "vibewarden.yaml"), []byte("server:\n  port: 8443\n"), 0o600); err != nil {
+		t.Fatalf("writing base: %v", err)
+	}
+
+	malicious := []string{
+		"../etc/passwd",
+		"../../foo",
+		"foo/bar",
+		".hidden",
+		"foo\x00bar",
+	}
+	for _, name := range malicious {
+		got := resolveEnvOverridePath(dir, name)
+		if got != "" {
+			t.Errorf("resolveEnvOverridePath(root, %q) = %q, want empty (should block traversal)", name, got)
+		}
+	}
+}
+
+// TestResolveEnvOverridePath_SymlinkEscape verifies that a legitimately-named
+// override file that is a symlink pointing outside the project root is blocked
+// by the EvalSymlinks containment check in env.FileResolver (#1269, #1301).
+func TestResolveEnvOverridePath_SymlinkEscape(t *testing.T) {
+	root := t.TempDir()
+	outside := t.TempDir()
+
+	// Write a valid base config so the resolver reaches the override check.
+	if err := os.WriteFile(filepath.Join(root, "vibewarden.yaml"), []byte("server:\n  port: 8443\n"), 0o600); err != nil {
+		t.Fatalf("writing base: %v", err)
+	}
+	// Create a sentinel file outside the project root.
+	if err := os.WriteFile(filepath.Join(outside, "secret.yaml"), []byte("SENTINEL"), 0o600); err != nil {
+		t.Fatalf("writing sentinel: %v", err)
+	}
+	// Symlink inside root points outside root.
+	symlinkPath := filepath.Join(root, "vibewarden.prod.yaml")
+	if err := os.Symlink(filepath.Join(outside, "secret.yaml"), symlinkPath); err != nil {
+		t.Fatalf("os.Symlink: %v", err)
+	}
+
+	got := resolveEnvOverridePath(root, "prod")
+	if got != "" {
+		t.Errorf("resolveEnvOverridePath with symlink escape = %q, want empty", got)
+	}
+}
+
+// TestResolveEnvOverridePath_ErrorIsErrInvalidEnvName verifies that the
+// underlying resolver returns ErrInvalidEnvName for traversal names, and that
+// resolveEnvOverridePath correctly absorbs it (returning "").
+// This test validates the error class; the caller should never see the error.
+func TestResolveEnvOverridePath_ErrorIsErrInvalidEnvName(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "vibewarden.yaml"), []byte("server:\n  port: 8443\n"), 0o600); err != nil {
+		t.Fatalf("writing base: %v", err)
+	}
+
+	// Verify the sentinel error class is what the resolver produces,
+	// so future maintainers know why we can silently absorb it.
+	r := envapp.NewFileResolver(dir)
+	_, err := r.Resolve("../etc/passwd")
+	if err == nil {
+		t.Fatal("expected error from resolver for traversal name, got nil")
+	}
+	if !errors.Is(err, envapp.ErrInvalidEnvName) {
+		t.Errorf("expected ErrInvalidEnvName, got: %v", err)
+	}
+}
+
+// TestDiscoverProdOverride_EmptyConfigPathResolvesAgainstCwd verifies that
+// when configPath is empty, resolveEnvOverridePath uses os.Getwd() and returns
+// the absolute path when vibewarden.production.yaml exists in cwd.
+func TestDiscoverProdOverride_EmptyConfigPathResolvesAgainstCwd(t *testing.T) {
 	dir := t.TempDir()
 	prodPath := filepath.Join(dir, "vibewarden.production.yaml")
-	if err := os.WriteFile(prodPath, []byte("name: prod\n"), 0o600); err != nil {
+	if err := os.WriteFile(prodPath, []byte("server:\n  port: 443\n"), 0o600); err != nil {
 		t.Fatalf("writing prod: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "vibewarden.yaml"), []byte("server:\n  port: 8443\n"), 0o600); err != nil {
+		t.Fatalf("writing base: %v", err)
 	}
 
 	orig, err := os.Getwd()
@@ -116,13 +185,16 @@ func TestDiscoverProdOverride_EmptyCwdWithOverride(t *testing.T) {
 		t.Fatalf("getwd: %v", err)
 	}
 	if err := os.Chdir(dir); err != nil {
-		t.Fatalf("chdir: %v", err)
+		t.Fatalf("chdir %s: %v", dir, err)
 	}
 	t.Cleanup(func() { _ = os.Chdir(orig) })
 
-	got := discoverProdOverride("")
+	// When configPath is "", validate.go resolves searchDir via os.Getwd()
+	// and passes it to resolveEnvOverridePath. Simulate that here.
+	cwd, _ := os.Getwd()
+	got := resolveEnvOverridePath(cwd, "production")
 	if got == "" {
-		t.Error("discoverProdOverride(\"\") = \"\", want non-empty path")
+		t.Error("resolveEnvOverridePath(cwd, production) = \"\", want non-empty path")
 	}
 	// On macOS, t.TempDir() returns a path under /var/... which is a symlink to
 	// /private/var/... while os.Getwd() returns the symlink-resolved path. Use
@@ -136,56 +208,22 @@ func TestDiscoverProdOverride_EmptyCwdWithOverride(t *testing.T) {
 		t.Fatalf("EvalSymlinks got: %v", err)
 	}
 	if gotResolved != wantResolved {
-		t.Errorf("discoverProdOverride(\"\") = %q, want %q", got, prodPath)
+		t.Errorf("resolveEnvOverridePath(cwd, production) = %q, want %q", got, prodPath)
 	}
 }
 
-// TestDiscoverProdOverride_EmptyCwdWithoutOverride verifies that
-// discoverProdOverride("") returns "" when no vibewarden.production.yaml
+// TestDiscoverProdOverride_EmptyConfigPathNoOverride verifies that
+// resolveEnvOverridePath returns "" when no vibewarden.production.yaml
 // exists in cwd.
-func TestDiscoverProdOverride_EmptyCwdWithoutOverride(t *testing.T) {
+func TestDiscoverProdOverride_EmptyConfigPathNoOverride(t *testing.T) {
 	dir := t.TempDir()
-
-	orig, err := os.Getwd()
-	if err != nil {
-		t.Fatalf("getwd: %v", err)
-	}
-	if err := os.Chdir(dir); err != nil {
-		t.Fatalf("chdir: %v", err)
-	}
-	t.Cleanup(func() { _ = os.Chdir(orig) })
-
-	got := discoverProdOverride("")
-	if got != "" {
-		t.Errorf("discoverProdOverride(\"\") = %q, want empty", got)
-	}
-}
-
-// TestDiscoverProdOverride_UnreadableDir verifies the helper swallows
-// permission errors (returning ""), as documented in its godoc. This is the
-// one case where silent fallback is intentional: a `vibew validate` on a
-// config whose parent dir is unreadable should not crash — the subsequent
-// config.LoadStrict call will surface the real error against the base file.
-func TestDiscoverProdOverride_UnreadableDir(t *testing.T) {
-	if os.Geteuid() == 0 {
-		t.Skip("cannot simulate permission denied when running as root")
-	}
-
-	dir := t.TempDir()
-	basePath := filepath.Join(dir, "vibewarden.yaml")
-	if err := os.WriteFile(basePath, []byte("server:\n  port: 8443\n"), 0o600); err != nil {
+	// Write base config but no override.
+	if err := os.WriteFile(filepath.Join(dir, "vibewarden.yaml"), []byte("server:\n  port: 8443\n"), 0o600); err != nil {
 		t.Fatalf("writing base: %v", err)
 	}
-	// Make parent dir unreadable so Stat on the sibling fails.
-	if err := os.Chmod(dir, 0o000); err != nil {
-		t.Fatalf("chmod dir: %v", err)
-	}
-	// Restore directory permissions so t.TempDir's cleanup can recurse.
-	// 0o700 is required because directories need the execute bit to be traversable.
-	t.Cleanup(func() { _ = os.Chmod(dir, 0o700) }) //nolint:gosec // test-only dir perms
 
-	got := discoverProdOverride(basePath)
+	got := resolveEnvOverridePath(dir, "production")
 	if got != "" {
-		t.Errorf("discoverProdOverride with unreadable dir = %q, want empty", got)
+		t.Errorf("resolveEnvOverridePath(dir, production) = %q, want empty (no override)", got)
 	}
 }
