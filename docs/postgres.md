@@ -57,7 +57,7 @@ services:
       retries: 10
 
   kratos-migrate:
-    image: oryd/kratos:v1.3.1
+    image: oryd/kratos:v26.2.0
     environment:
       DSN: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?sslmode=disable
     command: migrate sql -e --yes
@@ -66,7 +66,7 @@ services:
         condition: service_healthy
 
   kratos:
-    image: oryd/kratos:v1.3.1
+    image: oryd/kratos:v26.2.0
     environment:
       DSN: postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}?sslmode=disable
     depends_on:
@@ -126,13 +126,13 @@ services:
   # No local postgres service.
 
   kratos-migrate:
-    image: oryd/kratos:v1.3.1
+    image: oryd/kratos:v26.2.0
     environment:
       DSN: ${VIBEWARDEN_DATABASE_EXTERNAL_URL}
     command: migrate sql -e --yes
 
   kratos:
-    image: oryd/kratos:v1.3.1
+    image: oryd/kratos:v26.2.0
     environment:
       DSN: ${VIBEWARDEN_DATABASE_EXTERNAL_URL}
 ```

@@ -40,6 +40,12 @@ This initial entry was written by hand to summarise the work leading up to v0.1.
 
 ### Changed
 
+- **chore(#1290): upgrade Ory Kratos image v1.3.1 → v26.2.0.** Catches up on 24+ CalVer versions of security/bugfixes. Five config/template files updated (docker-compose.yml, two templates, dev/kratos/kratos.yml, integration test image). The architect's pre-analysis suggested "no Go source changes" but four real breaking changes in the admin API required adapter fixes:
+  - `PATCH /admin/identities/:id` (used by `DeactivateUser`) now requires JSON Patch (RFC 6902) shape `[{"op":"replace","path":"/state","value":"inactive"}]` with `Content-Type: application/json-patch+json` (was a bare `{"state":"inactive"}` JSON object).
+  - `POST /admin/recovery/link` was removed; replaced with `POST /admin/recovery/code` (used by `generateRecoveryLink`).
+  - `GET /admin/identities` pagination switched to 0-indexed pages; the adapter now translates caller-facing `Page=N` to wire-level `page=N-1`.
+  - Session token detection: API-flow tokens (`ory_st_*` prefix) now use the `X-Session-Token` header on Kratos requests; browser cookies still use the `Cookie` header (auto-detected by prefix).
+  Operators upgrading: pull the new image; `kratos-migrate` handles schema migrations automatically. Direct callers of vibewarden's admin adapter are unaffected — the breaking changes are absorbed inside the adapter.
 - **chore(#1316): publish `llms-full.txt`, `llms.txt`, and `vibewarden.reference.yaml` as GitHub Release assets.** The website (vibewarden.dev) will fetch these at build time, eliminating the silent drift that bit v0.18.7. Mirrors the ADR-101 pattern already used for `agent-kickoff-{dev,deploy}.txt`. A new architecture invariant test (`test/architecture/release_assets_test.go`) fails the build if any of these files is absent or empty from the repo root.
 
 ### Removed

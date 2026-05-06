@@ -52,7 +52,7 @@ services:
   # Kratos migrate — runs DB migrations once, then exits (service_completed_successfully)
   # --------------------------------------------------------------------------
   kratos-migrate:
-    image: oryd/kratos:v1.3.1
+    image: oryd/kratos:v26.2.0
     container_name: vibewarden-kratos-migrate
     environment:
       DSN: postgres://vibewarden:vibewarden@postgres:5432/vibewarden?sslmode=disable
@@ -75,7 +75,7 @@ services:
   # that the browser redirects go through the sidecar as the proxy.
   # --------------------------------------------------------------------------
   kratos:
-    image: oryd/kratos:v1.3.1
+    image: oryd/kratos:v26.2.0
     container_name: vibewarden-kratos
     environment:
       # DSN is overridden here; the kratos.yml carries a fallback of "memory"

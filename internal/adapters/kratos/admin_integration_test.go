@@ -20,71 +20,22 @@ import (
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
 
-// kratosURLs holds the mapped public and admin base URLs for a running
-// Kratos container.
-type kratosURLs struct {
-	public string
-	admin  string
-}
-
-// startKratosWithAdmin starts a Kratos container connected to the given
-// Postgres DSN and returns both the public and admin API base URLs.
-// Port mapping is resolved from the container runtime so the URLs are always
-// correct regardless of host port assignment.
-func startKratosWithAdmin(ctx context.Context, t *testing.T, pgDSN string) kratosURLs {
+// startKratosWithAdmin starts a Kratos container on the given Docker network
+// and returns both the public and admin API base URLs. Database migrations are
+// run as a separate one-shot container before the serve container starts
+// (see migrateKratos in adapter_integration_test.go for rationale).
+func startKratosWithAdmin(ctx context.Context, t *testing.T, netName string) kratosURLs {
 	t.Helper()
 
-	kratosConfig := `
-version: v1.3.0
+	// Run migrations before serving to avoid startup timeout under v26.2.0's
+	// 338 SQL migrations.
+	migrateKratos(ctx, t, netName)
 
-dsn: ` + pgDSN + `
-
-serve:
-  public:
-    base_url: http://localhost:4433/
-  admin:
-    base_url: http://localhost:4434/
-
-selfservice:
-  default_browser_return_url: http://localhost:3000/
-  allowed_return_urls:
-    - http://localhost:3000
-
-  methods:
-    password:
-      enabled: true
-
-  flows:
-    registration:
-      enabled: true
-      ui_url: http://localhost:3000/auth/registration
-    login:
-      ui_url: http://localhost:3000/auth/login
-    logout:
-      after:
-        default_browser_return_url: http://localhost:3000/
-    verification:
-      enabled: false
-    recovery:
-      enabled: true
-      ui_url: http://localhost:3000/auth/recovery
-
-log:
-  level: error
-
-identity:
-  default_schema_id: default
-  schemas:
-    - id: default
-      url: base64://eyIkaWQiOiJodHRwczovL3NjaGVtYXMub3J5LnNoL3ByZXNldHMva3JhdG9zL3F1aWNrc3RhcnQvZW1haWwtcGFzc3dvcmQvaWRlbnRpdHkuc2NoZW1hLmpzb24iLCIkc2NoZW1hIjoiaHR0cDovL2pzb24tc2NoZW1hLm9yZy9kcmFmdC0wNy9zY2hlbWEjIiwidGl0bGUiOiJQZXJzb24iLCJ0eXBlIjoib2JqZWN0IiwicHJvcGVydGllcyI6eyJ0cmFpdHMiOnsidHlwZSI6Im9iamVjdCIsInByb3BlcnRpZXMiOnsiZW1haWwiOnsidHlwZSI6InN0cmluZyIsImZvcm1hdCI6ImVtYWlsIiwidGl0bGUiOiJFLU1haWwiLCJvcnkuc2gva3JhdG9zIjp7ImNyZWRlbnRpYWxzIjp7InBhc3N3b3JkIjp7ImlkZW50aWZpZXIiOnRydWV9fX19fX19fQ==
-
-courier:
-  smtp:
-    connection_uri: smtp://test:test@localhost:25/?skip_ssl_verify=true
-`
+	kratosConfig := kratosConfigYAML(kratosNetworkDSN)
 
 	req := testcontainers.ContainerRequest{
-		Image:        "oryd/kratos:v1.3.0",
+		Image:        kratosImage,
+		Networks:     []string{netName},
 		ExposedPorts: []string{"4433/tcp", "4434/tcp"},
 		Env:          map[string]string{},
 		Cmd:          []string{"serve", "--config", "/etc/kratos/kratos.yml", "--dev", "--watch-courier"},
@@ -139,8 +90,9 @@ courier:
 func TestAdminAdapter_Integration_ListUsers_ReturnsCreatedUsers(t *testing.T) {
 	ctx := context.Background()
 
-	pgDSN := startPostgres(ctx, t)
-	urls := startKratosWithAdmin(ctx, t, pgDSN)
+	netName := testNetwork(ctx, t)
+	startPostgres(ctx, t, netName)
+	urls := startKratosWithAdmin(ctx, t, netName)
 
 	adapter := NewAdminAdapter(urls.admin, 10*time.Second, slog.Default())
 
@@ -178,8 +130,9 @@ func TestAdminAdapter_Integration_ListUsers_ReturnsCreatedUsers(t *testing.T) {
 func TestAdminAdapter_Integration_GetUser_ByID(t *testing.T) {
 	ctx := context.Background()
 
-	pgDSN := startPostgres(ctx, t)
-	urls := startKratosWithAdmin(ctx, t, pgDSN)
+	netName := testNetwork(ctx, t)
+	startPostgres(ctx, t, netName)
+	urls := startKratosWithAdmin(ctx, t, netName)
 
 	adapter := NewAdminAdapter(urls.admin, 10*time.Second, slog.Default())
 
@@ -212,8 +165,9 @@ func TestAdminAdapter_Integration_GetUser_ByID(t *testing.T) {
 func TestAdminAdapter_Integration_InviteUser_CreatesIdentityInKratos(t *testing.T) {
 	ctx := context.Background()
 
-	pgDSN := startPostgres(ctx, t)
-	urls := startKratosWithAdmin(ctx, t, pgDSN)
+	netName := testNetwork(ctx, t)
+	startPostgres(ctx, t, netName)
+	urls := startKratosWithAdmin(ctx, t, netName)
 
 	adapter := NewAdminAdapter(urls.admin, 10*time.Second, slog.Default())
 
@@ -248,8 +202,9 @@ func TestAdminAdapter_Integration_InviteUser_CreatesIdentityInKratos(t *testing.
 func TestAdminAdapter_Integration_DeactivateUser_SetsStateInactive(t *testing.T) {
 	ctx := context.Background()
 
-	pgDSN := startPostgres(ctx, t)
-	urls := startKratosWithAdmin(ctx, t, pgDSN)
+	netName := testNetwork(ctx, t)
+	startPostgres(ctx, t, netName)
+	urls := startKratosWithAdmin(ctx, t, netName)
 
 	adapter := NewAdminAdapter(urls.admin, 10*time.Second, slog.Default())
 
@@ -288,8 +243,9 @@ func TestAdminAdapter_Integration_DeactivateUser_SetsStateInactive(t *testing.T)
 func TestAdminAdapter_Integration_GetUser_NonExistentID_ReturnsErrUserNotFound(t *testing.T) {
 	ctx := context.Background()
 
-	pgDSN := startPostgres(ctx, t)
-	urls := startKratosWithAdmin(ctx, t, pgDSN)
+	netName := testNetwork(ctx, t)
+	startPostgres(ctx, t, netName)
+	urls := startKratosWithAdmin(ctx, t, netName)
 
 	adapter := NewAdminAdapter(urls.admin, 10*time.Second, slog.Default())
 
