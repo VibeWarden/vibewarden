@@ -150,6 +150,8 @@ Generated stack:
   .env.template             # non-secret config template
   kratos/                   # Kratos identity server config
   seed-secrets.sh           # seeds OpenBao with demo secrets
+  scripts/
+    seed-users.sh           # seeds demo identities into Kratos on first boot
   observability/            # Prometheus, Grafana, Loki, Promtail configs
 ```
 

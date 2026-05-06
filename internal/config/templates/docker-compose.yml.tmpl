@@ -273,7 +273,7 @@ services:
     environment:
       KRATOS_ADMIN_URL: http://kratos:4434
     volumes:
-      - {{ .ProjectRoot }}/scripts/seed-users.sh:/seed-users.sh:ro
+      - ./scripts/seed-users.sh:/seed-users.sh:ro
     command: sh /seed-users.sh
     depends_on:
       kratos:

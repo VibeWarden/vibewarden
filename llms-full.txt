@@ -329,6 +329,10 @@ When neither build nor image is set, VibeWarden falls back to host.docker.intern
                                                                  /auth/, and /auth/login but NOT /auth-evil.
   auth.session_cookie_name  string   ory_kratos_session           Kratos session cookie name
   auth.login_url            string   /self-service/login/browser  Redirect for unauthed users
+  auth.seed_demo_users      bool     false                        Generates scripts/seed-users.sh with demo
+                                                                  identities on first boot. Requires
+                                                                  auth.mode: kratos and kratos.external: false.
+                                                                  Never enable in production.
   auth.on_kratos_unavailable string  503                          503 or allow_public
   auth.identity_schema      string   email_password               email_password, email_only,
                                                                   username_password, social,

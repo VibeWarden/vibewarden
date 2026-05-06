@@ -2272,3 +2272,152 @@ func TestGenerate_OpenBaoConfigHCL_NotGeneratedWhenSecretsDisabled(t *testing.T)
 		t.Error("openbao/config.hcl must not be generated when secrets.enabled is false")
 	}
 }
+
+// TestGenerate_SeedUsers_WrittenToScriptsSubdir verifies that when auth mode is
+// "kratos" and Kratos is local, Generate writes scripts/seed-users.sh under the
+// output directory. This is an artifact-test: it verifies the actual file exists
+// on disk at the path the docker-compose.yml volume mount references.
+func TestGenerate_SeedUsers_WrittenToScriptsSubdir(t *testing.T) {
+	outputDir := t.TempDir()
+	cfg := &config.Config{
+		Server:   config.ServerConfig{Host: "127.0.0.1", Port: 8080},
+		Upstream: config.UpstreamConfig{Host: "127.0.0.1", Port: 3000},
+		Auth: config.AuthConfig{
+			Mode:           config.AuthModeKratos,
+			IdentitySchema: "email_password",
+			SeedDemoUsers:  true,
+		},
+	}
+
+	svc := generate.NewService(realRenderer())
+	if err := svc.Generate(context.Background(), cfg.ToGeneratorInput(), outputDir); err != nil {
+		t.Fatalf("Generate() unexpected error: %v", err)
+	}
+
+	seedUsersPath := filepath.Join(outputDir, "scripts", "seed-users.sh")
+	if _, err := os.Stat(seedUsersPath); os.IsNotExist(err) {
+		t.Errorf("expected scripts/seed-users.sh to exist at %s", seedUsersPath)
+	}
+}
+
+// TestGenerate_SeedUsers_NotWrittenWhenSeedDemoUsersFalse verifies that when
+// auth.seed_demo_users is false (the default), scripts/seed-users.sh is NOT
+// written even though auth.mode is "kratos" and Kratos is local. This ensures
+// greenfield projects do not receive demo vibewarden.dev credentials in their
+// Kratos instance unless they explicitly opt in.
+func TestGenerate_SeedUsers_NotWrittenWhenSeedDemoUsersFalse(t *testing.T) {
+	outputDir := t.TempDir()
+	cfg := &config.Config{
+		Server:   config.ServerConfig{Host: "127.0.0.1", Port: 8080},
+		Upstream: config.UpstreamConfig{Host: "127.0.0.1", Port: 3000},
+		Auth: config.AuthConfig{
+			Mode:           config.AuthModeKratos,
+			IdentitySchema: "email_password",
+			// SeedDemoUsers deliberately left false (zero value = default)
+		},
+	}
+
+	svc := generate.NewService(realRenderer())
+	if err := svc.Generate(context.Background(), cfg.ToGeneratorInput(), outputDir); err != nil {
+		t.Fatalf("Generate() unexpected error: %v", err)
+	}
+
+	seedUsersPath := filepath.Join(outputDir, "scripts", "seed-users.sh")
+	if _, err := os.Stat(seedUsersPath); err == nil {
+		t.Errorf("scripts/seed-users.sh should NOT exist when auth.seed_demo_users is false (default)")
+	}
+}
+
+// TestGenerate_SeedUsers_NotWrittenWhenExternal verifies that when
+// kratos.external is true, scripts/seed-users.sh is NOT written — the external
+// Kratos instance manages its own identities.
+func TestGenerate_SeedUsers_NotWrittenWhenExternal(t *testing.T) {
+	outputDir := t.TempDir()
+	cfg := &config.Config{
+		Server:   config.ServerConfig{Host: "127.0.0.1", Port: 8080},
+		Upstream: config.UpstreamConfig{Host: "127.0.0.1", Port: 3000},
+		Kratos: config.KratosConfig{
+			External:  true,
+			PublicURL: "https://kratos.example.com",
+			AdminURL:  "https://kratos-admin.example.com",
+		},
+		Auth: config.AuthConfig{
+			Mode:           config.AuthModeKratos,
+			IdentitySchema: "email_password",
+			SeedDemoUsers:  true, // even with opt-in set, external=true must block generation
+		},
+	}
+
+	svc := generate.NewService(realRenderer())
+	if err := svc.Generate(context.Background(), cfg.ToGeneratorInput(), outputDir); err != nil {
+		t.Fatalf("Generate() unexpected error: %v", err)
+	}
+
+	seedUsersPath := filepath.Join(outputDir, "scripts", "seed-users.sh")
+	if _, err := os.Stat(seedUsersPath); err == nil {
+		t.Errorf("scripts/seed-users.sh should NOT exist when kratos.external is true")
+	}
+}
+
+// TestGenerate_SeedUsers_NotWrittenWhenNotKratos verifies that when auth mode
+// is not "kratos", scripts/seed-users.sh is not written.
+func TestGenerate_SeedUsers_NotWrittenWhenNotKratos(t *testing.T) {
+	for _, mode := range []config.AuthMode{config.AuthModeNone, config.AuthModeJWT, config.AuthModeAPIKey} {
+		mode := mode
+		t.Run(string(mode), func(t *testing.T) {
+			outputDir := t.TempDir()
+			cfg := &config.Config{
+				Server:   config.ServerConfig{Host: "127.0.0.1", Port: 8080},
+				Upstream: config.UpstreamConfig{Host: "127.0.0.1", Port: 3000},
+				Auth:     config.AuthConfig{Mode: mode},
+			}
+
+			svc := generate.NewService(realRenderer())
+			if err := svc.Generate(context.Background(), cfg.ToGeneratorInput(), outputDir); err != nil {
+				t.Fatalf("Generate() unexpected error: %v", err)
+			}
+
+			seedUsersPath := filepath.Join(outputDir, "scripts", "seed-users.sh")
+			if _, err := os.Stat(seedUsersPath); err == nil {
+				t.Errorf("scripts/seed-users.sh should NOT exist for auth mode %q", mode)
+			}
+		})
+	}
+}
+
+// TestGenerate_Compose_SeedUsersVolume_IsRelativePath is the regression guard
+// for issue #1335. The seed-users compose volume must use a relative path so
+// the bundle is portable across any host OS. Absolute paths (e.g.
+// /var/folders/..., /Users/..., /tmp/...) would bind-mount a macOS-local temp
+// directory and fail on Linux deploy targets.
+func TestGenerate_Compose_SeedUsersVolume_IsRelativePath(t *testing.T) {
+	cfg := &config.Config{
+		Server:   config.ServerConfig{Host: "127.0.0.1", Port: 8080},
+		Upstream: config.UpstreamConfig{Host: "127.0.0.1", Port: 3000},
+		Auth: config.AuthConfig{
+			Mode:           config.AuthModeKratos,
+			IdentitySchema: "email_password",
+			SeedDemoUsers:  true,
+		},
+	}
+
+	compose := renderCompose(t, cfg)
+
+	// Positive assertion: volume must use relative path.
+	wantPath := "./scripts/seed-users.sh:/seed-users.sh:ro"
+	if !bytes.Contains(compose, []byte(wantPath)) {
+		t.Errorf("docker-compose.yml seed-users volume must contain %q\ngot:\n%s", wantPath, compose)
+	}
+
+	// Regression guard: absolute macOS temp and user paths must not appear.
+	forbiddenPatterns := []string{
+		"/var/folders/",
+		"/Users/",
+		"/tmp/scripts/",
+	}
+	for _, pattern := range forbiddenPatterns {
+		if bytes.Contains(compose, []byte(pattern)) {
+			t.Errorf("docker-compose.yml seed-users volume contains forbidden absolute path %q — bundle would fail on Linux (issue #1335)\ngot:\n%s", pattern, compose)
+		}
+	}
+}

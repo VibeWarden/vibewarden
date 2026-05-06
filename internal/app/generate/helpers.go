@@ -42,3 +42,19 @@ func NeedsSeedSecrets(cfg *config.Config) bool {
 	}
 	return len(cfg.Secrets.Inject.Headers) > 0 || len(cfg.Secrets.Inject.Env) > 0
 }
+
+// NeedsSeedUsers returns true if a seed-users.sh script should be written into
+// the bundle. This requires all three conditions to be true:
+//   - auth.mode is "kratos"
+//   - kratos.external is false (Kratos is managed locally)
+//   - auth.seed_demo_users is true (opt-in; off by default)
+//
+// The script seeds demo Kratos identities on first boot and is only useful for
+// demos or local testing. It is mounted into the seed-users init container
+// defined in docker-compose.yml. Greenfield projects that do not set
+// auth.seed_demo_users: true will not receive this script.
+func NeedsSeedUsers(cfg *config.Config) bool {
+	return cfg.Auth.Mode == config.AuthModeKratos &&
+		!cfg.Kratos.External &&
+		cfg.Auth.SeedDemoUsers
+}

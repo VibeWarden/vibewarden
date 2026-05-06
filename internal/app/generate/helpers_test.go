@@ -184,6 +184,82 @@ func TestNeedsOpenBaoConfig(t *testing.T) {
 	}
 }
 
+func TestNeedsSeedUsers(t *testing.T) {
+	tests := []struct {
+		name string
+		cfg  *config.Config
+		want bool
+	}{
+		{
+			name: "kratos mode local with seed_demo_users true returns true",
+			cfg: &config.Config{
+				Auth:   config.AuthConfig{Mode: config.AuthModeKratos, SeedDemoUsers: true},
+				Kratos: config.KratosConfig{External: false},
+			},
+			want: true,
+		},
+		{
+			name: "kratos mode local without seed_demo_users (default false) returns false",
+			cfg: &config.Config{
+				Auth:   config.AuthConfig{Mode: config.AuthModeKratos},
+				Kratos: config.KratosConfig{External: false},
+			},
+			want: false,
+		},
+		{
+			name: "kratos mode external with seed_demo_users true returns false",
+			cfg: &config.Config{
+				Auth:   config.AuthConfig{Mode: config.AuthModeKratos, SeedDemoUsers: true},
+				Kratos: config.KratosConfig{External: true},
+			},
+			want: false,
+		},
+		{
+			name: "kratos mode external returns false",
+			cfg: &config.Config{
+				Auth:   config.AuthConfig{Mode: config.AuthModeKratos},
+				Kratos: config.KratosConfig{External: true},
+			},
+			want: false,
+		},
+		{
+			name: "jwt mode returns false",
+			cfg: &config.Config{
+				Auth: config.AuthConfig{Mode: config.AuthModeJWT},
+			},
+			want: false,
+		},
+		{
+			name: "api-key mode returns false",
+			cfg: &config.Config{
+				Auth: config.AuthConfig{Mode: config.AuthModeAPIKey},
+			},
+			want: false,
+		},
+		{
+			name: "none mode returns false",
+			cfg: &config.Config{
+				Auth: config.AuthConfig{Mode: config.AuthModeNone},
+			},
+			want: false,
+		},
+		{
+			name: "zero value config returns false",
+			cfg:  &config.Config{},
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := generate.NeedsSeedUsers(tt.cfg)
+			if got != tt.want {
+				t.Errorf("NeedsSeedUsers() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
 func TestNeedsSeedSecrets(t *testing.T) {
 	tests := []struct {
 		name string

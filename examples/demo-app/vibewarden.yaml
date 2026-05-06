@@ -38,6 +38,8 @@ kratos:
 
 auth:
   mode: "kratos"
+  # Enable demo identity seeding — only for demos/local testing, never production.
+  seed_demo_users: true
   public_paths:
     - "/"
     - "/public"

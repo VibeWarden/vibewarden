@@ -469,6 +469,13 @@ auth:
   # Only relevant when mode is "kratos".
   login_url: ""
 
+  # When true, generates a seed-users.sh script that creates demo Kratos
+  # identities (demo@vibewarden.dev, alice@vibewarden.dev) on first deploy.
+  # Only useful for demos/testing — never enable in production.
+  # Requires auth.mode: kratos and kratos.external: false.
+  # Default: false.
+  # seed_demo_users: false
+
   # Role-based path restrictions (only valid when mode is "kratos").
   #
   # Maps role names to URL path patterns. Authenticated users whose Kratos
