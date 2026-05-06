@@ -181,7 +181,7 @@ func runServe(ctx context.Context, opts serveOptions, extraPlugins ...plugins.Pl
 	// Provision calls receive the wired sinks instead of constructing their own.
 	// This must happen before adapter.Start (which triggers caddy.Load and
 	// therefore Provision). See ADR-092.
-	caddyadapter.SetRuntimeServices(buildRuntimeServices(logger, eventLogger, registry, healthChecker, opts.version))
+	caddyadapter.SetRuntimeServices(buildRuntimeServices(logger, eventLogger, registry, healthChecker, opts.version, cfg))
 
 	// Wire the metrics collector into the TLS cert expiry monitor so that
 	// the vibewarden_tls_cert_expiry_seconds gauge is populated. This must

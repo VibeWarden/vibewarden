@@ -7,6 +7,7 @@ import (
 	"sort"
 	"time"
 
+	apikeyv "github.com/vibewarden/vibewarden/internal/adapters/apikey"
 	auditadapter "github.com/vibewarden/vibewarden/internal/adapters/audit"
 	caddyadapter "github.com/vibewarden/vibewarden/internal/adapters/caddy"
 	logadapter "github.com/vibewarden/vibewarden/internal/adapters/log"
@@ -432,6 +433,8 @@ func buildEventLogger(registry *plugins.Registry, logger *slog.Logger, ringBuf p
 // checker may be nil when the upstream health probe is disabled; the health
 // handler degrades gracefully by rendering "upstream":"unknown".
 // version is the binary version string injected at build time.
+// cfg is the loaded configuration; it is used to wire the APIKeyValidator when
+// auth.mode is "api-key".
 //
 // The metrics plugin's collector is passed to the CircuitBreakerFactory when
 // present so that circuit breaker state transitions update the Prometheus gauge.
@@ -441,6 +444,7 @@ func buildRuntimeServices(
 	registry *plugins.Registry,
 	checker ports.UpstreamHealthChecker,
 	version string,
+	cfg *config.Config,
 ) caddyadapter.RuntimeServices {
 	// Build the sidecar-level audit logger. Initial implementation writes JSON
 	// to stdout. Fan-out to OTel / PostgreSQL is a later, orthogonal task.
@@ -463,7 +467,7 @@ func buildRuntimeServices(
 
 	cbFactory := resilienceadapter.NewInMemoryCircuitBreakerFactory(logger, eventLogger, cbMetrics, auditLogger)
 
-	return caddyadapter.RuntimeServices{
+	svc := caddyadapter.RuntimeServices{
 		Logger:                logger,
 		EventLogger:           eventLogger,
 		AuditEventLogger:      auditLogger,
@@ -472,4 +476,23 @@ func buildRuntimeServices(
 		UpstreamHealthChecker: checker,
 		SidecarVersion:        version,
 	}
+
+	// Wire the API key validator when auth.mode is "api-key".
+	// v1 uses the config-based validator (static keys from vibewarden.yaml).
+	// OpenBao-backed validation is a future extension (ADR-103).
+	if cfg != nil && cfg.Auth.Mode == config.AuthModeAPIKey {
+		if cfg.Auth.APIKey.OpenBaoPath != "" {
+			logger.Warn("api-key: OpenBao path configured but store wiring is deferred — falling back to config-based validator")
+		}
+		validator, err := apikeyv.NewConfigValidator(cfg.Auth.APIKey.Keys)
+		if err != nil {
+			logger.Error("api-key: failed to build config validator — APIKeyHandler will reject all requests",
+				slog.String("error", err.Error()),
+			)
+		} else {
+			svc.APIKeyValidator = validator
+		}
+	}
+
+	return svc
 }

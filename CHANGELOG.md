@@ -16,6 +16,14 @@ This initial entry was written by hand to summarise the work leading up to v0.1.
 
 - **fix(#1304): cap TLS retry loop at a hard iteration ceiling.** Previously the retry path spun 500K–750K iterations on persistent failure with no cap, observable in the exhaustion test (the `noSleep` test seam removes the natural pacing of `time.Sleep`). New `MaxIterations(budget, poll)` helper returns `floor(budget/poll) + 2` and gates both `runTLSRetry` and the boot-gap loop. Production iteration counts stay in the low tens (30s budget / 2s poll → 17 max). Returns `ErrTLSRetryExhausted` cleanly after the cap is hit.
 
+### Added
+
+- **feat(#1302): wire `api-key` auth mode into Caddy handler chain.** New Caddy module `http.handlers.api_key_auth` (priority 35) consumes `ports.APIKeyValidator` via `RuntimeServices`. When `auth.mode: api-key` is set, `ContributeCaddyHandlers` returns an `APIKeyHandler` at priority 35 (between rate-limit at 30 and Kratos/JWT at 40+). The handler fails closed (HTTP 500) when no validator is present. The composition root wires a `ConfigValidator` from `cfg.Auth.APIKey.Keys` when the mode is active. Architecture invariant test `TestAuthModes_AllModesHaveHandlerOrAreNone` pins that every non-None auth mode must contribute at least one Caddy handler.
+
+### Removed
+
+- **feat(#1302): delete orphan `internal/adapters/logprint/` package.** Zero callers in the main module. The package was superseded by `internal/adapters/log/` (slog-based) and was the only reason `fatih/color` would have remained exclusively as a logprint dependency. Removed `printer.go` and `printer_test.go`.
+
 ### Documentation
 
 - **docs(#1270): vibewarden.reference.yaml — add 13 previously-missing top-level config sections.** Brings the reference file to full coverage of fields documented in llms-full.txt or defined in internal/config Go structs. Also fixes a class of latent default-bugs surfaced by the new TestReferenceYAML_UnmarshalsCleanly test: audit.enabled, audit.output, and resilience.circuit_breaker/retry fields now apply their documented defaults via setDefaults(), where previously they were silently zero.

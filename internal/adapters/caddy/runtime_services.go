@@ -44,6 +44,11 @@ type RuntimeServices struct {
 	// SidecarVersion is the running binary version string, used by the health
 	// handler to render the "version" field without a separate plumbing path.
 	SidecarVersion string
+
+	// APIKeyValidator validates API keys presented in the X-API-Key header (or
+	// a configured alternative). Required by APIKeyHandler — the handler
+	// operates in fail-closed mode when nil (every request gets HTTP 500).
+	APIKeyValidator ports.APIKeyValidator
 }
 
 // runtimeServicesRegistry is the package-scope atomic pointer. It is written

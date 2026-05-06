@@ -565,8 +565,12 @@ func (p *Plugin) ContributeCaddyRoutes() []ports.CaddyRoute {
 // handler is returned (Priority 40). This handler validates the Bearer token
 // from the Authorization header against the auto-generated dev JWKS.
 //
-// Returns nil when the plugin is disabled or when Mode is ModeNone or ModeAPIKey
-// (those modes handle auth elsewhere or not at all in the catch-all chain).
+// For ModeAPIKey, an api_key_auth handler is returned (Priority 35). This
+// handler validates the API key from the configured header and enforces scope
+// rules. The actual key validation is performed by the ports.APIKeyValidator
+// injected into RuntimeServices by the composition root.
+//
+// Returns nil when the plugin is disabled or when Mode is ModeNone.
 func (p *Plugin) ContributeCaddyHandlers() []ports.CaddyHandler {
 	if !p.cfg.Enabled {
 		return nil
@@ -580,6 +584,13 @@ func (p *Plugin) ContributeCaddyHandlers() []ports.CaddyHandler {
 			mode = ModeKratos
 		} else {
 			mode = ModeNone
+		}
+	}
+
+	// API key mode: contribute the api_key_auth handler at priority 35.
+	if mode == ModeAPIKey {
+		return []ports.CaddyHandler{
+			{Handler: buildAPIKeyHandler(p.cfg.APIKey), Priority: 35},
 		}
 	}
 
@@ -675,6 +686,28 @@ func buildJWTBearerHandler(jwksURL, issuer, audience string, publicPaths []strin
 		"issuer":       issuer,
 		"audience":     audience,
 		"public_paths": publicPaths,
+	}
+}
+
+// buildAPIKeyHandler creates the Caddy handler configuration for API key
+// authentication. It uses the "api_key_auth" Caddy handler type registered by
+// internal/adapters/caddy.APIKeyHandler.
+//
+// The returned map is serialised as JSON by the Caddy config builder and
+// deserialised by APIKeyHandler.UnmarshalJSON during Provision.
+func buildAPIKeyHandler(cfg APIKeyPluginConfig) map[string]any {
+	rules := make([]map[string]any, len(cfg.ScopeRules))
+	for i, r := range cfg.ScopeRules {
+		rules[i] = map[string]any{
+			"path":            r.Path,
+			"methods":         r.Methods,
+			"required_scopes": r.RequiredScopes,
+		}
+	}
+	return map[string]any{
+		"handler":     "api_key_auth",
+		"header":      cfg.Header,
+		"scope_rules": rules,
 	}
 }
 
