@@ -175,6 +175,11 @@ func resolveProdProvider(cmd *cobra.Command, domain, provider string, providerCh
 // When the file does not exist, it is created with sensible production
 // defaults via productionSeedFactory.
 //
+// In addition to TLS fields, this function always ensures:
+//   - profile: prod — marks the file as a production override
+//   - deploy.target_platform: linux/amd64 — prevents vibew bundle from
+//     printing a bracketed placeholder in the pre-deploy architecture check
+//
 // provider is written only when it is non-empty. Pass an empty string to leave
 // any existing tls.provider key in the file untouched.
 //
@@ -186,6 +191,17 @@ func upsertTLSFieldsInProdConfig(path, domain, email, provider string) (domainsc
 		path,
 		productionSeedFactory,
 		func(root *yaml.Node, b *yamlmodadapter.DiffBuilder) error {
+			// Always ensure profile: prod is present. This marks the file
+			// unambiguously as a production override and prevents `vibew bundle`
+			// from inheriting the dev default (profile: dev).
+			yamlmodadapter.UpsertScalar(root, b, "", "profile", "prod", "!!str")
+
+			// Always ensure deploy.target_platform is set. The linux/amd64
+			// default covers the vast majority of Hetzner / cloud VPS targets.
+			// Operators on ARM64 (e.g. Graviton, Ampere) must set this to
+			// linux/arm64 manually after running `vibew add tls`.
+			yamlmodadapter.UpsertScalar(root, b, "deploy", "target_platform", "linux/amd64", "!!str")
+
 			yamlmodadapter.UpsertScalar(root, b, "tls", "domain", domain, "!!str")
 			if provider != "" {
 				yamlmodadapter.UpsertScalar(root, b, "tls", "provider", provider, "!!str")
@@ -199,28 +215,74 @@ func upsertTLSFieldsInProdConfig(path, domain, email, provider string) (domainsc
 }
 
 // productionSeedFactory returns the seed mapping written to a freshly-created
-// vibewarden.production.yaml. It sets server.port = 443 and tls.enabled = true.
-// The tls.provider is intentionally omitted here; it is written by
-// upsertTLSFieldsInProdConfig based on domain classification.
+// vibewarden.production.yaml. It sets:
+//   - profile: prod
+//   - server.port: 443
+//   - deploy.target_platform: linux/amd64 (and a commented-out host hint)
+//   - tls.enabled: true
+//
+// The tls.provider and tls.domain are intentionally omitted here; they are
+// written by upsertTLSFieldsInProdConfig based on domain classification.
+//
+// deploy.host is intentionally omitted from the seed. Its absence is the
+// trigger for the hint paragraph in `vibew bundle`'s "Next: deploy" output.
+// Operators fill it in after `vibew add tls` by editing
+// vibewarden.production.yaml — the commented-out hint line documents exactly
+// what to set and where.
 func productionSeedFactory() *yaml.Node {
+	root := &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"}
+
+	// profile: prod
+	root.Content = append(root.Content,
+		&yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: "profile"},
+		&yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: "prod"},
+	)
+
+	// server:
+	//   port: 443
 	server := &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"}
 	server.Content = append(server.Content,
 		&yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: "port"},
 		&yaml.Node{Kind: yaml.ScalarNode, Tag: "!!int", Value: "443"},
 	)
+	root.Content = append(root.Content,
+		&yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: "server"},
+		server,
+	)
 
+	// deploy:
+	//   target_platform: linux/amd64
+	//   # host: <your-ssh-user>@<your-server>  # set this so vibew bundle prints ready-to-run SSH commands
+	deploy := &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"}
+	deploy.Content = append(deploy.Content,
+		&yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: "target_platform"},
+		&yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: "linux/amd64"},
+	)
+	// The foot comment on the last value node in the deploy mapping surfaces
+	// in the serialised YAML directly below deploy.target_platform. This is the
+	// lowest-friction prompt for operators to fill in deploy.host before running
+	// vibew bundle. When the operator adds the key the comment is harmlessly
+	// preserved above it.
+	// Bracketed form (<your-ssh-user>@<your-server>) is required by the
+	// cross-LLM literal-vs-template clarity rule (CLAUDE.md) so LLM agents
+	// never copy this comment verbatim as a real SSH target.
+	deploy.Content[len(deploy.Content)-1].FootComment = "# host: <your-ssh-user>@<your-server>  # uncomment and set so vibew bundle prints ready-to-run SSH commands"
+	root.Content = append(root.Content,
+		&yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: "deploy"},
+		deploy,
+	)
+
+	// tls:
+	//   enabled: true
 	tls := &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"}
 	tls.Content = append(tls.Content,
 		&yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: "enabled"},
 		&yaml.Node{Kind: yaml.ScalarNode, Tag: "!!bool", Value: "true"},
 	)
-
-	root := &yaml.Node{Kind: yaml.MappingNode, Tag: "!!map"}
 	root.Content = append(root.Content,
-		&yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: "server"},
-		server,
 		&yaml.Node{Kind: yaml.ScalarNode, Tag: "!!str", Value: "tls"},
 		tls,
 	)
+
 	return root
 }
