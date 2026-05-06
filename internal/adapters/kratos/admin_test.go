@@ -89,6 +89,49 @@ func TestAdminAdapter_ListUsers_DefaultPagination(t *testing.T) {
 	}
 }
 
+// TestAdminAdapter_ListUsers_PageOffset verifies the 0-indexed page translation
+// for several explicit page values. Caller-facing Page=N must produce Kratos
+// wire value page=N-1. This prevents a regression that reintroduces page=page.
+func TestAdminAdapter_ListUsers_PageOffset(t *testing.T) {
+	tests := []struct {
+		name        string
+		callerPage  int
+		callerPer   int
+		wantPage    string
+		wantPerPage string
+	}{
+		{"page 1 → wire 0", 1, 10, "0", "10"},
+		{"page 2 → wire 1", 2, 10, "1", "10"},
+		{"page 5 → wire 4", 5, 25, "4", "25"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var gotPage, gotPerPage string
+
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				gotPage = r.URL.Query().Get("page")
+				gotPerPage = r.URL.Query().Get("per_page")
+				w.Header().Set("Content-Type", "application/json")
+				_ = json.NewEncoder(w).Encode([]map[string]any{})
+			}))
+			defer srv.Close()
+
+			adapter := kratos.NewAdminAdapter(srv.URL, 0, newTestLogger())
+			_, err := adapter.ListUsers(context.Background(), ports.Pagination{Page: tt.callerPage, PerPage: tt.callerPer})
+			if err != nil {
+				t.Fatalf("ListUsers() error = %v", err)
+			}
+			if gotPage != tt.wantPage {
+				t.Errorf("page = %q, want %q (caller Page=%d should map to wire page=%s)", gotPage, tt.wantPage, tt.callerPage, tt.wantPage)
+			}
+			if gotPerPage != tt.wantPerPage {
+				t.Errorf("per_page = %q, want %q", gotPerPage, tt.wantPerPage)
+			}
+		})
+	}
+}
+
 func TestAdminAdapter_ListUsers_ServerError(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError)

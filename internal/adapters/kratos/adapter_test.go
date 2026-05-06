@@ -317,6 +317,68 @@ func TestCheckSession_MalformedJSONResponse(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
+// CheckSession — X-Session-Token vs Cookie routing (Kratos v25+)
+// ---------------------------------------------------------------------------
+
+// TestCheckSession_OrySessionToken verifies that tokens with the "ory_st_"
+// prefix are sent via X-Session-Token and NOT via the Cookie header. A
+// regression here would silently break all API-flow sessions on v25+.
+func TestCheckSession_OrySessionToken(t *testing.T) {
+	tests := []struct {
+		name         string
+		token        string
+		wantHeader   string
+		wantValue    string
+		unwantHeader string
+	}{
+		{
+			name:         "ory_st_ prefix uses X-Session-Token",
+			token:        "ory_st_abc123",
+			wantHeader:   "X-Session-Token",
+			wantValue:    "ory_st_abc123",
+			unwantHeader: "Cookie",
+		},
+		{
+			name:         "browser cookie uses Cookie header",
+			token:        "ory_kratos_session=some-browser-token",
+			wantHeader:   "Cookie",
+			wantValue:    "ory_kratos_session=some-browser-token",
+			unwantHeader: "X-Session-Token",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var (
+				gotWantHeader   string
+				gotUnwantHeader string
+			)
+
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				gotWantHeader = r.Header.Get(tt.wantHeader)
+				gotUnwantHeader = r.Header.Get(tt.unwantHeader)
+				w.Header().Set("Content-Type", "application/json")
+				_ = json.NewEncoder(w).Encode(validSessionBody())
+			}))
+			defer srv.Close()
+
+			adapter := kratos.NewAdapter(srv.URL, 0, newTestLogger())
+			_, err := adapter.CheckSession(context.Background(), tt.token)
+			if err != nil {
+				t.Fatalf("CheckSession() error = %v, want nil", err)
+			}
+
+			if gotWantHeader != tt.wantValue {
+				t.Errorf("%s header = %q, want %q", tt.wantHeader, gotWantHeader, tt.wantValue)
+			}
+			if gotUnwantHeader != "" {
+				t.Errorf("%s header should be absent, got %q", tt.unwantHeader, gotUnwantHeader)
+			}
+		})
+	}
+}
+
+// ---------------------------------------------------------------------------
 // IdentityProvider (Authenticate) tests
 // ---------------------------------------------------------------------------
 

@@ -9,6 +9,6 @@ services:
     ports:
       - "3000:3000"
   kratos:
-    image: oryd/kratos:v1.3.1
+    image: oryd/kratos:v26.2.0
     ports:
       - "4433:4433"

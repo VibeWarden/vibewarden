@@ -148,7 +148,7 @@ services:
       retries: 10
 
   kratos-migrate:
-    image: oryd/kratos:v1.3.1
+    image: oryd/kratos:v26.2.0
     container_name: myapp-kratos-migrate
     restart: on-failure
     environment:
@@ -163,7 +163,7 @@ services:
       - myapp
 
   kratos:
-    image: oryd/kratos:v1.3.1
+    image: oryd/kratos:v26.2.0
     container_name: myapp-kratos
     restart: unless-stopped
     environment:
