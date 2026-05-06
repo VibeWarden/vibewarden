@@ -124,6 +124,25 @@ func (s *Service) WithSleep(fn func(time.Duration)) *Service {
 	return &Service{prober: s.prober, sleep: fn}
 }
 
+// MaxIterations computes a ceiling iteration count for a retry loop given the
+// total budget and the per-iteration poll interval. It always returns at least
+// 1, and adds a small safety margin so a production loop never terminates
+// slightly early due to scheduling jitter.
+//
+// This cap is the primary safeguard against busy-spinning when the sleep
+// function is a no-op (test seam). Without it, loops driven by wall-clock
+// time alone spin hundreds of thousands of times per 200ms test budget.
+func MaxIterations(budget, poll time.Duration) int {
+	if poll <= 0 {
+		return 1
+	}
+	n := int(budget/poll) + 2 // +2: rounding margin so production loops do not clip
+	if n < 1 {
+		return 1
+	}
+	return n
+}
+
 // Run probes opts.URL once. Two retry loops may engage in sequence:
 //
 //  1. TLS-retry loop (--env path only): if the first probe returns
@@ -174,8 +193,14 @@ func (s *Service) Run(ctx context.Context, opts Options) (Result, error) {
 
 	// Boot-gap retry: upstream is "unknown". Keep polling until it clears or
 	// the budget is exhausted.
+	//
+	// maxIter caps the loop so that injected no-op sleeps (test seam) do not
+	// cause busy-spinning. The wall-clock deadline is still the authoritative
+	// exit condition in production; the cap is a safety bound that makes the
+	// iteration count provable at code review.
 	deadline := time.Now().Add(opts.BootGapWait)
-	for time.Now().Before(deadline) {
+	maxIter := MaxIterations(opts.BootGapWait, opts.BootGapPoll)
+	for i := 0; i < maxIter && time.Now().Before(deadline); i++ {
 		s.sleep(opts.BootGapPoll)
 
 		// Re-check context before each retry.
@@ -205,14 +230,19 @@ func (s *Service) Run(ctx context.Context, opts Options) (Result, error) {
 //
 // Returns (doc, nil) on success, ErrTLSRetryExhausted on budget exhaustion, or
 // the new error immediately when the error class changes.
+//
+// The loop is bounded by both a wall-clock deadline and a maxIter cap. The cap
+// prevents busy-spinning when the sleep function is a no-op (test seam). In
+// production, time.Sleep keeps the iteration count in the low tens regardless.
 func (s *Service) runTLSRetry(ctx context.Context, opts Options, pw io.Writer) (ports.HealthDocument, error) {
 	retrySeconds := int(opts.TLSRetryWait.Seconds())
 	fmt.Fprintf(pw, "Waiting for ACME issuance... (TLS handshake failed; retrying %ds)\n", retrySeconds)
 
 	start := time.Now()
 	deadline := start.Add(opts.TLSRetryWait)
+	maxIter := MaxIterations(opts.TLSRetryWait, opts.TLSRetryPoll)
 
-	for {
+	for i := 0; i < maxIter; i++ {
 		s.sleep(opts.TLSRetryPoll)
 
 		elapsed := int(time.Since(start).Seconds())
@@ -234,8 +264,11 @@ func (s *Service) runTLSRetry(ctx context.Context, opts Options, pw io.Writer) (
 		}
 
 		if !time.Now().Before(deadline) {
-			// Budget exhausted.
+			// Budget exhausted by wall clock.
 			return ports.HealthDocument{}, ErrTLSRetryExhausted
 		}
 	}
+
+	// Budget exhausted by iteration cap.
+	return ports.HealthDocument{}, ErrTLSRetryExhausted
 }
