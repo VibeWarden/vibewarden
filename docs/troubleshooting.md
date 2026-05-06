@@ -896,6 +896,48 @@ Save the master key somewhere safe -- if you lose it, your secrets are unrecover
 
 ---
 
+### OpenBao: unseal key missing after host reboot or bundle re-run
+
+**Symptom** (from `docker compose logs seed-secrets`):
+
+```
+ERROR: OPENBAO_UNSEAL_KEY not found in /.credentials — vault is initialized but unseal key is missing. Recover manually.
+```
+
+**Cause**
+
+`seed-secrets.sh` writes `OPENBAO_UNSEAL_KEY` into `.credentials` on first boot (v0.19+,
+ADR-104). The key is missing because either:
+
+- `.credentials` was overwritten by re-running `vibew bundle` after the initial prod deploy.
+  `vibew bundle` regenerates `.credentials` with a new placeholder token and does not
+  include the `OPENBAO_UNSEAL_KEY` produced at boot time.
+- `.credentials` was not restored after a host migration.
+
+**Fix — backup exists**
+
+1. Restore `.credentials` from your backup (the version containing `OPENBAO_UNSEAL_KEY`).
+2. Restart the stack:
+
+    ```bash
+    ssh <your-ssh-user>@<your-ssh-host> 'cd /path/to/bundle && docker compose restart'
+    ```
+
+**Fix — backup lost (destructive)**
+
+If the unseal key backup is gone, the vault must be re-initialised. All secrets stored
+in the vault will be lost.
+
+```bash
+ssh <your-ssh-user>@<your-ssh-host> 'cd /path/to/bundle && docker compose down -v && docker compose up -d'
+```
+
+After the stack restarts, `seed-secrets` re-initialises the vault and writes a new
+`OPENBAO_UNSEAL_KEY` to `.credentials`. Re-seed any secrets with `vibew secret set`.
+Back up `.credentials` immediately.
+
+---
+
 ## Exit codes
 
 ### `vibew doctor`
