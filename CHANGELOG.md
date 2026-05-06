@@ -14,6 +14,8 @@ This initial entry was written by hand to summarise the work leading up to v0.1.
 
 ### Fixed
 
+- **fix(#1334): bundle — remove `disable_mlock = false` from generated `openbao/config.hcl`.** OpenBao 2.2.0+ rejects this directive ("OpenBao has dropped support for mlock"). Every Linux deploy with `secrets.provider: openbao` (i.e., every default deploy) failed at startup. Surfaced by the v0.19 smoke test on demo.vibewarden.dev (Hetzner).
+
 - **fix(#1304): cap TLS retry loop at a hard iteration ceiling.** Previously the retry path spun 500K–750K iterations on persistent failure with no cap, observable in the exhaustion test (the `noSleep` test seam removes the natural pacing of `time.Sleep`). New `MaxIterations(budget, poll)` helper returns `floor(budget/poll) + 2` and gates both `runTLSRetry` and the boot-gap loop. Production iteration counts stay in the low tens (30s budget / 2s poll → 17 max). Returns `ErrTLSRetryExhausted` cleanly after the cap is hit.
 
 ### Added

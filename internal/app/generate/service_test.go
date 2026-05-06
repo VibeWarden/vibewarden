@@ -2244,8 +2244,9 @@ func TestGenerate_OpenBaoConfigHCL_GeneratedForProd(t *testing.T) {
 	if !bytes.Contains(data, []byte("api_addr")) {
 		t.Errorf("openbao/config.hcl missing api_addr: %s", data)
 	}
-	if !bytes.Contains(data, []byte("disable_mlock")) {
-		t.Errorf("openbao/config.hcl missing disable_mlock: %s", data)
+	// OpenBao 2.2.0+ rejects the disable_mlock directive entirely; it must not appear.
+	if bytes.Contains(data, []byte("disable_mlock")) {
+		t.Errorf("openbao/config.hcl must not contain disable_mlock: OpenBao 2.2.0+ rejects this directive: %s", data)
 	}
 }
 
