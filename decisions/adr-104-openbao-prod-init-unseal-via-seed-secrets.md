@@ -71,11 +71,17 @@ initialize OpenBao, unseal it, and capture the real root token for subsequent st
 
 The unseal key and root token produced by `bao operator init` must persist across
 container restarts. They are stored in a Docker named volume
-(`openbao-data:/openbao/data` already persists vault state) and in the `.credentials`
-file that is bind-mounted read-write into `seed-secrets`. The `seed-secrets` service
-already has `./.credentials:/.credentials` as a writable bind mount — we use this
-to persist `OPENBAO_ROOT_TOKEN` and `OPENBAO_UNSEAL_KEY` back to the host filesystem
-so subsequent restarts can re-unseal without re-initializing.
+(`openbao-data:/openbao/file` — the path expected by the OpenBao image's built-in
+storage backend) and in the `.credentials` file that is bind-mounted read-write into
+`seed-secrets`. The `seed-secrets` service already has `./.credentials:/.credentials`
+as a writable bind mount — we use this to persist `OPENBAO_ROOT_TOKEN` and
+`OPENBAO_UNSEAL_KEY` back to the host filesystem so subsequent restarts can re-unseal
+without re-initializing.
+
+> **Implementation note (fix #1351):** the initial ADR draft used `/openbao/data` as
+> the storage path. Smoke test #3 revealed the OpenBao image pre-configures its file
+> storage backend at `/openbao/file`. The generated `openbao-config.hcl` and the
+> docker-compose volume mount were updated to `/openbao/file` in the same PR.
 
 This approach:
 - Requires no new Compose services.
@@ -190,12 +196,18 @@ The variable name change above means the template line updates automatically.
 
 ### Changes to `internal/config/templates/openbao-config.hcl.tmpl`
 
-No change required. The HCL config correctly sets `storage "file"` and `listener "tcp"`.
+The HCL config sets `storage "file"` and `listener "tcp"`. The storage `path` must
+match the mount point in the Compose volume definition.
+
+**Fix #1351:** the initial draft set `path = "/openbao/data"`. The OpenBao image
+pre-configures its storage backend at `/openbao/file`. Both the HCL template and the
+docker-compose volume mount were corrected to `/openbao/file`.
 
 ### File layout — files that change
 
 ```
-internal/config/templates/docker-compose.yml.tmpl     # healthcheck, seed-secrets env
+internal/config/templates/docker-compose.yml.tmpl     # healthcheck, seed-secrets env, volume path
+internal/config/templates/openbao-config.hcl.tmpl     # storage path /openbao/data → /openbao/file
 internal/config/templates/seed-secrets.sh.tmpl        # init+unseal preamble, wait loop
 internal/domain/generate/credentials.go               # rename field
 internal/app/generate/service.go                      # rename env key in .env writer

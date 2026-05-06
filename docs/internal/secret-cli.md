@@ -51,7 +51,7 @@ type SecretRetriever interface {
 | `postgres` | `infra/postgres` | `app-readwrite` | `POSTGRES_PASSWORD` |
 | `kratos` | `infra/kratos` | — | `KRATOS_SECRETS_COOKIE`, `KRATOS_SECRETS_CIPHER` |
 | `grafana` | `infra/grafana` | — | `GRAFANA_ADMIN_PASSWORD` |
-| `openbao` | — | — | `OPENBAO_DEV_ROOT_TOKEN` |
+| `openbao` | — | — | `OPENBAO_ROOT_TOKEN` |
 
 #### Fallback logic
 

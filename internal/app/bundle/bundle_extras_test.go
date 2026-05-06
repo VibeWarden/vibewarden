@@ -1036,6 +1036,153 @@ func TestRenderBundleReadme_SubstitutedPath(t *testing.T) {
 	}
 }
 
+// TestBundle_Extras_DotEnv_ContainsVIBEWARDEN_PROFILE_WhenProdProfile verifies
+// that the generated .env includes VIBEWARDEN_PROFILE=prod for prod-profile
+// bundles so that the seed-secrets container enters the prod init+unseal path
+// (#1345 / #1350 regression guard).
+//
+// Two sub-cases:
+//   - Profile set directly in opts.Config (simulates base yaml with profile: prod)
+//   - Profile set only in ProdConfigPath (the real-world case: base=dev, prod=prod)
+func TestBundle_Extras_DotEnv_ContainsVIBEWARDEN_PROFILE_WhenProdProfile(t *testing.T) {
+	t.Run("profile in Config", func(t *testing.T) {
+		mem := newMemBundleFS()
+		svc := bundleapp.NewService(&fakeExecutor{}, &fakeGenerator{}).
+			WithBundleFS(mem)
+
+		cfg := minimalBundleCfg()
+		cfg.Profile = "prod"
+
+		outDir := t.TempDir()
+		err := svc.Bundle(context.Background(), bundleapp.BundleOptions{
+			Config:      cfg,
+			ConfigPath:  filepath.Join(t.TempDir(), "vibewarden.yaml"),
+			ProjectName: "myproject",
+			OutputDir:   outDir,
+			ImageTag:    "myproject-app:latest",
+			SkipImage:   true,
+		})
+		if err != nil {
+			t.Fatalf("Bundle() error = %v", err)
+		}
+
+		body := string(mem.files[filepath.Join(outDir, ".env")])
+		if !strings.Contains(body, "VIBEWARDEN_PROFILE=prod") {
+			t.Errorf(".env missing VIBEWARDEN_PROFILE=prod\nbody:\n%s", body)
+		}
+	})
+
+	t.Run("profile only in ProdConfigPath yaml", func(t *testing.T) {
+		// This is the real-world case: base vibewarden.yaml has profile: dev,
+		// vibewarden.production.yaml has profile: prod.
+		mem := newMemBundleFS()
+		svc := bundleapp.NewService(&fakeExecutor{}, &fakeGenerator{}).
+			WithBundleFS(mem)
+
+		projDir := t.TempDir()
+		prodYAML := "profile: prod\n"
+		prodConfigPath := filepath.Join(projDir, "vibewarden.production.yaml")
+		if err := os.WriteFile(prodConfigPath, []byte(prodYAML), 0o600); err != nil {
+			t.Fatalf("writing prod config: %v", err)
+		}
+
+		// opts.Config has profile: "" (dev default) — simulates base config.
+		cfg := minimalBundleCfg()
+		cfg.Profile = ""
+
+		outDir := t.TempDir()
+		err := svc.Bundle(context.Background(), bundleapp.BundleOptions{
+			Config:         cfg,
+			ConfigPath:     filepath.Join(projDir, "vibewarden.yaml"),
+			ProdConfigPath: prodConfigPath,
+			ProjectName:    "myproject",
+			OutputDir:      outDir,
+			ImageTag:       "myproject-app:latest",
+			SkipImage:      true,
+		})
+		if err != nil {
+			t.Fatalf("Bundle() error = %v", err)
+		}
+
+		body := string(mem.files[filepath.Join(outDir, ".env")])
+		if !strings.Contains(body, "VIBEWARDEN_PROFILE=prod") {
+			t.Errorf(".env missing VIBEWARDEN_PROFILE=prod (read from ProdConfigPath)\nbody:\n%s", body)
+		}
+	})
+}
+
+// TestBundle_Extras_DotEnv_NoVIBEWARDEN_PROFILE_WhenDevProfile verifies that
+// the generated .env does not emit VIBEWARDEN_PROFILE when profile is empty
+// (dev default). This preserves backward compat for dev-profile projects.
+func TestBundle_Extras_DotEnv_NoVIBEWARDEN_PROFILE_WhenDevProfile(t *testing.T) {
+	mem := newMemBundleFS()
+	svc := bundleapp.NewService(&fakeExecutor{}, &fakeGenerator{}).
+		WithBundleFS(mem)
+
+	// minimalBundleCfg has no Profile set (defaults to "")
+	outDir := t.TempDir()
+	err := svc.Bundle(context.Background(), bundleapp.BundleOptions{
+		Config:      minimalBundleCfg(),
+		ConfigPath:  filepath.Join(t.TempDir(), "vibewarden.yaml"),
+		ProjectName: "myproject",
+		OutputDir:   outDir,
+		ImageTag:    "myproject-app:latest",
+		SkipImage:   true,
+	})
+	if err != nil {
+		t.Fatalf("Bundle() error = %v", err)
+	}
+
+	dotEnvPath := filepath.Join(outDir, ".env")
+	body := string(mem.files[dotEnvPath])
+	if strings.Contains(body, "VIBEWARDEN_PROFILE=") {
+		t.Errorf(".env must not emit VIBEWARDEN_PROFILE when profile is empty\nbody:\n%s", body)
+	}
+}
+
+// TestBundle_Extras_DotEnv_MigratesDeprecatedOpenBaoToken verifies that the
+// preserved .env path (priorExisted && !Overwrite) migrates OPENBAO_DEV_ROOT_TOKEN
+// → OPENBAO_ROOT_TOKEN so that old bundles do not break prod init+unseal (#1345).
+func TestBundle_Extras_DotEnv_MigratesDeprecatedOpenBaoToken(t *testing.T) {
+	mem := newMemBundleFS()
+	svc := bundleapp.NewService(&fakeExecutor{}, &fakeGenerator{}).
+		WithBundleFS(mem)
+
+	outDir := t.TempDir()
+	dotEnvPath := filepath.Join(outDir, ".env")
+
+	// Seed a .env with the deprecated token name to simulate a pre-v0.19 bundle.
+	oldContent := []byte("OPENBAO_DEV_ROOT_TOKEN=old-token\nVIBEWARDEN_APP_IMAGE=myapp:latest\n")
+	if err := mem.WriteFile(dotEnvPath, oldContent, 0o600); err != nil {
+		t.Fatalf("seeding mem .env: %v", err)
+	}
+	if err := os.WriteFile(dotEnvPath, oldContent, 0o600); err != nil {
+		t.Fatalf("seeding disk .env: %v", err)
+	}
+
+	// Run bundle WITHOUT --overwrite: the preserved .env must be migrated.
+	err := svc.Bundle(context.Background(), bundleapp.BundleOptions{
+		Config:      minimalBundleCfg(),
+		ConfigPath:  filepath.Join(t.TempDir(), "vibewarden.yaml"),
+		ProjectName: "myproject",
+		OutputDir:   outDir,
+		ImageTag:    "myproject-app:latest",
+		SkipImage:   true,
+		Overwrite:   false,
+	})
+	if err != nil {
+		t.Fatalf("Bundle() error = %v", err)
+	}
+
+	got := string(mem.files[dotEnvPath])
+	if strings.Contains(got, "OPENBAO_DEV_ROOT_TOKEN=") {
+		t.Errorf(".env still contains deprecated OPENBAO_DEV_ROOT_TOKEN after migration\ngot:\n%s", got)
+	}
+	if !strings.Contains(got, "OPENBAO_ROOT_TOKEN=old-token") {
+		t.Errorf(".env missing migrated OPENBAO_ROOT_TOKEN=old-token\ngot:\n%s", got)
+	}
+}
+
 // extractFirstFencedBlock returns the content of the first ```...``` fenced
 // block found in text, or empty string if none is found.
 func extractFirstFencedBlock(text string) string {

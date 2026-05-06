@@ -2173,8 +2173,8 @@ func TestGenerate_OpenBaoProdMode_PersistentVolume(t *testing.T) {
 	if !bytes.Contains(compose, []byte("openbao-data:")) {
 		t.Error("expected 'openbao-data:' named volume in prod mode")
 	}
-	if !bytes.Contains(compose, []byte("openbao-data:/openbao/data")) {
-		t.Error("expected openbao-data volume mount on /openbao/data in prod mode")
+	if !bytes.Contains(compose, []byte("openbao-data:/openbao/file")) {
+		t.Error("expected openbao-data volume mount on /openbao/file in prod mode")
 	}
 }
 
@@ -2233,8 +2233,8 @@ func TestGenerate_OpenBaoConfigHCL_GeneratedForProd(t *testing.T) {
 	if !bytes.Contains(data, []byte(`storage "file"`)) {
 		t.Errorf("openbao/config.hcl missing file storage backend: %s", data)
 	}
-	if !bytes.Contains(data, []byte("/openbao/data")) {
-		t.Errorf("openbao/config.hcl missing /openbao/data path: %s", data)
+	if !bytes.Contains(data, []byte("/openbao/file")) {
+		t.Errorf("openbao/config.hcl missing /openbao/file path: %s", data)
 	}
 	if !bytes.Contains(data, []byte(`listener "tcp"`)) {
 		t.Errorf("openbao/config.hcl missing tcp listener: %s", data)

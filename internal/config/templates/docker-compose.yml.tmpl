@@ -225,7 +225,7 @@ services:
 {{- if .IsProdProfile }}
     command: ["server", "-config=/openbao/config/config.hcl"]
     volumes:
-      - openbao-data:/openbao/data
+      - openbao-data:/openbao/file
       - ./openbao/config.hcl:/openbao/config/config.hcl:ro
 {{- else }}
     env_file:
