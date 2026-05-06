@@ -42,3 +42,12 @@ func NeedsSeedSecrets(cfg *config.Config) bool {
 	}
 	return len(cfg.Secrets.Inject.Headers) > 0 || len(cfg.Secrets.Inject.Env) > 0
 }
+
+// NeedsSeedUsers returns true if a seed-users.sh script should be written into
+// the bundle. This is the case when auth mode is "kratos" and the Kratos
+// instance is managed locally (not external). The script seeds demo identities
+// into Kratos on first boot and is mounted into the seed-users init container
+// defined in docker-compose.yml.
+func NeedsSeedUsers(cfg *config.Config) bool {
+	return cfg.Auth.Active() && cfg.Auth.Mode == config.AuthModeKratos && !cfg.Kratos.External
+}

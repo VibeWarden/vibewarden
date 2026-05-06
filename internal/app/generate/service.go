@@ -288,6 +288,26 @@ func (s *Service) Generate(ctx context.Context, input ports.GeneratorInput, outp
 		}
 	}
 
+	// Generate scripts/seed-users.sh when auth mode is "kratos" and Kratos is
+	// managed locally. The script seeds demo identities into Kratos on first
+	// boot and is mounted into the seed-users init container at
+	// ./scripts/seed-users.sh:/seed-users.sh:ro in docker-compose.yml.
+	// The relative volume path ensures the bundle is portable across any host
+	// OS — no absolute macOS temp paths leak into the compose file.
+	if NeedsSeedUsers(cfg) {
+		scriptsDir := filepath.Join(outputDir, "scripts")
+		if err := os.MkdirAll(scriptsDir, permDir); err != nil {
+			return fmt.Errorf("creating scripts directory: %w", err)
+		}
+		seedUsersPath := filepath.Join(scriptsDir, "seed-users.sh")
+		if err := s.renderer.RenderToFile("seed-users.sh.tmpl", cfg, seedUsersPath, true); err != nil {
+			return fmt.Errorf("rendering seed-users.sh: %w", err)
+		}
+		if err := os.Chmod(seedUsersPath, 0o750); err != nil { //nolint:gosec // seed-users.sh must be executable; 0o750 is intentional for a shell script
+			return fmt.Errorf("setting seed-users.sh permissions: %w", err)
+		}
+	}
+
 	// Generate observability configs unconditionally so bind-mount sources are
 	// regular files before Docker Compose can auto-create them as directories.
 	// The configs are inert until the obs profile is activated via `vibew obs up`.
