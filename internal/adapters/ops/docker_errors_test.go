@@ -148,6 +148,45 @@ func TestClassifyDockerError_NilOriginal(t *testing.T) {
 	}
 }
 
+// TestClassifyDockerError_BinaryNotFound verifies the consolidated binary-absent
+// path added in #1303. Previously this check lived in isDockerNotFound inside
+// image_inspect.go; it is now handled by ClassifyDockerError directly so that
+// the TestDockerErrorDetection_OnlyInClassifyDockerError invariant test can pass.
+func TestClassifyDockerError_BinaryNotFound(t *testing.T) {
+	tests := []struct {
+		name    string
+		errMsg  string
+		wantErr error
+	}{
+		{
+			name:    "exec ErrNotFound phrasing",
+			errMsg:  `exec: "docker": executable file not found in $PATH`,
+			wantErr: ports.ErrDockerUnavailable,
+		},
+		{
+			name:    "shorter executable file not found",
+			errMsg:  "fork/exec /usr/bin/docker: executable file not found in $PATH",
+			wantErr: ports.ErrDockerUnavailable,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			orig := errors.New(tt.errMsg)
+			err := ops.ClassifyDockerError(orig, "")
+			if err == nil {
+				t.Fatal("expected non-nil error")
+			}
+			if !errors.Is(err, tt.wantErr) {
+				t.Errorf("errors.Is(err, %v) = false; got %v", tt.wantErr, err)
+			}
+			var typed *ports.DockerUnavailableError
+			if !errors.As(err, &typed) {
+				t.Fatal("errors.As(*DockerUnavailableError) = false")
+			}
+		})
+	}
+}
+
 func TestDockerUnavailableError_Is_Umbrella(t *testing.T) {
 	tests := []struct {
 		name     string

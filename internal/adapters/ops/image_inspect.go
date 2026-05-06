@@ -54,17 +54,12 @@ func (a *ImageInspectAdapter) Inspect(ctx context.Context, tag string) (ports.Im
 	err := cmd.Run()
 	if err != nil {
 		stderrStr := stderr.String()
-		// Check for docker not being found (exec.ErrNotFound) or explicit
-		// "executable file not found" before checking stderr content.
-		if isDockerNotFound(err) {
-			return ports.ImageInfo{}, ports.ErrDockerUnavailable
-		}
 		if strings.Contains(stderrStr, "No such image") {
 			return ports.ImageInfo{}, ports.ErrImageNotFound
 		}
-		// Classify daemon-unavailable stderr (e.g. "Cannot connect to the Docker daemon",
-		// "permission denied while trying to connect to the docker API") via the
-		// shared helper. Falls through to a generic error when no signature matches.
+		// ClassifyDockerError is the single canonical seam for all docker error
+		// classification — binary-not-found (via err.Error()), daemon-unavailable,
+		// and socket-permission checks are all handled there.
 		classified := ClassifyDockerError(err, stderrStr)
 		if classified != err {
 			return ports.ImageInfo{}, classified
@@ -130,20 +125,4 @@ func parseInspectJSON(jsonBlob []byte) (ports.ImageInfo, error) {
 		SizeBytes:    out.Size,
 		Labels:       labels,
 	}, nil
-}
-
-// isDockerNotFound reports whether the error indicates the docker binary was
-// not found on PATH.
-func isDockerNotFound(err error) bool {
-	if err == nil {
-		return false
-	}
-	if strings.Contains(err.Error(), "executable file not found") {
-		return true
-	}
-	// exec.ErrNotFound is set when LookPath fails.
-	if strings.Contains(err.Error(), "exec: \"docker\": executable file not found in $PATH") {
-		return true
-	}
-	return false
 }
