@@ -172,10 +172,12 @@ curl https://localhost:8443/
 ### `GET /profile` — Active profile info (public)
 
 Returns the active demo profile and which feature sets are available.
+`tls_enabled` is derived from the `X-Forwarded-Proto` header injected by
+VibeWarden (Caddy sets it to `https` when it terminates TLS).
 
 ```bash
 curl https://localhost:8443/profile
-# {"observability_enabled":false,"profile":"dev","tls_enabled":false}
+# {"observability_enabled":false,"profile":"dev","tls_enabled":true}
 ```
 
 ### `GET /public` — Public endpoint (no auth required)

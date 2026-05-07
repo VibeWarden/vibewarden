@@ -139,10 +139,10 @@
 
   <div class="protection-grid">
     <div class="protection-card" id="card-tls">
-      <h3>TLS — <span id="tls-label">disabled</span></h3>
+      <h3>TLS — <span id="tls-label">detecting…</span></h3>
       <p id="tls-desc">
-        HTTP mode. Start with <code>VIBEWARDEN_PROFILE=tls</code> for self-signed
-        HTTPS or <code>VIBEWARDEN_PROFILE=prod</code> for Let's Encrypt.
+        VibeWarden terminates TLS by default. Self-signed in dev
+        (<code>vibew dev</code>), Let's Encrypt in production.
       </p>
     </div>
     <div class="protection-card">
@@ -278,21 +278,26 @@
         'target="_blank" rel="noopener">how to switch</a>)';
       profileBanner.style.display = '';
 
-      // TLS card
+      // TLS card — tls_enabled is derived from X-Forwarded-Proto by the server.
+      // When Caddy terminates TLS it always sets that header before forwarding.
       const tlsLabel = document.getElementById('tls-label');
       const tlsDesc  = document.getElementById('tls-desc');
       if (profileData.tls_enabled) {
-        tlsLabel.textContent = 'Let\'s Encrypt';
-        if (profileData.profile === 'tls') {
+        if (profileData.profile === 'prod' || profileData.profile === 'full') {
+          tlsLabel.textContent = 'Let\'s Encrypt';
+          tlsDesc.textContent =
+            'HTTPS is automatic. VibeWarden obtains and renews certificates via ACME. ' +
+            'No configuration needed.';
+        } else {
           tlsLabel.textContent = 'self-signed';
           tlsDesc.textContent =
             'VibeWarden terminates HTTPS using a Caddy-generated self-signed certificate. ' +
             'Browsers show a security warning — accept it to proceed.';
-        } else {
-          tlsDesc.textContent =
-            'HTTPS is automatic. VibeWarden obtains and renews certificates via ACME. ' +
-            'No configuration needed.';
         }
+      } else {
+        tlsLabel.textContent = 'disabled';
+        tlsDesc.textContent =
+          'Running in plain HTTP mode (external TLS termination or local dev without TLS).';
       }
 
       // Observability links

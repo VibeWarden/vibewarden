@@ -186,9 +186,16 @@ func handleRoot(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleProfile returns the active demo profile and which optional feature sets
-// are available.  The profile is read from the VIBEWARDEN_PROFILE environment
-// variable (set in docker-compose.yml).  The landing page JavaScript calls this
-// endpoint to decide which sections to show or hide.
+// are available.  The landing page JavaScript calls this endpoint to decide
+// which sections to show or hide.
+//
+// tls_enabled is derived from the X-Forwarded-Proto request header injected by
+// the VibeWarden sidecar (Caddy).  When Caddy terminates TLS — whether
+// self-signed in dev or Let's Encrypt in prod — it always sets
+// X-Forwarded-Proto: https before forwarding the request to the app.
+// Profile is never the right axis for TLS state: VibeWarden enables TLS by
+// default in all profiles; TLS is only "disabled" when an external terminator
+// (Cloudflare, ALB, etc.) handles it.
 //
 // This endpoint is public (no auth required).
 func handleProfile(w http.ResponseWriter, r *http.Request) {
@@ -199,9 +206,13 @@ func handleProfile(w http.ResponseWriter, r *http.Request) {
 
 	writeJSON(w, http.StatusOK, map[string]any{
 		"profile": profile,
-		// Feature flags derived from the profile name so the landing page
-		// can conditionally show observability links.
-		"tls_enabled":           profile == "tls" || profile == "prod",
+		// tls_enabled reflects whether the request arrived over HTTPS.
+		// Caddy sets X-Forwarded-Proto: https when it terminates TLS.
+		"tls_enabled": r.Header.Get("X-Forwarded-Proto") == "https",
+		// observability_enabled reflects whether the Compose observability
+		// profile is active (Grafana / Prometheus / Loki).  This is not
+		// derivable from a request header; it comes from the env var set
+		// by docker-compose when COMPOSE_PROFILES includes "observability".
 		"observability_enabled": profile == "full" || profile == "observability",
 	})
 }

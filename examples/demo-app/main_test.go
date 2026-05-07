@@ -213,6 +213,70 @@ func TestHandleSpam(t *testing.T) {
 	}
 }
 
+func TestHandleProfile(t *testing.T) {
+	tests := []struct {
+		name           string
+		forwardedProto string
+		wantTLSEnabled bool
+	}{
+		{
+			name:           "X-Forwarded-Proto: https → tls_enabled true",
+			forwardedProto: "https",
+			wantTLSEnabled: true,
+		},
+		{
+			name:           "X-Forwarded-Proto: http → tls_enabled false",
+			forwardedProto: "http",
+			wantTLSEnabled: false,
+		},
+		{
+			name:           "no X-Forwarded-Proto header → tls_enabled false",
+			forwardedProto: "",
+			wantTLSEnabled: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, "/profile", nil)
+			if tt.forwardedProto != "" {
+				req.Header.Set("X-Forwarded-Proto", tt.forwardedProto)
+			}
+			rr := httptest.NewRecorder()
+
+			handleProfile(rr, req)
+
+			if rr.Code != http.StatusOK {
+				t.Fatalf("want status 200, got %d", rr.Code)
+			}
+
+			var body map[string]any
+			if err := json.NewDecoder(rr.Body).Decode(&body); err != nil {
+				t.Fatalf("decode response: %v", err)
+			}
+
+			gotTLS, ok := body["tls_enabled"].(bool)
+			if !ok {
+				t.Fatalf("tls_enabled field missing or not bool: %v", body["tls_enabled"])
+			}
+			if gotTLS != tt.wantTLSEnabled {
+				t.Errorf("tls_enabled: want %v, got %v", tt.wantTLSEnabled, gotTLS)
+			}
+
+			// profile field must always be present and non-empty.
+			profile, ok := body["profile"].(string)
+			if !ok || profile == "" {
+				t.Errorf("profile field missing or empty: %v", body["profile"])
+			}
+
+			// observability_enabled field must be present.
+			if _, ok := body["observability_enabled"]; !ok {
+				t.Error("observability_enabled field missing from response")
+			}
+		})
+	}
+}
+
 func TestHandleHealth(t *testing.T) {
 	req := httptest.NewRequest(http.MethodGet, "/health", nil)
 	rr := httptest.NewRecorder()
