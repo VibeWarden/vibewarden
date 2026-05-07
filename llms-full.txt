@@ -257,7 +257,7 @@ Example: database.external_url: "postgres://user:${DB_PASSWORD}@db:5432/vw"
 
   Type: string
   Default: dev
-  Values: dev, tls, prod
+  Values: dev, tls, prod, full, observability
 
   profile: dev
 
