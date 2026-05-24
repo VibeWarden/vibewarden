@@ -12,6 +12,10 @@ This initial entry was written by hand to summarise the work leading up to v0.1.
 
 ## [Unreleased]
 
+### Changed
+
+- chore(lint): allow G124 in test files; reflect.Ptr → reflect.Pointer in internal/config
+
 ## [v0.19.0] — 2026-05-07
 
 Theme: audit-driven stabilization. Closes the 2026-05-03 cross-cutting audit (15 critical+high findings) plus 8 follow-up bugs surfaced by 4 smoke tests against demo.vibewarden.dev. Two breaking changes — see Migration below.

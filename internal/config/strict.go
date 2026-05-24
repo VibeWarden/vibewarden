@@ -124,7 +124,7 @@ func checkUnknownKeys(file string) error {
 // arbitrary map values against a fixed schema.
 func walkUnknownKeys(tree map[string]any, schema reflect.Type, prefix string, out *[]string) {
 	// Unwrap pointers; non-struct schemas accept anything.
-	for schema.Kind() == reflect.Ptr {
+	for schema.Kind() == reflect.Pointer {
 		schema = schema.Elem()
 	}
 	if schema.Kind() != reflect.Struct {
@@ -145,7 +145,7 @@ func walkUnknownKeys(tree map[string]any, schema reflect.Type, prefix string, ou
 		}
 
 		fieldType := field.Type
-		for fieldType.Kind() == reflect.Ptr {
+		for fieldType.Kind() == reflect.Pointer {
 			fieldType = fieldType.Elem()
 		}
 		// Recurse into nested structs. For slice/map fields we cannot check
