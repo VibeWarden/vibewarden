@@ -73,6 +73,12 @@ linters:
         linters:
           - gosec
         text: "G115"
+      # Test-only http.Cookie literals do not need Secure/HttpOnly/SameSite
+      # attributes — they are never sent over the wire to a real browser.
+      - path: "_test\\.go"
+        linters:
+          - gosec
+        text: "G124"
 
 issues:
   max-issues-per-linter: 0

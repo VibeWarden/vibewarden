@@ -76,7 +76,7 @@ func resolveStruct(ctx context.Context, v reflect.Value, store ports.SecretKVRea
 				return err
 			}
 
-		case reflect.Ptr:
+		case reflect.Pointer:
 			if !fv.IsNil() && fv.Elem().Kind() == reflect.Struct {
 				if err := resolveStruct(ctx, fv.Elem(), store, fieldPath); err != nil {
 					return err
@@ -103,7 +103,7 @@ func resolveSlice(ctx context.Context, v reflect.Value, store ports.SecretKVRead
 			if err := resolveStruct(ctx, elem, store, elemPath); err != nil {
 				return err
 			}
-		case reflect.Ptr:
+		case reflect.Pointer:
 			if !elem.IsNil() && elem.Elem().Kind() == reflect.Struct {
 				if err := resolveStruct(ctx, elem.Elem(), store, elemPath); err != nil {
 					return err
