@@ -12,6 +12,18 @@ This initial entry was written by hand to summarise the work leading up to v0.1.
 
 ## [Unreleased]
 
+### Security
+
+- **Bump `golang.org/x/net` to v0.55.0 (GO-2026-5026) and `golang.org/x/crypto` to v0.52.0 (GO-2026-5018) — both HIGH-severity CVEs were reachable from our code.**
+
+### Changed
+
+- chore(lint): allow G124 in test files; reflect.Ptr → reflect.Pointer in internal/config
+
+## [v0.19.0] — 2026-05-07
+
+Theme: audit-driven stabilization. Closes the 2026-05-03 cross-cutting audit (15 critical+high findings) plus 8 follow-up bugs surfaced by 4 smoke tests against demo.vibewarden.dev. Two breaking changes — see Migration below.
+
 ### Fixed
 
 - **fix(#1353): demo-app — derive `tls_enabled` from `X-Forwarded-Proto` header instead of `VIBEWARDEN_PROFILE` env var.** Previously the demo's `/profile` endpoint reported `tls_enabled: false` even when vibewarden was serving HTTPS (both `vibew dev` self-signed and prod Let's Encrypt). Profile is the wrong axis — TLS is enabled by default in all profiles; only disabled when an external terminator (Cloudflare, ALB) handles it. Now derived from the standard reverse-proxy header. Misleading "Start with VIBEWARDEN_PROFILE=tls" hint text removed.
@@ -59,6 +71,16 @@ This initial entry was written by hand to summarise the work leading up to v0.1.
 
 - **chore(#1302): delete orphan `internal/adapters/logprint/` package.** Zero callers in the main module. The package was superseded by `internal/adapters/log/` (slog-based) and was the only reason `fatih/color` would have remained exclusively as a logprint dependency. Removed `printer.go` and `printer_test.go`.
 - **chore(#1300): remove dead StateSync port + adapters + domain/sync.** Zero external callers. Cross-instance state-sync was scoped under `epic:state-sync` but never wired into any handler chain. Files removed: `internal/ports/statesync.go`, `internal/adapters/statesync/` (5 files), `internal/domain/sync/` (2 files). `redis/go-redis` remains in go.mod (used by ratelimit adapter and plugin).
+
+### Migration
+
+**OpenBao token env var rename (#1345):**
+- Operators with existing prod deployments using `OPENBAO_DEV_ROOT_TOKEN` in `.env`: `vibew bundle` now emits a deprecation warning + backward-compat fallback works for v0.19. Rename the variable in your `.env` before v0.20 ships.
+- First-time prod deploys: just use `OPENBAO_ROOT_TOKEN` — `seed-secrets` writes it on first init.
+
+**`auth.seed_demo_users` opt-in (#1335):**
+- Projects with `auth.mode: kratos` that previously got auto-seeded demo identities (`demo@vibewarden.dev`, `alice@vibewarden.dev`) on first deploy must now set `auth.seed_demo_users: true` in `vibewarden.yaml` to retain that behavior.
+- Greenfield Kratos projects: no action needed — demo seeding is correctly off by default.
 
 ## [v0.18.7] — 2026-05-05
 
