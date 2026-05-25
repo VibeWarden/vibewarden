@@ -2,8 +2,11 @@
 private-key
 
 # github.com/docker/docker v29+ not available as Go module yet.
-# Indirect dep from testcontainers-go (test only). Not exploitable in our binary.
+# Indirect dep from testcontainers-go + golang-migrate/dktest (test only).
+# Vulnerable symbols not reachable from the VibeWarden binary (govulncheck clean).
 CVE-2026-34040
+CVE-2026-41567
+CVE-2026-42306
 
 # spring-core 6.2.11 not yet bundled in any Spring Boot release.
 # Only affects examples/spring-boot, not the VibeWarden binary.
