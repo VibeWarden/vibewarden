@@ -12,6 +12,10 @@ This initial entry was written by hand to summarise the work leading up to v0.1.
 
 ## [Unreleased]
 
+### Security
+
+- **Bump `golang.org/x/net` to v0.55.0 (GO-2026-5026) and `golang.org/x/crypto` to v0.52.0 (GO-2026-5018) — both HIGH-severity CVEs were reachable from our code.**
+
 ## [v0.19.0] — 2026-05-07
 
 Theme: audit-driven stabilization. Closes the 2026-05-03 cross-cutting audit (15 critical+high findings) plus 8 follow-up bugs surfaced by 4 smoke tests against demo.vibewarden.dev. Two breaking changes — see Migration below.
