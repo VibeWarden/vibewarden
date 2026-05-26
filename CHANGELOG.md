@@ -12,6 +12,10 @@ This initial entry was written by hand to summarise the work leading up to v0.1.
 
 ## [Unreleased]
 
+### Added
+
+- **feat(#1340): `vibew version` subcommand.** `vibew version` now works as a proper cobra subcommand and produces output identical to `vibew --version` (`vibew <version>\n`). Follows the convention of standard CLI tools (docker, kubectl, gh). Both invocations share a single version source in the root command.
+
 ### Security
 
 - **Bump `golang.org/x/net` to v0.55.0 (GO-2026-5026) and `golang.org/x/crypto` to v0.52.0 (GO-2026-5018) — both HIGH-severity CVEs were reachable from our code.**

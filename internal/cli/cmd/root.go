@@ -28,6 +28,7 @@ Zero-to-secure in minutes.`,
 	root.SetVersionTemplate("vibew {{.Version}}\n")
 
 	// Register all subcommands.
+	root.AddCommand(NewVersionCmd(version))
 	root.AddCommand(NewInitCmd())
 	root.AddCommand(NewWrapCmd())
 	root.AddCommand(NewContextCmd())
