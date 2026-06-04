@@ -84,6 +84,9 @@ admin:
   enabled: true
   token: ${VIBEWARDEN_ADMIN_TOKEN}
 
+kratos:
+  admin_url: http://127.0.0.1:4434
+
 database:
   url: postgres://<user>:<pass>@localhost:5432/vibewarden?sslmode=disable
 ```
