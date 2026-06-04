@@ -382,6 +382,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("telemetry.otlp.interval", "30s")
 	v.SetDefault("telemetry.otlp.protocol", "http")
 	v.SetDefault("telemetry.logs.otlp", false)
+	v.SetDefault("telemetry.traces.enabled", false)
 	v.SetDefault("body_size.max", "1MB")
 	v.SetDefault("body_size.overrides", []BodySizeOverrideConfig{})
 	v.SetDefault("ip_filter.enabled", false)

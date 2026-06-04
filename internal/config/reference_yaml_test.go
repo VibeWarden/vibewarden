@@ -132,6 +132,9 @@ func TestSetDefaults_EmptyYAML(t *testing.T) {
 		{"resilience.retry.max_attempts", cfg.Resilience.Retry.MaxAttempts, 3},
 		{"resilience.retry.backoff", cfg.Resilience.Retry.InitialBackoff, "100ms"},
 		{"resilience.retry.max_backoff", cfg.Resilience.Retry.MaxBackoff, "10s"},
+
+		// telemetry.traces default — must be false so tracing is opt-in.
+		{"telemetry.traces.enabled", cfg.Telemetry.Traces.Enabled, false},
 	}
 
 	for _, tt := range tests {

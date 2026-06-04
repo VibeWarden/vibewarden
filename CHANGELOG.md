@@ -35,6 +35,13 @@ This initial entry was written by hand to summarise the work leading up to v0.1.
   - **A5:** Moved the Fleet plugin row out of the "Available plugins" table in `docs/architecture.md` into a clearly-labelled "Planned / Pro-tier (not yet implemented)" note. Fleet is a locked-decision roadmap item with no implementation in `internal/plugins/`.
   - **A6:** Corrected the directory layout in `docs/architecture.md` — replaced non-existent `adapters/redis/` with `adapters/ratelimit/` (the actual location of the Redis rate-limit store: `internal/adapters/ratelimit/redis_adapter.go`).
 
+### Documentation
+
+- **docs(#1373): document three previously undocumented config keys (`telemetry.traces.enabled`, `egress.routes[].mtls`, `egress.routes[].prompt_injection`).**
+  - **P9:** Added `telemetry.traces:` subsection to `vibewarden.reference.yaml` with `enabled: false` default. Added `v.SetDefault("telemetry.traces.enabled", false)` to `setDefaults()` so users without a `telemetry:` block get the opt-in default. Added `TestSetDefaults_EmptyYAML` assertion to pin it.
+  - **P10:** Added `mtls:` and `prompt_injection:` subsections to the `egress.routes` example block in `vibewarden.reference.yaml`. All keys derived from `EgressMTLSConfig` and `EgressPromptInjectionConfig` mapstructure tags — strict-loader valid.
+  - **P11:** Added `### Prompt Injection Detection` section to `docs/egress.md` with YAML example, field table, and link to the `llm.prompt_injection_blocked` event schema in `docs/ai-log-schema.md`.
+
 ### Changed
 
 - chore(lint): allow G124 in test files; reflect.Ptr → reflect.Pointer in internal/config

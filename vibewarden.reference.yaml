@@ -734,6 +734,13 @@ telemetry:
     # Requires telemetry.otlp.endpoint to be configured.
     otlp: false
 
+  # Distributed tracing settings
+  traces:
+    # Enable distributed tracing (default: false).
+    # When enabled, a span is created for each HTTP request and exported via OTLP.
+    # Requires telemetry.otlp.enabled to be true and telemetry.otlp.endpoint to be set.
+    enabled: false
+
 # CORS (Cross-Origin Resource Sharing)
 # Injects Access-Control-* headers and handles OPTIONS preflight requests.
 # Enable this when your app is served from a different origin than the browser app
@@ -971,6 +978,28 @@ egress:
   #   - name: internal-payments
   #     pattern: "http://payments.internal/**"
   #     allow_insecure: true
+  #
+  #   # mTLS route — present a client certificate to the upstream.
+  #   # cert_path and key_path are required; ca_path is optional (uses system roots when empty).
+  #   - name: payment-processor
+  #     pattern: "https://payments.example.com/**"
+  #     mtls:
+  #       cert_path: "/etc/vibewarden/certs/client.crt"
+  #       key_path:  "/etc/vibewarden/certs/client.key"
+  #       ca_path:   "/etc/vibewarden/certs/payments-ca.crt"
+  #
+  #   # Prompt injection detection — scan outbound LLM API request bodies.
+  #   # When enabled, request bodies are scanned before being forwarded upstream.
+  #   # Action "block" (default) rejects the request with 400; "detect" logs and passes through.
+  #   - name: openai-api
+  #     pattern: "https://api.openai.com/**"
+  #     prompt_injection:
+  #       enabled: true
+  #       content_paths:
+  #         - ".messages[].content"  # JSON path(s) to extract text for scanning
+  #         - ".prompt"
+  #       extra_patterns: []         # additional regex patterns (case-insensitive)
+  #       action: block              # "block" (default) or "detect"
 
 secrets:
   # Enable the secrets plugin (default: false)
