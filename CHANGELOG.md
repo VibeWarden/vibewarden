@@ -27,6 +27,10 @@ This initial entry was written by hand to summarise the work leading up to v0.1.
 
 - **fix(#1368): delete `internal/schema/v1/event.json` (dead data) and add a real drift-guard test.** The internal copy was a stale 662-line subset (14 event types) of the canonical 2370-line `schema/v1/event.json` (47 constrained event types). No Go code, build script, or `//go:embed` directive read it — it was pure dead data. A false doc comment in `internal/schema/v1/schema_test.go` claimed the test "mirrors" the file, but no file comparison existed, making divergence undetectable. Fixed: deleted the internal duplicate; corrected the misleading doc comment to accurately describe the hand-encoded pattern check; repointed `docs/schema-evolution.md` to the canonical path; added `TestSchemaCoversAllEventTypes` to `schema/v1/schema_validate_test.go` which constructs a payload-violating instance for each of the 47 constrained event types and asserts the schema rejects it — this test fails if any if/then branch is removed from the canonical file.
 
+- **docs(#1382): fix observability port drift and demo-app Mailslurper claim.**
+  - **O1:** Corrected four occurrences of `localhost:8080` in `docs/observability.md` to `localhost:8443` (the real default `server.port`, `internal/config/config.go:307`). Reworked the Architecture mermaid diagram: VibeWarden now shows `:8443` and the Prometheus scrape arrow now points at `otel-collector:8889` — the actual target from `internal/config/templates/observability/prometheus.yml.tmpl` — with an added OTLP push edge from VibeWarden to the collector. The troubleshooting section was updated to name the correct scrape target (`otel-collector:8889`) and fix the Prometheus targets page reference.
+  - **O2:** Removed the false Mailslurper claim from `examples/demo-app/README.md:263`. The generated compose (`examples/demo-app/.vibewarden/generated/docker-compose.yml`) has no mail container; replaced with accurate behavior note.
+
 ### Documentation
 
 - **docs(#1372): fix three docs/code drift findings in `docs/index.md`, `README.md`, and `CHANGELOG.md` (audit P5, P7, P8).**

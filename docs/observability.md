@@ -427,7 +427,7 @@ observability is enabled. It is loaded automatically by Grafana's provisioning c
 VibeWarden exposes all metrics at:
 
 ```
-http://localhost:8080/_vibewarden/metrics
+https://localhost:8443/_vibewarden/metrics
 ```
 
 The endpoint uses the standard Prometheus text exposition format.
@@ -458,15 +458,17 @@ Prometheus collectors:
 
 ```mermaid
 flowchart LR
-    App["Your App"] <--> VW["VibeWarden :8080"]
-    Prom["Prometheus :9090"] -. "scrape /_vibewarden/metrics" .-> VW
+    App["Your App"] <--> VW["VibeWarden :8443"]
+    VW -. "OTLP/HTTP" .-> OTel["OTel Collector :4318"]
+    Prom["Prometheus :9090"] -. "scrape :8889/metrics" .-> OTel
     Prom --> Grafana["Grafana :3000"]
     Logs["Docker container logs"] --> Promtail
     Promtail --> Loki["Loki :3100"]
     Loki --> Grafana
 ```
 
-Prometheus scrapes VibeWarden every 15 seconds. Promtail discovers all running Docker
+VibeWarden pushes metrics via OTLP to the OTel Collector, which exposes them at `:8889`
+for Prometheus to scrape every 15 seconds. Promtail discovers all running Docker
 containers via the Docker socket, tails their log files, and ships log entries to Loki.
 Grafana queries both Prometheus and Loki as data sources. All configs are generated
 under `.vibewarden/generated/observability/` by `vibewarden generate`.
@@ -549,10 +551,10 @@ Prometheus may not have scraped VibeWarden yet, or VibeWarden is not running.
    ```
 2. Verify VibeWarden's metrics endpoint is reachable:
    ```bash
-   curl http://localhost:8080/_vibewarden/metrics
+   curl https://localhost:8443/_vibewarden/metrics
    ```
 3. Check Prometheus targets at http://localhost:9090/targets — the
-   `vibewarden` target should show state `UP`.
+   `otel-collector` target should show state `UP`.
 
 ### Port conflicts
 
@@ -597,8 +599,10 @@ docker compose -f .vibewarden/generated/docker-compose.yml logs grafana
 
 ### Prometheus cannot reach VibeWarden
 
-Prometheus scrapes `vibewarden:8080` on the internal Docker network. If the
-VibeWarden container is not healthy, Prometheus will mark the target as `DOWN`.
+Prometheus scrapes `otel-collector:8889` on the internal Docker network; the OTel
+Collector receives metrics from VibeWarden via OTLP. If the VibeWarden container is
+not healthy, the OTel Collector will have no data and Prometheus will show the
+`otel-collector` target as stale or empty.
 Check VibeWarden logs:
 
 ```bash
