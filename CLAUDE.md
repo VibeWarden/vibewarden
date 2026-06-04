@@ -39,30 +39,41 @@ Target: vibe coders who need zero-to-secure in minutes.
 
 ## Plugin model
 
-All plugins ship inside the official binary. Users activate them in `vibewarden.yaml`:
+All plugins ship inside the official binary. Activation is via **flat top-level keys**
+in `vibewarden.yaml` — there is no `plugins:` wrapper. The strict loader (`vibew validate`
+/ `vibew bundle`) rejects any unknown top-level key, so each block below must match the
+real schema. See `vibewarden.reference.yaml` for the full annotated reference.
 
 ```yaml
-plugins:
-  tls:
-    enabled: true
-    provider: letsencrypt   # or: external (Cloudflare, registrar, etc.), self-signed (dev)
-  user-management:
-    enabled: true
-    adapter: postgres
-  rate-limiting:
-    enabled: true
-  grafana:
-    enabled: false
-  fleet:
-    enabled: false          # opt-in: send telemetry to app.vibewarden.dev (Pro feature)
-    endpoint: https://app.vibewarden.dev
-    api_key: ${VIBEWARDEN_FLEET_KEY}
+tls:
+  enabled: true
+  provider: letsencrypt   # or: zerossl, buypass, self-signed, external (Cloudflare/registrar/ACM)
+
+# User management (admin API + Ory Kratos). Activated by admin.enabled;
+# it reads kratos.admin_url and database.url.
+admin:
+  enabled: true
+  token: ${VIBEWARDEN_ADMIN_TOKEN}
+kratos:
+  admin_url: http://127.0.0.1:4434
+database:
+  url: postgres://<user>:<pass>@localhost:5432/vibewarden?sslmode=disable
+
+rate_limit:
+  enabled: true
+
+# Grafana is NOT a plugin — it is a Docker Compose service under the
+# "observability" profile, switched on by observability.enabled.
+observability:
+  enabled: false
 ```
 
 `provider: external` is the escape hatch for users who already manage TLS via Cloudflare,
 their domain registrar, AWS ACM, etc.
 
-`fleet` plugin is the bridge to the Pro tier — always opt-in, never on by default.
+Fleet (the bridge to the Pro tier) is a **reserved roadmap item**, not yet a loadable
+config plugin. The only current surface is `vibew secret generate --fleet-key`, which
+emits a `VIBEWARDEN_FLEET_KEY` for future use. It will never be on by default.
 
 ---
 

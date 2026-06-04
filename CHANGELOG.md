@@ -39,6 +39,10 @@ This initial entry was written by hand to summarise the work leading up to v0.1.
 
 - chore(lint): allow G124 in test files; reflect.Ptr → reflect.Pointer in internal/config
 
+### Documentation
+
+- **fix(#1371): remove phantom `NameGrafana` domain constant and fix plugin-activation docs.** Grafana is a Docker Compose service in the `observability` profile, not a plugin. The unused `NameGrafana = "grafana"` constant has been removed from `internal/domain/plugin/names.go`. The `CLAUDE.md` "Plugin model" section and `names.go` godoc now describe the real flat top-level key activation model (no `plugins:` wrapper — the strict loader rejects unknown top-level keys). `internal/plugins/usermgmt/config.go` godoc now names the actual source keys (`admin.enabled`, `admin.token`, `kratos.admin_url`, `database.url`). `NameFleet` kept as reserved roadmap placeholder per locked decision. ADR-105.
+
 ## [v0.19.0] — 2026-05-07
 
 Theme: audit-driven stabilization. Closes the 2026-05-03 cross-cutting audit (15 critical+high findings) plus 8 follow-up bugs surfaced by 4 smoke tests against demo.vibewarden.dev. Two breaking changes — see Migration below.

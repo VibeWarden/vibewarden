@@ -7,8 +7,10 @@
 // the internal server after the admin auth handler validates the bearer token.
 package usermgmt
 
-// Config holds all settings for the user-management plugin.
-// It maps to the plugins.user-management section of vibewarden.yaml.
+// Config holds all settings for the user-management plugin. Its fields are
+// populated from flat top-level keys in vibewarden.yaml: admin.enabled →
+// Enabled, admin.token → AdminToken, kratos.admin_url → KratosAdminURL, and
+// database.url → DatabaseURL. There is no `plugins:` wrapper key.
 type Config struct {
 	// Enabled toggles the user-management plugin. When false all methods are no-ops.
 	Enabled bool
