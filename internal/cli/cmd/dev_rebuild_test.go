@@ -37,6 +37,27 @@ func TestNewDevCmd_FlagValidation_VolumesWithoutRebuild(t *testing.T) {
 	}
 }
 
+// TestNewDevCmd_HelpTextNoMailslurper asserts that the dev help text does not
+// list "mailslurper" as part of the baseline stack. The compose template
+// generates no mail service; advertising it causes user confusion.
+func TestNewDevCmd_HelpTextNoMailslurper(t *testing.T) {
+	root := cmd.NewRootCmd("test")
+	devCmd, _, _ := root.Find([]string{"dev"})
+	if devCmd == nil {
+		t.Fatal("dev command not found")
+	}
+
+	var out strings.Builder
+	devCmd.SetOut(&out)
+	devCmd.SetErr(&out)
+	devCmd.HelpFunc()(devCmd, []string{})
+	helpText := out.String()
+
+	if strings.Contains(strings.ToLower(helpText), "mailslurper") {
+		t.Errorf("dev help text must not mention 'mailslurper' (service is not generated); help:\n%s", helpText)
+	}
+}
+
 // TestNewDevCmd_RebuildFlagsRegistered verifies that --rebuild and --volumes
 // flags are registered on the dev subcommand.
 func TestNewDevCmd_RebuildFlagsRegistered(t *testing.T) {

@@ -44,7 +44,6 @@ Services in the default stack:
   app          your application container
   kratos       Ory Kratos identity server
   postgres     PostgreSQL database
-  mailslurper  local email sink
 
 If the stack has not been started yet, run: vibew dev
 

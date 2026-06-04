@@ -186,7 +186,7 @@ var Catalog = []PluginDescriptor{
 		Description: "Per-IP and per-user token-bucket rate limiting on every proxied request",
 		ConfigSchema: map[string]string{
 			"enabled":                      "Enable rate limiting (default: true)",
-			"store":                        "Backing store for limiter state: memory (default)",
+			"store":                        "Backing store for limiter state: memory (default) or redis (distributed, requires Redis server)",
 			"per_ip.requests_per_second":   "Sustained per-IP request rate (default: 10)",
 			"per_ip.burst":                 "Per-IP burst size above the sustained rate (default: 20)",
 			"per_user.requests_per_second": "Sustained per-user request rate (default: 100)",
