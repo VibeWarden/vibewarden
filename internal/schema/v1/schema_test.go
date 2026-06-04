@@ -18,9 +18,10 @@ import (
 )
 
 // eventTypePattern is the compiled JSON Schema pattern for the event_type field.
-// It mirrors the pattern constraint in internal/schema/v1/event.json and
-// schema/v1/event.json exactly. If either schema file is updated the pattern
-// here must be updated in lockstep.
+// It encodes the pattern constraint defined in schema/v1/event.json. If the
+// canonical schema pattern is updated the regexp here must be updated in
+// lockstep. The canonical source of truth is schema/v1/event.json; this
+// hand-encoded version exists so that the test has zero I/O dependencies.
 var eventTypePattern = regexp.MustCompile(`^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)*$`)
 
 // eventTypeMatchesSchemaPattern reports whether s satisfies the event_type
@@ -694,7 +695,7 @@ func TestCoreEventTypeConstantsAreNonEmpty(t *testing.T) {
 // changed without updating the JSON schema file.
 func TestSchemaVersionIsV1(t *testing.T) {
 	if events.SchemaVersion != "v1" {
-		t.Errorf("SchemaVersion = %q, want %q — update internal/schema/v1/event.json if bumping the version", events.SchemaVersion, "v1")
+		t.Errorf("SchemaVersion = %q, want %q — update schema/v1/event.json and bump the $id when changing the version", events.SchemaVersion, "v1")
 	}
 }
 

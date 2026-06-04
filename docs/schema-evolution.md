@@ -17,7 +17,7 @@ fields are immutable:
 - The set of `required` fields for each payload is locked.
 
 This guarantee applies to every `$defs/*Payload` object in
-`internal/schema/v1/event.json`.
+`schema/v1/event.json`.
 
 ---
 

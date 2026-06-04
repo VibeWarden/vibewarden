@@ -741,6 +741,124 @@ func TestExampleEventsValidateAgainstSchema(t *testing.T) {
 	}
 }
 
+// TestSchemaCoversAllEventTypes verifies that the canonical schema actually
+// enforces payload constraints for every known event type. The test constructs
+// a payload-violating instance for each constrained event_type and asserts that
+// schema validation REJECTS it. If this file were replaced by a stale subset
+// that omits if/then branches, the corresponding sub-tests would fail because
+// the schema would accept instances that violate the payload contract.
+//
+// Proof: if the egress.blocked if/then branch is removed from event.json, the
+// sub-test "egress.blocked" fails (schema no longer rejects the bad payload).
+// Restoring the branch makes all sub-tests pass again.
+//
+// Event types that have no if/then branch in the canonical schema (webhook.*,
+// config.*, llm.*, maintenance.*, tls.cert_expiry_*) are intentionally excluded
+// — their payload shapes are not yet constrained and are handled via
+// TestSchemaValidation which verifies valid instances are accepted.
+func TestSchemaCoversAllEventTypes(t *testing.T) {
+	sch := compileSchema(t)
+
+	// base returns a valid top-level JSON event string with the given event_type,
+	// severity, category and an explicitly supplied payload JSON fragment.
+	// All other required fields are constants.
+	base := func(eventType, severity, category, payload string) string {
+		return fmt.Sprintf(
+			`{"schema_version":"v1","event_type":%q,"timestamp":"2026-03-28T12:00:00Z","severity":%q,"category":%q,"ai_summary":"guard test","payload":%s}`,
+			eventType, severity, category, payload,
+		)
+	}
+
+	// For event types whose payload has required fields: use an empty payload {}.
+	// The if/then constraint will reject it because required payload fields are
+	// missing. If the branch is absent the empty payload is accepted.
+	//
+	// For event types whose payload has no required fields but disallows
+	// additional properties: use a payload with an extra field. The if/then
+	// constraint will reject it. If the branch is absent the extra field is
+	// accepted.
+	tests := []struct {
+		name    string
+		jsonStr string
+	}{
+		// proxy
+		{name: "proxy.started", jsonStr: base("proxy.started", "info", "network", `{}`)},
+		{name: "proxy.kratos_flow", jsonStr: base("proxy.kratos_flow", "info", "auth", `{}`)},
+		// auth — session
+		{name: "auth.success", jsonStr: base("auth.success", "info", "auth", `{}`)},
+		{name: "auth.failed", jsonStr: base("auth.failed", "info", "auth", `{}`)},
+		{name: "auth.provider_unavailable", jsonStr: base("auth.provider_unavailable", "high", "auth", `{}`)},
+		{name: "auth.provider_recovered", jsonStr: base("auth.provider_recovered", "info", "auth", `{}`)},
+		// auth — api key
+		{name: "auth.api_key.success", jsonStr: base("auth.api_key.success", "info", "auth", `{}`)},
+		{name: "auth.api_key.failed", jsonStr: base("auth.api_key.failed", "info", "auth", `{}`)},
+		{name: "auth.api_key.forbidden", jsonStr: base("auth.api_key.forbidden", "medium", "auth", `{}`)},
+		// auth — jwt
+		{name: "auth.jwt_valid", jsonStr: base("auth.jwt_valid", "info", "auth", `{}`)},
+		{name: "auth.jwt_invalid", jsonStr: base("auth.jwt_invalid", "medium", "auth", `{}`)},
+		{name: "auth.jwt_expired", jsonStr: base("auth.jwt_expired", "medium", "auth", `{}`)},
+		{name: "auth.jwks_refresh", jsonStr: base("auth.jwks_refresh", "info", "auth", `{}`)},
+		{name: "auth.jwks_error", jsonStr: base("auth.jwks_error", "high", "auth", `{}`)},
+		// rate limit
+		{name: "rate_limit.hit", jsonStr: base("rate_limit.hit", "info", "network", `{}`)},
+		{name: "rate_limit.unidentified_client", jsonStr: base("rate_limit.unidentified_client", "info", "network", `{}`)},
+		{name: "rate_limit.store_fallback", jsonStr: base("rate_limit.store_fallback", "medium", "resilience", `{}`)},
+		{name: "rate_limit.store_recovered", jsonStr: base("rate_limit.store_recovered", "info", "resilience", `{}`)},
+		// request
+		{name: "request.blocked", jsonStr: base("request.blocked", "medium", "policy", `{}`)},
+		// tls
+		{name: "tls.certificate_issued", jsonStr: base("tls.certificate_issued", "info", "network", `{}`)},
+		{name: "tls.acme.chain_skipped", jsonStr: base("tls.acme.chain_skipped", "info", "network", `{}`)},
+		{name: "tls.acme.chain_fallback", jsonStr: base("tls.acme.chain_fallback", "info", "network", `{}`)},
+		{name: "tls.acme.chain_configured", jsonStr: base("tls.acme.chain_configured", "info", "network", `{}`)},
+		{name: "tls.acme.provider_deprecated", jsonStr: base("tls.acme.provider_deprecated", "medium", "network", `{}`)},
+		// user
+		{name: "user.created", jsonStr: base("user.created", "info", "user", `{}`)},
+		{name: "user.deleted", jsonStr: base("user.deleted", "info", "user", `{}`)},
+		{name: "user.deactivated", jsonStr: base("user.deactivated", "info", "user", `{}`)},
+		// audit
+		{name: "audit.log_failure", jsonStr: base("audit.log_failure", "high", "audit", `{}`)},
+		// ip filter
+		{name: "ip_filter.blocked", jsonStr: base("ip_filter.blocked", "medium", "policy", `{}`)},
+		// secret — payload has no required fields but disallows additional
+		// properties: inject an extra field to prove the branch enforces shape.
+		{name: "secret.rotated", jsonStr: base("secret.rotated", "info", "secret", `{"extra_field":"violating"}`)},
+		{name: "secret.rotation_failed", jsonStr: base("secret.rotation_failed", "high", "secret", `{"extra_field":"violating"}`)},
+		{name: "secret.health_check", jsonStr: base("secret.health_check", "info", "secret", `{"extra_field":"violating"}`)},
+		// upstream
+		{name: "upstream.timeout", jsonStr: base("upstream.timeout", "medium", "resilience", `{}`)},
+		{name: "upstream.retry", jsonStr: base("upstream.retry", "info", "resilience", `{}`)},
+		{name: "upstream.health_changed", jsonStr: base("upstream.health_changed", "info", "resilience", `{}`)},
+		// circuit breaker — circuit_breaker.closed has additionalProperties: false,
+		// no required fields; inject extra field.
+		{name: "circuit_breaker.opened", jsonStr: base("circuit_breaker.opened", "high", "resilience", `{}`)},
+		{name: "circuit_breaker.half_open", jsonStr: base("circuit_breaker.half_open", "medium", "resilience", `{}`)},
+		{name: "circuit_breaker.closed", jsonStr: base("circuit_breaker.closed", "info", "resilience", `{"extra_field":"violating"}`)},
+		// egress
+		{name: "egress.request", jsonStr: base("egress.request", "info", "network", `{}`)},
+		{name: "egress.response", jsonStr: base("egress.response", "info", "network", `{}`)},
+		{name: "egress.blocked", jsonStr: base("egress.blocked", "medium", "policy", `{}`)},
+		{name: "egress.error", jsonStr: base("egress.error", "high", "network", `{}`)},
+		{name: "egress.sanitized", jsonStr: base("egress.sanitized", "info", "network", `{}`)},
+		{name: "egress.response_invalid", jsonStr: base("egress.response_invalid", "medium", "network", `{}`)},
+		{name: "egress.rate_limit_hit", jsonStr: base("egress.rate_limit_hit", "info", "network", `{}`)},
+		{name: "egress.circuit_breaker.opened", jsonStr: base("egress.circuit_breaker.opened", "high", "resilience", `{}`)},
+		{name: "egress.circuit_breaker.closed", jsonStr: base("egress.circuit_breaker.closed", "info", "resilience", `{}`)},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			inst, err := jsschema.UnmarshalJSON(strings.NewReader(tt.jsonStr))
+			if err != nil {
+				t.Fatalf("unmarshal test JSON: %v", err)
+			}
+			if err := sch.Validate(inst); err == nil {
+				t.Errorf("schema accepted a payload-violating %q event — the if/then branch for this event type may be missing from schema/v1/event.json", tt.name)
+			}
+		})
+	}
+}
+
 // TestSeverityAndCategoryRequired verifies that severity and category are
 // required top-level fields and rejects events missing them.
 func TestSeverityAndCategoryRequired(t *testing.T) {
