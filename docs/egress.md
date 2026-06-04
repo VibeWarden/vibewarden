@@ -301,6 +301,47 @@ routes:
 
 ---
 
+### Prompt Injection Detection
+
+When calling LLM APIs through the egress proxy, enable `prompt_injection` on the
+route to scan request bodies for prompt injection payloads before forwarding them
+upstream. When an injection is detected, the proxy either blocks the request with
+`400 Bad Request` or logs the event and passes the request through unchanged,
+depending on the `action` field.
+
+```yaml
+routes:
+  - name: openai-api
+    pattern: "https://api.openai.com/**"
+    prompt_injection:
+      enabled: true
+      # JSON path expressions used to extract text from the request body.
+      # Each expression must start with "." and may use array wildcards.
+      # When empty and enabled is true, the entire raw body is scanned.
+      content_paths:
+        - ".messages[].content"
+        - ".prompt"
+      # Additional regular expressions compiled with case-insensitive matching.
+      # These are applied alongside the built-in detection patterns.
+      extra_patterns: []
+      # What to do when an injection is detected.
+      # "block"  — reject the request with 400 Bad Request (default).
+      # "detect" — log the event and forward the request unchanged.
+      action: block
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `enabled` | bool | Activate prompt injection scanning for this route |
+| `content_paths` | []string | JSON path expressions to extract text for scanning (e.g. `.messages[].content`, `.prompt`). When empty, the entire raw body is scanned |
+| `extra_patterns` | []string | Additional regex patterns applied alongside built-in detection patterns (case-insensitive) |
+| `action` | string | `"block"` (default) or `"detect"` |
+
+When an injection is detected, an `llm.prompt_injection_blocked` structured event
+is emitted. See [AI log schema](ai-log-schema.md) for the full event schema.
+
+---
+
 ### Request and Response Headers
 
 Inject static headers into every outbound request, strip internal request headers
