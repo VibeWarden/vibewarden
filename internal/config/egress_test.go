@@ -757,9 +757,23 @@ func TestEgressNoProxy(t *testing.T) {
 			want: "localhost,127.0.0.1,vibewarden,kratos",
 		},
 		{
-			name: "with secrets",
+			name: "with secrets builtin store — no openbao in NO_PROXY",
+			cfg: config.Config{
+				Secrets: config.SecretsConfig{Enabled: true, Store: "builtin"},
+			},
+			want: "localhost,127.0.0.1,vibewarden",
+		},
+		{
+			name: "with secrets empty store (defaults to builtin) — no openbao in NO_PROXY",
 			cfg: config.Config{
 				Secrets: config.SecretsConfig{Enabled: true},
+			},
+			want: "localhost,127.0.0.1,vibewarden",
+		},
+		{
+			name: "with secrets openbao store — openbao in NO_PROXY",
+			cfg: config.Config{
+				Secrets: config.SecretsConfig{Enabled: true, Store: "openbao"},
 			},
 			want: "localhost,127.0.0.1,vibewarden,openbao",
 		},
@@ -778,14 +792,24 @@ func TestEgressNoProxy(t *testing.T) {
 			want: "localhost,127.0.0.1,vibewarden,prometheus,loki,promtail,otel-collector,jaeger,grafana",
 		},
 		{
-			name: "all services enabled",
+			name: "all services enabled with openbao store",
 			cfg: config.Config{
 				Auth:          config.AuthConfig{Mode: config.AuthModeKratos},
-				Secrets:       config.SecretsConfig{Enabled: true},
+				Secrets:       config.SecretsConfig{Enabled: true, Store: "openbao"},
 				RateLimit:     config.RateLimitConfig{Store: "redis"},
 				Observability: config.ObservabilityConfig{Enabled: true},
 			},
 			want: "localhost,127.0.0.1,vibewarden,kratos,kratos-db,openbao,redis,prometheus,loki,promtail,otel-collector,jaeger,grafana",
+		},
+		{
+			name: "all services enabled with builtin store — no openbao",
+			cfg: config.Config{
+				Auth:          config.AuthConfig{Mode: config.AuthModeKratos},
+				Secrets:       config.SecretsConfig{Enabled: true, Store: "builtin"},
+				RateLimit:     config.RateLimitConfig{Store: "redis"},
+				Observability: config.ObservabilityConfig{Enabled: true},
+			},
+			want: "localhost,127.0.0.1,vibewarden,kratos,kratos-db,redis,prometheus,loki,promtail,otel-collector,jaeger,grafana",
 		},
 	}
 
