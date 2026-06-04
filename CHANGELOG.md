@@ -24,6 +24,11 @@ This initial entry was written by hand to summarise the work leading up to v0.1.
 
 ### Documentation
 
+- **docs(#1372): fix three docs/code drift findings in `docs/index.md`, `README.md`, and `CHANGELOG.md` (audit P5, P7, P8).**
+  - **P5:** Secrets feature row in `docs/index.md` now reads "Built-in AES-256-GCM store (default) or OpenBao" — the default store is built-in (`internal/plugins/secrets/plugin.go:99`: `cfg.Store = "builtin"`), not OpenBao. Also updated the Comparison table (line 129) and the CLI table description for `vibew secret get` (line 152) to drop the OpenBao-only framing.
+  - **P7:** Removed non-existent `--profile demo` compose profile reference from `docs/index.md:81` and the historical `CHANGELOG.md` v0.17-era entry. Only the `observability` profile exists in `docker-compose.yml.tmpl`; the demo app starts via `vibew dev`.
+  - **P8:** Added `vibew add waf [--mode block|detect]` to CLI tables in both `README.md` and `docs/index.md`. Flag verified from `internal/cli/cmd/add_waf.go:59`: `cmd.Flags().StringVar(&mode, "mode", "detect", ...)`.
+
 - **docs(#1370): fix four docs/code drift findings in `docs/architecture.md` and `docs/ai-log-schema.md`.**
   - **A1:** Replaced the fabricated event-type table in `docs/architecture.md` (8 of 9 names were invented: `request.completed`, `auth.allowed`, `auth.blocked`, `rate_limit.blocked`, `waf.detected`, `waf.blocked`, `secret.injected`, `secret.fetch_failed`, `upstream.error`) with the real names emitted by `internal/domain/events/events.go`. Fixed the inline example event to use a canonical `auth.success` envelope (`severity`/`category`/`timestamp` instead of `level`/`time`).
   - **A2:** Fixed `upstream.health_changed` state progression in `docs/ai-log-schema.md` from the incorrect `unknown → ok → failing` to the correct `unknown → healthy → unhealthy` (matching `internal/domain/health/health.go` and `schema/v1/event.json`).
@@ -1075,7 +1080,7 @@ Single Go binary embedding Caddy. Zero-to-secure in minutes for vibe-coded apps.
   credential generation via `.env.template`
 - `vibewarden doctor` — pre-flight checks for config, TLS, and backend connectivity
 - `vibewarden secret get / list` — read secrets from OpenBao at runtime
-- Profile-based Docker Compose: `--profile observability`, `--profile demo`
+- Profile-based Docker Compose: `--profile observability`
 - Demo app with Vulnerability Lab (SQLi, XSS, path traversal, and more)
 - Production deployment guide, hardening checklist, and framework integration examples
 - Rate limiting at scale guide with annotated Redis config reference

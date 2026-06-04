@@ -71,14 +71,14 @@ It is never hosted remotely.
 | Rate limiting | Token-bucket, per-IP and per-user; in-memory or Redis-backed |
 | WAF | Pattern detection for SQLi, XSS, path traversal; `block` or `detect` mode |
 | Security headers | HSTS, CSP, X-Frame-Options, Referrer-Policy, Permissions-Policy, CORS |
-| Secrets management | OpenBao (Apache 2.0 Vault fork) — inject secrets as headers or env vars |
+| Secrets management | Built-in AES-256-GCM store (default) or OpenBao — inject secrets as headers or env vars |
 | Egress proxy | Outbound HTTP with mTLS, circuit breaker, retry, SSRF protection, PII redaction |
 | Resilience | Circuit breaker, retry with jitter, timeout middleware, aggregate health endpoint |
 | Observability | Prometheus metrics, OpenTelemetry traces + logs, Grafana dashboards, Jaeger/Tempo |
 | AI-readable logs | Versioned JSON schema: `schema_version`, `event_type`, `ai_summary`, `payload` |
 | Audit log sinks | JSON file, OTel logs, webhook (HMAC-signed) with retry |
 | Admin API | User management at `/_vibewarden/admin/*` (bearer-token protected) |
-| Docker Compose | Profile-based: `vibew obs up` (observability), `--profile demo` |
+| Docker Compose | Profile-based: `vibew obs up` / `vibew obs down` (observability); demo app via `vibew dev` |
 
 ---
 
@@ -126,7 +126,7 @@ On public paths, these headers are present when the visitor has a valid session 
 | Setup time | 3 commands | Hours of config | Moderate | Minutes |
 | Auth out of the box | Yes (OIDC, Kratos, API key) | No | Partial (forward auth only) | No |
 | WAF | Yes | Paid (NGINX Plus) | No | Paid (Cloudflare WAF) |
-| Secrets management | Yes (OpenBao) | No | No | No |
+| Secrets management | Yes (built-in or OpenBao) | No | No | No |
 | AI-readable audit logs | Yes (versioned schema) | No | No | No |
 | Egress proxy + SSRF guard | Yes | No | No | No |
 | Self-hosted | Yes | Yes | Yes | No |
@@ -144,12 +144,13 @@ On public paths, these headers are present when the visitor has a valid session 
 | `vibew add rate-limiting` | Enable rate limiting |
 | `vibew add tls --domain app.yourcompany.com` | Enable TLS (use a domain you control; Let's Encrypt rejects `example.com`) |
 | `vibew add metrics` | Enable Prometheus metrics |
+| `vibew add waf [--mode block\|detect]` | Enable the Web Application Firewall (default mode: `detect`) |
 | `vibew generate` | Regenerate `docker-compose.yml` from config |
 | `vibew dev` | Start local dev environment |
 | `vibew status` | Show health of all components |
 | `vibew doctor` | Diagnose common issues |
 | `vibew logs` | Pretty-print structured logs |
-| `vibew secret get <alias-or-path>` | Read a secret from OpenBao |
+| `vibew secret get <alias-or-path>` | Read a secret from the configured store (built-in or OpenBao) |
 | `vibew secret list` | List all managed secret paths |
 | `vibew token` | Generate a signed dev JWT for local testing |
 | `vibew cert export` | Export the local CA certificate (for curl, Postman, …) |
