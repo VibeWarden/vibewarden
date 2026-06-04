@@ -16,6 +16,10 @@ This initial entry was written by hand to summarise the work leading up to v0.1.
 
 - **Bump `golang.org/x/net` to v0.55.0 (GO-2026-5026) and `golang.org/x/crypto` to v0.52.0 (GO-2026-5018) — both HIGH-severity CVEs were reachable from our code.**
 
+### Fixed
+
+- **fix(#1368): delete `internal/schema/v1/event.json` (dead data) and add a real drift-guard test.** The internal copy was a stale 662-line subset (14 event types) of the canonical 2370-line `schema/v1/event.json` (47 constrained event types). No Go code, build script, or `//go:embed` directive read it — it was pure dead data. A false doc comment in `internal/schema/v1/schema_test.go` claimed the test "mirrors" the file, but no file comparison existed, making divergence undetectable. Fixed: deleted the internal duplicate; corrected the misleading doc comment to accurately describe the hand-encoded pattern check; repointed `docs/schema-evolution.md` to the canonical path; added `TestSchemaCoversAllEventTypes` to `schema/v1/schema_validate_test.go` which constructs a payload-violating instance for each of the 47 constrained event types and asserts the schema rejects it — this test fails if any if/then branch is removed from the canonical file.
+
 ### Documentation
 
 - **docs(#1370): fix four docs/code drift findings in `docs/architecture.md` and `docs/ai-log-schema.md`.**
