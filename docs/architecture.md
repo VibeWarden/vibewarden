@@ -88,7 +88,11 @@ plugin API.
 | Body size | `body_size` | Per-request body size enforcement |
 | Webhooks | `webhooks` | HMAC-signed audit event delivery |
 | Admin API | `admin` | User management endpoints |
-| Fleet | `fleet` | Pro tier telemetry bridge to `app.vibewarden.dev` |
+
+> **Planned / Pro-tier (not yet implemented):** The **Fleet** plugin (`fleet`) will
+> bridge telemetry to `app.vibewarden.dev` as the VibeWarden Pro tier feature.
+> It is a locked-decision roadmap item and is not available in the current binary.
+> See [CLAUDE.md locked decisions](../CLAUDE.md) for context.
 
 ---
 
@@ -127,7 +131,7 @@ internal/
     kratos/           # Ory Kratos adapter
     postgres/         # PostgreSQL adapter
     log/              # Log sink adapters (stdout, file, webhook)
-    redis/            # Redis rate-limit store adapter
+    ratelimit/        # Rate-limit store adapters (in-memory + Redis)
     openbao/          # OpenBao secrets adapter
 
   app/                # Application services (use cases)
@@ -194,16 +198,27 @@ Every security-relevant event produces a structured JSON log record:
 ```json
 {
   "schema_version": "v1",
-  "event_type": "request.completed",
-  "ai_summary": "GET /api/users 200 in 3ms",
-  "time": "2026-03-28T12:00:00Z",
-  "level": "INFO",
+  "event_type": "auth.success",
+  "timestamp": "2026-03-28T12:00:00Z",
+  "ai_summary": "Authenticated request allowed: GET /api/users (identity usr_abc123)",
+  "severity": "info",
+  "category": "auth",
+  "actor": {
+    "type": "user",
+    "id":   "usr_abc123",
+    "ip":   "203.0.113.42"
+  },
+  "resource": {
+    "type":   "http_endpoint",
+    "path":   "/api/users",
+    "method": "GET"
+  },
+  "outcome":      "allowed",
+  "triggered_by": "auth_middleware",
   "payload": {
-    "method": "GET",
-    "path": "/api/users",
-    "status_code": 200,
-    "duration_ms": 3,
-    "user_id": "usr_abc123"
+    "method":   "GET",
+    "path":     "/api/users",
+    "identity_id": "usr_abc123"
   }
 }
 ```
@@ -214,21 +229,27 @@ require a new `schema_version` value.
 
 ### Event types
 
+The table below lists the most commonly observed event types. For the full
+authoritative list — including payload schemas, severity levels, and example
+events — see [AI-Readable Log Schema](ai-log-schema.md).
+
 | Event type | Description |
 |------------|-------------|
-| `request.completed` | HTTP request forwarded to upstream and response returned |
-| `auth.allowed` | Authentication passed; user identity established |
-| `auth.blocked` | Authentication failed; request rejected |
-| `rate_limit.blocked` | Request blocked by rate limiter |
-| `rate_limit.store_fallback` | Redis unavailable; falling back to in-memory |
-| `rate_limit.store_recovered` | Redis recovered after a fallback |
-| `waf.detected` | WAF detected a suspicious pattern |
-| `waf.blocked` | WAF blocked a request |
-| `secret.injected` | Secret successfully injected into request headers |
-| `secret.fetch_failed` | Failed to fetch secret from OpenBao |
-| `upstream.error` | Upstream returned an error or was unreachable |
-| `circuit_breaker.opened` | Circuit breaker tripped to open state |
-| `circuit_breaker.closed` | Circuit breaker recovered to closed state |
+| `proxy.started` | Reverse proxy started and is ready to accept connections |
+| `auth.success` | Valid session or credential — request allowed through |
+| `auth.failed` | Missing, invalid, or expired credential — request rejected |
+| `rate_limit.hit` | Per-IP or per-user rate limit exceeded — request rejected |
+| `rate_limit.store_fallback` | Redis unavailable — rate limiter switched to in-memory store |
+| `rate_limit.store_recovered` | Redis available again — rate limiter switched back from in-memory |
+| `request.blocked` | Request blocked by a middleware policy (WAF, maintenance mode, etc.) |
+| `secret.rotated` | Dynamic secret rotated successfully |
+| `secret.rotation_failed` | Dynamic secret rotation failed; old credentials remain active |
+| `upstream.timeout` | Upstream did not respond within configured timeout; 504 returned |
+| `upstream.retry` | Retry middleware re-sending a failed upstream request |
+| `upstream.health_changed` | Upstream health status transitioned (unknown → healthy → unhealthy) |
+| `tls.certificate_issued` | TLS certificate obtained or renewed |
+| `config.reloaded` | Configuration reloaded and applied successfully |
+| `config.reload_failed` | Configuration reload failed; old config remains active |
 
 ### Log sinks
 

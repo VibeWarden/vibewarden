@@ -356,7 +356,7 @@ Allowed `reason` values (v1 frozen set):
 |---|---|
 | `upstream.timeout` | Upstream did not respond within configured timeout; 504 returned. |
 | `upstream.retry` | Retry middleware re-sending a failed upstream request. |
-| `upstream.health_changed` | Upstream health status changed. States: `unknown` (boot gap) → `ok` → `failing`. |
+| `upstream.health_changed` | Upstream health status changed. States: `unknown` (boot gap) → `healthy` → `unhealthy`. |
 
 ### Circuit breaker (inbound)
 

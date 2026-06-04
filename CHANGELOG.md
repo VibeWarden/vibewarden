@@ -16,6 +16,14 @@ This initial entry was written by hand to summarise the work leading up to v0.1.
 
 - **Bump `golang.org/x/net` to v0.55.0 (GO-2026-5026) and `golang.org/x/crypto` to v0.52.0 (GO-2026-5018) — both HIGH-severity CVEs were reachable from our code.**
 
+### Documentation
+
+- **docs(#1370): fix four docs/code drift findings in `docs/architecture.md` and `docs/ai-log-schema.md`.**
+  - **A1:** Replaced the fabricated event-type table in `docs/architecture.md` (8 of 9 names were invented: `request.completed`, `auth.allowed`, `auth.blocked`, `rate_limit.blocked`, `waf.detected`, `waf.blocked`, `secret.injected`, `secret.fetch_failed`, `upstream.error`) with the real names emitted by `internal/domain/events/events.go`. Fixed the inline example event to use a canonical `auth.success` envelope (`severity`/`category`/`timestamp` instead of `level`/`time`).
+  - **A2:** Fixed `upstream.health_changed` state progression in `docs/ai-log-schema.md` from the incorrect `unknown → ok → failing` to the correct `unknown → healthy → unhealthy` (matching `internal/domain/health/health.go` and `schema/v1/event.json`).
+  - **A5:** Moved the Fleet plugin row out of the "Available plugins" table in `docs/architecture.md` into a clearly-labelled "Planned / Pro-tier (not yet implemented)" note. Fleet is a locked-decision roadmap item with no implementation in `internal/plugins/`.
+  - **A6:** Corrected the directory layout in `docs/architecture.md` — replaced non-existent `adapters/redis/` with `adapters/ratelimit/` (the actual location of the Redis rate-limit store: `internal/adapters/ratelimit/redis_adapter.go`).
+
 ### Changed
 
 - chore(lint): allow G124 in test files; reflect.Ptr → reflect.Pointer in internal/config
