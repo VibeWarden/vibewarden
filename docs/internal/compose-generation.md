@@ -45,7 +45,8 @@ When both are set, `app.build` takes precedence (dev mode first).
 
 When plugins like `secrets` (OpenBao) or `rate-limiting` with Redis backend are enabled,
 the `docker-compose.yml.tmpl` template conditionally includes:
-- **OpenBao** when `secrets.enabled: true`
+- **OpenBao** when `secrets.enabled: true` AND `secrets.store: openbao`
+  (`store: builtin` or unset → no OpenBao container, no `openbao/config.hcl`, no `seed-secrets.sh`)
 - **Redis** when `rate_limit.store: redis`
 
 #### Helper functions
@@ -57,20 +58,33 @@ func NeedsOpenBao(cfg *config.Config) bool { return cfg.Secrets.Enabled }
 // NeedsRedis returns true if the config requires a Redis service.
 func NeedsRedis(cfg *config.Config) bool { return cfg.RateLimit.Store == "redis" }
 
-// NeedsSeedSecrets returns true if dev mode should seed OpenBao with demo secrets.
+// NeedsOpenBaoConfig returns true if openbao/config.hcl should be written.
+// Requires UsesOpenBao() (enabled AND store=="openbao") AND profile=="prod".
+func NeedsOpenBaoConfig(cfg *config.Config) bool {
+    return cfg.Secrets.UsesOpenBao() && cfg.Profile == "prod"
+}
+
+// NeedsSeedSecrets returns true if seed-secrets.sh should be written.
+// Requires UsesOpenBao() AND at least one inject entry. Returns false for
+// store:"builtin" — seed-secrets.sh is only consumed by the seed-secrets
+// container which is itself only emitted for the openbao store.
 func NeedsSeedSecrets(cfg *config.Config) bool {
-    if !cfg.Secrets.Enabled { return false }
+    if !cfg.Secrets.UsesOpenBao() { return false }
     return len(cfg.Secrets.Inject.Headers) > 0 || len(cfg.Secrets.Inject.Env) > 0
 }
 ```
+
+`UsesOpenBao()` is defined on `SecretsConfig`: `return s.Enabled && s.Store == "openbao"`.
+An empty `Store` defaults to `"builtin"`, so OpenBao infrastructure is only provisioned
+when `store: openbao` is set explicitly.
 
 These helpers are registered as template `FuncMap` entries in the template adapter.
 
 #### Dependency ordering
 
 `vibewarden` depends on:
-- `seed-secrets` (with `service_completed_successfully`) when inject entries exist
-- `openbao` (with `service_healthy`) when secrets enabled but no inject entries
+- `seed-secrets` (with `service_completed_successfully`) when inject entries exist and store is openbao
+- `openbao` (with `service_healthy`) when store is openbao but no inject entries
 - `redis` (with `service_healthy`) when rate_limit.store is redis
 
 ---

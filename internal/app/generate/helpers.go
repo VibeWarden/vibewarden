@@ -26,18 +26,24 @@ func NeedsObservability(cfg *config.Config) bool {
 }
 
 // NeedsOpenBaoConfig returns true if an openbao/config.hcl file should be
-// generated. This is the case when the secrets plugin is enabled and the
-// deployment profile is "prod" — OpenBao runs in server mode and requires an
-// explicit HCL configuration file. In dev mode no config file is needed.
+// generated. This is the case when the secrets backend is OpenBao
+// (secrets.store: openbao) AND the deployment profile is "prod" — OpenBao runs
+// in server mode and requires an explicit HCL configuration file. In dev mode
+// no config file is needed. When store is "builtin" (or unset) this always
+// returns false; writing an openbao/config.hcl with no OpenBao service to
+// consume it would be a dangling artifact.
 func NeedsOpenBaoConfig(cfg *config.Config) bool {
-	return cfg.Secrets.Enabled && cfg.Profile == "prod"
+	return cfg.Secrets.UsesOpenBao() && cfg.Profile == "prod"
 }
 
-// NeedsSeedSecrets returns true if dev mode should seed OpenBao with demo
-// secrets. This is true when the secrets plugin is enabled AND at least one
-// header or env injection entry is configured.
+// NeedsSeedSecrets returns true if the seed-secrets.sh script should be
+// written into the bundle. This is true when the secrets backend is OpenBao
+// (secrets.store: openbao) AND at least one header or env injection entry is
+// configured. When store is "builtin" (or unset) this always returns false;
+// seed-secrets.sh is only ever consumed by the seed-secrets container which is
+// itself only emitted for the openbao store.
 func NeedsSeedSecrets(cfg *config.Config) bool {
-	if !cfg.Secrets.Enabled {
+	if !cfg.Secrets.UsesOpenBao() {
 		return false
 	}
 	return len(cfg.Secrets.Inject.Headers) > 0 || len(cfg.Secrets.Inject.Env) > 0

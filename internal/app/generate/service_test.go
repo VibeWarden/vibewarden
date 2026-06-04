@@ -1029,6 +1029,64 @@ func TestGenerate_SeedSecretsFile_ContainsBothHeadersAndEnv(t *testing.T) {
 	}
 }
 
+// TestGenerate_BuiltinStore_NoOrphanOnDiskFiles asserts that when
+// secrets.enabled is true but store is "builtin", the two OpenBao-only on-disk
+// artifacts (openbao/config.hcl and seed-secrets.sh) are NOT written to the
+// output directory even when all other conditions that previously triggered
+// them (prod profile, inject entries) are satisfied. With store:builtin there
+// is no OpenBao service in compose, so these files would be dangling artifacts.
+func TestGenerate_BuiltinStore_NoOrphanOnDiskFiles(t *testing.T) {
+	headers := []config.SecretsHeaderInjection{
+		{SecretPath: "app/api-key", SecretKey: "value", Header: "X-API-Key"},
+	}
+	env := []config.SecretsEnvInjection{
+		{SecretPath: "app/db-pass", SecretKey: "password", EnvVar: "DB_PASSWORD"},
+	}
+	// prod profile + inject entries + enabled:true — all conditions that
+	// triggered the old Secrets.Enabled guards. Store is "builtin".
+	cfg := secretsConfig(true, "builtin", headers, env)
+	cfg.Profile = "prod"
+
+	outputDir := t.TempDir()
+	svc := generate.NewService(realRenderer())
+	if err := svc.Generate(context.Background(), cfg.ToGeneratorInput(), outputDir); err != nil {
+		t.Fatalf("Generate() unexpected error: %v", err)
+	}
+
+	if _, err := os.Stat(filepath.Join(outputDir, "openbao", "config.hcl")); err == nil {
+		t.Error("openbao/config.hcl must NOT be written when store is builtin (no OpenBao service to consume it)")
+	}
+	if _, err := os.Stat(filepath.Join(outputDir, "seed-secrets.sh")); err == nil {
+		t.Error("seed-secrets.sh must NOT be written when store is builtin (seed-secrets container is not emitted)")
+	}
+}
+
+// TestGenerate_OpenBaoStore_OnDiskFilesWritten asserts that with store:"openbao",
+// prod profile, and inject entries the two OpenBao on-disk files ARE written.
+func TestGenerate_OpenBaoStore_OnDiskFilesWritten(t *testing.T) {
+	headers := []config.SecretsHeaderInjection{
+		{SecretPath: "app/api-key", SecretKey: "value", Header: "X-API-Key"},
+	}
+	env := []config.SecretsEnvInjection{
+		{SecretPath: "app/db-pass", SecretKey: "password", EnvVar: "DB_PASSWORD"},
+	}
+	cfg := secretsConfig(true, "openbao", headers, env)
+	cfg.Profile = "prod"
+
+	outputDir := t.TempDir()
+	svc := generate.NewService(realRenderer())
+	if err := svc.Generate(context.Background(), cfg.ToGeneratorInput(), outputDir); err != nil {
+		t.Fatalf("Generate() unexpected error: %v", err)
+	}
+
+	if _, err := os.Stat(filepath.Join(outputDir, "openbao", "config.hcl")); err != nil {
+		t.Errorf("openbao/config.hcl must be written when store is openbao and profile is prod: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(outputDir, "seed-secrets.sh")); err != nil {
+		t.Errorf("seed-secrets.sh must be written when store is openbao and inject entries are configured: %v", err)
+	}
+}
+
 // observabilityConfig returns a Config with observability enabled and the
 // given custom values. Zero values fall back to the supplied defaults.
 func observabilityConfig(grafanaPort, prometheusPort, lokiPort, retentionDays int) *config.Config {
