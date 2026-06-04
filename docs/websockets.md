@@ -77,11 +77,15 @@ No special configuration is needed. A standard reverse-proxy setup works:
 upstream:
   url: "http://localhost:3000"
 
-plugins:
-  rate-limiting:
-    enabled: true
-  user-management:
-    enabled: true
+rate_limit:
+  enabled: true
+
+admin:
+  enabled: true
+  token: ${VIBEWARDEN_ADMIN_TOKEN}
+
+database:
+  url: postgres://<user>:<pass>@localhost:5432/vibewarden?sslmode=disable
 ```
 
 With the config above, WebSocket connections to VibeWarden are automatically

@@ -41,7 +41,7 @@ This initial entry was written by hand to summarise the work leading up to v0.1.
 
 ### Documentation
 
-- **fix(#1371): remove phantom `NameGrafana` domain constant and fix plugin-activation docs.** Grafana is a Docker Compose service in the `observability` profile, not a plugin. The unused `NameGrafana = "grafana"` constant has been removed from `internal/domain/plugin/names.go`. The `CLAUDE.md` "Plugin model" section and `names.go` godoc now describe the real flat top-level key activation model (no `plugins:` wrapper — the strict loader rejects unknown top-level keys). `internal/plugins/usermgmt/config.go` godoc now names the actual source keys (`admin.enabled`, `admin.token`, `kratos.admin_url`, `database.url`). `NameFleet` kept as reserved roadmap placeholder per locked decision. ADR-105.
+- **fix(#1371): remove phantom `NameGrafana` domain constant and fix plugin-activation docs.** Grafana is a Docker Compose service in the `observability` profile, not a plugin. The unused `NameGrafana = "grafana"` constant has been removed from `internal/domain/plugin/names.go`. The `CLAUDE.md` "Plugin model" section and `names.go` godoc now describe the real flat top-level key activation model (no `plugins:` wrapper — the strict loader rejects unknown top-level keys). `internal/plugins/usermgmt/config.go` godoc now names the actual source keys (`admin.enabled`, `admin.token`, `kratos.admin_url`, `database.url`). `NameFleet` kept as reserved roadmap placeholder per locked decision. ADR-105. Also fixed residual `plugins:` wrapper drift in `docs/identity-providers.md` and `docs/websockets.md` runnable examples — both now use real flat top-level keys (`admin:`, `database:`, `rate_limit:`) that pass `vibew validate`.
 
 ## [v0.19.0] — 2026-05-07
 
