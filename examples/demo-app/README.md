@@ -260,8 +260,10 @@ open https://localhost:8443/self-service/login/browser
 open https://localhost:8443/self-service/registration/browser
 ```
 
-Verification emails are captured by Mailslurper at http://localhost:4437 —
-no real email is sent.
+Verification emails are delivered to whichever SMTP address Kratos is configured
+with. The demo stack does not include a local mail catcher, so registration
+verification flows that require email will not complete without an external SMTP
+service or a Kratos config that disables verification.
 
 ## Security headers
 
