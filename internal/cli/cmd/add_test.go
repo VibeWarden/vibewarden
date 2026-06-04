@@ -377,6 +377,70 @@ func TestAddCmd_AgentContextRegenerated(t *testing.T) {
 	}
 }
 
+// TestAddAdminCmd_HelpText verifies that the `vibew add admin` help text
+// references the correct port (8443) and path prefix (/_vibewarden/admin/).
+// These values must match internal/config/config.go setDefaults (server.port)
+// and internal/middleware/admin_auth.go (adminPathPrefix).
+func TestAddAdminCmd_HelpText(t *testing.T) {
+	root := cmd.NewRootCmd("test")
+	addCmd, _, _ := root.Find([]string{"add"})
+	if addCmd == nil {
+		t.Fatal("add command not found")
+	}
+	adminCmd, _, _ := addCmd.Find([]string{"admin"})
+	if adminCmd == nil {
+		t.Fatal("add admin command not found")
+	}
+
+	var out strings.Builder
+	adminCmd.SetOut(&out)
+	adminCmd.SetErr(&out)
+	adminCmd.HelpFunc()(adminCmd, []string{})
+	helpText := out.String()
+
+	for _, want := range []string{"8443", "/_vibewarden/admin/", "https://"} {
+		if !strings.Contains(helpText, want) {
+			t.Errorf("add admin help text missing %q; help:\n%s", want, helpText)
+		}
+	}
+	// Old incorrect values must not appear.
+	if strings.Contains(helpText, "localhost:8080") {
+		t.Errorf("add admin help text must not reference port 8080; help:\n%s", helpText)
+	}
+}
+
+// TestAddMetricsCmd_HelpText verifies that the `vibew add metrics` help text
+// references the correct port (8443) and path (/_vibewarden/metrics).
+// These values must match internal/config/config.go setDefaults (server.port)
+// and the path registered in internal/middleware/metrics.go.
+func TestAddMetricsCmd_HelpText(t *testing.T) {
+	root := cmd.NewRootCmd("test")
+	addCmd, _, _ := root.Find([]string{"add"})
+	if addCmd == nil {
+		t.Fatal("add command not found")
+	}
+	metricsCmd, _, _ := addCmd.Find([]string{"metrics"})
+	if metricsCmd == nil {
+		t.Fatal("add metrics command not found")
+	}
+
+	var out strings.Builder
+	metricsCmd.SetOut(&out)
+	metricsCmd.SetErr(&out)
+	metricsCmd.HelpFunc()(metricsCmd, []string{})
+	helpText := out.String()
+
+	for _, want := range []string{"8443", "/_vibewarden/metrics", "https://"} {
+		if !strings.Contains(helpText, want) {
+			t.Errorf("add metrics help text missing %q; help:\n%s", want, helpText)
+		}
+	}
+	// Old incorrect values must not appear.
+	if strings.Contains(helpText, "localhost:8080") {
+		t.Errorf("add metrics help text must not reference port 8080; help:\n%s", helpText)
+	}
+}
+
 // TestAddCmd_MultiSite_Refused verifies that every vibew add subcommand is
 // refused on a multi-site project root. The gate is in PersistentPreRunE on
 // the add command group; testing one representative subcommand (tls) is

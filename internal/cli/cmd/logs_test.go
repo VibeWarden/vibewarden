@@ -138,6 +138,29 @@ func TestNewLogsCmd_TailDefault(t *testing.T) {
 	}
 }
 
+// TestNewLogsCmd_HelpTextNoMailslurper asserts that the logs help text does not
+// list "mailslurper" as a service. The compose template generates no mail
+// service, so advertising it would cause "vibew logs mailslurper" to match
+// nothing and confuse users. This is a behavioral guard: it checks the actual
+// Long text that cobra renders, not an isolated string constant.
+func TestNewLogsCmd_HelpTextNoMailslurper(t *testing.T) {
+	root := cmd.NewRootCmd("test")
+	logsCmd, _, _ := root.Find([]string{"logs"})
+	if logsCmd == nil {
+		t.Fatal("logs command not found")
+	}
+
+	var out strings.Builder
+	logsCmd.SetOut(&out)
+	logsCmd.SetErr(&out)
+	logsCmd.HelpFunc()(logsCmd, []string{})
+	helpText := out.String()
+
+	if strings.Contains(strings.ToLower(helpText), "mailslurper") {
+		t.Errorf("logs help text must not mention 'mailslurper' (service is not generated); help:\n%s", helpText)
+	}
+}
+
 // TestNewLogsCmd_ArbitraryArgs verifies that the command accepts variadic
 // positional arguments (no cobra.MaximumNArgs constraint).
 func TestNewLogsCmd_ArbitraryArgs(t *testing.T) {

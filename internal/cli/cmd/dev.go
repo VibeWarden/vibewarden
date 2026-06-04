@@ -48,7 +48,6 @@ The baseline stack includes:
   - VibeWarden proxy (port 8443, HTTPS with self-signed certificate)
   - Ory Kratos identity server (ports 4433, 4434)
   - PostgreSQL
-  - Mailslurper (email sink)
 
 To also start Prometheus and Grafana, run 'vibew obs up' after the stack is up.
 Pass --watch to watch vibewarden.yaml for changes and automatically

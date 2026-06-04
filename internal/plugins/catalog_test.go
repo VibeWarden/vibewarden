@@ -1,6 +1,7 @@
 package plugins_test
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/vibewarden/vibewarden/internal/plugins"
@@ -103,6 +104,44 @@ func TestFindDescriptor_Found(t *testing.T) {
 				t.Errorf("FindDescriptor(%q).Name = %q, want %q", tt.name, d.Name, tt.name)
 			}
 		})
+	}
+}
+
+// TestCatalog_RateLimitingStoreDescribesRedis asserts that the rate-limiting
+// catalog entry documents both "memory" and "redis" as valid store values.
+// This guards against the help text drifting from ratelimit.Config.Store, which
+// accepts "memory" (default) or "redis" (distributed).
+func TestCatalog_RateLimitingStoreDescribesRedis(t *testing.T) {
+	d, ok := plugins.FindDescriptor("rate-limiting")
+	if !ok {
+		t.Fatal("rate-limiting plugin not found in Catalog")
+	}
+
+	storeDesc, exists := d.ConfigSchema["store"]
+	if !exists {
+		t.Fatal("rate-limiting ConfigSchema missing 'store' field")
+	}
+
+	for _, want := range []string{"memory", "redis"} {
+		if !strings.Contains(storeDesc, want) {
+			t.Errorf("rate-limiting store description should mention %q; got: %q", want, storeDesc)
+		}
+	}
+}
+
+// TestCatalog_MetricsDescriptorPath asserts that the metrics plugin descriptor
+// references the canonical /_vibewarden/metrics path — not a bare /metrics.
+// Guards against the catalog drifting from the actual endpoint registered in
+// middleware/metrics.go.
+func TestCatalog_MetricsDescriptorPath(t *testing.T) {
+	d, ok := plugins.FindDescriptor("metrics")
+	if !ok {
+		t.Fatal("metrics plugin not found in Catalog")
+	}
+
+	const wantPath = "/_vibewarden/metrics"
+	if !strings.Contains(d.Description, wantPath) {
+		t.Errorf("metrics plugin Description should reference %q; got: %q", wantPath, d.Description)
 	}
 }
 
