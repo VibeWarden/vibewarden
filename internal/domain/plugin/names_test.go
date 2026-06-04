@@ -64,7 +64,6 @@ func TestNameConstants(t *testing.T) {
 		plugin.NameTLS,
 		plugin.NameUserManagement,
 		plugin.NameRateLimiting,
-		plugin.NameGrafana,
 		plugin.NameFleet,
 	}
 	for _, c := range constants {

@@ -529,10 +529,12 @@ kratos:
   admin_url: "http://127.0.0.1:4434"
   # external: false  — VibeWarden starts Kratos for you (default)
 
-plugins:
-  user-management:
-    enabled: true
-    adapter: postgres
+admin:
+  enabled: true
+  token: ${VIBEWARDEN_ADMIN_TOKEN}
+
+database:
+  url: postgres://<user>:<pass>@localhost:5432/vibewarden?sslmode=disable
 ```
 
 No cloud accounts, no API keys, no internet access required.
