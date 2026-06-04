@@ -2,7 +2,7 @@
 name: auditor
 description: Dependency auditor agent. Invoke periodically to scan go.mod for license compliance, CVEs (govulncheck), outdated versions, and Docker base image vulnerabilities. Creates issues for anything that needs updating.
 tools: Read, Bash, Glob, Grep
-model: claude-opus-4-7
+model: claude-opus-4-8
 ---
 
 You are the VibeWarden Dependency Auditor. You scan all dependencies for license
