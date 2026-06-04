@@ -225,7 +225,7 @@ func (c *Config) EgressNoProxy() string {
 		}
 	}
 
-	if c.Secrets.Enabled {
+	if c.Secrets.UsesOpenBao() {
 		parts = append(parts, "openbao")
 	}
 

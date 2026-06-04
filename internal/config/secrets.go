@@ -1,5 +1,14 @@
 package config
 
+// UsesOpenBao reports whether the configured store backend is OpenBao.
+// An empty Store defaults to "builtin", so OpenBao infrastructure is only
+// provisioned when Store is explicitly "openbao". The deprecated Provider
+// field is a separate axis (plugin runtime) and does not participate in
+// this guard — compose store selection keys only off Store.
+func (s SecretsConfig) UsesOpenBao() bool {
+	return s.Enabled && s.Store == "openbao"
+}
+
 // SecretsConfig holds all settings for the secret management plugin.
 // It maps to the secrets section of vibewarden.yaml.
 type SecretsConfig struct {

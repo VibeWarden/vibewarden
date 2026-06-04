@@ -148,18 +148,28 @@ func TestNeedsOpenBaoConfig(t *testing.T) {
 		want bool
 	}{
 		{
-			name: "secrets enabled with prod profile returns true",
-			cfg:  &config.Config{Profile: "prod", Secrets: config.SecretsConfig{Enabled: true}},
+			name: "openbao store with prod profile returns true",
+			cfg:  &config.Config{Profile: "prod", Secrets: config.SecretsConfig{Enabled: true, Store: "openbao"}},
 			want: true,
 		},
 		{
-			name: "secrets enabled with dev profile returns false",
-			cfg:  &config.Config{Profile: "dev", Secrets: config.SecretsConfig{Enabled: true}},
+			name: "openbao store with dev profile returns false",
+			cfg:  &config.Config{Profile: "dev", Secrets: config.SecretsConfig{Enabled: true, Store: "openbao"}},
 			want: false,
 		},
 		{
-			name: "secrets enabled with empty profile returns false",
-			cfg:  &config.Config{Profile: "", Secrets: config.SecretsConfig{Enabled: true}},
+			name: "openbao store with empty profile returns false",
+			cfg:  &config.Config{Profile: "", Secrets: config.SecretsConfig{Enabled: true, Store: "openbao"}},
+			want: false,
+		},
+		{
+			name: "builtin store with prod profile returns false — no openbao/config.hcl needed",
+			cfg:  &config.Config{Profile: "prod", Secrets: config.SecretsConfig{Enabled: true, Store: "builtin"}},
+			want: false,
+		},
+		{
+			name: "empty store (defaults to builtin) with prod profile returns false",
+			cfg:  &config.Config{Profile: "prod", Secrets: config.SecretsConfig{Enabled: true, Store: ""}},
 			want: false,
 		},
 		{
@@ -281,20 +291,22 @@ func TestNeedsSeedSecrets(t *testing.T) {
 			want: false,
 		},
 		{
-			name: "secrets enabled with no inject entries returns false",
+			name: "openbao store with no inject entries returns false",
 			cfg: &config.Config{
 				Secrets: config.SecretsConfig{
 					Enabled: true,
+					Store:   "openbao",
 					Inject:  config.SecretsInjectConfig{},
 				},
 			},
 			want: false,
 		},
 		{
-			name: "secrets enabled with header injection returns true",
+			name: "openbao store with header injection returns true",
 			cfg: &config.Config{
 				Secrets: config.SecretsConfig{
 					Enabled: true,
+					Store:   "openbao",
 					Inject: config.SecretsInjectConfig{
 						Headers: []config.SecretsHeaderInjection{
 							{SecretPath: "app/api-key", SecretKey: "value", Header: "X-API-Key"},
@@ -305,10 +317,11 @@ func TestNeedsSeedSecrets(t *testing.T) {
 			want: true,
 		},
 		{
-			name: "secrets enabled with env injection returns true",
+			name: "openbao store with env injection returns true",
 			cfg: &config.Config{
 				Secrets: config.SecretsConfig{
 					Enabled: true,
+					Store:   "openbao",
 					Inject: config.SecretsInjectConfig{
 						Env: []config.SecretsEnvInjection{
 							{SecretPath: "app/db-pass", SecretKey: "password", EnvVar: "DB_PASSWORD"},
@@ -319,10 +332,11 @@ func TestNeedsSeedSecrets(t *testing.T) {
 			want: true,
 		},
 		{
-			name: "secrets enabled with both headers and env returns true",
+			name: "openbao store with both headers and env returns true",
 			cfg: &config.Config{
 				Secrets: config.SecretsConfig{
 					Enabled: true,
+					Store:   "openbao",
 					Inject: config.SecretsInjectConfig{
 						Headers: []config.SecretsHeaderInjection{
 							{SecretPath: "app/api-key", SecretKey: "value", Header: "X-API-Key"},
@@ -334,6 +348,36 @@ func TestNeedsSeedSecrets(t *testing.T) {
 				},
 			},
 			want: true,
+		},
+		{
+			name: "builtin store returns false even with inject headers — seed-secrets.sh is openbao-only",
+			cfg: &config.Config{
+				Secrets: config.SecretsConfig{
+					Enabled: true,
+					Store:   "builtin",
+					Inject: config.SecretsInjectConfig{
+						Headers: []config.SecretsHeaderInjection{
+							{SecretPath: "app/api-key", SecretKey: "value", Header: "X-API-Key"},
+						},
+					},
+				},
+			},
+			want: false,
+		},
+		{
+			name: "empty store (defaults to builtin) returns false even with inject entries",
+			cfg: &config.Config{
+				Secrets: config.SecretsConfig{
+					Enabled: true,
+					Store:   "",
+					Inject: config.SecretsInjectConfig{
+						Env: []config.SecretsEnvInjection{
+							{SecretPath: "app/db-pass", SecretKey: "password", EnvVar: "DB_PASSWORD"},
+						},
+					},
+				},
+			},
+			want: false,
 		},
 		{
 			name: "zero value config returns false",

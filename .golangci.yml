@@ -54,6 +54,10 @@ linters:
         - "fmt.Fprintf"
 
   exclusions:
+    # Exclude agent worktree scratch directories — these are never part of the
+    # main module and contain stale code from other agent sessions.
+    paths:
+      - .claude
     rules:
       # Test helpers legitimately read/write temp files with path variables —
       # these are not file inclusion vulnerabilities.

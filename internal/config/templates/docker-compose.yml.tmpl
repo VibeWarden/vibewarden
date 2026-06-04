@@ -16,10 +16,10 @@ name: {{ .ComposeProjectName }}
 #   kratos-db   — PostgreSQL for Kratos (local container; set database.external_url to use an external instance)
 {{- end }}
 {{- end }}
-{{- if .Secrets.Enabled }}
+{{- if .Secrets.UsesOpenBao }}
 #   openbao     — OpenBao secret store
 {{- end }}
-{{- if and .Secrets.Enabled (or (len .Secrets.Inject.Headers) (len .Secrets.Inject.Env)) }}
+{{- if and .Secrets.UsesOpenBao (or (len .Secrets.Inject.Headers) (len .Secrets.Inject.Env)) }}
 #   seed-secrets — One-shot container that seeds demo secrets into OpenBao
 {{- end }}
 {{- if and (eq .RateLimit.Store "redis") (not (.RateLimit.Redis.HasExternalURL)) }}
@@ -93,7 +93,7 @@ services:
       - VIBEWARDEN_UPSTREAM_HOST=host.docker.internal
 {{- end }}
       - VIBEWARDEN_UPSTREAM_PORT={{ .Upstream.Port }}
-{{- if .Secrets.Enabled }}
+{{- if .Secrets.UsesOpenBao }}
       - VIBEWARDEN_SECRETS_OPENBAO_ADDRESS=http://openbao:8200
       - VIBEWARDEN_SECRETS_OPENBAO_AUTH_TOKEN=${OPENBAO_ROOT_TOKEN}
 {{- end }}
@@ -121,7 +121,7 @@ services:
 {{- if .Egress.IsNetworkIsolationEnabled }}
       - vibewarden-external
 {{- end }}
-{{- if or (and (eq (printf "%s" .Auth.Mode) "kratos") (not .Kratos.External)) .App.Build .App.Image .Secrets.Enabled (and (eq .RateLimit.Store "redis") (not (.RateLimit.Redis.HasExternalURL))) }}
+{{- if or (and (eq (printf "%s" .Auth.Mode) "kratos") (not .Kratos.External)) .App.Build .App.Image .Secrets.UsesOpenBao (and (eq .RateLimit.Store "redis") (not (.RateLimit.Redis.HasExternalURL))) }}
     depends_on:
 {{- if or .App.Build .App.Image }}
       app:
@@ -131,10 +131,10 @@ services:
       kratos:
         condition: service_healthy
 {{- end }}
-{{- if and .Secrets.Enabled (or (len .Secrets.Inject.Headers) (len .Secrets.Inject.Env)) }}
+{{- if and .Secrets.UsesOpenBao (or (len .Secrets.Inject.Headers) (len .Secrets.Inject.Env)) }}
       seed-secrets:
         condition: service_completed_successfully
-{{- else if .Secrets.Enabled }}
+{{- else if .Secrets.UsesOpenBao }}
       openbao:
         condition: service_healthy
 {{- end }}
@@ -215,7 +215,7 @@ services:
       retries: 10
       start_period: 30s
 {{- end }}
-{{- if .Secrets.Enabled }}
+{{- if .Secrets.UsesOpenBao }}
 
   openbao:
     image: quay.io/openbao/openbao:2.2.0
@@ -245,7 +245,7 @@ services:
       retries: 12
       start_period: 10s
 {{- end }}
-{{- if and .Secrets.Enabled (or (len .Secrets.Inject.Headers) (len .Secrets.Inject.Env)) }}
+{{- if and .Secrets.UsesOpenBao (or (len .Secrets.Inject.Headers) (len .Secrets.Inject.Env)) }}
 
   seed-secrets:
     image: quay.io/openbao/openbao:2.2.0
@@ -453,7 +453,7 @@ volumes:
 {{- if and (eq .RateLimit.Store "redis") (not (.RateLimit.Redis.HasExternalURL)) }}
   redis-data:
 {{- end }}
-{{- if and .Secrets.Enabled .IsProdProfile }}
+{{- if and .Secrets.UsesOpenBao .IsProdProfile }}
   openbao-data:
 {{- end }}
   # Observability volumes — inert until `vibew obs up` activates the

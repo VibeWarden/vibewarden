@@ -375,7 +375,7 @@ vibew down -v
 | `vibewarden` | The security sidecar — Caddy embedding all middleware |
 | `kratos` | Identity server (only when `auth.mode: kratos`) |
 | `kratos-db` | Postgres for Kratos (only when `auth.mode: kratos` and no external DB) |
-| `openbao` | Secrets manager (only when `secrets.enabled: true`) |
+| `openbao` | Secrets manager (only when `secrets.enabled: true` and `secrets.store: openbao`) |
 
 Your app runs outside Docker and is reached from the container network via
 `host.docker.internal`. Alternatively, set `app.build` or `app.image` in
