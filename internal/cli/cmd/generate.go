@@ -15,11 +15,16 @@ import (
 
 // NewGenerateCmd creates the "vibew generate" subcommand.
 //
+// version is the CLI build version (e.g. "0.20.0" for a release, "dev" for a
+// source build). It is used to pin the sidecar image in the generated
+// docker-compose.yml — release builds pin to the matching image tag; source
+// builds fall back to :latest + pull_policy: always (ADR-106).
+//
 // The command reads vibewarden.yaml and writes the generated runtime
 // configuration files under .vibewarden/generated/ without starting any
 // services. This is useful for inspecting the generated files before running
 // `vibew dev`, or for integrating into a CI pipeline.
-func NewGenerateCmd() *cobra.Command {
+func NewGenerateCmd(version string) *cobra.Command {
 	var (
 		configPath string
 		outputDir  string
@@ -56,6 +61,7 @@ Examples:
 			if err != nil {
 				return err
 			}
+			applySidecarImageRef(cfg, version)
 
 			renderer := templateadapter.NewRenderer(configtemplates.FS)
 			generator := generateapp.NewServiceWithCredentials(

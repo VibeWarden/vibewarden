@@ -20,6 +20,11 @@ import (
 
 // NewDevCmd creates the "vibew dev" subcommand.
 //
+// version is the CLI build version (e.g. "0.20.0" for a release, "dev" for a
+// source build). It is used to pin the sidecar image in the generated
+// docker-compose.yml — release builds pin to the matching image tag; source
+// builds fall back to :latest + pull_policy: always (ADR-106).
+//
 // The command generates runtime config files under .vibewarden/generated/,
 // then starts the Docker Compose dev environment in detached mode and
 // prints the running service URLs.  Pass --watch to watch vibewarden.yaml
@@ -27,7 +32,7 @@ import (
 // To also start the Prometheus + Grafana observability stack run:
 //
 //	vibew obs up
-func NewDevCmd() *cobra.Command {
+func NewDevCmd(version string) *cobra.Command {
 	var (
 		watch          bool
 		configPath     string
@@ -84,6 +89,7 @@ Examples:
 			if err != nil {
 				return err
 			}
+			applySidecarImageRef(cfg, version)
 
 			compose := opsadapter.NewComposeAdapter()
 			renderer := templateadapter.NewRenderer(configtemplates.FS)

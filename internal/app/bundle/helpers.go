@@ -10,6 +10,17 @@ const defaultHealthPort = 8443
 type SidecarComposeData struct {
 	// ListenPort is the port the sidecar binds to for HTTPS traffic.
 	ListenPort int
+
+	// Image is the fully-qualified Docker image reference for the sidecar,
+	// e.g. "ghcr.io/vibewarden/vibewarden:0.20.0" for a release build or
+	// "ghcr.io/vibewarden/vibewarden:latest" for a dev/source build.
+	// Populated by renderSidecarCompose via SidecarImageRef.
+	Image string
+
+	// PullPolicy is the Docker Compose pull_policy value. Empty string means
+	// the field is omitted entirely (default "missing" — correct for pinned
+	// immutable release tags). "always" is used for dev/source builds.
+	PullPolicy string
 }
 
 // AppComposeData holds the template data for a per-app compose file rendered

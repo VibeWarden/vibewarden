@@ -520,6 +520,66 @@ func TestArtifact_DeployCompose_HasImageNotBuild(t *testing.T) {
 	}
 }
 
+// TestArtifact_SidecarCompose_ReleaseVersion_PinsImage verifies that when the
+// Service is configured with a release version, the sidecar docker-compose.yml
+// contains a pinned image tag and no pull_policy (ADR-106).
+func TestArtifact_SidecarCompose_ReleaseVersion_PinsImage(t *testing.T) {
+	svc := bundleapp.NewService(&fakeExecutor{}, &fakeGenerator{}).WithVersion("0.20.0")
+
+	outputDir := t.TempDir()
+
+	cfg := &config.Config{
+		Server: config.ServerConfig{Port: 443},
+	}
+
+	if err := svc.BundleSidecar(context.Background(), cfg, outputDir); err != nil {
+		t.Fatalf("BundleSidecar() error = %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(outputDir, ".sidecar", "docker-compose.yml"))
+	if err != nil {
+		t.Fatalf("reading sidecar compose: %v", err)
+	}
+	s := string(data)
+
+	if !strings.Contains(s, "image: ghcr.io/vibewarden/vibewarden:0.20.0") {
+		t.Errorf("release sidecar compose must pin image to :0.20.0; got:\n%s", s)
+	}
+	if strings.Contains(s, "pull_policy:") {
+		t.Errorf("release sidecar compose must NOT contain pull_policy (pinned tag is immutable); got:\n%s", s)
+	}
+}
+
+// TestArtifact_SidecarCompose_DevVersion_UsesLatestWithAlways verifies that
+// when the Service is configured with a dev version, the sidecar
+// docker-compose.yml uses :latest and pull_policy: always (ADR-106).
+func TestArtifact_SidecarCompose_DevVersion_UsesLatestWithAlways(t *testing.T) {
+	svc := bundleapp.NewService(&fakeExecutor{}, &fakeGenerator{}).WithVersion("dev")
+
+	outputDir := t.TempDir()
+
+	cfg := &config.Config{
+		Server: config.ServerConfig{Port: 443},
+	}
+
+	if err := svc.BundleSidecar(context.Background(), cfg, outputDir); err != nil {
+		t.Fatalf("BundleSidecar() error = %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(outputDir, ".sidecar", "docker-compose.yml"))
+	if err != nil {
+		t.Fatalf("reading sidecar compose: %v", err)
+	}
+	s := string(data)
+
+	if !strings.Contains(s, "image: ghcr.io/vibewarden/vibewarden:latest") {
+		t.Errorf("dev sidecar compose must use :latest; got:\n%s", s)
+	}
+	if !strings.Contains(s, "pull_policy: always") {
+		t.Errorf("dev sidecar compose must contain pull_policy: always; got:\n%s", s)
+	}
+}
+
 // sentinelGenerator is a test double for ports.ConfigGenerator that writes a
 // sentinel value to vibewarden.yaml in the output directory, simulating the
 // real generator's behaviour of copying the base config into the output.

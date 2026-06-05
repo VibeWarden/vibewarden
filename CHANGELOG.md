@@ -12,6 +12,10 @@ This initial entry was written by hand to summarise the work leading up to v0.1.
 
 ## [Unreleased]
 
+### Fixed
+
+- **fix(#1385): pin sidecar image to CLI version in generated compose files (ADR-106).** The generated `docker-compose.yml` (from `vibew dev`, `vibew generate`, `vibew obs up`) and the sidecar compose inside a `vibew bundle` artifact both hardcoded `image: ghcr.io/vibewarden/vibewarden:latest` with no `pull_policy`, causing silent CLI↔sidecar version skew when a stale local `:latest` layer was cached. Release builds (goreleaser sets `main.version` without the leading `v`, matching the image tag verbatim) now emit `image: ghcr.io/vibewarden/vibewarden:<version>` with no `pull_policy` (pinned immutable tag — airgap-friendly). Dev/source builds emit `image: ghcr.io/vibewarden/vibewarden:latest` + `pull_policy: always`. The version is threaded from `main.version` → `NewRootCmd` → the four compose-rendering subcommand constructors; image ref computed in `config.SidecarImageRef`; templates only interpolate.
+
 ## [v0.20.0] — 2026-06-05
 
 Theme: `vibew version` subcommand + 2026-06-04 docs/code drift audit. Adds the `vibew version` subcommand (#1340); fixes the OpenBao-with-`builtin`-store bug (#1369) and canonicalizes the v1 event schema with a real drift-guard test (#1368); bumps `x/net` and `x/crypto` for two HIGH-severity CVEs; and resolves nine docs/code drift findings (#1370, #1371, #1372, #1373, #1374, #1382) from a full architect/PM/writer audit.

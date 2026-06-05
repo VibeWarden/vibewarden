@@ -2819,3 +2819,49 @@ func TestGenerate_NoStaleDevTokenName(t *testing.T) {
 		t.Errorf("seed-secrets.sh must not contain stale OPENBAO_DEV_ROOT_TOKEN\ngot:\n%s", seedData)
 	}
 }
+
+// renderComposeWithVersion is like renderCompose but pre-applies
+// SidecarImageRef(version) to cfg so the template receives the correct
+// sidecar image reference. This mirrors what the CLI commands do after
+// loadAndResolve (ADR-106).
+func renderComposeWithVersion(t *testing.T, cfg *config.Config, version string) []byte {
+	t.Helper()
+	cfg.SidecarImage, cfg.SidecarPullPolicy = config.SidecarImageRef(version)
+	return renderCompose(t, cfg)
+}
+
+// TestGenerate_SidecarImage_ReleasePins verifies that a release version
+// produces a pinned image reference in docker-compose.yml and does NOT
+// render pull_policy (ADR-106).
+func TestGenerate_SidecarImage_ReleasePins(t *testing.T) {
+	cfg := &config.Config{
+		Server:   config.ServerConfig{Host: "127.0.0.1", Port: 8443},
+		Upstream: config.UpstreamConfig{Host: "127.0.0.1", Port: 3000},
+	}
+	compose := renderComposeWithVersion(t, cfg, "0.20.0")
+
+	if !bytes.Contains(compose, []byte("image: ghcr.io/vibewarden/vibewarden:0.20.0")) {
+		t.Errorf("release compose must contain pinned sidecar image; got:\n%s", compose)
+	}
+	if bytes.Contains(compose, []byte("pull_policy:")) {
+		t.Errorf("release compose must NOT contain pull_policy (pinned tag is immutable); got:\n%s", compose)
+	}
+}
+
+// TestGenerate_SidecarImage_DevFallback verifies that a dev build produces
+// the :latest image reference AND pull_policy: always in docker-compose.yml
+// (ADR-106).
+func TestGenerate_SidecarImage_DevFallback(t *testing.T) {
+	cfg := &config.Config{
+		Server:   config.ServerConfig{Host: "127.0.0.1", Port: 8443},
+		Upstream: config.UpstreamConfig{Host: "127.0.0.1", Port: 3000},
+	}
+	compose := renderComposeWithVersion(t, cfg, "dev")
+
+	if !bytes.Contains(compose, []byte("image: ghcr.io/vibewarden/vibewarden:latest")) {
+		t.Errorf("dev compose must contain :latest sidecar image; got:\n%s", compose)
+	}
+	if !bytes.Contains(compose, []byte("pull_policy: always")) {
+		t.Errorf("dev compose must contain pull_policy: always; got:\n%s", compose)
+	}
+}

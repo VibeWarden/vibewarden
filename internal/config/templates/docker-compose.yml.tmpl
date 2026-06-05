@@ -69,7 +69,10 @@ services:
 
 {{- end }}
   vibewarden:
-    image: ghcr.io/vibewarden/vibewarden:latest
+    image: {{ .SidecarImage }}
+{{- if .SidecarPullPolicy }}
+    pull_policy: {{ .SidecarPullPolicy }}
+{{- end }}
     restart: unless-stopped
     command: ["serve", "--config", "/etc/vibewarden/vibewarden.yaml"]
     ports:
