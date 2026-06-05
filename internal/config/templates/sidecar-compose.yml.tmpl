@@ -7,7 +7,10 @@
 
 services:
   vibewarden:
-    image: ghcr.io/vibewarden/vibewarden:latest
+    image: {{ .Image }}
+{{- if .PullPolicy }}
+    pull_policy: {{ .PullPolicy }}
+{{- end }}
     container_name: vibewarden-sidecar
     restart: unless-stopped
     command: ["serve", "--config", "/etc/vibewarden/global.yaml"]

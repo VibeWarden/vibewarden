@@ -92,6 +92,7 @@ Results applied 2026-05-04:
 | [103](adr-103-wire-api-key-auth-mode-into-caddy-handler-chain.md) | Wire `api-key` auth mode into Caddy handler chain | #1302 | |
 | [104](adr-104-openbao-prod-init-unseal-via-seed-secrets.md) | OpenBao prod init+unseal via seed-secrets init container | #1345 | |
 | [105](adr-105-remove-grafana-plugin-name-constant.md) | Remove unused grafana plugin-name constant; grafana is a compose service | #1371 | |
+| [106](adr-106-sidecar-image-pinning-cli-version.md) | Sidecar image pinning — thread CLI version into compose render | #1385 | |
 | [497](adr-497-graceful-shutdown-connection-draining.md) | Graceful Shutdown / Connection Draining | — | Removed 2026-05-04 — see tombstone (anomalous number, paste of issue #497) |
 
 ## Numbering

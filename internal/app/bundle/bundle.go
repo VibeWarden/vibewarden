@@ -256,11 +256,13 @@ func (s *Service) snapshotPriorDotEnv(outDir string) ([]byte, bool) {
 
 // BundleSidecar produces the sidecar compose and global.yaml under
 // <outputDir>/.sidecar/. This is called during multi-site bootstrap.
+// The sidecar image is pinned to the Service's version (set via WithVersion);
+// when no version is set, the dev/latest fallback is used.
 func (s *Service) BundleSidecar(_ context.Context, cfg *config.Config, outputDir string) error {
 	if outputDir == "" {
 		outputDir = defaultBundleDir
 	}
-	return bundleMultiSiteSidecar(cfg, outputDir)
+	return bundleMultiSiteSidecar(cfg, outputDir, s.version)
 }
 
 // bundleSingleSite generates the complete single-site deploy bundle.
@@ -374,8 +376,9 @@ func (s *Service) bundleMultiSiteSite(_ context.Context, cfg *config.Config, con
 }
 
 // bundleMultiSiteSidecar generates the sidecar compose and global.yaml under
-// <outputDir>/.sidecar/.
-func bundleMultiSiteSidecar(cfg *config.Config, outputDir string) error {
+// <outputDir>/.sidecar/. version is the CLI build version used to compute the
+// sidecar image reference via config.SidecarImageRef.
+func bundleMultiSiteSidecar(cfg *config.Config, outputDir, version string) error {
 	sidecarBundleDir := filepath.Join(outputDir, ".sidecar")
 
 	listenPort := cfg.Server.Port
@@ -390,7 +393,7 @@ func bundleMultiSiteSidecar(cfg *config.Config, outputDir string) error {
 	}
 
 	// Render and write the sidecar compose file.
-	sidecarCompose, err := renderSidecarCompose(listenPort)
+	sidecarCompose, err := renderSidecarCompose(listenPort, version)
 	if err != nil {
 		return fmt.Errorf("rendering sidecar compose: %w", err)
 	}
@@ -411,7 +414,10 @@ log_level: info
 }
 
 // renderSidecarCompose renders the sidecar docker-compose.yml template.
-func renderSidecarCompose(listenPort int) (string, error) {
+// version is the CLI build version string used to compute the sidecar image
+// reference via config.SidecarImageRef. Empty string or non-release values
+// fall back to :latest + pull_policy: always.
+func renderSidecarCompose(listenPort int, version string) (string, error) {
 	tmplContent, err := templates.FS.ReadFile("sidecar-compose.yml.tmpl")
 	if err != nil {
 		return "", fmt.Errorf("reading sidecar compose template: %w", err)
@@ -422,7 +428,12 @@ func renderSidecarCompose(listenPort int) (string, error) {
 		return "", fmt.Errorf("parsing sidecar compose template: %w", err)
 	}
 
-	data := SidecarComposeData{ListenPort: listenPort}
+	image, pullPolicy := config.SidecarImageRef(version)
+	data := SidecarComposeData{
+		ListenPort: listenPort,
+		Image:      image,
+		PullPolicy: pullPolicy,
+	}
 	var buf bytes.Buffer
 	if err := tmpl.Execute(&buf, data); err != nil {
 		return "", fmt.Errorf("executing sidecar compose template: %w", err)

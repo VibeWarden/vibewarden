@@ -140,6 +140,20 @@ type Config struct {
 	// returned by a loader function — do not set this field manually.
 	// This field is not loaded from YAML.
 	ProjectRoot string `mapstructure:"-"`
+
+	// SidecarImage is the Docker image reference for the VibeWarden sidecar
+	// rendered into docker-compose.yml templates. Set programmatically via
+	// SidecarImageRef(version) after config load — not loaded from YAML.
+	// For release builds the image is pinned to the CLI version tag; for
+	// dev/source builds it falls back to :latest.
+	SidecarImage string `mapstructure:"-"`
+
+	// SidecarPullPolicy is the Docker Compose pull_policy value for the
+	// VibeWarden sidecar service. Empty string means omit the field entirely
+	// (default "missing" behaviour — correct for pinned release tags).
+	// "always" is used for dev/source builds to keep contributors current.
+	// Set programmatically alongside SidecarImage — not loaded from YAML.
+	SidecarPullPolicy string `mapstructure:"-"`
 }
 
 // InternalNetworkName returns the Docker network name used for internal

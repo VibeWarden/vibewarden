@@ -66,3 +66,14 @@ func buildSecretKVReader(cfg *config.Config) (ports.SecretKVReader, error) {
 	}
 	return store, nil
 }
+
+// applySidecarImageRef sets cfg.SidecarImage and cfg.SidecarPullPolicy using
+// config.SidecarImageRef(version). Call this after loadAndResolve in any
+// command that renders a docker-compose.yml template so the sidecar image is
+// pinned to the CLI version for release builds (ADR-106).
+func applySidecarImageRef(cfg *config.Config, version string) {
+	if cfg == nil {
+		return
+	}
+	cfg.SidecarImage, cfg.SidecarPullPolicy = config.SidecarImageRef(version)
+}

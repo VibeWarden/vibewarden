@@ -18,7 +18,11 @@ import (
 // child commands. The obs subcommand controls the Prometheus + Grafana
 // observability stack that is shipped as a Docker Compose profile overlay on
 // the same project as the main dev stack.
-func NewObsCmd() *cobra.Command {
+//
+// version is the CLI build version (e.g. "0.20.0" for a release, "dev" for a
+// source build). It is threaded into newObsUpCmd so the regenerated
+// docker-compose.yml pins the sidecar image correctly (ADR-106).
+func NewObsCmd(version string) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "obs",
 		Short: "Manage the local observability stack",
@@ -42,14 +46,16 @@ Examples:
 		},
 	}
 
-	cmd.AddCommand(newObsUpCmd())
+	cmd.AddCommand(newObsUpCmd(version))
 	cmd.AddCommand(newObsDownCmd())
 
 	return cmd
 }
 
 // newObsUpCmd creates the "vibew obs up" subcommand.
-func newObsUpCmd() *cobra.Command {
+// version is the CLI build version threaded from NewObsCmd for sidecar image
+// pinning when the generator regenerates docker-compose.yml (ADR-106).
+func newObsUpCmd(version string) *cobra.Command {
 	var (
 		configPath string
 		verbose    bool
@@ -85,6 +91,7 @@ Examples:
 			if err != nil {
 				return err
 			}
+			applySidecarImageRef(cfg, version)
 
 			compose := opsadapter.NewComposeAdapter()
 			renderer := templateadapter.NewRenderer(configtemplates.FS)

@@ -38,6 +38,11 @@ const multiSiteErrorMessage = "multi-site bundle is post-v1; see #1169 for the N
 
 // NewBundleCmd creates the "vibew bundle" command.
 //
+// version is the CLI build version (e.g. "0.20.0" for a release, "dev" for a
+// source build). It is threaded through runBundle so the generated
+// docker-compose.yml and sidecar compose both pin the sidecar image to the
+// matching release tag (ADR-106).
+//
 // vibew bundle produces a self-contained Docker Compose deployment artifact
 // the user can scp to a VPS and start with `docker compose up -d`. The
 // command writes files under --output (default .vibewarden/bundle/) and
@@ -64,7 +69,7 @@ const multiSiteErrorMessage = "multi-site bundle is post-v1; see #1169 for the N
 // Configuration is loaded via config.LoadStrict so unknown keys in
 // vibewarden.yaml or vibewarden.production.yaml abort the command before
 // any files are written. This is the #1053 contract.
-func NewBundleCmd() *cobra.Command {
+func NewBundleCmd(version string) *cobra.Command {
 	var (
 		outputDir      string
 		overwrite      bool
@@ -138,7 +143,7 @@ since the README is a versioned artifact that ships with the bundle.
 printed "Next: deploy" block. All three sub-flags (--host, --user, --path) must be
 supplied together. Paths with spaces in --path are not supported.`,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			code, err := runBundle(cmd, outputDir, imageTag, targetPlatform, overwrite, skipImage, build, allowStale, printDeploy, deployHost, deployUser, deployPath)
+			code, err := runBundle(cmd, version, outputDir, imageTag, targetPlatform, overwrite, skipImage, build, allowStale, printDeploy, deployHost, deployUser, deployPath)
 			if err != nil {
 				// Set the process exit code for semantic exit codes (2, 3) while
 				// still surfacing the error message via cobra.
@@ -180,13 +185,16 @@ supplied together. Paths with spaces in --path are not supported.`,
 // runBundle executes the "vibew bundle" use case. It is extracted from RunE
 // so tests can drive it directly with a fake cobra.Command.
 //
+// version is the CLI build version used to pin the sidecar image in the
+// generated docker-compose.yml and sidecar compose (ADR-106).
+//
 // Returns (exitCode, error). Exit codes:
 //
 //	0: success
 //	1: generic failure
 //	2: image missing (ErrImageMissing)
 //	3: docker daemon unreachable (ErrDockerUnavailable)
-func runBundle(cmd *cobra.Command, outputDir, imageTag, targetPlatform string, overwrite, skipImage, build, allowStale bool, printDeploy bool, deployHost, deployUser, deployPath string) (int, error) {
+func runBundle(cmd *cobra.Command, version, outputDir, imageTag, targetPlatform string, overwrite, skipImage, build, allowStale bool, printDeploy bool, deployHost, deployUser, deployPath string) (int, error) {
 	// Validate --print-deploy flag combination FIRST — pure function, no I/O.
 	// A user who types --host/--user/--path without --print-deploy anywhere
 	// (including outside a vibewarden directory) sees the relevant flag error,
@@ -207,6 +215,7 @@ func runBundle(cmd *cobra.Command, outputDir, imageTag, targetPlatform string, o
 	if err != nil {
 		return 1, err
 	}
+	applySidecarImageRef(cfg, version)
 
 	// Resolve the config path to an absolute path so the merge and the
 	// sites-dir check both see the same project root.
@@ -293,7 +302,7 @@ func runBundle(cmd *cobra.Command, outputDir, imageTag, targetPlatform string, o
 		credentialsadapter.NewStore(),
 	).WithConfigSourcePath(absConfig)
 
-	svc := bundleapp.NewService(nil, generator).WithBundleFS(bfs)
+	svc := bundleapp.NewService(nil, generator).WithVersion(version).WithBundleFS(bfs)
 	if !skipImage {
 		// Wire image inspection and saving only when we will actually package the
 		// image. When --skip-image is set the user is pulling from a registry and

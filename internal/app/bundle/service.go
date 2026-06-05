@@ -22,6 +22,12 @@ import (
 type Service struct {
 	generator ports.ConfigGenerator
 
+	// version is the CLI build version string (e.g. "0.20.0" for a release,
+	// "dev" for a source build). Used by renderSidecarCompose to compute the
+	// sidecar image reference via config.SidecarImageRef. Empty string falls
+	// back to the dev/latest behaviour.
+	version string
+
 	// bundleFS is the filesystem adapter used by the bundle extras pipeline
 	// (sample.env, .env, README.md, MANIFEST.md). When nil, the extras pipeline
 	// is a no-op.
@@ -49,6 +55,16 @@ type Service struct {
 // call sites that pass a nil value; the bundle pipeline does not use it.
 func NewService(_ ports.RemoteExecutor, generator ports.ConfigGenerator) *Service {
 	return &Service{generator: generator}
+}
+
+// WithVersion sets the CLI build version used to compute the sidecar image
+// reference in the rendered sidecar docker-compose.yml. For release builds
+// (e.g. "0.20.0") the sidecar image is pinned to that version tag; for
+// dev/source builds (e.g. "dev") the image falls back to :latest with
+// pull_policy: always. When not called, the dev/fallback path is used.
+func (s *Service) WithVersion(version string) *Service {
+	s.version = version
+	return s
 }
 
 // WithBundleFS sets the filesystem adapter used by the bundle extras
