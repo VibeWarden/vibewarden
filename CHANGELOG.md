@@ -12,6 +12,10 @@ This initial entry was written by hand to summarise the work leading up to v0.1.
 
 ## [Unreleased]
 
+## [v0.20.0] — 2026-06-05
+
+Theme: `vibew version` subcommand + 2026-06-04 docs/code drift audit. Adds the `vibew version` subcommand (#1340); fixes the OpenBao-with-`builtin`-store bug (#1369) and canonicalizes the v1 event schema with a real drift-guard test (#1368); bumps `x/net` and `x/crypto` for two HIGH-severity CVEs; and resolves nine docs/code drift findings (#1370, #1371, #1372, #1373, #1374, #1382) from a full architect/PM/writer audit.
+
 ### Added
 
 - **feat(#1340): `vibew version` subcommand.** `vibew version` now works as a proper cobra subcommand and produces output identical to `vibew --version` (`vibew <version>\n`). Follows the convention of standard CLI tools (docker, kubectl, gh). Both invocations share a single version source in the root command.
