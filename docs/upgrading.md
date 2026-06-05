@@ -31,15 +31,10 @@ is tagged, the policy above is strictly enforced.
 Example output:
 
 ```
-VibeWarden v0.12.3 (git: abc1234, built: 2026-03-28)
+vibew v0.19.0
 ```
 
-To show only the version string (useful in scripts):
-
-```bash
-./vibew version --short
-# v0.12.3
-```
+`./vibew --version` produces identical output.
 
 ---
 
@@ -222,7 +217,7 @@ The following procedure applies to any version bump.
    target. Look for entries marked **Breaking** or **Deprecated**.
 
     ```bash
-    ./vibew version --short   # note your current version
+    ./vibew version   # note your current version
     ```
 
     Release notes: [github.com/vibewarden/vibewarden/releases](https://github.com/vibewarden/vibewarden/releases)
