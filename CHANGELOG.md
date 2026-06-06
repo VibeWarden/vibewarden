@@ -12,6 +12,10 @@ This initial entry was written by hand to summarise the work leading up to v0.1.
 
 ## [Unreleased]
 
+## [v0.20.1] — 2026-06-06
+
+Theme: patch — pin the sidecar image to the CLI version (ADR-106), closing the silent CLI↔sidecar version-skew gap surfaced by the v0.20.0 release smoke test (#1385).
+
 ### Fixed
 
 - **fix(#1385): pin sidecar image to CLI version in generated compose files (ADR-106).** The generated `docker-compose.yml` (from `vibew dev`, `vibew generate`, `vibew obs up`) and the sidecar compose inside a `vibew bundle` artifact both hardcoded `image: ghcr.io/vibewarden/vibewarden:latest` with no `pull_policy`, causing silent CLI↔sidecar version skew when a stale local `:latest` layer was cached. Release builds (goreleaser sets `main.version` without the leading `v`, matching the image tag verbatim) now emit `image: ghcr.io/vibewarden/vibewarden:<version>` with no `pull_policy` (pinned immutable tag — airgap-friendly). Dev/source builds emit `image: ghcr.io/vibewarden/vibewarden:latest` + `pull_policy: always`. The version is threaded from `main.version` → `NewRootCmd` → the four compose-rendering subcommand constructors; image ref computed in `config.SidecarImageRef`; templates only interpolate.
