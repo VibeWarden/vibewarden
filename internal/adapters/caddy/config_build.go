@@ -137,7 +137,12 @@ func buildHealthRoute() map[string]any {
 
 // buildRoutes assembles the full ordered route list:
 // health → ready → metrics → kratos-flow → me → admin → docs → extra routes → catch-all.
-func buildRoutes(cfg *ports.ProxyConfig, handlers []map[string]any) []map[string]any {
+//
+// When cfg.Admin.Enabled is true the admin route is emitted with the
+// vibewarden_admin_auth handler inlined before reverse_proxy so the gate runs
+// in-path for every /_vibewarden/admin/* request. The public docs route is
+// emitted separately with no auth handler.
+func buildRoutes(cfg *ports.ProxyConfig, handlers []map[string]any) ([]map[string]any, error) {
 	healthRoute := buildHealthRoute()
 
 	var readyRoute map[string]any
@@ -164,7 +169,11 @@ func buildRoutes(cfg *ports.ProxyConfig, handlers []map[string]any) []map[string
 	}
 
 	if cfg.Admin.Enabled && cfg.Admin.InternalAddr != "" {
-		routes = append(routes, buildAdminRoute(cfg.Admin.InternalAddr))
+		adminRoute, err := buildAdminRoute(cfg.Admin.InternalAddr, cfg.AdminAuth)
+		if err != nil {
+			return nil, fmt.Errorf("building admin route: %w", err)
+		}
+		routes = append(routes, adminRoute)
 		routes = append(routes, buildDocsRoute(cfg.Admin.InternalAddr))
 	}
 
@@ -173,7 +182,7 @@ func buildRoutes(cfg *ports.ProxyConfig, handlers []map[string]any) []map[string
 	}
 
 	routes = append(routes, buildCatchAllRoute(cfg, handlers))
-	return routes
+	return routes, nil
 }
 
 // buildCatchAllRoute constructs the catch-all proxy route. When TLS is enabled
