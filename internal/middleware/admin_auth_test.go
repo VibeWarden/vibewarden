@@ -227,6 +227,85 @@ func TestAdminAuthMiddleware_401IsJSON(t *testing.T) {
 	}
 }
 
+// TestMatchesConfigPath verifies the config-path gate covers both the
+// /_vibewarden/config/ subtree AND the exact no-slash inspection path
+// /_vibewarden/config, which the bare prefix check would otherwise leak.
+func TestMatchesConfigPath(t *testing.T) {
+	const configPath = "/_vibewarden/config/"
+
+	tests := []struct {
+		name       string
+		path       string
+		configPath string
+		want       bool
+	}{
+		{"reload endpoint (subtree)", "/_vibewarden/config/reload", configPath, true},
+		{"exact no-slash inspection path", "/_vibewarden/config", configPath, true},
+		{"trailing-slash root", "/_vibewarden/config/", configPath, true},
+		{"unrelated path", "/_vibewarden/configuration", configPath, false},
+		{"app path", "/dashboard", configPath, false},
+		{"empty config path disables gate", "/_vibewarden/config", "", false},
+		{"empty config path, subtree", "/_vibewarden/config/reload", "", false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := matchesConfigPath(tt.path, tt.configPath); got != tt.want {
+				t.Errorf("matchesConfigPath(%q, %q) = %v, want %v", tt.path, tt.configPath, got, tt.want)
+			}
+		})
+	}
+}
+
+// TestAdminAuthMiddleware_ConfigPathGated verifies the middleware enforces the
+// token on config-reload endpoints (both the subtree and the no-slash GET).
+func TestAdminAuthMiddleware_ConfigPathGated(t *testing.T) {
+	cfg := ports.AdminAuthConfig{
+		Enabled:    true,
+		Token:      "secret",
+		ConfigPath: "/_vibewarden/config/",
+	}
+
+	tests := []struct {
+		name       string
+		path       string
+		token      string
+		wantStatus int
+		wantNext   bool
+	}{
+		{"reload no token → 401", "/_vibewarden/config/reload", "", http.StatusUnauthorized, false},
+		{"reload wrong token → 401", "/_vibewarden/config/reload", "wrong", http.StatusUnauthorized, false},
+		{"reload correct token → pass", "/_vibewarden/config/reload", "secret", http.StatusOK, true},
+		{"no-slash GET no token → 401", "/_vibewarden/config", "", http.StatusUnauthorized, false},
+		{"no-slash GET correct token → pass", "/_vibewarden/config", "secret", http.StatusOK, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			nextCalled := false
+			next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				nextCalled = true
+				w.WriteHeader(http.StatusOK)
+			})
+
+			mw := AdminAuthMiddleware(cfg, nil)
+			req := httptest.NewRequest(http.MethodGet, tt.path, nil)
+			if tt.token != "" {
+				req.Header.Set("X-Admin-Key", tt.token)
+			}
+			w := httptest.NewRecorder()
+			mw(next).ServeHTTP(w, req)
+
+			if w.Code != tt.wantStatus {
+				t.Errorf("path %q token %q: status = %d, want %d", tt.path, tt.token, w.Code, tt.wantStatus)
+			}
+			if nextCalled != tt.wantNext {
+				t.Errorf("path %q token %q: nextCalled = %v, want %v", tt.path, tt.token, nextCalled, tt.wantNext)
+			}
+		})
+	}
+}
+
 func TestSecureEqual(t *testing.T) {
 	tests := []struct {
 		name string

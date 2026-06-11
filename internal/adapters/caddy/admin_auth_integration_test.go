@@ -161,6 +161,70 @@ func TestAdminAuth_Integration_GateEnforced(t *testing.T) {
 		})
 	}
 
+	// --- Config hot-reload route (gated, proxied to internal admin server) ---
+	// The config endpoints (POST /_vibewarden/config/reload, GET /_vibewarden/config)
+	// must be token-gated AND reach the internal admin server — never the upstream
+	// app. This covers both the subtree path and the no-slash inspection path.
+
+	configTests := []struct {
+		name    string
+		method  string
+		path    string
+		key     string
+		want401 bool
+		wantHit bool
+	}{
+		{"reload no token → 401", http.MethodPost, "/_vibewarden/config/reload", "", true, false},
+		{"reload wrong token → 401", http.MethodPost, "/_vibewarden/config/reload", "wrong-token", true, false},
+		{"reload correct token → admin upstream hit", http.MethodPost, "/_vibewarden/config/reload", adminToken, false, true},
+		{"no-slash GET no token → 401", http.MethodGet, "/_vibewarden/config", "", true, false},
+		{"no-slash GET correct token → admin upstream hit", http.MethodGet, "/_vibewarden/config", adminToken, false, true},
+	}
+
+	for _, tt := range configTests {
+		t.Run(tt.name, func(t *testing.T) {
+			drainChannels()
+
+			req, err := http.NewRequestWithContext(ctx, tt.method, proxyURL+tt.path, nil)
+			if err != nil {
+				t.Fatalf("building request: %v", err)
+			}
+			if tt.key != "" {
+				req.Header.Set("X-Admin-Key", tt.key)
+			}
+
+			resp, err := client.Do(req)
+			if err != nil {
+				t.Fatalf("%s %s: %v", tt.method, tt.path, err)
+			}
+			defer resp.Body.Close() //nolint:errcheck
+
+			if tt.want401 {
+				if resp.StatusCode != http.StatusUnauthorized {
+					body, _ := io.ReadAll(resp.Body)
+					t.Errorf("status = %d, want 401; body: %s", resp.StatusCode, body)
+				}
+				assertUpstreamNotHit(t, tt.name)
+				return
+			}
+
+			// Valid token: the request must reach the internal admin server (the
+			// mock admin records the hit), NOT the upstream app.
+			select {
+			case <-adminHitPaths:
+				// Good — config request reached the internal admin server.
+			case <-time.After(500 * time.Millisecond):
+				t.Errorf("config request did not reach the internal admin server (status: %d); it must not leak to the upstream app", resp.StatusCode)
+			}
+			select {
+			case path := <-appHitPaths:
+				t.Errorf("config request leaked to upstream app (path: %s)", path)
+			default:
+				// Good.
+			}
+		})
+	}
+
 	// --- UI path requires token on main (carve-out lands in #1391) ---
 	// NOTE: The /_vibewarden/admin/ui tokenless carve-out (adminUIPrefix in
 	// the middleware) is not yet on main; it arrives with PR #1391 (embedded

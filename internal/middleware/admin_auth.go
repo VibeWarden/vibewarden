@@ -44,7 +44,7 @@ func AdminAuthMiddleware(cfg ports.AdminAuthConfig, auditLogger ports.AuditEvent
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// Only apply to protected path prefixes.
 			isAdmin := strings.HasPrefix(r.URL.Path, adminPathPrefix)
-			isConfig := cfg.ConfigPath != "" && strings.HasPrefix(r.URL.Path, cfg.ConfigPath)
+			isConfig := matchesConfigPath(r.URL.Path, cfg.ConfigPath)
 			if !isAdmin && !isConfig {
 				next.ServeHTTP(w, r)
 				return
@@ -75,6 +75,23 @@ func AdminAuthMiddleware(cfg ports.AdminAuthConfig, auditLogger ports.AuditEvent
 			next.ServeHTTP(w, r)
 		})
 	}
+}
+
+// matchesConfigPath reports whether path is protected by the config-path gate.
+//
+// configPath is the configured prefix (e.g. "/_vibewarden/config/"). A request
+// is protected when it falls under that prefix OR equals the prefix with the
+// trailing slash removed. The latter covers the no-slash inspection endpoint
+// GET /_vibewarden/config, which the bare prefix check would otherwise leak
+// tokenless. Returns false when configPath is empty.
+func matchesConfigPath(path, configPath string) bool {
+	if configPath == "" {
+		return false
+	}
+	if strings.HasPrefix(path, configPath) {
+		return true
+	}
+	return path == strings.TrimSuffix(configPath, "/")
 }
 
 // secureEqual compares two strings in constant time to prevent timing attacks.

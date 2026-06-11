@@ -142,6 +142,165 @@ func TestBuildAdminRoute_ReverseProxyDialAddr(t *testing.T) {
 	}
 }
 
+// TestBuildConfigRoute_HandleChainOrder verifies that the config route's handle
+// chain places vibewarden_admin_auth BEFORE reverse_proxy, mirroring the admin
+// route. The config hot-reload endpoints must be token-gated AND proxied to the
+// internal admin server — not the upstream app.
+func TestBuildConfigRoute_HandleChainOrder(t *testing.T) {
+	auth := ports.AdminAuthConfig{
+		Enabled:    true,
+		Token:      "test-token",
+		ConfigPath: "/_vibewarden/config/",
+	}
+
+	route, err := buildConfigRoute("127.0.0.1:9092", auth)
+	if err != nil {
+		t.Fatalf("buildConfigRoute() error = %v", err)
+	}
+
+	handlers, ok := route["handle"].([]map[string]any)
+	if !ok {
+		t.Fatalf("handle is not []map[string]any: %T", route["handle"])
+	}
+	if len(handlers) != 2 {
+		t.Fatalf("handle chain length = %d, want 2 (vibewarden_admin_auth, reverse_proxy)", len(handlers))
+	}
+	if got := handlers[0]["handler"]; got != "vibewarden_admin_auth" {
+		t.Errorf("handlers[0].handler = %q, want vibewarden_admin_auth (gate first)", got)
+	}
+	if got := handlers[1]["handler"]; got != "reverse_proxy" {
+		t.Errorf("handlers[1].handler = %q, want reverse_proxy", got)
+	}
+}
+
+// TestBuildConfigRoute_MatchPathsCoverNoSlashAndSubtree verifies the config
+// route matches BOTH the exact no-slash inspection path (/_vibewarden/config)
+// and the /_vibewarden/config/* subtree (reload endpoint). The no-slash GET
+// must not be stranded — the original plugin route only matched the subtree.
+func TestBuildConfigRoute_MatchPathsCoverNoSlashAndSubtree(t *testing.T) {
+	route, err := buildConfigRoute("127.0.0.1:9092", ports.AdminAuthConfig{Enabled: true, Token: "tok"})
+	if err != nil {
+		t.Fatalf("buildConfigRoute() error = %v", err)
+	}
+
+	matchers, ok := route["match"].([]map[string]any)
+	if !ok || len(matchers) == 0 {
+		t.Fatal("match not found or empty")
+	}
+	paths, ok := matchers[0]["path"].([]string)
+	if !ok {
+		t.Fatalf("match.path is not []string: %T", matchers[0]["path"])
+	}
+
+	wantPaths := map[string]bool{
+		"/_vibewarden/config":   false,
+		"/_vibewarden/config/*": false,
+	}
+	for _, p := range paths {
+		if _, expected := wantPaths[p]; expected {
+			wantPaths[p] = true
+		}
+	}
+	for p, found := range wantPaths {
+		if !found {
+			t.Errorf("config route match.path missing %q", p)
+		}
+	}
+}
+
+// TestBuildConfigRoute_ReverseProxyDialAddr verifies the proxy targets the
+// internal admin server, not the upstream app.
+func TestBuildConfigRoute_ReverseProxyDialAddr(t *testing.T) {
+	const wantAddr = "127.0.0.1:9092"
+
+	route, err := buildConfigRoute(wantAddr, ports.AdminAuthConfig{Enabled: true, Token: "tok"})
+	if err != nil {
+		t.Fatalf("buildConfigRoute() error = %v", err)
+	}
+	handlers, ok := route["handle"].([]map[string]any)
+	if !ok || len(handlers) < 2 {
+		t.Fatal("handle chain too short")
+	}
+	proxy := handlers[1]
+	upstreams, ok := proxy["upstreams"].([]map[string]any)
+	if !ok || len(upstreams) == 0 {
+		t.Fatal("upstreams not found")
+	}
+	if dial, _ := upstreams[0]["dial"].(string); dial != wantAddr {
+		t.Errorf("config route upstream dial = %q, want %q", dial, wantAddr)
+	}
+}
+
+// TestBuildCaddyConfig_ConfigRoutePresent verifies the assembled config contains
+// a config route (matching /_vibewarden/config) when admin is enabled, gated by
+// vibewarden_admin_auth and proxying to the internal admin server. Regression
+// for the dropped /_vibewarden/config/* route in #1393's first revision.
+func TestBuildCaddyConfig_ConfigRoutePresent(t *testing.T) {
+	const internalAddr = "127.0.0.1:9092"
+	cfg := &ports.ProxyConfig{
+		ListenAddr:   "127.0.0.1:8080",
+		UpstreamAddr: "127.0.0.1:3000",
+		Admin: ports.AdminProxyConfig{
+			Enabled:      true,
+			InternalAddr: internalAddr,
+		},
+		AdminAuth: ports.AdminAuthConfig{
+			Enabled:    true,
+			Token:      "secret-token",
+			ConfigPath: "/_vibewarden/config/",
+		},
+	}
+
+	result, err := BuildCaddyConfig(cfg)
+	if err != nil {
+		t.Fatalf("BuildCaddyConfig() unexpected error: %v", err)
+	}
+
+	server := extractServer(t, result)
+	routes, ok := server["routes"].([]map[string]any)
+	if !ok {
+		t.Fatal("routes not found")
+	}
+
+	var configRoute map[string]any
+	for _, route := range routes {
+		matchers, ok := route["match"].([]map[string]any)
+		if !ok {
+			continue
+		}
+		for _, m := range matchers {
+			paths, ok := m["path"].([]string)
+			if !ok {
+				continue
+			}
+			for _, p := range paths {
+				if p == "/_vibewarden/config" {
+					configRoute = route
+				}
+			}
+		}
+	}
+	if configRoute == nil {
+		t.Fatal("config route (/_vibewarden/config) not found in assembled config — hot-reload endpoints would leak to the upstream app")
+	}
+
+	handlers, ok := configRoute["handle"].([]map[string]any)
+	if !ok || len(handlers) < 2 {
+		t.Fatalf("config route handle chain length = %d, want >= 2", len(handlers))
+	}
+	if got := handlers[0]["handler"]; got != "vibewarden_admin_auth" {
+		t.Errorf("config route handlers[0].handler = %q, want vibewarden_admin_auth (gate first)", got)
+	}
+	proxy := handlers[1]
+	if proxy["handler"] != "reverse_proxy" {
+		t.Errorf("config route handlers[1].handler = %q, want reverse_proxy", proxy["handler"])
+	}
+	upstreams, _ := proxy["upstreams"].([]map[string]any)
+	if len(upstreams) == 0 || upstreams[0]["dial"] != internalAddr {
+		t.Errorf("config route must proxy to internal admin server %q, got %v", internalAddr, upstreams)
+	}
+}
+
 // TestBuildCaddyConfig_AdminRoute_NoAdminAuthInOldDivergentForm verifies that
 // the assembled Caddy config does NOT contain a "handler":"admin_auth" key
 // anywhere in the route list. The old plugin-contributed form used the wrong

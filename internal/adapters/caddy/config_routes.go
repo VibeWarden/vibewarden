@@ -115,6 +115,41 @@ func buildAdminRoute(internalAddr string, adminAuth ports.AdminAuthConfig) (map[
 	}, nil
 }
 
+// buildConfigRoute constructs a Caddy route that gates and reverse-proxies the
+// config hot-reload endpoints to the internal admin HTTP server at internalAddr.
+//
+// The internal admin server serves POST /_vibewarden/config/reload and
+// GET /_vibewarden/config (no trailing slash). The match list therefore covers
+// BOTH the exact no-slash path and the /_vibewarden/config/* subtree so the GET
+// inspection endpoint is not stranded. As with buildAdminRoute, the
+// vibewarden_admin_auth handler is the FIRST entry in the handle chain so the
+// token gate runs before the request is proxied. The handler's ConfigPath gate
+// (reconciled to also cover the no-slash path in the middleware) enforces the
+// token; without this route the requests would fall through to the catch-all
+// and be proxied to the upstream application instead of the admin server.
+//
+// The internalAddr must be a host:port string (e.g., "127.0.0.1:9092").
+func buildConfigRoute(internalAddr string, adminAuth ports.AdminAuthConfig) (map[string]any, error) {
+	authHandler, err := buildAdminAuthHandlerJSON(adminAuth)
+	if err != nil {
+		return nil, fmt.Errorf("building admin auth handler for config route: %w", err)
+	}
+	return map[string]any{
+		"match": []map[string]any{
+			{"path": []string{"/_vibewarden/config", "/_vibewarden/config/*"}},
+		},
+		"handle": []map[string]any{
+			authHandler,
+			{
+				"handler": "reverse_proxy",
+				"upstreams": []map[string]any{
+					{"dial": internalAddr},
+				},
+			},
+		},
+	}, nil
+}
+
 // buildDocsRoute constructs a Caddy route that reverse-proxies requests to
 // /_vibewarden/api/docs to the internal admin HTTP server at internalAddr.
 // This endpoint is public — no authentication is required and it must not be
