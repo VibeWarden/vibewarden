@@ -2,6 +2,8 @@ module github.com/vibewarden/vibewarden
 
 go 1.26
 
+toolchain go1.26.4
+
 require (
 	github.com/caddyserver/caddy/v2 v2.11.3
 	github.com/fatih/color v1.19.0

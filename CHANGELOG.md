@@ -12,6 +12,10 @@ This initial entry was written by hand to summarise the work leading up to v0.1.
 
 ## [Unreleased]
 
+### Security
+
+- **Bump Go toolchain to go1.26.4 (GO-2026-5037, GO-2026-5039).** Both vulnerabilities affect the Go standard library and are fixed in go1.26.4. GO-2026-5037 is an inefficient candidate hostname parsing bug in `crypto/x509` (reachable via TLS dialing and certificate verification). GO-2026-5039 is an arbitrary-input inclusion bug in `net/textproto` (reachable via HTTP response reading in the OpenBao adapter). Pinned `toolchain go1.26.4` in `go.mod`, `golang:1.26.4-alpine` in `Dockerfile`, and `go-version: "1.26.4"` in all CI workflows. Unblocks the repo-wide Trivy and govulncheck CI gates.
+
 ## [v0.20.1] — 2026-06-06
 
 Theme: patch — pin the sidecar image to the CLI version (ADR-106), closing the silent CLI↔sidecar version-skew gap surfaced by the v0.20.0 release smoke test (#1385).

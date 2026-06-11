@@ -9,7 +9,7 @@
 # ---------------------------------------------------------------------------
 # Stage 1: builder
 # ---------------------------------------------------------------------------
-FROM golang:1.26-alpine AS builder
+FROM golang:1.26.4-alpine AS builder
 
 # Install git so `go mod download` can fetch VCS-based modules.
 RUN apk add --no-cache git ca-certificates
