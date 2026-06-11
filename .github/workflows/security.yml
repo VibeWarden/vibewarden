@@ -117,8 +117,11 @@ jobs:
           push: false
           load: true
           tags: vibewarden:scan
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          # No build cache: the runtime stage runs `apk upgrade`, and a cached
+          # layer would pin tag-time package versions, hiding OS CVEs that were
+          # patched upstream after the layer was cached (e.g. libcrypto3/libssl3
+          # CVE-2026-45447). A fresh build each scan picks up current packages.
+          no-cache: true
 
       - name: Run Trivy image scan
         run: |
