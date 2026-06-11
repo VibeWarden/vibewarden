@@ -14,6 +14,7 @@ func TestUIFS_ContainsExpectedEntries(t *testing.T) {
 		"assets/index.html",
 		"assets/app.js",
 		"assets/styles.css",
+		"assets/logo.png",
 	}
 	for _, path := range expected {
 		t.Run(path, func(t *testing.T) {
@@ -31,7 +32,7 @@ func TestUIFS_ContainsExpectedEntries(t *testing.T) {
 // (the assets/ prefix is stripped).
 func TestAssets_SubTreeContainsExpectedEntries(t *testing.T) {
 	sub := ui.Assets()
-	expected := []string{"index.html", "app.js", "styles.css"}
+	expected := []string{"index.html", "app.js", "styles.css", "logo.png"}
 	for _, name := range expected {
 		t.Run(name, func(t *testing.T) {
 			f, err := sub.Open(name)
@@ -47,7 +48,7 @@ func TestAssets_SubTreeContainsExpectedEntries(t *testing.T) {
 // content, catching accidental empty-file commits.
 func TestAssets_FilesAreNonEmpty(t *testing.T) {
 	sub := ui.Assets()
-	files := []string{"index.html", "app.js", "styles.css"}
+	files := []string{"index.html", "app.js", "styles.css", "logo.png"}
 	for _, name := range files {
 		t.Run(name, func(t *testing.T) {
 			info, err := fs.Stat(sub, name)

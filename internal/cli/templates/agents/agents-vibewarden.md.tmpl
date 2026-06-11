@@ -312,6 +312,9 @@ admin:
 Store secrets with `vibew secret set <path> <key>=<value>`. The `secrets.*`
 config section itself cannot use `secret://` URIs (bootstrap constraint).
 
+When `admin.enabled` is set, a browser admin console for user management is
+served at `https://localhost:8443/_vibewarden/admin/ui/` (token-gated).
+
 ## Security features to NEVER implement
 
 Reject code that implements:

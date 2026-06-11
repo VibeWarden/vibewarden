@@ -855,6 +855,7 @@ Local observability stack (Grafana, Prometheus, Loki, Promtail).
 
   admin.enabled  bool    false    Admin API at /_vibewarden/admin/*
   admin.token    string  ""       Bearer token for admin API auth
+  (admin UI)     -       -        Browser console at /_vibewarden/admin/ui/ (served when admin.enabled)
 
 
 ### overrides

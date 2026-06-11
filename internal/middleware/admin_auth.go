@@ -3,6 +3,7 @@ package middleware
 import (
 	"crypto/subtle"
 	"net/http"
+	"path"
 	"strings"
 
 	"github.com/vibewarden/vibewarden/internal/ports"
@@ -75,7 +76,14 @@ func AdminAuthMiddleware(cfg ports.AdminAuthConfig, auditLogger ports.AuditEvent
 			// UI carve-out: static assets under /_vibewarden/admin/ui do not
 			// require a token. The carve-out is inside the Enabled guard above, so
 			// the UI is only accessible when admin.enabled: true.
-			if strings.HasPrefix(r.URL.Path, adminUIPrefix) {
+			//
+			// Match against the CLEANED path so that traversal/encoding tricks
+			// (e.g. /_vibewarden/admin/ui/../users, //ui, %2e%2e) cannot use the
+			// tokenless carve-out to reach a gated data route. The exact-subtree
+			// check (equal to the prefix, or prefix + "/") also rejects
+			// prefix-confusion like /_vibewarden/admin/uisomething.
+			clean := path.Clean(r.URL.Path)
+			if clean == adminUIPrefix || strings.HasPrefix(clean, adminUIPrefix+"/") {
 				next.ServeHTTP(w, r)
 				return
 			}

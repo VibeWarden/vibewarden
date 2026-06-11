@@ -334,3 +334,65 @@ func TestSecureEqual(t *testing.T) {
 		})
 	}
 }
+
+// TestAdminAuthMiddleware_UICarveOut_NoTraversalBypass verifies that the
+// tokenless /_vibewarden/admin/ui carve-out cannot be abused — via path
+// traversal, percent-encoded traversal, or prefix confusion — to reach a
+// token-gated data route without an X-Admin-Key. The carve-out matches the
+// CLEANED path against an exact subtree, so all of these resolve outside the
+// UI subtree and must be gated (401, next handler never reached).
+func TestAdminAuthMiddleware_UICarveOut_NoTraversalBypass(t *testing.T) {
+	cfg := ports.AdminAuthConfig{Enabled: true, Token: "secret-token"}
+
+	gated := []struct {
+		name string
+		path string
+	}{
+		{"dot-dot traversal to users", "/_vibewarden/admin/ui/../users"},
+		{"encoded dot-dot traversal", "/_vibewarden/admin/ui/%2e%2e/users"},
+		{"deep traversal", "/_vibewarden/admin/ui/a/../../config"},
+		{"prefix confusion uisomething", "/_vibewarden/admin/uisomething"},
+		{"prefix confusion ui-users", "/_vibewarden/admin/ui-secrets"},
+	}
+	for _, tt := range gated {
+		t.Run(tt.name, func(t *testing.T) {
+			nextCalled := false
+			next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				nextCalled = true
+				w.WriteHeader(http.StatusOK)
+			})
+			req := httptest.NewRequest(http.MethodGet, tt.path, nil) // no token
+			w := httptest.NewRecorder()
+			AdminAuthMiddleware(cfg, nil)(next).ServeHTTP(w, req)
+
+			if nextCalled {
+				t.Errorf("path %q reached the next handler tokenless — carve-out bypass!", tt.path)
+			}
+			if w.Code != http.StatusUnauthorized {
+				t.Errorf("path %q: status = %d, want 401 (gated)", tt.path, w.Code)
+			}
+		})
+	}
+
+	// Legitimate UI sub-paths must still pass tokenless.
+	for _, p := range []string{
+		"/_vibewarden/admin/ui",
+		"/_vibewarden/admin/ui/",
+		"/_vibewarden/admin/ui/logo.png",
+		"/_vibewarden/admin/ui/assets/app.js",
+	} {
+		t.Run("allowed "+p, func(t *testing.T) {
+			nextCalled := false
+			next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				nextCalled = true
+				w.WriteHeader(http.StatusOK)
+			})
+			req := httptest.NewRequest(http.MethodGet, p, nil) // no token
+			w := httptest.NewRecorder()
+			AdminAuthMiddleware(cfg, nil)(next).ServeHTTP(w, req)
+			if !nextCalled {
+				t.Errorf("legit UI path %q was gated; carve-out too strict", p)
+			}
+		})
+	}
+}

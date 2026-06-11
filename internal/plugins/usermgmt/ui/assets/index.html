@@ -16,19 +16,7 @@
       <div class="gate-scanline" aria-hidden="true"></div>
 
       <div class="gate-mark" aria-hidden="true">
-        <svg class="hexmark hexmark-lg" viewBox="0 0 100 100" role="img" aria-label="VibeWarden mark">
-          <defs>
-            <linearGradient id="vwg" x1="0" y1="0" x2="1" y2="1">
-              <stop offset="0" stop-color="#7C3AED"/>
-              <stop offset="1" stop-color="#06B6D4"/>
-            </linearGradient>
-          </defs>
-          <!-- Sierpiński hexagon: outer + three generations -->
-          <polygon class="hex hex-0" points="50,4 89.8,27 89.8,73 50,96 10.2,73 10.2,27"/>
-          <polygon class="hex hex-1" points="50,22 74.2,36 74.2,64 50,78 25.8,64 25.8,36"/>
-          <polygon class="hex hex-2" points="50,36 62.1,43 62.1,57 50,64 37.9,57 37.9,43"/>
-          <polygon class="hex hex-3" points="50,44.5 54.8,47.3 54.8,52.7 50,55.5 45.2,52.7 45.2,47.3"/>
-        </svg>
+        <img src="logo.png" class="vwmark vwmark-lg" alt="VibeWarden">
       </div>
 
       <p class="gate-kicker">// authorization required</p>
@@ -55,18 +43,19 @@
         </p>
       </form>
     </div>
-    <p class="gate-foot">VibeWarden &middot; local admin surface &middot; <span class="mono">/_vibewarden/admin/ui</span></p>
+    <a class="vw-badge" href="https://vibewarden.dev" target="_blank" rel="noopener noreferrer">
+      <span class="vw-badge-shield" aria-hidden="true">
+        <img src="logo.png" class="vw-badge-mark" alt="">
+      </span>
+      <span class="vw-badge-text">Protected by <strong>VibeWarden</strong></span>
+    </a>
   </main>
 
   <!-- ══════════════ CONSOLE ══════════════ -->
   <div id="view-app" class="app hidden">
     <header class="topbar">
       <div class="topbar-brand">
-        <svg class="hexmark" viewBox="0 0 100 100" aria-hidden="true">
-          <polygon class="hex hex-0" points="50,4 89.8,27 89.8,73 50,96 10.2,73 10.2,27"/>
-          <polygon class="hex hex-1" points="50,22 74.2,36 74.2,64 50,78 25.8,64 25.8,36"/>
-          <polygon class="hex hex-2" points="50,36 62.1,43 62.1,57 50,64 37.9,57 37.9,43"/>
-        </svg>
+        <img src="logo.png" class="vwmark" alt="" aria-hidden="true">
         <span class="wordmark">Vibe<span class="grad-text">Warden</span></span>
         <span class="topbar-sep" aria-hidden="true">/</span>
         <h1 class="topbar-title">User management</h1>
@@ -122,10 +111,7 @@
 
       <!-- empty -->
       <div id="state-empty" class="state hidden">
-        <svg class="hexmark hexmark-dim" viewBox="0 0 100 100" aria-hidden="true">
-          <polygon class="hex hex-0" points="50,4 89.8,27 89.8,73 50,96 10.2,73 10.2,27"/>
-          <polygon class="hex hex-1" points="50,22 74.2,36 74.2,64 50,78 25.8,64 25.8,36"/>
-        </svg>
+        <img src="logo.png" class="vwmark vwmark-dim" alt="" aria-hidden="true">
         <p class="state-title">No users yet</p>
         <p class="state-msg">Create the first identity &mdash; you&rsquo;ll get a one-time recovery link to send them.</p>
         <button id="btn-add-empty" type="button" class="btn btn-primary">Add your first user</button>
@@ -154,7 +140,12 @@
     </main>
 
     <footer class="app-foot">
-      <span class="mono">vibewarden &middot; ory kratos identities &middot; localhost</span>
+      <a class="vw-badge" href="https://vibewarden.dev" target="_blank" rel="noopener noreferrer">
+        <span class="vw-badge-shield" aria-hidden="true">
+          <img src="logo.png" class="vw-badge-mark" alt="">
+        </span>
+        <span class="vw-badge-text">Protected by <strong>VibeWarden</strong></span>
+      </a>
     </footer>
   </div>
 
