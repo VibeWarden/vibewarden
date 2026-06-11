@@ -14,11 +14,16 @@ import (
 // a localhost-only listener. Caddy reverse-proxies the public
 // /_vibewarden/admin/* routes to this server after the AdminAuthHandler has
 // already verified the X-Admin-Key bearer token.
+//
+// The server also mounts the embedded admin UI (AdminUIHandler) at
+// /_vibewarden/admin/ui/. UI assets are served without a token because the
+// auth middleware carves out that prefix before forwarding to this server.
 type AdminServer struct {
-	handlers *AdminHandlers
-	listener net.Listener
-	server   *http.Server
-	logger   *slog.Logger
+	handlers  *AdminHandlers
+	uiHandler *AdminUIHandler
+	listener  net.Listener
+	server    *http.Server
+	logger    *slog.Logger
 }
 
 // NewAdminServer creates an AdminServer backed by the supplied handlers.
@@ -32,6 +37,18 @@ func NewAdminServer(handlers *AdminHandlers, logger *slog.Logger) *AdminServer {
 	return &AdminServer{
 		handlers: handlers,
 		logger:   logger,
+	}
+}
+
+// WithUIHandler returns a copy of the AdminServer with the AdminUIHandler set.
+// When set, Start registers the UI routes on the mux. Call this before Start.
+func (s *AdminServer) WithUIHandler(h *AdminUIHandler) *AdminServer {
+	return &AdminServer{
+		handlers:  s.handlers,
+		uiHandler: h,
+		listener:  s.listener,
+		server:    s.server,
+		logger:    s.logger,
 	}
 }
 
@@ -50,6 +67,9 @@ func (s *AdminServer) Start() error {
 	mux := http.NewServeMux()
 	s.handlers.RegisterRoutes(mux)
 	RegisterDocsRoute(mux)
+	if s.uiHandler != nil {
+		RegisterAdminUIRoutes(mux, s.uiHandler)
+	}
 
 	s.server = &http.Server{
 		Handler:           mux,

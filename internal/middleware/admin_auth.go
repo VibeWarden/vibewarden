@@ -12,6 +12,16 @@ const (
 	// adminPathPrefix is the URL prefix that requires admin authentication.
 	adminPathPrefix = "/_vibewarden/admin/"
 
+	// adminUIPrefix is the public sub-prefix for the embedded admin UI static
+	// assets. Requests under this prefix bypass token validation so that the
+	// HTML/CSS/JS can load in the browser without a token. The carve-out only
+	// takes effect when cfg.Enabled is true; when admin is disabled all paths
+	// under adminPathPrefix still return 404.
+	//
+	// The prefix covers both "/_vibewarden/admin/ui" (bare, for the 301) and
+	// "/_vibewarden/admin/ui/" (with trailing slash, for assets and the index).
+	adminUIPrefix = "/_vibewarden/admin/ui"
+
 	// adminKeyHeader is the request header carrying the bearer token.
 	adminKeyHeader = "X-Admin-Key"
 )
@@ -26,8 +36,12 @@ const (
 //     when set) pass through unchanged to the next handler.
 //   - When cfg.Enabled is false, all protected requests receive 404 Not Found
 //     so the admin surface is not disclosed.
+//   - Requests under /_vibewarden/admin/ui (the embedded admin UI) bypass token
+//     validation when cfg.Enabled is true. The assets contain no secrets; the
+//     token gate on data routes is the real security boundary.
 //   - When cfg.Enabled is true but cfg.Token is empty, all admin requests
-//     receive 500 Internal Server Error to surface the misconfiguration.
+//     (except the UI carve-out) receive 500 Internal Server Error to surface the
+//     misconfiguration.
 //   - When the X-Admin-Key header is absent or does not match cfg.Token the
 //     middleware responds with 401 Unauthorized and a WWW-Authenticate hint.
 //   - When the X-Admin-Key header matches cfg.Token the request is forwarded
@@ -51,8 +65,18 @@ func AdminAuthMiddleware(cfg ports.AdminAuthConfig, auditLogger ports.AuditEvent
 			}
 
 			// Admin API is disabled — return 404 to avoid disclosing existence.
+			// This check runs BEFORE the UI carve-out so that the UI surface is
+			// also hidden when admin is disabled.
 			if !cfg.Enabled {
 				http.NotFound(w, r)
+				return
+			}
+
+			// UI carve-out: static assets under /_vibewarden/admin/ui do not
+			// require a token. The carve-out is inside the Enabled guard above, so
+			// the UI is only accessible when admin.enabled: true.
+			if strings.HasPrefix(r.URL.Path, adminUIPrefix) {
+				next.ServeHTTP(w, r)
 				return
 			}
 

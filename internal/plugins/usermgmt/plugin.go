@@ -12,6 +12,7 @@ import (
 	kratosadapter "github.com/vibewarden/vibewarden/internal/adapters/kratos"
 	postgresadapter "github.com/vibewarden/vibewarden/internal/adapters/postgres"
 	adminapp "github.com/vibewarden/vibewarden/internal/app/admin"
+	"github.com/vibewarden/vibewarden/internal/plugins/usermgmt/ui"
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
 
@@ -96,9 +97,11 @@ func defaultServiceFactory(cfg Config, eventLogger ports.EventLogger, logger *sl
 	return svc, cleanup, prober, nil
 }
 
-// defaultServerFactory builds the real internal AdminServer.
+// defaultServerFactory builds the real internal AdminServer with the embedded
+// admin UI wired in.
 func defaultServerFactory(handlers *httpadapter.AdminHandlers, logger *slog.Logger) AdminServerAPI {
-	return httpadapter.NewAdminServer(handlers, logger)
+	uiHandler := httpadapter.NewAdminUIHandler(ui.Assets())
+	return httpadapter.NewAdminServer(handlers, logger).WithUIHandler(uiHandler)
 }
 
 // PostgresProber is a consumer-side test seam: this interface is defined here

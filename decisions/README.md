@@ -93,6 +93,7 @@ Results applied 2026-05-04:
 | [104](adr-104-openbao-prod-init-unseal-via-seed-secrets.md) | OpenBao prod init+unseal via seed-secrets init container | #1345 | |
 | [105](adr-105-remove-grafana-plugin-name-constant.md) | Remove unused grafana plugin-name constant; grafana is a compose service | #1371 | |
 | [106](adr-106-sidecar-image-pinning-cli-version.md) | Sidecar image pinning — thread CLI version into compose render | #1385 | |
+| [107](adr-107-embedded-admin-ui.md) | Embedded user-management admin UI at /_vibewarden/admin/ui | #1391 | |
 | [497](adr-497-graceful-shutdown-connection-draining.md) | Graceful Shutdown / Connection Draining | — | Removed 2026-05-04 — see tombstone (anomalous number, paste of issue #497) |
 
 ## Numbering
