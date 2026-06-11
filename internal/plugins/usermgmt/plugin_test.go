@@ -532,251 +532,97 @@ func TestPlugin_HealthCheck_KratosAdminServerError(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// ContributeCaddyRoutes
+// ContributeCaddyRoutes — no-op regression lock (#1393)
 // ---------------------------------------------------------------------------
 
-func TestPlugin_ContributeCaddyRoutes_Disabled(t *testing.T) {
-	p := usermgmt.New(usermgmt.Config{Enabled: false}, &fakeNopEventLogger{}, discardLogger())
-	if err := p.Init(context.Background()); err != nil {
-		t.Fatalf("Init() error: %v", err)
-	}
-	routes := p.ContributeCaddyRoutes()
-	if len(routes) != 0 {
-		t.Errorf("ContributeCaddyRoutes() = %d routes for disabled plugin, want 0", len(routes))
-	}
-}
-
-func TestPlugin_ContributeCaddyRoutes_Enabled(t *testing.T) {
-	old := usermgmt.ExportedServiceFactory
-	usermgmt.ExportedServiceFactory = func(_ usermgmt.Config, _ ports.EventLogger, _ *slog.Logger) (ports.AdminService, func(), usermgmt.PostgresProber, error) {
-		return &fakeAdminService{}, nil, nil, nil
-	}
-	defer func() { usermgmt.ExportedServiceFactory = old }()
-
-	oldSrv := usermgmt.ExportedServerFactory
-	usermgmt.ExportedServerFactory = func(_ *httpadapter.AdminHandlers, _ *slog.Logger) usermgmt.AdminServerAPI {
-		return &fakeAdminServer{addr: "127.0.0.1:19999"}
-	}
-	defer func() { usermgmt.ExportedServerFactory = oldSrv }()
-
-	p := usermgmt.New(defaultConfig(), &fakeNopEventLogger{}, discardLogger())
-	if err := p.Init(context.Background()); err != nil {
-		t.Fatalf("Init() error: %v", err)
-	}
-	if err := p.Start(context.Background()); err != nil {
-		t.Fatalf("Start() error: %v", err)
+// TestPlugin_ContributeCaddyRoutes_AlwaysNil locks the post-#1393 no-op contract:
+// ContributeCaddyRoutes must return nil for both enabled and disabled plugins.
+// The canonical admin route is built by the caddy adapter (buildAdminRoute in
+// config_routes.go). A non-nil return here would introduce a duplicate
+// unauthenticated admin route — the auth-bypass described in #1393.
+func TestPlugin_ContributeCaddyRoutes_AlwaysNil(t *testing.T) {
+	tests := []struct {
+		name    string
+		enabled bool
+	}{
+		{"disabled plugin", false},
+		{"enabled plugin", true},
 	}
 
-	routes := p.ContributeCaddyRoutes()
-	if len(routes) == 0 {
-		t.Fatal("ContributeCaddyRoutes() returned empty slice for enabled plugin")
-	}
-}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			old := usermgmt.ExportedServiceFactory
+			usermgmt.ExportedServiceFactory = func(_ usermgmt.Config, _ ports.EventLogger, _ *slog.Logger) (ports.AdminService, func(), usermgmt.PostgresProber, error) {
+				return &fakeAdminService{}, nil, nil, nil
+			}
+			defer func() { usermgmt.ExportedServiceFactory = old }()
 
-func TestPlugin_ContributeCaddyRoutes_HandlerIsReverseProxy(t *testing.T) {
-	old := usermgmt.ExportedServiceFactory
-	usermgmt.ExportedServiceFactory = func(_ usermgmt.Config, _ ports.EventLogger, _ *slog.Logger) (ports.AdminService, func(), usermgmt.PostgresProber, error) {
-		return &fakeAdminService{}, nil, nil, nil
-	}
-	defer func() { usermgmt.ExportedServiceFactory = old }()
+			cfg := usermgmt.Config{Enabled: tt.enabled}
+			if tt.enabled {
+				cfg = defaultConfig()
+			}
+			p := usermgmt.New(cfg, &fakeNopEventLogger{}, discardLogger())
+			if err := p.Init(context.Background()); err != nil {
+				t.Fatalf("Init() error: %v", err)
+			}
 
-	oldSrv := usermgmt.ExportedServerFactory
-	usermgmt.ExportedServerFactory = func(_ *httpadapter.AdminHandlers, _ *slog.Logger) usermgmt.AdminServerAPI {
-		return &fakeAdminServer{addr: "127.0.0.1:19999"}
-	}
-	defer func() { usermgmt.ExportedServerFactory = oldSrv }()
-
-	p := usermgmt.New(defaultConfig(), &fakeNopEventLogger{}, discardLogger())
-	if err := p.Init(context.Background()); err != nil {
-		t.Fatalf("Init() error: %v", err)
-	}
-	if err := p.Start(context.Background()); err != nil {
-		t.Fatalf("Start() error: %v", err)
-	}
-
-	routes := p.ContributeCaddyRoutes()
-	if len(routes) == 0 {
-		t.Fatal("no routes contributed")
-	}
-
-	handleSlice, ok := routes[0].Handler["handle"].([]map[string]any)
-	if !ok {
-		t.Fatalf("handle is not []map[string]any: %T", routes[0].Handler["handle"])
-	}
-	if len(handleSlice) == 0 {
-		t.Fatal("handle slice is empty")
-	}
-	if got := handleSlice[0]["handler"]; got != "reverse_proxy" {
-		t.Errorf("handler = %q, want %q", got, "reverse_proxy")
-	}
-}
-
-func TestPlugin_ContributeCaddyRoutes_DialAddrMatchesInternalAddr(t *testing.T) {
-	const wantAddr = "127.0.0.1:19999"
-
-	old := usermgmt.ExportedServiceFactory
-	usermgmt.ExportedServiceFactory = func(_ usermgmt.Config, _ ports.EventLogger, _ *slog.Logger) (ports.AdminService, func(), usermgmt.PostgresProber, error) {
-		return &fakeAdminService{}, nil, nil, nil
-	}
-	defer func() { usermgmt.ExportedServiceFactory = old }()
-
-	oldSrv := usermgmt.ExportedServerFactory
-	usermgmt.ExportedServerFactory = func(_ *httpadapter.AdminHandlers, _ *slog.Logger) usermgmt.AdminServerAPI {
-		return &fakeAdminServer{addr: wantAddr}
-	}
-	defer func() { usermgmt.ExportedServerFactory = oldSrv }()
-
-	p := usermgmt.New(defaultConfig(), &fakeNopEventLogger{}, discardLogger())
-	if err := p.Init(context.Background()); err != nil {
-		t.Fatalf("Init() error: %v", err)
-	}
-	if err := p.Start(context.Background()); err != nil {
-		t.Fatalf("Start() error: %v", err)
-	}
-
-	routes := p.ContributeCaddyRoutes()
-	if len(routes) == 0 {
-		t.Fatal("no routes contributed")
-	}
-
-	handleSlice, ok := routes[0].Handler["handle"].([]map[string]any)
-	if !ok || len(handleSlice) == 0 {
-		t.Fatal("handle slice invalid")
-	}
-	upstreams, ok := handleSlice[0]["upstreams"].([]map[string]any)
-	if !ok || len(upstreams) == 0 {
-		t.Fatal("upstreams slice invalid")
-	}
-	dialAddr, ok := upstreams[0]["dial"].(string)
-	if !ok {
-		t.Fatal("dial is not a string")
-	}
-	if dialAddr != wantAddr {
-		t.Errorf("dial = %q, want %q", dialAddr, wantAddr)
-	}
-}
-
-func TestPlugin_ContributeCaddyRoutes_Priority(t *testing.T) {
-	old := usermgmt.ExportedServiceFactory
-	usermgmt.ExportedServiceFactory = func(_ usermgmt.Config, _ ports.EventLogger, _ *slog.Logger) (ports.AdminService, func(), usermgmt.PostgresProber, error) {
-		return &fakeAdminService{}, nil, nil, nil
-	}
-	defer func() { usermgmt.ExportedServiceFactory = old }()
-
-	oldSrv := usermgmt.ExportedServerFactory
-	usermgmt.ExportedServerFactory = func(_ *httpadapter.AdminHandlers, _ *slog.Logger) usermgmt.AdminServerAPI {
-		return &fakeAdminServer{addr: "127.0.0.1:19999"}
-	}
-	defer func() { usermgmt.ExportedServerFactory = oldSrv }()
-
-	p := usermgmt.New(defaultConfig(), &fakeNopEventLogger{}, discardLogger())
-	if err := p.Init(context.Background()); err != nil {
-		t.Fatalf("Init() error: %v", err)
-	}
-	if err := p.Start(context.Background()); err != nil {
-		t.Fatalf("Start() error: %v", err)
-	}
-
-	routes := p.ContributeCaddyRoutes()
-	if len(routes) == 0 {
-		t.Fatal("no routes")
-	}
-	if routes[0].Priority != 60 {
-		t.Errorf("route Priority = %d, want 60", routes[0].Priority)
+			routes := p.ContributeCaddyRoutes()
+			if routes != nil {
+				t.Errorf("ContributeCaddyRoutes() = %v, want nil (no-op: admin route is owned by caddy adapter)", routes)
+			}
+		})
 	}
 }
 
 // ---------------------------------------------------------------------------
-// ContributeCaddyHandlers
+// ContributeCaddyHandlers — no-op regression lock (#1393)
 // ---------------------------------------------------------------------------
 
-func TestPlugin_ContributeCaddyHandlers_Disabled(t *testing.T) {
-	p := usermgmt.New(usermgmt.Config{Enabled: false}, &fakeNopEventLogger{}, discardLogger())
-	if err := p.Init(context.Background()); err != nil {
-		t.Fatalf("Init() error: %v", err)
-	}
-	handlers := p.ContributeCaddyHandlers()
-	if len(handlers) != 0 {
-		t.Errorf("ContributeCaddyHandlers() = %d handlers for disabled plugin, want 0", len(handlers))
-	}
-}
-
-func TestPlugin_ContributeCaddyHandlers_Enabled(t *testing.T) {
-	old := usermgmt.ExportedServiceFactory
-	usermgmt.ExportedServiceFactory = func(_ usermgmt.Config, _ ports.EventLogger, _ *slog.Logger) (ports.AdminService, func(), usermgmt.PostgresProber, error) {
-		return &fakeAdminService{}, nil, nil, nil
-	}
-	defer func() { usermgmt.ExportedServiceFactory = old }()
-
-	p := usermgmt.New(defaultConfig(), &fakeNopEventLogger{}, discardLogger())
-	if err := p.Init(context.Background()); err != nil {
-		t.Fatalf("Init() error: %v", err)
+// TestPlugin_ContributeCaddyHandlers_AlwaysNil locks the post-#1393 no-op contract:
+// ContributeCaddyHandlers must return nil for both enabled and disabled plugins.
+// The divergent "admin_auth" handler map (wrong module name — should be
+// "vibewarden_admin_auth") was the direct cause of the sidecar crash-loop in
+// #1393: caddy.Load rejected the unknown handler name. The canonical gate is
+// now inlined into the admin route by the caddy adapter.
+func TestPlugin_ContributeCaddyHandlers_AlwaysNil(t *testing.T) {
+	tests := []struct {
+		name    string
+		enabled bool
+	}{
+		{"disabled plugin", false},
+		{"enabled plugin", true},
 	}
 
-	handlers := p.ContributeCaddyHandlers()
-	if len(handlers) != 1 {
-		t.Fatalf("ContributeCaddyHandlers() = %d handlers, want 1", len(handlers))
-	}
-}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			old := usermgmt.ExportedServiceFactory
+			usermgmt.ExportedServiceFactory = func(_ usermgmt.Config, _ ports.EventLogger, _ *slog.Logger) (ports.AdminService, func(), usermgmt.PostgresProber, error) {
+				return &fakeAdminService{}, nil, nil, nil
+			}
+			defer func() { usermgmt.ExportedServiceFactory = old }()
 
-func TestPlugin_ContributeCaddyHandlers_AdminAuthHandler(t *testing.T) {
-	old := usermgmt.ExportedServiceFactory
-	usermgmt.ExportedServiceFactory = func(_ usermgmt.Config, _ ports.EventLogger, _ *slog.Logger) (ports.AdminService, func(), usermgmt.PostgresProber, error) {
-		return &fakeAdminService{}, nil, nil, nil
-	}
-	defer func() { usermgmt.ExportedServiceFactory = old }()
+			cfg := usermgmt.Config{Enabled: tt.enabled}
+			if tt.enabled {
+				cfg = defaultConfig()
+			}
+			p := usermgmt.New(cfg, &fakeNopEventLogger{}, discardLogger())
+			if err := p.Init(context.Background()); err != nil {
+				t.Fatalf("Init() error: %v", err)
+			}
 
-	p := usermgmt.New(defaultConfig(), &fakeNopEventLogger{}, discardLogger())
-	if err := p.Init(context.Background()); err != nil {
-		t.Fatalf("Init() error: %v", err)
-	}
+			handlers := p.ContributeCaddyHandlers()
+			if handlers != nil {
+				t.Errorf("ContributeCaddyHandlers() = %v, want nil (no-op: gate is inlined into admin route by caddy adapter)", handlers)
+			}
 
-	handlers := p.ContributeCaddyHandlers()
-	if len(handlers) < 1 {
-		t.Fatal("no handlers contributed")
-	}
-
-	h := handlers[0]
-	if h.Priority != 60 {
-		t.Errorf("admin_auth handler Priority = %d, want 60", h.Priority)
-	}
-	if h.Handler["handler"] != "admin_auth" {
-		t.Errorf("handler type = %q, want %q", h.Handler["handler"], "admin_auth")
-	}
-	if _, ok := h.Handler["admin_token"]; !ok {
-		t.Error("admin_auth handler missing admin_token field")
-	}
-	if _, ok := h.Handler["admin_path"]; !ok {
-		t.Error("admin_auth handler missing admin_path field")
-	}
-}
-
-func TestPlugin_ContributeCaddyHandlers_AdminTokenSet(t *testing.T) {
-	const wantToken = "my-secret-token"
-
-	old := usermgmt.ExportedServiceFactory
-	usermgmt.ExportedServiceFactory = func(_ usermgmt.Config, _ ports.EventLogger, _ *slog.Logger) (ports.AdminService, func(), usermgmt.PostgresProber, error) {
-		return &fakeAdminService{}, nil, nil, nil
-	}
-	defer func() { usermgmt.ExportedServiceFactory = old }()
-
-	cfg := defaultConfig()
-	cfg.AdminToken = wantToken
-	p := usermgmt.New(cfg, &fakeNopEventLogger{}, discardLogger())
-	if err := p.Init(context.Background()); err != nil {
-		t.Fatalf("Init() error: %v", err)
-	}
-
-	handlers := p.ContributeCaddyHandlers()
-	if len(handlers) < 1 {
-		t.Fatal("no handlers")
-	}
-	token, ok := handlers[0].Handler["admin_token"].(string)
-	if !ok {
-		t.Fatalf("admin_token is not string: %T", handlers[0].Handler["admin_token"])
-	}
-	if token != wantToken {
-		t.Errorf("admin_token = %q, want %q", token, wantToken)
+			// Extra guard: confirm the divergent "admin_auth" map (wrong module
+			// name) is NOT present. This is what caused caddy.Load to fail in #1393.
+			for _, h := range handlers {
+				if name, _ := h.Handler["handler"].(string); name == "admin_auth" {
+					t.Errorf("ContributeCaddyHandlers() emitted divergent admin_auth map — this crashes Caddy (wrong module name; should be vibewarden_admin_auth)")
+				}
+			}
+		})
 	}
 }
 

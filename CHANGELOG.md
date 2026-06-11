@@ -12,6 +12,14 @@ This initial entry was written by hand to summarise the work leading up to v0.1.
 
 ## [Unreleased]
 
+### Fixed
+
+- **fix(#1393): close admin-API auth bypass and sidecar crash-loop when `admin.enabled: true`.** Two independent bugs existed:
+  1. **Admin-API auth bypass (security):** The `/_vibewarden/admin/*` dedicated route in the Caddy config had only `[reverse_proxy]` in its handle chain — no `vibewarden_admin_auth` gate. Caddy evaluates routes top-to-bottom and stops at the first match; the auth handler in the catch-all chain never ran for admin paths. Every request to `/_vibewarden/admin/users` (and all other admin data routes) was proxied to the internal server regardless of the `X-Admin-Key` header value. Fixed by inlining `vibewarden_admin_auth` as the **first** handler in `buildAdminRoute` (before `reverse_proxy`), making the gate run in-path.
+  2. **Sidecar crash-loop:** `usermgmt.Plugin.ContributeCaddyHandlers()` emitted a handler map with `"handler":"admin_auth"` — the wrong Caddy module name (the registered name is `"vibewarden_admin_auth"`). Caddy's `caddy.Load` rejected the unknown module name and crashed on startup whenever `admin.enabled: true`. The plugin's divergent route and handler contributions were removed; the canonical routes + gate are now built once by the caddy adapter (`config_routes.go:buildAdminRoute` and `buildConfigRoute`). `ConfigPath` (`/_vibewarden/config/`) was also missing from the handler serialisation — fixed in `buildAdminAuthHandlerJSON`.
+
+  The config hot-reload endpoints (`POST /_vibewarden/config/reload`, `GET /_vibewarden/config`) are served by the internal admin server and now have their own canonical Caddy route with the same inlined `vibewarden_admin_auth` gate, proxying to the internal admin server. The route matches both the `/_vibewarden/config/*` subtree and the exact no-slash `/_vibewarden/config` inspection path; the middleware's config-path matcher was reconciled so the no-slash GET is also token-gated (previously it would have passed the bare prefix check tokenless). Integration tests confirm 401-without-token / 200-with-token end-to-end through a running Caddy instance for both the admin and config routes, and a clean-start test guards against the crash-loop regression.
+
 ### Security
 
 - **Bump Go toolchain to go1.26.4 (GO-2026-5037, GO-2026-5039).** Both vulnerabilities affect the Go standard library and are fixed in go1.26.4. GO-2026-5037 is an inefficient candidate hostname parsing bug in `crypto/x509` (reachable via TLS dialing and certificate verification). GO-2026-5039 is an arbitrary-input inclusion bug in `net/textproto` (reachable via HTTP response reading in the OpenBao adapter). Pinned `toolchain go1.26.4` in `go.mod`, `golang:1.26.4-alpine` in `Dockerfile`, and `go-version: "1.26.4"` in all CI workflows. Unblocks the repo-wide Trivy and govulncheck CI gates.
