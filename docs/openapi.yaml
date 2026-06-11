@@ -8,6 +8,9 @@ info:
     containing the configured admin bearer token, except for the health
     check and this API spec endpoint.
 
+    A browser-based admin console for these operations is served at
+    /_vibewarden/admin/ui/ (static HTML; not part of this API spec).
+
     The sidecar always runs locally next to your application. It is never
     hosted remotely.
   contact:

@@ -22,6 +22,7 @@ Next steps after enabling admin:
   1. Set the VIBEWARDEN_ADMIN_TOKEN environment variable
   2. Restart VibeWarden
   3. Access the admin API at https://localhost:8443/_vibewarden/admin/
+  4. Or open the browser admin UI at https://localhost:8443/_vibewarden/admin/ui/
 
 Run 'vibew wrap' first if vibewarden.yaml does not exist.`,
 		Args: cobra.MaximumNArgs(1),

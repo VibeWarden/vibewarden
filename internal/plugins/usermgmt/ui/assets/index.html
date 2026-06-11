@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <title>VibeWarden — User management</title>
+  <link rel="stylesheet" href="styles.css">
+  <script src="app.js" defer></script>
+</head>
+<body>
+
+  <!-- ══════════════ TOKEN GATE ══════════════ -->
+  <main id="view-gate" class="gate hidden" aria-labelledby="gate-title">
+    <div class="gate-card">
+      <div class="gate-scanline" aria-hidden="true"></div>
+
+      <div class="gate-mark" aria-hidden="true">
+        <img src="logo.png" class="vwmark vwmark-lg" alt="VibeWarden">
+      </div>
+
+      <p class="gate-kicker">// authorization required</p>
+      <h1 id="gate-title" class="gate-title">Vibe<span class="grad-text">Warden</span></h1>
+      <p class="gate-sub">Admin console &middot; user management</p>
+
+      <form id="gate-form" class="gate-form" novalidate>
+        <label class="field-label" for="gate-token">Admin token</label>
+        <div class="token-wrap">
+          <svg class="token-key-icon" viewBox="0 0 16 16" aria-hidden="true">
+            <path d="M10.5 1a4.5 4.5 0 0 0-4.36 5.6L1 11.75V15h3.25l.75-.75V13h1.25l.75-.75V11h1.25l.9-.9A4.5 4.5 0 1 0 10.5 1Zm1.25 4.5a1.25 1.25 0 1 1 0-2.5 1.25 1.25 0 0 1 0 2.5Z"/>
+          </svg>
+          <input id="gate-token" name="token" type="password" autocomplete="off"
+                 spellcheck="false" placeholder="••••••••••••••••" required
+                 aria-describedby="gate-hint gate-error">
+        </div>
+        <p id="gate-error" class="gate-error hidden" role="alert"></p>
+        <button type="submit" class="btn btn-primary btn-block">
+          <span class="btn-prompt" aria-hidden="true">&gt;_</span> Authenticate
+        </button>
+        <p id="gate-hint" class="gate-hint">
+          This is the <code>admin.token</code> value from your <code>vibewarden.yaml</code>.
+          It is kept in this tab&rsquo;s session only &mdash; never stored on disk.
+        </p>
+      </form>
+    </div>
+    <a class="vw-badge" href="https://vibewarden.dev" target="_blank" rel="noopener noreferrer">
+      <span class="vw-badge-shield" aria-hidden="true">
+        <img src="logo.png" class="vw-badge-mark" alt="">
+      </span>
+      <span class="vw-badge-text">Protected by <strong>VibeWarden</strong></span>
+    </a>
+  </main>
+
+  <!-- ══════════════ CONSOLE ══════════════ -->
+  <div id="view-app" class="app hidden">
+    <header class="topbar">
+      <div class="topbar-brand">
+        <img src="logo.png" class="vwmark" alt="" aria-hidden="true">
+        <span class="wordmark">Vibe<span class="grad-text">Warden</span></span>
+        <span class="topbar-sep" aria-hidden="true">/</span>
+        <h1 class="topbar-title">User management</h1>
+      </div>
+      <div class="topbar-actions">
+        <span id="user-count" class="count-chip hidden">
+          <span class="count-dot" aria-hidden="true"></span><span id="user-count-num">0</span>&nbsp;users
+        </span>
+        <button id="btn-signout" type="button" class="btn btn-ghost btn-sm">Sign out</button>
+      </div>
+    </header>
+
+    <main class="console" aria-labelledby="console-title">
+      <div class="console-head">
+        <div>
+          <h2 id="console-title" class="console-title">Identities</h2>
+          <p class="console-sub mono">GET /_vibewarden/admin/users</p>
+        </div>
+        <div class="console-head-actions">
+          <button id="btn-refresh" type="button" class="btn btn-ghost btn-sm" aria-label="Refresh user list">
+            <svg viewBox="0 0 16 16" class="icon" aria-hidden="true">
+              <path d="M13.65 2.35A8 8 0 1 0 16 8h-2a6 6 0 1 1-1.76-4.24L10 6h6V0l-2.35 2.35Z"/>
+            </svg>
+            Refresh
+          </button>
+          <button id="btn-add" type="button" class="btn btn-primary">
+            <svg viewBox="0 0 16 16" class="icon" aria-hidden="true">
+              <path d="M9 2H7v5H2v2h5v5h2V9h5V7H9V2Z"/>
+            </svg>
+            Add user
+          </button>
+        </div>
+      </div>
+
+      <!-- loading -->
+      <div id="state-loading" class="state hidden" aria-hidden="true">
+        <div class="skel-row"></div>
+        <div class="skel-row"></div>
+        <div class="skel-row"></div>
+        <div class="skel-row"></div>
+        <div class="skel-row"></div>
+      </div>
+
+      <!-- error -->
+      <div id="state-error" class="state state-error hidden" role="alert">
+        <svg viewBox="0 0 16 16" class="state-icon" aria-hidden="true">
+          <path d="M8 0 0 14h16L8 0Zm-1 6h2v4H7V6Zm0 5h2v2H7v-2Z"/>
+        </svg>
+        <p class="state-title">Couldn&rsquo;t reach the admin API</p>
+        <p id="state-error-msg" class="state-msg mono"></p>
+        <button id="btn-retry" type="button" class="btn btn-ghost">Retry</button>
+      </div>
+
+      <!-- empty -->
+      <div id="state-empty" class="state hidden">
+        <img src="logo.png" class="vwmark vwmark-dim" alt="" aria-hidden="true">
+        <p class="state-title">No users yet</p>
+        <p class="state-msg">Create the first identity &mdash; you&rsquo;ll get a one-time recovery link to send them.</p>
+        <button id="btn-add-empty" type="button" class="btn btn-primary">Add your first user</button>
+      </div>
+
+      <!-- table -->
+      <div id="state-table" class="table-wrap hidden">
+        <table class="users" aria-describedby="console-title">
+          <thead>
+            <tr>
+              <th scope="col">Email</th>
+              <th scope="col">Status</th>
+              <th scope="col">Created</th>
+              <th scope="col">ID</th>
+              <th scope="col"><span class="visually-hidden">Actions</span></th>
+            </tr>
+          </thead>
+          <tbody id="users-tbody"></tbody>
+        </table>
+        <nav class="pager" aria-label="Pagination">
+          <button id="pager-prev" type="button" class="btn btn-ghost btn-sm">&larr; Prev</button>
+          <span id="pager-label" class="pager-label mono">page 1 / 1</span>
+          <button id="pager-next" type="button" class="btn btn-ghost btn-sm">Next &rarr;</button>
+        </nav>
+      </div>
+    </main>
+
+    <footer class="app-foot">
+      <a class="vw-badge" href="https://vibewarden.dev" target="_blank" rel="noopener noreferrer">
+        <span class="vw-badge-shield" aria-hidden="true">
+          <img src="logo.png" class="vw-badge-mark" alt="">
+        </span>
+        <span class="vw-badge-text">Protected by <strong>VibeWarden</strong></span>
+      </a>
+    </footer>
+  </div>
+
+  <!-- ══════════════ CREATE USER MODAL ══════════════ -->
+  <div id="modal-backdrop" class="modal-backdrop hidden">
+    <div id="modal" class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
+      <div class="modal-scanline" aria-hidden="true"></div>
+      <div class="modal-head">
+        <h2 id="modal-title" class="modal-title">Add user</h2>
+        <button id="modal-close" type="button" class="btn-x" aria-label="Close dialog">&times;</button>
+      </div>
+
+      <!-- step 1: form -->
+      <form id="create-form" class="modal-body" novalidate>
+        <label class="field-label" for="create-email">Email address</label>
+        <input id="create-email" name="email" type="email" required spellcheck="false"
+               placeholder="dev@example.com" autocomplete="off" aria-describedby="create-error">
+        <p id="create-error" class="gate-error hidden" role="alert"></p>
+        <div class="modal-actions">
+          <button type="button" id="create-cancel" class="btn btn-ghost">Cancel</button>
+          <button type="submit" id="create-submit" class="btn btn-primary">Create identity</button>
+        </div>
+      </form>
+
+      <!-- step 2: recovery link -->
+      <div id="create-success" class="modal-body hidden">
+        <p class="success-line">
+          <span class="badge badge-active">created</span>
+          <span id="created-email" class="mono"></span>
+        </p>
+        <div class="recovery">
+          <p class="recovery-warn">
+            <svg viewBox="0 0 16 16" class="icon" aria-hidden="true">
+              <path d="M8 0 0 14h16L8 0Zm-1 6h2v4H7V6Zm0 5h2v2H7v-2Z"/>
+            </svg>
+            One-time recovery link &mdash; shown <strong>once</strong>. Copy it now and send it to the user.
+          </p>
+          <div class="recovery-row">
+            <code id="recovery-link" class="recovery-link"></code>
+            <button id="btn-copy-link" type="button" class="btn btn-primary btn-sm">Copy</button>
+          </div>
+        </div>
+        <div class="modal-actions">
+          <button id="create-done" type="button" class="btn btn-ghost">Done</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- toast / live region -->
+  <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
+
+</body>
+</html>
