@@ -89,7 +89,10 @@ func (h *AdminUIHandler) serveIndex(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
 	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write(data) //nolint:errcheck
+	// data is the trusted index.html embedded into the binary at build time
+	// (internal/plugins/usermgmt/ui) — never user input — so the gosec G705
+	// XSS-taint finding is a false positive.
+	_, _ = w.Write(data) //nolint:errcheck,gosec // trusted embedded asset, not user input
 }
 
 // RegisterAdminUIRoutes registers the AdminUIHandler on mux for both the
