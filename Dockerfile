@@ -40,12 +40,15 @@ RUN CGO_ENABLED=0 GOOS=linux go build \
 FROM alpine:3.23
 
 # `apk upgrade` pulls the latest patch versions of the base packages so the
-# shipped image picks up CVE fixes released after the alpine:3.21 tag was
-# cut (e.g. libcrypto3/libssl3 CVE-2026-28390, musl CVE-2026-40200, zlib
-# CVE-2026-22184). Without this the image keeps the tag-time versions
-# indefinitely, which Trivy flags.
+# shipped image picks up CVE fixes released after the alpine:3.23 tag was
+# cut. libcrypto3/libssl3 are upgraded to >=3.5.7-r0 to close
+# CVE-2026-45447 (OpenSSL heap use-after-free in PKCS7_verify). The explicit
+# version floor also busts any stale `apk upgrade` build-cache layer that
+# predates the fix, so Trivy image scans stay green. Without this the image
+# keeps the tag-time versions indefinitely, which Trivy flags.
 RUN apk upgrade --no-cache \
-    && apk add --no-cache ca-certificates wget
+    && apk add --no-cache ca-certificates wget \
+       "libcrypto3>=3.5.7-r0" "libssl3>=3.5.7-r0"
 
 # Copy the statically linked binary.
 COPY --from=builder /vibewarden /vibewarden

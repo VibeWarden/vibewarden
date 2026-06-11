@@ -16,6 +16,8 @@ This initial entry was written by hand to summarise the work leading up to v0.1.
 
 - **Bump Go toolchain to go1.26.4 (GO-2026-5037, GO-2026-5039).** Both vulnerabilities affect the Go standard library and are fixed in go1.26.4. GO-2026-5037 is an inefficient candidate hostname parsing bug in `crypto/x509` (reachable via TLS dialing and certificate verification). GO-2026-5039 is an arbitrary-input inclusion bug in `net/textproto` (reachable via HTTP response reading in the OpenBao adapter). Pinned `toolchain go1.26.4` in `go.mod`, `golang:1.26.4-alpine` in `Dockerfile`, and `go-version: "1.26.4"` in all CI workflows. Unblocks the repo-wide Trivy and govulncheck CI gates.
 
+- **Upgrade Alpine OpenSSL to >=3.5.7-r0 (CVE-2026-45447).** The runtime image shipped `libcrypto3`/`libssl3` 3.5.6-r0 from the `alpine:3.23` base, which Trivy flags HIGH for an OpenSSL heap use-after-free in `PKCS7_verify()`. Floored both packages at `3.5.7-r0` in `Dockerfile` and `Dockerfile.goreleaser`; the explicit version floor also busts the stale GHA `apk upgrade` build-cache layer that kept the vulnerable version. This was the second half of the repo-wide Trivy image-scan failure blocking all PRs.
+
 ## [v0.20.1] — 2026-06-06
 
 Theme: patch — pin the sidecar image to the CLI version (ADR-106), closing the silent CLI↔sidecar version-skew gap surfaced by the v0.20.0 release smoke test (#1385).
