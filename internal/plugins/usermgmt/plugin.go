@@ -19,18 +19,6 @@ import (
 // Ensure Plugin implements ports.DependencyChecker at compile time.
 var _ ports.DependencyChecker = (*Plugin)(nil)
 
-// adminPath is the URL path wildcard that the plugin exposes through Caddy.
-const adminPath = "/_vibewarden/admin/*"
-
-// adminPathPrefix is the route prefix used when matching admin requests.
-const adminPathPrefix = "/_vibewarden/admin/"
-
-// configPath is the URL path wildcard for config hot-reload endpoints.
-const configPath = "/_vibewarden/config/*"
-
-// configPathPrefix is the route prefix for config endpoints.
-const configPathPrefix = "/_vibewarden/config/"
-
 // healthCheckTimeout is the deadline used for Kratos admin API connectivity
 // probes performed during HealthCheck.
 const healthCheckTimeout = 3 * time.Second
@@ -132,13 +120,18 @@ type postgresProber = PostgresProber
 //   - Create a Kratos admin adapter, admin application service, and HTTP
 //     handlers on Init.
 //   - Start an internal HTTP server on a random localhost port on Start.
-//   - Contribute a Caddy route that reverse-proxies /_vibewarden/admin/* to
-//     the internal server (ContributeCaddyRoutes).
-//   - Contribute the admin-auth handler that validates the X-Admin-Key bearer
-//     token (ContributeCaddyHandlers).
 //   - Report the internal server address (InternalAddr).
 //   - Report the health of the admin server (Health).
 //   - Report Postgres connectivity for the health endpoint (CheckDependency).
+//
+// The admin Caddy route and the vibewarden_admin_auth gate are built by the
+// caddy adapter (buildAdminRoute in config_routes.go), not by this plugin.
+// ContributeCaddyRoutes and ContributeCaddyHandlers are intentional no-ops:
+// the canonical route + gate are emitted once from cfg.Admin/cfg.AdminAuth in
+// buildRoutes (config_build.go). A previous version of this plugin emitted a
+// divergent admin_auth handler map (wrong module name "admin_auth" instead of
+// "vibewarden_admin_auth") that caused caddy.Load to fail — the sidecar
+// crash-loop described in #1393.
 type Plugin struct {
 	cfg          Config
 	logger       *slog.Logger
@@ -376,79 +369,26 @@ func (p *Plugin) InternalAddr() string {
 	return p.internalAddr
 }
 
-// ContributeCaddyRoutes returns the Caddy route that reverse-proxies all
-// /_vibewarden/admin/* requests to the internal admin HTTP server.
+// ContributeCaddyRoutes is a no-op for the user-management plugin.
 //
-// The route has Priority 60 and is placed before the catch-all reverse proxy
-// route so that admin requests are never forwarded to the upstream application.
-//
-// Returns nil when the plugin is disabled.
+// The admin route (/_vibewarden/admin/*) is built canonically by the caddy
+// adapter in buildAdminRoute (config_routes.go), which inlines the
+// vibewarden_admin_auth gate before the reverse_proxy handler. Emitting a
+// separate route here would create a duplicate unauthenticated admin route
+// (the bypass described in #1393).
 func (p *Plugin) ContributeCaddyRoutes() []ports.CaddyRoute {
-	if !p.cfg.Enabled {
-		return nil
-	}
-
-	return []ports.CaddyRoute{
-		{
-			MatchPath: adminPath,
-			Priority:  60,
-			Handler: map[string]any{
-				"match": []map[string]any{
-					{"path": []string{adminPath}},
-				},
-				"handle": []map[string]any{
-					{
-						"handler": "reverse_proxy",
-						"upstreams": []map[string]any{
-							{"dial": p.internalAddr},
-						},
-					},
-				},
-			},
-		},
-		{
-			MatchPath: configPath,
-			Priority:  61,
-			Handler: map[string]any{
-				"match": []map[string]any{
-					{"path": []string{configPath}},
-				},
-				"handle": []map[string]any{
-					{
-						"handler": "reverse_proxy",
-						"upstreams": []map[string]any{
-							{"dial": p.internalAddr},
-						},
-					},
-				},
-			},
-		},
-	}
+	return nil
 }
 
-// ContributeCaddyHandlers returns the Caddy handler that validates the
-// X-Admin-Key bearer token for all /_vibewarden/admin/* requests.
+// ContributeCaddyHandlers is a no-op for the user-management plugin.
 //
-// The handler has Priority 60 and is placed in the catch-all handler chain.
-// Requests to other paths pass through unchanged.
-//
-// Returns nil when the plugin is disabled.
+// The vibewarden_admin_auth handler is inlined into the canonical admin route
+// built by the caddy adapter (buildAdminRoute in config_routes.go). Adding it
+// here into the catch-all handler chain would be redundant and was the source
+// of the crash-loop in #1393 (the previous map used the wrong handler name
+// "admin_auth" instead of "vibewarden_admin_auth", causing caddy.Load to fail).
 func (p *Plugin) ContributeCaddyHandlers() []ports.CaddyHandler {
-	if !p.cfg.Enabled {
-		return nil
-	}
-
-	return []ports.CaddyHandler{
-		{
-			Handler: map[string]any{
-				"handler":     "admin_auth",
-				"admin_token": p.cfg.AdminToken,
-				"admin_path":  adminPathPrefix,
-				"config_path": configPathPrefix,
-			},
-			Priority: 60,
-		},
-	}
+	return nil
 }
 
 // ---------------------------------------------------------------------------

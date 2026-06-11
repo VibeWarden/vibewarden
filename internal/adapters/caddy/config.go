@@ -36,7 +36,10 @@ func BuildCaddyConfig(cfg *ports.ProxyConfig) (map[string]any, error) {
 		return nil, err
 	}
 
-	routes := buildRoutes(cfg, handlers)
+	routes, err := buildRoutes(cfg, handlers)
+	if err != nil {
+		return nil, err
+	}
 	server := buildMainServer(cfg, routes)
 
 	apps, err := buildCaddyApps(cfg, server)

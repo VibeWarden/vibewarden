@@ -112,11 +112,14 @@ func (h *AdminAuthHandler) ServeHTTP(w http.ResponseWriter, r *http.Request, nex
 }
 
 // buildAdminAuthHandlerJSON serialises an AdminAuthHandlerConfig to the Caddy
-// handler JSON fragment used in BuildCaddyConfig.
+// handler JSON fragment used in BuildCaddyConfig. ConfigPath is included so
+// that the inlined admin route handler also protects the config-reload path
+// prefix (/_vibewarden/config/*).
 func buildAdminAuthHandlerJSON(cfg ports.AdminAuthConfig) (map[string]any, error) {
 	handlerCfg := AdminAuthHandlerConfig{
-		Enabled: cfg.Enabled,
-		Token:   cfg.Token,
+		Enabled:    cfg.Enabled,
+		Token:      cfg.Token,
+		ConfigPath: cfg.ConfigPath,
 	}
 
 	cfgBytes, err := json.Marshal(handlerCfg)

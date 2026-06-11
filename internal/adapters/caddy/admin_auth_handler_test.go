@@ -220,6 +220,52 @@ func TestBuildAdminAuthHandlerJSON(t *testing.T) {
 				}
 			},
 		},
+		{
+			// Regression for #1393: ConfigPath was previously dropped by
+			// buildAdminAuthHandlerJSON, so the inlined admin route handler
+			// could not protect /_vibewarden/config/* even when configured.
+			name: "config_path is serialised when set",
+			cfg: ports.AdminAuthConfig{
+				Enabled:    true,
+				Token:      "tok",
+				ConfigPath: "/_vibewarden/config/",
+			},
+			wantErr: false,
+			checks: func(t *testing.T, result map[string]any) {
+				t.Helper()
+				rawBytes, err := json.Marshal(result["config"])
+				if err != nil {
+					t.Fatalf("config value is not JSON-serialisable: %v", err)
+				}
+				var parsed map[string]any
+				if err := json.Unmarshal(rawBytes, &parsed); err != nil {
+					t.Fatalf("config value is not valid JSON: %v", err)
+				}
+				configPath, ok := parsed["config_path"].(string)
+				if !ok {
+					t.Fatal("config.config_path is missing or not a string")
+				}
+				if configPath != "/_vibewarden/config/" {
+					t.Errorf("config.config_path = %q, want %q", configPath, "/_vibewarden/config/")
+				}
+			},
+		},
+		{
+			// When ConfigPath is empty it should be omitted (omitempty tag) so
+			// the handler JSON stays compact.
+			name:    "config_path is omitted when empty",
+			cfg:     ports.AdminAuthConfig{Enabled: true, Token: "tok", ConfigPath: ""},
+			wantErr: false,
+			checks: func(t *testing.T, result map[string]any) {
+				t.Helper()
+				rawBytes, _ := json.Marshal(result["config"])
+				var parsed map[string]any
+				_ = json.Unmarshal(rawBytes, &parsed)
+				if _, present := parsed["config_path"]; present {
+					t.Error("config.config_path should be absent when empty (omitempty)")
+				}
+			},
+		},
 	}
 
 	for _, tt := range tests {
