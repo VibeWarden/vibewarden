@@ -16,7 +16,7 @@ require (
 	github.com/moby/moby/api v1.54.2
 	github.com/moby/patternmatcher v0.6.1
 	github.com/prometheus/client_golang v1.23.2
-	github.com/redis/go-redis/v9 v9.19.0
+	github.com/redis/go-redis/v9 v9.20.1
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.2
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/viper v1.21.0
