@@ -1423,6 +1423,27 @@ response_headers:
   # Header names to remove from every response. Default: []
   remove: []
 
+# Health endpoint — /_vibewarden/health response settings.
+#
+# Controls what the sidecar discloses on its public health endpoint.
+# The endpoint is always reachable (it is in the public_paths prefix
+# /_vibewarden/*) because load balancers and container orchestrators use
+# it as a liveness probe.
+#
+# OWASP A05 (Security Misconfiguration): exposing the exact binary version
+# aids targeted CVE exploitation. Set expose_version: false in production
+# to omit the version field. Port-ownership detection (vibew doctor) uses
+# the stable X-Vibewarden response header instead, so this setting has no
+# effect on internal tooling.
+health:
+  # Whether to include the "version" field in the /_vibewarden/health JSON
+  # response. Default: true (backward-compatible).
+  #
+  # Set to false to suppress the version string (OWASP A05 hardening). The
+  # X-Vibewarden: 1 response header is always present regardless of this
+  # setting and is used by vibew doctor for port-ownership detection.
+  expose_version: true
+
 # Config file watcher — hot reload vibewarden.yaml without restarting.
 # When a change is detected, VibeWarden re-reads and validates the config.
 # If the new config is invalid, the reload is rejected and the current config

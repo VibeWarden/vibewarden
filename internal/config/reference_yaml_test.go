@@ -73,6 +73,7 @@ func TestReferenceYAML_UnmarshalsCleanly(t *testing.T) {
 		{"error_pages.enabled", cfg.ErrorPages.Enabled, false},
 		{"maintenance.enabled", cfg.Maintenance.Enabled, false},
 		{"compression.enabled", cfg.Compression.Enabled, true},
+		{"health.expose_version", cfg.Health.ExposeVersion, true},
 		{"watch.enabled", cfg.Watch.Enabled, true},
 		{"watch.debounce", cfg.Watch.Debounce, "500ms"},
 		{"egress.enabled", cfg.Egress.Enabled, false},
@@ -132,6 +133,10 @@ func TestSetDefaults_EmptyYAML(t *testing.T) {
 		{"resilience.retry.max_attempts", cfg.Resilience.Retry.MaxAttempts, 3},
 		{"resilience.retry.backoff", cfg.Resilience.Retry.InitialBackoff, "100ms"},
 		{"resilience.retry.max_backoff", cfg.Resilience.Retry.MaxBackoff, "10s"},
+
+		// health.expose_version default — must be true so existing deployments
+		// continue to expose the version (backward-compatible default).
+		{"health.expose_version", cfg.Health.ExposeVersion, true},
 
 		// telemetry.traces default — must be false so tracing is opt-in.
 		{"telemetry.traces.enabled", cfg.Telemetry.Traces.Enabled, false},

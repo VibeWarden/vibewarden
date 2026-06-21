@@ -25,6 +25,18 @@ type HealthHandlerConfig struct {
 	SiteName string `json:"site_name,omitempty"`
 }
 
+// HealthIdentityHeader is the response header always emitted by the
+// /_vibewarden/health endpoint regardless of health.expose_version. It is the
+// stable ownership marker used by port_owner.go to detect a VibeWarden sidecar
+// without relying on the version string being present in the body. The value is
+// always "1". The canonical definition lives in internal/ports so that the ops
+// adapter can reference it without importing this adapter; this is an alias for
+// local readability. See internal/adapters/ops/port_owner.go.
+const HealthIdentityHeader = ports.HealthIdentityHeader
+
+// healthIdentityHeaderValue is the fixed value of HealthIdentityHeader.
+const healthIdentityHeaderValue = ports.HealthIdentityHeaderValue
+
 // HealthHandler is a Caddy HTTP handler module registered as
 // "http.handlers.vibewarden_health". It replaces the previous static_response
 // on the /_vibewarden/health route and renders the cached probe result from
@@ -38,10 +50,11 @@ type HealthHandler struct {
 	// Config is the JSON-decoded module configuration.
 	Config HealthHandlerConfig `json:"config,omitempty"`
 
-	logger   *slog.Logger
-	checker  ports.UpstreamHealthChecker
-	version  string
-	siteName string
+	logger          *slog.Logger
+	checker         ports.UpstreamHealthChecker
+	version         string
+	siteName        string
+	suppressVersion bool
 }
 
 // CaddyModule returns the module metadata. The module ID must match the
@@ -75,12 +88,17 @@ func (h *HealthHandler) ProvisionWith(_ gocaddy.Context, s RuntimeServices) erro
 	h.checker = s.UpstreamHealthChecker
 	h.version = s.SidecarVersion
 	h.siteName = h.Config.SiteName
+	h.suppressVersion = s.SuppressVersion
 	return nil
 }
 
 // ServeHTTP renders the cached upstream probe state as a JSON health response.
 // It is lock-free on the request path: CurrentStatus() and Snapshot() are
 // both atomic reads inside HTTPChecker.
+//
+// The X-Vibewarden header is always emitted regardless of health.expose_version.
+// It is the stable ownership marker that port_owner.go uses to detect a
+// VibeWarden sidecar without relying on the version string in the body.
 func (h *HealthHandler) ServeHTTP(w http.ResponseWriter, r *http.Request, _ caddyhttp.Handler) error {
 	upstreamState := h.resolveUpstreamState()
 
@@ -90,6 +108,13 @@ func (h *HealthHandler) ServeHTTP(w http.ResponseWriter, r *http.Request, _ cadd
 	}
 	outer := healthsummary.AggregateStatus(components)
 
+	// Omit the version when suppression is enabled (health.expose_version: false).
+	// The omitempty tag on the Version field ensures no "version":"" appears.
+	version := h.version
+	if h.suppressVersion {
+		version = ""
+	}
+
 	body := struct {
 		Status     string            `json:"status"`
 		Version    string            `json:"version,omitempty"`
@@ -97,7 +122,7 @@ func (h *HealthHandler) ServeHTTP(w http.ResponseWriter, r *http.Request, _ cadd
 		Components map[string]string `json:"components"`
 	}{
 		Status:  string(outer),
-		Version: h.version,
+		Version: version,
 		Site:    h.siteName,
 		Components: map[string]string{
 			"sidecar":  "ok",
@@ -105,6 +130,10 @@ func (h *HealthHandler) ServeHTTP(w http.ResponseWriter, r *http.Request, _ cadd
 		},
 	}
 
+	// X-Vibewarden is the stable ownership marker. It is always emitted so
+	// that port_owner.go can detect a VibeWarden sidecar even when the version
+	// is suppressed (health.expose_version: false). See ADR-084.
+	w.Header().Set(HealthIdentityHeader, healthIdentityHeaderValue)
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK) // always 200; outer status is informational
 	return json.NewEncoder(w).Encode(body)

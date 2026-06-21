@@ -90,6 +90,18 @@ func serveHealth(t *testing.T, h *HealthHandler) map[string]any {
 	return out
 }
 
+// serveHealthRaw issues a GET to the handler and returns the raw recorder.
+// Used by tests that need to inspect headers alongside the response body.
+func serveHealthRaw(t *testing.T, h *HealthHandler) *httptest.ResponseRecorder {
+	t.Helper()
+	req := httptest.NewRequest(http.MethodGet, "/_vibewarden/health", nil)
+	w := httptest.NewRecorder()
+	if err := h.ServeHTTP(w, req, nil); err != nil {
+		t.Fatalf("ServeHTTP() error = %v", err)
+	}
+	return w
+}
+
 func TestHealthHandler_ServeHTTP(t *testing.T) {
 	tests := []struct {
 		name           string
@@ -203,6 +215,127 @@ func TestHealthHandler_AlwaysHTTP200(t *testing.T) {
 		if w.Code != http.StatusOK {
 			t.Errorf("upstream status %v → HTTP %d, want 200", s, w.Code)
 		}
+	}
+}
+
+// TestHealthHandler_ExposeVersion verifies the health.expose_version behaviour.
+// When suppressVersion is false (default), the "version" field is present in
+// the JSON body. When suppressVersion is true, the "version" key must be absent
+// entirely from the serialised JSON (not merely empty).
+func TestHealthHandler_ExposeVersion(t *testing.T) {
+	tests := []struct {
+		name            string
+		version         string
+		suppressVersion bool
+		wantVersionKey  bool   // true → key must be present; false → key must be absent
+		wantVersion     string // only checked when wantVersionKey is true
+	}{
+		{
+			name:            "expose_version default (false suppress) → version present",
+			version:         "v0.20.0",
+			suppressVersion: false,
+			wantVersionKey:  true,
+			wantVersion:     "v0.20.0",
+		},
+		{
+			name:            "expose_version: false (suppress) → version key absent",
+			version:         "v0.20.0",
+			suppressVersion: true,
+			wantVersionKey:  false,
+		},
+		{
+			name:            "suppress + empty version → version key absent",
+			version:         "",
+			suppressVersion: true,
+			wantVersionKey:  false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			h := &HealthHandler{
+				version:         tt.version,
+				suppressVersion: tt.suppressVersion,
+			}
+
+			w := serveHealthRaw(t, h)
+			rawBody := w.Body.String()
+
+			var out map[string]any
+			if err := json.NewDecoder(w.Body).Decode(&out); err != nil {
+				// Re-decode from raw since we already read the body above.
+				if err2 := json.Unmarshal([]byte(rawBody), &out); err2 != nil {
+					t.Fatalf("decoding response: %v", err2)
+				}
+			}
+
+			_, keyPresent := out["version"]
+			if keyPresent != tt.wantVersionKey {
+				t.Errorf("version key present = %v, want %v; body = %s", keyPresent, tt.wantVersionKey, rawBody)
+			}
+			if tt.wantVersionKey {
+				if got, _ := out["version"].(string); got != tt.wantVersion {
+					t.Errorf("version = %q, want %q", got, tt.wantVersion)
+				}
+			}
+		})
+	}
+}
+
+// TestHealthHandler_IdentityHeader verifies that X-Vibewarden: 1 is always
+// emitted by the health handler regardless of the suppressVersion setting.
+// This header is the stable ownership marker used by port_owner.go.
+func TestHealthHandler_IdentityHeader(t *testing.T) {
+	tests := []struct {
+		name            string
+		suppressVersion bool
+	}{
+		{"version exposed (default)", false},
+		{"version suppressed (expose_version: false)", true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			h := &HealthHandler{
+				version:         "v0.20.0",
+				suppressVersion: tt.suppressVersion,
+			}
+			w := serveHealthRaw(t, h)
+
+			got := w.Header().Get(HealthIdentityHeader)
+			if got != "1" {
+				t.Errorf("%s header = %q, want %q", HealthIdentityHeader, got, "1")
+			}
+		})
+	}
+}
+
+// TestHealthHandler_ProvisionWith_SuppressVersion verifies that SuppressVersion
+// is wired from RuntimeServices into the handler during provisioning.
+func TestHealthHandler_ProvisionWith_SuppressVersion(t *testing.T) {
+	tests := []struct {
+		name           string
+		suppress       bool
+		wantSuppressed bool
+	}{
+		{"suppress false (default)", false, false},
+		{"suppress true", true, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			h := &HealthHandler{}
+			svc := RuntimeServices{
+				SidecarVersion:  "v0.20.0",
+				SuppressVersion: tt.suppress,
+			}
+			if err := h.ProvisionWith(gocaddy.Context{}, svc); err != nil {
+				t.Fatalf("ProvisionWith() error = %v", err)
+			}
+			if h.suppressVersion != tt.wantSuppressed {
+				t.Errorf("suppressVersion = %v, want %v", h.suppressVersion, tt.wantSuppressed)
+			}
+		})
 	}
 }
 

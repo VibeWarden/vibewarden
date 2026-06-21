@@ -467,6 +467,10 @@ func buildRuntimeServices(
 
 	cbFactory := resilienceadapter.NewInMemoryCircuitBreakerFactory(logger, eventLogger, cbMetrics, auditLogger)
 
+	// Derive version-suppression flag from config. When cfg is nil (test
+	// harness), default to false (show version) matching the config default.
+	suppressVersion := cfg != nil && !cfg.Health.ExposeVersion
+
 	svc := caddyadapter.RuntimeServices{
 		Logger:                logger,
 		EventLogger:           eventLogger,
@@ -475,6 +479,7 @@ func buildRuntimeServices(
 		CircuitBreakerFactory: cbFactory,
 		UpstreamHealthChecker: checker,
 		SidecarVersion:        version,
+		SuppressVersion:       suppressVersion,
 	}
 
 	// Wire the API key validator when auth.mode is "api-key".
