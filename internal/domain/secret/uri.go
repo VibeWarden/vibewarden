@@ -29,6 +29,10 @@ type URI struct {
 // one segment and key is the final segment.
 //
 // Returns an error when the URI is malformed, has no path, or has no key.
+// Additionally rejects:
+//   - percent-encoded slashes (%2F / %2f) — bypass segment splitting in HTTP clients
+//   - empty path segments, including a leading "/" (absolute path)
+//   - ".." segments — path traversal (OWASP A03)
 func ParseURI(raw string) (URI, error) {
 	if !strings.HasPrefix(raw, secretURIPrefix) {
 		return URI{}, fmt.Errorf("secret URI must start with %q, got %q", secretURIPrefix, raw)
@@ -37,6 +41,26 @@ func ParseURI(raw string) (URI, error) {
 	body := strings.TrimPrefix(raw, secretURIPrefix)
 	if body == "" {
 		return URI{}, errors.New("secret URI is empty after scheme: expected secret://path/key")
+	}
+
+	// Reject percent-encoded slashes — they are decoded by HTTP clients into
+	// path separators and bypass segment-based validation downstream (e.g. in
+	// the OpenBao adapter, which builds HTTP API paths from the URI path).
+	if strings.Contains(body, "%2F") || strings.Contains(body, "%2f") {
+		return URI{}, fmt.Errorf("secret URI %q contains a percent-encoded slash (%%2F); use a literal '/' separator", raw)
+	}
+
+	// Validate every segment before extracting path and key.
+	// An empty segment indicates a leading '/', trailing '/', or consecutive '//'.
+	// A ".." segment is a path traversal attempt that could reach unintended
+	// OpenBao API paths (e.g. secret://../sys/mounts/secret/key).
+	for _, seg := range strings.Split(body, "/") {
+		switch seg {
+		case "":
+			return URI{}, fmt.Errorf("secret URI %q contains an empty path segment (leading slash, trailing slash, or consecutive slashes)", raw)
+		case "..":
+			return URI{}, fmt.Errorf("secret URI %q contains a path traversal segment \"..\"", raw)
+		}
 	}
 
 	// The last segment is the key, everything before it is the path.

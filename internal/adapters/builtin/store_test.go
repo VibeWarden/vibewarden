@@ -600,3 +600,59 @@ func TestStore_FullFlow(t *testing.T) {
 		t.Errorf("Health() error = %v", err)
 	}
 }
+
+// TestStore_List_PrefixExtension guards against the OWASP A03 prefix-extension
+// bug: List(prefix="auth") must NOT return entries stored at "auth-evil".
+// A bare strings.HasPrefix check would match "auth-evil" for prefix "auth".
+func TestStore_List_PrefixExtension(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "secrets.enc")
+	key := generateMasterKey(t)
+
+	store, err := builtin.NewStore(path, key)
+	if err != nil {
+		t.Fatalf("NewStore() error = %v", err)
+	}
+
+	ctx := context.Background()
+
+	// Populate: a legitimate child, an impostor with a prefix-extension name,
+	// and a valid child path that must appear in results.
+	for _, p := range []string{"auth", "auth-evil", "auth/token"} {
+		if err := store.Put(ctx, p, map[string]string{"k": "v"}); err != nil {
+			t.Fatalf("Put(%q) error = %v", p, err)
+		}
+	}
+
+	// List("auth") should return only true children: "token" (relative to "auth/").
+	// It must never return "-evil" (which comes from "auth-evil" being
+	// incorrectly matched by a bare HasPrefix).
+	got, err := store.List(ctx, "auth")
+	if err != nil {
+		t.Fatalf("List(%q) error = %v", "auth", err)
+	}
+
+	for _, k := range got {
+		if k == "-evil" {
+			t.Errorf("List(%q) returned %q — prefix-extension bug: 'auth-evil' leaked as a child of 'auth'", "auth", k)
+		}
+	}
+
+	// List("auth/") must return the true child "token" and not "auth-evil".
+	gotSlash, err := store.List(ctx, "auth/")
+	if err != nil {
+		t.Fatalf("List(%q) error = %v", "auth/", err)
+	}
+
+	found := false
+	for _, k := range gotSlash {
+		if k == "token" {
+			found = true
+		}
+		if k == "-evil" || k == "auth-evil" {
+			t.Errorf("List(%q) returned %q — must not leak 'auth-evil'", "auth/", k)
+		}
+	}
+	if !found {
+		t.Errorf("List(%q) did not return %q; got %v", "auth/", "token", gotSlash)
+	}
+}

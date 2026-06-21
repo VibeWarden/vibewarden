@@ -226,6 +226,9 @@ func (a *Adapter) renewSelf(ctx context.Context) error {
 // Get implements ports.SecretStore.
 // It fetches the latest version of the secret at the KV v2 path.
 func (a *Adapter) Get(ctx context.Context, path string) (map[string]string, error) {
+	if err := validateSecretPath(path); err != nil {
+		return nil, err
+	}
 	if err := a.ensureToken(ctx); err != nil {
 		return nil, fmt.Errorf("openbao: ensure token: %w", err)
 	}
@@ -273,6 +276,9 @@ func (a *Adapter) Get(ctx context.Context, path string) (map[string]string, erro
 // Put implements ports.SecretStore.
 // It writes (or updates) a secret at the KV v2 path.
 func (a *Adapter) Put(ctx context.Context, path string, data map[string]string) error {
+	if err := validateSecretPath(path); err != nil {
+		return err
+	}
 	if err := a.ensureToken(ctx); err != nil {
 		return fmt.Errorf("openbao: ensure token: %w", err)
 	}
@@ -308,6 +314,9 @@ func (a *Adapter) Put(ctx context.Context, path string, data map[string]string) 
 // Delete implements ports.SecretStore.
 // It permanently deletes all versions at the KV v2 path via the metadata endpoint.
 func (a *Adapter) Delete(ctx context.Context, path string) error {
+	if err := validateSecretPath(path); err != nil {
+		return err
+	}
 	if err := a.ensureToken(ctx); err != nil {
 		return fmt.Errorf("openbao: ensure token: %w", err)
 	}
@@ -332,6 +341,9 @@ func (a *Adapter) Delete(ctx context.Context, path string) error {
 // List implements ports.SecretStore.
 // It returns the keys beneath prefix using the KV v2 metadata list endpoint.
 func (a *Adapter) List(ctx context.Context, prefix string) ([]string, error) {
+	if err := validateSecretPath(prefix); err != nil {
+		return nil, err
+	}
 	if err := a.ensureToken(ctx); err != nil {
 		return nil, fmt.Errorf("openbao: ensure token: %w", err)
 	}
@@ -387,6 +399,9 @@ func (a *Adapter) Health(ctx context.Context) error {
 // GetMetadata fetches the KV v2 metadata for a path.
 // Returns the created_time and updated_time for secret health checks.
 func (a *Adapter) GetMetadata(ctx context.Context, path string) (*SecretMetadata, error) {
+	if err := validateSecretPath(path); err != nil {
+		return nil, err
+	}
 	if err := a.ensureToken(ctx); err != nil {
 		return nil, fmt.Errorf("openbao: ensure token: %w", err)
 	}
@@ -567,6 +582,28 @@ func (a *Adapter) RevokeLease(ctx context.Context, leaseID string) error {
 
 	if resp.StatusCode != http.StatusNoContent && resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("openbao: revoke lease %q returned %d", leaseID, resp.StatusCode)
+	}
+	return nil
+}
+
+// validateSecretPath checks that p is safe to interpolate into an OpenBao KV
+// API path. It rejects paths that contain ".." segments, a leading "/", or
+// percent-encoded slashes (%2F / %2f).
+//
+// ParseURI enforces the same constraints at parse time, so this function is
+// defense-in-depth for callers that pass a path directly to the adapter
+// without going through ParseURI.
+func validateSecretPath(p string) error {
+	if strings.Contains(p, "%2F") || strings.Contains(p, "%2f") {
+		return fmt.Errorf("openbao: path %q contains a percent-encoded slash (%%2F)", p)
+	}
+	if strings.HasPrefix(p, "/") {
+		return fmt.Errorf("openbao: path %q is absolute (leading slash not allowed)", p)
+	}
+	for _, seg := range strings.Split(p, "/") {
+		if seg == ".." {
+			return fmt.Errorf("openbao: path %q contains a traversal segment (..)", p)
+		}
 	}
 	return nil
 }

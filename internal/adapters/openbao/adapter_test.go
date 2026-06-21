@@ -366,3 +366,63 @@ func TestDynamicCredentials_ExpiresAt(t *testing.T) {
 		t.Errorf("ExpiresAt() = %v, want ~%v", got, expected)
 	}
 }
+
+// TestAdapter_Get_MaliciousPath verifies that crafted paths containing path
+// traversal segments (".."), leading slashes, or percent-encoded slashes are
+// rejected before any HTTP request is made to the OpenBao server.
+// This is defense-in-depth: ParseURI already blocks these at parse time, but
+// the adapter validates paths independently for callers that bypass ParseURI.
+func TestAdapter_Get_MaliciousPath(t *testing.T) {
+	tests := []struct {
+		name string
+		path string
+	}{
+		{"dotdot traversal", "../sys/mounts/secret"},
+		{"embedded dotdot", "auth/../sys/mounts"},
+		{"leading slash", "/sys/mounts/secret"},
+		{"encoded slash uppercase", "auth%2Fgoogle"},
+		{"encoded slash lowercase", "auth%2fgoogle"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// The server must never receive a request — if it does, the
+			// path validation guard is not working.
+			srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				t.Errorf("adapter sent HTTP request for malicious path %q; URL path = %q", tt.path, r.URL.Path)
+				w.WriteHeader(http.StatusOK)
+				_, _ = w.Write([]byte(`{"data":{"data":{}}}`))
+			}))
+			defer srv.Close()
+
+			a := newTestAdapter(srv.URL, openbao.AuthMethodToken, "test-token")
+			if err := a.Authenticate(context.Background()); err != nil {
+				t.Fatalf("Authenticate() error = %v", err)
+			}
+
+			_, err := a.Get(context.Background(), tt.path)
+			if err == nil {
+				t.Errorf("Get(%q) expected error for malicious path, got nil", tt.path)
+			}
+		})
+	}
+}
+
+// TestAdapter_Put_MaliciousPath mirrors TestAdapter_Get_MaliciousPath for Put.
+func TestAdapter_Put_MaliciousPath(t *testing.T) {
+	malicious := "../sys/mounts/secret"
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Errorf("adapter sent HTTP request for malicious path %q; URL path = %q", malicious, r.URL.Path)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer srv.Close()
+
+	a := newTestAdapter(srv.URL, openbao.AuthMethodToken, "test-token")
+	_ = a.Authenticate(context.Background())
+
+	err := a.Put(context.Background(), malicious, map[string]string{"k": "v"})
+	if err == nil {
+		t.Errorf("Put(%q) expected error for malicious path, got nil", malicious)
+	}
+}
