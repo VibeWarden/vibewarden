@@ -67,6 +67,61 @@ func TestParseURI(t *testing.T) {
 			input:   "",
 			wantErr: true,
 		},
+		// --- Security: OWASP A03 Injection / path traversal ---
+		{
+			name:    "traversal in path segment (dotdot)",
+			input:   "secret://../sys/mounts/secret/key",
+			wantErr: true,
+		},
+		{
+			name:    "traversal at end of path",
+			input:   "secret://auth/../key",
+			wantErr: true,
+		},
+		{
+			name:    "traversal segment only",
+			input:   "secret://../key",
+			wantErr: true,
+		},
+		{
+			name:    "absolute path (leading slash)",
+			input:   "secret:////etc/passwd/key",
+			wantErr: true,
+		},
+		{
+			name:    "encoded slash uppercase (%2F) bypasses split",
+			input:   "secret://auth%2Fgoogle/key",
+			wantErr: true,
+		},
+		{
+			name:    "encoded slash lowercase (%2f) bypasses split",
+			input:   "secret://auth%2fgoogle/key",
+			wantErr: true,
+		},
+		{
+			name:    "double-encoded slash (%252F) decodes back to %2F",
+			input:   "secret://auth%252Fgoogle/key",
+			wantErr: true,
+		},
+		{
+			name:    "lone percent character is rejected",
+			input:   "secret://auth%/key",
+			wantErr: true,
+		},
+		{
+			name:     "dotdot as substring of segment name is valid (a..b)",
+			input:    "secret://a..b/key",
+			wantPath: "a..b",
+			wantKey:  "key",
+			wantErr:  false,
+		},
+		{
+			name:     "single dot segment is valid",
+			input:    "secret://auth/./key",
+			wantPath: "auth/.",
+			wantKey:  "key",
+			wantErr:  false,
+		},
 	}
 
 	for _, tt := range tests {

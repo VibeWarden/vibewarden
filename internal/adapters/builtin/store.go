@@ -126,9 +126,22 @@ func (s *Store) List(_ context.Context, prefix string) ([]string, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
+	// prefixDir is the prefix normalised to end with "/" so that a bare
+	// HasPrefix check cannot match a sibling entry: e.g. prefix "auth" must
+	// not match stored path "auth-evil" (OWASP A03 prefix-extension). Callers
+	// that already supply a trailing slash ("app/") are unaffected. The empty
+	// prefix ("") is kept as-is so HasPrefix returns true for every path,
+	// preserving the "list all top-level entries" behaviour.
+	// Exact match (path == prefix) lets a stored path that equals the prefix
+	// reach the rel == "" guard below and be excluded from results.
+	prefixDir := prefix
+	if prefix != "" && !strings.HasSuffix(prefix, "/") {
+		prefixDir += "/"
+	}
+
 	seen := make(map[string]struct{})
 	for path := range s.secrets {
-		if !strings.HasPrefix(path, prefix) {
+		if path != prefix && !strings.HasPrefix(path, prefixDir) {
 			continue
 		}
 

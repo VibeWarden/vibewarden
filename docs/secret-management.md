@@ -327,6 +327,12 @@ secret://auth/google/client_secret
 
 Resolves path `auth/google`, key `client_secret`.
 
+**Path constraints.** Segments must be non-empty (no leading, trailing, or
+consecutive slashes), must not be `..`, and must not contain a percent character
+(`%`) — percent-encoding such as `%2F` is rejected. A URI that violates these
+rules fails at config load with a clear error. Use plain literal segments
+separated by single `/` characters.
+
 ### Storing secrets
 
 Use the `vibew secret set` command to write secrets into the encrypted store:
