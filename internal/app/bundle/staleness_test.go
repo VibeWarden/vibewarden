@@ -202,6 +202,130 @@ func TestFileSystemStalenessWalker_NestedDirs(t *testing.T) {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// Security tests: symlink containment (#1274 — sibling fix to #1223)
+// ---------------------------------------------------------------------------
+
+// TestStalenessWalker_SymlinkOutsideRootSkipped verifies that a symlink inside
+// the project root pointing to a file outside the root is silently skipped by
+// the staleness walker. The external target's mtime must not influence the
+// changedCount.
+//
+// This test FAILS on the pre-fix code (the symlink is newly created, so its
+// own mtime equals now and counts as stale) and PASSES on the fixed code.
+func TestStalenessWalker_SymlinkOutsideRootSkipped(t *testing.T) {
+	root := t.TempDir()
+	outside := t.TempDir()
+
+	// Only project file has an old mtime — nothing should count as changed.
+	pastMtime := time.Now().Add(-24 * time.Hour)
+	writeFileWithMtime(t, filepath.Join(root, "main.go"), pastMtime)
+
+	// External file with a recent mtime. Without the fix, a symlink pointing
+	// here would cause the symlink entry itself (mtime = now, just created) to
+	// be counted, or the target's mtime to influence the result.
+	outsideFile := filepath.Join(outside, "secret.log")
+	writeFileWithMtime(t, outsideFile, time.Now())
+
+	// Symlink inside project pointing to the external file.
+	symlink := filepath.Join(root, "escape.txt")
+	if err := os.Symlink(outsideFile, symlink); err != nil {
+		t.Fatalf("create symlink: %v", err)
+	}
+
+	// Threshold is 1 hour ago. The symlink (mtime = just now) would count
+	// as stale without the fix. After the fix it must be skipped.
+	threshold := time.Now().Add(-1 * time.Hour)
+	w := bundleapp.NewFileSystemStalenessWalker(root)
+	_, count, err := w.NewestMTime(root, threshold)
+	if err != nil {
+		t.Fatalf("NewestMTime() error = %v", err)
+	}
+	if count != 0 {
+		t.Errorf("changedCount = %d, want 0 (symlink pointing outside root must be skipped)", count)
+	}
+}
+
+// TestStalenessWalker_SymlinkPrefixExtensionRejected is the security regression
+// test for the prefix-extension symlink escape: a symlink pointing at a sibling
+// directory whose name extends the project root name (e.g. /proj-secret when
+// root is /proj) must be rejected, not admitted by a bare strings.HasPrefix
+// check.
+//
+// This test FAILS on the pre-fix code and PASSES on the fixed code.
+func TestStalenessWalker_SymlinkPrefixExtensionRejected(t *testing.T) {
+	if testing.Short() {
+		t.Skip("skipping symlink test in short mode")
+	}
+
+	// Use a shared parent so root and outside share a directory prefix.
+	parent := t.TempDir()
+	root := filepath.Join(parent, "proj")
+	outside := filepath.Join(parent, "proj-secret") // name extends root's base — the bug
+
+	if err := os.MkdirAll(root, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(outside, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	pastMtime := time.Now().Add(-24 * time.Hour)
+	writeFileWithMtime(t, filepath.Join(root, "main.go"), pastMtime)
+
+	// Secret file in the prefix-extension sibling directory — recent mtime.
+	secretFile := filepath.Join(outside, "secret.txt")
+	writeFileWithMtime(t, secretFile, time.Now())
+
+	// A bare strings.HasPrefix(resolved, absRoot) check incorrectly admits the
+	// symlink because "proj-secret" starts with "proj". The fix uses
+	// absRoot + string(os.PathSeparator) as the separator-terminated prefix.
+	symlink := filepath.Join(root, "leak")
+	if err := os.Symlink(secretFile, symlink); err != nil {
+		t.Fatalf("create symlink: %v", err)
+	}
+
+	threshold := time.Now().Add(-1 * time.Hour)
+	w := bundleapp.NewFileSystemStalenessWalker(root)
+	_, count, err := w.NewestMTime(root, threshold)
+	if err != nil {
+		t.Fatalf("NewestMTime() error = %v", err)
+	}
+	if count != 0 {
+		t.Errorf("changedCount = %d, want 0 (prefix-extension symlink escape must be rejected)", count)
+	}
+}
+
+// TestStalenessWalker_InRootSymlinkNotSkipped verifies that a symlink whose
+// resolved target stays within the project root is NOT skipped — in-root
+// symlinks must continue to participate in the freshness walk.
+func TestStalenessWalker_InRootSymlinkNotSkipped(t *testing.T) {
+	root := t.TempDir()
+
+	// Write a real file with a recent mtime.
+	now := time.Now()
+	realFile := filepath.Join(root, "real.go")
+	writeFileWithMtime(t, realFile, now)
+
+	// Symlink inside root pointing to the real file.
+	symlink := filepath.Join(root, "link.go")
+	if err := os.Symlink(realFile, symlink); err != nil {
+		t.Fatalf("create in-root symlink: %v", err)
+	}
+
+	// Both the real file and the symlink have mtime >= now.
+	// changedCount must be > 0 (at least the real file).
+	threshold := now.Add(-1 * time.Hour)
+	w := bundleapp.NewFileSystemStalenessWalker(root)
+	_, count, err := w.NewestMTime(root, threshold)
+	if err != nil {
+		t.Fatalf("NewestMTime() error = %v", err)
+	}
+	if count == 0 {
+		t.Errorf("changedCount = 0, want > 0 (in-root symlink and real file must not be skipped)")
+	}
+}
+
 // writeFileWithMtime writes content to path and sets its mtime to t.
 func writeFileWithMtime(t *testing.T, path string, mtime time.Time) {
 	t.Helper()
