@@ -110,6 +110,7 @@ func TestOpenBaoValidator_Validate_Success(t *testing.T) {
 			}
 			if got == nil {
 				t.Fatal("Validate returned nil key")
+				return
 			}
 			if got.Name != tt.wantKeyName {
 				t.Errorf("Name = %q, want %q", got.Name, tt.wantKeyName)

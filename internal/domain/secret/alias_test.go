@@ -54,6 +54,7 @@ func TestResolveAlias_WellKnown(t *testing.T) {
 			got := secret.ResolveAlias(tt.input)
 			if got == nil {
 				t.Fatalf("ResolveAlias(%q) = nil, want non-nil", tt.input)
+				return
 			}
 			if got.Name != tt.input {
 				t.Errorf("Name = %q, want %q", got.Name, tt.input)

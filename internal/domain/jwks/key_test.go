@@ -91,6 +91,7 @@ func TestKeySet_FindByKID(t *testing.T) {
 
 			if got == nil {
 				t.Fatalf("FindByKID(%q) = nil, want key with KID %q", tt.kid, tt.wantKID)
+				return
 			}
 			if got.KID != tt.wantKID {
 				t.Errorf("FindByKID(%q).KID = %q, want %q", tt.kid, got.KID, tt.wantKID)

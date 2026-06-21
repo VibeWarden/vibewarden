@@ -147,6 +147,7 @@ func TestRegistry_GlobalConfig(t *testing.T) {
 	got := r.Global()
 	if got == nil {
 		t.Fatal("Global() = nil after SetGlobal, want non-nil")
+		return
 	}
 	if got.AdminToken != "my-token" {
 		t.Errorf("Global().AdminToken = %q, want %q", got.AdminToken, "my-token")
