@@ -60,21 +60,28 @@ func (w *FileSystemStalenessWalker) NewestMTime(root string, threshold time.Time
 		return time.Time{}, 0, nil
 	}
 
+	// Resolve root once so the per-entry containment check is stable even if
+	// root itself is a symlink. Mirrors the approach in computeInputDigest.
+	absRoot, err := filepath.EvalSymlinks(root)
+	if err != nil {
+		absRoot = root // best-effort: use as-is
+	}
+
 	pm := buildPatternMatcher(root)
 	hardSet := buildHardIgnoreSet()
 
 	var newest time.Time
 	changedCount := 0
 
-	err := filepath.WalkDir(root, func(path string, d os.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			slog.Debug("staleness walk: skipping unreadable entry", "path", path, "err", walkErr)
+	walkErr := filepath.WalkDir(root, func(path string, d os.DirEntry, wErr error) error {
+		if wErr != nil {
+			slog.Debug("staleness walk: skipping unreadable entry", "path", path, "err", wErr)
 			return nil // best-effort: skip and continue
 		}
 
 		// Compute path relative to root for pattern matching.
-		rel, err := filepath.Rel(root, path)
-		if err != nil {
+		rel, relErr := filepath.Rel(root, path)
+		if relErr != nil {
 			return nil
 		}
 		// Convert to forward-slash for cross-platform pattern matching.
@@ -91,8 +98,8 @@ func (w *FileSystemStalenessWalker) NewestMTime(root string, threshold time.Time
 			}
 			// Skip directories matched by .gitignore / .dockerignore.
 			if pm != nil {
-				matched, err := pm.MatchesOrParentMatches(rel)
-				if err == nil && matched {
+				matched, mErr := pm.MatchesOrParentMatches(rel)
+				if mErr == nil && matched {
 					return filepath.SkipDir
 				}
 			}
@@ -101,15 +108,36 @@ func (w *FileSystemStalenessWalker) NewestMTime(root string, threshold time.Time
 
 		// Regular file: check ignore patterns.
 		if pm != nil {
-			matched, err := pm.MatchesOrParentMatches(rel)
-			if err == nil && matched {
+			matched, mErr := pm.MatchesOrParentMatches(rel)
+			if mErr == nil && matched {
 				return nil // ignored
 			}
 		}
 
-		info, err := d.Info()
-		if err != nil {
-			slog.Debug("staleness walk: cannot stat file", "path", path, "err", err)
+		// Resolve symlinks to catch out-of-root targets (OWASP A01 / #1274).
+		// filepath.WalkDir uses Lstat, so symlink entries are reported with
+		// ModeSymlink set rather than being followed automatically. We resolve
+		// the target here and skip any entry whose resolved path escapes
+		// absRoot. The exact-directory check (absRoot + separator) prevents
+		// the prefix-extension attack (e.g. /proj-secret admitted when root
+		// is /proj via a bare strings.HasPrefix). Mirrors the equivalent
+		// containment check in computeInputDigest (input_digest.go).
+		if d.Type()&os.ModeSymlink != 0 {
+			resolved, rErr := filepath.EvalSymlinks(path)
+			if rErr != nil {
+				slog.Debug("staleness walk: cannot resolve symlink, skipping", "path", path, "err", rErr)
+				return nil
+			}
+			if resolved != absRoot && !strings.HasPrefix(resolved, absRoot+string(os.PathSeparator)) {
+				slog.Debug("staleness walk: symlink escapes project root, skipping",
+					"path", path, "resolved", resolved)
+				return nil
+			}
+		}
+
+		info, infoErr := d.Info()
+		if infoErr != nil {
+			slog.Debug("staleness walk: cannot stat file", "path", path, "err", infoErr)
 			return nil
 		}
 
@@ -124,8 +152,8 @@ func (w *FileSystemStalenessWalker) NewestMTime(root string, threshold time.Time
 		return nil
 	})
 
-	if err != nil {
-		slog.Debug("staleness walk: walk error (partial result)", "root", root, "err", err)
+	if walkErr != nil {
+		slog.Debug("staleness walk: walk error (partial result)", "root", root, "err", walkErr)
 	}
 
 	return newest, changedCount, nil
