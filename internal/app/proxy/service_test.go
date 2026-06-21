@@ -158,6 +158,7 @@ func TestNewService(t *testing.T) {
 
 	if svc == nil {
 		t.Fatal("NewService() returned nil")
+		return
 	}
 	if svc.server != server {
 		t.Error("NewService() did not set server correctly")

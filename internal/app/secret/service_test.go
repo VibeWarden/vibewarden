@@ -345,6 +345,7 @@ func TestService_Get_NotFoundFallsBackToCredentials(t *testing.T) {
 	}
 	if got == nil {
 		t.Fatal("Get() returned nil; want a RetrievedSecret from credentials fallback")
+		return
 	}
 	if got.Source != domainsecret.SourceCredentialsFile {
 		t.Errorf("Source = %q, want %q", got.Source, domainsecret.SourceCredentialsFile)
@@ -406,6 +407,7 @@ func TestService_Get_DynamicNotFoundFallsThroughToStatic(t *testing.T) {
 	}
 	if got == nil {
 		t.Fatal("Get() returned nil; want the static-path secret")
+		return
 	}
 	if got.Source != domainsecret.SourceOpenBao {
 		t.Errorf("Source = %q, want %q (static OpenBao path)", got.Source, domainsecret.SourceOpenBao)
