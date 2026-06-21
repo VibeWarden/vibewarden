@@ -29,11 +29,13 @@ type HealthHandlerConfig struct {
 // /_vibewarden/health endpoint regardless of health.expose_version. It is the
 // stable ownership marker used by port_owner.go to detect a VibeWarden sidecar
 // without relying on the version string being present in the body. The value is
-// always "1". See internal/adapters/ops/port_owner.go.
-const HealthIdentityHeader = "X-Vibewarden"
+// always "1". The canonical definition lives in internal/ports so that the ops
+// adapter can reference it without importing this adapter; this is an alias for
+// local readability. See internal/adapters/ops/port_owner.go.
+const HealthIdentityHeader = ports.HealthIdentityHeader
 
 // healthIdentityHeaderValue is the fixed value of HealthIdentityHeader.
-const healthIdentityHeaderValue = "1"
+const healthIdentityHeaderValue = ports.HealthIdentityHeaderValue
 
 // HealthHandler is a Caddy HTTP handler module registered as
 // "http.handlers.vibewarden_health". It replaces the previous static_response

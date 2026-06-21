@@ -36,10 +36,14 @@ paths:
     get:
       summary: Health check
       description: |
-        Returns the sidecar status and binary version. Always returns HTTP 200.
-        Parse `status` to distinguish healthy from degraded/failing. This endpoint
-        is public — no authentication is required. Suitable for use as a liveness
-        probe; for a readiness probe, assert `status == "ok"`.
+        Returns the sidecar status and, unless suppressed, the binary version.
+        Always returns HTTP 200. Parse `status` to distinguish healthy from
+        degraded/failing. The `version` field is omitted when
+        `health.expose_version: false` is set (hardening against version
+        fingerprinting); a stable `X-Vibewarden: 1` response header is always
+        present regardless. This endpoint is public — no authentication is
+        required. Suitable for use as a liveness probe; for a readiness probe,
+        assert `status == "ok"`.
       operationId: getHealth
       tags: [health]
       responses:
@@ -241,7 +245,7 @@ components:
   schemas:
     HealthResponse:
       type: object
-      required: [status, version]
+      required: [status]
       properties:
         status:
           type: string
@@ -254,7 +258,12 @@ components:
           example: ok
         version:
           type: string
-          description: Binary version string.
+          description: |
+            Binary version string. Optional: omitted when
+            `health.expose_version: false` is set (hardening against version
+            fingerprinting). Do not rely on its presence. To detect a VibeWarden
+            sidecar regardless of this setting, check for the always-present
+            `X-Vibewarden: 1` response header.
           example: "v0.1.0"
         components:
           type: object

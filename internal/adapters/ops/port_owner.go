@@ -9,7 +9,6 @@ import (
 	"strings"
 	"time"
 
-	caddyadapter "github.com/vibewarden/vibewarden/internal/adapters/caddy"
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
 
@@ -19,8 +18,9 @@ import (
 // from the version string so that detection works even when version exposure is
 // suppressed (health.expose_version: false, OWASP A05 hardening).
 //
-// The value is always "1" (see caddy.healthIdentityHeaderValue).
-const healthIdentityHeader = caddyadapter.HealthIdentityHeader
+// The canonical value lives in internal/ports so this adapter does not import a
+// sibling adapter. The value is always "1" (ports.HealthIdentityHeaderValue).
+const healthIdentityHeader = ports.HealthIdentityHeader
 
 // healthSignaturePrefix is the JSON body prefix served by older VibeWarden
 // sidecars on /_vibewarden/health. Detection via this prefix is kept as a

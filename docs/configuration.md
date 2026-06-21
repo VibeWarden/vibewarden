@@ -47,6 +47,25 @@ server:
 
 ---
 
+## `health`
+
+Settings for the public `/_vibewarden/health` endpoint.
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `health.expose_version` | bool | `true` | When `true`, the health JSON includes the running binary `version`. Set to `false` to omit it — hardening against version fingerprinting on internet-facing deployments. |
+
+The `X-Vibewarden: 1` response header is always emitted regardless of this
+setting, so tooling that detects a VibeWarden sidecar should rely on that header
+rather than the `version` field.
+
+```yaml
+health:
+  expose_version: false   # omit version from /_vibewarden/health (hardened)
+```
+
+---
+
 ## `upstream`
 
 Settings for the upstream application being protected.
