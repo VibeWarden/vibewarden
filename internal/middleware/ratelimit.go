@@ -13,15 +13,27 @@ import (
 
 // RateLimitMiddleware returns HTTP middleware that enforces rate limits.
 // It applies per-IP limits to all requests and per-user limits to authenticated
-// requests (identified by the X-User-Id header injected by IdentityHeadersMiddleware).
+// requests.
+//
+// User identity resolution (step 4) uses two sources in priority order:
+//  1. The domain Identity stored in the request context by AuthMiddleware
+//     (via IdentityFromContext). This is the preferred source and removes any
+//     dependency on IdentityHeadersMiddleware running first.
+//  2. The X-User-Id request header, as a fallback for wiring paths where
+//     AuthMiddleware does not store identity in context (e.g. the Caddy
+//     vibewarden_authentication handler path).
+//
+// This dual-source approach means RateLimitMiddleware is robust regardless of
+// whether it runs before or after IdentityHeadersMiddleware in the chain.
 //
 // Request handling flow:
 //  1. If the request path matches any exempt path pattern (including /_vibewarden/*),
 //     bypass rate limiting entirely.
 //  2. Extract the client IP (from X-Forwarded-For if trusted, otherwise RemoteAddr).
 //  3. Check the per-IP rate limit. If exceeded, return 429 Too Many Requests.
-//  4. If the request is authenticated (X-User-Id header is present), check the
-//     per-user rate limit. If exceeded, return 429 Too Many Requests.
+//  4. Resolve the authenticated user ID: prefer IdentityFromContext; fall back
+//     to the X-User-Id header. If a user ID is found, check the per-user rate
+//     limit. If exceeded, return 429 Too Many Requests.
 //  5. Call the next handler.
 //
 // On a 429 response:
@@ -84,7 +96,12 @@ func RateLimitMiddleware(
 			}
 
 			// Step 4: Per-user rate limit check (authenticated requests only).
-			userID := r.Header.Get("X-User-Id")
+			// Prefer the domain Identity stored in context by AuthMiddleware; this
+			// works regardless of whether IdentityHeadersMiddleware has run yet.
+			// Fall back to the X-User-Id header for the Caddy wiring path where
+			// the auth handler (vibewarden_authentication) writes headers directly
+			// but does not store identity in Go context.
+			userID := resolveUserID(r)
 			if userID != "" {
 				userResult := userLimiter.Allow(r.Context(), userID)
 				if !userResult.Allowed {
@@ -99,6 +116,25 @@ func RateLimitMiddleware(
 			next.ServeHTTP(w, r)
 		})
 	}
+}
+
+// resolveUserID returns the authenticated user ID for the current request.
+//
+// Resolution order:
+//  1. Domain Identity in the request context (set by AuthMiddleware via
+//     contextWithIdentity). This is the preferred source: it is populated as
+//     soon as AuthMiddleware runs, before IdentityHeadersMiddleware has had a
+//     chance to inject the X-User-Id header.
+//  2. X-User-Id request header (set by IdentityHeadersMiddleware or by the
+//     Caddy vibewarden_authentication handler). Used as a fallback when no
+//     context identity is present.
+//
+// Returns "" when the request is unauthenticated in both sources.
+func resolveUserID(r *http.Request) string {
+	if ident, ok := IdentityFromContext(r.Context()); ok {
+		return ident.ID()
+	}
+	return r.Header.Get("X-User-Id")
 }
 
 // writeRateLimitResponse writes the 429 Too Many Requests HTTP response.

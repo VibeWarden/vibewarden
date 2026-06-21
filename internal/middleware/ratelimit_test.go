@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/vibewarden/vibewarden/internal/domain/events"
+	"github.com/vibewarden/vibewarden/internal/domain/identity"
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
 
@@ -574,5 +575,160 @@ func TestRateLimitMiddleware_403ForbiddenIsJSON(t *testing.T) {
 	}
 	if body.RequestID == "" && body.TraceID == "" {
 		t.Error("expected request_id or trace_id in 403 response body")
+	}
+}
+
+// TestRateLimitMiddleware_ContextIdentityUsedBeforeHeader is the behavioral
+// regression guard for issue #1279.
+//
+// It asserts that per-user rate limiting FIRES for an authenticated request
+// when identity is in the request context (set by AuthMiddleware) but the
+// X-User-Id header has NOT yet been injected (i.e. IdentityHeadersMiddleware
+// has not run). This validates that the ordering dependency is eliminated.
+//
+// The test also verifies the converse: without the context identity AND without
+// the header, the user limiter is NOT called (unauthenticated request).
+func TestRateLimitMiddleware_ContextIdentityUsedBeforeHeader(t *testing.T) {
+	ident, err := identity.NewIdentity("user-ctx-001", "ctx@example.com", "kratos", true, nil)
+	if err != nil {
+		t.Fatalf("creating test identity: %v", err)
+	}
+
+	tests := []struct {
+		name              string
+		setupRequest      func(r *http.Request) *http.Request
+		wantUserLimiterID string // empty means user limiter must NOT be called
+	}{
+		{
+			name: "context identity present, no X-User-Id header — user limiter fires with correct ID",
+			setupRequest: func(r *http.Request) *http.Request {
+				// Store identity in context only — no header set.
+				ctx := contextWithIdentity(r.Context(), ident)
+				return r.WithContext(ctx)
+			},
+			wantUserLimiterID: "user-ctx-001",
+		},
+		{
+			name: "X-User-Id header present, no context identity — user limiter fires (fallback path)",
+			setupRequest: func(r *http.Request) *http.Request {
+				r.Header.Set("X-User-Id", "user-hdr-002")
+				return r
+			},
+			wantUserLimiterID: "user-hdr-002",
+		},
+		{
+			name: "context identity takes precedence over X-User-Id header",
+			setupRequest: func(r *http.Request) *http.Request {
+				ctx := contextWithIdentity(r.Context(), ident)
+				r = r.WithContext(ctx)
+				// Set a different ID in the header; context must win.
+				r.Header.Set("X-User-Id", "user-hdr-should-be-ignored")
+				return r
+			},
+			wantUserLimiterID: "user-ctx-001",
+		},
+		{
+			name: "neither context identity nor header — unauthenticated, user limiter not called",
+			setupRequest: func(r *http.Request) *http.Request {
+				return r // no context identity, no header
+			},
+			wantUserLimiterID: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ipLimiter := allowAll()
+			userLimiter := allowAll()
+
+			next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(http.StatusOK)
+			})
+			mw := RateLimitMiddleware(ipLimiter, userLimiter, defaultCfg(), newTestLogger(), nil, nil, nil)
+			handler := mw(next)
+
+			r := httptest.NewRequest(http.MethodGet, "/api/resource", nil)
+			r.RemoteAddr = "10.0.0.1:9999"
+			r = tt.setupRequest(r)
+			w := httptest.NewRecorder()
+
+			handler.ServeHTTP(w, r)
+
+			if w.Code != http.StatusOK {
+				t.Errorf("expected 200, got %d", w.Code)
+			}
+
+			if tt.wantUserLimiterID == "" {
+				if len(userLimiter.calledKeys) != 0 {
+					t.Errorf("user limiter should not be called for unauthenticated request, got keys: %v", userLimiter.calledKeys)
+				}
+				return
+			}
+
+			if len(userLimiter.calledKeys) == 0 {
+				t.Fatalf("user limiter was not called — per-user rate limiting silently skipped (regression of #1279)")
+			}
+			if userLimiter.calledKeys[0] != tt.wantUserLimiterID {
+				t.Errorf("user limiter called with %q, want %q", userLimiter.calledKeys[0], tt.wantUserLimiterID)
+			}
+		})
+	}
+}
+
+// TestRateLimitMiddleware_ContextIdentityTriggersUserLimit_BehavioralGuard is
+// the crux behavioral test for issue #1279. It asserts that an authenticated
+// user exceeding the per-user limit gets a 429 even when their IP is under
+// the per-IP limit AND even when the X-User-Id header has not been set (i.e.
+// identity comes solely from the request context).
+//
+// This guards against the silent no-op regression where per-user rate limiting
+// was skipped entirely when RateLimitMiddleware ran before IdentityHeadersMiddleware.
+func TestRateLimitMiddleware_ContextIdentityTriggersUserLimit_BehavioralGuard(t *testing.T) {
+	ident, err := identity.NewIdentity("user-behavioral-test", "beh@example.com", "kratos", true, nil)
+	if err != nil {
+		t.Fatalf("creating test identity: %v", err)
+	}
+
+	// IP limit is generous — the user's IP will never be blocked.
+	// User limit is tight — the user is blocked.
+	ipLimiter := allowAll()
+	userLimiter := denyWithRetry(2*time.Second, 5, 10)
+
+	var nextCalled bool
+	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		nextCalled = true
+		w.WriteHeader(http.StatusOK)
+	})
+
+	mw := RateLimitMiddleware(ipLimiter, userLimiter, defaultCfg(), newTestLogger(), nil, nil, nil)
+	handler := mw(next)
+
+	// Build request with identity ONLY in context — no X-User-Id header.
+	r := httptest.NewRequest(http.MethodGet, "/api/sensitive", nil)
+	r.RemoteAddr = "10.1.2.3:8888"
+	ctx := contextWithIdentity(r.Context(), ident)
+	r = r.WithContext(ctx)
+	// Deliberately do NOT set X-User-Id header to simulate RateLimitMiddleware
+	// running before IdentityHeadersMiddleware.
+
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, r)
+
+	if nextCalled {
+		t.Error("next handler must NOT be called when user limit is exceeded")
+	}
+	if w.Code != http.StatusTooManyRequests {
+		t.Errorf("expected 429 Too Many Requests, got %d — per-user limit was silently skipped (regression of #1279)", w.Code)
+	}
+	if w.Header().Get("Retry-After") == "" {
+		t.Error("expected Retry-After header in 429 response")
+	}
+
+	// Confirm the user limiter was called with the correct ID from context.
+	if len(userLimiter.calledKeys) == 0 {
+		t.Fatal("user limiter was not called — per-user limiting silent no-op (regression of #1279)")
+	}
+	if userLimiter.calledKeys[0] != "user-behavioral-test" {
+		t.Errorf("user limiter called with %q, want %q", userLimiter.calledKeys[0], "user-behavioral-test")
 	}
 }
