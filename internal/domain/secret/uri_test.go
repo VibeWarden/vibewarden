@@ -99,6 +99,16 @@ func TestParseURI(t *testing.T) {
 			wantErr: true,
 		},
 		{
+			name:    "double-encoded slash (%252F) decodes back to %2F",
+			input:   "secret://auth%252Fgoogle/key",
+			wantErr: true,
+		},
+		{
+			name:    "lone percent character is rejected",
+			input:   "secret://auth%/key",
+			wantErr: true,
+		},
+		{
 			name:     "dotdot as substring of segment name is valid (a..b)",
 			input:    "secret://a..b/key",
 			wantPath: "a..b",

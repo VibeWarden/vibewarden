@@ -30,7 +30,10 @@ type URI struct {
 //
 // Returns an error when the URI is malformed, has no path, or has no key.
 // Additionally rejects:
-//   - percent-encoded slashes (%2F / %2f) — bypass segment splitting in HTTP clients
+//   - any percent character ('%') — percent-encoding (e.g. %2F, or the
+//     double-encoded %252F which decodes back to %2F) is never needed in a
+//     legitimate secret path and is the primary way to smuggle a path separator
+//     past segment splitting in downstream HTTP clients
 //   - empty path segments, including a leading "/" (absolute path)
 //   - ".." segments — path traversal (OWASP A03)
 func ParseURI(raw string) (URI, error) {
@@ -43,11 +46,14 @@ func ParseURI(raw string) (URI, error) {
 		return URI{}, errors.New("secret URI is empty after scheme: expected secret://path/key")
 	}
 
-	// Reject percent-encoded slashes — they are decoded by HTTP clients into
-	// path separators and bypass segment-based validation downstream (e.g. in
-	// the OpenBao adapter, which builds HTTP API paths from the URI path).
-	if strings.Contains(body, "%2F") || strings.Contains(body, "%2f") {
-		return URI{}, fmt.Errorf("secret URI %q contains a percent-encoded slash (%%2F); use a literal '/' separator", raw)
+	// Reject any percent character. Percent-encoding is decoded by HTTP clients
+	// into raw bytes (e.g. %2F -> '/'), bypassing segment-based validation
+	// downstream (e.g. in the OpenBao adapter, which builds HTTP API paths from
+	// the URI path). Rejecting '%' outright also defeats double-encoding such as
+	// %252F, which decodes to %2F and then to '/'. Legitimate secret paths never
+	// require percent-encoding — use a literal '/' separator.
+	if strings.Contains(body, "%") {
+		return URI{}, fmt.Errorf("secret URI %q contains a percent character; percent-encoding is not allowed, use literal '/' separators", raw)
 	}
 
 	// Validate every segment before extracting path and key.

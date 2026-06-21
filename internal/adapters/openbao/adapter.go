@@ -587,15 +587,16 @@ func (a *Adapter) RevokeLease(ctx context.Context, leaseID string) error {
 }
 
 // validateSecretPath checks that p is safe to interpolate into an OpenBao KV
-// API path. It rejects paths that contain ".." segments, a leading "/", or
-// percent-encoded slashes (%2F / %2f).
+// API path. It rejects paths that contain ".." segments, a leading "/", or any
+// percent character (which would allow %2F or double-encoded %252F to smuggle a
+// path separator into the HTTP request).
 //
 // ParseURI enforces the same constraints at parse time, so this function is
 // defense-in-depth for callers that pass a path directly to the adapter
 // without going through ParseURI.
 func validateSecretPath(p string) error {
-	if strings.Contains(p, "%2F") || strings.Contains(p, "%2f") {
-		return fmt.Errorf("openbao: path %q contains a percent-encoded slash (%%2F)", p)
+	if strings.Contains(p, "%") {
+		return fmt.Errorf("openbao: path %q contains a percent character; percent-encoding is not allowed", p)
 	}
 	if strings.HasPrefix(p, "/") {
 		return fmt.Errorf("openbao: path %q is absolute (leading slash not allowed)", p)
