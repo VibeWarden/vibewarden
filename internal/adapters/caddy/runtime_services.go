@@ -45,6 +45,14 @@ type RuntimeServices struct {
 	// handler to render the "version" field without a separate plumbing path.
 	SidecarVersion string
 
+	// SuppressVersion, when true, instructs the health handler to omit the
+	// "version" field from the /_vibewarden/health JSON response body.
+	// This is the wire-form of health.expose_version: false (OWASP A05
+	// hardening). The zero value (false) preserves the pre-existing default
+	// of exposing the version, so callers that do not set this field are
+	// unaffected.
+	SuppressVersion bool
+
 	// APIKeyValidator validates API keys presented in the X-API-Key header (or
 	// a configured alternative). Required by APIKeyHandler — the handler
 	// operates in fail-closed mode when nil (every request gets HTTP 500).

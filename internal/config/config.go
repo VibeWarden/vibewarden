@@ -119,6 +119,9 @@ type Config struct {
 	// after all other middleware including security headers.
 	ResponseHeaders ResponseHeadersConfig `mapstructure:"response_headers"`
 
+	// Health configures the /_vibewarden/health sidecar endpoint.
+	Health HealthConfig `mapstructure:"health"`
+
 	// Watch configures the config file watcher for hot reload.
 	Watch WatchConfig `mapstructure:"watch"`
 
@@ -494,6 +497,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("error_pages.directory", "")
 	v.SetDefault("compression.enabled", true)
 	v.SetDefault("compression.algorithms", []string{"zstd", "gzip"})
+	v.SetDefault("health.expose_version", true)
 	v.SetDefault("watch.enabled", true)
 	v.SetDefault("watch.debounce", "500ms")
 	v.SetDefault("deploy.target_platform", "linux/amd64")

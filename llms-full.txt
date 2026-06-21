@@ -782,6 +782,19 @@ Local observability stack (Grafana, Prometheus, Loki, Promtail).
     webhook.signature_invalid  Signature verification failed
 
 
+### health (sidecar endpoint settings)
+
+  health.expose_version  bool  true  Include binary version in /_vibewarden/health JSON response
+
+  OWASP A05 hardening: set expose_version: false to omit the version field from the
+  public health endpoint. Port-ownership detection (vibew doctor) uses the stable
+  X-Vibewarden: 1 response header instead of the version string, so detection works
+  regardless of this setting. Default: true (backward-compatible).
+
+  health:
+    expose_version: false   # suppress version fingerprinting (OWASP A05)
+
+
 ### watch (hot config reload)
 
   watch.enabled   bool      true    Watch vibewarden.yaml for changes

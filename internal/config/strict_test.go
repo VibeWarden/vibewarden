@@ -270,6 +270,24 @@ func TestLoadStrict_DeployUnknownKey_Rejected(t *testing.T) {
 	}
 }
 
+// TestLoadStrict_HealthExposeVersion_Accepted verifies that health.expose_version
+// is accepted by LoadStrict and does not trigger an UnknownKeyError. This
+// ensures vibew validate / vibew bundle do not reject configs that set the
+// new OWASP A05 hardening switch.
+func TestLoadStrict_HealthExposeVersion_Accepted(t *testing.T) {
+	dir := t.TempDir()
+	basePath := filepath.Join(dir, "vibewarden.yaml")
+	baseYAML := "health:\n  expose_version: false\n"
+	if err := os.WriteFile(basePath, []byte(baseYAML), 0o600); err != nil {
+		t.Fatalf("writing base: %v", err)
+	}
+
+	_, err := config.LoadStrict(basePath, "")
+	if err != nil {
+		t.Fatalf("LoadStrict() error = %v (health.expose_version must be accepted)", err)
+	}
+}
+
 // TestLoadStrict_DeployHost_Accepted verifies that the new deploy.host field
 // is accepted by LoadStrict and does not trigger an UnknownKeyError. Production
 // yaml files that carry this field must load cleanly.

@@ -3529,6 +3529,63 @@ func TestLoad_DeployHost_DefaultIsEmpty(t *testing.T) {
 	}
 }
 
+// TestLoad_HealthExposeVersionDefault verifies that health.expose_version
+// defaults to true when absent from the config file. This is the backward-
+// compatible default: existing deployments continue to expose the version string
+// until an operator explicitly sets health.expose_version: false.
+func TestLoad_HealthExposeVersionDefault(t *testing.T) {
+	cfg, err := config.Load("")
+	if err != nil {
+		t.Fatalf("Load() unexpected error: %v", err)
+	}
+	if !cfg.Health.ExposeVersion {
+		t.Error("health.expose_version default = false, want true (backward compat)")
+	}
+}
+
+// TestLoad_HealthExposeVersion verifies that health.expose_version is correctly
+// parsed from YAML: true keeps existing behaviour; false enables suppression.
+func TestLoad_HealthExposeVersion(t *testing.T) {
+	tests := []struct {
+		name       string
+		yaml       string
+		wantExpose bool
+	}{
+		{
+			name:       "explicit true",
+			yaml:       "health:\n  expose_version: true\n",
+			wantExpose: true,
+		},
+		{
+			name:       "explicit false — suppression enabled",
+			yaml:       "health:\n  expose_version: false\n",
+			wantExpose: false,
+		},
+		{
+			name:       "health block absent — defaults to true",
+			yaml:       "server:\n  port: 8443\n",
+			wantExpose: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			cfgPath := filepath.Join(dir, "vibewarden.yaml")
+			if err := os.WriteFile(cfgPath, []byte(tt.yaml), 0o600); err != nil {
+				t.Fatalf("writing config: %v", err)
+			}
+			cfg, err := config.Load(cfgPath)
+			if err != nil {
+				t.Fatalf("Load() error = %v", err)
+			}
+			if cfg.Health.ExposeVersion != tt.wantExpose {
+				t.Errorf("Health.ExposeVersion = %v, want %v", cfg.Health.ExposeVersion, tt.wantExpose)
+			}
+		})
+	}
+}
+
 // TestLoad_DeployHost_FromYAML verifies that deploy.host is populated when
 // the yaml carries the field, and that an explicit empty string in the yaml
 // returns empty (mirrors the target_platform behaviour documented above).

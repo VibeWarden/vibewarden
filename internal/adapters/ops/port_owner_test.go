@@ -38,6 +38,8 @@ func TestVibeWardenHealthProbe_ProbeOwner(t *testing.T) {
 	t.Parallel()
 
 	okBody := `{"status":"ok","version":"test","components":{"sidecar":"ok"}}`
+	// okBodyNoVersion simulates a sidecar with health.expose_version: false.
+	okBodyNoVersion := `{"status":"ok","components":{"sidecar":"ok"}}`
 	foreignBody := `{"hello":"world"}`
 
 	tests := []struct {
@@ -47,8 +49,35 @@ func TestVibeWardenHealthProbe_ProbeOwner(t *testing.T) {
 		want     ports.PortOwner
 	}{
 		{
-			name: "vibewarden signature matches → OwnerVibeWarden",
+			name: "vibewarden signature matches (legacy body prefix) → OwnerVibeWarden",
 			handler: func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(http.StatusOK)
+				_, _ = fmt.Fprint(w, okBody)
+			},
+			want: ports.OwnerVibeWarden,
+		},
+		{
+			name: "stable X-Vibewarden header present → OwnerVibeWarden (no version in body)",
+			handler: func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("X-Vibewarden", "1")
+				w.WriteHeader(http.StatusOK)
+				_, _ = fmt.Fprint(w, okBodyNoVersion)
+			},
+			want: ports.OwnerVibeWarden,
+		},
+		{
+			name: "X-Vibewarden header with wrong value → falls back to body, foreign",
+			handler: func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("X-Vibewarden", "0")
+				w.WriteHeader(http.StatusOK)
+				_, _ = fmt.Fprint(w, foreignBody)
+			},
+			want: ports.OwnerForeign,
+		},
+		{
+			name: "X-Vibewarden: 1 + legacy body prefix → OwnerVibeWarden (both methods agree)",
+			handler: func(w http.ResponseWriter, _ *http.Request) {
+				w.Header().Set("X-Vibewarden", "1")
 				w.WriteHeader(http.StatusOK)
 				_, _ = fmt.Fprint(w, okBody)
 			},
@@ -177,6 +206,63 @@ func TestVibeWardenHealthProbe_WildcardHostRewritten(t *testing.T) {
 	got := probe.ProbeOwner(context.Background(), "0.0.0.0", port)
 	if got != ports.OwnerVibeWarden {
 		t.Errorf("ProbeOwner(0.0.0.0) = %q, want %q", got, ports.OwnerVibeWarden)
+	}
+}
+
+// TestVibeWardenHealthProbe_SuppressedVersion verifies that a sidecar with
+// health.expose_version: false (no version in the body) is still detected as
+// VibeWarden-owned via the stable X-Vibewarden header. This is the core
+// requirement for issue #1276: decoupling port-ownership detection from the
+// version string.
+func TestVibeWardenHealthProbe_SuppressedVersion(t *testing.T) {
+	t.Parallel()
+
+	// Simulate a sidecar running with health.expose_version: false — no "version"
+	// field in the body, but the X-Vibewarden: 1 header is always present.
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/_vibewarden/health" {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		w.Header().Set("X-Vibewarden", "1")
+		w.WriteHeader(http.StatusOK)
+		_, _ = fmt.Fprint(w, `{"status":"ok","components":{"sidecar":"ok","upstream":"ok"}}`)
+	}))
+	defer srv.Close()
+
+	probe := opsadapter.NewVibeWardenHealthProbe(srv.Client())
+	host, port := hostPortFromURL(t, srv.URL)
+
+	got := probe.ProbeOwner(context.Background(), host, port)
+	if got != ports.OwnerVibeWarden {
+		t.Errorf("ProbeOwner() with suppress-version sidecar = %q, want %q", got, ports.OwnerVibeWarden)
+	}
+}
+
+// TestVibeWardenHealthProbe_LegacyBackwardCompat verifies that an older sidecar
+// (body has version, no X-Vibewarden header) is still detected. This preserves
+// backward compatibility during rolling upgrades.
+func TestVibeWardenHealthProbe_LegacyBackwardCompat(t *testing.T) {
+	t.Parallel()
+
+	// Simulate a pre-#1276 sidecar: version in body, no X-Vibewarden header.
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/_vibewarden/health" {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		// No X-Vibewarden header.
+		w.WriteHeader(http.StatusOK)
+		_, _ = fmt.Fprint(w, `{"status":"ok","version":"v0.19.0","components":{"sidecar":"ok"}}`)
+	}))
+	defer srv.Close()
+
+	probe := opsadapter.NewVibeWardenHealthProbe(srv.Client())
+	host, port := hostPortFromURL(t, srv.URL)
+
+	got := probe.ProbeOwner(context.Background(), host, port)
+	if got != ports.OwnerVibeWarden {
+		t.Errorf("ProbeOwner() legacy body-prefix detection = %q, want %q", got, ports.OwnerVibeWarden)
 	}
 }
 
