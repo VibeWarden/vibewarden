@@ -721,3 +721,75 @@ func TestStatusService_DevSmoke_ZeroFAIL(t *testing.T) {
 		t.Errorf("unexpected FAIL row on dev smoke stack:\nfull output:\n%s", out)
 	}
 }
+
+// TestStatusService_AuthEnabled_ContainerInternalAdminURL_ProbesPublishedPort
+// verifies the #1337 fix: when kratos.admin_url uses the compose service name
+// (unreachable from the host), the probe targets the published host port
+// instead, so a healthy stack is not reported as FAIL.
+func TestStatusService_AuthEnabled_ContainerInternalAdminURL_ProbesPublishedPort(t *testing.T) {
+	cfg := defaultConfig()
+	cfg.Auth.Mode = "kratos"
+	cfg.Kratos.AdminURL = "http://kratos:4434"
+
+	internalURL := "http://kratos:4434/admin/health/ready"
+	hostURL := "http://127.0.0.1:4434/admin/health/ready"
+
+	checker := &fakeHealthChecker{responses: map[string]healthResponse{
+		"https://localhost:8443/_vibewarden/health":  {ok: true, statusCode: 200},
+		"https://localhost:8443/_vibewarden/metrics": {ok: true, statusCode: 200},
+		hostURL: {ok: true, statusCode: 200},
+		// The container-internal hostname does not resolve from the host.
+		internalURL: {ok: false, err: errors.New("no such host")},
+	}}
+
+	svc := ops.NewStatusService(checker)
+	var buf bytes.Buffer
+	if err := svc.Run(context.Background(), cfg, &buf); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	out := buf.String()
+	if checker.callCount[internalURL] > 0 {
+		t.Errorf("container-internal Kratos URL was probed %d times; expected 0", checker.callCount[internalURL])
+	}
+	if checker.callCount[hostURL] != 1 {
+		t.Errorf("host-published Kratos URL was probed %d times; want 1", checker.callCount[hostURL])
+	}
+	if hasComponentFAIL(out) {
+		t.Errorf("expected no FAIL rows when Kratos is healthy on the published port, got:\n%s", out)
+	}
+	// The rewrite must be explained so the shown URL is not mistaken for config.
+	if !strings.Contains(out, "published port for container-internal kratos:4434") {
+		t.Errorf("expected rewrite note in Auth row, got:\n%s", out)
+	}
+}
+
+// TestStatusService_AuthEnabled_ExternalKratos_ProbedAsConfigured verifies
+// that an external Kratos (dotted hostname) is still probed at its configured
+// URL — the #1337 rewrite must not mask a genuinely unreachable instance.
+func TestStatusService_AuthEnabled_ExternalKratos_ProbedAsConfigured(t *testing.T) {
+	cfg := defaultConfig()
+	cfg.Auth.Mode = "kratos"
+	cfg.Kratos.AdminURL = "https://kratos.example.com"
+
+	externalURL := "https://kratos.example.com/admin/health/ready"
+
+	checker := &fakeHealthChecker{responses: map[string]healthResponse{
+		"https://localhost:8443/_vibewarden/health":  {ok: true, statusCode: 200},
+		"https://localhost:8443/_vibewarden/metrics": {ok: true, statusCode: 200},
+		externalURL: {ok: false, err: errors.New("connection refused")},
+	}}
+
+	svc := ops.NewStatusService(checker)
+	var buf bytes.Buffer
+	if err := svc.Run(context.Background(), cfg, &buf); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if checker.callCount[externalURL] != 1 {
+		t.Errorf("external Kratos URL was probed %d times; want 1", checker.callCount[externalURL])
+	}
+	if !hasComponentFAIL(buf.String()) {
+		t.Errorf("expected a FAIL row when an external Kratos is unreachable, got:\n%s", buf.String())
+	}
+}
