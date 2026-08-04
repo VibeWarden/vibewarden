@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 
+	"gopkg.in/yaml.v3"
+
 	bundleapp "github.com/vibewarden/vibewarden/internal/app/bundle"
 	"github.com/vibewarden/vibewarden/internal/config"
 	"github.com/vibewarden/vibewarden/internal/ports"
@@ -166,6 +168,159 @@ tls:
 	}
 	if !strings.Contains(s, "domain: test.example.com") {
 		t.Errorf("expected 'domain: test.example.com' in merged config, got:\n%s", s)
+	}
+}
+
+// TestArtifact_Bundle_DropsAppBuildWhenImageSet verifies that the bundled
+// vibewarden.yaml does not retain app.build from the base config once the
+// production override supplies app.image. A bundle is a production artifact:
+// a build context is meaningless on the remote host and having both keys left
+// readers (humans and agents) guessing which one wins.
+//
+// Regression test for #1341.
+func TestArtifact_Bundle_DropsAppBuildWhenImageSet(t *testing.T) {
+	tests := []struct {
+		name      string
+		multiSite bool
+		relPath   []string
+	}{
+		{name: "single-site", multiSite: false, relPath: []string{"vibewarden.yaml"}},
+		{name: "multi-site", multiSite: true, relPath: []string{"sites", "myapp", "vibewarden.yaml"}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			projDir := t.TempDir()
+			outputDir := t.TempDir()
+
+			baseYAML := `name: myapp
+server:
+  port: 8443
+upstream:
+  host: "0.0.0.0"
+  port: 3000
+app:
+  build: "."
+  language: go
+`
+			basePath := filepath.Join(projDir, "vibewarden.yaml")
+			if err := os.WriteFile(basePath, []byte(baseYAML), 0o600); err != nil {
+				t.Fatalf("writing base config: %v", err)
+			}
+
+			prodYAML := `server:
+  port: 443
+app:
+  image: ghcr.io/vibewarden/demo-app:latest
+`
+			prodPath := filepath.Join(projDir, "vibewarden.production.yaml")
+			if err := os.WriteFile(prodPath, []byte(prodYAML), 0o600); err != nil {
+				t.Fatalf("writing prod config: %v", err)
+			}
+
+			cfg := &config.Config{
+				Name:     "myapp",
+				Server:   config.ServerConfig{Port: 443},
+				Upstream: config.UpstreamConfig{Host: "0.0.0.0", Port: 3000},
+				App:      config.AppConfig{Build: ".", Image: "ghcr.io/vibewarden/demo-app:latest", Language: "go"},
+			}
+
+			svc := bundleapp.NewService(&fakeExecutor{}, &fakeGenerator{})
+
+			err := svc.Bundle(context.Background(), bundleapp.BundleOptions{
+				Config:         cfg,
+				ConfigPath:     basePath,
+				ProdConfigPath: prodPath,
+				ProjectName:    "myapp",
+				MultiSite:      tt.multiSite,
+				OutputDir:      outputDir,
+			})
+			if err != nil {
+				t.Fatalf("Bundle() error = %v", err)
+			}
+
+			data, err := os.ReadFile(filepath.Join(append([]string{outputDir}, tt.relPath...)...))
+			if err != nil {
+				t.Fatalf("reading bundled config: %v", err)
+			}
+
+			var bundled struct {
+				App struct {
+					Build    string `yaml:"build"`
+					Image    string `yaml:"image"`
+					Language string `yaml:"language"`
+				} `yaml:"app"`
+			}
+			if err := yaml.Unmarshal(data, &bundled); err != nil {
+				t.Fatalf("parsing bundled config: %v", err)
+			}
+
+			if bundled.App.Build != "" {
+				t.Errorf("bundled app.build = %q, want it dropped; config:\n%s", bundled.App.Build, data)
+			}
+			if bundled.App.Image != "ghcr.io/vibewarden/demo-app:latest" {
+				t.Errorf("bundled app.image = %q, want the production override value; config:\n%s", bundled.App.Image, data)
+			}
+			if bundled.App.Language != "go" {
+				t.Errorf("bundled app.language = %q, want %q (sibling keys must survive)", bundled.App.Language, "go")
+			}
+		})
+	}
+}
+
+// TestArtifact_Bundle_KeepsAppBuildWithoutImage verifies that app.build is left
+// alone when no image is configured — it is then the only description of how
+// the app image is produced, and the compose generator still needs it.
+func TestArtifact_Bundle_KeepsAppBuildWithoutImage(t *testing.T) {
+	projDir := t.TempDir()
+	outputDir := t.TempDir()
+
+	baseYAML := `name: myapp
+upstream:
+  host: "0.0.0.0"
+  port: 3000
+app:
+  build: "."
+`
+	basePath := filepath.Join(projDir, "vibewarden.yaml")
+	if err := os.WriteFile(basePath, []byte(baseYAML), 0o600); err != nil {
+		t.Fatalf("writing base config: %v", err)
+	}
+
+	cfg := &config.Config{
+		Name:     "myapp",
+		Upstream: config.UpstreamConfig{Host: "0.0.0.0", Port: 3000},
+		App:      config.AppConfig{Build: "."},
+	}
+
+	svc := bundleapp.NewService(&fakeExecutor{}, &fakeGenerator{})
+
+	err := svc.Bundle(context.Background(), bundleapp.BundleOptions{
+		Config:      cfg,
+		ConfigPath:  basePath,
+		ProjectName: "myapp",
+		MultiSite:   false,
+		OutputDir:   outputDir,
+	})
+	if err != nil {
+		t.Fatalf("Bundle() error = %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(outputDir, "vibewarden.yaml"))
+	if err != nil {
+		t.Fatalf("reading bundled config: %v", err)
+	}
+
+	var bundled struct {
+		App struct {
+			Build string `yaml:"build"`
+		} `yaml:"app"`
+	}
+	if err := yaml.Unmarshal(data, &bundled); err != nil {
+		t.Fatalf("parsing bundled config: %v", err)
+	}
+	if bundled.App.Build != "." {
+		t.Errorf("bundled app.build = %q, want %q", bundled.App.Build, ".")
 	}
 }
 
