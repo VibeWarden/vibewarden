@@ -45,6 +45,19 @@ updates:
     labels:
       - tech-debt
 
+  # npm — Next.js example app (package.json + package-lock.json).
+  # Without this entry Dependabot only raised alerts and never opened PRs for
+  # examples/nextjs, which is how it drifted to 13 open advisories (#1400).
+  - package-ecosystem: npm
+    directory: /examples/nextjs
+    schedule:
+      interval: weekly
+      day: monday
+    commit-message:
+      prefix: "deps(nextjs-example)"
+    labels:
+      - tech-debt
+
   # Docker — base images in Dockerfile + docker-compose.
   - package-ecosystem: docker
     directory: /
