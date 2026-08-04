@@ -1,7 +1,7 @@
 # VHS tape for the README quickstart demo (docs/assets/demo.gif).
 # Regenerate with: vhs docs/assets/demo.tape
 # Requires: vhs (brew install vhs) and a vibew binary on PATH built from this repo
-# (go build -o /usr/local/bin/vibew ./cmd/vibewarden — or adjust PATH below).
+# (e.g. go build -o /usr/local/bin/vibew ./cmd/vibewarden, or export PATH before running vhs).
 # The recording runs in a throwaway directory; nothing touches the repo.
 
 Output docs/assets/demo.gif
@@ -40,6 +40,6 @@ Type "grep -A2 -E '^(tls|security_headers|rate_limit):' vibewarden.yaml"
 Enter
 Sleep 4s
 
-Type "# TLS, auth, rate limiting, WAF — configured. Now: vibew dev"
+Type "# TLS, security headers, rate limiting — on by default. Now: vibew dev"
 Enter
 Sleep 3s
