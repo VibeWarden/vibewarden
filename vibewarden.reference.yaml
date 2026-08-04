@@ -317,25 +317,8 @@ kratos:
   #   VIBEWARDEN_KRATOS_PUBLIC_URL: http://kratos:4433
   #   VIBEWARDEN_KRATOS_ADMIN_URL:  http://kratos:4434
 
-  # Social login providers (OAuth 2.0 / OIDC).
-  #
-  # List the provider IDs that are active in your kratos.yml OIDC method config.
-  # VibeWarden uses this list for structured log enrichment only — credentials
-  # are configured exclusively in kratos.yml, never here.
-  #
-  # The OAuth callback URL for each provider follows this pattern:
-  #   https://<your-domain>/self-service/methods/oidc/callback/<provider-id>
-  #
-  # See docs/social-login.md for step-by-step setup guides for each provider.
-  #
-  # social_providers:
-  #   - google      # Google OAuth 2.0 — console.cloud.google.com
-  #   - github      # GitHub OAuth App — github.com/settings/developers
-  #   - apple       # Sign in with Apple — developer.apple.com
-  #   - facebook    # Meta / Facebook Login — developers.facebook.com
-  #   - microsoft   # Azure AD / Microsoft — portal.azure.com
-  #   - keycloak    # Generic OIDC — any provider with an OIDC discovery endpoint
-  social_providers: []
+  # NOTE: social login providers are configured under auth.social_providers,
+  # not here. See the auth: section below.
 
 # Auth middleware settings
 #
@@ -496,6 +479,41 @@ auth:
   #     moderator:
   #       - /admin/moderation/*
   # role_paths: {}
+
+  # Social login providers (OAuth 2.0 / OIDC). Only valid when mode is "kratos".
+  #
+  # Each entry is an object — not a bare provider name. `vibew generate` renders
+  # these entries into the generated kratos.yml OIDC method config and writes the
+  # matching claim mapper files, so the credentials belong here.
+  #
+  # Accepted provider values: google, github, apple, facebook, microsoft, gitlab,
+  # discord, slack, spotify, oidc (generic OpenID Connect).
+  #
+  # Required for every entry: provider, client_id, client_secret.
+  # Additionally required: team_id + key_id for "apple"; id + issuer_url for "oidc".
+  # Optional: scopes (list), label (login button text).
+  #
+  # Configuring any provider auto-upgrades auth.identity_schema from the default
+  # "email_password" to "social" so name and picture traits are available.
+  #
+  # The OAuth callback URL for each provider follows this pattern:
+  #   https://<your-domain>/self-service/methods/oidc/callback/<provider-id>
+  #
+  # See docs/social-login.md for step-by-step setup guides for each provider.
+  #
+  # Example:
+  #   social_providers:
+  #     - provider: google
+  #       client_id: "${GOOGLE_CLIENT_ID}"
+  #       client_secret: "${GOOGLE_CLIENT_SECRET}"
+  #       scopes: ["email", "profile"]
+  #     - provider: oidc
+  #       id: keycloak
+  #       issuer_url: "https://keycloak.example.com/realms/myrealm"
+  #       client_id: "${KEYCLOAK_CLIENT_ID}"
+  #       client_secret: "${KEYCLOAK_CLIENT_SECRET}"
+  #       label: "Company SSO"
+  social_providers: []
 
 # Request body size limiting
 # VibeWarden can reject oversized request bodies before they reach the upstream.

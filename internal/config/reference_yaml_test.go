@@ -92,6 +92,32 @@ func TestReferenceYAML_UnmarshalsCleanly(t *testing.T) {
 	}
 }
 
+// TestReferenceYAML_PassesStrictLoader loads vibewarden.reference.yaml through
+// LoadStrict — the same path `vibew validate` and `vibew bundle` use — and
+// requires it to be accepted.
+//
+// TestReferenceYAML_UnmarshalsCleanly above uses LoadRaw, which tolerates
+// unknown keys (ADR-065 keeps ErrorUnused=false on the runtime path). That let
+// the reference file document `kratos.social_providers`, a key that does not
+// exist on any struct — the field lives on AuthConfig as auth.social_providers.
+// Anyone who copied that block out of the "documents EVERY supported option"
+// file got a config that `vibew validate` rejected as an unknown key (#1439).
+func TestReferenceYAML_PassesStrictLoader(t *testing.T) {
+	_, thisFile, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("runtime.Caller failed — cannot determine repository root")
+	}
+	repoRoot := filepath.Join(filepath.Dir(thisFile), "..", "..")
+	refYAML := filepath.Join(repoRoot, "vibewarden.reference.yaml")
+
+	if _, err := config.LoadStrict(refYAML, ""); err != nil {
+		t.Fatalf("LoadStrict(%q) returned error: %v\n\n"+
+			"Every key in vibewarden.reference.yaml must map to a Config struct field — "+
+			"the file is advertised as documenting every supported option, so a key the "+
+			"strict loader rejects is a config an operator cannot actually use.", refYAML, err)
+	}
+}
+
 // TestSetDefaults_EmptyYAML verifies that setDefaults() registers values that
 // a user with an empty vibewarden.yaml (no relevant section at all) would
 // receive. This catches "default-lie" bugs where the reference YAML documents

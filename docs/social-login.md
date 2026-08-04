@@ -461,21 +461,37 @@ https://your-domain/self-service/methods/oidc/callback/auth0
 
 ## Enabling the OIDC self-service method in vibewarden.yaml
 
-Add a `social_providers` block under the `kratos` section in your
-`vibewarden.yaml`. This block tells VibeWarden which providers are active
-so it can surface provider names in structured log events.
+Add a `social_providers` block under the **`auth`** section in your
+`vibewarden.yaml` — not under `kratos`. There is no `kratos.social_providers`
+key; the strict loader used by `vibew validate` and `vibew bundle` rejects it as
+an unknown key.
+
+Each entry is an object, not a bare provider name. `vibew generate` renders
+these entries into the generated `kratos.yml` OIDC method config and writes the
+matching claim mapper files, so the credentials belong here.
 
 ```yaml
-kratos:
-  public_url: "http://127.0.0.1:4433"
-  admin_url:  "http://127.0.0.1:4434"
+auth:
+  mode: kratos
   social_providers:
-    - google
-    - github
-    - microsoft
+    - provider: google
+      client_id: "${GOOGLE_CLIENT_ID}"
+      client_secret: "${GOOGLE_CLIENT_SECRET}"
+      scopes: ["email", "profile"]
+    - provider: github
+      client_id: "${GITHUB_CLIENT_ID}"
+      client_secret: "${GITHUB_CLIENT_SECRET}"
 ```
 
-The actual OAuth credentials are always configured in `kratos.yml`, not here.
+`provider`, `client_id` and `client_secret` are required for every entry.
+Apple additionally requires `team_id` and `key_id`; a generic `oidc` entry
+additionally requires `id` and `issuer_url`.
+
+Configuring any provider auto-upgrades `auth.identity_schema` from the default
+`email_password` to `social`, so the `name` and `picture` traits are available.
+
+If you hand-maintain `kratos.yml` via `overrides.kratos_config`, the credentials
+live in that file instead and VibeWarden does not regenerate the OIDC block.
 
 ---
 
