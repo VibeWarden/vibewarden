@@ -717,7 +717,7 @@ curl https://localhost:8443/_vibewarden/health
 
 # Stream logs for a specific service
 vibew logs kratos --tail 50
-vibew logs postgres --tail 100
+vibew logs kratos-db --tail 100
 ```
 
 **Common Kratos issues:**
@@ -734,7 +734,7 @@ vibew logs postgres --tail 100
 
 ```bash
 # Check the logs for the failing container
-vibew logs postgres --tail 100
+vibew logs kratos-db --tail 100
 
 # Common fix: wipe the volume and let Postgres reinitialise
 docker compose -f .vibewarden/generated/docker-compose.yml down -v

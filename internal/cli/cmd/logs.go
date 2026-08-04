@@ -39,11 +39,23 @@ Flags:
   --since <value>  show logs since a duration or RFC3339 timestamp
                    (passed verbatim to docker compose, e.g. "5m", "1h")
 
-Services in the default stack:
-  vibewarden   VibeWarden sidecar (proxy, auth, TLS)
-  app          your application container
-  kratos       Ory Kratos identity server
-  postgres     PostgreSQL database
+Services in the generated stack. The exact set depends on which features are
+enabled in vibewarden.yaml — the condition is shown in parentheses:
+  vibewarden      VibeWarden sidecar (proxy, auth, TLS)
+  app             your application container
+  kratos          Ory Kratos identity server (auth.mode: kratos)
+  kratos-migrate  one-shot Kratos schema migration (auth.mode: kratos)
+  kratos-db       PostgreSQL database for Kratos (auth.mode: kratos)
+  seed-users      one-shot seeding of auth.users (auth.users set)
+  openbao         OpenBao secret store (secrets.store: openbao)
+  seed-secrets    one-shot seeding of secrets (secrets.inject set)
+  redis           rate-limit counter store (rate_limit.store: redis)
+
+The observability services (prometheus, loki, promtail, otel-collector,
+jaeger, grafana) are started separately — see: vibew obs
+
+Passing a service name that is not in the generated compose file prints the
+exact list for your stack.
 
 If the stack has not been started yet, run: vibew dev
 

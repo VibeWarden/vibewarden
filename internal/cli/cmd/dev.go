@@ -49,10 +49,13 @@ func NewDevCmd(version string) *cobra.Command {
 When vibewarden.yaml is present, VibeWarden generates runtime configuration
 files under .vibewarden/generated/ before starting the stack.
 
-The baseline stack includes:
-  - VibeWarden proxy (port 8443, HTTPS with self-signed certificate)
-  - Ory Kratos identity server (ports 4433, 4434)
-  - PostgreSQL
+The baseline stack includes (compose service name in parentheses):
+  - VibeWarden proxy, port 8443, HTTPS with self-signed certificate (vibewarden)
+  - your application container (app)
+  - Ory Kratos identity server, ports 4433, 4434 (kratos)
+  - PostgreSQL database for Kratos (kratos-db)
+
+Run 'vibew logs --help' for the full list of service names.
 
 To also start Prometheus and Grafana, run 'vibew obs up' after the stack is up.
 Pass --watch to watch vibewarden.yaml for changes and automatically
@@ -61,7 +64,7 @@ regenerate config files and restart the stack (blocks until Ctrl+C).
 Pass --rebuild to stop the stack, remove the app image, rebuild via vibew build,
 and start the stack again. This is the recovery path for the image-identity
 mismatch error introduced in v0.18.3. --rebuild and --watch are mutually exclusive.
-Pass --rebuild --volumes to also remove named volumes (Postgres data, LE certs, etc.).
+Pass --rebuild --volumes to also remove named volumes (kratos-db data, LE certs, etc.).
 
 Examples:
   vibew dev
@@ -153,7 +156,7 @@ Examples:
 	cmd.Flags().StringVar(&configPath, "config", "", "path to vibewarden.yaml (default: ./vibewarden.yaml)")
 	cmd.Flags().BoolVar(&verbose, "verbose", false, "stream docker compose stderr during successful startup (always streamed on failure)")
 	cmd.Flags().BoolVar(&rebuild, "rebuild", false, "stop stack, remove app image, rebuild via vibew build, and start (recovery for image-identity mismatch)")
-	cmd.Flags().BoolVar(&rebuildVolumes, "volumes", false, "remove named volumes during --rebuild (requires --rebuild; also removes Postgres data and LE certs)")
+	cmd.Flags().BoolVar(&rebuildVolumes, "volumes", false, "remove named volumes during --rebuild (requires --rebuild; also removes kratos-db data and LE certs)")
 
 	if err := cmd.RegisterFlagCompletionFunc("config", func(_ *cobra.Command, _ []string, _ string) ([]string, cobra.ShellCompDirective) {
 		return []string{"yaml", "yml"}, cobra.ShellCompDirectiveFilterFileExt
