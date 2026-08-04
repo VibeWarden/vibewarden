@@ -306,17 +306,31 @@ When neither build nor image is set, VibeWarden falls back to host.docker.intern
 
 ### tls
 
-  tls.enabled       bool     true     Enable TLS
-  tls.domain        string   ""       Domain for TLS cert (required for letsencrypt)
-  tls.provider      string   ""       letsencrypt (or acme), self-signed, or external
-  tls.cert_path     string   ""       PEM cert path (external only)
-  tls.key_path      string   ""       PEM key path (external only)
-  tls.storage_path  string   ""       ACME cert storage dir (letsencrypt only)
+  tls.enabled                bool     true     Enable TLS
+  tls.domain                 string   ""       Domain for TLS cert (required for letsencrypt)
+  tls.provider               string   ""       letsencrypt (or acme), zerossl, buypass,
+                                               letsencrypt-staging, self-signed, or external
+  tls.cert_path              string   ""       PEM cert path (external only)
+  tls.key_path               string   ""       PEM key path (external only)
+  tls.storage_path           string   ""       ACME cert storage dir (letsencrypt only)
+  tls.email                  string   ""       ACME account email (required for zerossl EAB)
+  tls.acme_ca                string   ""       Override ACME directory URL (letsencrypt only)
+  tls.skip_rate_limit_check  bool     false    Skip the vibew doctor Let's Encrypt rate-limit preflight
+
+  tls.cert_monitoring.enabled             bool      true    Background certificate expiry monitor
+  tls.cert_monitoring.check_interval      duration  6h      How often expiry is checked
+  tls.cert_monitoring.warning_threshold   duration  720h    Emits tls.cert_monitoring.warning (30 days)
+  tls.cert_monitoring.critical_threshold  duration  168h    Emits tls.cert_monitoring.critical and
+                                                            degrades /_vibewarden/health (7 days)
 
   tls:
     enabled: true
     provider: letsencrypt
     domain: myapp.example.com
+    email: ops@example.com
+    cert_monitoring:
+      enabled: true
+      warning_threshold: 720h
 
 
 ### auth
@@ -420,8 +434,12 @@ When neither build nor image is set, VibeWarden falls back to host.docker.intern
     id           string    Unique identifier (OIDC entries)
     issuer_url   string    OIDC issuer URL (OIDC provider only)
 
-  Social login is configured in kratos.yml (not vibewarden.yaml). VibeWarden
-  proxies /self-service/ paths to Kratos. Callback URL pattern:
+  The key is auth.social_providers — not kratos.social_providers (the strict
+  loader rejects the latter). `vibew generate` renders these entries into the
+  generated kratos.yml OIDC config and writes the matching claim mappers, and
+  VibeWarden proxies /self-service/ paths to Kratos. Configuring any provider
+  auto-upgrades auth.identity_schema from "email_password" to "social".
+  Callback URL pattern:
   https://<domain>/self-service/methods/oidc/callback/<provider-id>
 
 ### auth.ui
@@ -508,6 +526,39 @@ When neither build nor image is set, VibeWarden falls back to host.docker.intern
   security_headers.suppress_via_header             bool     true
 
 
+### response_headers
+
+Arbitrary response header modification, applied after all other middleware
+(including security_headers). Operations run in the order: remove, then set,
+then add. Values may reference environment variables with ${VAR}.
+
+  response_headers.set     map     {}    Overwrite (or create) these headers
+  response_headers.add     map     {}    Append (or create) these headers
+  response_headers.remove  list    []    Header names deleted from every response
+
+  response_headers:
+    set:
+      Cache-Control: "no-store"
+    add:
+      Vary: "Accept-Encoding"
+    remove:
+      - X-AspNet-Version
+      - X-Generator
+
+
+### compression
+
+Response body compression. The algorithm is negotiated with the client via
+Accept-Encoding; Caddy picks the first listed algorithm the client accepts.
+
+  compression.enabled     bool    true              Enabled by default
+  compression.algorithms  list    [zstd, gzip]      Ordered; valid values: zstd, gzip
+
+  compression:
+    enabled: true
+    algorithms: ["zstd", "gzip"]
+
+
 ### cors
 
   cors.enabled            bool    false
@@ -522,7 +573,14 @@ When neither build nor image is set, VibeWarden falls back to host.docker.intern
 ### waf
 
   waf.enabled  bool    true      Enable WAF (on by default in detect mode)
-  waf.mode     string  detect    block (reject 400) or detect (log only)
+  waf.mode     string  detect    block (reject 400) or detect (log only).
+                                 "log" is an accepted alias for detect.
+
+  waf.acknowledge_log_mode  bool  false  Suppress the vibew validate FAIL that fires when
+                                         waf.mode is exactly "log" and a
+                                         vibewarden.production.yaml exists. Set to true when
+                                         log mode is intentional during a production rollout;
+                                         the check then emits OK instead of FAIL.
 
   waf.rules.sqli               bool    true
   waf.rules.xss                bool    true
@@ -556,6 +614,34 @@ When neither build nor image is set, VibeWarden falls back to host.docker.intern
     overrides:
       - path: /api/upload
         max: 50MB
+
+
+### input_validation
+
+Request size limits enforced before the upstream sees the request. Complements
+body_size, which covers the request body. Violations return 400 Bad Request.
+
+  input_validation.enabled                   bool    false
+  input_validation.max_url_length            int     2048    Raw request URI bytes (path + query)
+  input_validation.max_query_string_length   int     2048    Query string bytes (no leading "?")
+  input_validation.max_header_count          int     100     Max number of request headers
+  input_validation.max_header_size           int     8192    Max bytes in any single header value
+  input_validation.path_overrides            list    []      Per-path overrides, first match wins
+
+  Zero disables an individual check.
+
+  Each override: path (glob, path.Match syntax) plus any of max_url_length,
+  max_query_string_length, max_header_count, max_header_size. Zero fields
+  inherit the global value.
+
+  input_validation:
+    enabled: true
+    max_url_length: 2048
+    path_overrides:
+      - path: /api/upload
+        max_url_length: 4096
+      - path: /static/*
+        max_header_count: 50
 
 
 ### ip_filter
@@ -758,12 +844,16 @@ Local observability stack (Grafana, Prometheus, Loki, Promtail).
   webhooks.signature_verification.paths    list  []
 
   Each path entry:
-    path        string    URL path to protect (required)
-    provider    string    stripe, github, slack, twilio, or generic
-    secret      string    Env var reference: ${STRIPE_WEBHOOK_SECRET}
-    header      string    Signature header (auto-set per provider, override for generic)
-    algorithm   string    hmac-sha256 or hmac-sha1 (generic only)
-    tolerance   duration  Max timestamp age for replay protection (default: 5m)
+    path            string    URL path to protect (required)
+    provider        string    stripe, github, slack, twilio, or generic (required)
+    secret_env_var  string    NAME of the env var holding the shared secret (required).
+                              Bare name — not ${VAR}. The secret is never stored in YAML.
+    header          string    Signature header name. Required for provider: generic,
+                              ignored for all other providers (their header is fixed).
+
+  There is no algorithm or tolerance field: each provider's algorithm is fixed
+  (generic is HMAC-SHA256 hex over the raw body) and the strict loader rejects
+  unknown keys, so adding them fails `vibew validate`.
 
   Example:
     webhooks:
@@ -772,10 +862,14 @@ Local observability stack (Grafana, Prometheus, Loki, Promtail).
         paths:
           - path: /webhooks/stripe
             provider: stripe
-            secret: ${STRIPE_WEBHOOK_SECRET}
+            secret_env_var: STRIPE_WEBHOOK_SECRET
           - path: /webhooks/github
             provider: github
-            secret: ${GITHUB_WEBHOOK_SECRET}
+            secret_env_var: GITHUB_WEBHOOK_SECRET
+          - path: /webhooks/custom
+            provider: generic
+            secret_env_var: MY_WEBHOOK_SECRET
+            header: X-Hub-Signature-256
 
   Invalid/missing signatures return 401. Events emitted:
     webhook.signature_valid    Signature verified successfully
@@ -793,6 +887,37 @@ Local observability stack (Grafana, Prometheus, Loki, Promtail).
 
   health:
     expose_version: false   # suppress version fingerprinting (OWASP A05)
+
+
+### error_pages
+
+Serve custom HTML or JSON bodies instead of the built-in JSON error response
+for auth failures, rate-limit rejections, WAF blocks, and other sidecar errors.
+
+  error_pages.enabled    bool    false
+  error_pages.directory  string  ""      Directory holding the files; required when enabled
+
+  File naming: <status_code>.<ext> — e.g. 401.html, 403.json, 429.html, 503.html.
+  Content-Type is inferred from the extension (.html -> text/html, .json ->
+  application/json). Status codes with no matching file fall back to the
+  built-in JSON body.
+
+  error_pages:
+    enabled: true
+    directory: ./error-pages
+
+
+### maintenance
+
+Return 503 Service Unavailable for every request. /_vibewarden/* paths (health,
+metrics, ready) are always exempt so probes keep working during downtime.
+
+  maintenance.enabled  bool    false
+  maintenance.message  string  "Service is under maintenance"   503 response body message
+
+  maintenance:
+    enabled: true
+    message: "Back at 14:00 UTC — database migration in progress"
 
 
 ### watch (hot config reload)
@@ -860,8 +985,11 @@ Local observability stack (Grafana, Prometheus, Loki, Promtail).
 
 ### log
 
-  log.level   string    info     debug, info, warn, error
-  log.format  string    json     json or text
+  log.level       string    info     debug, info, warn, error
+  log.format      string    json     json or text
+  log.access_log  bool      true     Log every completed HTTP request at INFO with method,
+                                     path, status, duration, client IP, request ID, user
+                                     agent, and bytes written. Set false to silence it.
 
 
 ### admin
@@ -1259,8 +1387,17 @@ Step 8 — Verify against the public URL (port 443, TLS):
 
 Step 9 — Subsequent deploys (after code or config changes):
     vibew bundle
-    rsync -av --delete .vibewarden/bundle/ <your-ssh-user>@<your-ssh-host>:/opt/myapp/
+    rsync -av --delete '.vibewarden/bundle/' '<your-ssh-user>@<your-ssh-host>:/opt/myapp/'
     ssh '<your-ssh-user>@<your-ssh-host>' "cd /opt/myapp && docker load -i image.tar && docker compose up -d"
+
+    Why rsync here and the tar pipe in Step 7: both are dotfile-safe, which is
+    the only hard requirement — the bundle contains .env, and `scp -r bundle/*`
+    silently drops it because the shell glob does not expand dotfiles. rsync
+    adds delta transfer, which matters when only the config changed and
+    image.tar is unchanged. The Step 7 tar pipe remains correct here and is the
+    fallback when the remote host has no rsync installed:
+
+    tar -czf - -C .vibewarden/bundle . | ssh '<your-ssh-user>@<your-ssh-host>' 'tar -xzf - -C /opt/myapp/'
 
 Note: the legacy `vibew deploy` command (one-shot SSH orchestration) was removed
 in ADR-086. The bundle pipeline above is the only supported remote workflow.

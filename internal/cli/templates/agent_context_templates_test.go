@@ -1,7 +1,10 @@
 package templates_test
 
 import (
+	"os"
+	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -200,6 +203,78 @@ func TestAgentsVibewardenTemplate_ImageTagDerivationChain(t *testing.T) {
 			t.Errorf("agents-vibewarden.md.tmpl missing expected derivation chain text %q", want)
 		}
 	}
+}
+
+// TestAgentsVibewardenTemplate_SidecarHeadersMatchCanonicalExample verifies that
+// the "Sidecar-injected headers" section of the rendered agents-vibewarden.md.tmpl
+// is byte-identical to the same section in docs/examples/AGENTS-VIBEWARDEN.md.
+//
+// docs/examples/AGENTS-VIBEWARDEN.md is the canonical example agents read in the
+// docs; the template is what `vibew init` actually writes into a project. When
+// the two drift, agents get a generated file that omits documented behaviour —
+// which is how the `GET /_vibewarden/me` paragraph went missing (#1277).
+func TestAgentsVibewardenTemplate_SidecarHeadersMatchCanonicalExample(t *testing.T) {
+	renderer := templateadapter.NewRenderer(templates.FS)
+
+	out, err := renderer.Render("agents/agents-vibewarden.md.tmpl", domainscaffold.InitProjectData{
+		ProjectName: "testapp",
+		Port:        3000,
+	})
+	if err != nil {
+		t.Fatalf("Render() error = %v", err)
+	}
+
+	_, thisFile, _, ok := runtime.Caller(0)
+	if !ok {
+		t.Fatal("runtime.Caller failed — cannot determine repository root")
+	}
+	// internal/cli/templates/agent_context_templates_test.go → ../../../
+	repoRoot := filepath.Join(filepath.Dir(thisFile), "..", "..", "..")
+	canonicalPath := filepath.Join(repoRoot, "docs", "examples", "AGENTS-VIBEWARDEN.md")
+	canonical, err := os.ReadFile(canonicalPath) //nolint:gosec // fixed repo-relative test fixture
+	if err != nil {
+		t.Fatalf("reading %s: %v", canonicalPath, err)
+	}
+
+	const heading = "## Sidecar-injected headers"
+
+	rendered := extractMarkdownSection(t, string(out), heading)
+	expected := extractMarkdownSection(t, string(canonical), heading)
+
+	if rendered != expected {
+		t.Errorf("agents-vibewarden.md.tmpl %q section drifted from docs/examples/AGENTS-VIBEWARDEN.md\n\n"+
+			"template:\n%s\n\ncanonical example:\n%s", heading, rendered, expected)
+	}
+
+	// Explicit sentinel: the endpoint that was missing in #1277. Guards against
+	// both files being "fixed" by deleting the paragraph from the example.
+	for _, want := range []string{
+		"GET /_vibewarden/me",
+		`{"id","email","verified","role"}`,
+	} {
+		if !strings.Contains(rendered, want) {
+			t.Errorf("agents-vibewarden.md.tmpl %q section missing %q (#1277)", heading, want)
+		}
+	}
+}
+
+// extractMarkdownSection returns the body of the Markdown section introduced by
+// heading, up to (but not including) the next heading at the same level. It
+// fails the test when the heading is absent.
+func extractMarkdownSection(t *testing.T, content, heading string) string {
+	t.Helper()
+
+	start := strings.Index(content, heading)
+	if start < 0 {
+		t.Fatalf("heading %q not found", heading)
+	}
+	body := content[start+len(heading):]
+
+	// Find the next heading of the same level ("\n## ").
+	if end := strings.Index(body, "\n## "); end >= 0 {
+		body = body[:end]
+	}
+	return strings.TrimSpace(body)
 }
 
 // TestAgentContextTemplates_AgentsMd verifies that agents/agents.md.tmpl renders
