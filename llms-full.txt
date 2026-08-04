@@ -1390,7 +1390,7 @@ VibeWarden is operated via the `vibew` CLI. Below is the complete command list.
 | `vibew build` | Build the Docker image for the app. Since v0.18.3 also stamps `org.vibewarden.project-root-hash` and `org.vibewarden.project-root` Docker labels on the produced image for identity verification by `vibew dev`. |
 | `vibew dev` | Start local dev environment. Since v0.18.3 inspects the app image's project-root-hash label before compose-up and exits 1 with an actionable message when the label is missing or belongs to a different project. Recovery: `vibew dev --rebuild`. Custom images set via `app.image:` are skipped automatically with an INFO line. Docker unavailable (socket permission denied or daemon not running) exits 3 with an operator-friendly hint block. |
 | `vibew dev --rebuild` | Stop the stack, remove the app image, rebuild via `vibew build`, and start the stack. Recovery path for the image-identity mismatch block (#1219). Volumes are preserved by default. |
-| `vibew dev --rebuild --volumes` | Same as `--rebuild` but also removes named volumes (Postgres data, LE certs). Data loss — opt-in only. |
+| `vibew dev --rebuild --volumes` | Same as `--rebuild` but also removes named volumes (kratos-db data, LE certs). Data loss — opt-in only. |
 | `vibew dev --verbose` | Start local dev environment and stream docker compose output during startup |
 | `vibew dev --watch` | Watch vibewarden.yaml for changes and auto-regenerate config files + restart the stack (blocks until Ctrl+C) |
 | `vibew obs up` | Start the Prometheus + Grafana observability stack (profile overlay on the running dev stack) |

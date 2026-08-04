@@ -717,7 +717,7 @@ curl https://localhost:8443/_vibewarden/health
 
 # Stream logs for a specific service
 vibew logs kratos --tail 50
-vibew logs postgres --tail 100
+vibew logs kratos-db --tail 100
 ```
 
 **Common Kratos issues:**
@@ -734,7 +734,7 @@ vibew logs postgres --tail 100
 
 ```bash
 # Check the logs for the failing container
-vibew logs postgres --tail 100
+vibew logs kratos-db --tail 100
 
 # Common fix: wipe the volume and let Postgres reinitialise
 docker compose -f .vibewarden/generated/docker-compose.yml down -v
@@ -785,7 +785,7 @@ vibew dev --rebuild
 ```
 
 `--rebuild` stops the stack, removes the app image, rebuilds via `vibew build`, and starts
-the stack. Volumes are preserved. To also reset named volumes (Postgres data, LE certs),
+the stack. Volumes are preserved. To also reset named volumes (kratos-db data, LE certs),
 pass `--rebuild --volumes`.
 
 **Images set via `app.image:` in vibewarden.yaml are skipped automatically** — the
