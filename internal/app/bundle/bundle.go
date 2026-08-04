@@ -478,8 +478,9 @@ func renderAppCompose(cfg *config.Config, projectName string) (string, error) {
 }
 
 // buildMergedConfigYAML reads the base config YAML, optionally deep-merges a
-// production override YAML, resolves upstream.host for Docker networking, and
-// returns the result as marshalled YAML bytes. This approach avoids marshalling
+// production override YAML, resolves upstream.host for Docker networking, drops
+// app.build once app.image is known (#1341), and returns the result as
+// marshalled YAML bytes. This approach avoids marshalling
 // the Config struct (which only has mapstructure tags, not yaml tags) so that
 // multi-word field names like rate_limit and security_headers are preserved.
 //
@@ -519,6 +520,7 @@ func buildMergedConfigYAML(configPath, prodConfigPath, projectName string, multi
 	}
 
 	ResolveProdUpstream(merged, projectName, multiSite)
+	ResolveProdAppBuild(merged)
 
 	data, err := MarshalYAMLMap(merged)
 	if err != nil {

@@ -3,6 +3,7 @@ package bundle
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 
@@ -71,6 +72,29 @@ func ResolveProdUpstream(m map[string]any, projectName string, multiSite bool) {
 			}
 		}
 	}
+}
+
+// ResolveProdAppBuild removes app.build from a production config map when
+// app.image is set. A bundle is a production artifact: the app image is either
+// supplied by the user (registry reference) or built locally by `vibew build`
+// and shipped as image.tar, so a build context has no meaning on the remote
+// host. Keeping both keys made the bundled vibewarden.yaml ambiguous about
+// which field wins (#1341).
+//
+// When app.image is absent or empty the map is left untouched — app.build is
+// then the only description of how the image is produced.
+func ResolveProdAppBuild(m map[string]any) {
+	app, ok := m["app"].(map[string]any)
+	if !ok {
+		return
+	}
+
+	image, _ := app["image"].(string)
+	if strings.TrimSpace(image) == "" {
+		return
+	}
+
+	delete(app, "build")
 }
 
 // MarshalYAMLMap serialises a map[string]any to YAML bytes. This is used

@@ -265,6 +265,94 @@ func TestResolveProdUpstream(t *testing.T) {
 	}
 }
 
+// TestResolveProdAppBuild covers the #1341 rule: a bundled production config
+// must not carry app.build once app.image is known.
+func TestResolveProdAppBuild(t *testing.T) {
+	tests := []struct {
+		name          string
+		m             map[string]any
+		wantBuildGone bool
+		wantImage     string
+	}{
+		{
+			name: "image set drops build",
+			m: map[string]any{
+				"app": map[string]any{
+					"build": ".",
+					"image": "ghcr.io/org/app:latest",
+				},
+			},
+			wantBuildGone: true,
+			wantImage:     "ghcr.io/org/app:latest",
+		},
+		{
+			name: "image absent keeps build",
+			m: map[string]any{
+				"app": map[string]any{"build": "."},
+			},
+			wantBuildGone: false,
+		},
+		{
+			name: "empty image keeps build",
+			m: map[string]any{
+				"app": map[string]any{"build": ".", "image": ""},
+			},
+			wantBuildGone: false,
+		},
+		{
+			name: "whitespace-only image keeps build",
+			m: map[string]any{
+				"app": map[string]any{"build": ".", "image": "   "},
+			},
+			wantBuildGone: false,
+		},
+		{
+			name: "image only is untouched",
+			m: map[string]any{
+				"app": map[string]any{"image": "ghcr.io/org/app:latest", "language": "go"},
+			},
+			wantBuildGone: true,
+			wantImage:     "ghcr.io/org/app:latest",
+		},
+		{
+			name:          "no app section is a no-op",
+			m:             map[string]any{"server": map[string]any{"port": 443}},
+			wantBuildGone: true,
+		},
+		{
+			name:          "non-map app section is a no-op",
+			m:             map[string]any{"app": "nonsense"},
+			wantBuildGone: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ResolveProdAppBuild(tt.m)
+
+			app, ok := tt.m["app"].(map[string]any)
+			if !ok {
+				return // no-op cases: nothing further to assert
+			}
+
+			if _, hasBuild := app["build"]; hasBuild == tt.wantBuildGone {
+				t.Errorf("app.build present = %v, want %v", hasBuild, !tt.wantBuildGone)
+			}
+			if tt.wantImage != "" {
+				if got, _ := app["image"].(string); got != tt.wantImage {
+					t.Errorf("app.image = %q, want %q", got, tt.wantImage)
+				}
+			}
+			// Sibling keys must survive.
+			if tt.name == "image only is untouched" {
+				if got, _ := app["language"].(string); got != "go" {
+					t.Errorf("app.language = %q, want %q", got, "go")
+				}
+			}
+		})
+	}
+}
+
 func TestPatchYAMLMap(t *testing.T) {
 	tests := []struct {
 		name  string
