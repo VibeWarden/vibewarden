@@ -785,7 +785,7 @@ vibew dev --rebuild
 ```
 
 `--rebuild` stops the stack, removes the app image, rebuilds via `vibew build`, and starts
-the stack. Volumes are preserved. To also reset named volumes (Postgres data, LE certs),
+the stack. Volumes are preserved. To also reset named volumes (kratos-db data, LE certs),
 pass `--rebuild --volumes`.
 
 **Images set via `app.image:` in vibewarden.yaml are skipped automatically** — the

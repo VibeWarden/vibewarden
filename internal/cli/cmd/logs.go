@@ -46,10 +46,14 @@ enabled in vibewarden.yaml — the condition is shown in parentheses:
   kratos          Ory Kratos identity server (auth.mode: kratos)
   kratos-migrate  one-shot Kratos schema migration (auth.mode: kratos)
   kratos-db       PostgreSQL database for Kratos (auth.mode: kratos)
-  seed-users      one-shot seeding of auth.users (auth.users set)
+  seed-users      one-shot demo-identity seeding (auth.mode: kratos)
   openbao         OpenBao secret store (secrets.store: openbao)
   seed-secrets    one-shot seeding of secrets (secrets.inject set)
   redis           rate-limit counter store (rate_limit.store: redis)
+
+seed-users is emitted for every locally managed Kratos stack, but it only seeds
+anything when auth.seed_demo_users: true — that flag is what mounts the seeding
+script. It is off by default and is meant for demos and local testing.
 
 The observability services (prometheus, loki, promtail, otel-collector,
 jaeger, grafana) are started separately — see: vibew obs

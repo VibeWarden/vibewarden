@@ -52,8 +52,11 @@ files under .vibewarden/generated/ before starting the stack.
 The baseline stack includes (compose service name in parentheses):
   - VibeWarden proxy, port 8443, HTTPS with self-signed certificate (vibewarden)
   - your application container (app)
-  - Ory Kratos identity server, ports 4433, 4434 (kratos)
-  - PostgreSQL database for Kratos (kratos-db)
+  - Ory Kratos identity server, ports 4433, 4434 (kratos) — auth.mode: kratos
+  - PostgreSQL database for Kratos (kratos-db) — auth.mode: kratos
+
+A default 'vibew init' scaffold has no auth: block, so the last two are not
+started until you set auth.mode: kratos in vibewarden.yaml.
 
 Run 'vibew logs --help' for the full list of service names.
 
