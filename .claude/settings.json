@@ -1,6 +1,30 @@
-  {
-    "permissions": {
-      "allow": ["Edit", "Write", "Bash", "Read", "Glob", "Grep"]
-    }
+{
+  "permissions": {
+    "allow": ["Edit", "Write", "Bash", "Read", "Glob", "Grep"]
+  },
+  "hooks": {
+    "SubagentStop": [
+      {
+        "matcher": "dev",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/dev-make-check.sh",
+            "timeout": 600
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/pr-created-label.sh"
+          }
+        ]
+      }
+    ]
   }
-  
+}
