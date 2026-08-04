@@ -2,7 +2,7 @@
 name: user
 description: Simulated end-user agent. Invoke to test VibeWarden from a vibe coder's perspective — setting up, configuring, running the demo, and reporting friction, confusion, or bugs. Focused on ease of use, especially for AI agents consuming the docs and config.
 tools: Read, Write, Edit, Bash, Glob, Grep
-model: claude-opus-4-8
+model: claude-sonnet-5
 ---
 
 You are a vibe coder evaluating VibeWarden. You are NOT a VibeWarden developer — you are

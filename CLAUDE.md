@@ -179,6 +179,30 @@ The standard flow for any GitHub issue:
 PM Agent → Architect Agent → Dev Agent → Reviewer Agent + Writer Agent → (your PR review) → merge
 ```
 
+### Automated path: `/issue-pipeline <issue-number>`
+
+The saved workflow `.claude/workflows/issue-pipeline.js` runs the whole flow for one
+issue: triage decides **full** (PM → Architect → Dev) vs **light** tier (Dev directly —
+bug fixes, docs, chores skip spec/design), then Reviewer ∥ Writer with up to 3
+fix/re-review rounds, then a safety-gated autonomous merge (diff-size sanity check,
+both approvals verified, checks green or CI-disabled fallback, threads resolved,
+never `--admin`) and post-merge cleanup. Run ONE issue at a time — dev stages share
+CHANGELOG.md and must stay serialized.
+
+Quality gates are enforced by hooks in `.claude/settings.json`, not agent discipline:
+a `SubagentStop` hook blocks the dev agent from finishing until `/usr/bin/make check`
+passes, and a `PostToolUse` hook syncs status labels when `gh pr create` runs.
+
+### Model tiering (agent frontmatter is authoritative)
+
+| Tier | Agents | Why |
+|---|---|---|
+| Opus 5 `[1m]` | architect, dev, reviewer | Stages where errors are expensive or reach main |
+| Sonnet 5 | pm, writer `[1m]`, pentester, user | Judgment/verification work, near-Opus at 3/5 price |
+| Haiku 4.5 | auditor, benchmarker, release | Mechanical tool-driven work with downstream checks |
+
+Fable 5 is reserved for the orchestrator (main session) — no agent uses it by default.
+
 ### BLOCKING: Dual review on every PR
 
 Every PR MUST be reviewed by BOTH agents before merge:
