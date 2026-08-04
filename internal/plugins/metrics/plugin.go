@@ -64,6 +64,12 @@ func (p *Plugin) Init(ctx context.Context) error {
 		return fmt.Errorf("metrics plugin: building telemetry config: %w", err)
 	}
 
+	// Route OTel SDK background errors (export failures) into slog before any
+	// exporter starts. Without this they reach the stdlib logger, which Caddy
+	// redirects to its own logger at info level — one line per export interval
+	// whenever the OTLP collector is unreachable.
+	oteladapter.InstallErrorHandler(p.logger)
+
 	// Initialize OTel provider.
 	p.otelProvider = oteladapter.NewProvider()
 	if err := p.otelProvider.Init(ctx, "vibewarden", Version, telemetryCfg); err != nil {
