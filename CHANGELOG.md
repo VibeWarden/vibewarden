@@ -12,6 +12,8 @@ This initial entry was written by hand to summarise the work leading up to v0.1.
 
 ## [Unreleased]
 
+## [v0.21.0] — 2026-08-05
+
 ### Added
 
 - **feat(#1391): embedded user-management admin UI at `/_vibewarden/admin/ui` (ADR-107).** Adds a browser-based admin console for user management, served directly from the binary via `go:embed`. The UI (vanilla HTML/CSS/JS, no Node/npm, no CDN) is embedded under `internal/plugins/usermgmt/ui/assets/` and served by a new `AdminUIHandler` using stdlib `http.FileServerFS`. Static assets load without a token (carved out of the `AdminAuthMiddleware` token gate — matched against the cleaned path as an exact subtree so traversal/prefix-confusion cannot reach gated routes — while remaining hidden when `admin.enabled: false`); all data endpoints (`/_vibewarden/admin/users*`, `/events`, etc.) keep their `X-Admin-Key` requirement unchanged. The UI shows the official VibeWarden logo and a "Protected by VibeWarden" badge linking to vibewarden.dev. The JS prompts for the admin token, stores it in `sessionStorage` only, and sends it as `X-Admin-Key` per request. Works under `default-src 'self'` CSP with no policy change (no inline code, no external origins). No new dependencies.
