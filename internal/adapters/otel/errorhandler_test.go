@@ -95,7 +95,7 @@ func TestErrorHandler_Handle(t *testing.T) {
 			wantCounts: []int{0, 1, 2},
 		},
 		{
-			name: "different error resets dedup state",
+			name: "a different message warns once on its own first occurrence",
 			errs: []error{
 				errors.New("failed to upload metrics: no such host"),
 				errors.New("failed to upload metrics: no such host"),
@@ -104,6 +104,20 @@ func TestErrorHandler_Handle(t *testing.T) {
 			},
 			wantLevels: []string{"WARN", "DEBUG", "WARN", "DEBUG"},
 			wantCounts: []int{0, 1, 0, 1},
+		},
+		{
+			// Two exporters failing against the same missing collector
+			// interleave their errors. Dedup must be keyed per message, not on
+			// the previous one, or every alternation warns forever.
+			name: "interleaved messages warn once each then stay at debug",
+			errs: []error{
+				errors.New("failed to upload metrics: no such host"),
+				errors.New("failed to upload logs: no such host"),
+				errors.New("failed to upload metrics: no such host"),
+				errors.New("failed to upload logs: no such host"),
+			},
+			wantLevels: []string{"WARN", "WARN", "DEBUG", "DEBUG"},
+			wantCounts: []int{0, 0, 1, 1},
 		},
 		{
 			name: "nil errors interleaved do not affect dedup state",
@@ -141,6 +155,49 @@ func TestErrorHandler_Handle(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestErrorHandler_TwoExportersStayBounded reproduces the reported stack:
+// docker-compose.yml.tmpl enables the metric and log OTLP exporters together,
+// so a missing otel-collector produces two interleaved error streams — the log
+// BatchProcessor on a 1s interval, the metric PeriodicReader on a 30s one.
+// Over ~2 minutes of dev traffic the handler must warn exactly twice, once per
+// distinct message, no matter how the two streams interleave.
+func TestErrorHandler_TwoExportersStayBounded(t *testing.T) {
+	const (
+		ticks       = 120
+		metricEvery = 30
+		logsMsg     = "failed to upload logs: dial tcp: lookup otel-collector: no such host"
+		metricsMsg  = "failed to upload metrics: dial tcp: lookup otel-collector: no such host"
+	)
+
+	var buf syncBuffer
+	h := oteladapter.NewErrorHandler(captureLogger(&buf))
+	for tick := 1; tick <= ticks; tick++ {
+		h.Handle(errors.New(logsMsg))
+		if tick%metricEvery == 0 {
+			h.Handle(errors.New(metricsMsg))
+		}
+	}
+
+	recs := decodeRecords(t, &buf)
+	if want := ticks + ticks/metricEvery; len(recs) != want {
+		t.Fatalf("got %d log records, want %d", len(recs), want)
+	}
+
+	warned := map[string]int{}
+	for i, rec := range recs {
+		if rec.Level != "WARN" {
+			continue
+		}
+		if i > 0 && rec.Error == recs[0].Error {
+			t.Errorf("record %d re-warns an already-seen message %q", i, rec.Error)
+		}
+		warned[rec.Error]++
+	}
+	if len(warned) != 2 || warned[logsMsg] != 1 || warned[metricsMsg] != 1 {
+		t.Errorf("warn lines = %v, want exactly one per distinct message", warned)
 	}
 }
 
