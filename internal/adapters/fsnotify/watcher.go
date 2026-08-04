@@ -56,7 +56,12 @@ func (w *Watcher) Watch(ctx context.Context, path string) (<-chan struct{}, erro
 	}
 
 	ch := make(chan struct{}, 1)
-	done := make(chan struct{})
+	// fired carries debounce-timer expiries from the time.AfterFunc goroutine
+	// into the watch loop. Only the watch goroutine ever sends on or closes
+	// ch, so a timer callback can never race with that close. fired is
+	// buffered and never closed, so a callback that runs after shutdown is
+	// harmless: it either fills the buffer or drops the duplicate.
+	fired := make(chan struct{}, 1)
 
 	go func() {
 		defer close(ch)
@@ -67,20 +72,27 @@ func (w *Watcher) Watch(ctx context.Context, path string) (<-chan struct{}, erro
 		}()
 
 		var timer *time.Timer
+		defer func() {
+			if timer != nil {
+				timer.Stop()
+			}
+		}()
 
 		for {
 			select {
 			case <-ctx.Done():
-				if timer != nil {
-					timer.Stop()
-				}
-				close(done)
 				return
+
+			case <-fired:
+				select {
+				case ch <- struct{}{}:
+				default:
+					// A signal is already pending; drop the duplicate.
+				}
 
 			case event, ok := <-fw.Events:
 				if !ok {
 					w.logger.Error("fsnotify events channel closed unexpectedly")
-					close(done)
 					return
 				}
 
@@ -93,20 +105,14 @@ func (w *Watcher) Watch(ctx context.Context, path string) (<-chan struct{}, erro
 					if timer != nil {
 						timer.Stop()
 					}
-					// AfterFunc fires in a separate goroutine after the debounce
-					// window. The select races with the outer loop closing `done`:
-					//   - <-done wins if the watcher shuts down before the timer fires.
-					//   - ch <- wins if the watcher is still alive and ch has capacity.
-					//   - default wins if ch is already full (duplicate signal dropped).
-					// All three outcomes are safe; the only risk is a late send on ch
-					// after done is closed, which the <-done case handles.
+					// AfterFunc runs in a separate goroutine after the debounce
+					// window. It only ever touches `fired`, never `ch`, so it
+					// cannot send on a closed channel once the watch loop exits.
 					timer = time.AfterFunc(w.debounce, func() {
 						select {
-						case <-done:
-							// Watcher shut down; do not send.
-						case ch <- struct{}{}:
+						case fired <- struct{}{}:
 						default:
-							// A signal is already pending; drop the duplicate.
+							// An expiry is already pending; drop the duplicate.
 						}
 					})
 				}
@@ -114,7 +120,6 @@ func (w *Watcher) Watch(ctx context.Context, path string) (<-chan struct{}, erro
 			case watchErr, ok := <-fw.Errors:
 				if !ok {
 					w.logger.Error("fsnotify errors channel closed unexpectedly")
-					close(done)
 					return
 				}
 				// Watcher errors are transient on most systems (e.g. spurious

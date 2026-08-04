@@ -142,6 +142,62 @@ func TestWatcher_ContextCancellation(t *testing.T) {
 	}
 }
 
+// TestWatcher_CancelDuringDebounce stresses the window where the debounce
+// timer expires at the same moment the watch loop shuts down. The timer
+// callback must never touch the signal channel the watch goroutine closes,
+// otherwise the run panics with "send on closed channel" under -race.
+func TestWatcher_CancelDuringDebounce(t *testing.T) {
+	const (
+		iterations = 50
+		debounce   = 20 * time.Millisecond
+	)
+
+	for i := range iterations {
+		func() {
+			tmpDir := t.TempDir()
+			cfgPath := filepath.Join(tmpDir, "vibewarden.yaml")
+
+			if err := os.WriteFile(cfgPath, []byte("v: 1\n"), 0644); err != nil {
+				t.Fatalf("iteration %d: creating config file: %v", i, err)
+			}
+
+			watcher := fsnotifyadapter.NewWatcher(slog.Default(), ports.WithDebounce(debounce))
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+
+			ch, err := watcher.Watch(ctx, cfgPath)
+			if err != nil {
+				t.Fatalf("iteration %d: Watch: %v", i, err)
+			}
+
+			if err := os.WriteFile(cfgPath, []byte("v: 2\n"), 0644); err != nil {
+				t.Fatalf("iteration %d: writing config update: %v", i, err)
+			}
+
+			// Cancel around the moment the debounce timer expires.
+			time.Sleep(debounce)
+			cancel()
+
+			// Drain until the watcher closes the channel.
+			deadline := time.After(3 * time.Second)
+			for open := true; open; {
+				select {
+				case _, ok := <-ch:
+					if !ok {
+						open = false
+					}
+				case <-deadline:
+					t.Fatalf("iteration %d: timeout waiting for channel to close", i)
+				}
+			}
+
+			// Give any straggling timer callback a chance to run now that the
+			// channel is closed.
+			time.Sleep(2 * debounce)
+		}()
+	}
+}
+
 func TestWatcher_NonExistentFile(t *testing.T) {
 	watcher := fsnotifyadapter.NewWatcher(slog.Default())
 	ctx := context.Background()
