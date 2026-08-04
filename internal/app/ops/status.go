@@ -111,7 +111,15 @@ func (s *StatusService) gatherStatuses(ctx context.Context, cfg *config.Config, 
 		kratosURL = "http://127.0.0.1:4434"
 	}
 	if cfg.Auth.Active() {
-		statuses = append(statuses, s.checkHTTP(ctx, "Auth (Kratos)", kratosURL+"/admin/health/ready", kratosURL))
+		// The bundled config addresses Kratos by its compose service name,
+		// which is unreachable from the host. Probe the published host port
+		// instead so a healthy stack is not reported as FAIL (#1337).
+		probeBase, rewrittenFrom := hostKratosAdminURL(kratosURL)
+		detail := probeBase
+		if rewrittenFrom != "" {
+			detail = fmt.Sprintf("%s (published port for container-internal %s)", probeBase, rewrittenFrom)
+		}
+		statuses = append(statuses, s.checkHTTP(ctx, "Auth (Kratos)", probeBase+"/admin/health/ready", detail))
 	} else {
 		statuses = append(statuses, ComponentStatus{
 			Name:   "Auth (Kratos)",

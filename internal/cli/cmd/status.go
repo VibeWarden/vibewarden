@@ -33,6 +33,10 @@ Checked components:
   - Metrics      /_vibewarden/metrics
   - TLS          provider and domain from config
 
+When kratos.admin_url points at the Docker Compose service name (for example
+http://kratos:4434) that host is resolvable only inside the container network,
+so the Kratos check probes the equivalent port published on 127.0.0.1 instead.
+
 Examples:
   vibew status
   vibew status --config ./my-vibewarden.yaml`,
