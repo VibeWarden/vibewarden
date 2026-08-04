@@ -12,7 +12,7 @@ This initial entry was written by hand to summarise the work leading up to v0.1.
 
 ## [Unreleased]
 
-## [0.21.0] — 2026-08-05
+## [v0.21.0] — 2026-08-05
 
 ### Added
 
