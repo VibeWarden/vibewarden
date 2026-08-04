@@ -18,6 +18,10 @@ You ship fast with AI coding tools. VibeWarden adds the security layer you skipp
 TLS, authentication, rate limiting, WAF, secrets management, and AI-readable audit logs —
 all in a single binary that sits next to your app.
 
+<p align="center">
+  <img src="docs/assets/demo.gif" alt="vibew init scaffolds a secured project in seconds: TLS, security headers, and rate limiting enabled out of the box" width="800">
+</p>
+
 ---
 
 ## Quick Start
