@@ -6,6 +6,9 @@ import (
 	"strings"
 	"testing"
 
+	"go.opentelemetry.io/otel"
+
+	oteladapter "github.com/vibewarden/vibewarden/internal/adapters/otel"
 	"github.com/vibewarden/vibewarden/internal/plugins/metrics"
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
@@ -471,5 +474,22 @@ func TestPlugin_Init_InvalidOTLPInterval(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "invalid interval duration") {
 		t.Errorf("error = %v, want to contain 'invalid interval duration'", err)
+	}
+}
+
+// TestPlugin_Init_InstallsSlogOTelErrorHandler guards the fix for #1339: OTel SDK
+// background errors (e.g. OTLP export failures when otel-collector is not
+// running) must go through the slog-backed handler, not the stdlib logger that
+// Caddy re-emits at info level on every export interval.
+func TestPlugin_Init_InstallsSlogOTelErrorHandler(t *testing.T) {
+	t.Cleanup(func() { oteladapter.InstallErrorHandler(discardLogger()) })
+
+	p := newPlugin(enabledConfig())
+	if err := p.Init(context.Background()); err != nil {
+		t.Fatalf("Init() error: %v", err)
+	}
+
+	if _, ok := otel.GetErrorHandler().(*oteladapter.ErrorHandler); !ok {
+		t.Errorf("global otel error handler = %T, want *otel.ErrorHandler", otel.GetErrorHandler())
 	}
 }
