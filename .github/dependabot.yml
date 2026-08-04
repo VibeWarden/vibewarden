@@ -58,6 +58,34 @@ updates:
     labels:
       - tech-debt
 
+  # npm — Express example app (package.json, no lockfile).
+  # Its `express` dependency is in the repo dependency graph (so it can raise
+  # alerts) but had no `updates:` entry, so Dependabot never opened a PR for
+  # it — the same gap that let examples/nextjs drift 13 advisories behind
+  # (#1400). Found while triaging the alert backlog in #1427.
+  - package-ecosystem: npm
+    directory: /examples/node-express
+    schedule:
+      interval: weekly
+      day: monday
+    commit-message:
+      prefix: "deps(express-example)"
+    labels:
+      - tech-debt
+
+  # Maven — Spring Boot example app (pom.xml).
+  # Same gap as examples/node-express: `org.springframework.boot` appears in
+  # the dependency graph but had no `updates:` entry (#1427).
+  - package-ecosystem: maven
+    directory: /examples/spring-boot
+    schedule:
+      interval: weekly
+      day: monday
+    commit-message:
+      prefix: "deps(spring-example)"
+    labels:
+      - tech-debt
+
   # Docker — base images in Dockerfile + docker-compose.
   - package-ecosystem: docker
     directory: /
