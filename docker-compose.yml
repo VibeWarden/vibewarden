@@ -178,7 +178,12 @@ services:
   # storage backend and Shamir unseal keys (see docs/secret-management.md).
   # --------------------------------------------------------------------------
   openbao:
-    image: quay.io/openbao/openbao:2.5.2
+    # Held on the 2.5.x line: from 2.6.0 the openbao image runs as the
+    # non-root "openbao" user, which breaks seed-secrets writing back to
+    # the owner-only bind-mounted .credentials file in generated bundles.
+    # Kept in sync with internal/config/templates/docker-compose.yml.tmpl
+    # (enforced by TestOpenBaoImagePin_TemplateMatchesDevCompose).
+    image: quay.io/openbao/openbao:2.5.5
     container_name: vibewarden-openbao
     cap_add:
       - IPC_LOCK

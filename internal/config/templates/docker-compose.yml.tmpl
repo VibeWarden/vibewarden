@@ -221,7 +221,10 @@ services:
 {{- if .Secrets.UsesOpenBao }}
 
   openbao:
-    image: quay.io/openbao/openbao:2.2.0
+    # Held on the 2.5.x line: from 2.6.0 the openbao image runs as the
+    # non-root "openbao" user, which breaks seed-secrets writing back to
+    # the owner-only bind-mounted .credentials file.
+    image: quay.io/openbao/openbao:2.5.5
     restart: unless-stopped
     cap_add:
       - IPC_LOCK
@@ -251,7 +254,8 @@ services:
 {{- if and .Secrets.UsesOpenBao (or (len .Secrets.Inject.Headers) (len .Secrets.Inject.Env)) }}
 
   seed-secrets:
-    image: quay.io/openbao/openbao:2.2.0
+    # Must match the openbao service pin above.
+    image: quay.io/openbao/openbao:2.5.5
     env_file:
       - ./.credentials
     environment:
