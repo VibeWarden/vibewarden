@@ -26,8 +26,12 @@ import (
 //	Underlying error:
 //	  <original docker stderr, each line indented with two spaces>
 //
-// When stderr is empty (whitespace-only after trim), the "Underlying error:"
-// section is omitted entirely.
+// Docker stderr is untrusted subprocess output, so it is passed through
+// sanitizeTerminalText before it reaches w: terminal escape sequences and
+// control characters cannot be used to manipulate the operator's terminal.
+//
+// When stderr is empty (whitespace-only after sanitisation and trim), the
+// "Underlying error:" section is omitted entirely.
 func renderDockerUnavailable(w io.Writer, err error) {
 	var de *ports.DockerUnavailableError
 	if !errors.As(err, &de) {
@@ -42,7 +46,7 @@ func renderDockerUnavailable(w io.Writer, err error) {
 	fmt.Fprintln(w, "  On macOS:  open Docker Desktop")
 	fmt.Fprintln(w, "  On Linux:  sudo usermod -aG docker $USER && newgrp docker")
 
-	trimmed := strings.TrimSpace(de.Stderr)
+	trimmed := strings.TrimSpace(sanitizeTerminalText(de.Stderr))
 	if trimmed == "" {
 		return
 	}

@@ -98,6 +98,71 @@ func TestRenderDockerUnavailable_TrailingWhitespaceStderr(t *testing.T) {
 	}
 }
 
+// TestRenderDockerUnavailable_SanitizesEscapeSequences asserts on the literal
+// bytes written to the writer: a Docker daemon that emits ANSI/VT100 escape
+// sequences on stderr must not be able to drive the operator's terminal.
+func TestRenderDockerUnavailable_SanitizesEscapeSequences(t *testing.T) {
+	e := &ports.DockerUnavailableError{
+		Sentinel: ports.ErrDockerDaemonNotRunning,
+		Stderr:   "\x1b[2J\x1b[H\x1b]0;pwned\x07Cannot connect\x1b[31m to the daemon\x1b[0m",
+	}
+
+	var buf bytes.Buffer
+	renderDockerUnavailable(&buf, e)
+	got := buf.String()
+
+	for _, bad := range []rune{0x1B, 0x07, 0x9B} {
+		if strings.ContainsRune(got, bad) {
+			t.Errorf("control U+%04X reached the writer:\n%q", bad, got)
+		}
+	}
+	if !strings.Contains(got, "  Cannot connect to the daemon\n") {
+		t.Errorf("expected sanitised stderr line; got:\n%q", got)
+	}
+}
+
+// TestRenderDockerUnavailable_SanitizesSingleByteControls verifies that a lone
+// control byte (not part of a multi-byte escape sequence) is stripped too,
+// while tab is preserved.
+func TestRenderDockerUnavailable_SanitizesSingleByteControls(t *testing.T) {
+	e := &ports.DockerUnavailableError{
+		Sentinel: ports.ErrDockerSocketPermission,
+		Stderr:   "permission\x07 denied\rHIDDEN\x08\tsocket",
+	}
+
+	var buf bytes.Buffer
+	renderDockerUnavailable(&buf, e)
+	got := buf.String()
+
+	want := "  permission deniedHIDDEN\tsocket\n"
+	if !strings.Contains(got, want) {
+		t.Errorf("expected %q in output; got:\n%q", want, got)
+	}
+	for _, bad := range []rune{0x07, '\r', 0x08} {
+		if strings.ContainsRune(got, bad) {
+			t.Errorf("control U+%04X reached the writer:\n%q", bad, got)
+		}
+	}
+}
+
+// TestRenderDockerUnavailable_EscapeOnlyStderr verifies that stderr consisting
+// solely of escape sequences collapses to empty, so the "Underlying error:"
+// section is omitted rather than printed with a blank body.
+func TestRenderDockerUnavailable_EscapeOnlyStderr(t *testing.T) {
+	e := &ports.DockerUnavailableError{
+		Sentinel: ports.ErrDockerDaemonNotRunning,
+		Stderr:   "\x1b[31m\x1b[0m\x1b]0;title\x07\r\n",
+	}
+
+	var buf bytes.Buffer
+	renderDockerUnavailable(&buf, e)
+	got := buf.String()
+
+	if strings.Contains(got, "Underlying error:") {
+		t.Errorf("expected 'Underlying error:' to be omitted for escape-only stderr; got:\n%q", got)
+	}
+}
+
 // TestRenderDockerUnavailable_NonDockerError verifies that the function is a
 // no-op when err does not carry *DockerUnavailableError.
 func TestRenderDockerUnavailable_NonDockerError(t *testing.T) {

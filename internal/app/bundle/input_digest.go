@@ -118,7 +118,7 @@ func readInputDigest(projectRoot string) (InputDigest, bool) {
 // which is the correct degraded behaviour.
 func writeInputDigest(projectRoot string, d InputDigest) {
 	vibewardenDir := filepath.Join(projectRoot, ".vibewarden")
-	if err := os.MkdirAll(vibewardenDir, 0o750); err != nil {
+	if err := os.MkdirAll(vibewardenDir, DirPerm); err != nil {
 		slog.Warn("input-digest: cannot create .vibewarden dir", "err", err)
 		return
 	}
@@ -374,7 +374,7 @@ func isValidDigestString(s string) bool {
 // not rewritten (avoids bumping mtime on every bundle).
 func ensureVibewardenGitignoreFile(projectRoot string) error {
 	dir := filepath.Join(projectRoot, ".vibewarden")
-	if err := os.MkdirAll(dir, 0o750); err != nil {
+	if err := os.MkdirAll(dir, DirPerm); err != nil {
 		return fmt.Errorf("creating .vibewarden dir: %w", err)
 	}
 

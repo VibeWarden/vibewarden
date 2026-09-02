@@ -291,7 +291,7 @@ func runBundle(cmd *cobra.Command, version, outputDir, imageTag, targetPlatform 
 
 	// Ensure the output directory exists before we start writing into it.
 	bfs := bundlefs.New()
-	if err := bfs.MkdirAll(outputDir, 0o750); err != nil {
+	if err := bfs.MkdirAll(outputDir, bundleapp.DirPerm); err != nil {
 		return 1, fmt.Errorf("creating output directory: %w", err)
 	}
 

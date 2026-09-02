@@ -534,7 +534,7 @@ func buildMergedConfigYAML(configPath, prodConfigPath, projectName string, multi
 // needed. It overwrites any existing file.
 func writeFile(path string, data []byte) error {
 	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0o750); err != nil {
+	if err := os.MkdirAll(dir, DirPerm); err != nil {
 		return fmt.Errorf("creating directory %s: %w", dir, err)
 	}
 	if err := os.WriteFile(path, data, 0o600); err != nil {
