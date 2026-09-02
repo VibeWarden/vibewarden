@@ -100,6 +100,7 @@ the DEMOTE and TOMBSTONE buckets, not to the KEEP banner set above.
 | [105](adr-105-remove-grafana-plugin-name-constant.md) | Remove unused grafana plugin-name constant; grafana is a compose service | #1371 | |
 | [106](adr-106-sidecar-image-pinning-cli-version.md) | Sidecar image pinning — thread CLI version into compose render | #1385 | |
 | [107](adr-107-embedded-admin-ui.md) | Embedded user-management admin UI at /_vibewarden/admin/ui | #1391 | |
+| [109](adr-109-license-waivers-mpl-2-mysql-driver-cc0-blake3.md) | License waivers — MPL-2.0 (`go-sql-driver/mysql`) and CC0-1.0 (`zeebo/blake3`), both transitive via Caddy | #1347 | Reconstructs the waiver lost as ADR-104; consolidates #1292 + #1293 |
 | [497](adr-497-graceful-shutdown-connection-draining.md) | Graceful Shutdown / Connection Draining | — | Removed 2026-05-04 — see tombstone (anomalous number, paste of issue #497) |
 
 ## Numbering
@@ -113,4 +114,12 @@ never written. ADR-076 references it (`(ADR-074, internal/adapters/builtin/store
 context only. The decision is inlined in `internal/adapters/builtin/store.go` code comments.
 
 **ADR-497 anomaly**: Number 497 is almost certainly a mis-paste of issue #497. The file
-was tombstoned in the 2026-05-03 audit. The next real ADR number in sequence is 104.
+was tombstoned in the 2026-05-03 audit. Sequential numbering resumes at 104.
+
+**ADR-104 double-assignment**: number 104 was first assigned to the MPL-2.0 license
+waiver when #1292 was closed, but that file was never committed. The empty slot was
+later taken by the OpenBao prod-init decision, which is the only ADR-104. The license
+waiver was reconstructed as ADR-109 (#1347). Any reference to "ADR-104" in or before
+#1292 means ADR-109.
+
+**ADR-108 reserved**: held for the authz-engine decision, not yet written.
