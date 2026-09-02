@@ -42,7 +42,10 @@ func TestOTelMetrics_EndToEnd(t *testing.T) {
 
 	// Create the OTel provider.
 	provider := oteladapter.NewProvider()
-	if err := provider.Init(context.Background(), "vibewarden-integration-test", "0.0.0"); err != nil {
+	telemetryCfg := ports.TelemetryConfig{
+		Prometheus: ports.PrometheusExporterConfig{Enabled: true},
+	}
+	if err := provider.Init(context.Background(), "vibewarden-integration-test", "0.0.0", telemetryCfg); err != nil {
 		t.Fatalf("Init() failed: %v", err)
 	}
 	defer func() {
