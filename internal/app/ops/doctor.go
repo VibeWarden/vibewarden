@@ -250,6 +250,15 @@ func (s *DoctorService) runChecks(ctx context.Context, cfg *config.Config, opts 
 		results = append(results, withSection(s.checkTLSCertValid(ctx, cfg, proxyHost, proxyPort), sectionLocalRuntime))
 	}
 
+	// Kratos DB credential mismatch — deliberately outside the stackUp guard.
+	// A stack stuck on a failed kratos-migrate has no containers visible to
+	// `docker compose ps`, so isStackRunning reports false exactly when this
+	// check matters most. Omitted when the project has no vibew-managed
+	// kratos-migrate service or its logs are unavailable.
+	if kratosCheck, ok := s.checkKratosDBCredentials(ctx, cfg, generatedCompose); ok {
+		results = append(results, withSection(kratosCheck, sectionLocalRuntime))
+	}
+
 	// --- Dockerfile contract checks ---
 	// Omitted entirely when no Dockerfile is present in the project root.
 	results = append(results, s.checkDockerfile(ctx, workDir, cfg)...)

@@ -1,5 +1,43 @@
 package ops
 
+import "github.com/vibewarden/vibewarden/internal/config"
+
+// KratosRecoveryCommandForTest exposes the shared recovery command constant so
+// golden tests can assert both renderings embed the exact same string.
+const KratosRecoveryCommandForTest = kratosRecoveryCommand
+
+// KratosDataLossWarningForTest exposes the shared data-loss warning constant so
+// golden tests can assert both renderings embed the exact same string.
+const KratosDataLossWarningForTest = kratosDataLossWarning
+
+// KratosMigrateServiceNameForTest exposes the kratos-migrate compose service
+// name so tests can assert which services are queried for logs.
+const KratosMigrateServiceNameForTest = kratosMigrateServiceName
+
+// LocalKratosMigrateServiceForTest exposes the unexported guard that decides
+// whether the generated stack contains a vibew-managed kratos-migrate service.
+func LocalKratosMigrateServiceForTest(cfg *config.Config) bool {
+	return localKratosMigrateService(cfg)
+}
+
+// HasKratosDBCredentialMismatchForTest exposes the unexported log-signature
+// matcher for the Kratos credential-mismatch diagnostic.
+func HasKratosDBCredentialMismatchForTest(logs string) bool {
+	return hasKratosDBCredentialMismatch(logs)
+}
+
+// KratosCredentialMismatchBlockForTest exposes the multi-line dev error block
+// so its wording can be pinned by golden tests.
+func KratosCredentialMismatchBlockForTest() string {
+	return kratosCredentialMismatchBlock()
+}
+
+// KratosCredentialMismatchDetailForTest exposes the single-line doctor detail
+// so its wording can be pinned by golden tests.
+func KratosCredentialMismatchDetailForTest() string {
+	return kratosCredentialMismatchDetail()
+}
+
 // FormatProjectRootMismatchForTest exposes the unexported
 // formatProjectRootMismatch helper so that tests in the _test package can
 // assert the exact error message wording (golden tests, ADR-100).

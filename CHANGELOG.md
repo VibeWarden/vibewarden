@@ -12,6 +12,10 @@ This initial entry was written by hand to summarise the work leading up to v0.1.
 
 ## [Unreleased]
 
+### Fixed
+
+- **fix(#1436): actionable diagnostic when a stale `kratos-db` volume makes `kratos-migrate` fail authentication.** `vibew dev` regenerates `.credentials`/`.env` on every run (ADR-009) while the `kratos-db-data` named volume persists, so the new Postgres password no longer matches the data already in the volume. `kratos-migrate` then dies with `password authentication failed for user "kratos"`, `docker compose up` exits non-zero on the failed `service_completed_successfully` dependency, and the user only saw a generic `starting dev environment: ...` / "Sidecar failed to start" message with no path to the cause. `vibew dev` now inspects `kratos-migrate`'s logs on that failure path and, when the Postgres auth signature is present, prints the root cause in plain language plus the exact recovery commands (`vibew down -v --yes && vibew dev`, or `vibew dev --rebuild --volumes`) with an explicit warning that recovery destroys local auth data (users, sessions). `vibew doctor` gains a matching `Kratos DB credentials` FAIL check under Local Runtime so a stack already stuck in this state is diagnosed without re-running `vibew dev`. Detection is logs-only and scoped to projects with a vibew-managed Kratos stack (`auth.mode: kratos`, `kratos.external: false`, no `database.external_url`); every other failure class, and every other configuration, falls back to the previous message with no extra Docker calls. `vibew status` is unchanged. Documented in `docs/troubleshooting.md` (new "Kratos database migration failed" section plus the new doctor row) and `llms-full.txt`. The pre-existing "Kratos schema migration failed" guidance in both files was split into an auth-error row that cross-links to the new section and a catch-all row, because the old advice (`vibew logs kratos`, then `vibew generate` and restart) named the wrong service and does not fix a stale-volume credential mismatch.
+
 ## [v0.21.0] — 2026-08-05
 
 ### Added

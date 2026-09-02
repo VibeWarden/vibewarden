@@ -29,6 +29,13 @@ type fakeCompose struct {
 	downResult ports.DownResult
 	downErr    error
 
+	// logsByService returns per-service log output. When a service has an
+	// entry here it takes precedence over logsResult; otherwise the existing
+	// logsResult / synthetic-fallback behaviour applies.
+	logsByService map[string]string
+	// logsCalls records the service name of every Logs call, in order.
+	logsCalls []string
+
 	capturedComposeFile string
 	capturedProfiles    []string
 	capturedUpOpts      ports.ComposeUpOptions
@@ -70,6 +77,10 @@ func (f *fakeCompose) PS(_ context.Context, _ string) ([]ports.ContainerInfo, er
 }
 
 func (f *fakeCompose) Logs(_ context.Context, _ string, service string, _ int) (string, error) {
+	f.logsCalls = append(f.logsCalls, service)
+	if out, ok := f.logsByService[service]; ok {
+		return out, f.logsErr
+	}
 	if f.logsResult != "" {
 		return f.logsResult, f.logsErr
 	}
