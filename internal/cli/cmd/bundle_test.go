@@ -2,8 +2,10 @@ package cmd_test
 
 import (
 	"bytes"
+	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -311,6 +313,71 @@ func TestBundleCmd_ProducesBundle(t *testing.T) {
 	if _, statErr := os.Stat(filepath.Join(outDir, "deploy.sh")); !os.IsNotExist(statErr) {
 		t.Errorf("deploy.sh present in bundle (removed in #1138)")
 	}
+}
+
+// TestBundleCmd_CreatesOwnerOnlyDirs asserts the actual on-disk mode of every
+// directory a real `vibew bundle` run creates from scratch. Bundle output holds
+// .env and .credentials, so other local OS users must not be able to list or
+// traverse it (#1458).
+//
+// This is an end-to-end assertion on os.Stat, not on the literal passed to
+// MkdirAll: MkdirAll is a no-op on an existing directory, so only the on-disk
+// result proves the mode is independent of which call site runs first.
+func TestBundleCmd_CreatesOwnerOnlyDirs(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("POSIX permission bits are not meaningful on Windows")
+	}
+
+	assertOwnerOnly := func(t *testing.T, path string) {
+		t.Helper()
+		info, statErr := os.Stat(path)
+		if statErr != nil {
+			t.Fatalf("stat %s: %v", path, statErr)
+		}
+		if !info.IsDir() {
+			t.Fatalf("%s is not a directory", path)
+		}
+		if got := info.Mode().Perm(); got != fs.FileMode(0o700) {
+			t.Errorf("%s mode = %04o, want 0700 (group/other must have no access)", path, got)
+		}
+	}
+
+	t.Run("explicit output dir", func(t *testing.T) {
+		dir := setupBundleProject(t)
+		outDir := filepath.Join(dir, "out")
+
+		root := cmd.NewRootCmd("test")
+		root.SetArgs([]string{"bundle", "--output", outDir, "--skip-image"})
+		var out bytes.Buffer
+		root.SetOut(&out)
+		root.SetErr(&out)
+		if err := root.Execute(); err != nil {
+			t.Fatalf("bundle: %v\noutput:\n%s", err, out.String())
+		}
+
+		assertOwnerOnly(t, outDir)
+		// Written by input_digest.go on every run, alongside the bundle.
+		assertOwnerOnly(t, filepath.Join(dir, ".vibewarden"))
+	})
+
+	t.Run("default output dir under .vibewarden", func(t *testing.T) {
+		// The default output dir is .vibewarden/bundle, so cmd/bundle.go and
+		// input_digest.go both create .vibewarden. Whichever runs first sets
+		// the mode, so both must agree on 0700.
+		dir := setupBundleProject(t)
+
+		root := cmd.NewRootCmd("test")
+		root.SetArgs([]string{"bundle", "--skip-image"})
+		var out bytes.Buffer
+		root.SetOut(&out)
+		root.SetErr(&out)
+		if err := root.Execute(); err != nil {
+			t.Fatalf("bundle: %v\noutput:\n%s", err, out.String())
+		}
+
+		assertOwnerOnly(t, filepath.Join(dir, ".vibewarden"))
+		assertOwnerOnly(t, filepath.Join(dir, ".vibewarden", "bundle"))
+	})
 }
 
 func TestBundleCmd_DotEnvPreserved(t *testing.T) {
