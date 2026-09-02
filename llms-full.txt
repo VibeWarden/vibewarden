@@ -1741,7 +1741,8 @@ steps (package, ship, start) in one SSH orchestration; the previously-shipped
 showed its hardcoded healthcheck port reported false failures on
 successful deploys). The bundle README now describes the contract directly,
 per CLAUDE.md §Architecture principles → Artifact policy.
-Running `vibew deploy` today prints cobra's `unknown command "deploy"` error.
+Running `vibew deploy` today exits 1 and prints
+`Error: unknown command "deploy" for "vibew"` to stderr.
 See CHANGELOG and ADR-086 for the rationale.
 
 After writing files, `vibew bundle` prints a sensitive-file awareness block

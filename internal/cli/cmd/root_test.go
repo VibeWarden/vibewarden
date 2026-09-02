@@ -24,6 +24,8 @@ func TestRootCmd_Deploy(t *testing.T) {
 		{"bare deploy", []string{"deploy"}},
 		{"deploy with flag", []string{"deploy", "--target", "ssh://user@host"}},
 		{"deploy with subcommand", []string{"deploy", "status"}},
+		{"deploy logs subcommand", []string{"deploy", "logs"}},
+		{"deploy logs with flags", []string{"deploy", "logs", "--lines", "50"}},
 	}
 
 	for _, tt := range tests {

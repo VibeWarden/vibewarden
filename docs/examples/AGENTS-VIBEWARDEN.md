@@ -288,8 +288,8 @@ The block is omitted when no sensitive files are detected. No flag, no env var.
 
 There is no all-in-one remote-deploy command baked into the vibew
 binary. The removed `vibew deploy` command previously wrapped all of
-this over SSH from Go. It was retired in ADR-086; running it today
-prints cobra's `unknown command "deploy"` error.
+this over SSH from Go. It was retired in ADR-086; running it today exits 1
+and prints `Error: unknown command "deploy" for "vibew"` to stderr.
 
 Use `app.environment` in vibewarden.yaml for runtime configuration:
 ```yaml
