@@ -54,6 +54,12 @@ live containers to produce meaningful results. Start the stack first, then re-ru
 | 8 | **Generated files** | `.vibewarden/generated/docker-compose.yml` is present on disk. Skipped when no compose containers are detected — run `vibew dev` first. |
 | 9 | **TLS cert valid** | Performs a live TLS handshake against the sidecar, reads the leaf certificate from the handshake, and verifies it is not expired or expiring within 7 days. Skipped pre-stack. For runtime container health, query `_vibewarden/health` after `vibew dev` is up (see ADR-084). |
 
+#### Kratos stack (not gated on stack state)
+
+| # | Check name | What it tests |
+|---|------------|---------------|
+| 10 | **Kratos DB credentials** | Reads the `kratos-migrate` log tail and FAILs when it carries the Postgres authentication-failure signature — the `kratos-db` volume still holds an earlier run's password while `.credentials`/`.env` were regenerated. Recover with `vibew down -v --yes` then `vibew dev` (this destroys local auth data: users, sessions). Omitted entirely when `auth.mode` is not `kratos`, when `kratos.external: true`, when `database.external_url` is set, or when the logs cannot be read. Deliberately **not** skipped pre-stack: a stack stuck on a failed migration has no containers visible to `docker compose ps`. |
+
 #### Layer 3: Pre-deploy preflight (only with `--preflight <env>`)
 
 These checks run only when `--preflight <env>` is passed. They append after all static and Dockerfile checks. If `vibewarden.<env>.yaml` does not exist, `vibew doctor` exits 1 immediately without running any checks.
@@ -727,7 +733,8 @@ vibew logs kratos-db --tail 100
 | Postgres is not yet ready when Kratos starts | Wait 15–30 s; the `depends_on: condition: service_healthy` guard retries automatically |
 | Kratos config points at the wrong DSN | Check `server.database.url` in `vibewarden.yaml` and ensure it matches the Postgres container credentials |
 | Port 4433 / 4434 bound by another process | `lsof -i :4433` — stop the conflicting process |
-| Kratos schema migration failed | `vibew logs kratos` — look for migration errors; run `vibew generate` then restart |
+| Kratos schema migration failed with a Postgres auth error | `vibew logs kratos-migrate`: for `password authentication failed`, see [Kratos database migration failed — credential mismatch](#kratos-database-migration-failed-credential-mismatch) below. `vibew generate` does **not** fix this case; the stale `kratos-db` volume has to go |
+| Kratos schema migration failed for any other reason | `vibew logs kratos-migrate` — read the real cause, then run `vibew generate` and restart |
 | Insufficient memory | Docker Desktop defaults to 2 GB RAM; increase to at least 4 GB in Docker Desktop → Settings → Resources |
 
 **Postgres stuck in a restart loop:**
@@ -744,6 +751,48 @@ vibew dev
 !!! warning "Data loss"
     `down -v` removes Docker volumes. Only use this in a **development environment**.
     In production, investigate the log output before taking destructive action.
+
+---
+
+### Kratos database migration failed — credential mismatch
+
+`vibew dev` regenerates `.credentials`/`.env` with fresh random secrets on every run
+(ADR-009), but the `kratos-db` volume survives across runs and Postgres only honours
+`POSTGRES_PASSWORD` when it initialises an empty volume. Once the volume holds data
+from an earlier run, `kratos-migrate` cannot authenticate, `docker compose up` fails on
+the `service_completed_successfully` dependency, and neither `kratos` nor the sidecar
+ever leaves the `Created` state.
+
+`vibew dev` detects this and prints:
+
+```
+Kratos database migration failed -- credential mismatch.
+
+  The kratos-db volume was created by an earlier run and still holds that run's
+  Postgres password. vibew regenerates .credentials/.env on every `vibew dev`, so
+  the new password no longer matches the data already in the volume.
+
+Recovery (this destroys local auth data: users, sessions):
+
+  vibew down -v --yes && vibew dev
+
+  or: vibew dev --rebuild --volumes
+
+See the raw failure with: vibew logs kratos-migrate
+```
+
+`vibew doctor` reports the same condition as `[FAIL] Kratos DB credentials` for a stack
+that is already stuck, so you do not have to re-run `vibew dev` to get the diagnosis.
+
+!!! warning "Data loss"
+    Both recovery commands delete the `kratos-db` volume. Every local Kratos identity
+    and session is destroyed. This is a development-only recovery path — never run it
+    against a production stack.
+
+The check is scoped to vibew-managed Kratos stacks (`auth.mode: kratos`,
+`kratos.external: false`, no `database.external_url`). Any other `kratos-migrate`
+failure falls back to the generic `starting dev environment: ...` message — read the
+real cause with `vibew logs kratos-migrate`.
 
 ---
 

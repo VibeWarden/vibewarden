@@ -193,11 +193,19 @@ func (s *DevService) Run(ctx context.Context, cfg *config.Config, opts DevOption
 		upOpts.Stderr = out
 	}
 	if err := s.compose.Up(ctx, composeFile, nil, upOpts); err != nil {
+		// `docker compose up -d` exits non-zero when a
+		// service_completed_successfully dependency fails, which is exactly
+		// what happens when kratos-migrate cannot authenticate against a
+		// kratos-db volume left over from an earlier run with a different
+		// password. Diagnose that specific case before the generic error.
+		if diagErr := s.kratosCredentialMismatchError(ctx, cfg, composeFile); diagErr != nil {
+			return diagErr
+		}
 		return fmt.Errorf("starting dev environment: %w", err)
 	}
 
 	// Post-start: verify the sidecar container is still running.
-	if err := s.verifySidecar(ctx, composeFile, out); err != nil {
+	if err := s.verifySidecar(ctx, cfg, composeFile, out); err != nil {
 		return err
 	}
 
@@ -463,7 +471,11 @@ func (s *DevService) detectStaleness(c ports.ContainerInfo, expectedProject, exp
 // sidecar container is still running. If it exited or is restarting, the
 // last few lines of its logs are printed and an error is returned so that
 // the command exits non-zero instead of printing a misleading success message.
-func (s *DevService) verifySidecar(ctx context.Context, composeFile string, out io.Writer) error {
+//
+// The cfg is used only to decide whether the Kratos credential-mismatch
+// diagnostic applies; it may describe a project without a kratos-migrate
+// service, in which case no extra compose calls are made.
+func (s *DevService) verifySidecar(ctx context.Context, cfg *config.Config, composeFile string, out io.Writer) error {
 	fmt.Fprintln(out, "Waiting for sidecar to settle...")
 
 	select {
@@ -500,6 +512,13 @@ func (s *DevService) verifySidecar(ctx context.Context, composeFile string, out 
 			fmt.Fprintln(out, "")
 			fmt.Fprintln(out, "Last sidecar logs:")
 			fmt.Fprintln(out, logs)
+		}
+
+		// Defensive secondary hook: some compose versions return 0 from `up`
+		// even when a completed-successfully dependency failed, so the
+		// credential mismatch can also surface here.
+		if diagErr := s.kratosCredentialMismatchError(ctx, cfg, composeFile); diagErr != nil {
+			return diagErr
 		}
 
 		fmt.Fprintln(out, "Sidecar failed to start — run vibew logs or vibew doctor for details.")

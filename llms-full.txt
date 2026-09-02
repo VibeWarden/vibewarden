@@ -1784,13 +1784,22 @@ vibew doctor checks (in order):
   Stack-state-gated (skipped silently when vibew dev is not running):
   8. Generated files — .vibewarden/generated/docker-compose.yml present
   9. TLS certificate — live TLS handshake; reports expiry state
+  Kratos stack check (not stack-state-gated — a stack stuck on a failed
+  kratos-migrate has no containers visible to docker compose ps):
+  10. Kratos DB credentials — reads the kratos-migrate log tail; FAIL when it carries
+      the Postgres authentication-failure signature, which means the kratos-db volume
+      still holds an earlier run's password while .credentials/.env were regenerated.
+      Recover with 'vibew down -v --yes' then 'vibew dev' (destroys local auth data:
+      users, sessions). Omitted entirely when auth.mode is not kratos, when
+      kratos.external is true, when database.external_url is set, or when the
+      kratos-migrate logs cannot be read.
   Dockerfile contract checks (always run when a Dockerfile is present):
-  10. Dockerfile: alpine base — final-stage FROM must be alpine-based (FAIL if not)
-  11. Dockerfile: EXPOSE port — EXPOSE must match upstream.port (FAIL on mismatch)
-  12. Dockerfile: HEALTHCHECK — no HEALTHCHECK directive allowed (FAIL if present)
-  13. Dockerfile: non-root USER — final stage must set non-root USER (WARN, non-blocking)
-  14. Dockerfile: multi-stage build — compiled languages (Go) need multi-stage (FAIL if not)
-  15. Dockerfile: <lang> toolchain version — builder FROM tag major.minor must match
+  11. Dockerfile: alpine base — final-stage FROM must be alpine-based (FAIL if not)
+  12. Dockerfile: EXPOSE port — EXPOSE must match upstream.port (FAIL on mismatch)
+  13. Dockerfile: HEALTHCHECK — no HEALTHCHECK directive allowed (FAIL if present)
+  14. Dockerfile: non-root USER — final stage must set non-root USER (WARN, non-blocking)
+  15. Dockerfile: multi-stage build — compiled languages (Go) need multi-stage (FAIL if not)
+  16. Dockerfile: <lang> toolchain version — builder FROM tag major.minor must match
       the project manifest go.mod/nvmrc/pyproject.toml (FAIL on mismatch; OFF when
       tag is "latest" or unrecognised, or when no manifest is found)
      All 6 checks are omitted when no Dockerfile is present in the project root.
@@ -1951,7 +1960,10 @@ in the current project to stamp fresh labels.
     - Postgres not ready (wait 15-30s, run vibew doctor again)
     - Wrong DSN in vibewarden.yaml
     - Port 4433/4434 bound by another process
-    - Schema migration failed (check: docker compose logs kratos)
+    - Schema migration failed with a Postgres auth error (check: vibew logs
+      kratos-migrate). "password authentication failed" means a stale kratos-db
+      volume; see doctor check 10 above. vibew generate does NOT fix this case.
+    - Schema migration failed for any other reason (check: vibew logs kratos-migrate)
     - Insufficient memory (Docker Desktop needs at least 4 GB)
 
 ### Containers stuck in restart loop
