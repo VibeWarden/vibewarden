@@ -282,6 +282,10 @@ containers.
 ### New dependencies
 
 None. `wget` is available in the `quay.io/openbao/openbao:2.2.0` image (Alpine-based).
+(Correction, #1291: the template pin moved to `2.5.5`; `wget` and the `bao` CLI are
+still present and the image still runs as root, which this design relies on because
+`seed-secrets` writes the root token and unseal key back to the bind-mounted
+`.credentials` file.)
 `jq` is NOT used; JSON parsing is done with `grep`/`sed` (POSIX sh, no external deps).
 
 ---
