@@ -79,8 +79,12 @@ dependency must be re-evaluated in a new ADR:
 2. The driver's source is not modified.
 3. Distribution is binary / Docker-image only, never source distribution of the driver.
 4. The driver's code path is never activated at runtime.
-5. Upstream remediation stays tracked: an issue with `smallstep/nosql` (or Caddy)
-   requesting that the MySQL driver be excludable in Caddy's PKI-module context.
+5. Upstream remediation stays tracked. As of 2026-09-03 no upstream issue exists with
+   `smallstep/nosql` or Caddy asking for the MySQL driver to be excludable in Caddy's
+   PKI-module context. [#1467](https://github.com/vibewarden/vibewarden/issues/1467)
+   owns filing it and linking it back here; filing it is a precondition for the waiver
+   staying active. If #1467 is closed without an upstream link, this condition has
+   lapsed and the waiver must be re-evaluated.
 
 ### `zeebo/blake3` (CC0-1.0) — unconditional waiver
 
@@ -103,6 +107,10 @@ the reasoning here but still needs an index entry so the exception set stays aud
 - Condition 4 (dormant code path) couples the mysql waiver to Caddy's PKI/ACME-server
   configuration. If VibeWarden ever enables the embedded ACME server with a MySQL
   backend, this ADR must be revisited before shipping.
+- The mysql waiver ships with condition 5 unsatisfied and explicitly owned by
+  [#1467](https://github.com/vibewarden/vibewarden/issues/1467), rather than implied. A
+  license sweep reads condition 5, checks #1467, and gets an unambiguous answer about
+  whether the waiver still holds.
 - #1292's closing comment cites ADR-104, which now points at the OpenBao prod-init
   decision. That comment is corrected to reference ADR-109; the stale citation is
   recorded here so future readers of #1292 are not misled.
