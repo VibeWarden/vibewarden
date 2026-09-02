@@ -21,6 +21,19 @@ var hardIgnoreDirs = []string{
 	"bin", ".next",
 }
 
+// hardIgnoreRelPaths is the fixed set of root-relative directory paths (in
+// forward-slash form) that are always excluded from project walks.
+//
+// Unlike hardIgnoreDirs these are matched against the path relative to the
+// project root rather than the bare directory name, so only the exact subtree
+// is skipped. `.claude/worktrees` holds one checkout per in-flight agent task
+// and reaches tens of thousands of files, which made the freshness walk cost
+// ~800ms on this repository (#1308); the rest of `.claude` (agent definitions,
+// settings) is ordinary project content and stays in the walk.
+var hardIgnoreRelPaths = []string{
+	".claude/worktrees",
+}
+
 // StalenessWalker is a consumer-side test seam: this interface is defined here
 // because it is consumed only by this package and its tests; it is not an
 // outbound port that crosses a layer boundary.
@@ -69,6 +82,7 @@ func (w *FileSystemStalenessWalker) NewestMTime(root string, threshold time.Time
 
 	pm := buildPatternMatcher(root)
 	hardSet := buildHardIgnoreSet()
+	hardRelSet := buildHardIgnoreRelSet()
 
 	var newest time.Time
 	changedCount := 0
@@ -92,8 +106,7 @@ func (w *FileSystemStalenessWalker) NewestMTime(root string, threshold time.Time
 				return nil
 			}
 			// Skip hard-ignore directories.
-			base := d.Name()
-			if hardSet[base] {
+			if isHardIgnoredDir(hardSet, hardRelSet, d.Name(), rel) {
 				return filepath.SkipDir
 			}
 			// Skip directories matched by .gitignore / .dockerignore.
@@ -211,4 +224,20 @@ func buildHardIgnoreSet() map[string]bool {
 		set[d] = true
 	}
 	return set
+}
+
+// buildHardIgnoreRelSet converts hardIgnoreRelPaths into a set for O(1) lookup.
+func buildHardIgnoreRelSet() map[string]bool {
+	set := make(map[string]bool, len(hardIgnoreRelPaths))
+	for _, p := range hardIgnoreRelPaths {
+		set[p] = true
+	}
+	return set
+}
+
+// isHardIgnoredDir reports whether a directory encountered during a project
+// walk must be skipped unconditionally. base is the directory name; rel is the
+// directory path relative to the project root in forward-slash form.
+func isHardIgnoredDir(hardSet, hardRelSet map[string]bool, base, rel string) bool {
+	return hardSet[base] || hardRelSet[rel]
 }

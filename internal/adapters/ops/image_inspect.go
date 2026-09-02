@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os/exec"
 	"strings"
@@ -11,6 +12,12 @@ import (
 
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
+
+// dockerInspectTimeout bounds a single `docker image inspect` shell-out. A
+// healthy local daemon answers in well under 200ms; the generous ceiling exists
+// only so that an unresponsive daemon (common while Docker Desktop restarts)
+// cannot hang `vibew dev` indefinitely (#1309).
+const dockerInspectTimeout = 10 * time.Second
 
 // ImageInspectAdapter implements ports.ImageInspector by shelling out to the
 // docker CLI. It matches the shell-out pattern established by ImageExportAdapter.
@@ -38,14 +45,22 @@ type dockerInspectOutput struct {
 // Inspect runs `docker image inspect --format '{{json .}}' <tag>` and parses
 // the result into a ports.ImageInfo value object.
 //
+// The call is bounded by dockerInspectTimeout unless the caller already set a
+// deadline, so an unresponsive daemon fails fast instead of blocking forever.
+//
 // Error mapping:
 //   - stderr contains "No such image" → ports.ErrImageNotFound
+//   - the inspect deadline expired → ports.ErrDockerDaemonNotRunning
+//     (and therefore ports.ErrDockerUnavailable)
 //   - docker command not found OR "Cannot connect to the Docker daemon" →
 //     ports.ErrDockerUnavailable
 //   - anything else → wrapped with fmt.Errorf("docker image inspect: %w", err)
 func (a *ImageInspectAdapter) Inspect(ctx context.Context, tag string) (ports.ImageInfo, error) {
+	inspectCtx, cancel := inspectContext(ctx)
+	defer cancel()
+
 	//nolint:gosec // "docker" is a hardcoded binary; tag is operator-controlled image reference
-	cmd := exec.CommandContext(ctx, "docker", "image", "inspect", "--format", "{{json .}}", tag)
+	cmd := exec.CommandContext(inspectCtx, "docker", "image", "inspect", "--format", "{{json .}}", tag)
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
@@ -56,6 +71,17 @@ func (a *ImageInspectAdapter) Inspect(ctx context.Context, tag string) (ports.Im
 		stderrStr := stderr.String()
 		if strings.Contains(stderrStr, "No such image") {
 			return ports.ImageInfo{}, ports.ErrImageNotFound
+		}
+		// A blown deadline means the daemon never answered. Report it as
+		// "daemon not running" so callers that already degrade gracefully on
+		// ports.ErrDockerUnavailable (preflight WARN, dev identity check skip)
+		// treat a frozen daemon the same way as an absent one.
+		if errors.Is(inspectCtx.Err(), context.DeadlineExceeded) {
+			return ports.ImageInfo{}, &ports.DockerUnavailableError{
+				Sentinel: ports.ErrDockerDaemonNotRunning,
+				Stderr:   stderrStr,
+				Cause:    fmt.Errorf("docker image inspect timed out: %w", context.DeadlineExceeded),
+			}
 		}
 		// ClassifyDockerError is the single canonical seam for all docker error
 		// classification — binary-not-found (via err.Error()), daemon-unavailable,
@@ -73,6 +99,17 @@ func (a *ImageInspectAdapter) Inspect(ctx context.Context, tag string) (ports.Im
 	}
 	info.Tag = tag
 	return info, nil
+}
+
+// inspectContext derives the context used for the docker shell-out. When the
+// caller already imposed a deadline it is honoured unchanged; otherwise
+// dockerInspectTimeout is applied. The returned cancel func is always non-nil
+// and must be called by the caller.
+func inspectContext(ctx context.Context) (context.Context, context.CancelFunc) {
+	if _, hasDeadline := ctx.Deadline(); hasDeadline {
+		return ctx, func() {}
+	}
+	return context.WithTimeout(ctx, dockerInspectTimeout)
 }
 
 // parseInspectJSON parses the raw JSON blob produced by

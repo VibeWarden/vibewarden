@@ -86,6 +86,10 @@ func TestFileSystemStalenessWalker_HardIgnoreDirs(t *testing.T) {
 		{name: ".vibewarden", dir: ".vibewarden", wantSkip: true},
 		{name: "bin", dir: "bin", wantSkip: true},
 		{name: ".next", dir: ".next", wantSkip: true},
+		{name: ".claude/worktrees", dir: filepath.Join(".claude", "worktrees"), wantSkip: true},
+		{name: ".claude/worktrees nested", dir: filepath.Join(".claude", "worktrees", "task-1", "src"), wantSkip: true},
+		{name: ".claude/agents (not ignored)", dir: filepath.Join(".claude", "agents"), wantSkip: false},
+		{name: "worktrees outside .claude (not ignored)", dir: "worktrees", wantSkip: false},
 		{name: "src (not ignored)", dir: "src", wantSkip: false},
 	}
 

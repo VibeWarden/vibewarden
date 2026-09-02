@@ -896,6 +896,10 @@ the built-in ignore list (`.git`, `.vibewarden`, `node_modules`, `vendor`, `dist
 additions, and file removals all trip the check. Renaming a file appears as one removal
 and one addition.
 
+`.claude/worktrees` is also always excluded, matched by root-relative path rather than
+by directory name — the rest of `.claude` (agent definitions, settings) is ordinary
+project content and still counts toward freshness.
+
 **First bundle after upgrading to v0.19.0+**
 
 The digest schema changed from v1 to v2 (per-file hashes) in v0.19.0. An existing v1

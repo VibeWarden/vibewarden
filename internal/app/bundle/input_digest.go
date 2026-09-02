@@ -178,6 +178,7 @@ func computeInputDigest(projectRoot string) (InputDigest, error) {
 
 	pm := buildPatternMatcher(projectRoot)
 	hardSet := buildHardIgnoreSet()
+	hardRelSet := buildHardIgnoreRelSet()
 
 	type entry struct {
 		rel     string
@@ -202,7 +203,7 @@ func computeInputDigest(projectRoot string) (InputDigest, error) {
 			if path == projectRoot {
 				return nil
 			}
-			if hardSet[d.Name()] {
+			if isHardIgnoredDir(hardSet, hardRelSet, d.Name(), rel) {
 				return filepath.SkipDir
 			}
 			if pm != nil {

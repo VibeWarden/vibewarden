@@ -2,9 +2,22 @@ package ops
 
 import (
 	"bytes"
+	"context"
 
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
+
+// DockerInspectTimeoutForTest exposes the unexported dockerInspectTimeout
+// constant so that tests in the _test package can assert the deadline applied
+// to `docker image inspect` without duplicating the literal.
+const DockerInspectTimeoutForTest = dockerInspectTimeout
+
+// InspectContextForTest exposes the unexported inspectContext helper so that
+// tests in the _test package can verify deadline derivation without shelling
+// out to Docker.
+func InspectContextForTest(ctx context.Context) (context.Context, context.CancelFunc) {
+	return inspectContext(ctx)
+}
 
 // ParseInspectOutputForTest exposes the unexported parseInspectJSON helper so
 // that tests in the _test package can exercise the JSON→ImageInfo parsing path
