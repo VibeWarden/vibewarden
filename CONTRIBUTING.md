@@ -2,7 +2,7 @@
 
 ## Prerequisites
 
-- Go 1.26+ ([download](https://go.dev/dl/))
+- Go 1.27+ ([download](https://go.dev/dl/))
 - Docker and Docker Compose
 - Git
 

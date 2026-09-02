@@ -56,13 +56,13 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v7
         with:
-          go-version: "1.26.6"
+          go-version: "1.27.1"
           cache: true
 
       - name: Run golangci-lint
         uses: golangci/golangci-lint-action@v9
         with:
-          version: v2.11.4
+          version: v2.13.2
 
   build-and-test:
     name: Build & Test
@@ -80,7 +80,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v7
         with:
-          go-version: "1.26.6"
+          go-version: "1.27.1"
           cache: true
 
       - name: Build
@@ -133,7 +133,7 @@ jobs:
       - name: Set up Go
         uses: actions/setup-go@v7
         with:
-          go-version: "1.26.6"
+          go-version: "1.27.1"
           cache: true
 
       - name: Build VibeWarden Docker image (local test tag — never pushed)
