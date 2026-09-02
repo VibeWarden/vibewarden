@@ -1,8 +1,17 @@
 # ADR-075: Redesign vibew deploy -- local resolution, no remote patching
 
+> **Historical.** The `vibew deploy` command described here was sunset by
+> [ADR-086](adr-086-sunset-vibew-deploy.md). The "local resolution, no remote
+> patching" principle survived it and is now realised by `vibew bundle`
+> ([ADR-085](adr-085-vibew-bundle-compose-only.md)). Deploy-contract lineage:
+> ADR-075 → [ADR-085](adr-085-vibew-bundle-compose-only.md) →
+> [ADR-086](adr-086-sunset-vibew-deploy.md) →
+> [ADR-088](adr-088-deploy-sh-local-run-convention.md). This ADR is retained as
+> a record of the original decision.
+
 **Date**: 2026-04-18
 **Issue**: #938
-**Status**: Accepted
+**Status**: Accepted (2026-04-18); historical since ADR-086 sunset `vibew deploy`
 
 ### Context
 

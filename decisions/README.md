@@ -11,11 +11,17 @@ new port, wire-format, new CLI verb); not for bug fixes or chores.
 
 Full report: `~/notes/vibewarden/audit-adr-2026-05-03.md`
 
-Results applied 2026-05-04:
-- **42 KEEP** — load-bearing, no change to file content (other than explicit banner additions)
+Results applied 2026-05-04. The audit covered the 69 ADRs that existed on that date
+(ADR-001–ADR-023, ADR-057–ADR-073, ADR-075–ADR-102, ADR-497); rows added to the index
+afterwards (ADR-103 and up) are outside its scope.
+- **45 KEEP** — load-bearing, no change to file content (other than explicit banner additions); 69 − 13 demoted − 11 tombstoned
 - **13 DEMOTE** — content moved to `docs/internal/` or `docs/observability.md`; stubs remain at original paths
 - **11 TOMBSTONE** — replaced with tombstones (files remain, content replaced; includes ADR-497 anomaly)
 - **3 STATUS BANNERS added** — ADR-058 (composition-root note), ADR-063 (Obsolete), ADR-070 (Obsolete); ADR-080, ADR-081, ADR-088 already had banners pre-audit
+
+Demoted and tombstoned ADRs that also carry supersession notes (for example ADR-079,
+partially superseded by ADR-083) are recorded in their index rows below. They belong to
+the DEMOTE and TOMBSTONE buckets, not to the KEEP banner set above.
 
 ## Index
 
@@ -61,7 +67,7 @@ Results applied 2026-05-04:
 | [071](adr-071-multi-site-directory-watcher.md) | Multi-site directory watcher | #878 | |
 | [072](adr-072-cli-ux-wiring-for-multi-app.md) | CLI UX wiring for multi-app | #879 | Demoted to `docs/internal/multi-site-serve.md` 2026-05-04 |
 | [073](adr-073-init-cwd-only.md) | Make `vibew init` scaffold in current directory only | — | Removed 2026-05-04 — see tombstone |
-| [075](adr-075-redesign-vibew-deploy-local-resolution-no-remote-patching.md) | Redesign vibew deploy -- local resolution, no remote patching | #948 | |
+| [075](adr-075-redesign-vibew-deploy-local-resolution-no-remote-patching.md) | Redesign vibew deploy -- local resolution, no remote patching | #948 | Historical — `vibew deploy` sunset by ADR-086; lineage note: the local-resolution principle is preserved in ADR-085 |
 | [076](adr-076-secret-uri-resolution-in-config.md) | secret:// URI resolution in vibewarden.yaml config | #1008 | |
 | [077](adr-077-placeholder-substitution-for-composite-secret-values.md) | Placeholder substitution for composite secret values | #994 | |
 | [078](adr-078-wire-acme-email-to-single-site-caddy-issuer.md) | Wire acme_email to single-site Caddy ACME issuer | #1027 | Removed 2026-05-04 — see tombstone |
