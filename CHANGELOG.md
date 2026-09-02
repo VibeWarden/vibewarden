@@ -12,6 +12,10 @@ This initial entry was written by hand to summarise the work leading up to v0.1.
 
 ## [Unreleased]
 
+### Changed
+
+- **chore(#1459): bump the Go toolchain from go1.26.5 to go1.26.6.** govulncheck reported 7 stdlib vulnerabilities in go1.26.5, all fixed in go1.26.6, which kept the required `Go Vulnerability Check` red on every code PR. Pinned consistently in `go.mod`, `Dockerfile`, and the CI workflow `go-version` inputs (`ci.yml`, `release.yml`, `release-dryrun.yml`), keeping the toolchain single-sourced as in the go1.26.5 bump. No API changes.
+
 ## [v0.21.0] — 2026-08-05
 
 ### Added
