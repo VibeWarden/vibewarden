@@ -12,6 +12,11 @@ This initial entry was written by hand to summarise the work leading up to v0.1.
 
 ## [Unreleased]
 
+### Changed
+
+- **chore(#1459): bump the Go toolchain from go1.26.5 to go1.26.6.** govulncheck reported 7 stdlib vulnerabilities in go1.26.5, all fixed in go1.26.6, which kept the required `Go Vulnerability Check` red on every code PR. Pinned consistently in `go.mod`, `Dockerfile`, and the CI workflow `go-version` inputs (`ci.yml`, `release.yml`, `release-dryrun.yml`), keeping the toolchain single-sourced as in the go1.26.5 bump. No API changes.
+- **chore(#1459): patch four Trivy-flagged module CVEs.** `golang.org/x/crypto` v0.54.0 → v0.55.0 (CVE-2026-56854, critical), `golang.org/x/mod` v0.37.0 → v0.40.0 (CVE-2026-56864/56865), `google.golang.org/grpc` v1.82.1 → v1.83.1 (CVE-2026-84304), `github.com/moby/go-archive` v0.2.0 → v0.3.0 (CVE-2026-17106). Also bumps the direct dependency `golang.org/x/net` to v0.58.0 (supersedes Dependabot #1448) and the coupled MVS updates `cel.dev/expr` v0.25.2, `moby/sys/sequential` v0.7.0, `moby/sys/user` v0.4.1, `golang.org/x/text` v0.41.0, `golang.org/x/tools` v0.49.0. The required `Trivy Vulnerability Scan` check fails on every code PR until these land.
+
 ## [v0.21.0] — 2026-08-05
 
 ### Added
