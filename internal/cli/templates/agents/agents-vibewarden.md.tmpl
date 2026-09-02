@@ -276,8 +276,9 @@ There is no all-in-one remote-deploy command. `vibew bundle` is the only
 supported path to a VPS. The removed `vibew deploy` command previously
 did all of this over SSH from the vibew binary itself; it was retired in
 ADR-086 after four retros converged on deploy-orchestration as the #1
-source of user friction. Running `vibew deploy` today prints cobra's
-`unknown command "deploy"` error.
+source of user friction. `vibew deploy` is not a registered command today:
+running it exits 1 and prints `Error: unknown command "deploy" for "vibew"`
+to stderr. Nothing is packaged, no SSH connection is opened.
 
 ## Dockerfile contract
 

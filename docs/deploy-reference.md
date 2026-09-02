@@ -4,10 +4,10 @@ The `vibew deploy` command was removed in the release referenced by
 [ADR-086](../decisions/adr-086-sunset-vibew-deploy.md). It has been replaced
 by `vibew bundle` plus a manual tar pipe / `ssh` / `docker compose up -d` flow.
 
-`vibew deploy` is no longer a registered command. Invoking it prints
-cobra's default `unknown command "deploy"` error and exits non-zero. No
-files are transferred, no SSH connection is opened, and no remote state
-is touched.
+`vibew deploy` is no longer a registered command. Invoking it exits 1 and
+prints `Error: unknown command "deploy" for "vibew"` to stderr. No files
+are transferred, no SSH connection is opened, and no remote state is
+touched.
 
 ---
 

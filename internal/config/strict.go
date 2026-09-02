@@ -48,7 +48,9 @@ func (e *UnknownKeyError) Error() string {
 //
 // Callers:
 //   - vibew validate (always).
-//   - vibew deploy / vibew bundle, before writing any bundle files.
+//   - vibew bundle, before writing any bundle files.
+//
+// (vibew deploy was retired in ADR-086 and is no longer a caller.)
 //
 // The runtime loader (config.Load, used by vibewarden serve) is unchanged for
 // forward-compat per ADR-065.

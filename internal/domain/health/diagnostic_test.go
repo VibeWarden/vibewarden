@@ -77,7 +77,7 @@ func TestDiagnostic_String(t *testing.T) {
 		health.CategoryContainerUnhealthy,
 		"vibewarden  exited  Exited (1) 5 seconds ago",
 		"error starting server",
-		"Container crashed. Check logs with: vibew deploy logs",
+		"Container crashed. Check logs with: vibew logs",
 	)
 
 	str := d.String()
