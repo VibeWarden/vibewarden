@@ -4,7 +4,7 @@
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-blue.svg" alt="License"></a>
-  <a href="https://go.dev/"><img src="https://img.shields.io/badge/go-1.26-00ADD8.svg" alt="Go Version"></a>
+  <a href="https://go.dev/"><img src="https://img.shields.io/badge/go-1.27-00ADD8.svg" alt="Go Version"></a>
   <a href="https://github.com/vibewarden/vibewarden/actions/workflows/ci.yml"><img src="https://github.com/vibewarden/vibewarden/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="https://github.com/vibewarden/vibewarden/releases"><img src="https://img.shields.io/github/v/release/vibewarden/vibewarden" alt="Release"></a>
 </p>
