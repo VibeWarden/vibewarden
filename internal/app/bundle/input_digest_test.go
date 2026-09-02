@@ -465,6 +465,63 @@ func TestDigest_GitIgnoredFileChangeDoeNotTrip(t *testing.T) {
 	}
 }
 
+// TestDigest_ClaudeWorktreesExcluded verifies that the agent worktree pool at
+// .claude/worktrees is excluded from the input digest, while the rest of
+// .claude still counts as project content (#1308).
+func TestDigest_ClaudeWorktreesExcluded(t *testing.T) {
+	tests := []struct {
+		name      string
+		changeRel string
+		wantStale bool
+	}{
+		{
+			name:      "worktree change is ignored",
+			changeRel: filepath.Join(".claude", "worktrees", "task-1", "main.go"),
+			wantStale: false,
+		},
+		{
+			name:      "agent definition change is tracked",
+			changeRel: filepath.Join(".claude", "agents", "dev.md"),
+			wantStale: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			root := t.TempDir()
+			if err := os.WriteFile(filepath.Join(root, "vibewarden.yaml"), []byte("name: test\n"), 0o600); err != nil {
+				t.Fatalf("write yaml: %v", err)
+			}
+			target := filepath.Join(root, tt.changeRel)
+			if err := os.MkdirAll(filepath.Dir(target), 0o750); err != nil {
+				t.Fatalf("mkdir %s: %v", filepath.Dir(target), err)
+			}
+			if err := os.WriteFile(target, []byte("old\n"), 0o600); err != nil {
+				t.Fatalf("write %s: %v", target, err)
+			}
+
+			svc := bundleapp.NewService(nil, &fakeGenerator{})
+			svc.WriteInputDigest(root)
+
+			if err := os.WriteFile(target, []byte("new content\n"), 0o600); err != nil {
+				t.Fatalf("modify %s: %v", target, err)
+			}
+
+			inspector := newTestFreshInspector(time.Now().Add(-1 * time.Hour))
+			walker := bundleapp.NewFileSystemStalenessWalker(root)
+
+			verdict := runHealthCheck(t, root, inspector, walker)
+
+			if verdict.Stale != tt.wantStale {
+				t.Errorf("Stale = %v, want %v (changed %s)", verdict.Stale, tt.wantStale, tt.changeRel)
+			}
+			if verdict.Mode != bundleapp.FreshnessModeDigest {
+				t.Errorf("Mode = %q, want digest", verdict.Mode)
+			}
+		})
+	}
+}
+
 // ---------------------------------------------------------------------------
 // Test: RenderImageHealth freshness label in digest mode
 // ---------------------------------------------------------------------------

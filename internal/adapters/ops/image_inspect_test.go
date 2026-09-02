@@ -32,6 +32,70 @@ func TestImageInspectAdapter_InterfaceCompliance(t *testing.T) {
 	var _ ports.ImageInspector = opsadapter.NewImageInspectAdapter()
 }
 
+// TestInspectContext_DeadlineDerivation verifies that Inspect bounds the docker
+// shell-out with dockerInspectTimeout when the caller supplied no deadline, and
+// honours a caller-supplied deadline unchanged (#1309).
+func TestInspectContext_DeadlineDerivation(t *testing.T) {
+	callerDeadline := 250 * time.Millisecond
+
+	tests := []struct {
+		name            string
+		parent          func(t *testing.T) context.Context
+		wantDeadline    bool
+		wantWithinOfNow time.Duration
+	}{
+		{
+			name:            "no caller deadline gets the default inspect timeout",
+			parent:          func(*testing.T) context.Context { return context.Background() },
+			wantDeadline:    true,
+			wantWithinOfNow: opsadapter.DockerInspectTimeoutForTest,
+		},
+		{
+			name: "caller deadline is preserved",
+			parent: func(t *testing.T) context.Context {
+				t.Helper()
+				ctx, cancel := context.WithTimeout(context.Background(), callerDeadline)
+				t.Cleanup(cancel)
+				return ctx
+			},
+			wantDeadline:    true,
+			wantWithinOfNow: callerDeadline,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctx, cancel := opsadapter.InspectContextForTest(tt.parent(t))
+			defer cancel()
+
+			deadline, ok := ctx.Deadline()
+			if ok != tt.wantDeadline {
+				t.Fatalf("Deadline() ok = %v, want %v", ok, tt.wantDeadline)
+			}
+			remaining := time.Until(deadline)
+			if remaining > tt.wantWithinOfNow || remaining < tt.wantWithinOfNow/2 {
+				t.Errorf("remaining = %v, want approximately %v", remaining, tt.wantWithinOfNow)
+			}
+		})
+	}
+}
+
+// TestImageInspectAdapter_Inspect_DeadlineExceeded verifies that a blown
+// deadline is reported as ports.ErrDockerUnavailable rather than an opaque
+// exec failure, so that callers keep degrading gracefully (#1309). The expired
+// context short-circuits exec before any docker process starts, so this test
+// requires no Docker daemon.
+func TestImageInspectAdapter_Inspect_DeadlineExceeded(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Nanosecond)
+	defer cancel()
+	<-ctx.Done()
+
+	_, err := opsadapter.NewImageInspectAdapter().Inspect(ctx, "example-app:latest")
+	if !errors.Is(err, ports.ErrDockerUnavailable) {
+		t.Errorf("Inspect() error = %v, want ports.ErrDockerUnavailable", err)
+	}
+}
+
 // TestImageInfo_Platform verifies the Platform() helper on ports.ImageInfo.
 func TestImageInfo_Platform(t *testing.T) {
 	tests := []struct {
