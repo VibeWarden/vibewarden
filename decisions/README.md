@@ -100,6 +100,7 @@ the DEMOTE and TOMBSTONE buckets, not to the KEEP banner set above.
 | [105](adr-105-remove-grafana-plugin-name-constant.md) | Remove unused grafana plugin-name constant; grafana is a compose service | #1371 | |
 | [106](adr-106-sidecar-image-pinning-cli-version.md) | Sidecar image pinning — thread CLI version into compose render | #1385 | |
 | [107](adr-107-embedded-admin-ui.md) | Embedded user-management admin UI at /_vibewarden/admin/ui | #1391 | |
+| [108](adr-108-no-authz-policy-engine-in-the-sidecar.md) | No authz policy engine (Casbin or similar) in the sidecar — authorization stays at path × method × identity attribute | #1461 | |
 | [109](adr-109-license-waivers-mpl-2-mysql-driver-cc0-blake3.md) | License waivers — MPL-2.0 (`go-sql-driver/mysql`) and CC0-1.0 (`zeebo/blake3`), both transitive via Caddy | #1347 | Reconstructs the waiver lost as ADR-104; consolidates #1292 + #1293 |
 | [497](adr-497-graceful-shutdown-connection-draining.md) | Graceful Shutdown / Connection Draining | — | Removed 2026-05-04 — see tombstone (anomalous number, paste of issue #497) |
 
@@ -122,4 +123,5 @@ later taken by the OpenBao prod-init decision, which is the only ADR-104. The li
 waiver was reconstructed as ADR-109 (#1347). Any reference to "ADR-104" in or before
 #1292 means ADR-109.
 
-**ADR-108 reserved**: held for the authz-engine decision, not yet written.
+**ADR-108**: was reserved for the authz-engine decision while ADR-109 was being written;
+it is now written (#1461) and the reservation is discharged.
