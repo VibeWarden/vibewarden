@@ -17,7 +17,11 @@ afterwards (ADR-103 and up) are outside its scope.
 - **45 KEEP** — load-bearing, no change to file content (other than explicit banner additions); 69 − 13 demoted − 11 tombstoned
 - **13 DEMOTE** — content moved to `docs/internal/` or `docs/observability.md`; stubs remain at original paths
 - **11 TOMBSTONE** — replaced with tombstones (files remain, content replaced; includes ADR-497 anomaly)
-- **4 STATUS BANNERS added** — ADR-058 (composition-root note), ADR-063 (Obsolete), ADR-070 (Obsolete), ADR-079 (partial supersession by ADR-083); ADR-080, ADR-081, ADR-088 already had banners pre-audit
+- **3 STATUS BANNERS added** — ADR-058 (composition-root note), ADR-063 (Obsolete), ADR-070 (Obsolete); ADR-080, ADR-081, ADR-088 already had banners pre-audit
+
+Demoted and tombstoned ADRs that also carry supersession notes (for example ADR-079,
+partially superseded by ADR-083) are recorded in their index rows below. They belong to
+the DEMOTE and TOMBSTONE buckets, not to the KEEP banner set above.
 
 ## Index
 
