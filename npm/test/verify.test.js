@@ -40,31 +40,32 @@ test('verifyDigest rejects a mismatching digest and names both digests', () => {
   );
 });
 
-test('lookupDigest returns the published digest and rejects absent ones', (t) => {
-  const digests = { 'vibewarden_0.19.0_linux_amd64.tar.gz': digest.toUpperCase() };
+// Registered as top-level tests rather than t.test() subtests: a synchronous
+// parent does not await its subtests, so Node < 23 cancels them and the
+// assertions never run. Same reason for the loop below.
+const publishedDigests = { 'vibewarden_0.19.0_linux_amd64.tar.gz': digest.toUpperCase() };
 
-  t.test('present', () => {
-    assert.strictEqual(lookupDigest(digests, 'vibewarden_0.19.0_linux_amd64.tar.gz'), digest);
-  });
+test('lookupDigest returns the published digest, normalised to lowercase', () => {
+  assert.strictEqual(lookupDigest(publishedDigests, 'vibewarden_0.19.0_linux_amd64.tar.gz'), digest);
+});
 
-  t.test('absent', () => {
-    assert.throws(
-      () => lookupDigest(digests, 'vibewarden_0.19.0_darwin_arm64.tar.gz'),
-      (err) => {
-        assert.ok(err instanceof MissingChecksumError);
-        assert.strictEqual(err.code, 'EMISSINGCHECKSUM');
-        return true;
-      },
-    );
-  });
+test('lookupDigest rejects an archive with no published digest', () => {
+  assert.throws(
+    () => lookupDigest(publishedDigests, 'vibewarden_0.19.0_darwin_arm64.tar.gz'),
+    (err) => {
+      assert.ok(err instanceof MissingChecksumError);
+      assert.strictEqual(err.code, 'EMISSINGCHECKSUM');
+      return true;
+    },
+  );
+});
 
-  t.test('empty map', () => {
-    assert.throws(() => lookupDigest({}, 'anything.tar.gz'), MissingChecksumError);
-  });
+test('lookupDigest rejects an empty digest map', () => {
+  assert.throws(() => lookupDigest({}, 'anything.tar.gz'), MissingChecksumError);
+});
 
-  t.test('undefined map', () => {
-    assert.throws(() => lookupDigest(undefined, 'anything.tar.gz'), MissingChecksumError);
-  });
+test('lookupDigest rejects an undefined digest map', () => {
+  assert.throws(() => lookupDigest(undefined, 'anything.tar.gz'), MissingChecksumError);
 });
 
 test('parseChecksumsTxt parses goreleaser output', () => {
@@ -80,16 +81,14 @@ test('parseChecksumsTxt parses goreleaser output', () => {
   });
 });
 
-test('parseChecksumsTxt rejects malformed input rather than trusting it', (t) => {
-  const cases = [
-    { name: 'html error page', text: '<html><body>404</body></html>' },
-    { name: 'short digest', text: 'abc123  vibewarden_0.19.0_linux_amd64.tar.gz' },
-    { name: 'missing filename', text: `${digest}` },
-  ];
+const malformedChecksums = [
+  { name: 'html error page', text: '<html><body>404</body></html>' },
+  { name: 'short digest', text: 'abc123  vibewarden_0.19.0_linux_amd64.tar.gz' },
+  { name: 'missing filename', text: `${digest}` },
+];
 
-  for (const c of cases) {
-    t.test(c.name, () => {
-      assert.throws(() => parseChecksumsTxt(c.text), /malformed checksums\.txt line/);
-    });
-  }
-});
+for (const c of malformedChecksums) {
+  test(`parseChecksumsTxt rejects malformed input rather than trusting it: ${c.name}`, () => {
+    assert.throws(() => parseChecksumsTxt(c.text), /malformed checksums\.txt line/);
+  });
+}

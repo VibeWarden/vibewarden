@@ -81,7 +81,7 @@ check-npm: ## Run the npm distribution wrapper tests (requires Node >= 22)
 		echo "       Install Node.js >= 22: https://nodejs.org/en/download"; \
 		exit 1; \
 	}
-	node --test npm/test/
+	node --test 'npm/test/*.test.js'
 
 # Run integration tests (requires Docker running).
 # These are gated behind //go:build integration and test multi-app routing,
