@@ -86,9 +86,29 @@ updates:
     labels:
       - tech-debt
 
-  # Docker — base images in Dockerfile + docker-compose.
+  # Docker — base images in Dockerfiles + docker-compose files.
+  #
+  # `directory: /` only covers the root Dockerfile, Dockerfile.goreleaser and
+  # docker-compose.yml, which is how examples/demo-app and test/egress sat on
+  # alpine:3.21 while root had moved to 3.24 (#1298). Directories are listed
+  # explicitly rather than globbed: a `/**` glob would also rewrite generated
+  # bundles under examples/demo-app/.vibewarden/ and the deliberately
+  # mismatched Dockerfile fixtures under internal/cli/cmd/testdata/.
+  #
+  # Image tags inside internal/config/templates/*.tmpl stay invisible to
+  # Dependabot — it cannot parse Go templates as Docker manifests. Those pins
+  # are held to the root docker-compose.yml, which is covered here, by
+  # internal/config/templates/image_pins_test.go.
   - package-ecosystem: docker
-    directory: /
+    directories:
+      - /
+      - /examples/demo-app
+      - /examples/nextjs
+      - /examples/node-express
+      - /examples/python-flask
+      - /examples/spring-boot
+      - /test/egress
+      - /test/fixtures/deploy-server
     schedule:
       interval: weekly
       day: monday

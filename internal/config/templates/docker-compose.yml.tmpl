@@ -291,7 +291,7 @@ services:
 {{- if and (eq (printf "%s" .Auth.Mode) "kratos") (not .Kratos.External) }}
 
   seed-users:
-    image: curlimages/curl:8.12.1
+    image: curlimages/curl:8.19.0
     environment:
       KRATOS_ADMIN_URL: http://kratos:4434
     volumes:
@@ -322,7 +322,7 @@ services:
 {{- end }}
 
   prometheus:
-    image: prom/prometheus:v3.2.1
+    image: prom/prometheus:v3.11.2
     profiles:
       - observability
     restart: unless-stopped
@@ -345,7 +345,7 @@ services:
       retries: 5
 
   loki:
-    image: grafana/loki:3.4.3
+    image: grafana/loki:3.6.10
     profiles:
       - observability
     restart: unless-stopped
@@ -364,7 +364,7 @@ services:
       retries: 5
 
   promtail:
-    image: grafana/promtail:3.4.3
+    image: grafana/promtail:3.6.10
     profiles:
       - observability
     restart: unless-stopped
@@ -415,7 +415,7 @@ services:
       retries: 5
 
   grafana:
-    image: grafana/grafana:11.5.2
+    image: grafana/grafana-oss:13.0.1
     profiles:
       - observability
     restart: unless-stopped
