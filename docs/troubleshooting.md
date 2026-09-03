@@ -1013,4 +1013,4 @@ vibew doctor && vibew dev
 | `0` | Success |
 | `1` | General error (config, image identity mismatch, unknown service, etc.) |
 | `2` | Config or flag validation error |
-| `3` | Docker unavailable — socket permission denied or daemon not running. The command prints an operator-friendly hint block before exiting. See [Docker socket permission denied or daemon not reachable](#docker-socket-permission-denied-or-daemon-not-reachable-vibew-dev--bundle--logs) above. |
+| `3` | Docker unavailable — socket permission denied or daemon not running. The command prints an operator-friendly hint block before exiting. See [Docker socket permission denied or daemon not reachable](#docker-socket-permission-denied-or-daemon-not-reachable-vibew-dev-bundle-logs) above. |

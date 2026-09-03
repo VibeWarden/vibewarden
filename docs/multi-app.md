@@ -8,8 +8,8 @@ all of them when the project runs locally.
     `vibew bundle` currently hard-fails on multi-site projects with
     `multi-site bundle is not yet supported`. Remote deployment for
     multi-site layouts is tracked by a follow-up issue and is not part of
-    the initial bundle ship ([ADR-085](../decisions/adr-085-vibew-bundle-cli.md),
-    [ADR-086](../decisions/adr-086-sunset-vibew-deploy.md)).
+    the initial bundle ship ([ADR-085](https://github.com/vibewarden/vibewarden/blob/main/decisions/adr-085-vibew-bundle-compose-only.md),
+    [ADR-086](https://github.com/vibewarden/vibewarden/blob/main/decisions/adr-086-sunset-vibew-deploy.md)).
 
     The multi-site remote path is in-flight under issue #1052 (Helm /
     Fly.io / k8s targets).
@@ -182,4 +182,4 @@ deploying.
 
 - [Bundle to VPS](guide/bundle-to-vps.md) -- single-site deploy walkthrough
 - [Configuration](configuration.md) -- `vibewarden.yaml` field reference
-- [ADR-086](../decisions/adr-086-sunset-vibew-deploy.md) -- sunset rationale
+- [ADR-086](https://github.com/vibewarden/vibewarden/blob/main/decisions/adr-086-sunset-vibew-deploy.md) -- sunset rationale

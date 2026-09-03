@@ -16,6 +16,7 @@ jobs:
     timeout-minutes: 2
     outputs:
       code: ${{ steps.filter.outputs.code }}
+      docs: ${{ steps.filter.outputs.docs }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -40,6 +41,40 @@ jobs:
               - 'test/**'
               - 'examples/**/*.go'
               - 'npm/**'
+            docs:
+              - 'docs/**'
+              - 'mkdocs.yml'
+              - '.github/workflows/ci.yml'
+              - '.github/workflows/docs.yml'
+
+  docs-build:
+    name: Docs build (mkdocs --strict)
+    needs: [changes]
+    # The `Deploy docs to vibewarden.dev` workflow only runs on push to main, so a
+    # broken link merged into main silently froze the published site for months
+    # (#1476). Build the site on every docs-touching PR with the same strict flags.
+    if: needs.changes.outputs.docs == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+
+      - name: Install MkDocs Material and dependencies
+        # Keep this list in sync with .github/workflows/docs.yml.
+        run: |
+          pip install \
+            mkdocs-material==9.5.* \
+            mkdocs-minify-plugin \
+            pymdown-extensions
+
+      - name: Build docs
+        run: mkdocs build --strict --site-dir _site/docs
 
   lint:
     name: Lint

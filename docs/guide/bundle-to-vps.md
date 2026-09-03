@@ -2,7 +2,7 @@
 
 This guide walks through the canonical path from a scaffolded VibeWarden
 project to a running stack on a VPS. It replaces the removed
-`vibew deploy` command (see [ADR-086](../../decisions/adr-086-sunset-vibew-deploy.md)).
+`vibew deploy` command (see [ADR-086](https://github.com/vibewarden/vibewarden/blob/main/decisions/adr-086-sunset-vibew-deploy.md)).
 
 The flow is one command on your workstation, then a copy and a compose-up
 on the host:
@@ -169,6 +169,6 @@ changed (config, image tag, overlay).
 ## See also
 
 - [Deploy reference (removed-command landing)](../deploy-reference.md)
-- [ADR-086: sunset `vibew deploy`](../../decisions/adr-086-sunset-vibew-deploy.md)
+- [ADR-086: sunset `vibew deploy`](https://github.com/vibewarden/vibewarden/blob/main/decisions/adr-086-sunset-vibew-deploy.md)
 - [Production hardening](../production-hardening.md)
 - [Troubleshooting](../troubleshooting.md)

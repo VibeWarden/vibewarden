@@ -1,7 +1,7 @@
 # Deploy — removed (breaking change)
 
 The `vibew deploy` command was removed in the release referenced by
-[ADR-086](../decisions/adr-086-sunset-vibew-deploy.md). It has been replaced
+[ADR-086](https://github.com/vibewarden/vibewarden/blob/main/decisions/adr-086-sunset-vibew-deploy.md). It has been replaced
 by `vibew bundle` plus a manual tar pipe / `ssh` / `docker compose up -d` flow.
 
 `vibew deploy` is no longer a registered command. Invoking it exits 1 and
@@ -36,7 +36,8 @@ In short:
    describes the contract — there are no shell scripts to run.
 
 The bundle is self-contained and deterministic: same inputs, same bytes.
-See [`vibew bundle`](../README.md#bundle) for the flag reference.
+See the [`vibew bundle` row in the CLI reference](https://github.com/vibewarden/vibewarden/blob/main/README.md#cli-reference),
+and the [bundle walkthrough](guide/bundle-to-vps.md) for the flag reference.
 
 ---
 
@@ -61,7 +62,7 @@ not a registered command. New scripts and agent prompts must target
 
 ## See also
 
-- [`vibew bundle` reference](../README.md#bundle)
+- [`vibew bundle` reference](https://github.com/vibewarden/vibewarden/blob/main/README.md#cli-reference)
 - [Bundle to VPS walkthrough](guide/bundle-to-vps.md)
-- [ADR-086](../decisions/adr-086-sunset-vibew-deploy.md)
-- [CHANGELOG — Breaking changes](../CHANGELOG.md)
+- [ADR-086](https://github.com/vibewarden/vibewarden/blob/main/decisions/adr-086-sunset-vibew-deploy.md)
+- [CHANGELOG — Breaking changes](https://github.com/vibewarden/vibewarden/blob/main/CHANGELOG.md)
