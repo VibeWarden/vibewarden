@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/vibewarden/vibewarden/internal/domain/audit"
 	"github.com/vibewarden/vibewarden/internal/domain/events"
 	"github.com/vibewarden/vibewarden/internal/domain/identity"
 	"github.com/vibewarden/vibewarden/internal/ports"
@@ -730,5 +731,91 @@ func TestRateLimitMiddleware_ContextIdentityTriggersUserLimit_BehavioralGuard(t 
 	}
 	if userLimiter.calledKeys[0] != "user-behavioral-test" {
 		t.Errorf("user limiter called with %q, want %q", userLimiter.calledKeys[0], "user-behavioral-test")
+	}
+}
+
+// TestRateLimitMiddleware_AuditActorUserID is the regression guard for issue #1402.
+//
+// A per-user rate-limit hit must record which user tripped the limit in
+// audit.Actor.UserID. Per-IP hits on unauthenticated requests carry no user ID.
+func TestRateLimitMiddleware_AuditActorUserID(t *testing.T) {
+	ident, err := identity.NewIdentity("user-audit-001", "audit@example.com", "kratos", true, nil)
+	if err != nil {
+		t.Fatalf("creating test identity: %v", err)
+	}
+
+	tests := []struct {
+		name          string
+		ipLimiter     *fakeRateLimiter
+		userLimiter   *fakeRateLimiter
+		setupRequest  func(r *http.Request) *http.Request
+		wantLimitType string
+		wantUserID    string
+	}{
+		{
+			name:        "user limit hit with context identity carries user id",
+			ipLimiter:   allowAll(),
+			userLimiter: denyWithRetry(3*time.Second, 5, 10),
+			setupRequest: func(r *http.Request) *http.Request {
+				return r.WithContext(contextWithIdentity(r.Context(), ident))
+			},
+			wantLimitType: "user",
+			wantUserID:    "user-audit-001",
+		},
+		{
+			name:        "user limit hit with X-User-Id header carries user id",
+			ipLimiter:   allowAll(),
+			userLimiter: denyWithRetry(3*time.Second, 5, 10),
+			setupRequest: func(r *http.Request) *http.Request {
+				r.Header.Set("X-User-Id", "user-hdr-042")
+				return r
+			},
+			wantLimitType: "user",
+			wantUserID:    "user-hdr-042",
+		},
+		{
+			name:          "ip limit hit on unauthenticated request has empty user id",
+			ipLimiter:     denyWithRetry(3*time.Second, 5, 10),
+			userLimiter:   allowAll(),
+			setupRequest:  func(r *http.Request) *http.Request { return r },
+			wantLimitType: "ip",
+			wantUserID:    "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			auditSpy := &fakeAuditEventLogger{}
+			next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(http.StatusOK)
+			})
+			mw := RateLimitMiddleware(tt.ipLimiter, tt.userLimiter, defaultCfg(), newTestLogger(), nil, auditSpy, nil)
+			handler := mw(next)
+
+			r := httptest.NewRequest(http.MethodGet, "/api/resource", nil)
+			r.RemoteAddr = "10.0.0.7:9999"
+			r = tt.setupRequest(r)
+			w := httptest.NewRecorder()
+
+			handler.ServeHTTP(w, r)
+
+			if w.Code != http.StatusTooManyRequests {
+				t.Fatalf("expected 429, got %d", w.Code)
+			}
+
+			ev, ok := auditSpy.lastEventOfType(audit.EventTypeRateLimitHit)
+			if !ok {
+				t.Fatalf("no %s audit event emitted", audit.EventTypeRateLimitHit)
+			}
+			if got := ev.Details["limit_type"]; got != tt.wantLimitType {
+				t.Errorf("audit limit_type = %v, want %q", got, tt.wantLimitType)
+			}
+			if ev.Actor.UserID != tt.wantUserID {
+				t.Errorf("audit Actor.UserID = %q, want %q", ev.Actor.UserID, tt.wantUserID)
+			}
+			if ev.Actor.IP != "10.0.0.7" {
+				t.Errorf("audit Actor.IP = %q, want %q", ev.Actor.IP, "10.0.0.7")
+			}
+		})
 	}
 }
