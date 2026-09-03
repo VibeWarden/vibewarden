@@ -314,8 +314,19 @@ func TestScanRequest_CleanRequest(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 // BenchmarkScanRequest_Typical measures the cost of scanning a typical HTTP
-// request (2 query params, standard headers, small JSON body).
-// The performance target is < 1 ms per operation.
+// request: two query parameters, a browser User-Agent, a short Cookie, and a
+// 37-byte JSON body. Baseline on darwin/arm64 (Apple M1 Max, Go 1.27) is
+// ~24 microseconds per operation at 18 allocs/op.
+//
+// That figure is not a fixed per-request cost. ScanRequest evaluates the whole
+// ruleset once per inspected value, so cost scales with the number of bytes
+// inspected: query values, the three inspected headers, and the body up to the
+// maxBodyBytes (8 KB) scan cap. A request that fills the body cap lands in the
+// low milliseconds, so size the ruleset against the payload sizes you accept.
+//
+// docs/performance.md publishes the proxy-level numbers this rolls up into,
+// the per-byte rate they imply, and the WAF latency budget. Update it when
+// this benchmark moves materially.
 func BenchmarkScanRequest_Typical(b *testing.B) {
 	rs := DefaultRuleSet()
 	body := `{"username":"alice","action":"login"}`
