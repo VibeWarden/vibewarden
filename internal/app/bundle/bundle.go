@@ -393,7 +393,7 @@ func bundleMultiSiteSidecar(cfg *config.Config, outputDir, version string) error
 	}
 
 	// Render and write the sidecar compose file.
-	sidecarCompose, err := renderSidecarCompose(listenPort, version)
+	sidecarCompose, err := renderSidecarCompose(listenPort, version, cfg.Server.ResourceLimits())
 	if err != nil {
 		return fmt.Errorf("rendering sidecar compose: %w", err)
 	}
@@ -416,8 +416,9 @@ log_level: info
 // renderSidecarCompose renders the sidecar docker-compose.yml template.
 // version is the CLI build version string used to compute the sidecar image
 // reference via config.SidecarImageRef. Empty string or non-release values
-// fall back to :latest + pull_policy: always.
-func renderSidecarCompose(listenPort int, version string) (string, error) {
+// fall back to :latest + pull_policy: always. limits carries the render-ready
+// container resource caps (ADR-111); zero-valued fields omit their keys.
+func renderSidecarCompose(listenPort int, version string, limits config.ComposeResourceLimits) (string, error) {
 	tmplContent, err := templates.FS.ReadFile("sidecar-compose.yml.tmpl")
 	if err != nil {
 		return "", fmt.Errorf("reading sidecar compose template: %w", err)
@@ -433,6 +434,7 @@ func renderSidecarCompose(listenPort int, version string) (string, error) {
 		ListenPort: listenPort,
 		Image:      image,
 		PullPolicy: pullPolicy,
+		Limits:     limits,
 	}
 	var buf bytes.Buffer
 	if err := tmpl.Execute(&buf, data); err != nil {

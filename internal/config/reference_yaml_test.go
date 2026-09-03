@@ -46,6 +46,9 @@ func TestReferenceYAML_UnmarshalsCleanly(t *testing.T) {
 		{"server.host", cfg.Server.Host, "127.0.0.1"},
 		{"server.port", cfg.Server.Port, 8443},
 		{"server.max_connections", cfg.Server.MaxConnections, 1000},
+		{"server.mem_limit", cfg.Server.MemLimit, "512MB"},
+		{"server.cpu_limit", cfg.Server.CPULimit, 1.0},
+		{"server.pids_limit", cfg.Server.PidsLimit, 200},
 		{"upstream.host", cfg.Upstream.Host, "127.0.0.1"},
 		{"upstream.port", cfg.Upstream.Port, 3000},
 		{"tls.enabled", cfg.TLS.Enabled, true},
@@ -171,6 +174,12 @@ func TestSetDefaults_EmptyYAML(t *testing.T) {
 		// server.max_connections default — omitting the key must yield the
 		// documented cap of 1000, not an unlimited Go zero value.
 		{"server.max_connections", cfg.Server.MaxConnections, 1000},
+
+		// Container resource-limit defaults (ADR-111) — omitting these keys
+		// must yield the documented caps, not the unlimited Go zero values.
+		{"server.mem_limit", cfg.Server.MemLimit, "512MB"},
+		{"server.cpu_limit", cfg.Server.CPULimit, 1.0},
+		{"server.pids_limit", cfg.Server.PidsLimit, 200},
 	}
 
 	for _, tt := range tests {

@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	"gopkg.in/yaml.v3"
+
 	bundleapp "github.com/vibewarden/vibewarden/internal/app/bundle"
 	"github.com/vibewarden/vibewarden/internal/config"
 )
@@ -551,5 +553,104 @@ func TestBundle_SingleSite_ConfigPathStatError(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "stat config") {
 		t.Errorf("expected 'stat config' in error, got: %v", err)
+	}
+}
+
+// renderMultiSiteSidecarCompose runs BundleSidecar and returns the rendered
+// .sidecar/docker-compose.yml.
+func renderMultiSiteSidecarCompose(t *testing.T, srv config.ServerConfig) string {
+	t.Helper()
+
+	outputDir := t.TempDir()
+	svc := bundleapp.NewService(&fakeExecutor{}, &fakeGenerator{})
+	if err := svc.BundleSidecar(context.Background(), &config.Config{Server: srv}, outputDir); err != nil {
+		t.Fatalf("BundleSidecar() error = %v", err)
+	}
+	data, err := os.ReadFile(filepath.Join(outputDir, ".sidecar", "docker-compose.yml"))
+	if err != nil {
+		t.Fatalf("reading sidecar docker-compose.yml: %v", err)
+	}
+	return string(data)
+}
+
+// TestBundleSidecar_ResourceLimits asserts the multi-app sidecar compose picks
+// up the same container resource caps as the single-app one (ADR-111).
+func TestBundleSidecar_ResourceLimits(t *testing.T) {
+	compose := renderMultiSiteSidecarCompose(t, config.ServerConfig{
+		Port: 443, MemLimit: "512MB", CPULimit: 1.0, PidsLimit: 200,
+	})
+
+	for _, want := range []string{
+		"mem_limit: 536870912",
+		"# 512MB",
+		`cpus: "1"`,
+		"pids_limit: 200",
+		"environment:",
+		"- GOMEMLIMIT=483183820B",
+	} {
+		if !strings.Contains(compose, want) {
+			t.Errorf("sidecar compose missing %q:\n%s", want, compose)
+		}
+	}
+}
+
+// TestBundleSidecar_ResourceLimits_Disabled asserts a disabled cap omits its
+// key, and that the conditional environment: block disappears with the memory
+// cap rather than being emitted empty (this template has no other env vars).
+func TestBundleSidecar_ResourceLimits_Disabled(t *testing.T) {
+	tests := []struct {
+		name       string
+		server     config.ServerConfig
+		wantAbsent []string
+	}{
+		{
+			name:       "all caps off",
+			server:     config.ServerConfig{Port: 443, MemLimit: "0", CPULimit: 0, PidsLimit: 0},
+			wantAbsent: []string{"mem_limit:", "cpus:", "pids_limit:", "GOMEMLIMIT", "environment:"},
+		},
+		{
+			name:       "zero-value server config renders no caps",
+			server:     config.ServerConfig{},
+			wantAbsent: []string{"mem_limit:", "cpus:", "pids_limit:", "GOMEMLIMIT", "environment:"},
+		},
+		{
+			name:       "memory cap off drops GOMEMLIMIT and the env block",
+			server:     config.ServerConfig{Port: 443, MemLimit: "0", CPULimit: 1.0, PidsLimit: 200},
+			wantAbsent: []string{"mem_limit:", "GOMEMLIMIT", "environment:"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			compose := renderMultiSiteSidecarCompose(t, tt.server)
+			for _, key := range tt.wantAbsent {
+				if strings.Contains(compose, key) {
+					t.Errorf("%q must be omitted when the cap is disabled:\n%s", key, compose)
+				}
+			}
+		})
+	}
+}
+
+// TestBundleSidecar_ResourceLimits_ValidYAML guards the conditional blocks in
+// the multi-app template: the file must parse with caps both on and off.
+func TestBundleSidecar_ResourceLimits_ValidYAML(t *testing.T) {
+	for _, srv := range []config.ServerConfig{
+		{Port: 443, MemLimit: "512MB", CPULimit: 1.0, PidsLimit: 200},
+		{Port: 443, MemLimit: "0", CPULimit: 0, PidsLimit: 0},
+	} {
+		compose := renderMultiSiteSidecarCompose(t, srv)
+		var doc struct {
+			Services map[string]map[string]any `yaml:"services"`
+		}
+		if err := yaml.Unmarshal([]byte(compose), &doc); err != nil {
+			t.Fatalf("rendered sidecar compose is not valid YAML: %v\n%s", err, compose)
+		}
+		if _, ok := doc.Services["vibewarden"]; !ok {
+			t.Errorf("rendered sidecar compose has no vibewarden service:\n%s", compose)
+		}
+		if len(doc.Services) != 1 {
+			t.Errorf("sidecar compose should define only the vibewarden service, got %d", len(doc.Services))
+		}
 	}
 }

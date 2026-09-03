@@ -11,6 +11,8 @@ import (
 	"strings"
 	"testing"
 
+	"gopkg.in/yaml.v3"
+
 	templateadapter "github.com/vibewarden/vibewarden/internal/adapters/template"
 	"github.com/vibewarden/vibewarden/internal/app/generate"
 	"github.com/vibewarden/vibewarden/internal/config"
@@ -2863,5 +2865,179 @@ func TestGenerate_SidecarImage_DevFallback(t *testing.T) {
 	}
 	if !bytes.Contains(compose, []byte("pull_policy: always")) {
 		t.Errorf("dev compose must contain pull_policy: always; got:\n%s", compose)
+	}
+}
+
+// limitsConfig returns a minimal Config with the given container resource caps.
+func limitsConfig(mem string, cpu float64, pids int) *config.Config {
+	return &config.Config{
+		Server: config.ServerConfig{
+			Host: "127.0.0.1", Port: 8080,
+			MemLimit: mem, CPULimit: cpu, PidsLimit: pids,
+		},
+		Upstream: config.UpstreamConfig{Host: "127.0.0.1", Port: 3000},
+	}
+}
+
+// vibewardenServiceBlock returns the `vibewarden:` service block from a
+// rendered compose file, and the concatenation of every *other* service block.
+// Used to prove the resource limits land on the sidecar and nowhere else.
+func vibewardenServiceBlock(t *testing.T, compose []byte) (sidecar, others string) {
+	t.Helper()
+
+	lines := strings.Split(string(compose), "\n")
+	inServices := false
+	current := ""
+	blocks := map[string][]string{}
+	for _, line := range lines {
+		switch {
+		case line == "services:":
+			inServices = true
+			continue
+		case !inServices:
+			continue
+		case line == "" || strings.HasPrefix(line, "#"):
+			continue
+		case !strings.HasPrefix(line, " "):
+			// A new top-level key (networks:, volumes:) ends the services map.
+			inServices = false
+			continue
+		}
+		// Service names are indented exactly two spaces.
+		if strings.HasPrefix(line, "  ") && !strings.HasPrefix(line, "   ") &&
+			strings.HasSuffix(strings.TrimSpace(line), ":") {
+			current = strings.TrimSuffix(strings.TrimSpace(line), ":")
+			continue
+		}
+		if current != "" {
+			blocks[current] = append(blocks[current], line)
+		}
+	}
+
+	if _, ok := blocks["vibewarden"]; !ok {
+		t.Fatalf("no 'vibewarden' service found in rendered compose:\n%s", compose)
+	}
+	var otherLines []string
+	for name, body := range blocks {
+		if name == "vibewarden" {
+			continue
+		}
+		otherLines = append(otherLines, body...)
+	}
+	return strings.Join(blocks["vibewarden"], "\n"), strings.Join(otherLines, "\n")
+}
+
+// TestGenerate_ResourceLimits_Defaults asserts the documented default caps land
+// on the vibewarden service, together with the derived GOMEMLIMIT (ADR-111).
+//
+// This is a render-shape test: it localises a failure that the integration test
+// in test/integration/compose_limits_test.go would only report as "the wrong
+// number". Enforcement is proven there, via docker inspect.
+func TestGenerate_ResourceLimits_Defaults(t *testing.T) {
+	compose := renderCompose(t, limitsConfig("512MB", 1.0, 200))
+	sidecar, _ := vibewardenServiceBlock(t, compose)
+
+	for _, want := range []string{
+		"mem_limit: 536870912",
+		`cpus: "1"`,
+		"pids_limit: 200",
+		"- GOMEMLIMIT=483183820B",
+	} {
+		if !strings.Contains(sidecar, want) {
+			t.Errorf("vibewarden service missing %q:\n%s", want, sidecar)
+		}
+	}
+	// The human-readable value is preserved as a trailing comment.
+	if !strings.Contains(sidecar, "# 512MB") {
+		t.Errorf("expected the configured value echoed as a comment:\n%s", sidecar)
+	}
+}
+
+// TestGenerate_ResourceLimits_OnlyOnSidecar is the scope guard: no other
+// service in the generated compose file may gain any of the three keys.
+func TestGenerate_ResourceLimits_OnlyOnSidecar(t *testing.T) {
+	cfg := limitsConfig("512MB", 1.0, 200)
+	cfg.App = config.AppConfig{Image: "ghcr.io/org/myapp:latest"}
+	cfg.Secrets = config.SecretsConfig{Enabled: true, Store: "openbao"}
+	cfg.RateLimit = config.RateLimitConfig{Enabled: true, Store: "redis"}
+
+	compose := renderCompose(t, cfg)
+	sidecar, others := vibewardenServiceBlock(t, compose)
+
+	if others == "" {
+		t.Fatal("expected at least one non-sidecar service in this fixture")
+	}
+	for _, key := range []string{"mem_limit:", "cpus:", "pids_limit:", "GOMEMLIMIT"} {
+		if !strings.Contains(sidecar, key) {
+			t.Errorf("vibewarden service missing %q:\n%s", key, sidecar)
+		}
+		if strings.Contains(others, key) {
+			t.Errorf("%q must not appear on any non-vibewarden service:\n%s", key, others)
+		}
+	}
+}
+
+// TestGenerate_ResourceLimits_Disabled asserts that a disabled cap omits its
+// key entirely rather than emitting an explicit 0 — Go templates treat the
+// string "0" as truthy, so this guards a real foot-gun.
+func TestGenerate_ResourceLimits_Disabled(t *testing.T) {
+	tests := []struct {
+		name       string
+		cfg        *config.Config
+		wantAbsent []string
+	}{
+		{
+			name:       "all caps off",
+			cfg:        limitsConfig("0", 0, 0),
+			wantAbsent: []string{"mem_limit:", "cpus:", "pids_limit:", "GOMEMLIMIT"},
+		},
+		{
+			name:       "empty mem limit off",
+			cfg:        limitsConfig("", 1.0, 200),
+			wantAbsent: []string{"mem_limit:", "GOMEMLIMIT"},
+		},
+		{
+			name:       "cpu cap off",
+			cfg:        limitsConfig("512MB", 0, 200),
+			wantAbsent: []string{"cpus:"},
+		},
+		{
+			name:       "pids cap off",
+			cfg:        limitsConfig("512MB", 1.0, 0),
+			wantAbsent: []string{"pids_limit:"},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			compose := renderCompose(t, tt.cfg)
+			sidecar, _ := vibewardenServiceBlock(t, compose)
+			for _, key := range tt.wantAbsent {
+				if strings.Contains(sidecar, key) {
+					t.Errorf("%q must be omitted when the cap is disabled:\n%s", key, sidecar)
+				}
+			}
+			if strings.Contains(sidecar, "mem_limit: 0") || strings.Contains(sidecar, "pids_limit: 0") {
+				t.Errorf("a disabled cap must omit the key, not emit 0:\n%s", sidecar)
+			}
+		})
+	}
+}
+
+// TestGenerate_ResourceLimits_ComposeStaysValidYAML guards the conditional
+// blocks: with every cap off the environment list must still be well-formed.
+func TestGenerate_ResourceLimits_ComposeStaysValidYAML(t *testing.T) {
+	for _, cfg := range []*config.Config{
+		limitsConfig("512MB", 1.0, 200),
+		limitsConfig("0", 0, 0),
+	} {
+		compose := renderCompose(t, cfg)
+		var doc map[string]any
+		if err := yaml.Unmarshal(compose, &doc); err != nil {
+			t.Fatalf("rendered compose is not valid YAML: %v\n%s", err, compose)
+		}
+		if _, ok := doc["services"]; !ok {
+			t.Errorf("rendered compose has no services key:\n%s", compose)
+		}
 	}
 }
