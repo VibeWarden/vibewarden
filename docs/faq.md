@@ -28,7 +28,7 @@ VibeWarden is pre-1.0. The core features (TLS, auth, rate limiting, security hea
 
 ## What's the performance overhead?
 
-Under 3 microseconds per request with all middleware enabled (security headers + rate limiting + WAF). See the [performance benchmarks](performance.md).
+Tens of microseconds per request with all middleware enabled (security headers + rate limiting + WAF), well inside VibeWarden's millisecond-scale latency budget. Security headers and rate limiting cost well under a microsecond each; the WAF dominates, and its cost scales with how many bytes it inspects (query parameters, `Cookie`/`Referer`/`User-Agent`, and the first 8 KB of the body). Size it against your own request shape rather than a single headline number — see the [performance benchmarks](performance.md).
 
 ## Is it free?
 
