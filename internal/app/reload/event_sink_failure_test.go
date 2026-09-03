@@ -171,6 +171,64 @@ func TestMultiSiteService_ModifiedEvent_UnknownSite_LoadFailure(t *testing.T) {
 	}
 }
 
+// TestMultiSiteService_CreatedEvent_LoadFailure_InvalidName covers
+// markSiteError's NewErrorSite failure arm: when the config cannot be loaded
+// *and* the site name is not DNS-safe, there is no valid entity to record, so
+// the registry must be left untouched rather than holding a half-built site.
+func TestMultiSiteService_CreatedEvent_LoadFailure_InvalidName(t *testing.T) {
+	reg := site.NewRegistry()
+	reloader := &fakeReloader{}
+	svc := reload.NewMultiSiteService(reg, &fakeEventLogger{}, slog.Default(), reloader.Reload)
+
+	ch := make(chan ports.SiteEvent, 1)
+	ch <- ports.SiteEvent{
+		Kind:       ports.SiteEventCreated,
+		SiteName:   "Not_DNS_Safe",
+		ConfigPath: "/does/not/exist/vibewarden.yaml",
+	}
+	close(ch)
+	svc.Run(context.Background(), ch)
+
+	if _, ok := reg.Get("Not_DNS_Safe"); ok {
+		t.Error("site with an invalid name was added to the registry")
+	}
+	if len(reg.All()) != 0 {
+		t.Errorf("registry has %d sites, want 0", len(reg.All()))
+	}
+	if reloader.count != 0 {
+		t.Errorf("reload called %d times after a load failure, want 0", reloader.count)
+	}
+}
+
+// TestMultiSiteService_ModifiedEvent_UnknownSite_ReloadFailure covers
+// rollbackSite's no-previous arm: handleModified adds a site that was not in
+// the registry before, and when the proxy reload then fails the partial add
+// must be undone by removing the site (there is no previous version to
+// restore).
+func TestMultiSiteService_ModifiedEvent_UnknownSite_ReloadFailure(t *testing.T) {
+	dir := t.TempDir()
+	configPath := writeSiteConfig(t, dir, "ghost", siteMinimalConfig)
+
+	reg := site.NewRegistry()
+	reloader := &fakeReloader{err: errors.New("caddy reload failed")}
+	svc := reload.NewMultiSiteService(reg, &fakeEventLogger{}, slog.Default(), reloader.Reload)
+
+	ch := make(chan ports.SiteEvent, 1)
+	ch <- ports.SiteEvent{Kind: ports.SiteEventModified, SiteName: "ghost", ConfigPath: configPath}
+	close(ch)
+	svc.Run(context.Background(), ch)
+
+	if reloader.count != 1 {
+		t.Errorf("reload called %d times, want 1", reloader.count)
+	}
+	if _, ok := reg.Get("ghost"); ok {
+		t.Error("site ghost is still registered after the reload failure; the partial add was not rolled back")
+	}
+	if len(reg.All()) != 0 {
+		t.Errorf("registry has %d sites after rollback, want 0", len(reg.All()))
+	}
+}
+
 // TestMultiSiteService_UnknownEventKind is the default arm of handleEvent: an
 // event kind the service does not recognise must be ignored, not panic.
 func TestMultiSiteService_UnknownEventKind(t *testing.T) {
