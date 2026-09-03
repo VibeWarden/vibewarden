@@ -655,7 +655,7 @@ written to `.credentials` on the host alongside all other secrets. No manual
 
 Back up `.credentials` after the first successful `docker compose up -d`. If
 `OPENBAO_UNSEAL_KEY` is lost, the vault cannot be unsealed after a host reboot and
-all secrets become inaccessible. See [Troubleshooting](../troubleshooting.md) for the
+all secrets become inaccessible. See [Troubleshooting](troubleshooting.md) for the
 recovery procedure.
 
 Do not overwrite `.credentials` by re-running `vibew bundle` after a prod deploy.

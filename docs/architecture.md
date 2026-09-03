@@ -92,7 +92,7 @@ plugin API.
 > **Planned / Pro-tier (not yet implemented):** The **Fleet** plugin (`fleet`) will
 > bridge telemetry to `app.vibewarden.dev` as the VibeWarden Pro tier feature.
 > It is a locked-decision roadmap item and is not available in the current binary.
-> See [CLAUDE.md locked decisions](../CLAUDE.md) for context.
+> See [CLAUDE.md locked decisions](https://github.com/vibewarden/vibewarden/blob/main/CLAUDE.md) for context.
 
 ---
 
