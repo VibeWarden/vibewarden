@@ -26,6 +26,12 @@ Thumbs.db
 # Go
 vendor/
 
+# npm distribution wrapper (npm/) — publish-time copies and local install state.
+# npm/vendor/ (the downloaded binary) is already covered by the `vendor/` rule above.
+npm/node_modules/
+npm/LICENSE
+npm/*.tgz
+
 # Test artifacts
 coverage.out
 *.cov.out

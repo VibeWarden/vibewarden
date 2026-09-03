@@ -8,6 +8,9 @@ next to your app via Docker Compose.
 
 ## Quick start
 
+# Install (npm is the default path):
+npm install -g @vibewarden/cli
+# Without Node.js:
 curl -fsSL https://vibewarden.dev/install.sh | sh
 
 # New project:

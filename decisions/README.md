@@ -104,6 +104,7 @@ the DEMOTE and TOMBSTONE buckets, not to the KEEP banner set above.
 | [109](adr-109-license-waivers-mpl-2-mysql-driver-cc0-blake3.md) | License waivers — MPL-2.0 (`go-sql-driver/mysql`) and CC0-1.0 (`zeebo/blake3`), both transitive via Caddy | #1347 | Reconstructs the waiver lost as ADR-104; consolidates #1292 + #1293 |
 | [110](adr-110-server-max-connections-listener-wrapper.md) | `server.max_connections` — concurrent-connection cap via a custom Caddy listener wrapper placed before TLS | #1311 | |
 | [111](adr-111-sidecar-container-resource-limits.md) | Sidecar container resource limits — `mem_limit`/`cpus`/`pids_limit` in both compose templates, config-driven under `server:`, with a derived `GOMEMLIMIT` | #1306 | |
+| [112](adr-112-npm-distribution-vibewarden-cli-wrapper.md) | npm distribution — `@vibewarden/cli`, a zero-dependency wrapper that downloads the goreleaser binary at postinstall | #1258 | |
 | [497](adr-497-graceful-shutdown-connection-draining.md) | Graceful Shutdown / Connection Draining | — | Removed 2026-05-04 — see tombstone (anomalous number, paste of issue #497) |
 
 ## Numbering

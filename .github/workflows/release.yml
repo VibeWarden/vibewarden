@@ -49,3 +49,48 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  npm:
+    name: Publish @vibewarden/cli
+    needs: [release]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write   # npm provenance attestation (ADR-112)
+    env:
+      # Lifted into the env context so steps can gate on it. Until the
+      # @vibewarden org is claimed and NPM_TOKEN is set, publishing must
+      # no-op rather than fail the whole Release workflow (ADR-112).
+      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          registry-url: https://registry.npmjs.org
+
+      - name: Prepare package (version, checksums, license)
+        id: prepare
+        run: ./scripts/release/prepare-npm-package.sh "${GITHUB_REF_NAME}"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Test package
+        if: steps.prepare.outputs.skip != 'true'
+        run: node --test 'npm/test/*.test.js'
+
+      - name: Publish
+        if: steps.prepare.outputs.skip != 'true' && env.NPM_TOKEN != ''
+        run: npm publish --access public --provenance --tag "${{ steps.prepare.outputs.dist_tag }}"
+        working-directory: npm
+        env:
+          NODE_AUTH_TOKEN: ${{ env.NPM_TOKEN }}
+
+      - name: Skip publish (NPM_TOKEN not configured)
+        if: steps.prepare.outputs.skip != 'true' && env.NPM_TOKEN == ''
+        run: |
+          echo "::notice title=npm publish skipped::NPM_TOKEN is not set; @vibewarden/cli was not published for ${GITHUB_REF_NAME}. Claim the npm org and add the NPM_TOKEN secret to enable publishing."

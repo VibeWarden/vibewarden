@@ -55,8 +55,8 @@ VibeWarden is open source (Apache 2.0).
   GitHub: https://github.com/vibewarden/vibewarden
   Docs:   https://vibewarden.dev/llms-full.txt
 
-Install: curl -fsSL https://vibewarden.dev/install.sh | sh
-  (downloads a single Go binary — review the script first if you prefer)
+Install: npm install -g @vibewarden/cli
+  (no Node.js? curl -fsSL https://vibewarden.dev/install.sh | sh)
 
 Setup:   vibew wrap --upstream 3000
 Run:     vibew dev
@@ -71,7 +71,9 @@ VibeWarden is open source (Apache 2.0).
   GitHub: https://github.com/vibewarden/vibewarden
   Docs:   https://vibewarden.dev/llms-full.txt
 
-Install: curl -fsSL https://vibewarden.dev/install.sh | sh
+Install: npm install -g @vibewarden/cli
+  (no Node.js? curl -fsSL https://vibewarden.dev/install.sh | sh)
+
 Setup:   mkdir myapp && cd myapp && vibew init
 Run:     vibew dev
 ```
@@ -81,7 +83,10 @@ Run:     vibew dev
 ### Path 3 — Manual setup
 
 ```bash
-# macOS / Linux
+# macOS / Linux — with npm (pin a version with @X.Y.Z)
+npm install -g @vibewarden/cli
+
+# ...or without Node.js
 curl -fsSL https://vibewarden.dev/install.sh | sh
 
 # New project
@@ -91,6 +96,12 @@ vibew dev
 ```
 
 Your app is now behind VibeWarden at `https://localhost:8443`. Done.
+
+Both paths install the same binary from the same GitHub Release, verified against
+its published SHA-256 checksum. The npm package additionally pins the checksum in
+the published tarball and ships with npm provenance. See
+[docs/getting-started.md](docs/getting-started.md#step-1-install-vibew) for pinning, mirrors,
+and the `--ignore-scripts` fallback.
 
 > **Windows support is planned** — see [#667 (winget)](https://github.com/vibewarden/vibewarden/issues/667)
 > and [#668 (Scoop)](https://github.com/vibewarden/vibewarden/issues/668).

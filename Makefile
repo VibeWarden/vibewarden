@@ -1,6 +1,6 @@
 # VibeWarden Makefile
 
-.PHONY: build test lint run docker-up docker-down observability-up observability-down grafana-open prometheus-open loki-open clean check integration check-all setup-hooks demo demo-build demo-tls demo-down demo-clean deploy-demo
+.PHONY: build test lint run docker-up docker-down observability-up observability-down grafana-open prometheus-open loki-open clean check integration check-all setup-hooks demo demo-build demo-tls demo-down demo-clean deploy-demo check-npm
 
 # Build variables
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
@@ -69,7 +69,19 @@ check: ## Run all quality checks (lint, build, tests)
 	@echo "==> Checking demo-app..."
 	@test -z "$$(cd examples/demo-app && gofmt -l .)" || (echo "gofmt: these demo-app files need formatting:" && cd examples/demo-app && gofmt -l . && exit 1)
 	cd examples/demo-app && go vet ./... && go build ./... && go test -race ./...
+	@$(MAKE) --no-print-directory check-npm
 	@echo "==> All checks passed!"
+
+# Run the @vibewarden/cli npm package test suite (ADR-112).
+# Zero dependencies: Node's built-in test runner, no node_modules, no network.
+check-npm: ## Run the npm distribution wrapper tests (requires Node >= 22)
+	@echo "==> Running npm package tests (npm/)..."
+	@command -v node >/dev/null 2>&1 || { \
+		echo "error: node is required to test the npm distribution wrapper (npm/)."; \
+		echo "       Install Node.js >= 22: https://nodejs.org/en/download"; \
+		exit 1; \
+	}
+	node --test 'npm/test/*.test.js'
 
 # Run integration tests (requires Docker running).
 # These are gated behind //go:build integration and test multi-app routing,

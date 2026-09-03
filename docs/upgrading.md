@@ -40,6 +40,28 @@ vibew v0.19.0
 
 ## How to upgrade
 
+Upgrade the same way you installed. The three install paths are independent:
+mixing them leaves you with two binaries and no clear winner on `PATH`.
+
+| Installed with | Upgrade with |
+|----------------|--------------|
+| `npm install -g @vibewarden/cli` | `npm install -g @vibewarden/cli@latest` |
+| `install.sh` or a direct download | `vibew upgrade` |
+| Docker image | change the image tag, `docker compose pull` |
+
+### Upgrading an npm-managed install
+
+```bash
+npm install -g @vibewarden/cli@latest   # or @X.Y.Z to pin
+```
+
+!!! warning "Do not run `vibew upgrade` on an npm install"
+    `vibew upgrade` resolves the running binary to the copy inside the npm
+    package's `vendor/` directory and replaces it there. The upgrade appears to
+    succeed, but the binary no longer matches the installed package version, and
+    the next `npm install -g` silently reverts it. Always upgrade npm installs
+    with npm.
+
 ### Upgrading with `vibew upgrade`
 
 `vibew upgrade` downloads and installs a new VibeWarden release, replacing the

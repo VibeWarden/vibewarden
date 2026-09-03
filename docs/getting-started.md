@@ -25,8 +25,8 @@ VibeWarden is open source (Apache 2.0).
   GitHub: https://github.com/vibewarden/vibewarden
   Docs:   https://vibewarden.dev/llms-full.txt
 
-Install: curl -fsSL https://vibewarden.dev/install.sh | sh
-  (downloads a single Go binary — review the script first if you prefer)
+Install: npm install -g @vibewarden/cli
+  (no Node.js? curl -fsSL https://vibewarden.dev/install.sh | sh)
 
 Setup:   vibew wrap --upstream 3000
 Run:     vibew dev
@@ -41,7 +41,9 @@ VibeWarden is open source (Apache 2.0).
   GitHub: https://github.com/vibewarden/vibewarden
   Docs:   https://vibewarden.dev/llms-full.txt
 
-Install: curl -fsSL https://vibewarden.dev/install.sh | sh
+Install: npm install -g @vibewarden/cli
+  (no Node.js? curl -fsSL https://vibewarden.dev/install.sh | sh)
+
 Setup:   mkdir myapp && cd myapp && vibew init
 Run:     vibew dev
 ```
@@ -82,11 +84,70 @@ the same place: a `vibewarden.yaml` you can iterate on from **Step 3**.
 
 ---
 
-## Step 1 — Install the `vibew` wrapper
+## Step 1 — Install vibew
+
+Two ways to install the CLI. Both fetch the same binary from the same GitHub
+Release and verify its SHA-256 checksum before installing it.
+
+=== "npm (default)"
+
+    ```bash
+    npm install -g @vibewarden/cli
+    vibew --version
+    ```
+
+    Pin a version the way you pin any npm dependency — the package version is
+    always the VibeWarden release version:
+
+    ```bash
+    npm install -g @vibewarden/cli@0.21.0
+    ```
+
+=== "Shell installer"
+
+    ```bash
+    curl -fsSL https://vibewarden.dev/install.sh | sh
+    ```
+
+    No Node.js required. This is the right path for CI images and minimal
+    containers.
+
+!!! note "Windows"
+    Windows support is planned — see [#667 (winget)](https://github.com/vibewarden/vibewarden/issues/667)
+    and [#668 (Scoop)](https://github.com/vibewarden/vibewarden/issues/668).
+    VibeWarden currently builds for macOS and Linux only. On Windows, run
+    VibeWarden under WSL2 and follow the Linux instructions.
+
+### If npm ran with `--ignore-scripts`
+
+The npm package downloads the binary in a `postinstall` script. When lifecycle
+scripts are disabled, running `vibew` exits with the exact command to finish the
+install, using the absolute path of the package on your machine:
+
+```bash
+node <absolute-path-to-@vibewarden/cli>/install.js
+```
+
+Copy the command from the `vibew` output rather than reconstructing it: the path
+differs between global installs, project-local installs, pnpm stores and npx caches.
+
+### npm install environment variables
+
+| Variable | Effect |
+|----------|--------|
+| `VIBEWARDEN_BINARY_MIRROR` | Base URL for release assets, instead of `https://github.com/vibewarden/vibewarden/releases/download`. For proxied or air-gapped networks. |
+| `VIBEWARDEN_INSTALL_VERSION` | Install a different release than the package version. Digests are then read from the release's `checksums.txt` rather than the ones embedded in the package. |
+| `VIBEWARDEN_SKIP_DOWNLOAD=1` | Skip the download; `vibew` then prints how to complete the install. |
+
+!!! warning "Upgrading an npm install"
+    Use `npm install -g @vibewarden/cli@latest`, not `vibew upgrade`. See
+    [Upgrading](upgrading.md#upgrading-an-npm-managed-install).
+
+### Or commit the `vibew` wrapper script
 
 The `vibew` script is a thin shell wrapper that downloads the correct VibeWarden
 binary for your platform and delegates all commands to it. Commit it to your repo —
-it pins the version your team uses.
+it pins the version your team uses, with no global install.
 
 === "macOS / Linux"
 
@@ -94,12 +155,7 @@ it pins the version your team uses.
     curl -fsSL https://vibewarden.dev/vibew > vibew && chmod +x vibew
     ```
 
-!!! note "Windows"
-    Windows support is planned — see [#667 (winget)](https://github.com/vibewarden/vibewarden/issues/667)
-    and [#668 (Scoop)](https://github.com/vibewarden/vibewarden/issues/668).
-    VibeWarden currently builds for macOS and Linux only.
-
-You can also install `vibew` globally:
+You can also install that wrapper globally:
 
 ```bash
 sudo mv vibew /usr/local/bin/vibew
@@ -113,8 +169,12 @@ Run `vibew wrap` inside your project directory. Pass `--upstream` with the port
 your app listens on. Add feature flags for the security plugins you want enabled.
 
 ```bash
-./vibew wrap --upstream 3000 --auth --rate-limit
+vibew wrap --upstream 3000 --auth --rate-limit
 ```
+
+!!! note "If you committed the `vibew` wrapper script"
+    The wrapper-script install puts `vibew` in the current directory, not on your
+    `PATH`. Run `./vibew wrap --upstream 3000 --auth --rate-limit` instead.
 
 Common flags:
 

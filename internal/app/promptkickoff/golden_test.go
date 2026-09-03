@@ -106,12 +106,46 @@ func TestDeployTemplate_ContainsRequiredCommands(t *testing.T) {
 		{"docker load -i image.tar", "docker load -i image.tar"},
 		{"docker compose up -d", "docker compose up -d"},
 		{"healthcheck curl", "curl -fsSL https://demo.example.com/_vibewarden/health"},
+		{"npm install", "npm install -g @vibewarden/cli"},
+		{"install.sh fallback", "curl -fsSL https://vibewarden.dev/install.sh | sh"},
 	}
 
 	for _, r := range required {
 		t.Run(r.name, func(t *testing.T) {
 			if !strings.Contains(content, r.snippet) {
 				t.Errorf("deploy template missing required command %q\n\nFull output:\n%s", r.snippet, content)
+			}
+		})
+	}
+}
+
+// TestInstallStep_OffersBothInstallPaths guards Step 1 in both flavors
+// (ADR-112). npm is the default path for the Node-equipped majority, and the
+// shell installer must stay visible for everyone else: an agent on a machine
+// without Node has no other way in. A future edit that drops either command
+// silently breaks one of the two audiences, so both are asserted here.
+func TestInstallStep_OffersBothInstallPaths(t *testing.T) {
+	svc := newService(t)
+
+	for _, deploy := range []bool{false, true} {
+		name := "dev"
+		if deploy {
+			name = "deploy"
+		}
+		t.Run(name, func(t *testing.T) {
+			out, err := svc.Render(fixtureOpts(deploy))
+			if err != nil {
+				t.Fatalf("Render error: %v", err)
+			}
+			content := string(out)
+
+			for _, want := range []string{
+				"npm install -g @vibewarden/cli",
+				"curl -fsSL https://vibewarden.dev/install.sh | sh",
+			} {
+				if !strings.Contains(content, want) {
+					t.Errorf("%s flavor Step 1 is missing %q\n\nOutput:\n%s", name, want, content)
+				}
 			}
 		})
 	}
