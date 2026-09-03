@@ -74,6 +74,17 @@ services:
     pull_policy: {{ .SidecarPullPolicy }}
 {{- end }}
     restart: unless-stopped
+{{- with .Server.ResourceLimits }}
+{{- if .MemLimitBytes }}
+    mem_limit: {{ .MemLimitBytes }}  # {{ .MemLimitDisplay }}
+{{- end }}
+{{- if .CPULimit }}
+    cpus: "{{ .CPULimit }}"
+{{- end }}
+{{- if .PidsLimit }}
+    pids_limit: {{ .PidsLimit }}
+{{- end }}
+{{- end }}
     command: ["serve", "--config", "/etc/vibewarden/vibewarden.yaml"]
     ports:
       - "{{ .Server.Port }}:{{ .Server.Port }}"
@@ -90,6 +101,9 @@ services:
       - ./.credentials
 {{- end }}
     environment:
+{{- with .Server.ResourceLimits }}{{ if .GoMemLimit }}
+      - GOMEMLIMIT={{ .GoMemLimit }}
+{{- end }}{{ end }}
 {{- if or .App.Build .App.Image }}
       - VIBEWARDEN_UPSTREAM_HOST=app
 {{- else }}

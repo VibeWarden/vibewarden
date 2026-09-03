@@ -39,12 +39,18 @@ Settings for the VibeWarden HTTP listener.
 | `server.host` | string | `127.0.0.1` | Host/IP to bind to |
 | `server.port` | int | `8443` | Port to listen on |
 | `server.max_connections` | int | `1000` | Maximum concurrent inbound connections per listener. `0` disables the cap. Negative values are rejected by `vibew validate`. |
+| `server.mem_limit` | string | `512MB` | Memory cap for the **sidecar container** in the generated compose file. `"0"` or `""` disables the cap. Generate-time only. |
+| `server.cpu_limit` | float | `1.0` | CPU cap for the sidecar container, in cores (`0.5` = half a core). `0` disables the cap. Generate-time only. |
+| `server.pids_limit` | int | `200` | Cap on processes/OS threads the sidecar container may create. `0` disables the cap. Generate-time only. |
 
 ```yaml
 server:
   host: 0.0.0.0
   port: 8443
   max_connections: 1000
+  mem_limit: "512MB"
+  cpu_limit: 1.0
+  pids_limit: 200
 ```
 
 ### `server.max_connections`
@@ -66,6 +72,40 @@ Two caveats worth knowing:
   For per-client request throttling use the `rate_limit` block instead.
 
 See [ADR-110](https://github.com/vibewarden/vibewarden/blob/main/decisions/adr-110-server-max-connections-listener-wrapper.md).
+
+### `server.mem_limit`, `server.cpu_limit`, `server.pids_limit`
+
+These three keys cap the **vibewarden sidecar container**, so a memory leak or a
+runaway loop in the sidecar cannot exhaust the host and take the app it protects
+down with it. `server.max_connections` is the graceful in-process refusal;
+these are the backstop for everything it cannot see.
+
+They are **generate-time only**. `vibew generate` and `vibew bundle` render them
+as `mem_limit`, `cpus` and `pids_limit` on the `vibewarden` service of the
+generated `docker-compose.yml`; the running sidecar never reads them, so
+changing one requires regenerating and recreating the container, not just a
+restart with a new config.
+
+Four things worth knowing:
+
+- **Only the sidecar is capped.** Your `app` container and the stack services
+  (`kratos`, `postgres`, `redis`, `openbao`) are untouched — VibeWarden does not
+  put limits on containers it does not own.
+- **A disabled cap omits the key.** Setting a limit to `0` (or `""` for
+  `mem_limit`) removes it from the generated file entirely rather than emitting
+  an explicit `0`.
+- **`GOMEMLIMIT` is derived from `mem_limit`** at 90% of the cap and set on the
+  sidecar container. Without it a memory cap would make the sidecar *more*
+  likely to be OOM-killed, since the Go GC does not see the cgroup ceiling.
+  Disabling `mem_limit` drops `GOMEMLIMIT` too. `GOMAXPROCS` needs no
+  counterpart: Go reads the cgroup CPU quota itself.
+- **`overrides.compose_file` bypasses all of this.** Your compose file is copied
+  verbatim, so no limits are injected; set them yourself if you want them.
+
+`mem_limit` accepts both spellings you are likely to type: `"512MB"` and
+Docker's `"512M"`, plus `"1GB"`/`"1g"` and a plain byte count.
+
+See [ADR-111](https://github.com/vibewarden/vibewarden/blob/main/decisions/adr-111-sidecar-container-resource-limits.md).
 
 ---
 

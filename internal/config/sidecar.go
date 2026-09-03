@@ -35,6 +35,36 @@ type ServerConfig struct {
 	// are rejected by validation.
 	// Default: 1000.
 	MaxConnections int `mapstructure:"max_connections"`
+
+	// MemLimit caps the memory of the vibewarden sidecar container in the
+	// generated Docker Compose file (compose `mem_limit`). Accepts a byte size
+	// with an optional unit — "512MB", "512M", "1GB" — or a plain byte count.
+	// A value of "0" or "" disables the cap: the key is omitted from the
+	// generated compose file entirely. Malformed or negative values are
+	// rejected by validation.
+	//
+	// Consumed only when generating deployment artifacts (`vibew generate`,
+	// `vibew bundle`); the running sidecar never reads it. See ADR-111.
+	// Default: "512MB".
+	MemLimit string `mapstructure:"mem_limit"`
+
+	// CPULimit caps the CPU available to the vibewarden sidecar container
+	// (compose `cpus`), expressed in cores — 0.5 means half a core. A value of
+	// 0 disables the cap and omits the key. Negative values are rejected by
+	// validation.
+	//
+	// Generate-time only; the running sidecar never reads it. See ADR-111.
+	// Default: 1.0.
+	CPULimit float64 `mapstructure:"cpu_limit"`
+
+	// PidsLimit caps the number of processes and OS threads the vibewarden
+	// sidecar container may create (compose `pids_limit`). A value of 0
+	// disables the cap and omits the key. Negative values are rejected by
+	// validation.
+	//
+	// Generate-time only; the running sidecar never reads it. See ADR-111.
+	// Default: 200.
+	PidsLimit int `mapstructure:"pids_limit"`
 }
 
 // AppConfig configures the user's application in the generated Docker Compose.
@@ -287,6 +317,25 @@ func validateSidecar(c *Config) []string {
 		errs = append(errs, fmt.Sprintf(
 			"server.max_connections must be >= 0 (0 disables the limit), got %d",
 			c.Server.MaxConnections,
+		))
+	}
+
+	// server container resource limit validation (ADR-111).
+	if c.Server.MemLimit != "" {
+		if _, err := ParseMemLimit(c.Server.MemLimit); err != nil {
+			errs = append(errs, fmt.Sprintf("server.mem_limit: %s", err.Error()))
+		}
+	}
+	if c.Server.CPULimit < 0 {
+		errs = append(errs, fmt.Sprintf(
+			"server.cpu_limit must be >= 0 (0 disables the limit), got %g",
+			c.Server.CPULimit,
+		))
+	}
+	if c.Server.PidsLimit < 0 {
+		errs = append(errs, fmt.Sprintf(
+			"server.pids_limit must be >= 0 (0 disables the limit), got %d",
+			c.Server.PidsLimit,
 		))
 	}
 

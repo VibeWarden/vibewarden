@@ -13,7 +13,20 @@ services:
 {{- end }}
     container_name: vibewarden-sidecar
     restart: unless-stopped
+{{- if .Limits.MemLimitBytes }}
+    mem_limit: {{ .Limits.MemLimitBytes }}  # {{ .Limits.MemLimitDisplay }}
+{{- end }}
+{{- if .Limits.CPULimit }}
+    cpus: "{{ .Limits.CPULimit }}"
+{{- end }}
+{{- if .Limits.PidsLimit }}
+    pids_limit: {{ .Limits.PidsLimit }}
+{{- end }}
     command: ["serve", "--config", "/etc/vibewarden/global.yaml"]
+{{- if .Limits.GoMemLimit }}
+    environment:
+      - GOMEMLIMIT={{ .Limits.GoMemLimit }}
+{{- end }}
     ports:
       - "{{ .ListenPort }}:{{ .ListenPort }}"
       - "80:80"

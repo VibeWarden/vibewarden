@@ -271,11 +271,29 @@ Example: database.external_url: "postgres://user:${DB_PASSWORD}@db:5432/vw"
                                                  0 disables the cap; negative values fail validation.
                                                  Per listener, so the ceiling is 2x this while the port-80
                                                  redirect server runs. Does not apply to HTTP/3.
+  server.mem_limit        string    512MB        Memory cap for the vibewarden SIDECAR CONTAINER in the
+                                                 generated docker-compose.yml (compose mem_limit). Accepts
+                                                 "512MB", "512M", "1GB" or a plain byte count. GOMEMLIMIT is
+                                                 derived at 90% of it and set on the container. "0"/"" omits
+                                                 the key. GENERATE-TIME ONLY: the running sidecar never
+                                                 reads it.
+  server.cpu_limit        float     1.0          CPU cap for the sidecar container in cores (compose cpus);
+                                                 0.5 = half a core. 0 omits the key. Generate-time only.
+  server.pids_limit       int       200          Cap on processes/OS threads the sidecar container may
+                                                 create (compose pids_limit). 0 omits the key.
+                                                 Generate-time only.
+                                                 The three caps apply to the vibewarden service ONLY — app,
+                                                 kratos, postgres, redis and openbao stay uncapped. They are
+                                                 not injected when overrides.compose_file is set. See
+                                                 ADR-111.
 
   server:
     host: 0.0.0.0
     port: 8443
     max_connections: 1000
+    mem_limit: "512MB"
+    cpu_limit: 1.0
+    pids_limit: 200
 
 
 ### upstream

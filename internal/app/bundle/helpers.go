@@ -1,5 +1,7 @@
 package bundle
 
+import "github.com/vibewarden/vibewarden/internal/config"
+
 // defaultHealthPort is the port used when the config does not specify one.
 // It is consumed by the bundle template when rendering the generated
 // README.md (which documents the deploy commands).
@@ -21,6 +23,12 @@ type SidecarComposeData struct {
 	// the field is omitted entirely (default "missing" — correct for pinned
 	// immutable release tags). "always" is used for dev/source builds.
 	PullPolicy string
+
+	// Limits holds the render-ready container resource caps for the sidecar
+	// service (mem_limit / cpus / pids_limit plus the derived GOMEMLIMIT).
+	// An empty field means the corresponding compose key is omitted.
+	// See ADR-111.
+	Limits config.ComposeResourceLimits
 }
 
 // AppComposeData holds the template data for a per-app compose file rendered

@@ -3722,3 +3722,140 @@ func TestLoadStrict_ServerMaxConnections(t *testing.T) {
 		})
 	}
 }
+
+// TestValidate_ServerResourceLimits verifies that the three container resource
+// caps (ADR-111) reject negative and malformed values with an error naming the
+// field, while 0/"" (the explicit unlimited opt-out) and valid values pass.
+func TestValidate_ServerResourceLimits(t *testing.T) {
+	tests := []struct {
+		name    string
+		server  config.ServerConfig
+		wantErr bool
+		errMsg  string
+	}{
+		{name: "zero values are valid", server: config.ServerConfig{}},
+		{
+			name:   "documented defaults are valid",
+			server: config.ServerConfig{MemLimit: "512MB", CPULimit: 1.0, PidsLimit: 200},
+		},
+		{
+			name:   "docker shorthand mem limit is valid",
+			server: config.ServerConfig{MemLimit: "512M"},
+		},
+		{
+			name:   "explicit zeros are valid",
+			server: config.ServerConfig{MemLimit: "0", CPULimit: 0, PidsLimit: 0},
+		},
+		{
+			name:    "malformed mem limit is rejected",
+			server:  config.ServerConfig{MemLimit: "512X"},
+			wantErr: true,
+			errMsg:  `server.mem_limit: invalid body size "512X": unknown unit "X"`,
+		},
+		{
+			name:    "non-numeric mem limit is rejected",
+			server:  config.ServerConfig{MemLimit: "lots"},
+			wantErr: true,
+			errMsg:  "server.mem_limit:",
+		},
+		{
+			name:    "negative mem limit is rejected",
+			server:  config.ServerConfig{MemLimit: "-1MB"},
+			wantErr: true,
+			errMsg:  "server.mem_limit:",
+		},
+		{
+			name:    "negative cpu limit is rejected",
+			server:  config.ServerConfig{CPULimit: -0.5},
+			wantErr: true,
+			errMsg:  "server.cpu_limit must be >= 0 (0 disables the limit), got -0.5",
+		},
+		{
+			name:    "negative pids limit is rejected",
+			server:  config.ServerConfig{PidsLimit: -1},
+			wantErr: true,
+			errMsg:  "server.pids_limit must be >= 0 (0 disables the limit), got -1",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := config.Config{Server: tt.server}
+			err := cfg.Validate()
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("Validate() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if tt.wantErr && !strings.Contains(err.Error(), tt.errMsg) {
+				t.Errorf("Validate() error = %q, want it to contain %q", err.Error(), tt.errMsg)
+			}
+		})
+	}
+}
+
+// TestLoadStrict_ServerResourceLimits verifies the strict loader used by
+// `vibew validate` and `vibew bundle` accepts the three resource-limit keys and
+// rejects negative/malformed values.
+func TestLoadStrict_ServerResourceLimits(t *testing.T) {
+	tests := []struct {
+		name    string
+		yaml    string
+		wantErr bool
+		errMsg  string
+	}{
+		{
+			name: "known keys accepted",
+			yaml: "server:\n  mem_limit: \"256MB\"\n  cpu_limit: 0.5\n  pids_limit: 100\n",
+		},
+		{
+			name: "explicit zeros accepted",
+			yaml: "server:\n  mem_limit: \"0\"\n  cpu_limit: 0\n  pids_limit: 0\n",
+		},
+		{
+			name:    "malformed mem_limit rejected",
+			yaml:    "server:\n  mem_limit: \"512X\"\n",
+			wantErr: true,
+			errMsg:  "server.mem_limit:",
+		},
+		{
+			name:    "negative cpu_limit rejected",
+			yaml:    "server:\n  cpu_limit: -1\n",
+			wantErr: true,
+			errMsg:  "server.cpu_limit must be >= 0 (0 disables the limit), got -1",
+		},
+		{
+			name:    "negative pids_limit rejected",
+			yaml:    "server:\n  pids_limit: -2\n",
+			wantErr: true,
+			errMsg:  "server.pids_limit must be >= 0 (0 disables the limit), got -2",
+		},
+		{
+			name:    "unknown resource key still rejected",
+			yaml:    "server:\n  memory_limit: \"512MB\"\n",
+			wantErr: true,
+			errMsg:  "memory_limit",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "vibewarden.yaml")
+			if err := os.WriteFile(path, []byte(tt.yaml), 0600); err != nil {
+				t.Fatalf("writing yaml: %v", err)
+			}
+
+			cfg, err := config.LoadStrict(path, "")
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("LoadStrict() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if tt.wantErr {
+				if !strings.Contains(err.Error(), tt.errMsg) {
+					t.Errorf("LoadStrict() error = %q, want it to contain %q", err.Error(), tt.errMsg)
+				}
+				return
+			}
+			if cfg == nil {
+				t.Fatal("LoadStrict() returned nil config without an error")
+			}
+		})
+	}
+}

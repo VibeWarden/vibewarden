@@ -8,6 +8,16 @@ Each ADR is a standalone file at `decisions/adr-NNN-title.md`.
 
 ## PM Log
 
+### 2026-09-03 — #1306 sidecar container resource limits spec finalised
+
+- Posted full spec as a PM comment on #1306 (https://github.com/VibeWarden/vibewarden/issues/1306#issuecomment-5525171838).
+- Label `status:ready-for-arch` added. No `epic:*` label applied — same audit:2026-05-03 batch convention already established for #1311 (medium-priority perf findings from this batch don't carry epic labels; kept `priority:medium` + `audit:2026-05-03` only).
+- Verified before writing the spec that the finding is real and current on `main`: neither `internal/config/templates/docker-compose.yml.tmpl` (single-app, `vibewarden:` block lines 71-145) nor `internal/config/templates/sidecar-compose.yml.tmpl` (multi-app) sets `mem_limit`, `cpus`, `pids_limit`, or `deploy.resources.limits` on the `vibewarden` service, or on any other service. Not redundant with #1311 (merged, ADR-110, `server.max_connections`) — that's an application-layer connection cap; this is OS-level container resource limits, a different, complementary layer. Not challenged — proceeded with the spec.
+- Core decision: add memory/CPU/PID limits to the `vibewarden` service in both templates, configurable via the existing `server:` block in `vibewarden.yaml` (same block introduced by #1311/ADR-110), following the same "0 = unlimited" convention as `server.max_connections`. Defaults carried from the original finding: memory `512M`, CPU `1.0`, PIDs `200` — architect/dev may adjust with justification.
+- Required a behavioral test (start a container from the rendered compose, verify via `docker inspect` that the limit is actually enforced under plain `docker compose up`, non-swarm) rather than a config-shape-only assertion, per the project's standing "behavioral test for silent no-ops" lesson — this matters here because `deploy.resources.limits` is swarm-only under plain Compose and would be a silent no-op if chosen naively.
+- Scope: only the `vibewarden` sidecar service. App/kratos/postgres/redis/openbao containers explicitly out of scope.
+- Open questions delegated to architect: (1) exact key naming/nesting under `server:` (flat vs. nested `server.resources:`); (2) whether this warrants extending ADR-110 or a new ADR; (3) whether `pids_limit` needs a different default in multi-app mode (one sidecar fanning out to multiple sites) vs. single-app mode.
+
 ### 2026-04-20 — #1051 sunset `vibew deploy` spec finalised
 
 - Posted full spec as a PM comment on #1051 (https://github.com/VibeWarden/vibewarden/issues/1051#issuecomment-4285143645).

@@ -137,6 +137,33 @@ server:
   # over one UDP socket and so cannot exhaust descriptors. See ADR-110.
   max_connections: 1000
 
+  # --- Sidecar container resource limits (ADR-111) --------------------------
+  # These three keys are read only when generating deployment artifacts
+  # (`vibew generate` / `vibew bundle`). They render as `mem_limit`, `cpus`
+  # and `pids_limit` on the *vibewarden* service in the generated
+  # docker-compose.yml, so a leak or runaway loop in the sidecar cannot take
+  # the whole host down with it. The running sidecar never reads them, and no
+  # other service in the compose file is capped.
+  # Set any of them to 0 (or "" for mem_limit) to disable that cap: the key is
+  # then omitted from the generated file entirely. Negative or malformed
+  # values are rejected by `vibew validate`.
+  # Note: when `overrides.compose_file` is set, your compose file is copied
+  # verbatim and these limits are not injected.
+
+  # Memory cap for the sidecar container. Accepts "512MB", "512M", "1GB" or a
+  # plain byte count. VibeWarden also derives GOMEMLIMIT at 90% of this value
+  # and sets it on the container, so the Go GC works harder as it approaches
+  # the ceiling instead of being OOM-killed at it. Default: "512MB".
+  mem_limit: "512MB"
+
+  # CPU cap for the sidecar container, in cores (0.5 = half a core).
+  # Default: 1.0. GOMAXPROCS needs no counterpart — Go reads the cgroup quota.
+  cpu_limit: 1.0
+
+  # Cap on processes/OS threads the sidecar container may create.
+  # Default: 200, comfortably above a healthy sidecar's thread count.
+  pids_limit: 200
+
 # Upstream application being protected
 upstream:
   # Host of your application
