@@ -343,7 +343,7 @@ services:
   #   docker compose --profile observability up -d
   # --------------------------------------------------------------------------
   loki:
-    image: grafana/loki:3.6.10
+    image: grafana/loki:3.7.7
     container_name: vibewarden-loki
     profiles:
       - observability
