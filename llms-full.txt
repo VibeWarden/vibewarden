@@ -264,12 +264,18 @@ Example: database.external_url: "postgres://user:${DB_PASSWORD}@db:5432/vw"
 
 ### server
 
-  server.host      string    127.0.0.1    Host/IP to bind to
-  server.port      int       8443         Port to listen on
+  server.host             string    127.0.0.1    Host/IP to bind to
+  server.port             int       8443         Port to listen on
+  server.max_connections  int       1000         Max concurrent inbound connections per listener; over-cap
+                                                 connections are refused (accepted and immediately closed).
+                                                 0 disables the cap; negative values fail validation.
+                                                 Per listener, so the ceiling is 2x this while the port-80
+                                                 redirect server runs. Does not apply to HTTP/3.
 
   server:
     host: 0.0.0.0
     port: 8443
+    max_connections: 1000
 
 
 ### upstream

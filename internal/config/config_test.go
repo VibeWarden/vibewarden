@@ -3628,3 +3628,97 @@ func TestLoad_DeployHost_FromYAML(t *testing.T) {
 		})
 	}
 }
+
+// TestValidate_ServerMaxConnections verifies that a negative connection cap is
+// rejected with an error naming the field and the offending value, while 0
+// (the explicit unlimited opt-out) and positive values are accepted.
+func TestValidate_ServerMaxConnections(t *testing.T) {
+	tests := []struct {
+		name    string
+		max     int
+		wantErr bool
+		errMsg  string
+	}{
+		{name: "omitted (zero value) is valid", max: 0, wantErr: false},
+		{name: "positive value is valid", max: 1000, wantErr: false},
+		{name: "one is valid", max: 1, wantErr: false},
+		{name: "large value is valid", max: 1000000, wantErr: false},
+		{
+			name:    "negative value is rejected",
+			max:     -5,
+			wantErr: true,
+			errMsg:  "server.max_connections must be >= 0 (0 disables the limit), got -5",
+		},
+		{
+			name:    "minus one is rejected",
+			max:     -1,
+			wantErr: true,
+			errMsg:  "server.max_connections must be >= 0",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := config.Config{
+				Server: config.ServerConfig{MaxConnections: tt.max},
+			}
+			err := cfg.Validate()
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("Validate() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if tt.wantErr && !strings.Contains(err.Error(), tt.errMsg) {
+				t.Errorf("Validate() error = %q, want it to contain %q", err.Error(), tt.errMsg)
+			}
+		})
+	}
+}
+
+// TestLoadStrict_ServerMaxConnections verifies the strict loader used by
+// `vibew validate` and `vibew bundle` accepts server.max_connections as a
+// known key and rejects a negative value.
+func TestLoadStrict_ServerMaxConnections(t *testing.T) {
+	tests := []struct {
+		name    string
+		yaml    string
+		wantErr bool
+		errMsg  string
+	}{
+		{
+			name: "known key accepted",
+			yaml: "server:\n  host: \"127.0.0.1\"\n  port: 8443\n  max_connections: 250\n",
+		},
+		{
+			name: "explicit zero accepted",
+			yaml: "server:\n  max_connections: 0\n",
+		},
+		{
+			name:    "negative rejected",
+			yaml:    "server:\n  max_connections: -3\n",
+			wantErr: true,
+			errMsg:  "server.max_connections must be >= 0 (0 disables the limit), got -3",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "vibewarden.yaml")
+			if err := os.WriteFile(path, []byte(tt.yaml), 0600); err != nil {
+				t.Fatalf("writing yaml: %v", err)
+			}
+
+			cfg, err := config.LoadStrict(path, "")
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("LoadStrict() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if tt.wantErr {
+				if !strings.Contains(err.Error(), tt.errMsg) {
+					t.Errorf("LoadStrict() error = %q, want it to contain %q", err.Error(), tt.errMsg)
+				}
+				return
+			}
+			if cfg == nil {
+				t.Fatal("LoadStrict() returned nil config without an error")
+			}
+		})
+	}
+}

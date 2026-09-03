@@ -38,12 +38,34 @@ Settings for the VibeWarden HTTP listener.
 |-------|------|---------|-------------|
 | `server.host` | string | `127.0.0.1` | Host/IP to bind to |
 | `server.port` | int | `8443` | Port to listen on |
+| `server.max_connections` | int | `1000` | Maximum concurrent inbound connections per listener. `0` disables the cap. Negative values are rejected by `vibew validate`. |
 
 ```yaml
 server:
   host: 0.0.0.0
   port: 8443
+  max_connections: 1000
 ```
+
+### `server.max_connections`
+
+Once the cap is reached, new connections are refused (accepted and immediately
+closed) until an existing connection ends. Established connections and in-flight
+requests are unaffected. This bounds file-descriptor use during a connection
+flood so the sidecar degrades instead of dying, taking the app it protects with
+it.
+
+Two caveats worth knowing:
+
+- The cap is **per listener**, not per process. While the port-80 HTTPS redirect
+  server runs (self-signed and external TLS providers) the process ceiling is
+  `2 × max_connections`.
+- **HTTP/3 is not covered.** QUIC arrives over a single UDP socket rather than a
+  TCP listener, so it cannot cause the descriptor exhaustion this cap exists to
+  prevent, but it also means this is not a general request-concurrency limit.
+  For per-client request throttling use the `rate_limit` block instead.
+
+See [ADR-110](https://github.com/vibewarden/vibewarden/blob/main/decisions/adr-110-server-max-connections-listener-wrapper.md).
 
 ---
 

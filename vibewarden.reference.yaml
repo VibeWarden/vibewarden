@@ -125,6 +125,18 @@ server:
   # Port to listen on
   port: 8443
 
+  # Maximum number of concurrent inbound connections per listener.
+  # Once the cap is reached, new connections are refused (accepted and
+  # immediately closed) until an existing connection ends; established
+  # connections and in-flight requests are unaffected. This bounds file
+  # descriptor use during a connection flood so the sidecar degrades instead
+  # of dying. Default: 1000. Set to 0 to disable the cap (unlimited).
+  # Note: the cap is per listener, so while the port-80 HTTPS redirect server
+  # is running (self-signed and external TLS providers) the process ceiling is
+  # 2x this value. HTTP/3 is not covered — QUIC multiplexes every connection
+  # over one UDP socket and so cannot exhaust descriptors. See ADR-110.
+  max_connections: 1000
+
 # Upstream application being protected
 upstream:
   # Host of your application

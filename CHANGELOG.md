@@ -12,6 +12,10 @@ This initial entry was written by hand to summarise the work leading up to v0.1.
 
 ## [Unreleased]
 
+### Added
+
+- **feat(#1311): `server.max_connections` — a concurrent-connection cap on the sidecar's listeners (ADR-110).** Read/write/idle timeouts bound how long a connection lives, not how many exist, so a connection flood could exhaust the process's file descriptors and take down the sidecar together with the app it protects. The new integer key under the existing `server:` block defaults to `1000`; `0` explicitly disables the cap, and a negative value is rejected by `vibew validate` / `vibew bundle` with `server.max_connections must be >= 0 (0 disables the limit), got -N`. Once the cap is reached, further connections are **accepted and immediately closed** — established connections and in-flight requests are untouched. Enforcement is a new Caddy listener wrapper module, `caddy.listeners.vibewarden_conn_limit`, emitted ahead of an explicit `{"wrapper": "tls"}` entry so the cap applies to the raw TCP listener rather than to post-handshake connections; `golang.org/x/net/netutil.LimitListener` was rejected because it blocks in `Accept` (accept-and-hang) instead of refusing. Refusals are counted and summarised in a `Warn` at most once per 30s, so a flood cannot turn into a denial of service against the log sink. Two documented limits: the cap is per listener, so the process ceiling is `2 × max_connections` while the port-80 HTTPS redirect server runs (self-signed and external TLS providers, which is why that listener is capped too); and HTTP/3 is not covered, because QUIC multiplexes every connection over one UDP socket and cannot exhaust descriptors. No new dependencies.
+
 ### Changed
 
 - **chore(#1459): bump the Go toolchain from go1.26.5 to go1.26.6.** govulncheck reported 7 stdlib vulnerabilities in go1.26.5, all fixed in go1.26.6, which kept the required `Go Vulnerability Check` red on every code PR. Pinned consistently in `go.mod`, `Dockerfile`, and the CI workflow `go-version` inputs (`ci.yml`, `release.yml`, `release-dryrun.yml`), keeping the toolchain single-sourced as in the go1.26.5 bump. No API changes.

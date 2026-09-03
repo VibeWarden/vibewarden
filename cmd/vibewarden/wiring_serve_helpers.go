@@ -71,6 +71,7 @@ func buildProxyConfig(cfg *config.Config, registry *plugins.Registry, version st
 		UpstreamAddr:   fmt.Sprintf("%s:%d", cfg.Upstream.Host, cfg.Upstream.Port),
 		Version:        version,
 		ServerTimeouts: buildServerTimeoutsConfig(cfg),
+		MaxConnections: cfg.Server.MaxConnections,
 		TLS: ports.TLSConfig{
 			Enabled:     cfg.TLS.Enabled,
 			Provider:    ports.TLSProvider(cfg.TLS.Provider),

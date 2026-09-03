@@ -328,3 +328,58 @@ func waitForServerWithClient(client *http.Client, url string, timeout time.Durat
 
 	return fmt.Errorf("server at %s did not become ready within %s", url, timeout)
 }
+
+// TestAdapter_Integration_MaxConnections boots the adapter with a connection
+// cap configured and asserts the server still starts and serves. This is the
+// tripwire for a typo in the "caddy.listeners.vibewarden_conn_limit" module ID
+// or a Provision error: Caddy fails the whole config load in either case, which
+// no unit test on the emitted JSON can see. See ADR-110.
+func TestAdapter_Integration_MaxConnections(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		fmt.Fprint(w, "ok")
+	}))
+	defer upstream.Close()
+
+	listenAddr := fmt.Sprintf("127.0.0.1:%d", findFreePort(t))
+
+	cfg := &ports.ProxyConfig{
+		ListenAddr:     listenAddr,
+		UpstreamAddr:   upstream.Listener.Addr().String(),
+		MaxConnections: 4,
+	}
+
+	adapter := NewAdapter(cfg, slog.Default(), nil)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	startErr := make(chan error, 1)
+	go func() {
+		startErr <- adapter.Start(ctx)
+	}()
+
+	proxyURL := fmt.Sprintf("http://%s", listenAddr)
+	if err := waitForServer(proxyURL, 5*time.Second); err != nil {
+		cancel()
+		t.Fatalf("proxy server with max_connections did not start: %v", err)
+	}
+
+	resp, err := http.Get(proxyURL + "/")
+	if err != nil {
+		t.Fatalf("GET through capped proxy: %v", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("status code = %d, want %d", resp.StatusCode, http.StatusOK)
+	}
+
+	cancel()
+
+	stopCtx, stopCancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer stopCancel()
+	if err := adapter.Stop(stopCtx); err != nil {
+		t.Errorf("Stop() error: %v", err)
+	}
+}
