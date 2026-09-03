@@ -15,9 +15,10 @@ import (
 // development. Go runs tests with the package directory as the working
 // directory, so the path is relative to internal/config/templates.
 //
-// This file is the one Dependabot actually parses (docker ecosystem, root
-// directory), which makes it the upstream-tracking reference for every image
-// the templates also pin.
+// This file is the one Dependabot actually parses (docker-compose ecosystem,
+// root directory — the docker ecosystem does not fetch compose files), which
+// makes it the upstream-tracking reference for every image the templates also
+// pin.
 const devComposePath = "../../../docker-compose.yml"
 
 // imagePinRe captures the name and tag of a `image: <name>:<tag>` line in a
