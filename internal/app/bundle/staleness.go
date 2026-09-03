@@ -131,17 +131,16 @@ func (w *FileSystemStalenessWalker) NewestMTime(root string, threshold time.Time
 		// filepath.WalkDir uses Lstat, so symlink entries are reported with
 		// ModeSymlink set rather than being followed automatically. We resolve
 		// the target here and skip any entry whose resolved path escapes
-		// absRoot. The exact-directory check (absRoot + separator) prevents
-		// the prefix-extension attack (e.g. /proj-secret admitted when root
-		// is /proj via a bare strings.HasPrefix). Mirrors the equivalent
-		// containment check in computeInputDigest (input_digest.go).
+		// absRoot. containsPath (containment.go) implements the
+		// separator-terminated check and is shared with computeInputDigest
+		// (input_digest.go) so the two walkers cannot drift apart.
 		if d.Type()&os.ModeSymlink != 0 {
 			resolved, rErr := filepath.EvalSymlinks(path)
 			if rErr != nil {
 				slog.Debug("staleness walk: cannot resolve symlink, skipping", "path", path, "err", rErr)
 				return nil
 			}
-			if resolved != absRoot && !strings.HasPrefix(resolved, absRoot+string(os.PathSeparator)) {
+			if !containsPath(absRoot, resolved) {
 				slog.Debug("staleness walk: symlink escapes project root, skipping",
 					"path", path, "resolved", resolved)
 				return nil
