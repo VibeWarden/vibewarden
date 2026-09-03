@@ -225,7 +225,13 @@ Publish (tag `v*` pushed):
    f. `cp LICENSE npm/LICENSE`.
    g. Emit `dist_tag=next` if `$VERSION` contains `-` (goreleaser sets `prerelease: auto`), else `latest`. **A prerelease tag must not land on `latest`.**
 4. `node --test npm/test/` — the package's own tests run against the prepared package.
-5. `npm publish --access public --provenance --tag "$DIST_TAG"` in `npm/`, with `NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}`.
+5. `npm publish --access public --provenance --tag "$DIST_TAG"` in `npm/`, with `NODE_AUTH_TOKEN: ${{ env.NPM_TOKEN }}`.
+
+`NPM_TOKEN` is lifted to a job-level `env` mapping so the publish step can gate on
+`env.NPM_TOKEN != ''`. Until the org is claimed and the secret exists, the job runs
+the prepare and test steps, emits a workflow notice, and skips publishing. An
+unauthenticated `npm publish` would otherwise fail the whole Release workflow on
+the next `v*` tag.
 
 ## Error cases
 
@@ -237,7 +243,7 @@ Publish (tag `v*` pushed):
 | HTTP 5xx | Retried; after exhaustion, exit 1 with the status code. |
 | Checksum mismatch | Exit 1 with expected vs actual digest and the archive name. The buffer is discarded; nothing is written to `vendor/`, so **no partially-verified binary is ever executable**. |
 | Redirect loop / >5 hops | Exit 1 naming the final URL. |
-| `EACCES` writing `vendor/` | Common when `npm i -g` runs as root and npm drops privileges for lifecycle scripts. Exit 1 with the target path plus the two real remedies: a user-owned npm prefix, or `npm i -g --unsafe-perm`. |
+| `EACCES` writing `vendor/` | Common when `npm i -g` runs as root and npm drops privileges for lifecycle scripts. Exit 1 with the target path plus the two real remedies: a user-owned npm prefix (`npm config set prefix ~/.npm-global`), or `sudo chown -R "$(whoami)" "$(npm root -g)"`. Not `--unsafe-perm`: npm 9 removed that flag, so on any Node >= 22 the hint itself fails with `Unknown cli config`. |
 | Archive present but missing the `vibew` member | Exit 1 naming the archive; indicates a release-packaging regression. |
 | `--ignore-scripts` (postinstall never ran) | Shim prints the literal resolved `node /abs/path/install.js` command and exits 1. Also documented in `npm/README.md` and `docs/getting-started.md`. |
 | Version already on npm | `prepare-npm-package.sh` skips the publish; the workflow succeeds. |
@@ -284,7 +290,7 @@ New CI actions: `actions/setup-node` (MIT). Already-approved tooling family.
 
 1. Claim the `@vibewarden` npm org. Verified unclaimed 2026-09-03.
 2. Create a granular automation token scoped to `@vibewarden/*` publish; store as repo secret `NPM_TOKEN`.
-3. These block only the publish step. All code and tests are developable and verifiable locally via `npm pack` plus a local install against a mirror.
+3. These block only the publish step. Releases still succeed without them: the `npm` job skips publishing and emits a notice when `NPM_TOKEN` is unset. All code and tests are developable and verifiable locally via `npm pack` plus a local install against a mirror.
 
 ## Consequences
 

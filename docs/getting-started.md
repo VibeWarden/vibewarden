@@ -169,8 +169,12 @@ Run `vibew wrap` inside your project directory. Pass `--upstream` with the port
 your app listens on. Add feature flags for the security plugins you want enabled.
 
 ```bash
-./vibew wrap --upstream 3000 --auth --rate-limit
+vibew wrap --upstream 3000 --auth --rate-limit
 ```
+
+!!! note "If you committed the `vibew` wrapper script"
+    The wrapper-script install puts `vibew` in the current directory, not on your
+    `PATH`. Run `./vibew wrap --upstream 3000 --auth --rate-limit` instead.
 
 Common flags:
 

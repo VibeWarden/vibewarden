@@ -58,6 +58,11 @@ jobs:
     permissions:
       contents: read
       id-token: write   # npm provenance attestation (ADR-112)
+    env:
+      # Lifted into the env context so steps can gate on it. Until the
+      # @vibewarden org is claimed and NPM_TOKEN is set, publishing must
+      # no-op rather than fail the whole Release workflow (ADR-112).
+      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
@@ -79,8 +84,13 @@ jobs:
         run: node --test 'npm/test/*.test.js'
 
       - name: Publish
-        if: steps.prepare.outputs.skip != 'true'
+        if: steps.prepare.outputs.skip != 'true' && env.NPM_TOKEN != ''
         run: npm publish --access public --provenance --tag "${{ steps.prepare.outputs.dist_tag }}"
         working-directory: npm
         env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ env.NPM_TOKEN }}
+
+      - name: Skip publish (NPM_TOKEN not configured)
+        if: steps.prepare.outputs.skip != 'true' && env.NPM_TOKEN == ''
+        run: |
+          echo "::notice title=npm publish skipped::NPM_TOKEN is not set; @vibewarden/cli was not published for ${GITHUB_REF_NAME}. Claim the npm org and add the NPM_TOKEN secret to enable publishing."
