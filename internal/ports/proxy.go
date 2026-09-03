@@ -58,6 +58,15 @@ type ProxyConfig struct {
 	// ServerTimeouts holds HTTP server-level connection timeouts.
 	ServerTimeouts ServerTimeoutsConfig
 
+	// MaxConnections caps the number of concurrent inbound connections the
+	// server accepts on each of its listeners. When the cap is reached,
+	// further connections are accepted and immediately closed (refused)
+	// until an existing connection ends; established connections and
+	// in-flight requests are unaffected.
+	// A value of 0 disables the cap. Negative values are rejected by config
+	// validation and treated as 0 here.
+	MaxConnections int
+
 	// TLS configuration
 	TLS TLSConfig
 

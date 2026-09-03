@@ -322,6 +322,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("profile", "dev")
 	v.SetDefault("server.host", "127.0.0.1")
 	v.SetDefault("server.port", 8443)
+	v.SetDefault("server.max_connections", 1000)
 	v.SetDefault("upstream.host", "127.0.0.1")
 	v.SetDefault("upstream.port", 3000)
 	v.SetDefault("tls.enabled", true)

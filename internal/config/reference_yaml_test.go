@@ -45,6 +45,7 @@ func TestReferenceYAML_UnmarshalsCleanly(t *testing.T) {
 	}{
 		{"server.host", cfg.Server.Host, "127.0.0.1"},
 		{"server.port", cfg.Server.Port, 8443},
+		{"server.max_connections", cfg.Server.MaxConnections, 1000},
 		{"upstream.host", cfg.Upstream.Host, "127.0.0.1"},
 		{"upstream.port", cfg.Upstream.Port, 3000},
 		{"tls.enabled", cfg.TLS.Enabled, true},
@@ -166,6 +167,10 @@ func TestSetDefaults_EmptyYAML(t *testing.T) {
 
 		// telemetry.traces default — must be false so tracing is opt-in.
 		{"telemetry.traces.enabled", cfg.Telemetry.Traces.Enabled, false},
+
+		// server.max_connections default — omitting the key must yield the
+		// documented cap of 1000, not an unlimited Go zero value.
+		{"server.max_connections", cfg.Server.MaxConnections, 1000},
 	}
 
 	for _, tt := range tests {

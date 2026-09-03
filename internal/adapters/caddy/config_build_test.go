@@ -281,3 +281,103 @@ func TestApplyServerTimeouts(t *testing.T) {
 		}
 	})
 }
+
+// TestApplyConnectionLimit verifies the emitted listener_wrappers list: the
+// wrapper is absent when the cap is disabled, and when it is enabled the
+// explicit {"wrapper": "tls"} placeholder is present and LAST. Ordering is the
+// load-bearing assertion — without the trailing tls entry Caddy prepends the
+// placeholder itself and the cap silently moves to after the TLS handshake.
+func TestApplyConnectionLimit(t *testing.T) {
+	t.Run("zero — no listener_wrappers", func(t *testing.T) {
+		server := map[string]any{}
+		applyConnectionLimit(server, 0)
+		if _, ok := server["listener_wrappers"]; ok {
+			t.Error("listener_wrappers should not be set when max_connections is 0")
+		}
+	})
+
+	t.Run("negative — no listener_wrappers", func(t *testing.T) {
+		server := map[string]any{}
+		applyConnectionLimit(server, -1)
+		if _, ok := server["listener_wrappers"]; ok {
+			t.Error("listener_wrappers should not be set for a negative max_connections")
+		}
+	})
+
+	t.Run("positive — conn limit first, tls last", func(t *testing.T) {
+		server := map[string]any{}
+		applyConnectionLimit(server, 250)
+
+		wrappers, ok := server["listener_wrappers"].([]map[string]any)
+		if !ok {
+			t.Fatalf("listener_wrappers = %T, want []map[string]any", server["listener_wrappers"])
+		}
+		if len(wrappers) != 2 {
+			t.Fatalf("len(listener_wrappers) = %d, want 2", len(wrappers))
+		}
+		if wrappers[0]["wrapper"] != "vibewarden_conn_limit" {
+			t.Errorf("listener_wrappers[0].wrapper = %v, want vibewarden_conn_limit", wrappers[0]["wrapper"])
+		}
+		if wrappers[0]["max_connections"] != 250 {
+			t.Errorf("listener_wrappers[0].max_connections = %v, want 250", wrappers[0]["max_connections"])
+		}
+		if wrappers[len(wrappers)-1]["wrapper"] != "tls" {
+			t.Errorf("last listener_wrapper = %v, want tls — the cap must run before TLS termination",
+				wrappers[len(wrappers)-1]["wrapper"])
+		}
+	})
+}
+
+// TestBuildMainServer_ConnectionLimit verifies the cap reaches the main server
+// map through the normal build path.
+func TestBuildMainServer_ConnectionLimit(t *testing.T) {
+	t.Run("enabled", func(t *testing.T) {
+		cfg := &ports.ProxyConfig{
+			ListenAddr:     "127.0.0.1:8443",
+			UpstreamAddr:   "127.0.0.1:3000",
+			MaxConnections: 1000,
+		}
+		server := buildMainServer(cfg, nil)
+		wrappers, ok := server["listener_wrappers"].([]map[string]any)
+		if !ok {
+			t.Fatalf("listener_wrappers missing from main server: %#v", server["listener_wrappers"])
+		}
+		if wrappers[0]["max_connections"] != 1000 {
+			t.Errorf("max_connections = %v, want 1000", wrappers[0]["max_connections"])
+		}
+	})
+
+	t.Run("disabled", func(t *testing.T) {
+		cfg := &ports.ProxyConfig{
+			ListenAddr:     "127.0.0.1:8443",
+			UpstreamAddr:   "127.0.0.1:3000",
+			MaxConnections: 0,
+		}
+		server := buildMainServer(cfg, nil)
+		if _, ok := server["listener_wrappers"]; ok {
+			t.Error("listener_wrappers set although max_connections is 0")
+		}
+	})
+}
+
+// TestBuildHTTPRedirectServer_ConnectionLimit verifies the port-80 redirect
+// listener is capped too — it is publicly reachable under the self-signed and
+// external TLS providers.
+func TestBuildHTTPRedirectServer_ConnectionLimit(t *testing.T) {
+	server := buildHTTPRedirectServer(500)
+	wrappers, ok := server["listener_wrappers"].([]map[string]any)
+	if !ok {
+		t.Fatalf("listener_wrappers missing from redirect server: %#v", server["listener_wrappers"])
+	}
+	if wrappers[0]["max_connections"] != 500 {
+		t.Errorf("max_connections = %v, want 500", wrappers[0]["max_connections"])
+	}
+	if wrappers[len(wrappers)-1]["wrapper"] != "tls" {
+		t.Errorf("last listener_wrapper = %v, want tls", wrappers[len(wrappers)-1]["wrapper"])
+	}
+
+	uncapped := buildHTTPRedirectServer(0)
+	if _, ok := uncapped["listener_wrappers"]; ok {
+		t.Error("listener_wrappers set on redirect server although max_connections is 0")
+	}
+}

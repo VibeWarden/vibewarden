@@ -222,6 +222,7 @@ func buildMainServer(cfg *ports.ProxyConfig, routes []map[string]any) map[string
 	}
 
 	applyServerTimeouts(server, cfg.ServerTimeouts)
+	applyConnectionLimit(server, cfg.MaxConnections)
 	applyAutomaticHTTPS(server, cfg.TLS)
 
 	if cfg.TLS.Enabled {
@@ -241,6 +242,26 @@ func applyServerTimeouts(server map[string]any, timeouts ports.ServerTimeoutsCon
 	}
 	if timeouts.IdleTimeout > 0 {
 		server["idle_timeout"] = int64(timeouts.IdleTimeout)
+	}
+}
+
+// applyConnectionLimit adds the vibewarden_conn_limit listener wrapper to the
+// server map, capping the number of concurrent connections on that listener.
+// A max of 0 or less omits the wrapper entirely (unlimited).
+//
+// The trailing {"wrapper": "tls"} entry is load-bearing: it marks where TLS
+// terminates in the wrapper chain, so the connection cap runs on the raw TCP
+// listener. Without it Caddy prepends the TLS placeholder itself
+// (modules/caddyhttp/app.go), silently moving every wrapper after the
+// handshake. The placeholder's WrapListener is a no-op, so the entry is
+// harmless when TLS is off. See ADR-110.
+func applyConnectionLimit(server map[string]any, max int) {
+	if max <= 0 {
+		return
+	}
+	server["listener_wrappers"] = []map[string]any{
+		{"wrapper": "vibewarden_conn_limit", "max_connections": max},
+		{"wrapper": "tls"},
 	}
 }
 
@@ -271,7 +292,7 @@ func buildCaddyApps(cfg *ports.ProxyConfig, server map[string]any) (map[string]a
 	}
 
 	if cfg.TLS.Enabled && !isACMEProvider(cfg.TLS.Provider) {
-		httpServers["vibewarden_redirect"] = buildHTTPRedirectServer()
+		httpServers["vibewarden_redirect"] = buildHTTPRedirectServer(cfg.MaxConnections)
 	}
 
 	apps := map[string]any{

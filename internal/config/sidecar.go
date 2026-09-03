@@ -26,6 +26,15 @@ type ServerConfig struct {
 	// A value of "0" or "" disables the timeout (no limit).
 	// Default: "120s".
 	IdleTimeout string `mapstructure:"idle_timeout"`
+
+	// MaxConnections caps concurrent inbound connections to the sidecar's
+	// listener. When the cap is reached, new connections are refused
+	// (accepted and immediately closed) until an existing connection ends;
+	// established connections and in-flight requests are unaffected.
+	// A value of 0 explicitly disables the cap (unlimited). Negative values
+	// are rejected by validation.
+	// Default: 1000.
+	MaxConnections int `mapstructure:"max_connections"`
 }
 
 // AppConfig configures the user's application in the generated Docker Compose.
@@ -271,6 +280,14 @@ func validateSidecar(c *Config) []string {
 				errs = append(errs, fmt.Sprintf("%s.max: %s", prefix, err.Error()))
 			}
 		}
+	}
+
+	// server.max_connections validation.
+	if c.Server.MaxConnections < 0 {
+		errs = append(errs, fmt.Sprintf(
+			"server.max_connections must be >= 0 (0 disables the limit), got %d",
+			c.Server.MaxConnections,
+		))
 	}
 
 	// error_pages validation.

@@ -219,8 +219,14 @@ func buildExternalTLSApp(cfg ports.TLSConfig) map[string]any {
 
 // buildHTTPRedirectServer returns a Caddy server configuration that permanently
 // (HTTP 301) redirects all plain HTTP requests to HTTPS.
-func buildHTTPRedirectServer() map[string]any {
-	return map[string]any{
+//
+// maxConns caps the number of concurrent connections on the port-80 listener;
+// a value of 0 or less leaves it uncapped. The redirect listener is publicly
+// reachable under the self-signed and external TLS providers, so leaving it
+// unbounded would reopen the same file-descriptor exhaustion hole the main
+// server's cap closes.
+func buildHTTPRedirectServer(maxConns int) map[string]any {
+	server := map[string]any{
 		"listen": []string{":80"},
 		"routes": []map[string]any{
 			{
@@ -237,4 +243,8 @@ func buildHTTPRedirectServer() map[string]any {
 		},
 		"automatic_https": map[string]any{"disable": true},
 	}
+
+	applyConnectionLimit(server, maxConns)
+
+	return server
 }
