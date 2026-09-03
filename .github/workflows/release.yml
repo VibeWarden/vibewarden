@@ -49,3 +49,38 @@ jobs:
           args: release --clean
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  npm:
+    name: Publish @vibewarden/cli
+    needs: [release]
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      id-token: write   # npm provenance attestation (ADR-112)
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+          registry-url: https://registry.npmjs.org
+
+      - name: Prepare package (version, checksums, license)
+        id: prepare
+        run: ./scripts/release/prepare-npm-package.sh "${GITHUB_REF_NAME}"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Test package
+        if: steps.prepare.outputs.skip != 'true'
+        run: node --test npm/test/
+
+      - name: Publish
+        if: steps.prepare.outputs.skip != 'true'
+        run: npm publish --access public --provenance --tag "${{ steps.prepare.outputs.dist_tag }}"
+        working-directory: npm
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

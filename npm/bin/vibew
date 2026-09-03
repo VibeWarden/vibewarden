@@ -1,0 +1,68 @@
+#!/usr/bin/env node
+'use strict';
+
+/**
+ * Shim that execs the vibew binary downloaded by postinstall.
+ *
+ * The shim is never overwritten by the binary itself: package managers with
+ * content-addressed stores (pnpm, yarn) hardlink package files, so replacing a
+ * published file in place can corrupt the store. The ~40 ms of Node startup is
+ * irrelevant for a CLI whose commands shell out to Docker (ADR-112).
+ */
+
+const fs = require('node:fs');
+const { spawnSync } = require('node:child_process');
+
+const paths = require('../lib/paths');
+
+function missingBinary() {
+  const lines = [
+    'vibew: the VibeWarden binary is not installed.',
+    '',
+    `Expected it at: ${paths.BINARY_PATH}`,
+    '',
+    'This usually means npm ran with --ignore-scripts, so the postinstall step',
+    'never downloaded the binary. Complete the install by running:',
+    '',
+    `  node ${paths.INSTALL_SCRIPT}`,
+    '',
+    'Or install without npm:',
+    '  curl -fsSL https://vibewarden.dev/install.sh | sh',
+  ];
+  console.error(lines.join('\n'));
+  process.exit(1);
+}
+
+function main() {
+  try {
+    if (!fs.statSync(paths.BINARY_PATH).isFile()) {
+      missingBinary();
+    }
+  } catch {
+    missingBinary();
+  }
+
+  // The Go binary owns shutdown: it needs to drain connections on `vibew dev`
+  // and `vibew serve`. Ignoring SIGINT here keeps the shim alive until the
+  // child has exited on its own terms.
+  process.on('SIGINT', () => {});
+
+  const result = spawnSync(paths.BINARY_PATH, process.argv.slice(2), { stdio: 'inherit' });
+
+  if (result.error) {
+    console.error(`vibew: failed to execute ${paths.BINARY_PATH}: ${result.error.message}`);
+    process.exit(1);
+  }
+
+  if (result.signal) {
+    // Re-raise the child's terminating signal so the caller's shell sees the
+    // real cause instead of a synthetic exit code.
+    process.removeAllListeners('SIGINT');
+    process.kill(process.pid, result.signal);
+    return;
+  }
+
+  process.exit(result.status ?? 1);
+}
+
+main();

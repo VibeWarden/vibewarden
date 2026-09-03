@@ -8,6 +8,18 @@ Each ADR is a standalone file at `decisions/adr-NNN-title.md`.
 
 ## PM Log
 
+### 2026-09-03 — #1258 npm distribution (`@vibewarden/cli`) spec finalised
+
+- Posted full spec as a PM comment on #1258 (https://github.com/VibeWarden/vibewarden/issues/1258#issuecomment-5526046016).
+- Label `status:ready-for-arch` added. No new `epic:*` label applied — checked sibling child story #665 (Homebrew tap, same parent epic #664) and it carries no epic label either, consistent with existing convention that not every epic has a dedicated `epic:xxx` sub-label. Noted (not fixed) that #1258 itself carries the generic `epic` label despite reading as a single scoped story, likely a mislabel — flagged in the spec, left for cleanup.
+- Not fully rejected, but did not wave it through blind either: two concrete concerns surfaced and were put in the spec as open questions rather than resolved unilaterally, per the "don't guess on locked/strategic decisions" rule.
+  1. **Likely-redundant sibling #536** ("Publish npm/pip thin wrappers that pull the Docker image", `defer:post-stable`, predates the epic #664 audience-fit narrowing on 2026-05-02) covers the same npm-for-vibe-coders ground with a weaker mechanism (Docker-image pull vs. the binary-download-plus-checksum pattern #1258 proposes) and an extra pip target the epic already dropped. It was never closed when #664 was narrowed. Recommended closing #536 as superseded by #1258; did not close it myself since that's outside a single-issue spec's scope.
+  2. **Label inconsistency**: #664's body explicitly pairs #1258 and #665 as an equal-priority P0 pair ("promote to P0 alongside #665 Homebrew tap"), but #665 carries `defer:post-stable` and #1258 does not. `docs/faq.md` already describes core features as "stable and tested" pre-1.0, so it's unclear whether that label is simply stale on #665 or whether #1258 was meant to carry it too and got missed. This determines whether the architect should pick #1258 up now or park it — flagged for the user to decide, not assumed.
+  Proceeded with the full spec regardless, since the story itself (mechanism, acceptance criteria) is sound and well-scoped whichever way those two questions resolve.
+  - Verified before writing the spec that no npm-package scaffolding exists yet anywhere in the repo (`find` for `package.json` outside `examples/`, `.goreleaser.yml` has no npm/homebrew publish block yet) — not already in progress or done.
+- Other open questions delegated to architect: exact npm package name/org availability (`@vibewarden/cli` vs. `vibewarden` fallback — needs a live registry check before dev starts), auto-publish mechanism wiring into the existing release pipeline, and custody of the npm publish credential.
+- Added to v1 project board successfully (`gh project item-add 1 --owner VibeWarden` succeeded).
+
 ### 2026-09-03 — #1306 sidecar container resource limits spec finalised
 
 - Posted full spec as a PM comment on #1306 (https://github.com/VibeWarden/vibewarden/issues/1306#issuecomment-5525171838).
