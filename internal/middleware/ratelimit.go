@@ -90,7 +90,7 @@ func RateLimitMiddleware(
 			ipResult := ipLimiter.Allow(r.Context(), clientIP)
 			if !ipResult.Allowed {
 				emitRateLimitHit(r, eventLogger, drops, "ip", clientIP, "", ipResult)
-				emitAuditRateLimitHit(r, auditLogger, drops, "ip", clientIP, ipResult)
+				emitAuditRateLimitHit(r, auditLogger, drops, "ip", clientIP, "", ipResult)
 				writeRateLimitResponse(w, r, ipResult)
 				return
 			}
@@ -106,7 +106,7 @@ func RateLimitMiddleware(
 				userResult := userLimiter.Allow(r.Context(), userID)
 				if !userResult.Allowed {
 					emitRateLimitHit(r, eventLogger, drops, "user", userID, clientIP, userResult)
-					emitAuditRateLimitHit(r, auditLogger, drops, "user", clientIP, userResult)
+					emitAuditRateLimitHit(r, auditLogger, drops, "user", clientIP, userID, userResult)
 					writeRateLimitResponse(w, r, userResult)
 					return
 				}
@@ -189,17 +189,22 @@ func emitRateLimitUnidentified(r *http.Request, eventLogger ports.EventLogger, d
 
 // emitAuditRateLimitHit emits an audit.rate_limit.hit event via the
 // AuditEventLogger port. If auditLogger is nil the call is a no-op.
+//
+// userID is the resolved authenticated user ID, or "" for unauthenticated
+// requests. It is carried in audit.Actor.UserID so a per-user rate-limit hit
+// records *which* user tripped the limit, not merely that one did.
 func emitAuditRateLimitHit(
 	r *http.Request,
 	auditLogger ports.AuditEventLogger,
 	drops ports.EventLogDropCounter,
 	limitType string,
 	clientIP string,
+	userID string,
 	result ports.RateLimitResult,
 ) {
 	ev, err := audit.NewAuditEvent(
 		audit.EventTypeRateLimitHit,
-		audit.Actor{IP: clientIP},
+		audit.Actor{IP: clientIP, UserID: userID},
 		audit.Target{Path: r.URL.Path},
 		audit.OutcomeFailure,
 		CorrelationID(r.Context()),
