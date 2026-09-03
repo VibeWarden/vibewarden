@@ -67,12 +67,16 @@ package version and is silently reverted by the next `npm install -g`. Use npm.
 ## If npm ran with `--ignore-scripts`
 
 Lifecycle scripts are disabled in many CI setups and lockfile-audit workflows, so
-the postinstall download never runs. Running `vibew` then prints the exact command
-to finish the install. It is:
+the postinstall download never runs. Running `vibew` then exits with the exact
+command to finish the install, using the absolute path of this package on your
+machine:
 
 ```bash
-node "$(npm root -g)/@vibewarden/cli/install.js"
+node <absolute-path-to-@vibewarden/cli>/install.js
 ```
+
+Copy it from the `vibew` output rather than reconstructing it: the path differs
+between global installs, project-local installs, pnpm stores and npx caches.
 
 Alternatively, install without npm:
 

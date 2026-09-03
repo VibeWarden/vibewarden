@@ -121,12 +121,15 @@ Release and verify its SHA-256 checksum before installing it.
 ### If npm ran with `--ignore-scripts`
 
 The npm package downloads the binary in a `postinstall` script. When lifecycle
-scripts are disabled, running `vibew` prints the exact command to finish the
-install. It is:
+scripts are disabled, running `vibew` exits with the exact command to finish the
+install, using the absolute path of the package on your machine:
 
 ```bash
-node "$(npm root -g)/@vibewarden/cli/install.js"
+node <absolute-path-to-@vibewarden/cli>/install.js
 ```
+
+Copy the command from the `vibew` output rather than reconstructing it: the path
+differs between global installs, project-local installs, pnpm stores and npx caches.
 
 ### npm install environment variables
 

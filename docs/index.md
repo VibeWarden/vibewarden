@@ -17,14 +17,17 @@ all in a single binary that sits next to your app.
 === "macOS / Linux"
 
     ```bash
-    # Download the vibew wrapper
-    curl -fsSL https://vibewarden.dev/vibew > vibew && chmod +x vibew
+    # Install with npm (pin a version with @X.Y.Z) ...
+    npm install -g @vibewarden/cli
+
+    # ...or without Node.js
+    curl -fsSL https://vibewarden.dev/install.sh | sh
 
     # Add VibeWarden to your existing project (auth + rate limiting enabled)
-    ./vibew wrap --upstream 3000 --auth --rate-limit
+    vibew wrap --upstream 3000 --auth --rate-limit
 
     # Start everything
-    ./vibew dev
+    vibew dev
     ```
 
 Your app on port 3000 is now behind VibeWarden at `https://localhost:8443`. Done.

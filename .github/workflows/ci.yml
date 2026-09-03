@@ -39,6 +39,7 @@ jobs:
               - 'cmd/**'
               - 'test/**'
               - 'examples/**/*.go'
+              - 'npm/**'
 
   lint:
     name: Lint
@@ -116,6 +117,26 @@ jobs:
           name: coverage-report
           path: coverage.out
           retention-days: 7
+
+  npm-package:
+    name: npm package tests
+    needs: [changes]
+    # The @vibewarden/cli wrapper (ADR-112) is stdlib-only Node; its tests run
+    # here on every PR, not just in the release job that publishes it.
+    if: needs.changes.outputs.code == 'true' || github.actor == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Node
+        uses: actions/setup-node@v7
+        with:
+          node-version: "24"
+
+      - name: Test package
+        run: node --test npm/test/
 
   integration:
     name: Integration Tests
