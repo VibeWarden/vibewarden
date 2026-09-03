@@ -231,12 +231,10 @@ func computeInputDigest(projectRoot string) (InputDigest, error) {
 				slog.Debug("input-digest: cannot resolve symlink, skipping", "path", path, "err", err)
 				return nil
 			}
-			// Skip if resolved target escapes project root.
-			// Use an exact-directory check: the resolved path must equal absRoot
-			// or be a strict subdirectory (prefixed by absRoot + separator).
-			// A bare HasPrefix check is vulnerable to sibling directories whose
-			// name extends the root name (e.g. /proj-secret when root=/proj).
-			if resolved != absRoot && !strings.HasPrefix(resolved, absRoot+string(os.PathSeparator)) {
+			// Skip if resolved target escapes project root. containsPath
+			// (containment.go) is shared with the staleness walker so the two
+			// checks cannot drift apart.
+			if !containsPath(absRoot, resolved) {
 				slog.Debug("input-digest: symlink escapes project root, skipping",
 					"path", path, "resolved", resolved)
 				return nil
