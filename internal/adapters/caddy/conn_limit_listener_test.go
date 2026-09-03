@@ -137,8 +137,11 @@ func TestConnLimitListener_RefusesOverCap(t *testing.T) {
 			"connections past the cap must be refused, not accepted and left waiting", readErr)
 	}
 
-	if got := limiter.refused.Load(); got != 1 {
-		t.Errorf("refused count = %d, want 1", got)
+	// The client observes the refusal as soon as conn.Close() lands, which is
+	// before the accept loop records it, so poll rather than reading the
+	// counter straight after the failed read.
+	if !eventually(func() bool { return limiter.refused.Load() == 1 }, 2*time.Second) {
+		t.Errorf("refused count = %d, want 1", limiter.refused.Load())
 	}
 	// The refused path must roll back the increment it made.
 	if got := limiter.active.Load(); got != 2 {
