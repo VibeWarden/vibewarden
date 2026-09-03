@@ -19,8 +19,10 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"io/fs"
 	"net/http"
 	"os"
 	"os/exec"
@@ -436,6 +438,16 @@ func extractTarGz(archivePath, destDir, targetFile string) error {
 	return fmt.Errorf("%q not found in archive %q", targetFile, archivePath)
 }
 
+// isPermissionErr reports whether err was caused by a permission denial.
+//
+// os.IsPermission does not unwrap errors joined with %w, and atomicReplace
+// wraps every failure it returns. Using errors.Is against fs.ErrPermission is
+// the unwrapping equivalent, so the sudo retry below is reachable for the
+// read-only-install-dir case it was written for.
+func isPermissionErr(err error) bool {
+	return errors.Is(err, fs.ErrPermission)
+}
+
 // installBinary installs the binary at src to dest. It first attempts a direct
 // atomicReplace. When the target directory is not writable on a Unix-like
 // system it retries via `sudo install -m 755 src dest` so that users who
@@ -451,7 +463,7 @@ func installBinary(src, dest string, mode os.FileMode, w io.Writer) error {
 	}
 
 	// Only attempt sudo on non-Windows and only for permission errors.
-	if runtime.GOOS == "windows" || !os.IsPermission(err) {
+	if runtime.GOOS == "windows" || !isPermissionErr(err) {
 		return err
 	}
 

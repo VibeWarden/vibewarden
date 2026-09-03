@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	envpkg "github.com/vibewarden/vibewarden/internal/app/env"
@@ -385,6 +386,107 @@ func TestValidateEnvName_AcceptsLegitimateNames(t *testing.T) {
 			}
 			if resolved.EnvName != tt.envName {
 				t.Errorf("EnvName = %q, want %q", resolved.EnvName, tt.envName)
+			}
+		})
+	}
+}
+
+// TestFileResolver_EmptyProjectRoot_UsesWorkingDirectory covers the os.Getwd
+// fallback: ADR-102 makes this resolver the canonical env seam, and callers
+// that construct it with an empty root rely on the cwd behaviour.
+func TestFileResolver_EmptyProjectRoot_UsesWorkingDirectory(t *testing.T) {
+	dir := t.TempDir()
+	writeFile(t, filepath.Join(dir, "vibewarden.yaml"), minimalBase(8443))
+	writeFile(t, filepath.Join(dir, "vibewarden.production.yaml"), "server:\n  port: 9443\n")
+	t.Chdir(dir)
+
+	r := envpkg.NewFileResolver("")
+
+	t.Run("base only", func(t *testing.T) {
+		resolved, err := r.Resolve("")
+		if err != nil {
+			t.Fatalf("Resolve(\"\"): %v", err)
+		}
+		if resolved.Cfg == nil || resolved.Cfg.Server.Port != 8443 {
+			t.Fatalf("Resolve(\"\") did not load the cwd base config: %+v", resolved.Cfg)
+		}
+		if filepath.Base(resolved.BasePath) != "vibewarden.yaml" {
+			t.Errorf("BasePath = %q, want it to end in vibewarden.yaml", resolved.BasePath)
+		}
+	})
+
+	t.Run("with override", func(t *testing.T) {
+		resolved, err := r.Resolve("production")
+		if err != nil {
+			t.Fatalf("Resolve(\"production\"): %v", err)
+		}
+		if resolved.Cfg == nil || resolved.Cfg.Server.Port != 9443 {
+			t.Fatalf("override was not merged: %+v", resolved.Cfg)
+		}
+		if resolved.EnvName != "production" {
+			t.Errorf("EnvName = %q, want %q", resolved.EnvName, "production")
+		}
+	})
+
+	t.Run("resolve path", func(t *testing.T) {
+		path, err := r.ResolvePath("production")
+		if err != nil {
+			t.Fatalf("ResolvePath(\"production\"): %v", err)
+		}
+		if filepath.Base(path) != "vibewarden.production.yaml" {
+			t.Errorf("ResolvePath = %q, want it to end in vibewarden.production.yaml", path)
+		}
+	})
+}
+
+// TestFileResolver_MalformedConfig_ReturnsError covers the two loader error
+// paths: a corrupted base config (config.Load) and a corrupted override
+// (bundleapp.LoadMergedConfig).
+func TestFileResolver_MalformedConfig_ReturnsError(t *testing.T) {
+	tests := []struct {
+		name     string
+		base     string
+		override string
+		envName  string
+		wantErr  string
+	}{
+		{
+			name:    "corrupted base, base-only resolve",
+			base:    "server:\n\tport: [not-a-port\n",
+			envName: "",
+			wantErr: "loading base config",
+		},
+		{
+			name:     "corrupted base, merged resolve",
+			base:     "server:\n\tport: [not-a-port\n",
+			override: "server:\n  port: 9443\n",
+			envName:  "production",
+			wantErr:  "loading merged config",
+		},
+		{
+			name:     "corrupted override",
+			base:     "server:\n  port: 8443\n",
+			override: "server:\n  port: :::\n  - broken\n",
+			envName:  "production",
+			wantErr:  "loading merged config",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			dir := t.TempDir()
+			writeFile(t, filepath.Join(dir, "vibewarden.yaml"), tt.base)
+			if tt.override != "" {
+				writeFile(t, filepath.Join(dir, "vibewarden."+tt.envName+".yaml"), tt.override)
+			}
+
+			r := envpkg.NewFileResolver(dir)
+			_, err := r.Resolve(tt.envName)
+			if err == nil {
+				t.Fatalf("Resolve(%q): want error, got nil", tt.envName)
+			}
+			if !strings.Contains(err.Error(), tt.wantErr) {
+				t.Errorf("error = %v, want it to contain %q", err, tt.wantErr)
 			}
 		})
 	}
