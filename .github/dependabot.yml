@@ -86,14 +86,56 @@ updates:
     labels:
       - tech-debt
 
-  # Docker — base images in Dockerfile + docker-compose.
+  # Docker — base images in Dockerfiles.
+  #
+  # `directory: /` only covered the root Dockerfile and Dockerfile.goreleaser,
+  # which is how examples/demo-app sat on alpine:3.21 while root had already
+  # moved to 3.24 (#1298). Directories are listed explicitly rather than
+  # globbed: a `/**` glob would also rewrite generated bundles under
+  # examples/demo-app/.vibewarden/ and the deliberately mismatched Dockerfile
+  # fixtures under internal/cli/cmd/testdata/.
+  #
+  # This ecosystem finds Dockerfiles and Kubernetes/Helm manifests only — it
+  # does not read compose files, so every compose file needs the separate
+  # docker-compose entry below.
   - package-ecosystem: docker
-    directory: /
+    directories:
+      - /
+      - /examples/demo-app
+      - /examples/nextjs
+      - /examples/node-express
+      - /examples/python-flask
+      - /examples/spring-boot
+      - /test/fixtures/deploy-server
     schedule:
       interval: weekly
       day: monday
     commit-message:
       prefix: "deps(docker)"
+    labels:
+      - tech-debt
+
+  # Docker Compose — image pins in compose files.
+  #
+  # Separate from the docker ecosystem above, which never fetches compose
+  # files: without this entry the root docker-compose.yml and
+  # test/egress/docker-compose.yml are unwatched, which is how test/egress sat
+  # on alpine:3.21 (#1298). Listing /test/egress under `docker` instead would
+  # only make that job error weekly — it holds no Dockerfile.
+  #
+  # Image tags inside internal/config/templates/*.tmpl stay invisible to
+  # Dependabot — it cannot parse Go templates as Docker manifests. Those pins
+  # are held to the root docker-compose.yml, which is covered here, by
+  # internal/config/templates/image_pins_test.go.
+  - package-ecosystem: docker-compose
+    directories:
+      - /
+      - /test/egress
+    schedule:
+      interval: weekly
+      day: monday
+    commit-message:
+      prefix: "deps(compose)"
     labels:
       - tech-debt
 

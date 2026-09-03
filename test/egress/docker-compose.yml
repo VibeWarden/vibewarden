@@ -27,7 +27,7 @@ services:
 
   # Simulated app — Alpine with wget/curl for making egress calls
   app:
-    image: alpine:3.21
+    image: alpine:3.24
     command: ["sleep", "infinity"]
     networks:
       - egress-test

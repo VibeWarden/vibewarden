@@ -1,8 +1,11 @@
 package templates_test
 
 import (
+	"io/fs"
 	"os"
 	"regexp"
+	"sort"
+	"strings"
 	"testing"
 
 	"github.com/vibewarden/vibewarden/internal/config/templates"
@@ -11,77 +14,190 @@ import (
 // devComposePath points at the repo-root docker-compose.yml used for local
 // development. Go runs tests with the package directory as the working
 // directory, so the path is relative to internal/config/templates.
+//
+// This file is the one Dependabot actually parses (docker-compose ecosystem,
+// root directory — the docker ecosystem does not fetch compose files), which
+// makes it the upstream-tracking reference for every image the templates also
+// pin.
 const devComposePath = "../../../docker-compose.yml"
 
-// composeTemplatePath is the docker-compose template rendered by `vibew init`
-// and `vibew generate` — the artifact every new deployment ships with.
-const composeTemplatePath = "docker-compose.yml.tmpl"
+// imagePinRe captures the name and tag of a `image: <name>:<tag>` line in a
+// compose file or compose template. Templated references such as
+// `image: {{ .SidecarImage }}` and `image: ${VIBEWARDEN_APP_IMAGE:-...}` do not
+// match, since `{`, `}` and `$` are outside the name character class.
+var imagePinRe = regexp.MustCompile(`(?m)^\s*image:\s*([A-Za-z0-9][A-Za-z0-9./_-]*):([A-Za-z0-9][A-Za-z0-9._-]*)\s*(?:#.*)?$`)
 
-// openBaoImageRe captures the tag of a quay.io/openbao/openbao image pin.
-var openBaoImageRe = regexp.MustCompile(`quay\.io/openbao/openbao:([0-9A-Za-z._-]+)`)
+// unmonitoredTemplateImages lists images pinned in the templates that have no
+// counterpart in the dev compose file, together with the reason. Nothing bumps
+// these automatically — Dependabot cannot parse .tmpl files (issue #1298) — so
+// they need a manual audit. Keep the list as short as possible: adding an image
+// here is a decision to maintain it by hand.
+var unmonitoredTemplateImages = map[string]string{
+	"otel/opentelemetry-collector-contrib": "OTLP pipeline ships only in the generated stack; the dev stack scrapes Prometheus and Loki directly",
+	"jaegertracing/jaeger":                 "trace UI ships only in the generated stack; the dev stack has no tracing backend",
+}
 
-// openBaoTags returns every OpenBao image tag pinned in content. It fails the
-// test if there are none, since a zero-match regex would make the drift
-// assertions below vacuously true.
-func openBaoTags(t *testing.T, source, content string) []string {
+// imagePins maps an image name to the tag it is pinned to. Every pin of the
+// same image inside one source must agree, so a single tag per name is enough.
+type imagePins map[string]string
+
+// parseImagePins extracts the image pins from content. It reports an error for
+// every image pinned to two different tags within the same source, and fails
+// the test if content pins no image at all — a zero-match regex would make the
+// drift assertions vacuously true.
+func parseImagePins(t *testing.T, source, content string) imagePins {
 	t.Helper()
 
-	matches := openBaoImageRe.FindAllStringSubmatch(content, -1)
+	matches := imagePinRe.FindAllStringSubmatch(content, -1)
 	if len(matches) == 0 {
-		t.Fatalf("%s: no quay.io/openbao/openbao image pin found — has the image reference moved?", source)
+		t.Fatalf("%s: no image pin found — has the image reference syntax moved?", source)
 	}
 
-	tags := make([]string, 0, len(matches))
+	pins := make(imagePins, len(matches))
 	for _, m := range matches {
-		tags = append(tags, m[1])
+		name, tag := m[1], m[2]
+		if existing, ok := pins[name]; ok && existing != tag {
+			t.Errorf("%s pins conflicting tags %q and %q for image %q — all services must share one tag",
+				source, existing, tag, name)
+			continue
+		}
+		pins[name] = tag
 	}
-	return tags
+	return pins
 }
 
-// readTemplate returns the embedded docker-compose template as a string.
-func readTemplate(t *testing.T) string {
+// templatePins returns the image pins found across every embedded *.tmpl file,
+// keyed by image name. The template file each pin came from is returned
+// alongside so failures can name it.
+func templatePins(t *testing.T) (imagePins, map[string]string) {
 	t.Helper()
 
-	data, err := templates.FS.ReadFile(composeTemplatePath)
+	pins := imagePins{}
+	origin := map[string]string{}
+
+	err := fs.WalkDir(templates.FS, ".", func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() || !strings.HasSuffix(path, ".tmpl") {
+			return nil
+		}
+
+		data, readErr := templates.FS.ReadFile(path)
+		if readErr != nil {
+			return readErr
+		}
+		for _, m := range imagePinRe.FindAllStringSubmatch(string(data), -1) {
+			name, tag := m[1], m[2]
+			if existing, ok := pins[name]; ok && existing != tag {
+				t.Errorf("templates pin conflicting tags %q (%s) and %q (%s) for image %q — all services must share one tag",
+					existing, origin[name], tag, path, name)
+				continue
+			}
+			pins[name] = tag
+			origin[name] = path
+		}
+		return nil
+	})
 	if err != nil {
-		t.Fatalf("reading %s: %v", composeTemplatePath, err)
+		t.Fatalf("walking embedded templates: %v", err)
 	}
-	return string(data)
+
+	if len(pins) == 0 {
+		t.Fatal("no image pin found in any embedded template — has the image reference syntax moved?")
+	}
+	return pins, origin
 }
 
-// TestOpenBaoImagePin_TemplateIsInternallyConsistent verifies that every
-// OpenBao image pin inside the generated compose template uses the same tag.
-// The openbao and seed-secrets services must run identical binaries — the
-// seed script talks to the server over the API and relies on matching CLI
-// behaviour.
-func TestOpenBaoImagePin_TemplateIsInternallyConsistent(t *testing.T) {
-	tags := openBaoTags(t, composeTemplatePath, readTemplate(t))
+// devComposePins returns the image pins of the repo-root docker-compose.yml.
+func devComposePins(t *testing.T) imagePins {
+	t.Helper()
 
-	want := tags[0]
-	for _, got := range tags[1:] {
-		if got != want {
-			t.Errorf("%s pins conflicting OpenBao tags %q and %q — all OpenBao services must share one tag",
-				composeTemplatePath, want, got)
+	data, err := os.ReadFile(devComposePath)
+	if err != nil {
+		t.Fatalf("reading %s: %v", devComposePath, err)
+	}
+	return parseImagePins(t, devComposePath, string(data))
+}
+
+// sortedNames returns the image names of pins in a stable order so failures
+// read the same way on every run.
+func sortedNames(pins imagePins) []string {
+	names := make([]string, 0, len(pins))
+	for name := range pins {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
+
+// TestTemplateImagePins_MatchDevCompose verifies that every image pinned in a
+// template uses the same tag as the dev compose file. Dependabot bumps the dev
+// compose but cannot see .tmpl files (issue #1298), so this test is what makes
+// a Dependabot PR fail until the templates are bumped with it. The two drifted
+// apart before: the template stayed on OpenBao 2.2.0 while the dev stack moved
+// to 2.5.2, so users exercised a version nobody tested (issue #1291).
+func TestTemplateImagePins_MatchDevCompose(t *testing.T) {
+	tmplPins, origin := templatePins(t)
+	devPins := devComposePins(t)
+
+	for _, name := range sortedNames(tmplPins) {
+		devTag, monitored := devPins[name]
+		if !monitored {
+			continue // covered by TestTemplateImagePins_AreMonitoredOrDocumented
+		}
+		if tmplPins[name] != devTag {
+			t.Errorf("image pin drift for %s: %s uses %q but %s uses %q — bump both together",
+				name, devComposePath, devTag, origin[name], tmplPins[name])
 		}
 	}
 }
 
-// TestOpenBaoImagePin_TemplateMatchesDevCompose verifies that the OpenBao tag
-// shipped to users by `vibew init` matches the tag developers run locally.
-// The two drifted apart once before (template stuck on 2.2.0 while the dev
-// stack moved to 2.5.2), so users exercised a version nobody tested. See
-// issue #1291.
-func TestOpenBaoImagePin_TemplateMatchesDevCompose(t *testing.T) {
-	devCompose, err := os.ReadFile(devComposePath)
-	if err != nil {
-		t.Fatalf("reading %s: %v", devComposePath, err)
+// TestTemplateImagePins_AreMonitoredOrDocumented verifies that every image
+// pinned in a template is either present in the Dependabot-parsed dev compose
+// file or explicitly listed as unmonitored. Adding a new image to a template
+// without one of the two fails here, so template-only pins cannot quietly
+// accumulate (issue #1298).
+func TestTemplateImagePins_AreMonitoredOrDocumented(t *testing.T) {
+	tmplPins, origin := templatePins(t)
+	devPins := devComposePins(t)
+
+	for _, name := range sortedNames(tmplPins) {
+		if _, monitored := devPins[name]; monitored {
+			continue
+		}
+		if _, documented := unmonitoredTemplateImages[name]; !documented {
+			t.Errorf("%s pins %s:%s, which is absent from %s and from unmonitoredTemplateImages — "+
+				"add the image to the dev stack so Dependabot tracks it, or document why it is audited by hand",
+				origin[name], name, tmplPins[name], devComposePath)
+		}
 	}
+}
 
-	devTags := openBaoTags(t, devComposePath, string(devCompose))
-	tmplTags := openBaoTags(t, composeTemplatePath, readTemplate(t))
+// TestUnmonitoredTemplateImages_HasNoStaleEntries verifies that the manual
+// audit list stays honest: an entry must still be pinned by a template, and
+// must still be missing from the dev compose file. Once an image reaches the
+// dev stack, Dependabot covers it and the exemption has to go.
+func TestUnmonitoredTemplateImages_HasNoStaleEntries(t *testing.T) {
+	tmplPins, _ := templatePins(t)
+	devPins := devComposePins(t)
 
-	if devTags[0] != tmplTags[0] {
-		t.Errorf("OpenBao image pin drift: %s uses %q but %s uses %q — bump both together",
-			devComposePath, devTags[0], composeTemplatePath, tmplTags[0])
+	names := make([]string, 0, len(unmonitoredTemplateImages))
+	for name := range unmonitoredTemplateImages {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	for _, name := range names {
+		if _, pinned := tmplPins[name]; !pinned {
+			t.Errorf("unmonitoredTemplateImages lists %q, but no template pins it — drop the entry", name)
+		}
+		if _, monitored := devPins[name]; monitored {
+			t.Errorf("unmonitoredTemplateImages lists %q, but %s pins it too — Dependabot covers it, drop the entry",
+				name, devComposePath)
+		}
+		if strings.TrimSpace(unmonitoredTemplateImages[name]) == "" {
+			t.Errorf("unmonitoredTemplateImages entry %q has no reason — say why it is audited by hand", name)
+		}
 	}
 }
