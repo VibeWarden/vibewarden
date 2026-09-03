@@ -17,6 +17,7 @@ import (
 	"log/slog"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -71,10 +72,46 @@ var upstreamHandler = http.HandlerFunc(func(w http.ResponseWriter, _ *http.Reque
 	_, _ = io.WriteString(w, `{"status":"ok"}`)
 })
 
-// newBenchRequest returns a fresh GET request pointed at the root path with a
-// RemoteAddr that satisfies net.SplitHostPort (required by rate-limit middleware).
+// benchPath is the request target used by every benchmark. The two query
+// parameters matter: waf.RuleSet.ScanRequest evaluates the full ruleset once per
+// query-parameter value, so a request with no query string leaves that half of
+// the scan measuring nothing.
+const benchPath = "/api/resource?page=2&sort=created_at"
+
+// benchUserAgent is a representative browser User-Agent. It is set on every
+// benchmark request because User-Agent is one of only three headers the WAF
+// inspects (alongside Cookie and Referer); without it the header half of the
+// scan evaluates zero rules.
+const benchUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) " +
+	"AppleWebKit/537.36 (KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36"
+
+// newBenchRequest returns a fresh benign GET request with a query string and a
+// User-Agent, so the WAF has three inputs to scan (two query values, one
+// header), and a RemoteAddr that satisfies net.SplitHostPort (required by
+// rate-limit middleware).
 func newBenchRequest() *http.Request {
-	r := httptest.NewRequest(http.MethodGet, "/api/resource", nil)
+	r := httptest.NewRequest(http.MethodGet, benchPath, nil)
+	r.Header.Set("User-Agent", benchUserAgent)
+	r.RemoteAddr = "10.0.0.1:12345"
+	return r
+}
+
+// benchJSONBody is the request payload used by the "_WithBody" benchmarks. It is
+// byte-for-byte the payload BenchmarkScanRequest_Typical in internal/domain/waf
+// scans, so the body-scan component of the two is comparable. The two requests
+// are not otherwise identical: the domain benchmark also carries a Cookie and a
+// shorter User-Agent, and scan cost tracks the number of bytes inspected.
+const benchJSONBody = `{"username":"alice","action":"login"}`
+
+// newBenchRequestWithBody returns a fresh POST request with the same query
+// string and User-Agent as newBenchRequest plus a small JSON body. The body is
+// the difference between the two: it adds the WAF body-scan path, where the
+// middleware reads up to 8 KB, runs every rule against those bytes, and restores
+// the body for downstream handlers.
+func newBenchRequestWithBody() *http.Request {
+	r := httptest.NewRequest(http.MethodPost, benchPath, strings.NewReader(benchJSONBody))
+	r.Header.Set("Content-Type", "application/json")
+	r.Header.Set("User-Agent", benchUserAgent)
 	r.RemoteAddr = "10.0.0.1:12345"
 	return r
 }
@@ -111,7 +148,7 @@ func defaultWAFCfg() middleware.WAFConfig {
 // ---------------------------------------------------------------------------
 
 // BenchmarkProxy_DirectPassthrough measures the baseline cost of serving a
-// request with no middleware at all — the raw httptest overhead.
+// bodyless request with no middleware at all — the raw httptest overhead.
 func BenchmarkProxy_DirectPassthrough(b *testing.B) {
 	handler := upstreamHandler
 
@@ -120,6 +157,22 @@ func BenchmarkProxy_DirectPassthrough(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		w := httptest.NewRecorder()
 		handler.ServeHTTP(w, newBenchRequest())
+	}
+}
+
+// BenchmarkProxy_DirectPassthrough_WithBody is the no-middleware baseline for
+// the "_WithBody" benchmarks. It exists so the WAF body-scan overhead can be
+// read as a delta against a request of the same shape — a POST with a JSON body
+// costs more to construct than the GET used by BenchmarkProxy_DirectPassthrough,
+// and that construction cost must not be charged to the WAF.
+func BenchmarkProxy_DirectPassthrough_WithBody(b *testing.B) {
+	handler := upstreamHandler
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, newBenchRequestWithBody())
 	}
 }
 
@@ -173,8 +226,15 @@ func BenchmarkProxy_WithRateLimiting(b *testing.B) {
 // ---------------------------------------------------------------------------
 
 // BenchmarkProxy_WithWAF measures the latency added by WAFMiddleware against a
-// benign request (no rules fire). This exercises the full scan path over URL
-// query parameters, selected headers, and the (empty) request body.
+// benign bodyless GET (no rules fire). The full ruleset is evaluated three
+// times: once per query-parameter value and once for the User-Agent header. The
+// body-scan path allocates its 8 KB read buffer but has zero bytes to match
+// against, so this is the cost of a query-and-header scan only.
+//
+// It is not the floor of WAF cost and not a ceiling either: cost tracks the
+// total number of bytes inspected, so a query-heavy GET or a longer User-Agent
+// costs more than this, and a request with a body costs more again. See
+// BenchmarkProxy_WithWAF_WithBody.
 func BenchmarkProxy_WithWAF(b *testing.B) {
 	rs := waf.DefaultRuleSet()
 	cfg := defaultWAFCfg()
@@ -187,6 +247,26 @@ func BenchmarkProxy_WithWAF(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		w := httptest.NewRecorder()
 		handler.ServeHTTP(w, newBenchRequest())
+	}
+}
+
+// BenchmarkProxy_WithWAF_WithBody measures the latency added by WAFMiddleware
+// against a benign POST carrying a small JSON body. It scans the same query
+// parameters and User-Agent as BenchmarkProxy_WithWAF plus the body bytes, so
+// the difference between the two benchmarks is the body scan alone. Compare
+// against BenchmarkProxy_DirectPassthrough_WithBody, not the no-body baseline.
+func BenchmarkProxy_WithWAF_WithBody(b *testing.B) {
+	rs := waf.DefaultRuleSet()
+	cfg := defaultWAFCfg()
+	logger := discardLogger()
+
+	handler := middleware.WAFMiddleware(rs, cfg, logger, noopMetrics{}, nil)(upstreamHandler)
+
+	b.ReportAllocs()
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		w := httptest.NewRecorder()
+		handler.ServeHTTP(w, newBenchRequestWithBody())
 	}
 }
 

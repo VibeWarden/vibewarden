@@ -39,43 +39,70 @@ go test -bench=. -benchmem -count=3 -benchtime=5s ./test/benchmarks/
 
 Benchmarks live in `test/benchmarks/proxy_bench_test.go`. They use
 `net/http/httptest` so no network stack is involved. The numbers measure pure
-middleware CPU and allocation cost against a benign `GET /api/resource` request
-with no matching WAF rules.
+middleware CPU and allocation cost against a benign request with no matching
+WAF rules.
+
+Benchmarks come in two shapes. Both carry two query parameters
+(`?page=2&sort=created_at`) and a 117-byte browser `User-Agent`, because those
+are what the WAF actually inspects on a bodyless request:
+
+- **No-body** (`GET /api/resource?page=2&sort=created_at`) — a browser-style GET.
+  Baseline: `BenchmarkProxy_DirectPassthrough`.
+- **With body** (the same request as a `POST` with a 37-byte JSON payload) — the
+  only shape that exercises the WAF body scan.
+  Baseline: `BenchmarkProxy_DirectPassthrough_WithBody`.
+
+Always compare a `_WithBody` benchmark against the `_WithBody` baseline. A POST
+with a body costs more to construct than a bodyless GET, and that construction
+cost must not be attributed to the middleware.
 
 ---
 
 ## Benchmark results
 
-Machine: `darwin/amd64`, VirtualApple @ 2.50 GHz (Apple M-series, Rosetta),
-Go 1.26.
+Machine: `darwin/arm64`, Apple M1 Max, Go 1.27. Median of `-count=3`,
+`-benchtime=3s`.
 
 ```
 goos: darwin
-goarch: amd64
+goarch: arm64
 pkg: github.com/vibewarden/vibewarden/test/benchmarks
-cpu: VirtualApple @ 2.50GHz
-BenchmarkProxy_DirectPassthrough-10      2159046    1672 ns/op    5394 B/op    14 allocs/op
-BenchmarkProxy_WithSecurityHeaders-10    1521925    2350 ns/op    6226 B/op    21 allocs/op
-BenchmarkProxy_WithRateLimiting-10       1916719    1851 ns/op    5402 B/op    15 allocs/op
-BenchmarkProxy_WithWAF-10               1000000    3572 ns/op   13638 B/op    16 allocs/op
-BenchmarkProxy_AllMiddleware-10          808497    4416 ns/op   14478 B/op    24 allocs/op
+cpu: Apple M1 Max
+BenchmarkProxy_DirectPassthrough-10           2584827    1394 ns/op    5827 B/op    16 allocs/op
+BenchmarkProxy_DirectPassthrough_WithBody-10  2489506    1448 ns/op    5891 B/op    19 allocs/op
+BenchmarkProxy_WithSecurityHeaders-10         1994570    1798 ns/op    6627 B/op    22 allocs/op
+BenchmarkProxy_WithRateLimiting-10            2298481    1560 ns/op    5835 B/op    17 allocs/op
+BenchmarkProxy_WithWAF-10                      128472   27929 ns/op   14523 B/op    21 allocs/op
+BenchmarkProxy_WithWAF_WithBody-10             101457   35348 ns/op   14730 B/op    29 allocs/op
+BenchmarkProxy_AllMiddleware-10                125074   28715 ns/op   15346 B/op    28 allocs/op
 ```
 
 ### Interpretation
 
+No-body requests, measured against `DirectPassthrough`:
+
 | Benchmark | ns/op | Overhead vs baseline | B/op | allocs/op |
 |---|---|---|---|---|
-| DirectPassthrough | 1 672 | — (baseline) | 5 394 | 14 |
-| WithSecurityHeaders | 2 350 | +678 ns (+0.7 µs) | 6 226 | 21 |
-| WithRateLimiting | 1 851 | +179 ns (+0.2 µs) | 5 402 | 15 |
-| WithWAF | 3 572 | +1 900 ns (+1.9 µs) | 13 638 | 16 |
-| AllMiddleware | 4 416 | +2 744 ns (+2.7 µs) | 14 478 | 24 |
+| DirectPassthrough | 1 394 | — (baseline) | 5 827 | 16 |
+| WithSecurityHeaders | 1 798 | +404 ns (+0.4 µs) | 6 627 | 22 |
+| WithRateLimiting | 1 560 | +166 ns (+0.2 µs) | 5 835 | 17 |
+| WithWAF | 27 929 | +26 535 ns (+26.5 µs) | 14 523 | 21 |
+| AllMiddleware | 28 715 | +27 321 ns (+27.3 µs) | 15 346 | 28 |
 
-All values are well below their respective latency budget targets.
+Body-bearing requests, measured against `DirectPassthrough_WithBody`:
+
+| Benchmark | ns/op | Overhead vs baseline | B/op | allocs/op |
+|---|---|---|---|---|
+| DirectPassthrough_WithBody | 1 448 | — (baseline) | 5 891 | 19 |
+| WithWAF_WithBody | 35 348 | +33 900 ns (+33.9 µs) | 14 730 | 29 |
+
+All values are well below their respective latency budget targets. The WAF is
+the only layer whose cost varies by more than a rounding error with the request,
+and it is the one to size against your own traffic — see below.
 
 ### Key observations
 
-- **SecurityHeaders** adds ~0.7 µs per request. The cost comes from constructing
+- **SecurityHeaders** adds ~0.4 µs per request. The cost comes from constructing
   and setting six HTTP response header strings. There is headroom to add more
   headers without approaching the 1 ms P50 budget.
 
@@ -85,15 +112,36 @@ All values are well below their respective latency budget targets.
   limiter will incur a full network round-trip (typically 0.2–1 ms on localhost,
   1–5 ms over LAN).
 
-- **WAF** is the most expensive single middleware at ~1.9 µs overhead per
-  request. This cost is dominated by the regular-expression scan over query
-  parameters, selected headers, and the first 8 KB of the request body.
-  Requests with long bodies or many query parameters will see higher values;
-  static assets and API calls with small payloads sit near the benchmark figure.
+- **WAF** is by far the most expensive middleware, roughly two orders of
+  magnitude above the other two layers. Its cost is driven by **how many bytes
+  it inspects**, not by which part of the request they came from. `ScanRequest`
+  evaluates the entire default ruleset once per query-parameter value, once for
+  each of the three inspected headers that is present (`Cookie`, `Referer`,
+  `User-Agent`), and once over the first 8 KB of the body.
 
-- **AllMiddleware** stacks all three layers and adds ~2.7 µs total. The
-  aggregate is sub-additive because of CPU cache effects when the chain runs
-  sequentially on the same goroutine.
+  The two benchmarks make the byte cost readable. They differ only by the
+  37-byte body, and that body costs +7.4 µs, so on this hardware a full ruleset
+  sweep runs at roughly **0.2 µs per inspected byte**. The bodyless GET inspects
+  128 bytes (two short query values plus a 117-byte browser `User-Agent`) for
+  +26.5 µs, which is consistent with the same rate.
+
+  **Size the WAF against the bytes your requests carry, not against the presence
+  or absence of a body.** The body is not automatically the dominant term: at
+  that rate the 117-byte `User-Agent` accounts for most of the +26.5 µs bodyless
+  number, several times what the 37-byte payload costs. A bodyless GET with a
+  long `User-Agent` or a handful of query parameters can easily cost more than a
+  small `POST`. At 1 000 RPS of the body-bearing shape above the WAF consumes
+  about 34 ms of CPU per wall-clock second (~3.4% of one core).
+
+  Extrapolating the per-byte rate, a request that fills the 8 KB body-scan limit
+  lands in the low milliseconds — the same order as the < 2 ms P50 WAF budget.
+  That extrapolation is not benchmarked here; measure it against your own payload
+  sizes if you accept large request bodies.
+
+- **AllMiddleware** stacks all three layers for +27.3 µs on the bodyless shape:
+  the WAF number plus the ~0.6 µs the other two layers cost in isolation. It uses
+  `newBenchRequest`, so add roughly the body-scan increment above for a JSON
+  `POST`.
 
 ---
 
@@ -108,9 +156,17 @@ All values are well below their respective latency budget targets.
   contention. A Redis-backed limiter adds a network round-trip per request.
 - **No-op metrics collector**: the Prometheus registry write path is omitted
   so the WAF and rate-limit numbers isolate the middleware logic only.
-- **Benign requests only**: benchmarks send clean GET requests. WAF rule
-  matching on malicious inputs (many regex matches before a block) is more
-  expensive than the benign-request path shown here.
+- **Benign requests only**: benchmarks send clean requests. WAF rule matching on
+  malicious inputs (many regex matches before a block) is more expensive than
+  the benign-request path shown here.
+- **One request shape only**: the benchmarks use two short query parameters, one
+  inspected header, and (for `_WithBody`) a 37-byte JSON payload. WAF cost scales
+  with the total inspected bytes, so a request with more query parameters, a
+  `Cookie`, or a payload approaching the 8 KB scan limit costs proportionally
+  more regex work.
+- **Upstream does not drain the body**: the benchmark upstream handler never
+  reads the request body, so the cost of reading back the body the WAF restored
+  is not included. It is a few hundred nanoseconds for small payloads.
 
 ---
 
