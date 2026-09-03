@@ -213,7 +213,7 @@ services:
   # Re-run after "docker compose down -v" to regenerate credentials.
   # --------------------------------------------------------------------------
   openbao-bootstrap:
-    image: curlimages/curl:8.19.0
+    image: curlimages/curl:8.22.0
     container_name: vibewarden-openbao-bootstrap
     environment:
       BAO_ADDR: http://openbao:8200
