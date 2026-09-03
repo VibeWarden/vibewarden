@@ -76,7 +76,7 @@ jobs:
 
       - name: Test package
         if: steps.prepare.outputs.skip != 'true'
-        run: node --test npm/test/
+        run: node --test 'npm/test/*.test.js'
 
       - name: Publish
         if: steps.prepare.outputs.skip != 'true'

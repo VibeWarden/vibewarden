@@ -36,7 +36,7 @@
   ],
   "scripts": {
     "postinstall": "node install.js",
-    "test": "node --test test/",
+    "test": "node --test 'test/*.test.js'",
     "prepublishOnly": "node -e \"const v=require('./package.json').version; if (v === '0.0.0-dev') { console.error('refusing to publish placeholder version 0.0.0-dev — run scripts/release/prepare-npm-package.sh first'); process.exit(1); }\""
   },
   "engines": {

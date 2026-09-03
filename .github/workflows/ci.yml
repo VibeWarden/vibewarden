@@ -136,7 +136,7 @@ jobs:
           node-version: "24"
 
       - name: Test package
-        run: node --test npm/test/
+        run: node --test 'npm/test/*.test.js'
 
   integration:
     name: Integration Tests
