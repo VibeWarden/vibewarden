@@ -242,7 +242,7 @@ services:
   #       address: redis:6379
   # --------------------------------------------------------------------------
   redis:
-    image: redis:7-alpine
+    image: redis:8-alpine
     container_name: vibewarden-redis
     profiles:
       - redis
