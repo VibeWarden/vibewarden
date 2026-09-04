@@ -43,16 +43,18 @@ changelog generation, version tagging, GitHub release creation, and pre-release 
      ```
 
 4. **Create the release**:
-   - Write changelog to /tmp/release-notes.md
-   - Confirm with user before proceeding
+   - Confirm the notes with the user before proceeding
    - Tag the release: `git tag v<X.Y.Z>`
    - Push the tag: `git push origin v<X.Y.Z>`
-   - Create GitHub release:
+   - Create the GitHub release, composing the notes inline in the same command:
      ```bash
      gh release create v<X.Y.Z> \
        --repo VibeWarden/vibewarden \
        --title "v<X.Y.Z>" \
-       --notes-file /tmp/release-notes.md
+       --notes "$(cat <<'EOF'
+<release notes, composed inline — see "Posting comments" below>
+EOF
+)"
      ```
 
 5. **Post-release**:
@@ -64,6 +66,30 @@ changelog generation, version tagging, GitHub release creation, and pre-release 
 - Follow semver strictly: MAJOR.MINOR.PATCH
 - Pre-1.0: breaking changes bump minor, features bump patch
 - Post-1.0: follow standard semver
+
+## Posting comments: inline body only
+
+Compose every `gh` body **inline**, in the same command that posts it — release
+notes included:
+
+```bash
+gh release create v<X.Y.Z> --repo vibewarden/vibewarden --title "v<X.Y.Z>" --notes "$(cat <<'EOF'
+<release notes>
+EOF
+)"
+```
+
+Never pass `--notes-file` or `--body-file` a fixed path such as
+`/tmp/release-notes.md`, `review.md`, or `summary.md`. The session scratchpad is
+shared by every subagent, and the agent shell runs zsh with `noclobber`, so
+`> /tmp/release-notes.md` onto a file another agent already created fails with
+`file exists:` — the write is skipped, the command list keeps running, and you
+publish the *previous* agent's text as the release notes. That shipped three
+wrong verdicts on 2026-09-04 (#1504); on a release the blast radius is public.
+
+If a file is genuinely unavoidable: `f=$(mktemp)`, write it with `>|` (force
+clobber), and confirm your own first line is in it (`head -1 "$f"`) before
+posting.
 
 ## What you must NOT do
 

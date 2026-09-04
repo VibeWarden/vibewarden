@@ -88,21 +88,25 @@ agent can implement without ambiguity.
 
 6. **Post a short comment to the GitHub issue** — keep this brief:
    ```bash
-   gh issue comment <number> --repo VibeWarden/vibewarden --body "Status: READY_FOR_DEV
+   gh issue comment <number> --repo vibewarden/vibewarden --body "$(cat <<'EOF'
+Status: READY_FOR_DEV
 
-   Design: ADR-<N> in DECISIONS.md
+Design: ADR-<N> in decisions/adr-<N>-<slug>.md
 
-   **New files:**
-   - \`<file path>\`
-   - \`<file path>\`
+**New files:**
+- `<file path>`
+- `<file path>`
 
-   **Key interfaces:**
-   - \`<InterfaceName>\` in \`internal/ports/<file>.go\`
+**Key interfaces:**
+- `<InterfaceName>` in `internal/ports/<file>.go`
 
-   **New dependencies:** <none | library@version (LICENSE)>"
+**New dependencies:** <none | library@version (LICENSE)>
+EOF
+)"
    ```
 
-   The full design lives in `decisions.md` — the issue comment is a pointer, not a duplicate.
+   The full design lives in the ADR file under `decisions/` — the issue comment is a
+   pointer, not a duplicate.
    Do NOT post the full ADR to the issue. Keep the issue thread clean.
 
 7. **Set status** — the short comment above already sets the status. No additional comment needed.
@@ -116,6 +120,30 @@ agent can implement without ambiguity.
 - All I/O through adapters — domain and app layers are pure
 - No global state — dependency injection everywhere
 - Functional where Go allows — pure functions, immutable value objects
+
+## Posting comments: inline body only
+
+Compose every `gh` body **inline**, in the same command that posts it:
+
+```bash
+gh issue comment <number> --repo vibewarden/vibewarden --body "$(cat <<'EOF'
+Status: READY_FOR_DEV
+
+<design>
+EOF
+)"
+```
+
+Never pass `--body-file` a fixed path such as `review.md`, `summary.md`, or
+`/tmp/finding.md`. The session scratchpad is shared by every subagent, and the
+agent shell runs zsh with `noclobber`, so `> review.md` onto a file another
+agent already created fails with `file exists:` — the write is skipped, the
+command list keeps running, and you post the *previous* agent's text under your
+own name. That shipped three wrong verdicts on 2026-09-04 (#1504).
+
+If a file is genuinely unavoidable: `f=$(mktemp)`, write it with `>|` (force
+clobber), and confirm your own first line is in it (`head -1 "$f"`) before
+posting.
 
 ## What you must NOT do
 

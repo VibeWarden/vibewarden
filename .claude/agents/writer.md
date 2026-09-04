@@ -129,16 +129,28 @@ documentation affected by the code changes is accurate and consistent.
 
 ### Submit review
 
+Post as a PR **comment**, not `gh pr review` — the PR author is often the
+authenticated user, and the merge gate looks for the verdict line in a comment.
+The verdict must be the first line, and must match the verdict you return in
+your structured output; the pipeline cross-checks the two and aborts the round
+on a mismatch.
+
 ```bash
 # Request changes for doc drift
-gh pr review <number> --repo vibewarden/vibewarden \
-  --request-changes \
-  --body "Documentation review: <issues found>"
+gh pr comment <number> --repo vibewarden/vibewarden --body "$(cat <<'EOF'
+**Writer Agent: CHANGES REQUESTED**
+
+Documentation review: <issues found>
+EOF
+)"
 
 # Approve when docs are consistent
-gh pr review <number> --repo vibewarden/vibewarden \
-  --approve \
-  --body "Documentation review: docs consistent with code changes."
+gh pr comment <number> --repo vibewarden/vibewarden --body "$(cat <<'EOF'
+**Writer Agent: APPROVED**
+
+Documentation review: docs consistent with code changes.
+EOF
+)"
 ```
 
 When re-reviewing after fixes, **resolve all open review threads** that were
@@ -160,6 +172,30 @@ gh api graphql -f query='
 # Resolve each thread
 gh api graphql -f query='mutation { resolveReviewThread(input: {threadId: "<id>"}) { thread { isResolved } } }'
 ```
+
+## Posting comments: inline body only
+
+Compose every `gh` body **inline**, in the same command that posts it:
+
+```bash
+gh pr comment <number> --repo vibewarden/vibewarden --body "$(cat <<'EOF'
+**Writer Agent: APPROVED**
+
+<summary>
+EOF
+)"
+```
+
+Never pass `--body-file` a fixed path such as `review.md`, `summary.md`, or
+`/tmp/finding.md`. The session scratchpad is shared by every subagent, and the
+agent shell runs zsh with `noclobber`, so `> review.md` onto a file another
+agent already created fails with `file exists:` — the write is skipped, the
+command list keeps running, and you post the *previous* agent's text under your
+own name. That shipped three wrong verdicts on 2026-09-04 (#1504).
+
+If a file is genuinely unavoidable: `f=$(mktemp)`, write it with `>|` (force
+clobber), and confirm your own first line is in it (`head -1 "$f"`) before
+posting.
 
 ## What you must NOT do
 

@@ -44,6 +44,15 @@ const VERDICT = {
     blocking_items: { type: 'array', items: { type: 'string' } },
   },
 }
+const POSTED = {
+  type: 'object', additionalProperties: false,
+  required: ['reviewer', 'writer'],
+  properties: {
+    reviewer: { type: 'string', enum: ['approve', 'changes', 'missing'], description: 'verdict of the newest "Reviewer Agent:" comment on the PR' },
+    writer: { type: 'string', enum: ['approve', 'changes', 'missing'], description: 'verdict of the newest "Writer Agent:" comment on the PR' },
+    detail: { type: 'string', description: 'the two first lines, verbatim' },
+  },
+}
 const MERGE_OUT = {
   type: 'object', additionalProperties: false,
   required: ['merged'],
@@ -108,7 +117,9 @@ const reviewOnce = async (round) => parallel([
   () => agent(
     `Review PR #${dev.pr_number} in ${REPO} (linked issue #${issue}) per your standard two-pass workflow ` +
     `(coverage pass, then verify pass; inline comments only for verified must-fix findings; ` +
-    `post "Reviewer Agent: APPROVED" or "Reviewer Agent: CHANGES REQUESTED" as a PR comment). ` +
+    `post "Reviewer Agent: APPROVED" or "Reviewer Agent: CHANGES REQUESTED" as the FIRST LINE of a PR comment). ` +
+    `Compose the comment body inline (--body "$(cat <<'EOF' ... EOF)"); never --body-file from a fixed scratchpad path, ` +
+    `which posts another agent's verdict when noclobber blocks the write (#1504). ` +
     `${round > 1 ? `This is re-review round ${round}: verify the previous blocking items were fixed, resolve addressed threads, do not re-litigate what you already approved.` : ''}`,
     { agentType: 'reviewer', label: `reviewer:r${round}:#${dev.pr_number}`, phase: 'Review', schema: VERDICT },
   ),
@@ -116,16 +127,45 @@ const reviewOnce = async (round) => parallel([
     `Act as the documentation reviewer for PR #${dev.pr_number} in ${REPO} (linked issue #${issue}). ` +
     `Check every doc surface affected by the diff (README, docs/, reference configs, CLI help, llms files) for drift ` +
     `against the actual code changes — code in internal/ is canonical. ` +
-    `Post "Writer Agent: APPROVED" or "Writer Agent: CHANGES REQUESTED" as a PR comment with specifics. ` +
+    `Post "Writer Agent: APPROVED" or "Writer Agent: CHANGES REQUESTED" as the FIRST LINE of a PR comment with specifics. ` +
+    `Compose the comment body inline (--body "$(cat <<'EOF' ... EOF)"); never --body-file from a fixed scratchpad path, ` +
+    `which posts another agent's verdict when noclobber blocks the write (#1504). ` +
     `${round > 1 ? `This is re-review round ${round}: check only whether your previous blocking items were addressed.` : ''}`,
     { agentType: 'writer', label: `writer:r${round}:#${dev.pr_number}`, phase: 'Review', schema: VERDICT },
   ),
 ])
 
+// The structured verdict is authoritative; the posted comment is what the merge gate
+// and any human reads. They diverge when an agent posts a stale --body-file (#1504),
+// so stop the round rather than run a fix loop on someone else's blocking items.
+const readPostedVerdicts = (round) => agent(
+  `Report what is currently POSTED on PR #${dev.pr_number} in ${REPO} — do not review the PR yourself. ` +
+  `Read both surfaces, one line per comment (timestamp TAB first line of the body); issue comments carry ` +
+  `created_at, reviews carry submitted_at: ` +
+  `gh api repos/${REPO}/issues/${dev.pr_number}/comments --jq '.[] | "\\(.created_at)\\t\\(.body | split("\\n")[0])"' | cat, ` +
+  `and gh api repos/${REPO}/pulls/${dev.pr_number}/reviews --jq '.[] | "\\(.submitted_at)\\t\\(.body | split("\\n")[0])"' | cat. ` +
+  `Across both surfaces take the line with the latest timestamp containing "Reviewer Agent:" and the latest containing "Writer Agent:". ` +
+  `Map APPROVED -> approve, CHANGES REQUESTED -> changes, and use "missing" when no such comment exists.`,
+  { label: `posted-check:r${round}:#${dev.pr_number}`, effort: 'low', schema: POSTED },
+)
+
 let approved = false
 for (let round = 1; round <= 3; round++) {
   const [rev, wri] = await reviewOnce(round)
   if (!rev || !wri) throw new Error(`review round ${round}: an agent failed`)
+  const posted = await readPostedVerdicts(round)
+  const drift = [
+    posted?.reviewer !== rev.verdict ? `reviewer returned "${rev.verdict}" but posted "${posted?.reviewer ?? 'unreadable'}"` : null,
+    posted?.writer !== wri.verdict ? `writer returned "${wri.verdict}" but posted "${posted?.writer ?? 'unreadable'}"` : null,
+  ].filter(Boolean)
+  if (drift.length) {
+    log(`round ${round}: POSTED COMMENT MISMATCH — ${drift.join('; ')}`)
+    return {
+      issue: Number(issue), tier: triage.tier, pr: dev.pr_number, merged: false,
+      escalate: `review round ${round}: posted comments disagree with the returned verdicts (${drift.join('; ')}). ` +
+        `Likely a stale --body-file post (#1504) — fix the comments on the PR by hand before re-running.`,
+    }
+  }
   if (rev.verdict === 'approve' && wri.verdict === 'approve') { approved = true; break }
   const blockers = [...(rev.blocking_items ?? []), ...(wri.blocking_items ?? [])]
   log(`round ${round}: changes requested (${blockers.length} items) — dispatching fix`)
