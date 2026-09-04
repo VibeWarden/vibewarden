@@ -140,8 +140,14 @@ func (l *connLimitedListener) Accept() (net.Conn, error) {
 
 		if int(l.limit.active.Add(1)) > l.limit.MaxConnections {
 			l.limit.active.Add(-1)
-			_ = conn.Close()
+			// Record the refusal before closing: closing is what the client
+			// observes (FIN/RST), so anything that sees the reset must already
+			// see the counter and the log line. Recording afterwards leaves a
+			// window where the refusal is visible on the wire but not in the
+			// metrics, which is a real observability gap and not only a test
+			// race. Throttling keeps this off the hot path under a flood.
 			l.limit.noteRefusal()
+			_ = conn.Close()
 			continue
 		}
 
