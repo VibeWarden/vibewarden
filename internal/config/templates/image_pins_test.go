@@ -3,6 +3,7 @@ package templates_test
 import (
 	"io/fs"
 	"os"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -20,6 +21,11 @@ import (
 // makes it the upstream-tracking reference for every image the templates also
 // pin.
 const devComposePath = "../../../docker-compose.yml"
+
+// internalRoot points at the repo's internal/ tree, walked by
+// TestIntegrationTestImagePins_MatchDevCompose. Same relative-path rule as
+// devComposePath: the working directory is internal/config/templates.
+const internalRoot = "../../../internal"
 
 // imagePinRe captures the name and tag of a `image: <name>:<tag>` line in a
 // compose file or compose template. Templated references such as
@@ -198,6 +204,90 @@ func TestUnmonitoredTemplateImages_HasNoStaleEntries(t *testing.T) {
 		}
 		if strings.TrimSpace(unmonitoredTemplateImages[name]) == "" {
 			t.Errorf("unmonitoredTemplateImages entry %q has no reason — say why it is audited by hand", name)
+		}
+	}
+}
+
+// integrationImagePinRe captures the name and tag of a Go string literal whose
+// entire contents are an image reference, e.g. `"postgres:17-alpine"` or
+// `"oryd/kratos:v26.2.0"`. Requiring the literal to be exactly the reference is
+// what keeps it free of false positives: `"postgres://user:pass@postgres:5432/db"`,
+// `"VIBEWARDEN_RATE_LIMIT_REDIS_ADDRESS=redis:6379"` and `"image: redis:7-alpine"`
+// all fail to match, because the name class excludes `/`, `=` and `:` after the
+// tag, and the closing quote must follow the tag immediately.
+var integrationImagePinRe = regexp.MustCompile(`"([A-Za-z0-9][A-Za-z0-9./_-]*):([A-Za-z0-9][A-Za-z0-9._-]*)"`)
+
+// integrationTestPins walks internalRoot for *_integration_test.go files and
+// returns every image reference they pin, keyed by image name, together with
+// the file each pin came from. Only names that the dev compose file already
+// tracks are returned — an unrelated `"foo:bar"` literal in some other test
+// cannot trip the drift assertion.
+func integrationTestPins(t *testing.T, tracked imagePins) (imagePins, map[string]string) {
+	t.Helper()
+
+	// Collect first, read second: reading inside the WalkDir callback trips
+	// gosec G122 (symlink TOCTOU on a walked path).
+	var files []string
+	err := filepath.WalkDir(internalRoot, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if !d.IsDir() && strings.HasSuffix(path, "_integration_test.go") {
+			files = append(files, path)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("walking %s: %v", internalRoot, err)
+	}
+	sort.Strings(files)
+
+	pins := imagePins{}
+	origin := map[string]string{}
+
+	for _, path := range files {
+		data, readErr := os.ReadFile(path) // #nosec G304 -- path comes from a WalkDir over a repo-local tree
+		if readErr != nil {
+			t.Fatalf("reading %s: %v", path, readErr)
+		}
+		for _, m := range integrationImagePinRe.FindAllStringSubmatch(string(data), -1) {
+			name, tag := m[1], m[2]
+			if _, ok := tracked[name]; !ok {
+				continue
+			}
+			if existing, ok := pins[name]; ok && existing != tag {
+				t.Errorf("integration tests pin conflicting tags %q (%s) and %q (%s) for image %q — all must share one tag",
+					existing, origin[name], tag, path, name)
+				continue
+			}
+			pins[name] = tag
+			origin[name] = path
+		}
+	}
+	return pins, origin
+}
+
+// TestIntegrationTestImagePins_MatchDevCompose verifies that every testcontainers
+// image pinned in an integration test uses the same tag as the dev compose file.
+//
+// This is the third pin site, invisible to both Dependabot (which parses neither
+// Go source nor .tmpl files) and to TestTemplateImagePins_MatchDevCompose. It is
+// how a deliberate pin rots: someone bumps the testcontainers image and CI starts
+// certifying a Postgres nobody runs, or the compose pin moves and the integration
+// suite silently keeps exercising the old one. Two Postgres pins had already
+// drifted to 16-alpine when this test was added (issue #1495, ADR-113).
+func TestIntegrationTestImagePins_MatchDevCompose(t *testing.T) {
+	devPins := devComposePins(t)
+	testPins, origin := integrationTestPins(t, devPins)
+
+	if len(testPins) == 0 {
+		t.Fatalf("no image pin found in any *_integration_test.go under %s — has the testcontainers image syntax moved?", internalRoot)
+	}
+
+	for _, name := range sortedNames(testPins) {
+		if testPins[name] != devPins[name] {
+			t.Errorf("image pin drift for %s: %s uses %q but %s uses %q — bump both together",
+				name, devComposePath, devPins[name], origin[name], testPins[name])
 		}
 	}
 }

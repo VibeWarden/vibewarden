@@ -1302,9 +1302,14 @@ func TestGenerate_Observability_ComposeDependsOn(t *testing.T) {
 	cfg := observabilityConfig(3001, 9090, 3100, 7)
 	compose := renderCompose(t, cfg)
 
-	// Promtail depends on loki being healthy.
-	if !bytes.Contains(compose, []byte("loki:\n        condition: service_healthy")) {
-		t.Errorf("expected promtail depends_on loki with service_healthy\ncompose:\n%s", compose)
+	// Promtail depends on loki having started. It cannot wait for healthy:
+	// grafana/loki is distroless from 3.7.0 on (only /usr/bin/loki, no shell
+	// or wget), so the container carries no healthcheck at all (#1495).
+	if !bytes.Contains(compose, []byte("loki:\n        condition: service_started")) {
+		t.Errorf("expected promtail depends_on loki with service_started\ncompose:\n%s", compose)
+	}
+	if bytes.Contains(compose, []byte("loki:\n        condition: service_healthy")) {
+		t.Errorf("no service may wait on loki being healthy — the distroless image has no healthcheck\ncompose:\n%s", compose)
 	}
 	// Grafana depends on prometheus and loki being healthy.
 	if !bytes.Contains(compose, []byte("prometheus:\n        condition: service_healthy")) {

@@ -23,7 +23,7 @@ func startTestPostgres(ctx context.Context, t *testing.T) (*AuditAdapter, *sql.D
 	t.Helper()
 
 	pgContainer, err := tcpostgres.Run(ctx,
-		"postgres:16-alpine",
+		"postgres:17-alpine",
 		tcpostgres.WithDatabase("vibewarden"),
 		tcpostgres.WithUsername("vibewarden"),
 		tcpostgres.WithPassword("vibewarden"),

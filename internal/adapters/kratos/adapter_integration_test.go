@@ -106,7 +106,7 @@ func startPostgres(ctx context.Context, t *testing.T, netName string) {
 	t.Helper()
 
 	req := testcontainers.ContainerRequest{
-		Image: "postgres:16-alpine",
+		Image: "postgres:17-alpine",
 		Env: map[string]string{
 			"POSTGRES_DB":       "kratos",
 			"POSTGRES_USER":     "kratos",

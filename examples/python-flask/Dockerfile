@@ -6,7 +6,7 @@
 # ---------------------------------------------------------------------------
 # Stage 1: install dependencies
 # ---------------------------------------------------------------------------
-FROM python:3.13-slim AS deps
+FROM python:3.14-slim AS deps
 
 WORKDIR /app
 
@@ -16,7 +16,7 @@ RUN pip install --no-cache-dir --prefix=/install -r requirements.txt
 # ---------------------------------------------------------------------------
 # Stage 2: runtime
 # ---------------------------------------------------------------------------
-FROM python:3.13-slim
+FROM python:3.14-slim
 
 WORKDIR /app
 

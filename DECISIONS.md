@@ -8,6 +8,16 @@ Each ADR is a standalone file at `decisions/adr-NNN-title.md`.
 
 ## PM Log
 
+### 2026-09-04 — #1495 batched Dependabot image bumps spec finalised
+
+- Posted full spec as a PM comment on #1495 (https://github.com/VibeWarden/vibewarden/issues/1495#issuecomment-5533743608).
+- Label `status:ready-for-arch` added (kept existing `tech-debt`, no `epic:*` — consistent with the audit/tech-debt batch convention already established for #1306/#1311/#1458).
+- Not challenged: verified the story is real and current before writing the spec. All 10 named PRs (#1485-#1494) are still open; `postgres:17-alpine` and `redis:7-alpine` are still the live pins in `internal/config/templates/docker-compose.yml.tmpl`; no ADR or merged decision already covers either major bump (`decisions/README.md` has no postgres/redis entry); the #1298 drift-guard test (`internal/config/templates/image_pins_test.go`) exists and is exactly what the acceptance criteria reference. This is a well-scoped, correctly-escalated chore that follows CLAUDE.md's dependency rules to the letter (no speculative major bumps, license check required, ADR-documented pin if rejected) — proceeded with a spec rather than pushing back.
+- Kept the issue's own structure (majors needing a decision vs. routine bumps vs. batch-into-one-PR-and-close-superseded acceptance) since it already read like a near-complete spec; reformatted into standard PM sections and made each row a testable checkbox.
+- Flagged the redis license check as higher-stakes than the issue's own framing: Redis Ltd's relicensing (RSALv2/SSPLv1, later AGPLv3 as of the Redis 8 announcement) intersects directly with CLAUDE.md's rejected-license list (AGPL is explicitly rejected). Made explicit in acceptance criteria that if the `redis:8-alpine` image or the edition it packages isn't under an approved license, the bump must be rejected and pinned, not merged on the strength of routine bumps riding along.
+- Open questions delegated to architect (matching the issue's own two flagged decisions, not resolved here per the "don't guess on locked/strategic decisions" rule): (1) postgres 17→18 pin-and-ignore vs. bump-with-doctor-check, issue recommends pin-and-ignore as default; (2) redis 7→8 changelog-diff-against-adapter-commands plus the license verification outcome; (3) whether each rejected major's ADR note lands as an append to an existing ADR or a new one.
+- Added to v1 project board successfully (`gh project item-add 1 --owner VibeWarden` succeeded).
+
 ### 2026-09-03 — #1258 npm distribution (`@vibewarden/cli`) spec finalised
 
 - Posted full spec as a PM comment on #1258 (https://github.com/VibeWarden/vibewarden/issues/1258#issuecomment-5526046016).

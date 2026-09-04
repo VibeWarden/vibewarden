@@ -164,6 +164,13 @@ services:
 {{- if eq .Database.ExternalURL "" }}
 
   kratos-db:
+    # Pinned to 17 deliberately, not bumped to 18 — see VibeWarden ADR-113:
+    # https://github.com/vibewarden/vibewarden/blob/main/decisions/adr-113-deliberate-major-version-pins-postgres-17-redis-7.md
+    # Every Postgres major bumps the catalog version, so an existing data
+    # volume refuses to start under an 18 image, and PG18's initdb enables
+    # data checksums, so pg_upgrade also needs --no-data-checksums on the new
+    # cluster. No PG18 feature is reachable from VibeWarden. Minor and patch
+    # 17.x bumps still flow; .github/dependabot.yml ignores the major only.
     image: postgres:17-alpine
     restart: unless-stopped
     env_file:
@@ -291,7 +298,7 @@ services:
 {{- if and (eq (printf "%s" .Auth.Mode) "kratos") (not .Kratos.External) }}
 
   seed-users:
-    image: curlimages/curl:8.19.0
+    image: curlimages/curl:8.22.0
     environment:
       KRATOS_ADMIN_URL: http://kratos:4434
     volumes:
@@ -307,6 +314,13 @@ services:
 {{- if and (eq .RateLimit.Store "redis") (not (.RateLimit.Redis.HasExternalURL)) }}
 
   redis:
+    # Pinned to 7 deliberately, not bumped to 8 — see VibeWarden ADR-113:
+    # https://github.com/vibewarden/vibewarden/blob/main/decisions/adr-113-deliberate-major-version-pins-postgres-17-redis-7.md
+    # redis:8-alpine bundles the query engine, JSON, TimeSeries and Bloom
+    # modules (39.0 MB vs 16.3 MB compressed) and changes nothing in the four
+    # commands the rate limiter issues (HMGET/HMSET/EXPIRE in one EVAL'd
+    # script, plus PING). The destination is Valkey (BSD-3), tracked by
+    # #1497; this pin and the dependabot ignore rule go away with it.
     image: redis:7-alpine
     restart: unless-stopped
     command: ["redis-server", "--appendonly", "yes"]
@@ -322,7 +336,7 @@ services:
 {{- end }}
 
   prometheus:
-    image: prom/prometheus:v3.11.2
+    image: prom/prometheus:v3.14.0
     profiles:
       - observability
     restart: unless-stopped
@@ -345,7 +359,7 @@ services:
       retries: 5
 
   loki:
-    image: grafana/loki:3.6.10
+    image: grafana/loki:3.7.7
     profiles:
       - observability
     restart: unless-stopped
@@ -357,14 +371,19 @@ services:
       - loki-data:/loki
     networks:
       - {{ .InternalNetworkName }}
-    healthcheck:
-      test: ["CMD-SHELL", "wget -q --spider http://localhost:3100/ready || exit 1"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+    # No healthcheck: the Loki image is distroless from 3.7.0 on — it holds
+    # /usr/bin/loki and nothing else, so there is no shell, wget or curl for
+    # Docker to exec. Same situation as otel-collector; dependents use
+    # service_started and rely on their own push/query retries.
 
   promtail:
-    image: grafana/promtail:3.6.10
+    # Pinned to 3.6.11, deliberately behind the Loki 3.7.7 line above:
+    # Promtail has no 3.7 release. 3.6.11 (2026-05-13) is the last one, since
+    # Grafana deprecated Promtail in favour of Alloy. Promtail 3.6.11 ships to
+    # Loki 3.7.7 over the stable /loki/api/v1/push v1 API, so the divergence
+    # is safe, but it is permanent. See VibeWarden ADR-113:
+    # https://github.com/vibewarden/vibewarden/blob/main/decisions/adr-113-deliberate-major-version-pins-postgres-17-redis-7.md
+    image: grafana/promtail:3.6.11
     profiles:
       - observability
     restart: unless-stopped
@@ -377,7 +396,7 @@ services:
       - {{ .InternalNetworkName }}
     depends_on:
       loki:
-        condition: service_healthy
+        condition: service_started
 
   otel-collector:
     image: otel/opentelemetry-collector-contrib:0.123.0
@@ -391,7 +410,7 @@ services:
       - {{ .InternalNetworkName }}
     depends_on:
       loki:
-        condition: service_healthy
+        condition: service_started
       jaeger:
         condition: service_healthy
     # otel-collector-contrib uses a distroless image (no shell/wget/curl)
@@ -438,7 +457,7 @@ services:
       prometheus:
         condition: service_healthy
       loki:
-        condition: service_healthy
+        condition: service_started
       otel-collector:
         condition: service_started
       jaeger:
