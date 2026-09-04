@@ -72,7 +72,14 @@ func (h *AdminAuthHandler) Provision(_ gocaddy.Context) error {
 // directly with mock services; production calls it via Provision.
 //
 // When services.AuditEventLogger is nil the handler emits a one-time Warn log
-// and skips audit events; request processing continues normally.
+// and skips audit events; request processing continues normally. The same
+// applies to services.AdminLockoutGuard: when nil, failed-attempt throttling is
+// disabled and admin auth behaves exactly as it did before the lockout existed.
+//
+// The guard is taken from RuntimeServices rather than constructed here on
+// purpose. Every Caddy config carries up to three AdminAuthHandler instances
+// (admin route, config route, catch-all) and they must share one failure
+// counter.
 func (h *AdminAuthHandler) ProvisionWith(services RuntimeServices) error {
 	logger := services.Logger
 	if logger == nil {
@@ -86,12 +93,19 @@ func (h *AdminAuthHandler) ProvisionWith(services RuntimeServices) error {
 		logger.Warn("admin-auth: AuditEventLogger not set in RuntimeServices; audit events will be dropped")
 	}
 
+	var lockout ports.AuthLockoutGuard
+	if services.AdminLockoutGuard != nil {
+		lockout = services.AdminLockoutGuard
+	} else {
+		logger.Warn("admin-auth: AdminLockoutGuard not set in RuntimeServices; failed-attempt throttling is disabled")
+	}
+
 	cfg := ports.AdminAuthConfig{
 		Enabled:    h.Config.Enabled,
 		Token:      h.Config.Token,
 		ConfigPath: h.Config.ConfigPath,
 	}
-	h.handler = middleware.AdminAuthMiddleware(cfg, auditLogger)
+	h.handler = middleware.AdminAuthMiddleware(cfg, auditLogger, lockout)
 	return nil
 }
 

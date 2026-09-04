@@ -53,6 +53,14 @@ type RuntimeServices struct {
 	// unaffected.
 	SuppressVersion bool
 
+	// AdminLockoutGuard throttles repeated failed admin-token attempts per
+	// client IP. It must be a single shared instance: buildAdminAuthHandlerJSON
+	// is emitted for the admin route, the config route and the catch-all, so
+	// per-handler state would hand an attacker one failure budget per route.
+	// When nil, handlers emit a one-time Warn log and admin auth behaves as it
+	// did before the lockout existed.
+	AdminLockoutGuard ports.AuthLockoutGuard
+
 	// APIKeyValidator validates API keys presented in the X-API-Key header (or
 	// a configured alternative). Required by APIKeyHandler — the handler
 	// operates in fail-closed mode when nil (every request gets HTTP 500).

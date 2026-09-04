@@ -40,6 +40,50 @@ Each item is a concrete action, not a vague recommendation.
   the internet. If you use a firewall allow-list, restrict this path to your internal
   management network.
 
+#### Failed-attempt lockout
+
+Admin-token authentication throttles brute-force probing per client IP. The
+defaults are fixed and need no configuration:
+
+| Parameter | Value |
+|-----------|-------|
+| Failure threshold | 10 consecutive failed attempts |
+| Failure window | 1 minute (measured from the first failure of the streak) |
+| Cooldown | 1 minute |
+
+Behaviour:
+
+- Failures 1–9 return `401 Unauthorized` and emit one `audit.auth.failure`
+  event each, exactly as before.
+- The 10th failure within the window still returns `401`, but emits a single
+  `audit.auth.lockout` audit event **instead of** `audit.auth.failure`. Its
+  `details` carry `failures`, `threshold`, `window_seconds`, `cooldown_seconds`
+  and `retry_after_seconds`.
+- While the cooldown is active, every request from that IP returns
+  `429 Too Many Requests` with a `Retry-After` header and the body error code
+  `too_many_failed_attempts`. The token is never compared and **no** audit event
+  is emitted, so one probing episode produces one audit record rather than
+  hundreds.
+- A successful authentication clears the counter immediately, and the counter
+  resets to zero once the cooldown elapses. There is no permanent lockout.
+- The embedded admin UI (`/_vibewarden/admin/ui/*`) is tokenless, so it never
+  feeds the counter and is never throttled. A locked-out browser still loads the
+  console shell; its data calls get `429`.
+
+Operational notes:
+
+- Tracking is per process and in memory, capped at 10 000 client IPs. It is not
+  shared across sidecar instances (the sidecar is always local, per instance).
+- `X-Forwarded-For` is not honoured for this counter. If VibeWarden sits behind
+  a proxy that terminates connections, all admin requests present the proxy's IP
+  and the lockout degrades to a single global counter for admin traffic: it
+  throttles harder, never less.
+- A team sharing one egress IP can lock itself out for a minute by fat-fingering
+  the token ten times. It is self-healing; wait out the `Retry-After`.
+
+Alert on `audit.auth.lockout` — a lockout on a production sidecar means someone
+is guessing your admin token.
+
 ### Rate limits
 
 - [ ] `rate_limit.enabled: true`.

@@ -51,10 +51,30 @@ const (
 // The comparison is constant-time to prevent timing attacks.
 //
 // The auditLogger receives security audit events (audit.auth.success,
-// audit.auth.failure) for each admin authentication decision. Audit events are
-// always emitted regardless of operational log level. If auditLogger is nil,
-// audit logging is skipped silently.
-func AdminAuthMiddleware(cfg ports.AdminAuthConfig, auditLogger ports.AuditEventLogger) func(http.Handler) http.Handler {
+// audit.auth.failure, audit.auth.lockout) for each admin authentication
+// decision. Audit events are always emitted regardless of operational log
+// level. If auditLogger is nil, audit logging is skipped silently.
+//
+// The lockout guard throttles brute-force probing of the token per client IP.
+// Its policy is owned by the domain package: authguard.DefaultThreshold (10)
+// consecutive failures inside authguard.DefaultWindow (1 minute) lock the
+// client out for authguard.DefaultCooldown (1 minute). While locked out the
+// client receives 429 Too Many Requests with a Retry-After header and the
+// token is never compared; exactly one audit.auth.lockout event is emitted per
+// lockout episode (on the failure that arms it, in place of the
+// audit.auth.failure event), and requests arriving during the cooldown emit no
+// audit event at all. A successful authentication clears the counter.
+//
+// When lockout is nil, throttling is disabled and behaviour is identical to
+// the pre-lockout middleware. When the client IP cannot be resolved from the
+// request, the lockout is skipped for that request and the token is evaluated
+// normally: keying on the empty string would put every unidentifiable client
+// into one shared bucket, letting a single attacker lock them all out.
+func AdminAuthMiddleware(
+	cfg ports.AdminAuthConfig,
+	auditLogger ports.AuditEventLogger,
+	lockout ports.AuthLockoutGuard,
+) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			// Only apply to protected path prefixes.
@@ -94,15 +114,44 @@ func AdminAuthMiddleware(cfg ports.AdminAuthConfig, auditLogger ports.AuditEvent
 				return
 			}
 
+			// Brute-force lockout. Only active when a guard is wired AND the
+			// client IP resolves; both fall back to the unthrottled path.
+			clientIP := ""
+			if lockout != nil {
+				clientIP = ExtractClientIP(r, false)
+			}
+			if clientIP != "" {
+				if st := lockout.Status(clientIP); st.LockedOut {
+					// Locked out: reject without reading or comparing the token,
+					// and without emitting an audit event. No WWW-Authenticate —
+					// that header invites an immediate retry.
+					WriteLockoutResponse(w, r, retryAfterSeconds(st.RetryAfter))
+					return
+				}
+			}
+
 			// Validate the X-Admin-Key header.
 			provided := r.Header.Get(adminKeyHeader)
 			if !secureEqual(provided, cfg.Token) {
-				emitAuditAuthFailure(r, auditLogger, nil, "", "missing or invalid admin key")
+				var st ports.LockoutStatus
+				if clientIP != "" {
+					st = lockout.RecordFailure(clientIP)
+				}
+				if st.Tripped {
+					// The lockout event replaces the per-request failure event
+					// for the attempt that arms the lockout.
+					emitAuditAuthLockout(r, auditLogger, nil, clientIP, st)
+				} else {
+					emitAuditAuthFailure(r, auditLogger, nil, "", "missing or invalid admin key")
+				}
 				w.Header().Set("WWW-Authenticate", `Bearer realm="vibewarden-admin"`)
 				WriteErrorResponse(w, r, http.StatusUnauthorized, "unauthorized", "missing or invalid admin key")
 				return
 			}
 
+			if clientIP != "" {
+				lockout.RecordSuccess(clientIP)
+			}
 			emitAuditAuthSuccess(r, auditLogger, nil, "", "")
 			next.ServeHTTP(w, r)
 		})

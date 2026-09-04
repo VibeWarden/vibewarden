@@ -185,7 +185,7 @@ func TestAdminAuthMiddleware_EmitsAuditSuccessOnValidToken(t *testing.T) {
 	cfg := ports.AdminAuthConfig{Enabled: true, Token: "secret-token"}
 	auditSpy := &fakeAuditEventLogger{}
 
-	mw := AdminAuthMiddleware(cfg, auditSpy)
+	mw := AdminAuthMiddleware(cfg, auditSpy, nil)
 	nextCalled := false
 	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		nextCalled = true
@@ -219,7 +219,7 @@ func TestAdminAuthMiddleware_EmitsAuditFailureOnWrongToken(t *testing.T) {
 	cfg := ports.AdminAuthConfig{Enabled: true, Token: "correct-token"}
 	auditSpy := &fakeAuditEventLogger{}
 
-	mw := AdminAuthMiddleware(cfg, auditSpy)
+	mw := AdminAuthMiddleware(cfg, auditSpy, nil)
 	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
@@ -247,7 +247,7 @@ func TestAdminAuthMiddleware_EmitsAuditFailureOnWrongToken(t *testing.T) {
 func TestAdminAuthMiddleware_NilAuditLoggerDoesNotPanic(t *testing.T) {
 	cfg := ports.AdminAuthConfig{Enabled: true, Token: "secret-token"}
 
-	mw := AdminAuthMiddleware(cfg, nil)
+	mw := AdminAuthMiddleware(cfg, nil, nil)
 	next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})

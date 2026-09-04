@@ -9,6 +9,7 @@ import (
 
 	apikeyv "github.com/vibewarden/vibewarden/internal/adapters/apikey"
 	auditadapter "github.com/vibewarden/vibewarden/internal/adapters/audit"
+	authguardadapter "github.com/vibewarden/vibewarden/internal/adapters/authguard"
 	caddyadapter "github.com/vibewarden/vibewarden/internal/adapters/caddy"
 	logadapter "github.com/vibewarden/vibewarden/internal/adapters/log"
 	ratelimitadapter "github.com/vibewarden/vibewarden/internal/adapters/ratelimit"
@@ -472,6 +473,22 @@ func buildRuntimeServices(
 	// harness), default to false (show version) matching the config default.
 	suppressVersion := cfg != nil && !cfg.Health.ExposeVersion
 
+	// Build the shared admin-token lockout guard. One instance for the whole
+	// process: the Caddy config emits an AdminAuthHandler on the admin route,
+	// the config route and the catch-all, and they must share one failure
+	// budget per client IP. buildRuntimeServices runs once per serve, so the
+	// counter also survives config hot-reloads — a reload must not hand an
+	// attacker a fresh budget.
+	var adminLockout ports.AuthLockoutGuard
+	if guard, err := authguardadapter.NewDefaultMemoryGuard(); err != nil {
+		// Degrade, never fail startup: admin auth still rejects bad tokens.
+		logger.Error("admin-auth: failed to build lockout guard — failed-attempt throttling is disabled",
+			slog.String("error", err.Error()),
+		)
+	} else {
+		adminLockout = guard
+	}
+
 	svc := caddyadapter.RuntimeServices{
 		Logger:                logger,
 		EventLogger:           eventLogger,
@@ -481,6 +498,7 @@ func buildRuntimeServices(
 		UpstreamHealthChecker: checker,
 		SidecarVersion:        version,
 		SuppressVersion:       suppressVersion,
+		AdminLockoutGuard:     adminLockout,
 	}
 
 	// Wire the API key validator when auth.mode is "api-key".

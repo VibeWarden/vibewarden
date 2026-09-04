@@ -239,3 +239,30 @@ func emitAuditAuthFailure(r *http.Request, auditLogger ports.AuditEventLogger, d
 	}
 	logAudit(r.Context(), auditLogger, drops, "auth", ev)
 }
+
+// emitAuditAuthLockout emits an audit.auth.lockout event via the
+// AuditEventLogger port. It is emitted exactly once per lockout episode — on
+// the failed attempt that arms the lockout, in place of the audit.auth.failure
+// event. Requests rejected with 429 while the lockout is already active emit
+// nothing at all. If auditLogger is nil the call is a no-op.
+func emitAuditAuthLockout(r *http.Request, auditLogger ports.AuditEventLogger, drops ports.EventLogDropCounter, clientIP string, st ports.LockoutStatus) {
+	ev, err := audit.NewAuditEvent(
+		audit.EventTypeAuthLockout,
+		audit.Actor{IP: clientIP},
+		audit.Target{Path: r.URL.Path},
+		audit.OutcomeFailure,
+		CorrelationID(r.Context()),
+		map[string]any{
+			"method":              r.Method,
+			"failures":            st.Failures,
+			"threshold":           st.Threshold,
+			"window_seconds":      retryAfterSeconds(st.Window),
+			"cooldown_seconds":    retryAfterSeconds(st.Cooldown),
+			"retry_after_seconds": retryAfterSeconds(st.RetryAfter),
+		},
+	)
+	if err != nil {
+		return
+	}
+	logAudit(r.Context(), auditLogger, drops, "auth", ev)
+}

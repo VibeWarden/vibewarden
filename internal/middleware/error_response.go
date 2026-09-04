@@ -89,6 +89,32 @@ func WriteRateLimitResponse(w http.ResponseWriter, r *http.Request, retryAfterSe
 	_ = json.NewEncoder(w).Encode(resp)
 }
 
+// WriteLockoutResponse writes the 429 Too Many Requests JSON error response
+// used when a client key is locked out after repeated authentication failures.
+// It sets the Retry-After header and includes retry_after_seconds in the body.
+//
+// The error code is "too_many_failed_attempts" rather than
+// "rate_limit_exceeded": a lockout is a distinct condition with a distinct
+// remedy, and consumers key on that string. The response deliberately carries
+// no WWW-Authenticate header, which would invite an immediate retry.
+func WriteLockoutResponse(w http.ResponseWriter, r *http.Request, retryAfterSeconds int) {
+	traceID, requestID := correlationPair(r.Context())
+
+	resp := ErrorResponse{
+		Error:             "too_many_failed_attempts",
+		Status:            http.StatusTooManyRequests,
+		Message:           "too many failed authentication attempts; retry later",
+		TraceID:           traceID,
+		RequestID:         requestID,
+		RetryAfterSeconds: retryAfterSeconds,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Retry-After", strconv.Itoa(retryAfterSeconds))
+	w.WriteHeader(http.StatusTooManyRequests)
+	_ = json.NewEncoder(w).Encode(resp)
+}
+
 // CorrelationID returns the correlation ID for the given context. When the
 // context contains a valid OTel span context, the trace ID is returned.
 // When the context carries a previously generated request ID (stored by
