@@ -6,17 +6,21 @@
 # ---------------------------------------------------------------------------
 # Stage 1: install dependencies
 # ---------------------------------------------------------------------------
-FROM node:22-alpine AS deps
+FROM node:26-alpine AS deps
 
 WORKDIR /app
 
 COPY package.json package-lock.json* ./
-RUN npm ci --omit=dev
+# `npm install`, not `npm ci`: this example deliberately ships no lockfile (see
+# the /examples/node-express entry in .github/dependabot.yml), and `npm ci`
+# hard-fails with EUSAGE when there is none — the `package-lock.json*` glob
+# above silently copies nothing. This build never succeeded (#1495).
+RUN npm install --omit=dev --no-audit --no-fund
 
 # ---------------------------------------------------------------------------
 # Stage 2: runtime
 # ---------------------------------------------------------------------------
-FROM node:22-alpine
+FROM node:26-alpine
 
 WORKDIR /app
 

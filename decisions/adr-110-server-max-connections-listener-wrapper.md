@@ -333,3 +333,15 @@ spec's value, so nothing to call out in the PR description.
 - **`server.read_timeout` / `write_timeout` / `idle_timeout` remain undocumented in
   `vibewarden.reference.yaml`** despite being supported. Noticed while writing this;
   out of scope here, worth a separate docs issue.
+
+## Note (2026-09-04)
+
+Step 3 of the `Accept` algorithm above documented the order as `l.active.Add(-1)`,
+`conn.Close()`, record a refusal. That was the shipped order and it was wrong:
+`fix(#1311)` (carried in #1495) swaps the last two steps so `noteRefusal()` runs
+*before* `conn.Close()`. Closing is what the client observes (FIN/RST), so recording
+the refusal afterwards left a window where a client-side reset was visible before the
+counter and the throttled log line were updated — a real observability gap, not only a
+test race. `TestConnLimitListener_RefusesOverCap` now asserts the count without
+polling, which pins the corrected order. See `CHANGELOG.md` under `[Unreleased] →
+Fixed`.

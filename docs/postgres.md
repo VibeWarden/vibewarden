@@ -477,6 +477,21 @@ minor-version security patches automatically. For local Docker Compose Postgres:
   update deliberately.
 - Monitor disk usage: `SELECT pg_size_pretty(pg_database_size('vibewarden'));`
 
+### Why the generated stack pins Postgres 17, not 18
+
+Both the dev `docker-compose.yml` and the compose file `vibew generate` emits pin
+`postgres:17-alpine` deliberately, and Dependabot is configured to ignore the major
+bump. Every Postgres major changes the catalog version, so an existing `kratos-db`
+or `postgres_data` volume refuses to start under an 18 image, and PostgreSQL 18's
+`initdb` enables data checksums by default, which means `pg_upgrade` also needs
+`--no-data-checksums` on the new cluster. No PostgreSQL 18 feature is reachable from
+anything VibeWarden does. Minor and patch updates inside 17.x still flow normally, so
+security patching is unaffected. See
+[ADR-113](https://github.com/vibewarden/vibewarden/blob/main/decisions/adr-113-deliberate-major-version-pins-postgres-17-redis-7.md).
+
+If you run your own Postgres (Strategy 2 or 3), this pin does not apply to you — use
+whichever major your provider offers.
+
 ### Connection exhaustion
 
 If you see `sorry, too many clients already` errors:

@@ -138,6 +138,23 @@ updates:
       prefix: "deps(compose)"
     labels:
       - tech-debt
+    # Two majors are pinned deliberately (ADR-113). Without these rules
+    # Dependabot reopens the same rejected PR every Monday. Minor and patch
+    # updates keep flowing for both, so security patching is unaffected.
+    ignore:
+      # postgres 17 -> 18 changes the catalog version, so an existing
+      # kratos-db volume refuses to start, and PG18's checksum-enabled initdb
+      # makes pg_upgrade recovery worse. Revisit when VibeWarden owns a volume
+      # migration path, or at PG17 EOL (November 2029).
+      - dependency-name: "postgres"
+        update-types:
+          - version-update:semver-major
+      # redis 7 -> 8 is a 2.4x image-size increase for zero reachable benefit;
+      # the destination is Valkey (BSD-3), owned by #1497. Drop this rule when
+      # #1497 lands.
+      - dependency-name: "redis"
+        update-types:
+          - version-update:semver-major
 
   # GitHub Actions — keep CI actions pinned to latest.
   - package-ecosystem: github-actions
