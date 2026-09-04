@@ -140,9 +140,10 @@ const reviewOnce = async (round) => parallel([
 // so stop the round rather than run a fix loop on someone else's blocking items.
 const readPostedVerdicts = (round) => agent(
   `Report what is currently POSTED on PR #${dev.pr_number} in ${REPO} — do not review the PR yourself. ` +
-  `Read both surfaces: gh api repos/${REPO}/issues/${dev.pr_number}/comments --jq '.[] | .body' | cat, ` +
-  `and gh api repos/${REPO}/pulls/${dev.pr_number}/reviews --jq '.[] | .body' | cat. ` +
-  `Take the newest body whose first line contains "Reviewer Agent:" and the newest whose first line contains "Writer Agent:". ` +
+  `Read both surfaces, one line per comment (created_at TAB first line of the body): ` +
+  `gh api repos/${REPO}/issues/${dev.pr_number}/comments --jq '.[] | "\\(.created_at)\\t\\(.body | split("\\n")[0])"' | cat, ` +
+  `and gh api repos/${REPO}/pulls/${dev.pr_number}/reviews --jq '.[] | "\\(.created_at)\\t\\(.body | split("\\n")[0])"' | cat. ` +
+  `Across both surfaces take the line with the latest created_at containing "Reviewer Agent:" and the latest containing "Writer Agent:". ` +
   `Map APPROVED -> approve, CHANGES REQUESTED -> changes, and use "missing" when no such comment exists.`,
   { label: `posted-check:r${round}:#${dev.pr_number}`, effort: 'low', schema: POSTED },
 )

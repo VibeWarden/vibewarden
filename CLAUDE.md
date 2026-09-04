@@ -206,7 +206,7 @@ EOF
 )"
 ```
 
-`--body-file <fixed path>` is banned. The session scratchpad is shared by every
+`--body-file <fixed path>` (and `--notes-file` on releases) is banned. The session scratchpad is shared by every
 subagent and the agent shell runs zsh with `noclobber`, so `> review.md` onto an
 existing file fails with `file exists:`, the write is skipped, the command list
 keeps running, and the agent posts the *previous* agent's verdict under its own
