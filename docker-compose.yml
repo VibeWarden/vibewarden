@@ -185,11 +185,16 @@ services:
   # storage backend and Shamir unseal keys (see docs/secret-management.md).
   # --------------------------------------------------------------------------
   openbao:
-    # Held on the 2.5.x line: from 2.6.0 the openbao image runs as the
-    # non-root "openbao" user, which breaks seed-secrets writing back to
-    # the owner-only bind-mounted .credentials file in generated bundles.
+    # Held on the 2.5.x line, deliberately (#1291, reaffirmed #1505): from
+    # 2.6.0 the openbao image runs as the non-root "openbao" user (uid 100,
+    # against root in 2.5.5), which breaks seed-secrets writing back to the
+    # owner-only bind-mounted .credentials file in generated bundles. 2.6.0
+    # also deprecates the `file` storage backend the prod profile uses, for
+    # removal in 2.7.0. The 2.6.x move needs its own verified upgrade, not a
+    # version-sync commit; a Dependabot ignore rule in .github/dependabot.yml
+    # stops it reopening weekly.
     # Kept in sync with internal/config/templates/docker-compose.yml.tmpl
-    # (enforced by TestOpenBaoImagePin_TemplateMatchesDevCompose).
+    # (enforced by TestTemplateImagePins_MatchDevCompose).
     image: quay.io/openbao/openbao:2.5.5
     container_name: vibewarden-openbao
     cap_add:
@@ -315,7 +320,7 @@ services:
   #   docker compose --profile observability up -d
   # --------------------------------------------------------------------------
   grafana:
-    image: grafana/grafana-oss:13.0.1
+    image: grafana/grafana-oss:13.0.2
     container_name: vibewarden-grafana
     profiles:
       - observability

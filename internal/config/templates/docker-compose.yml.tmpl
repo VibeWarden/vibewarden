@@ -242,9 +242,11 @@ services:
 {{- if .Secrets.UsesOpenBao }}
 
   openbao:
-    # Held on the 2.5.x line: from 2.6.0 the openbao image runs as the
-    # non-root "openbao" user, which breaks seed-secrets writing back to
-    # the owner-only bind-mounted .credentials file.
+    # Held on the 2.5.x line, deliberately (#1291, reaffirmed #1505): from
+    # 2.6.0 the openbao image runs as the non-root "openbao" user, which
+    # breaks seed-secrets writing back to the owner-only bind-mounted
+    # .credentials file. 2.6.0 also deprecates the `file` storage backend
+    # this prod profile uses, for removal in 2.7.0.
     image: quay.io/openbao/openbao:2.5.5
     restart: unless-stopped
     cap_add:
@@ -434,7 +436,7 @@ services:
       retries: 5
 
   grafana:
-    image: grafana/grafana-oss:13.0.1
+    image: grafana/grafana-oss:13.0.2
     profiles:
       - observability
     restart: unless-stopped

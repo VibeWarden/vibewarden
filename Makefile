@@ -85,7 +85,7 @@ check-npm: ## Run the npm distribution wrapper tests (requires Node >= 22)
 
 # Run integration tests (requires Docker running).
 # These are gated behind //go:build integration and test multi-app routing,
-# deploy flows, and Docker-in-Docker scenarios.
+# bundle generation, and the observability lifecycle.
 integration: ## Run integration tests (requires Docker)
 	@echo "==> Building VibeWarden image for integration tests (vibewarden:local-test)..."
 	docker build --tag vibewarden:local-test .
