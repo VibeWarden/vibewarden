@@ -16,6 +16,10 @@ The project scaffold established the Go module, directory structure, development
 
 ## Specification
 
+Everything under this heading records the state at the 2026-03-20 bootstrap and is not
+kept current. Pinned versions in particular have moved on (the repository tracks the
+latest stable Go; see `go.mod`).
+
 #### Go Module
 
 - Module path: `github.com/vibewarden/vibewarden`
@@ -34,7 +38,19 @@ This is standard practice and does not trigger copyleft requirements.
 
 ### File Layout
 
-The dev agent must create exactly this structure (as of the initial bootstrap):
+> **Historical snapshot, not a specification.** The tree below is the layout the initial
+> bootstrap created on 2026-03-20. It is kept as a record of what ADR-003 asked for; it
+> does not describe the repository today and must not be used as a target.
+>
+> For the current layout, read the tree itself: `find internal -maxdepth 1 -type d` for
+> the top-level packages, `find internal/adapters -maxdepth 1 -type d` for the adapters,
+> and `ls -d */` at the repository root. **CLAUDE.md § Directory layout** states the
+> architectural contract those directories have to satisfy (domain has no external
+> dependencies, ports hold the interfaces, adapters implement them), but its tree is
+> abbreviated and is not an inventory, so do not read either document as a directory
+> listing.
+
+The bootstrap issue (#1) specified this structure:
 
 ```
 vibewarden/
