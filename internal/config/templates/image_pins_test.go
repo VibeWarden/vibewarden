@@ -27,6 +27,11 @@ const devComposePath = "../../../docker-compose.yml"
 // devComposePath: the working directory is internal/config/templates.
 const internalRoot = "../../../internal"
 
+// springBootDockerfilePath points at the Spring Boot example's multi-stage
+// Dockerfile, whose two stages must share a Java major. Same relative-path
+// rule as devComposePath.
+const springBootDockerfilePath = "../../../examples/spring-boot/Dockerfile"
+
 // imagePinRe captures the name and tag of a `image: <name>:<tag>` line in a
 // compose file or compose template. Templated references such as
 // `image: {{ .SidecarImage }}` and `image: ${VIBEWARDEN_APP_IMAGE:-...}` do not
@@ -288,6 +293,52 @@ func TestIntegrationTestImagePins_MatchDevCompose(t *testing.T) {
 		if testPins[name] != devPins[name] {
 			t.Errorf("image pin drift for %s: %s uses %q but %s uses %q — bump both together",
 				name, devComposePath, devPins[name], origin[name], testPins[name])
+		}
+	}
+}
+
+// javaMajorRe captures the Java major of a Temurin-based image tag in a
+// Dockerfile `FROM` line. It matches both stages of the Spring Boot example:
+// `maven:3.9-eclipse-temurin-25-alpine` (build) and `eclipse-temurin:25-jre-alpine`
+// (runtime). The `eclipse-temurin[-:]` alternation is what distinguishes the
+// Java major from the Maven major that precedes it in the build-stage tag.
+var javaMajorRe = regexp.MustCompile(`(?m)^FROM\s+\S*eclipse-temurin[-:](\d+)`)
+
+// TestSpringBootExample_BuildAndRuntimeShareJavaMajor verifies that the Spring
+// Boot example's build stage and runtime stage run the same Java major.
+//
+// This is a fourth pin site with a constraint no tag-equality check can express:
+// the two images have different names, so nothing above compares them, yet the
+// pom sets no <java.version> and javac therefore targets whatever JDK the build
+// stage ships. A newer build stage than runtime stage emits class files the
+// runtime refuses with UnsupportedClassVersionError — an error that appears only
+// when the container starts, long after the image builds green.
+//
+// Dependabot treats the two as independent and has proposed the split twice:
+// runtime-only in #1494 (caught by hand in #1495, ADR-113) and build-only in
+// #1499 (rejected in #1505). The maven image is now ignored in
+// .github/dependabot.yml, which stops the automated half; this test stops the
+// manual half.
+func TestSpringBootExample_BuildAndRuntimeShareJavaMajor(t *testing.T) {
+	data, err := os.ReadFile(springBootDockerfilePath)
+	if err != nil {
+		t.Fatalf("reading %s: %v", springBootDockerfilePath, err)
+	}
+
+	matches := javaMajorRe.FindAllStringSubmatch(string(data), -1)
+	if len(matches) < 2 {
+		t.Fatalf("%s: found %d Temurin FROM line(s), want the build and runtime stages — "+
+			"has the example stopped using a multi-stage Temurin build?",
+			springBootDockerfilePath, len(matches))
+	}
+
+	first := matches[0][1]
+	for _, m := range matches[1:] {
+		if m[1] != first {
+			t.Errorf("%s: Java major drift between stages — one FROM uses Temurin %s, another uses %s. "+
+				"The pom sets no <java.version>, so a newer build stage emits class files the runtime "+
+				"rejects with UnsupportedClassVersionError. Bump every stage together.",
+				springBootDockerfilePath, first, m[1])
 		}
 	}
 }

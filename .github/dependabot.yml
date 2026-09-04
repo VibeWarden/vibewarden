@@ -106,7 +106,6 @@ updates:
       - /examples/node-express
       - /examples/python-flask
       - /examples/spring-boot
-      - /test/fixtures/deploy-server
     schedule:
       interval: weekly
       day: monday
@@ -114,6 +113,16 @@ updates:
       prefix: "deps(docker)"
     labels:
       - tech-debt
+    ignore:
+      # examples/spring-boot pins two images that MUST share a Java major:
+      # the maven build stage and the eclipse-temurin runtime stage. Dependabot
+      # treats them as independent and proposed a Temurin 26 build stage against
+      # a Temurin 25 runtime (#1499, #1505), which is an
+      # UnsupportedClassVersionError at container start. The runtime image stays
+      # watched and is the single trigger for moving the pair by hand; the maven
+      # image is ignored outright because its `3.9-...` tag is floating, so
+      # Maven's own patch releases arrive on rebuild without a PR.
+      - dependency-name: "maven"
 
   # Docker Compose — image pins in compose files.
   #
@@ -154,6 +163,17 @@ updates:
       # #1497 lands.
       - dependency-name: "redis"
         update-types:
+          - version-update:semver-major
+      # openbao 2.5 -> 2.6 is a minor that changes the image user to non-root
+      # (uid 100), which breaks seed-secrets writing back to the owner-only
+      # bind-mounted .credentials file, and deprecates the `file` storage
+      # backend the prod profile uses. Held on 2.5.x by #1291 and reaffirmed by
+      # #1505; minor updates are ignored as well as majors because the break is
+      # on the minor. Patch releases within 2.5.x keep flowing. Drop this rule
+      # with the verified 2.6.x upgrade.
+      - dependency-name: "quay.io/openbao/openbao"
+        update-types:
+          - version-update:semver-minor
           - version-update:semver-major
 
   # GitHub Actions — keep CI actions pinned to latest.
