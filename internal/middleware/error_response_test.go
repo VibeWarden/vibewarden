@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -202,6 +203,80 @@ func TestWriteRateLimitResponse_IncludesRetryAfterSeconds(t *testing.T) {
 				t.Errorf("retry_after_seconds = %d, want %d", resp.RetryAfterSeconds, tt.seconds)
 			}
 		})
+	}
+}
+
+// TestWriteLockoutResponse_Shape verifies the 429 lockout response: the
+// dedicated error code, the Retry-After header, the body field, and the
+// deliberate absence of a WWW-Authenticate header.
+func TestWriteLockoutResponse_Shape(t *testing.T) {
+	tests := []struct {
+		name    string
+		seconds int
+	}{
+		{"zero", 0},
+		{"one second", 1},
+		{"one minute", 60},
+		{"large value", 300},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, "/_vibewarden/admin/users", nil)
+			w := httptest.NewRecorder()
+
+			WriteLockoutResponse(w, req, tt.seconds)
+
+			if w.Code != http.StatusTooManyRequests {
+				t.Errorf("status = %d, want %d", w.Code, http.StatusTooManyRequests)
+			}
+			if got, want := w.Header().Get("Retry-After"), strconv.Itoa(tt.seconds); got != want {
+				t.Errorf("Retry-After = %q, want %q", got, want)
+			}
+			if ct := w.Header().Get("Content-Type"); ct != "application/json" {
+				t.Errorf("Content-Type = %q, want %q", ct, "application/json")
+			}
+			if got := w.Header().Get("WWW-Authenticate"); got != "" {
+				t.Errorf("WWW-Authenticate = %q, want absent", got)
+			}
+
+			resp := decodeErrorResponse(t, w)
+			if resp.Error != "too_many_failed_attempts" {
+				t.Errorf("error = %q, want %q", resp.Error, "too_many_failed_attempts")
+			}
+			if resp.Error == "rate_limit_exceeded" {
+				t.Error("the lockout response must not reuse the rate-limit error code")
+			}
+			if resp.Status != http.StatusTooManyRequests {
+				t.Errorf("status = %d, want %d", resp.Status, http.StatusTooManyRequests)
+			}
+			if resp.RetryAfterSeconds != tt.seconds {
+				t.Errorf("retry_after_seconds = %d, want %d", resp.RetryAfterSeconds, tt.seconds)
+			}
+			if resp.Message == "" {
+				t.Error("message must not be empty")
+			}
+		})
+	}
+}
+
+// TestWriteLockoutResponse_WithTraceContext verifies trace correlation follows
+// the same rules as the other error writers.
+func TestWriteLockoutResponse_WithTraceContext(t *testing.T) {
+	ctx, end := withSpanContext(context.Background())
+	defer end()
+
+	req := httptest.NewRequest(http.MethodGet, "/_vibewarden/admin/users", nil).WithContext(ctx)
+	w := httptest.NewRecorder()
+
+	WriteLockoutResponse(w, req, 60)
+
+	resp := decodeErrorResponse(t, w)
+	if len(resp.TraceID) != 32 {
+		t.Errorf("trace_id = %q, want 32-char hex string", resp.TraceID)
+	}
+	if resp.RequestID != "" {
+		t.Errorf("request_id = %q, want empty when trace available", resp.RequestID)
 	}
 }
 

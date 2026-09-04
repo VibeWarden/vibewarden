@@ -5,10 +5,13 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	gocaddy "github.com/caddyserver/caddy/v2"
 	"github.com/caddyserver/caddy/v2/modules/caddyhttp"
 
+	authguardadapter "github.com/vibewarden/vibewarden/internal/adapters/authguard"
+	"github.com/vibewarden/vibewarden/internal/domain/authguard"
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
 
@@ -154,6 +157,97 @@ func TestAdminAuthHandler_ServeHTTP(t *testing.T) {
 				t.Errorf("nextCalled = %v, want %v", nextCalled, tt.wantNext)
 			}
 		})
+	}
+}
+
+// TestAdminAuthHandler_SharesOneLockoutGuardAcrossInstances asserts the
+// property the whole feature rests on: every AdminAuthHandler provisioned from
+// the same RuntimeServices consumes ONE failure budget per client IP.
+//
+// A Caddy config carries up to three of these handlers (admin route, config
+// route, catch-all). Per-handler state would give an attacker three budgets, so
+// the failures below are deliberately spread across three instances and the
+// lockout must still trip on the third attempt overall.
+func TestAdminAuthHandler_SharesOneLockoutGuardAcrossInstances(t *testing.T) {
+	guard, err := authguardadapter.NewMemoryGuard(
+		authguard.Policy{Threshold: 3, Window: time.Minute, Cooldown: time.Minute},
+		100,
+	)
+	if err != nil {
+		t.Fatalf("NewMemoryGuard() error = %v", err)
+	}
+
+	services := RuntimeServices{AdminLockoutGuard: guard}
+	cfg := AdminAuthHandlerConfig{Enabled: true, Token: "secret"}
+
+	handlers := make([]*AdminAuthHandler, 3)
+	for i := range handlers {
+		h := &AdminAuthHandler{Config: cfg}
+		if err := h.ProvisionWith(services); err != nil {
+			t.Fatalf("ProvisionWith() error = %v", err)
+		}
+		handlers[i] = h
+	}
+
+	next := caddyhttp.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) error {
+		w.WriteHeader(http.StatusOK)
+		return nil
+	})
+
+	probe := func(h *AdminAuthHandler, token string) int {
+		req := httptest.NewRequest(http.MethodGet, "/_vibewarden/admin/users", nil)
+		req.RemoteAddr = "203.0.113.9:4321"
+		req.Header.Set("X-Admin-Key", token)
+		w := httptest.NewRecorder()
+		if err := h.ServeHTTP(w, req, next); err != nil {
+			t.Fatalf("ServeHTTP() error = %v", err)
+		}
+		return w.Code
+	}
+
+	// One wrong-token attempt against each of the three handler instances.
+	for i, h := range handlers {
+		if got := probe(h, "wrong"); got != http.StatusUnauthorized {
+			t.Fatalf("attempt %d: status = %d, want %d", i+1, got, http.StatusUnauthorized)
+		}
+	}
+
+	// The shared counter is now at the threshold: the next request is throttled
+	// on ANY of the instances, even with the correct token.
+	for i, h := range handlers {
+		if got := probe(h, "secret"); got != http.StatusTooManyRequests {
+			t.Errorf("instance %d: status = %d, want %d — the guard is not shared", i+1, got, http.StatusTooManyRequests)
+		}
+	}
+}
+
+// TestAdminAuthHandler_NilLockoutGuardPreservesBehaviour verifies that a
+// RuntimeServices without a guard degrades to the pre-lockout behaviour rather
+// than failing to provision.
+func TestAdminAuthHandler_NilLockoutGuardPreservesBehaviour(t *testing.T) {
+	h := &AdminAuthHandler{Config: AdminAuthHandlerConfig{Enabled: true, Token: "secret"}}
+	if err := h.ProvisionWith(RuntimeServices{}); err != nil {
+		t.Fatalf("ProvisionWith() error = %v", err)
+	}
+
+	next := caddyhttp.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) error {
+		w.WriteHeader(http.StatusOK)
+		return nil
+	})
+
+	// Far more than the default threshold of wrong-token attempts: without a
+	// guard every one of them is a plain 401.
+	for i := 0; i < authguard.DefaultThreshold+5; i++ {
+		req := httptest.NewRequest(http.MethodGet, "/_vibewarden/admin/users", nil)
+		req.RemoteAddr = "203.0.113.9:4321"
+		req.Header.Set("X-Admin-Key", "wrong")
+		w := httptest.NewRecorder()
+		if err := h.ServeHTTP(w, req, next); err != nil {
+			t.Fatalf("ServeHTTP() error = %v", err)
+		}
+		if w.Code != http.StatusUnauthorized {
+			t.Fatalf("attempt %d: status = %d, want %d", i+1, w.Code, http.StatusUnauthorized)
+		}
 	}
 }
 

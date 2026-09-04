@@ -775,6 +775,17 @@ Each entry in `webhooks.endpoints`:
 | `admin.enabled` | bool | `false` | Enable the admin API at `/_vibewarden/admin/*` |
 | `admin.token` | string | `""` | Bearer token for admin API authentication |
 
+Admin-token authentication has a built-in, non-configurable brute-force
+lockout: 10 consecutive failed attempts from one client IP within 1 minute lock
+that IP out for 1 minute. During the lockout the token is not compared and
+requests get `429 Too Many Requests` with a `Retry-After` header and the error
+code `too_many_failed_attempts`. The attempt that trips the lockout emits a
+single `audit.auth.lockout` audit event in place of the usual
+`audit.auth.failure`; requests received during the cooldown emit no audit event
+at all. A successful authentication resets the counter. See
+[Production hardening](production-hardening.md#failed-attempt-lockout) for the
+full behaviour.
+
 ---
 
 ## `overrides`

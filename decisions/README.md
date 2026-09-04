@@ -106,6 +106,7 @@ the DEMOTE and TOMBSTONE buckets, not to the KEEP banner set above.
 | [111](adr-111-sidecar-container-resource-limits.md) | Sidecar container resource limits — `mem_limit`/`cpus`/`pids_limit` in both compose templates, config-driven under `server:`, with a derived `GOMEMLIMIT` | #1306 | |
 | [112](adr-112-npm-distribution-vibewarden-cli-wrapper.md) | npm distribution — `@vibewarden/cli`, a zero-dependency wrapper that downloads the goreleaser binary at postinstall | #1258 | |
 | [113](adr-113-deliberate-major-version-pins-postgres-17-redis-7.md) | Deliberate major-version pins for two referenced service images — Postgres 17 and Redis 7 | #1495 | Rules that the approved-license list covers linked/redistributed code, not referenced service images; Redis pin is a holding measure owned by #1497 |
+| [114](adr-114-admin-token-lockout-per-client-ip.md) | Per-client-IP lockout for failed admin-token attempts — `authguard` domain state machine, in-memory guard, shared via `RuntimeServices` | #1478 | Adds the `audit.auth.lockout` event type; records why `schema/v1/event.json` is not touched (it does not cover the `audit.*` stream) |
 | [497](adr-497-graceful-shutdown-connection-draining.md) | Graceful Shutdown / Connection Draining | — | Removed 2026-05-04 — see tombstone (anomalous number, paste of issue #497) |
 
 ## Numbering

@@ -33,6 +33,12 @@ const (
 	// presented credentials are missing, invalid, or expired.
 	EventTypeAuthFailure EventType = "audit.auth.failure"
 
+	// EventTypeAuthLockout is recorded when repeated failed authentication
+	// attempts from one client trip a lockout, throttling further attempts.
+	// It replaces the EventTypeAuthFailure event for the attempt that arms the
+	// lockout, and is emitted exactly once per lockout episode.
+	EventTypeAuthLockout EventType = "audit.auth.lockout"
+
 	// EventTypeAuthAPIKeySuccess is recorded when a request is authenticated
 	// successfully via an API key.
 	EventTypeAuthAPIKeySuccess EventType = "audit.auth.api_key.success"

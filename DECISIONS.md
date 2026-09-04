@@ -8,6 +8,17 @@ Each ADR is a standalone file at `decisions/adr-NNN-title.md`.
 
 ## PM Log
 
+### 2026-09-04 — #1478 admin-token brute-force throttling spec finalised
+
+- Posted full spec as a PM comment on #1478 (https://github.com/VibeWarden/vibewarden/issues/1478#issuecomment-5534311048).
+- Label `status:ready-for-arch` added (lowercase-hyphenated, kept existing `enhancement` + `priority:low`). No `epic:*` label — this is a standalone defense-in-depth hardening story, not part of an existing epic batch.
+- Verified before writing the spec that the gap is real and current: `AdminAuthMiddleware` (`internal/middleware/admin_auth.go`) still runs at plugin priority 30 (`internal/plugins/builtin.go`), before the rate-limit plugin at priority 50 (`internal/plugins/ratelimit/plugin.go`); on a failed `X-Admin-Key` it only emits `audit.auth.failure` (`internal/domain/audit/audit.go`) with no counter or lockout path. `audit.auth.lockout` does not exist yet as an event type. Not redundant with any existing feature — proceeded with the spec.
+- Confirmed feasibility precedent exists: a shared client-IP resolver (`internal/middleware/ip.go`) is already used by the rate-limit, WAF, and API-key middleware, so per-IP tracking is a well-trodden pattern here, not a novel mechanism — this is why the story was not challenged.
+- Scope: in-memory, bounded, per-process counter local to `AdminAuthMiddleware` only (10 failures / 1-min window → 429 with `Retry-After` / 1-min cooldown, success resets counter, single `audit.auth.lockout` event per episode). Explicitly out of scope: changing middleware priority/order, Kratos's own login lockout, WAF/IP-filter changes, and any new `vibewarden.yaml` config surface unless the architect finds a concrete need.
+- Added an acceptance criterion the issue itself didn't call out: `audit.auth.lockout` is a new public event-schema value, so `vibewarden.dev/schema/v1/event.json` (or its source doc) must be updated alongside `docs/security.md` and `CHANGELOG.md` — per CLAUDE.md's "treat schema stability with the same care as a public API."
+- Open questions delegated to architect: (1) exact logging behavior for requests arriving *during* an already-tripped cooldown (repeat audit event vs. debug-only vs. throttled repeat) — flagged as the one point most likely to blow the audit-log-volume guarantee this story exists to deliver; (2) explicit confirmation that the tokenless `/_vibewarden/admin/ui/*` carve-out never contributes to the failure counter (it never fails auth today, but calling it out to avoid an implicit assumption); (3) whether the 10/1min/1min defaults should be reconciled with any existing rate-limit constants elsewhere in the codebase.
+- Added to v1 project board successfully (`gh project item-add 1 --owner VibeWarden` succeeded).
+
 ### 2026-09-04 — #1495 batched Dependabot image bumps spec finalised
 
 - Posted full spec as a PM comment on #1495 (https://github.com/VibeWarden/vibewarden/issues/1495#issuecomment-5533743608).

@@ -96,6 +96,8 @@ paths:
                 $ref: "#/components/schemas/ListUsersResponse"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/TooManyAttempts"
         "404":
           $ref: "#/components/responses/AdminDisabled"
         "503":
@@ -130,6 +132,8 @@ paths:
           $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/TooManyAttempts"
         "404":
           $ref: "#/components/responses/AdminDisabled"
         "409":
@@ -166,6 +170,8 @@ paths:
           $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/TooManyAttempts"
         "404":
           $ref: "#/components/responses/NotFound"
         "503":
@@ -193,6 +199,8 @@ paths:
           $ref: "#/components/responses/BadRequest"
         "401":
           $ref: "#/components/responses/Unauthorized"
+        "429":
+          $ref: "#/components/responses/TooManyAttempts"
         "404":
           $ref: "#/components/responses/NotFound"
         "503":
@@ -378,6 +386,14 @@ components:
           type: string
           description: Human-readable error description.
           example: "user ID must be a valid UUID"
+        status:
+          type: integer
+          description: HTTP status code, repeated in the body for convenience.
+          example: 400
+        retry_after_seconds:
+          type: integer
+          description: Present only on 429 responses; seconds to wait before retrying.
+          example: 60
 
   responses:
     Unauthorized:
@@ -389,6 +405,28 @@ components:
           example:
             error: unauthorized
             message: "missing or invalid admin token"
+
+    TooManyAttempts:
+      description: |
+        Too many consecutive failed admin-token attempts from this client IP.
+        After 10 failures within 1 minute the client is locked out for 1 minute;
+        the token is not evaluated while the lockout is active. The Retry-After
+        header carries the remaining cooldown in seconds.
+      headers:
+        Retry-After:
+          description: Seconds to wait before retrying.
+          schema:
+            type: integer
+          example: 60
+      content:
+        application/json:
+          schema:
+            $ref: "#/components/schemas/ErrorResponse"
+          example:
+            error: too_many_failed_attempts
+            status: 429
+            message: "too many failed authentication attempts; retry later"
+            retry_after_seconds: 60
 
     BadRequest:
       description: The request is malformed or contains invalid parameters.
