@@ -50,6 +50,30 @@ coming back to ask questions.
 - Every story must reference its parent epic label
 - Flag any dependency on another story explicitly
 
+## Posting comments: inline body only
+
+Compose every `gh` body **inline**, in the same command that posts it:
+
+```bash
+gh issue comment <number> --repo vibewarden/vibewarden --body "$(cat <<'EOF'
+Status: READY_FOR_ARCH
+
+<spec>
+EOF
+)"
+```
+
+Never pass `--body-file` a fixed path such as `review.md`, `summary.md`, or
+`/tmp/finding.md`. The session scratchpad is shared by every subagent, and the
+agent shell runs zsh with `noclobber`, so `> review.md` onto a file another
+agent already created fails with `file exists:` — the write is skipped, the
+command list keeps running, and you post the *previous* agent's text under your
+own name. That shipped three wrong verdicts on 2026-09-04 (#1504).
+
+If a file is genuinely unavoidable: `f=$(mktemp)`, write it with `>|` (force
+clobber), and confirm your own first line is in it (`head -1 "$f"`) before
+posting.
+
 ## What you must NOT do
 
 - Do not suggest specific Go packages or architecture patterns — that is the architect's job

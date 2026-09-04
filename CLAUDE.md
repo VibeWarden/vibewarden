@@ -193,6 +193,30 @@ Quality gates are enforced by hooks in `.claude/settings.json`, not agent discip
 a `SubagentStop` hook blocks the dev agent from finishing until `/usr/bin/make check`
 passes, and a `PostToolUse` hook syncs status labels when `gh pr create` runs.
 
+### Agent comments: inline body, never `--body-file`
+
+Every agent that posts to GitHub (verdicts, specs, designs, findings) must compose
+the body **inline** in the posting command:
+
+```bash
+gh pr comment <n> --repo vibewarden/vibewarden --body "$(cat <<'EOF'
+**Reviewer Agent: APPROVED**
+...
+EOF
+)"
+```
+
+`--body-file <fixed path>` is banned. The session scratchpad is shared by every
+subagent and the agent shell runs zsh with `noclobber`, so `> review.md` onto an
+existing file fails with `file exists:`, the write is skipped, the command list
+keeps running, and the agent posts the *previous* agent's verdict under its own
+name. Three wrong verdicts shipped that way on 2026-09-04 (#1504). If a file is
+unavoidable, use `f=$(mktemp)` with `>|` and verify the first line before posting.
+
+The verdict must be the first line of the comment and must match the agent's
+structured return value; `/issue-pipeline` cross-checks the two after each review
+round and escalates instead of running a fix loop on a phantom blocker.
+
 ### Model tiering (agent frontmatter is authoritative)
 
 | Tier | Agents | Why |
