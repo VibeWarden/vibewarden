@@ -7,7 +7,7 @@
 #
 # Requires --privileged when run (needed for dockerd).
 
-FROM docker:27-dind
+FROM docker:29-dind
 
 # docker:27-dind already includes docker CLI + compose plugin.
 # Upgrade base packages first to resolve version conflicts with openssh,
