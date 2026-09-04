@@ -190,7 +190,7 @@ services:
     # the owner-only bind-mounted .credentials file in generated bundles.
     # Kept in sync with internal/config/templates/docker-compose.yml.tmpl
     # (enforced by TestOpenBaoImagePin_TemplateMatchesDevCompose).
-    image: quay.io/openbao/openbao:2.5.5
+    image: quay.io/openbao/openbao:2.6.2
     container_name: vibewarden-openbao
     cap_add:
       - IPC_LOCK
