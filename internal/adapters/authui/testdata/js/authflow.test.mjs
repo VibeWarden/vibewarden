@@ -34,6 +34,57 @@ function errorText(page) {
 }
 
 // ---------------------------------------------------------------------------
+// Flow initialisation transport
+//
+// A browser answers fetch(..., { redirect: 'manual' }) with an opaque-redirect
+// response: status 0, empty header list, null body. Page code that reads the
+// Location header off one of those can never start a flow, so both the fake and
+// the pages are pinned here.
+// ---------------------------------------------------------------------------
+
+test('harness: redirect "manual" yields the browser opaque-redirect shape', async () => {
+  const kratos = fakeKratos('login');
+  const res = await kratos.fetch('https://app.test/self-service/login/browser', { redirect: 'manual' });
+
+  assert.equal(res.status, 0);
+  assert.equal(res.type, 'opaqueredirect');
+  assert.equal(res.ok, false);
+  assert.equal(res.url, '', 'the final URL is hidden from an opaque redirect');
+  assert.equal(res.headers.get('location'), null, 'no header is readable');
+  assert.equal(res.headers.get('Location'), null);
+  await assert.rejects(() => res.json(), 'an opaque redirect has no body');
+});
+
+const initPages = [
+  { name: 'login', html: loginHTML, kind: 'login', csrfID: 'csrf-token' },
+  { name: 'registration', html: registrationHTML, kind: 'registration', csrfID: 'csrf-token' },
+  { name: 'settings', html: settingsHTML, kind: 'settings', csrfID: 'password-csrf-token' },
+];
+
+for (const page of initPages) {
+  test(page.name + ': starts a fresh flow without reading an opaque redirect', async () => {
+    const kratos = fakeKratos(page.kind);
+    const guarded = async (url, opts = {}) => {
+      assert.notEqual(
+        opts.redirect,
+        'manual',
+        'redirect "manual" returns an unreadable opaque response in a browser',
+      );
+      return kratos.fetch(url, opts);
+    };
+
+    const loaded = await loadPage(page.html, {
+      url: 'https://app.test/_vibewarden/' + page.kind + '?flow=long-gone',
+      fetch: guarded,
+    });
+
+    assert.equal(kratos.inits, 1, 'a fresh browser flow must be initialised');
+    assert.equal(loaded.el(page.csrfID).value, 'csrf-1', 'the page is bound to the fresh flow');
+    assert.equal(errorText(loaded), '');
+  });
+}
+
+// ---------------------------------------------------------------------------
 // Login
 // ---------------------------------------------------------------------------
 

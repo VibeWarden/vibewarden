@@ -228,19 +228,38 @@
   // rotates the anti-CSRF cookie when it hands out a new flow, so the
   // csrf_token captured at page load is dead from this point on and every
   // caller must use the token carried by the returned flow.
+  //
+  // The init endpoint answers a plain browser navigation with a 303 to
+  // ?flow=<id>, but that Location header is unreadable from fetch: with
+  // redirect:'manual' the browser hands back an opaque-redirect response whose
+  // status is 0 and whose header list is empty, so headers.get('location') is
+  // always null. Content-negotiate JSON instead — Kratos then returns the flow
+  // body itself — and fall back to the final URL of a followed redirect if
+  // something in front of Kratos ignores the Accept header.
   async function startFreshFlow() {
     const initRes = await fetch(
       kratosBase + '/self-service/registration/browser?return_to=' + encodeURIComponent(returnTo),
-      { redirect: 'manual', credentials: 'include' }
+      { headers: { Accept: 'application/json' }, credentials: 'include' }
     );
-    const location = initRes.headers.get('location') || '';
-    const m = location.match(/[?&]flow=([^&]+)/);
-    if (!m) throw new Error('no_flow_id');
-    const flowId = m[1];
-    history.replaceState(null, '', '?flow=' + flowId + (returnTo !== '/' ? '&return_to=' + encodeURIComponent(returnTo) : ''));
 
-    const flow = await fetchFlow(flowId);
-    if (!flow) throw new Error('fetch_flow_failed');
+    let flow = null;
+    if (initRes.ok) {
+      try {
+        const body = await initRes.json();
+        if (body && body.ui) flow = body;
+      } catch (_) {
+        flow = null;
+      }
+    }
+    if (!flow) {
+      const m = String(initRes.url || '').match(/[?&]flow=([^&]+)/);
+      if (!m) throw new Error('no_flow_id');
+      flow = await fetchFlow(decodeURIComponent(m[1]));
+      if (!flow) throw new Error('fetch_flow_failed');
+    }
+    if (!flow.id) throw new Error('no_flow_id');
+
+    history.replaceState(null, '', '?flow=' + encodeURIComponent(flow.id) + (returnTo !== '/' ? '&return_to=' + encodeURIComponent(returnTo) : ''));
     return flow;
   }
 

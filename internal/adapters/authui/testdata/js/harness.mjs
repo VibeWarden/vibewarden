@@ -180,27 +180,56 @@ export async function flush(rounds = 50) {
 // Fake Kratos
 // ---------------------------------------------------------------------------
 
-function jsonResponse(status, body) {
+function jsonResponse(status, body, { url = '' } = {}) {
   return {
     ok: status >= 200 && status < 300,
+    type: 'basic',
     status,
     redirected: false,
-    url: '',
-    headers: { get: () => null },
+    url,
+    headers: { get: (k) => (k.toLowerCase() === 'content-type' ? 'application/json' : null) },
     json: async () => body,
+    text: async () => JSON.stringify(body),
   };
 }
 
-function redirectResponse(location) {
+// opaqueRedirectResponse is what fetch(..., { redirect: 'manual' }) actually
+// yields in a browser: an opaque-redirect filtered response. Status is 0, the
+// header list is empty so headers.get() is null for every name, the body is
+// null, and the final URL is hidden. Page code cannot read the Location header
+// off one of these — modelling it accurately is what caught #1527's first fix
+// attempt, which parsed a header that is always null.
+function opaqueRedirectResponse() {
   return {
     ok: false,
-    status: 303,
+    type: 'opaqueredirect',
+    status: 0,
     redirected: false,
     url: '',
-    headers: { get: (k) => (k.toLowerCase() === 'location' ? location : null) },
+    headers: { get: () => null },
     json: async () => {
-      throw new Error('redirect has no JSON body');
+      throw new TypeError('Failed to execute json on Response: body is null');
     },
+    text: async () => '',
+  };
+}
+
+// followedRedirectResponse is the result of a redirect the browser followed for
+// us (the default redirect:'follow'): the status and URL are those of the final
+// hop, redirected is true, and the body here is the HTML auth page, so json()
+// rejects the way a real parse failure would.
+function followedRedirectResponse(finalURL) {
+  return {
+    ok: true,
+    type: 'basic',
+    status: 200,
+    redirected: true,
+    url: finalURL,
+    headers: { get: (k) => (k.toLowerCase() === 'content-type' ? 'text/html; charset=utf-8' : null) },
+    json: async () => {
+      throw new SyntaxError('Unexpected token < in JSON at position 0');
+    },
+    text: async () => '<!doctype html>',
   };
 }
 
@@ -257,9 +286,22 @@ export function fakeKratos(kind) {
     }
 
     if (path === '/self-service/' + kind + '/browser') {
+      // The flow is created server-side regardless of how the caller treats the
+      // redirect, exactly as in production.
       k.inits += 1;
       const flow = k.newFlow();
-      return redirectResponse('https://app.test/_vibewarden/' + kind + '?flow=' + flow.id);
+      const target = 'https://app.test/_vibewarden/' + kind + '?flow=' + flow.id;
+
+      if (opts.redirect === 'manual') return opaqueRedirectResponse();
+
+      const headers = opts.headers || {};
+      const accept = headers.Accept || headers.accept || '';
+      // Kratos content-negotiates this endpoint: an Accept: application/json
+      // caller gets the flow body instead of a 303.
+      if (accept.includes('application/json')) {
+        return jsonResponse(200, flow, { url: 'https://app.test' + path + u.search });
+      }
+      return followedRedirectResponse(target);
     }
 
     if (path === '/self-service/' + kind + '/flows') {
@@ -293,4 +335,4 @@ export function fakeKratos(kind) {
   return k;
 }
 
-export { jsonResponse, redirectResponse };
+export { jsonResponse, opaqueRedirectResponse, followedRedirectResponse };
