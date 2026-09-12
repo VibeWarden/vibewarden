@@ -290,20 +290,33 @@ func headComment(n *yaml.Node, comment string) *yaml.Node {
 // Feature block builders
 // --------------------------------------------------------------------------
 
+// kratosComposeHost is the Docker Compose service name of the Kratos container
+// in the stack `vibew generate` / `vibew bundle` emits. These URLs are consumed
+// by the sidecar *inside* its own container, so they must resolve on the
+// Compose network: "localhost" there is the sidecar itself, not Kratos (#1536).
+const kratosComposeHost = "kratos"
+
 // appendAuthBlock appends kratos and auth sections to the root mapping.
 func appendAuthBlock(root *yaml.Node, b *DiffBuilder) {
 	// kratos section
 	kratosVal := mappingNode()
-	appendNode(kratosVal, keyNode("public_url"), scalarNode("http://localhost:4433", "!!str"))
-	appendNode(kratosVal, keyNode("admin_url"), scalarNode("http://localhost:4434", "!!str"))
-	appendNode(root, headComment(keyNode("kratos"), "# Ory Kratos identity server"), kratosVal)
+	appendNode(kratosVal, keyNode("public_url"), scalarNode("http://"+kratosComposeHost+":4433", "!!str"))
+	appendNode(kratosVal, keyNode("admin_url"), scalarNode("http://"+kratosComposeHost+":4434", "!!str"))
+	appendNode(root, headComment(keyNode("kratos"),
+		"# Ory Kratos identity server\n"+
+			"# Reached by the sidecar over the Docker Compose network, so the host is\n"+
+			"# the kratos service name. Running the binary outside Docker? Use\n"+
+			"# http://127.0.0.1:4433 / http://127.0.0.1:4434 instead."), kratosVal)
 	recordAdds(b, "kratos", kratosVal)
 
 	// auth section — mode is the single source of truth (ADR-065).
+	// login_url is deliberately omitted: the middleware defaults to the
+	// sidecar-relative /self-service/login/browser, which the auth plugin
+	// proxies to Kratos. An absolute URL here would redirect browsers off
+	// the sidecar to a port that is not published.
 	authVal := mappingNode()
 	appendNode(authVal, keyNode("mode"), scalarNode("kratos", "!!str"))
 	appendNode(authVal, keyNode("session_cookie_name"), scalarNode("ory_kratos_session", "!!str"))
-	appendNode(authVal, keyNode("login_url"), scalarNode("http://localhost:4433/self-service/login/browser", "!!str"))
 	publicPaths := sequenceNode("/health", "/ready")
 	appendNode(authVal, keyNode("public_paths"), publicPaths)
 	appendNode(root, headComment(keyNode("auth"), "# Authentication (Ory Kratos)"), authVal)

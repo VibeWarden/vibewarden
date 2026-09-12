@@ -3,14 +3,20 @@ package generate_test
 import (
 	"bytes"
 	"context"
+	"net/url"
 	"os"
 	"path/filepath"
+	"sort"
 	"testing"
 
+	"gopkg.in/yaml.v3"
+
 	"github.com/vibewarden/vibewarden/internal/adapters/template"
+	"github.com/vibewarden/vibewarden/internal/adapters/yamlmod"
 	"github.com/vibewarden/vibewarden/internal/app/generate"
 	"github.com/vibewarden/vibewarden/internal/config"
 	"github.com/vibewarden/vibewarden/internal/config/templates"
+	"github.com/vibewarden/vibewarden/internal/domain/scaffold"
 )
 
 // TestGenerate_Integration_ExternalPostgres verifies that the docker-compose
@@ -488,4 +494,95 @@ func TestGenerate_Integration_ComposeBuildContextIsAbsolutePath(t *testing.T) {
 	if !bytes.Contains(data, []byte("context: /")) {
 		t.Error("docker-compose.yml build context should be an absolute path starting with '/'")
 	}
+}
+
+// TestGenerate_Integration_AddAuthKratosURLsAreComposeServiceNames takes the
+// exact vibewarden.yaml `vibew add auth` writes, loads it, generates the stack,
+// and requires every sidecar-facing Kratos URL to resolve to a service defined
+// in that same docker-compose.yml. The sidecar dials these URLs from inside its
+// own container, so a loopback host is unreachable by construction: the bug was
+// a 503 from the admin API and a 502 on /self-service/login/browser.
+//
+// Regression test for #1536.
+func TestGenerate_Integration_AddAuthKratosURLsAreComposeServiceNames(t *testing.T) {
+	ctx := context.Background()
+
+	projectDir := t.TempDir()
+	configPath := filepath.Join(projectDir, "vibewarden.yaml")
+	const scaffolded = `server:
+  host: "127.0.0.1"
+  port: 8080
+upstream:
+  host: "127.0.0.1"
+  port: 3000
+tls:
+  enabled: false
+`
+	if err := os.WriteFile(configPath, []byte(scaffolded), 0o644); err != nil {
+		t.Fatalf("writing vibewarden.yaml: %v", err)
+	}
+
+	if _, err := yamlmod.NewToggler().EnableFeature(ctx, configPath, scaffold.FeatureAuth, scaffold.FeatureOptions{}); err != nil {
+		t.Fatalf("vibew add auth: %v", err)
+	}
+
+	cfg, err := config.Load(configPath)
+	if err != nil {
+		t.Fatalf("loading the config `vibew add auth` produced: %v", err)
+	}
+
+	outputDir := t.TempDir()
+	svc := generate.NewService(template.NewRenderer(templates.FS))
+	if err := svc.Generate(ctx, cfg.ToGeneratorInput(), outputDir); err != nil {
+		t.Fatalf("Generate() unexpected error: %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(outputDir, "docker-compose.yml"))
+	if err != nil {
+		t.Fatalf("reading docker-compose.yml: %v", err)
+	}
+	var compose struct {
+		Services map[string]yaml.Node `yaml:"services"`
+	}
+	if err := yaml.Unmarshal(data, &compose); err != nil {
+		t.Fatalf("parsing docker-compose.yml: %v", err)
+	}
+
+	urls := []struct {
+		key string
+		raw string
+	}{
+		{"kratos.public_url", cfg.Kratos.PublicURL},
+		{"kratos.admin_url", cfg.Kratos.AdminURL},
+	}
+	for _, u := range urls {
+		t.Run(u.key, func(t *testing.T) {
+			parsed, err := url.Parse(u.raw)
+			if err != nil {
+				t.Fatalf("%s = %q is not a URL: %v", u.key, u.raw, err)
+			}
+			if _, ok := compose.Services[parsed.Hostname()]; !ok {
+				t.Errorf("%s = %q: host %q is not a service in the generated docker-compose.yml (services: %v)",
+					u.key, u.raw, parsed.Hostname(), serviceNames(compose.Services))
+			}
+		})
+	}
+
+	// An absolute login_url would redirect browsers off the sidecar to a
+	// Kratos port the generated stack does not publish. The middleware's
+	// sidecar-relative default is the only correct value here.
+	if cfg.Auth.LoginURL != "" {
+		t.Errorf("auth.login_url = %q, want empty so the sidecar-relative default applies", cfg.Auth.LoginURL)
+	}
+}
+
+// serviceNames returns the sorted service names of a parsed compose file, for
+// readable test failures.
+func serviceNames(services map[string]yaml.Node) []string {
+	names := make([]string, 0, len(services))
+	for name := range services {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
 }

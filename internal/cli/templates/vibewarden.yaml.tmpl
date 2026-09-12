@@ -48,9 +48,13 @@ tls:
 {{- end }}
 {{- if .AuthEnabled }}
 
+# Ory Kratos identity server.
+# Reached by the sidecar over the Docker Compose network, so the host is the
+# kratos service name. Running the binary outside Docker? Use
+# http://127.0.0.1:4433 / http://127.0.0.1:4434 instead.
 kratos:
-  public_url: "http://localhost:4433"
-  admin_url: "http://localhost:4434"
+  public_url: "http://kratos:4433"
+  admin_url: "http://kratos:4434"
   # DSN for the Kratos PostgreSQL database.
   # Example: "postgres://kratos:secret@localhost:5432/kratos?sslmode=disable"
   # Can be set via VIBEWARDEN_KRATOS_DSN env var.
@@ -68,7 +72,10 @@ auth:
   # You can also point to a custom JSON schema file path.
   identity_schema: "email_password"
   session_cookie_name: "ory_kratos_session"
-  login_url: "http://localhost:4433/self-service/login/browser"
+  # login_url is deliberately unset: the middleware defaults to the
+  # sidecar-relative /self-service/login/browser, which the auth plugin proxies
+  # to Kratos. An absolute URL here redirects browsers off the sidecar to a port
+  # the generated stack does not publish.
   public_paths:
     - "/health"
     - "/ready"

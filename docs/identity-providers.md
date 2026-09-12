@@ -59,9 +59,20 @@ auth:
   mode: kratos
 
 kratos:
-  public_url: "http://127.0.0.1:4433"
-  admin_url: "http://127.0.0.1:4434"
+  public_url: "http://kratos:4433"
+  admin_url: "http://kratos:4434"
 ```
+
+Both URLs are dialled by the sidecar, not by the browser, so they must resolve
+from wherever the sidecar runs. In the generated Docker Compose stack that is
+the `kratos` service name, which is what `vibew add auth` writes; `127.0.0.1`
+there points at the sidecar's own container and yields a 503 from the admin API
+and a 502 on the login flow. Use `http://127.0.0.1:4433` / `http://127.0.0.1:4434`
+(the built-in defaults) only when running the binary outside Docker.
+
+Leave `auth.login_url` unset. It defaults to the sidecar-relative
+`/self-service/login/browser`, which VibeWarden proxies to Kratos; an absolute
+Kratos URL sends browsers to a port the stack does not publish.
 
 Use this mode when you need a self-hosted identity layer with full UI flows.
 The Kratos plugin starts a Kratos instance for you when `kratos.external` is
@@ -568,8 +579,8 @@ auth:
   mode: kratos
 
 kratos:
-  public_url: "http://127.0.0.1:4433"
-  admin_url: "http://127.0.0.1:4434"
+  public_url: "http://kratos:4433"
+  admin_url: "http://kratos:4434"
   # external: false  — VibeWarden starts Kratos for you (default)
 
 admin:

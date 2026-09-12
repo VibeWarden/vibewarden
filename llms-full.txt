@@ -546,8 +546,10 @@ When neither build nor image is set, VibeWarden falls back to host.docker.intern
 
 ### kratos (used when auth.mode: kratos)
 
-  kratos.public_url  string    http://127.0.0.1:4433    Kratos public API URL
-  kratos.admin_url   string    http://127.0.0.1:4434    Kratos admin API URL
+  kratos.public_url  string    http://127.0.0.1:4433    Kratos public API URL (use
+                                                     http://kratos:4433 in Docker)
+  kratos.admin_url   string    http://127.0.0.1:4434    Kratos admin API URL (use
+                                                     http://kratos:4434 in Docker)
   kratos.dsn         string    ""                       Kratos database DSN
   kratos.external    bool      false                    Use external Kratos instance
   kratos.smtp.host   string    localhost                SMTP server host
@@ -1127,10 +1129,17 @@ All /self-service/ paths are proxied to Kratos.
     enabled: true
     mode: kratos
   kratos:
-    public_url: "http://127.0.0.1:4433"
-    admin_url: "http://127.0.0.1:4434"
+    public_url: "http://kratos:4433"
+    admin_url: "http://kratos:4434"
 
 Kratos is started automatically when kratos.external is false (default).
+The sidecar dials both URLs itself, so in the generated Docker Compose stack
+they must be the kratos service name (http://127.0.0.1:443x is the sidecar's
+own container and gives 503 on the admin API, 502 on the login flow). Use
+127.0.0.1 only when running the binary outside Docker. Nothing rewrites these
+at runtime. Leave auth.login_url unset: the default is the sidecar-relative
+/self-service/login/browser, and an absolute Kratos URL redirects browsers to
+a port the stack does not publish.
 
 ### API Key (machine-to-machine)
 
