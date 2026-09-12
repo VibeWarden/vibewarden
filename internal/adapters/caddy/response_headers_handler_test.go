@@ -266,9 +266,11 @@ func TestBuildCaddyConfig_ResponseHeaders_SetHeader(t *testing.T) {
 }
 
 func TestBuildCaddyConfig_ResponseHeaders_AfterSecurityHeaders(t *testing.T) {
-	// Verify that the response-headers handler appears after the security-headers
-	// handler in the catch-all chain. This ensures operator rules can override
-	// security headers.
+	// Verify that the response-headers handler runs after the security-headers
+	// handler, so operator rules can override security headers. Since #1540 the
+	// two live in different routes: security headers in the global first route,
+	// response headers in the catch-all chain. Both apply their ops to the same
+	// response header map, in route order, so the override still holds.
 	cfg := &ports.ProxyConfig{
 		ListenAddr:   "127.0.0.1:8080",
 		UpstreamAddr: "127.0.0.1:3000",
@@ -286,43 +288,55 @@ func TestBuildCaddyConfig_ResponseHeaders_AfterSecurityHeaders(t *testing.T) {
 		t.Fatalf("BuildCaddyConfig() unexpected error: %v", err)
 	}
 
-	handlers := extractCatchAllHandlers(t, result)
-
-	secHeadersIdx := -1
-	respHeadersIdx := -1
-
-	for i, h := range handlers {
-		if h["handler"] != "headers" {
-			continue
-		}
-		resp, ok := h["response"].(map[string]any)
-		if !ok {
-			continue
-		}
-		setMap, ok := resp["set"].(map[string][]string)
-		if !ok {
-			continue
-		}
-		if _, hasFrame := setMap["X-Frame-Options"]; hasFrame {
-			// The security-headers handler sets X-Frame-Options to DENY.
-			// The response-headers handler sets it to SAMEORIGIN.
-			// We identify the first by index.
-			if secHeadersIdx == -1 {
-				secHeadersIdx = i
-			} else {
-				respHeadersIdx = i
-			}
-		}
+	server := extractServer(t, result)
+	routes, ok := server["routes"].([]map[string]any)
+	if !ok {
+		t.Fatal("routes not found in server config")
 	}
 
-	if secHeadersIdx == -1 {
-		t.Fatal("could not find security-headers handler in catch-all chain")
+	// The security-headers handler must be the first route (setting DENY).
+	secRouteHandlers, ok := routes[0]["handle"].([]map[string]any)
+	if !ok || len(secRouteHandlers) != 1 {
+		t.Fatal("routes[0] is not the global security-headers route")
+	}
+	if got := frameOptionOf(t, secRouteHandlers[0]); got != "DENY" {
+		t.Fatalf("security-headers route sets X-Frame-Options = %q, want %q", got, "DENY")
+	}
+
+	// The response-headers handler lives in the catch-all chain (setting
+	// SAMEORIGIN), which Caddy evaluates after the global route.
+	handlers := extractCatchAllHandlers(t, result)
+	respHeadersIdx := -1
+	for i, h := range handlers {
+		if frameOptionOf(t, h) == "SAMEORIGIN" {
+			respHeadersIdx = i
+			break
+		}
 	}
 	if respHeadersIdx == -1 {
 		t.Fatal("could not find response-headers handler in catch-all chain")
 	}
-	if respHeadersIdx <= secHeadersIdx {
-		t.Errorf("response-headers handler (index %d) must come after security-headers handler (index %d)",
-			respHeadersIdx, secHeadersIdx)
+}
+
+// frameOptionOf returns the X-Frame-Options value a Caddy headers handler sets,
+// or "" when the handler is not a response-headers handler or does not set it.
+func frameOptionOf(t *testing.T, h map[string]any) string {
+	t.Helper()
+
+	if h["handler"] != "headers" {
+		return ""
 	}
+	resp, ok := h["response"].(map[string]any)
+	if !ok {
+		return ""
+	}
+	setMap, ok := resp["set"].(map[string][]string)
+	if !ok {
+		return ""
+	}
+	vals := setMap["X-Frame-Options"]
+	if len(vals) == 0 {
+		return ""
+	}
+	return vals[0]
 }

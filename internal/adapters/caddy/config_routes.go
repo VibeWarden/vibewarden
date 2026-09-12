@@ -28,6 +28,27 @@ var kratosFlowPaths = []string{
 	"/sessions/whoami",
 }
 
+// buildSecurityHeadersRoute wraps the security-headers handler in a Caddy route
+// with no matcher, so it applies to every request the main server accepts.
+//
+// It must be the first route in the list. Caddy evaluates routes in order and
+// the headers handler is not terminal: it sets the response headers on the
+// shared header map and calls the next matching route, which is where the
+// actual response is produced (built-in login UI, admin API, Kratos proxy,
+// upstream app). Caddy's reverse_proxy copies upstream headers additively and
+// never clears the map, so headers set here survive proxied responses.
+//
+// Before #1540 the handler lived only in the catch-all app route, which left
+// every VibeWarden-owned route (/_vibewarden/*, /self-service/*) without any
+// security headers.
+func buildSecurityHeadersRoute(cfg ports.SecurityHeadersConfig, tlsEnabled bool) map[string]any {
+	return map[string]any{
+		"handle": []map[string]any{
+			buildSecurityHeadersHandler(cfg, tlsEnabled),
+		},
+	}
+}
+
 // buildKratosFlowRoute constructs a Caddy route that transparently proxies all
 // Kratos self-service flow paths and the Ory canonical prefix to the Kratos
 // public API. This route must be placed after the health check route and before

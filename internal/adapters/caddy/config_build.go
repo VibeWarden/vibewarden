@@ -31,12 +31,16 @@ func validateBuildInput(cfg *ports.ProxyConfig) error {
 // buildCatchAllHandlers assembles the full middleware chain for the catch-all
 // proxy route. The chain order is fixed:
 //
-//	StripUserHeaders → SecurityHeaders → ResponseHeaders → AdminAuth →
+//	StripUserHeaders → ResponseHeaders → AdminAuth →
 //	[ExtraHandlers from plugins, sorted by Priority] →
 //	BodySize → RateLimit → CircuitBreaker → Retry → Timeout → Compression → ReverseProxy
 //
 // The header strip handler is always first so that spoofed X-User-* headers
 // sent by clients are removed before any other handler (including auth) runs.
+//
+// Security headers are NOT part of this chain: they are emitted as a global
+// first route by buildSecurityHeadersRoute so that VibeWarden's own routes
+// (login UI, admin API, Kratos proxy) carry them too. See #1540.
 func buildCatchAllHandlers(cfg *ports.ProxyConfig) ([]map[string]any, error) {
 	reverseProxyHandler := map[string]any{
 		"handler": "reverse_proxy",
@@ -46,10 +50,6 @@ func buildCatchAllHandlers(cfg *ports.ProxyConfig) ([]map[string]any, error) {
 	}
 
 	handlers := []map[string]any{buildUserHeaderStripHandler()}
-
-	if cfg.SecurityHeaders.Enabled {
-		handlers = append(handlers, buildSecurityHeadersHandler(cfg.SecurityHeaders, cfg.TLS.Enabled))
-	}
 
 	if cfg.ResponseHeaders.Enabled {
 		handlers = append(handlers, buildResponseHeadersHandlerJSON(cfg.ResponseHeaders))
@@ -136,7 +136,13 @@ func buildHealthRoute() map[string]any {
 }
 
 // buildRoutes assembles the full ordered route list:
-// health → ready → metrics → kratos-flow → me → admin → config → docs → extra routes → catch-all.
+// security-headers → health → ready → metrics → kratos-flow → me → admin →
+// config → docs → extra routes → catch-all.
+//
+// The security-headers route is unmatched and non-terminal: it sets the
+// configured response headers and falls through to the routes below, so every
+// response the sidecar serves carries the same set — its own login UI, the
+// admin API, the Kratos proxy surface, and the upstream app alike (#1540).
 //
 // When cfg.Admin.Enabled is true the admin route AND the config route are both
 // emitted with the vibewarden_admin_auth handler inlined before reverse_proxy
@@ -144,6 +150,12 @@ func buildHealthRoute() map[string]any {
 // /_vibewarden/config(/*) request. The public docs route is emitted separately
 // with no auth handler.
 func buildRoutes(cfg *ports.ProxyConfig, handlers []map[string]any) ([]map[string]any, error) {
+	var routes []map[string]any
+
+	if cfg.SecurityHeaders.Enabled {
+		routes = append(routes, buildSecurityHeadersRoute(cfg.SecurityHeaders, cfg.TLS.Enabled))
+	}
+
 	healthRoute := buildHealthRoute()
 
 	var readyRoute map[string]any
@@ -153,7 +165,7 @@ func buildRoutes(cfg *ports.ProxyConfig, handlers []map[string]any) ([]map[strin
 		readyRoute = buildStaticReadyRoute()
 	}
 
-	routes := []map[string]any{healthRoute, readyRoute}
+	routes = append(routes, healthRoute, readyRoute)
 
 	if cfg.Metrics.Enabled && cfg.Metrics.InternalAddr != "" {
 		routes = append(routes, buildMetricsRoute(cfg.Metrics.InternalAddr))

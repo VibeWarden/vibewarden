@@ -393,6 +393,12 @@ Only read when `store` is `redis`.
 | `security_headers.permitted_cross_domain_policies` | string | `none` | `X-Permitted-Cross-Domain-Policies` value |
 | `security_headers.suppress_via_header` | bool | `true` | Remove `Via` header from proxied responses |
 
+The headers are applied to every response the sidecar serves, not just proxied
+app responses: the built-in login UI (`/_vibewarden/login`), the admin API
+(`/_vibewarden/admin/*`, including its `401` responses), and the Kratos
+self-service surface (`/self-service/*`) all carry the same set. Operator rules
+under `response_headers` are applied after these and win on conflict.
+
 ---
 
 ## `cors`

@@ -395,8 +395,10 @@ func TestBuildCaddyConfig_AdminAuthHandlerPresent(t *testing.T) {
 			wantHandlerAt: 1,
 		},
 		{
-			// Chain: strip_headers(0) → security_headers(1) → admin_auth(2) → reverse_proxy(3)
-			name: "admin auth handler after security headers when both enabled",
+			// Chain: strip_headers(0) → admin_auth(1) → reverse_proxy(2).
+			// Security headers are no longer part of this chain — since #1540
+			// they are emitted as a global first route.
+			name: "admin auth handler position is unaffected by security headers",
 			cfg: &ports.ProxyConfig{
 				ListenAddr:   "127.0.0.1:8080",
 				UpstreamAddr: "127.0.0.1:3000",
@@ -406,7 +408,7 @@ func TestBuildCaddyConfig_AdminAuthHandlerPresent(t *testing.T) {
 				},
 				AdminAuth: ports.AdminAuthConfig{Enabled: true, Token: "secret"},
 			},
-			wantHandlerAt: 2,
+			wantHandlerAt: 1,
 		},
 	}
 
