@@ -583,6 +583,15 @@ auth:
   #   primary_color: "#7C3AED"
   #   background_color: "#1a1a2e"
   #
+  #   # Self-service flow toggles (default: true). Each one drives the link on
+  #   # the built-in login page, the built-in page itself (404 when off), and
+  #   # selfservice.flows.{registration,recovery}.enabled in the generated
+  #   # kratos.yml, so the page and Kratos can never disagree. Set
+  #   # show_registration: false for closed-registration deployments where an
+  #   # admin creates the users.
+  #   show_registration: true
+  #   show_recovery: true
+  #
   #   # Custom page URLs — only used when mode is "custom".
   #   # login_url is required in that mode; the others fall back to it.
   #   login_url: "https://app.example.com/signin"

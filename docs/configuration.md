@@ -292,6 +292,8 @@ List of OAuth2/OIDC social login providers (used with `auth.mode: kratos`).
 | `auth.ui.registration_url` | string | `""` | Custom registration page URL |
 | `auth.ui.settings_url` | string | `""` | Custom account settings page URL |
 | `auth.ui.recovery_url` | string | `""` | Custom account recovery page URL |
+| `auth.ui.show_registration` | bool | `true` | Self-service registration: link, built-in page, and Kratos flow |
+| `auth.ui.show_recovery` | bool | `true` | Self-service account recovery: link, built-in page, and Kratos flow |
 
 In `built-in` mode VibeWarden serves the auth pages itself at
 `/_vibewarden/login`, `/_vibewarden/registration`, `/_vibewarden/recovery`,
@@ -307,6 +309,14 @@ each be an absolute `http(s)` URL or a root-relative path such as
 is rejected at config validation. Assets served from your own app need a
 `public_paths` entry, otherwise the login page cannot load them while the
 visitor is still unauthenticated.
+
+Set `show_registration: false` for a closed-registration deployment (users are
+created by an admin only) and `show_recovery: false` when you do not offer
+self-service password recovery. Each flag drives three things at once: the link
+on the built-in login page, the built-in page itself (which then returns 404),
+and `selfservice.flows.{registration,recovery}.enabled` in the generated
+`kratos/kratos.yml`. That keeps the page and Kratos from disagreeing, which used
+to leave dead links on the login page.
 
 In `custom` mode the generated flows point at your `auth.ui.*_url` values
 instead. Absolute URLs are used as-is; a path such as `/login` is resolved
