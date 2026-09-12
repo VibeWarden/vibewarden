@@ -749,3 +749,83 @@ func (g *sentinelGenerator) Generate(_ context.Context, _ ports.GeneratorInput, 
 	}
 	return os.WriteFile(filepath.Join(dir, "vibewarden.yaml"), []byte(g.sentinel), 0o600)
 }
+
+// TestArtifact_DeployCompose_SidecarImageSurvivesMerge is the #1535 regression
+// guard: SidecarImage/SidecarPullPolicy are derived from the CLI build version
+// (ADR-106) rather than read from YAML, so the production merge that reloads
+// the config from disk used to wipe them and the bundled docker-compose.yml
+// rendered `image:` with no value — an invalid compose file that made
+// `docker compose up` fail on the whole bundle.
+func TestArtifact_DeployCompose_SidecarImageSurvivesMerge(t *testing.T) {
+	tests := []struct {
+		name           string
+		version        string
+		wantImage      string
+		wantPullPolicy string
+	}{
+		{
+			name:           "release version pins the tag",
+			version:        "0.20.0",
+			wantImage:      "ghcr.io/vibewarden/vibewarden:0.20.0",
+			wantPullPolicy: "",
+		},
+		{
+			name:           "dev build falls back to latest",
+			version:        "v0.20.0-5-gabc1234",
+			wantImage:      "ghcr.io/vibewarden/vibewarden:latest",
+			wantPullPolicy: "always",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			projDir := t.TempDir()
+			outputDir := t.TempDir()
+
+			baseYAML := `name: myapp
+server:
+  port: 8443
+upstream:
+  host: "0.0.0.0"
+  port: 3000
+app:
+  build: "."
+`
+			basePath := filepath.Join(projDir, "vibewarden.yaml")
+			if err := os.WriteFile(basePath, []byte(baseYAML), 0o600); err != nil {
+				t.Fatalf("writing base config: %v", err)
+			}
+
+			cfg := &config.Config{
+				Name:     "myapp",
+				Server:   config.ServerConfig{Port: 8443},
+				Upstream: config.UpstreamConfig{Host: "0.0.0.0", Port: 3000},
+				App:      config.AppConfig{Build: "."},
+			}
+
+			gen := &captureGenerator{}
+			svc := bundleapp.NewService(&fakeExecutor{}, gen).WithVersion(tt.version)
+
+			if err := svc.Bundle(context.Background(), bundleapp.BundleOptions{
+				Config:      cfg,
+				ConfigPath:  basePath,
+				ProjectName: "myapp",
+				MultiSite:   false,
+				OutputDir:   outputDir,
+			}); err != nil {
+				t.Fatalf("Bundle() error = %v", err)
+			}
+
+			inputCfg, ok := gen.lastInput.TemplateData.(*config.Config)
+			if !ok {
+				t.Fatalf("TemplateData is %T, want *config.Config", gen.lastInput.TemplateData)
+			}
+			if inputCfg.SidecarImage != tt.wantImage {
+				t.Errorf("SidecarImage = %q, want %q", inputCfg.SidecarImage, tt.wantImage)
+			}
+			if inputCfg.SidecarPullPolicy != tt.wantPullPolicy {
+				t.Errorf("SidecarPullPolicy = %q, want %q", inputCfg.SidecarPullPolicy, tt.wantPullPolicy)
+			}
+		})
+	}
+}

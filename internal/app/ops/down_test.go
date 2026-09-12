@@ -87,6 +87,8 @@ func TestDownService_Run(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			runInTempProjectDir(t, []string{"vibewarden"})
+
 			fake := &downCompose{result: tt.result, err: tt.downErr}
 			svc := opsapp.NewDownService(fake)
 
@@ -118,6 +120,8 @@ func TestDownService_Run(t *testing.T) {
 }
 
 func TestDownService_Volumes_NonTTY_WithoutYes_Errors(t *testing.T) {
+	runInTempProjectDir(t, []string{"vibewarden"})
+
 	// Refuse to remove volumes silently in CI/scripts: require --yes or TTY.
 	fake := &downCompose{}
 	svc := opsapp.NewDownService(fake)
@@ -135,6 +139,8 @@ func TestDownService_Volumes_NonTTY_WithoutYes_Errors(t *testing.T) {
 }
 
 func TestDownService_Volumes_TTY_PromptYes_Proceeds(t *testing.T) {
+	runInTempProjectDir(t, []string{"vibewarden"})
+
 	fake := &downCompose{result: ports.DownResult{StoppedContainers: 2, RemovedVolumes: 1}}
 	svc := opsapp.NewDownService(fake)
 
@@ -160,6 +166,8 @@ func TestDownService_Volumes_TTY_PromptYes_Proceeds(t *testing.T) {
 }
 
 func TestDownService_Volumes_TTY_PromptNo_Aborts(t *testing.T) {
+	runInTempProjectDir(t, []string{"vibewarden"})
+
 	fake := &downCompose{}
 	svc := opsapp.NewDownService(fake)
 
@@ -179,6 +187,8 @@ func TestDownService_Volumes_TTY_PromptNo_Aborts(t *testing.T) {
 }
 
 func TestDownService_Volumes_TTY_EmptyLine_Aborts(t *testing.T) {
+	runInTempProjectDir(t, []string{"vibewarden"})
+
 	// An empty answer (user just hits Enter) must default to N.
 	fake := &downCompose{}
 	svc := opsapp.NewDownService(fake)
@@ -196,6 +206,8 @@ func TestDownService_Volumes_TTY_EmptyLine_Aborts(t *testing.T) {
 }
 
 func TestDownService_Idempotent_NoError_OnStoppedStack(t *testing.T) {
+	runInTempProjectDir(t, []string{"vibewarden"})
+
 	// The adapter Down returns DownResult{} + nil err when nothing is
 	// running. The service must pass that through as exit 0.
 	fake := &downCompose{result: ports.DownResult{}, err: nil}
@@ -212,6 +224,8 @@ func TestDownService_Idempotent_NoError_OnStoppedStack(t *testing.T) {
 }
 
 func TestDownService_RemoveOrphans_Forwarded(t *testing.T) {
+	runInTempProjectDir(t, []string{"vibewarden"})
+
 	fake := &downCompose{}
 	svc := opsapp.NewDownService(fake)
 
@@ -227,6 +241,8 @@ func TestDownService_RemoveOrphans_Forwarded(t *testing.T) {
 }
 
 func TestDownService_DoesNotPassServices(t *testing.T) {
+	runInTempProjectDir(t, []string{"vibewarden"})
+
 	// `vibew down` tears down the whole project and must NOT restrict teardown
 	// to a subset of services — only ObsService.Down targets specific services.
 	// The main DownService must pass an empty Services slice so that
@@ -240,5 +256,44 @@ func TestDownService_DoesNotPassServices(t *testing.T) {
 	}
 	if len(fake.capturedOp.Services) != 0 {
 		t.Errorf("DownService.Run() must not set Services, got %v", fake.capturedOp.Services)
+	}
+}
+
+// TestDownService_NoOp_WhenNothingGenerated is the #1535 regression guard:
+// in a directory where nothing was ever generated there is no compose file to
+// pass to `docker compose -f`, so the service must print the no-op summary and
+// return nil without invoking the compose runner at all.
+func TestDownService_NoOp_WhenNothingGenerated(t *testing.T) {
+	tests := []struct {
+		name string
+		opts opsapp.DownOptions
+	}{
+		{name: "plain down", opts: opsapp.DownOptions{}},
+		{name: "--volumes --yes", opts: opsapp.DownOptions{Volumes: true, Yes: true}},
+		{name: "--volumes without --yes in a non-TTY", opts: opsapp.DownOptions{Volumes: true}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// nil services → the generated dir exists but holds no compose file.
+			runInTempProjectDir(t, nil)
+
+			fake := &downCompose{}
+			svc := opsapp.NewDownService(fake)
+
+			var out bytes.Buffer
+			if err := svc.Run(context.Background(), tt.opts, &out); err != nil {
+				t.Fatalf("Run() must be a no-op success, got %v", err)
+			}
+			if fake.called != 0 {
+				t.Errorf("compose Down() must not be called, got %d calls", fake.called)
+			}
+			if !strings.Contains(out.String(), "No running services. Nothing to do.") {
+				t.Errorf("expected no-op summary, got:\n%s", out.String())
+			}
+			if strings.Contains(out.String(), "Delete all volume data") {
+				t.Errorf("must not prompt for volume deletion when nothing was generated, got:\n%s", out.String())
+			}
+		})
 	}
 }

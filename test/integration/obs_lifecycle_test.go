@@ -15,11 +15,50 @@ package integration
 import (
 	"bytes"
 	"context"
+	"math/rand"
+	"os"
 	"os/exec"
+	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 )
+
+// setSidecarPort rewrites server.port in the project's vibewarden.yaml. Call
+// it before `vibew generate` so the rendered compose publishes the new port.
+// The default written by `vibew init` is 8443; the function fails the test
+// when that line is absent rather than silently leaving the default in place.
+func setSidecarPort(t *testing.T, projectDir string, port int) {
+	t.Helper()
+	path := filepath.Join(projectDir, "vibewarden.yaml")
+	data, err := os.ReadFile(path) //nolint:gosec // test-controlled path
+	if err != nil {
+		t.Fatalf("reading vibewarden.yaml: %v", err)
+	}
+	const defaultPortLine = "  port: 8443"
+	if !strings.Contains(string(data), defaultPortLine) {
+		t.Fatalf("vibewarden.yaml does not contain %q; cannot relocate the sidecar port:\n%s", defaultPortLine, data)
+	}
+	updated := strings.Replace(string(data), defaultPortLine, "  port: "+strconv.Itoa(port), 1)
+	if err := os.WriteFile(path, []byte(updated), 0o600); err != nil {
+		t.Fatalf("writing vibewarden.yaml: %v", err)
+	}
+}
+
+// newObsProjectDir creates a project directory with a stable, DNS-safe name
+// under a fresh temp dir. The compose project name is derived from the
+// directory basename, and t.TempDir() ends in a numeric component ("001")
+// which YAML parses as an integer — docker compose then rejects the generated
+// file with "name must be a string".
+func newObsProjectDir(t *testing.T) string {
+	t.Helper()
+	dir := filepath.Join(t.TempDir(), "obsdemo")
+	if err := os.MkdirAll(dir, 0o750); err != nil {
+		t.Fatalf("creating project dir: %v", err)
+	}
+	return dir
+}
 
 // obsServices is the expected set of service names in the observability profile.
 // Must stay in sync with the static list in internal/app/ops/obs.go.
@@ -42,18 +81,20 @@ func TestObsLifecycle_ComposeTemplate(t *testing.T) {
 		t.Skip("vibew binary not on PATH; skipping obs lifecycle test")
 	}
 
-	workDir := t.TempDir()
+	workDir := newObsProjectDir(t)
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	// Initialise a minimal project.
+	// Initialise a minimal project. The flag is --port; there has never been
+	// an --upstream-port flag, and the unknown-flag error used to be swallowed
+	// by a t.Skipf so this test never actually ran (#1535).
 	initCmd := exec.CommandContext(ctx, "vibew", "init",
-		"--upstream-port", "3000",
+		"--port", strconv.Itoa(upstreamPort),
 		"--non-interactive",
 	)
 	initCmd.Dir = workDir
 	if out, err := initCmd.CombinedOutput(); err != nil {
-		t.Skipf("vibew init failed (vibew may not support --non-interactive yet): %v\n%s", err, out)
+		t.Fatalf("vibew init: %v\n%s", err, out)
 	}
 
 	// Generate the compose file.
@@ -120,17 +161,26 @@ func TestObsLifecycle_DownDoesNotNukeMainStack(t *testing.T) {
 		t.Skipf("docker daemon unreachable: %v", err)
 	}
 
-	workDir := t.TempDir()
+	workDir := newObsProjectDir(t)
 
 	// Initialise and generate.
 	initCmd := exec.CommandContext(ctx, "vibew", "init",
-		"--upstream-port", "3000",
+		"--port", strconv.Itoa(upstreamPort),
 		"--non-interactive",
 	)
 	initCmd.Dir = workDir
 	if out, err := initCmd.CombinedOutput(); err != nil {
-		t.Skipf("vibew init failed (may not support --non-interactive): %v\n%s", err, out)
+		t.Fatalf("vibew init: %v\n%s", err, out)
 	}
+
+	// The generated compose builds the app service from the project directory,
+	// so it needs a Dockerfile to build.
+	writeMinimalAppDockerfile(t, workDir, upstreamPort)
+
+	// Move the sidecar off the default 8443 host binding: any other stack on
+	// the machine (or a concurrent run) holding that port fails the whole
+	// test with "port is already allocated".
+	setSidecarPort(t, workDir, 20000+rand.Intn(20000)) //nolint:gosec // test port selection, not crypto
 
 	genCmd := exec.CommandContext(ctx, "vibew", "generate")
 	genCmd.Dir = workDir
@@ -144,7 +194,9 @@ func TestObsLifecycle_DownDoesNotNukeMainStack(t *testing.T) {
 	t.Cleanup(func() {
 		cleanCtx, cleanCancel := context.WithTimeout(context.Background(), 60*time.Second)
 		defer cleanCancel()
-		exec.CommandContext(cleanCtx, "docker", "compose", "-f", composeFile, "down", "--volumes").Run() //nolint:errcheck
+		// --rmi local also drops the app image compose built from the fixture
+		// Dockerfile, so repeated runs do not leak images.
+		exec.CommandContext(cleanCtx, "docker", "compose", "-f", composeFile, "down", "--volumes", "--rmi", "local").Run() //nolint:errcheck
 	})
 
 	// Start main stack (no obs profile).

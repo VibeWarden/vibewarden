@@ -16,6 +16,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"testing"
 	"time"
 )
@@ -32,7 +33,7 @@ func TestBundle_CLI_UpAndHealthy(t *testing.T) {
 	if _, err := exec.LookPath("docker"); err != nil {
 		t.Skip("docker not on PATH; skipping bundle integration test")
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
 	defer cancel()
 
 	// Fast probe — `docker version` returns non-zero when the daemon is
@@ -51,7 +52,8 @@ func TestBundle_CLI_UpAndHealthy(t *testing.T) {
 	if err := os.MkdirAll(projectDir, 0o750); err != nil {
 		t.Fatalf("mkdir project: %v", err)
 	}
-	if err := runCmd(ctx, projectDir, "vibew", "init", "--non-interactive", "--port", "3000"); err != nil {
+	if err := runCmd(ctx, projectDir, "vibew", "init", "--non-interactive",
+		"--port", strconv.Itoa(upstreamPort)); err != nil {
 		t.Fatalf("vibew init: %v", err)
 	}
 
@@ -67,8 +69,14 @@ func TestBundle_CLI_UpAndHealthy(t *testing.T) {
 		}
 	}
 
+	// The bundle runs in deploy mode: app.build is rewritten to
+	// image: <project>-app:latest, an image nothing else produces. Build it
+	// from the fixture Dockerfile so compose has something to start, instead
+	// of failing with "pull access denied for foo-app" (#1535).
+	buildMinimalAppImage(ctx, t, projectDir, "foo-app:latest", upstreamPort)
+
 	// docker compose up -d
-	upCtx, upCancel := context.WithTimeout(ctx, 60*time.Second)
+	upCtx, upCancel := context.WithTimeout(ctx, 3*time.Minute)
 	defer upCancel()
 	if err := runCmd(upCtx, bundleDir, "docker", "compose", "-f", "docker-compose.yml", "up", "-d"); err != nil {
 		t.Fatalf("docker compose up: %v", err)
