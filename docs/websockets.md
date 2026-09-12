@@ -1,7 +1,8 @@
-# WebSocket Pass-Through
+# WebSocket and Streaming Pass-Through
 
-VibeWarden proxies WebSocket connections transparently. No configuration is
-required — it just works.
+VibeWarden proxies WebSocket connections and streaming HTTP responses
+(Server-Sent Events, chunked LLM token streams) transparently. No configuration
+is required — it just works.
 
 ---
 
@@ -97,6 +98,37 @@ rate-limited; individual frames are not.
 
 ---
 
+## Server-Sent Events and streaming responses
+
+Streaming HTTP responses are forwarded as they are produced. When your app
+writes a chunk and flushes, the bytes leave VibeWarden immediately; nothing
+waits for the response to complete. This covers `text/event-stream`, chunked
+LLM token streams, and any other incremental response.
+
+Internally every VibeWarden response wrapper (metrics, tracing, access log,
+circuit breaker, timeout) forwards `Flush()` and exposes the writer underneath
+through `Unwrap()`, so a flush survives the whole chain. Before this was fixed
+(#1526) the wrappers hid `http.Flusher` and clients received nothing until the
+connection closed.
+
+What your app must do:
+
+- Set `Content-Type: text/event-stream` (SSE) and do not set `Content-Length`.
+- Flush after each event. Most frameworks buffer until you ask them not to.
+
+### Settings that still buffer or cut a stream
+
+| Setting | Effect on a streaming response |
+|---|---|
+| `resilience.timeout` (default `30s`) | Counts the **whole response** as one request. A stream held open longer than the timeout is cut when the deadline fires. Raise it, or set `"0"` to disable, if you serve long-lived SSE. |
+| `resilience.retry.enabled` (default `false`) | Buffers the entire response in memory so a failed attempt can be discarded. A stream never "completes", so the client sees nothing and memory grows. Leave retry off when streaming. |
+| egress `response_validation.enabled` (default `false`) | Buffers the upstream body to validate it against the JSON Schema. Applies to any egress route you enable it on, in both addressing modes: transparent (`HTTP_PROXY` + `X-Egress-URL`) and named (`/_egress/{route}`). See [Egress](egress.md). |
+
+Timeouts, auth, and rate limiting otherwise behave exactly as for a normal
+request: they are evaluated once, before the first byte is written.
+
+---
+
 ## Structured log events
 
 The upgrade request is logged like any other HTTP request
@@ -118,4 +150,5 @@ A failed upgrade due to rate limiting is logged as
 | Rate limiting | One token consumed per new connection, not per frame |
 | Timeouts | Not applied to established connections; only to the upgrade handshake |
 | Frame inspection | Not performed; Caddy bridges the raw TCP stream |
-| Config changes needed | None |
+| SSE / chunked streaming | Flushed through unbuffered; `resilience.retry` and egress `response_validation` buffer by design |
+| Config changes needed | None (raise `resilience.timeout` for long-lived streams) |

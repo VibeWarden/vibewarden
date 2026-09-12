@@ -168,6 +168,17 @@ func (c *captureResponseWriter) WriteHeader(status int) {
 	c.ResponseWriter.WriteHeader(status)
 }
 
+// Flush forwards a flush to the underlying writer so streaming responses
+// (text/event-stream, chunked LLM output) are not buffered by this wrapper
+// until the upstream closes the connection.
+func (c *captureResponseWriter) Flush() {
+	middleware.FlushResponseWriter(c.ResponseWriter)
+}
+
+// Unwrap returns the wrapped ResponseWriter so http.ResponseController can
+// reach interfaces implemented further down the chain.
+func (c *captureResponseWriter) Unwrap() http.ResponseWriter { return c.ResponseWriter }
+
 // buildCircuitBreakerHandlerJSON serialises a CircuitBreakerConfig to the Caddy
 // handler JSON fragment used in BuildCaddyConfig. Returns nil when the circuit
 // breaker is not enabled.

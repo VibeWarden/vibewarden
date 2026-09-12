@@ -32,6 +32,21 @@ func (rw *metricsResponseWriter) Write(b []byte) (int, error) {
 	return rw.ResponseWriter.Write(b)
 }
 
+// Flush forwards a flush to the underlying writer so streaming responses are
+// not buffered by this wrapper. The first flush commits the response, so the
+// captured status code is pinned at that point.
+func (rw *metricsResponseWriter) Flush() {
+	if !rw.written {
+		rw.statusCode = http.StatusOK
+		rw.written = true
+	}
+	FlushResponseWriter(rw.ResponseWriter)
+}
+
+// Unwrap returns the wrapped ResponseWriter so http.ResponseController can
+// reach interfaces implemented further down the chain.
+func (rw *metricsResponseWriter) Unwrap() http.ResponseWriter { return rw.ResponseWriter }
+
 // MetricsMiddleware returns HTTP middleware that records request metrics.
 // It must be placed early in the middleware chain (after security headers,
 // before auth/rate-limit) to capture the full request lifecycle.

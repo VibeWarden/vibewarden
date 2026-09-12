@@ -173,6 +173,18 @@ func (tw *timeoutResponseWriter) Write(b []byte) (int, error) {
 	return tw.ResponseWriter.Write(b)
 }
 
+// Flush marks the response as started and forwards the flush to the underlying
+// writer, so streaming responses are not buffered by this wrapper and a 504
+// body is never written on top of an already-flushed stream.
+func (tw *timeoutResponseWriter) Flush() {
+	tw.written = true
+	middleware.FlushResponseWriter(tw.ResponseWriter)
+}
+
+// Unwrap returns the wrapped ResponseWriter so http.ResponseController can
+// reach interfaces implemented further down the chain.
+func (tw *timeoutResponseWriter) Unwrap() http.ResponseWriter { return tw.ResponseWriter }
+
 // buildTimeoutHandlerJSON serialises a ResilienceConfig to the Caddy handler
 // JSON fragment used in BuildCaddyConfig. Returns nil when no timeout is
 // configured (Timeout == 0), in which case the caller should skip this handler.
