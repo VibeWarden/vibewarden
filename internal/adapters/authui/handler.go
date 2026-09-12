@@ -12,6 +12,8 @@
 //
 // Theming is achieved via CSS custom properties injected at render time from
 // the AuthUIConfig. The values are safely HTML-escaped before insertion.
+// Branding (app name, logo, favicon, and an extra stylesheet) comes from the
+// same config and is rendered by the shared partials in templates/_branding.html.
 package authui
 
 import (
@@ -42,6 +44,20 @@ type AuthUIConfig struct {
 	// "custom"   — the operator provides their own pages; this handler is not mounted.
 	Mode string
 
+	// AppName is the application name shown in the page title and above the
+	// form on every page. No brand line is rendered when empty.
+	AppName string
+
+	// LogoURL is an optional image URL rendered above the form on every page.
+	LogoURL string
+
+	// FaviconURL is an optional favicon URL linked from every page.
+	FaviconURL string
+
+	// CustomCSSURL is an optional stylesheet URL linked last in <head> on
+	// every page, so its rules win over the built-in ones.
+	CustomCSSURL string
+
 	// PrimaryColor is the CSS value for the --vw-primary custom property.
 	// Defaults to "#7C3AED" (VibeWarden purple) when empty.
 	PrimaryColor string
@@ -61,6 +77,14 @@ type AuthUIConfig struct {
 
 // templateData is passed to every HTML template at render time.
 type templateData struct {
+	// AppName is the operator-configured application name, empty when unset.
+	AppName string
+	// LogoURL is the operator-configured logo image URL, empty when unset.
+	LogoURL string
+	// FaviconURL is the operator-configured favicon URL, empty when unset.
+	FaviconURL string
+	// CustomCSSURL is the operator-configured extra stylesheet URL, empty when unset.
+	CustomCSSURL string
 	// PrimaryColor is the CSS color string for --vw-primary.
 	PrimaryColor string
 	// BackgroundColor is the CSS color string for --vw-bg.
@@ -197,6 +221,10 @@ func (h *Handler) handleSettings(w http.ResponseWriter, r *http.Request) {
 // and is never raw user input.
 func (h *Handler) renderPage(w http.ResponseWriter, r *http.Request, tmplName string) {
 	data := templateData{
+		AppName:         h.cfg.AppName,
+		LogoURL:         h.cfg.LogoURL,
+		FaviconURL:      h.cfg.FaviconURL,
+		CustomCSSURL:    h.cfg.CustomCSSURL,
 		PrimaryColor:    h.cfg.PrimaryColor,
 		BackgroundColor: h.cfg.BackgroundColor,
 		TextColor:       h.cfg.TextColor,

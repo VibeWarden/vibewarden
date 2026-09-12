@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Account Settings</title>
+  <title>{{template "branding-title" .}}Account Settings</title>
   <style>
     :root {
       --vw-primary: {{.PrimaryColor}};
@@ -184,9 +184,11 @@
     .links a:hover { text-decoration: underline; }
     @media (max-width: 480px) { .card { padding: 2rem 1.25rem; } }
   </style>
+  {{template "branding-head" .}}
 </head>
 <body>
 <div class="card">
+  {{template "branding-header" .}}
   <h1>Account settings</h1>
   <p class="subtitle">Manage your password, connected accounts, and email verification.</p>
 

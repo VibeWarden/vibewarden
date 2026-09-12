@@ -340,3 +340,138 @@ func TestHandler_ServeHTTP_ViaRecorder(t *testing.T) {
 		})
 	}
 }
+
+// ---------------------------------------------------------------------------
+// Branding — app name, logo, favicon, custom stylesheet
+// ---------------------------------------------------------------------------
+
+// allPages lists every path the built-in UI serves. Branding must reach all of
+// them, not just the login page.
+var allPages = []string{
+	"/_vibewarden/login",
+	"/_vibewarden/registration",
+	"/_vibewarden/recovery",
+	"/_vibewarden/verification",
+	"/_vibewarden/settings",
+}
+
+// getBody starts the handler, fetches path and returns the response body.
+func getBody(t *testing.T, h *authui.Handler, path string) string {
+	t.Helper()
+	resp, err := http.Get("http://" + h.Addr() + path)
+	if err != nil {
+		t.Fatalf("GET %s: %v", path, err)
+	}
+	defer func() { _ = resp.Body.Close() }() //nolint:errcheck
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		t.Fatalf("reading %s body: %v", path, err)
+	}
+	return string(body)
+}
+
+// startHandler builds and starts a handler, registering cleanup.
+func startHandler(t *testing.T, cfg authui.AuthUIConfig) *authui.Handler {
+	t.Helper()
+	h := newHandler(t, cfg)
+	if err := h.Start(); err != nil {
+		t.Fatalf("Start() error: %v", err)
+	}
+	t.Cleanup(func() { _ = h.Stop(context.TODO()) }) //nolint:errcheck
+	return h
+}
+
+// TestHandler_BrandingRenderedOnEveryPage pins the fix for #1511: the
+// configured app name, logo, favicon and custom stylesheet must appear in the
+// rendered HTML of every built-in page, not just be accepted by the config
+// loader.
+func TestHandler_BrandingRenderedOnEveryPage(t *testing.T) {
+	cfg := defaultConfig()
+	cfg.AppName = "Acme Corp"
+	cfg.LogoURL = "https://cdn.example.com/logo.svg"
+	cfg.FaviconURL = "/static/favicon.ico"
+	cfg.CustomCSSURL = "/static/auth.css"
+
+	h := startHandler(t, cfg)
+
+	for _, path := range allPages {
+		t.Run(path, func(t *testing.T) {
+			body := getBody(t, h, path)
+
+			wants := []string{
+				"Acme Corp",
+				`<title>Acme Corp `,
+				`src="https://cdn.example.com/logo.svg"`,
+				`<link rel="icon" href="/static/favicon.ico">`,
+				`<link rel="stylesheet" href="/static/auth.css">`,
+			}
+			for _, want := range wants {
+				if !strings.Contains(body, want) {
+					t.Errorf("page %s does not contain %q", path, want)
+				}
+			}
+		})
+	}
+}
+
+// TestHandler_CustomCSSLoadsAfterBuiltInStyles verifies the operator
+// stylesheet is linked after the built-in <style> block, which is what makes
+// the override hook actually able to override.
+func TestHandler_CustomCSSLoadsAfterBuiltInStyles(t *testing.T) {
+	cfg := defaultConfig()
+	cfg.CustomCSSURL = "/static/auth.css"
+
+	h := startHandler(t, cfg)
+
+	for _, path := range allPages {
+		t.Run(path, func(t *testing.T) {
+			body := getBody(t, h, path)
+			css := strings.Index(body, `href="/static/auth.css"`)
+			style := strings.LastIndex(body, "</style>")
+			head := strings.Index(body, "</head>")
+			switch {
+			case css < 0:
+				t.Fatalf("page %s does not link the custom stylesheet", path)
+			case css < style:
+				t.Errorf("page %s links the custom stylesheet before the built-in styles end", path)
+			case head >= 0 && css > head:
+				t.Errorf("page %s links the custom stylesheet outside <head>", path)
+			}
+		})
+	}
+}
+
+// TestHandler_NoBrandingWhenUnset verifies the pages stay exactly as they were
+// when no branding is configured — no empty logo element, no favicon link.
+func TestHandler_NoBrandingWhenUnset(t *testing.T) {
+	h := startHandler(t, defaultConfig())
+
+	for _, path := range allPages {
+		t.Run(path, func(t *testing.T) {
+			body := getBody(t, h, path)
+			for _, unwanted := range []string{`class="vw-brand"`, `rel="icon"`, `rel="stylesheet"`} {
+				if strings.Contains(body, unwanted) {
+					t.Errorf("page %s contains %q with no branding configured", path, unwanted)
+				}
+			}
+		})
+	}
+}
+
+// TestHandler_BrandingIsEscaped verifies that branding values are HTML-escaped
+// rather than injected verbatim, since they come from a config file that may be
+// assembled from environment values.
+func TestHandler_BrandingIsEscaped(t *testing.T) {
+	cfg := defaultConfig()
+	cfg.AppName = `</title><script>alert(1)</script>`
+
+	h := startHandler(t, cfg)
+	body := getBody(t, h, "/_vibewarden/login")
+
+	if strings.Contains(body, "<script>alert(1)</script>") {
+		t.Error("login page contains an unescaped script tag from auth.ui.app_name")
+	}
+	if !strings.Contains(body, "alert(1)") {
+		t.Error("login page does not render the app name at all")
+	}
+}

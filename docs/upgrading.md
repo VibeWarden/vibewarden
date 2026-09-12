@@ -235,6 +235,54 @@ auth:
 
 ---
 
+### `auth.ui` branding now applies to the built-in auth pages
+
+Up to and including v0.21.0, the `auth.ui` block was parsed and validated but
+never reached the auth plugin, so none of it applied. Fixing that
+([#1511](https://github.com/vibewarden/vibewarden/issues/1511)) changes two
+things on any existing project with `auth.mode: kratos`.
+
+**1. `auth.ui.mode: custom` stops serving the built-in pages.** Until now,
+custom mode still got the sidecar's own
+`/_vibewarden/{login,registration,recovery,verification,settings}` pages and
+routes. The built-in UI is no longer started in custom mode at all, and
+unauthenticated requests redirect to your `auth.ui.login_url`.
+
+**Before you regenerate or redeploy, confirm that `login_url` actually
+serves a login page.** It may have been dead the whole time without you
+noticing, because the built-in pages were covering for it. An absolute URL is
+used as-is; a bare path such as `/login` is resolved against your public base
+URL and must be reachable without a session (add it to `auth.public_paths` if
+your app gates it).
+
+```bash
+curl -I https://<your-domain>/login   # expect 200, not 404 or a redirect loop
+```
+
+If it is not ready, switch back to `auth.ui.mode: built-in` (the default),
+regenerate, and move to custom mode later.
+
+**2. Your colours apply, and the default background changes.** A project that
+set `primary_color` / `background_color` gets those colours for the first time.
+A project that set neither moves from the old adapter fallback `#F3F4F6` to the
+documented `auth.ui.background_color` default `#1a1a2e`, so the built-in login
+page goes from light grey to dark. To keep the previous look:
+
+```yaml
+auth:
+  ui:
+    background_color: "#F3F4F6"
+```
+
+**Also:** `auth.ui.logo_url` is now validated as a browser asset URL, and
+validation runs on the startup path. A malformed value that was previously
+inert (`logo.png`, `javascript:...`, `//host/logo.png`) now fails config
+validation and the sidecar refuses to start. Use an absolute `http(s)` URL or a
+root-relative path (`/static/logo.png`). Run `vibew validate` before upgrading
+to catch this without downtime.
+
+---
+
 ### `metrics:` → `telemetry:` (deprecated)
 
 The `metrics:` block was replaced by `telemetry:` to reflect VibeWarden's move to

@@ -2,7 +2,9 @@ package config
 
 import (
 	"fmt"
+	"net/url"
 	"regexp"
+	"strings"
 	"time"
 
 	"github.com/vibewarden/vibewarden/internal/domain/identity"
@@ -108,6 +110,13 @@ type AuthUIConfig struct {
 
 	// LogoURL is an optional URL to a logo image displayed on built-in pages.
 	LogoURL string `mapstructure:"logo_url"`
+
+	// FaviconURL is an optional URL to a favicon used by built-in pages.
+	FaviconURL string `mapstructure:"favicon_url"`
+
+	// CustomCSSURL is an optional URL to a stylesheet loaded last on built-in
+	// pages, so it can override the built-in rules.
+	CustomCSSURL string `mapstructure:"custom_css_url"`
 
 	// PrimaryColor is the accent color used on built-in pages (hex, default: "#7C3AED").
 	PrimaryColor string `mapstructure:"primary_color"`
@@ -481,6 +490,39 @@ func validateAuth(c *Config) []string {
 	if ui.Mode == AuthUIModeCustom && ui.LoginURL == "" {
 		errs = append(errs, "auth.ui.login_url is required when auth.ui.mode is \"custom\"")
 	}
+	for _, asset := range []struct{ key, value string }{
+		{"auth.ui.logo_url", ui.LogoURL},
+		{"auth.ui.favicon_url", ui.FaviconURL},
+		{"auth.ui.custom_css_url", ui.CustomCSSURL},
+	} {
+		if !isBrowserAssetURL(asset.value) {
+			errs = append(errs, fmt.Sprintf(
+				"%s %q is not a usable asset URL; expected an absolute http(s) URL or a root-relative path starting with \"/\"",
+				asset.key, asset.value))
+		}
+	}
 
 	return errs
+}
+
+// isBrowserAssetURL reports whether v is safe to emit into an href/src
+// attribute on a built-in auth page. An empty value means "not configured"
+// and is accepted. Everything else must be an absolute http/https URL or a
+// root-relative path, which rules out "javascript:" and "data:" URIs as well
+// as protocol-relative "//host/x" references.
+func isBrowserAssetURL(v string) bool {
+	if v == "" {
+		return true
+	}
+	if strings.HasPrefix(v, "//") {
+		return false
+	}
+	if strings.HasPrefix(v, "/") {
+		return !strings.ContainsAny(v, "\r\n")
+	}
+	u, err := url.Parse(v)
+	if err != nil {
+		return false
+	}
+	return (u.Scheme == "http" || u.Scheme == "https") && u.Host != ""
 }

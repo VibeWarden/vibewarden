@@ -1111,6 +1111,8 @@ func TestLoad_AuthUIDefaults(t *testing.T) {
 		{"auth.ui.mode", cfg.Auth.UI.Mode, "built-in"},
 		{"auth.ui.app_name", cfg.Auth.UI.AppName, ""},
 		{"auth.ui.logo_url", cfg.Auth.UI.LogoURL, ""},
+		{"auth.ui.favicon_url", cfg.Auth.UI.FaviconURL, ""},
+		{"auth.ui.custom_css_url", cfg.Auth.UI.CustomCSSURL, ""},
 		{"auth.ui.primary_color", cfg.Auth.UI.PrimaryColor, "#7C3AED"},
 		{"auth.ui.background_color", cfg.Auth.UI.BackgroundColor, "#1a1a2e"},
 		{"auth.ui.login_url", cfg.Auth.UI.LoginURL, ""},
@@ -1136,6 +1138,8 @@ auth:
     mode: built-in
     app_name: "My App"
     logo_url: "https://example.com/logo.png"
+    favicon_url: "/static/favicon.ico"
+    custom_css_url: "https://example.com/auth.css"
     primary_color: "#7C3AED"
     background_color: "#1a1a2e"
 `
@@ -1158,6 +1162,8 @@ auth:
 		{"auth.ui.mode", cfg.Auth.UI.Mode, "built-in"},
 		{"auth.ui.app_name", cfg.Auth.UI.AppName, "My App"},
 		{"auth.ui.logo_url", cfg.Auth.UI.LogoURL, "https://example.com/logo.png"},
+		{"auth.ui.favicon_url", cfg.Auth.UI.FaviconURL, "/static/favicon.ico"},
+		{"auth.ui.custom_css_url", cfg.Auth.UI.CustomCSSURL, "https://example.com/auth.css"},
 		{"auth.ui.primary_color", cfg.Auth.UI.PrimaryColor, "#7C3AED"},
 		{"auth.ui.background_color", cfg.Auth.UI.BackgroundColor, "#1a1a2e"},
 	}
@@ -1384,6 +1390,72 @@ func TestValidate_AuthUIColors(t *testing.T) {
 			},
 			wantErr: true,
 			errMsg:  "auth.ui.background_color",
+		},
+		{
+			name: "absolute https branding asset URLs are valid",
+			cfg: config.Config{
+				Auth: config.AuthConfig{
+					UI: config.AuthUIConfig{
+						LogoURL:      "https://cdn.example.com/logo.svg",
+						FaviconURL:   "http://cdn.example.com/favicon.ico",
+						CustomCSSURL: "https://cdn.example.com/auth.css",
+					},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "root-relative branding asset URLs are valid",
+			cfg: config.Config{
+				Auth: config.AuthConfig{
+					UI: config.AuthUIConfig{
+						LogoURL:      "/static/logo.svg",
+						FaviconURL:   "/favicon.ico",
+						CustomCSSURL: "/static/auth.css",
+					},
+				},
+			},
+			wantErr: false,
+		},
+		{
+			name: "javascript logo URL is rejected",
+			cfg: config.Config{
+				Auth: config.AuthConfig{
+					UI: config.AuthUIConfig{LogoURL: "javascript:alert(1)"},
+				},
+			},
+			wantErr: true,
+			errMsg:  "auth.ui.logo_url",
+		},
+		{
+			name: "data favicon URL is rejected",
+			cfg: config.Config{
+				Auth: config.AuthConfig{
+					UI: config.AuthUIConfig{FaviconURL: "data:image/png;base64,AAAA"},
+				},
+			},
+			wantErr: true,
+			errMsg:  "auth.ui.favicon_url",
+		},
+		{
+			name: "protocol-relative custom CSS URL is rejected",
+			cfg: config.Config{
+				Auth: config.AuthConfig{
+					UI: config.AuthUIConfig{CustomCSSURL: "//cdn.example.com/auth.css"},
+				},
+			},
+			wantErr: true,
+			errMsg:  "auth.ui.custom_css_url",
+		},
+		{
+			name: "bare hostname logo URL is rejected",
+			cfg: config.Config{
+				Auth: config.AuthConfig{
+					UI: config.AuthUIConfig{LogoURL: "cdn.example.com/logo.svg"},
+				},
+			},
+			wantErr: true,
+			errMsg:  "auth.ui.logo_url",
 		},
 	}
 

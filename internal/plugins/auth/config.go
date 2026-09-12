@@ -172,6 +172,22 @@ type UIConfig struct {
 	// "custom". Optional.
 	RecoveryURL string
 
+	// AppName is the application name rendered in the page title and above the
+	// form on the built-in pages. Only used when Mode is "built-in".
+	AppName string
+
+	// LogoURL is an optional logo image URL rendered on the built-in pages.
+	// Only used when Mode is "built-in".
+	LogoURL string
+
+	// FaviconURL is an optional favicon URL linked from the built-in pages.
+	// Only used when Mode is "built-in".
+	FaviconURL string
+
+	// CustomCSSURL is an optional stylesheet URL linked last in <head> on the
+	// built-in pages. Only used when Mode is "built-in".
+	CustomCSSURL string
+
 	// PrimaryColor is the CSS color value for the --vw-primary custom property.
 	// Defaults to "#7C3AED" (VibeWarden purple) when empty.
 	// Only used when Mode is "built-in".
