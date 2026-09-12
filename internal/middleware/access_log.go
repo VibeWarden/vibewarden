@@ -33,6 +33,21 @@ func (rw *accessLogResponseWriter) Write(b []byte) (int, error) {
 	return n, err
 }
 
+// Flush forwards a flush to the underlying writer so streaming responses are
+// not buffered by this wrapper. The first flush commits the response, so the
+// captured status code is pinned at that point.
+func (rw *accessLogResponseWriter) Flush() {
+	if !rw.written {
+		rw.statusCode = http.StatusOK
+		rw.written = true
+	}
+	FlushResponseWriter(rw.ResponseWriter)
+}
+
+// Unwrap returns the wrapped ResponseWriter so http.ResponseController can
+// reach interfaces implemented further down the chain.
+func (rw *accessLogResponseWriter) Unwrap() http.ResponseWriter { return rw.ResponseWriter }
+
 // AccessLogMiddleware returns HTTP middleware that logs a structured INFO record
 // for every completed request after the response has been written.
 //
