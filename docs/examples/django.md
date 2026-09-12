@@ -256,10 +256,14 @@ transforms header names to uppercase with an `HTTP_` prefix.
 
 | HTTP Header | Django `request.META` key | Description |
 |---|---|---|
-| `X-User-ID` | `HTTP_X_USER_ID` | Kratos identity UUID |
+| `X-User-Id` | `HTTP_X_USER_ID` | Kratos identity UUID |
 | `X-User-Email` | `HTTP_X_USER_EMAIL` | Primary email address |
 | `X-User-Verified` | `HTTP_X_USER_VERIFIED` | `"true"` if email is verified |
-| `X-Session-ID` | `HTTP_X_SESSION_ID` | Kratos session UUID |
+| `X-User-Role` | `HTTP_X_USER_ROLE` | `user`, `admin`, or `moderator`; defaults to `user` |
+
+These four headers are the complete `kratos`-mode contract; there is no session
+header. See [Identity headers in `kratos` mode](../identity-providers.md#identity-headers-in-kratos-mode)
+for the full contract, including header stripping and behaviour on public paths.
 
 ### Middleware
 
@@ -278,7 +282,7 @@ class VibeWardenUser:
     id: str
     email: str
     verified: bool
-    session_id: str
+    role: str
 
 
 class VibeWardenMiddleware:
@@ -297,14 +301,14 @@ class VibeWardenMiddleware:
         user_id    = request.META.get("HTTP_X_USER_ID", "")
         user_email = request.META.get("HTTP_X_USER_EMAIL", "")
         verified   = request.META.get("HTTP_X_USER_VERIFIED", "false") == "true"
-        session_id = request.META.get("HTTP_X_SESSION_ID", "")
+        role       = request.META.get("HTTP_X_USER_ROLE", "user")
 
         if user_id:
             request.vw_user = VibeWardenUser(
                 id=user_id,
                 email=user_email,
                 verified=verified,
-                session_id=session_id,
+                role=role,
             )
         else:
             request.vw_user = None
@@ -406,7 +410,7 @@ class VibeWardenIdentity:
     pk: str      # required by DRF's is_authenticated logic
     email: str
     verified: bool
-    session_id: str
+    role: str
 
     @property
     def is_authenticated(self):
@@ -432,7 +436,7 @@ class VibeWardenAuthentication(BaseAuthentication):
             pk=user_id,
             email=request.META.get("HTTP_X_USER_EMAIL", ""),
             verified=request.META.get("HTTP_X_USER_VERIFIED", "false") == "true",
-            session_id=request.META.get("HTTP_X_SESSION_ID", ""),
+            role=request.META.get("HTTP_X_USER_ROLE", "user"),
         )
         return (user, None)
 ```

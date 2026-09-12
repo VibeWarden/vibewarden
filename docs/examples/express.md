@@ -228,11 +228,14 @@ without making any additional auth calls.
 
 | Header | Description |
 |---|---|
-| `X-User-ID` | Kratos identity UUID |
+| `X-User-Id` | Kratos identity UUID |
 | `X-User-Email` | Primary email address from the identity traits |
 | `X-User-Verified` | `"true"` if the email address has been verified |
 | `X-User-Role` | User role from the identity traits (`user`, `admin`, or `moderator`). Defaults to `user` when the trait is absent |
-| `X-Session-ID` | Kratos session UUID |
+
+These four headers are the complete `kratos`-mode contract; there is no session
+header. See [Identity headers in `kratos` mode](../identity-providers.md#identity-headers-in-kratos-mode)
+for the full contract, including header stripping and behaviour on public paths.
 
 ### Middleware to extract user identity
 
@@ -253,7 +256,6 @@ function vibewardenAuth(req, res, next) {
   const userEmail = req.headers["x-user-email"];
   const verified  = req.headers["x-user-verified"] === "true";
   const userRole  = req.headers["x-user-role"] || "user";
-  const sessionId = req.headers["x-session-id"];
 
   if (!userId) {
     // VibeWarden should have redirected unauthenticated requests.
@@ -261,7 +263,7 @@ function vibewardenAuth(req, res, next) {
     return res.status(401).json({ error: "unauthorized" });
   }
 
-  req.user = { id: userId, email: userEmail, verified, role: userRole, sessionId };
+  req.user = { id: userId, email: userEmail, verified, role: userRole };
   next();
 }
 
@@ -278,7 +280,7 @@ export interface VibeWardenUser {
   id: string;
   email: string;
   verified: boolean;
-  sessionId: string;
+  role: string;
 }
 
 declare global {
@@ -298,14 +300,13 @@ export function vibewardenAuth(
   const email     = (req.headers["x-user-email"] as string) ?? "";
   const verified  = req.headers["x-user-verified"] === "true";
   const role      = (req.headers["x-user-role"] as string) ?? "user";
-  const sessionId = (req.headers["x-session-id"] as string) ?? "";
 
   if (!id) {
     res.status(401).json({ error: "unauthorized" });
     return;
   }
 
-  req.user = { id, email, verified, role, sessionId };
+  req.user = { id, email, verified, role };
   next();
 }
 ```
@@ -393,13 +394,13 @@ app.use(
   pinoHttp({
     logger,
     customProps: (req) => ({
-      userId:    req.headers["x-user-id"],
-      sessionId: req.headers["x-session-id"],
+      userId:   req.headers["x-user-id"],
+      userRole: req.headers["x-user-role"],
     }),
   })
 );
 ```
 
-This enriches every HTTP log entry with the user and session IDs injected by
+This enriches every HTTP log entry with the user ID and role injected by
 VibeWarden, making it easy to correlate VibeWarden logs with Express logs in your log
 aggregation platform.

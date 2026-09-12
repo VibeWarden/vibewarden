@@ -67,6 +67,9 @@ Use this mode when you need a self-hosted identity layer with full UI flows.
 The Kratos plugin starts a Kratos instance for you when `kratos.external` is
 `false` (the default in the generated config).
 
+Unlike `jwt` mode, the upstream header set is fixed and not configurable — see
+[Identity headers in `kratos` mode](#identity-headers-in-kratos-mode).
+
 See the [social login guide](social-login.md) for configuring OAuth 2.0
 providers inside Kratos.
 
@@ -325,6 +328,46 @@ verification, social login, and WebAuthn.
 The Kratos plugin is **opt-in** — you activate it by setting `auth.mode:
 kratos`. VibeWarden then starts and manages a Kratos instance for you in the
 generated Docker Compose stack.
+
+### Identity headers in `kratos` mode
+
+`kratos` mode has no `claims_to_headers` equivalent — the header set is fixed.
+After a session cookie is validated against Kratos `GET /sessions/whoami`,
+VibeWarden injects these headers into the upstream request:
+
+| Header | Source | Notes |
+|--------|--------|-------|
+| `X-User-Id` | `identity.id` | Kratos identity UUID. Omitted if empty. |
+| `X-User-Email` | `identity.verifiable_addresses`, else `identity.traits.email` | Value of the first `email` verifiable address, verified or not; falls back to the trait only when there is no such address. Omitted when neither exists. |
+| `X-User-Verified` | `identity.verifiable_addresses` | `"true"` or `"false"` for the `email` address. Always set. |
+| `X-User-Role` | `identity.traits.role` | `user`, `admin`, or `moderator`. Always set; defaults to `user` when the trait is absent, empty, or unrecognised (an unrecognised value is logged as a warning). |
+
+There is no session header. VibeWarden does **not** inject the Kratos session
+ID, and no `X-Session-ID` header exists in any mode. If your app needs session
+details, call Kratos `whoami` yourself with the forwarded cookie.
+
+Header names are case-insensitive on the wire, so `x-user-id` reads the same
+value as `X-User-Id`.
+
+Two behaviours to design your app around:
+
+- **Incoming `X-User-*` headers are always stripped** from the client request
+  before validation, at both the Caddy and the Go layer. A client cannot
+  impersonate a user by setting them, and your app must not do its own
+  stripping.
+- **On a public path (`auth.public_paths`), the headers may be absent.** Public
+  paths use optional auth: a valid session cookie still produces the full
+  header set, but a request without one (or with an invalid one) is forwarded
+  with no identity headers at all rather than being redirected. Treat a missing
+  `X-User-Id` as "anonymous", not as an error.
+
+On protected paths, a request that reaches your app has always been validated:
+an unauthenticated request is redirected to the login URL and never forwarded.
+
+`auth.role_paths` enforcement happens in the sidecar — a role mismatch returns
+403 before the request reaches your app. `X-User-Role` is set regardless of
+whether `role_paths` is configured, so per-route checks in your app work with
+an empty `role_paths`.
 
 ### When to choose Kratos
 
@@ -674,6 +717,14 @@ deployment-time concern.
     "email_verified": "X-User-Verified"
   },
   "provider_examples": ["auth0", "keycloak", "firebase", "cognito", "okta", "supabase"],
+  "kratos_headers": {
+    "X-User-Id": "identity.id",
+    "X-User-Email": "identity.verifiable_addresses[via=email].value, else identity.traits.email",
+    "X-User-Verified": "identity.verifiable_addresses (true/false)",
+    "X-User-Role": "identity.traits.role (user|admin|moderator, default user)"
+  },
+  "kratos_headers_configurable": false,
+  "session_header_exists": false,
   "kratos_use_cases": ["browser_flows", "mfa", "social_login", "self_hosted_accounts"],
   "api_key_use_cases": ["machine_to_machine", "ci_cd", "service_accounts"],
   "dev_prod_split": {
