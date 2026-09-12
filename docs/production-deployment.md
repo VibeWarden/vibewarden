@@ -305,7 +305,11 @@ Create `config/kratos/identity.schema.json`:
 }
 ```
 
-Create `config/kratos/kratos.yml`:
+Create `config/kratos/kratos.yml`. The `ui_url` values below assume **your app**
+serves the auth pages; set `auth.ui.mode: custom` with the matching
+`auth.ui.*_url` keys in `vibewarden.yaml` so the rest of the sidecar agrees. If
+you use the built-in auth UI instead, let `vibew generate` write this file: it
+emits the `/_vibewarden/*` paths the sidecar actually serves.
 
 ```yaml
 version: v26.2.0

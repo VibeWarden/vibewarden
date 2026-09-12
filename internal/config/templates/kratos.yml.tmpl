@@ -98,34 +98,34 @@ selfservice:
 
   flows:
     error:
-      ui_url: {{ if .TLS.Domain }}https://{{ .TLS.Domain }}{{ else }}{{ if .TLS.Enabled }}https{{ else }}http{{ end }}://localhost:{{ .Server.Port }}{{ end }}/auth/error
+      ui_url: {{ .AuthFlowURLs.Error }}
 
     settings:
-      ui_url: {{ if .TLS.Domain }}https://{{ .TLS.Domain }}{{ else }}{{ if .TLS.Enabled }}https{{ else }}http{{ end }}://localhost:{{ .Server.Port }}{{ end }}/auth/settings
+      ui_url: {{ .AuthFlowURLs.Settings }}
       privileged_session_max_age: 15m
       required_aal: highest_available
 
     recovery:
       enabled: true
-      ui_url: {{ if .TLS.Domain }}https://{{ .TLS.Domain }}{{ else }}{{ if .TLS.Enabled }}https{{ else }}http{{ end }}://localhost:{{ .Server.Port }}{{ end }}/auth/recovery
+      ui_url: {{ .AuthFlowURLs.Recovery }}
 
     verification:
       enabled: true
-      ui_url: {{ if .TLS.Domain }}https://{{ .TLS.Domain }}{{ else }}{{ if .TLS.Enabled }}https{{ else }}http{{ end }}://localhost:{{ .Server.Port }}{{ end }}/auth/verification
+      ui_url: {{ .AuthFlowURLs.Verification }}
       after:
         default_browser_return_url: {{ if .TLS.Domain }}https://{{ .TLS.Domain }}{{ else }}{{ if .TLS.Enabled }}https{{ else }}http{{ end }}://localhost:{{ .Server.Port }}{{ end }}/
 
     logout:
       after:
-        default_browser_return_url: {{ if .TLS.Domain }}https://{{ .TLS.Domain }}{{ else }}{{ if .TLS.Enabled }}https{{ else }}http{{ end }}://localhost:{{ .Server.Port }}{{ end }}/auth/login
+        default_browser_return_url: {{ .AuthFlowURLs.LogoutReturn }}
 
     login:
-      ui_url: {{ if .TLS.Domain }}https://{{ .TLS.Domain }}{{ else }}{{ if .TLS.Enabled }}https{{ else }}http{{ end }}://localhost:{{ .Server.Port }}{{ end }}/auth/login
+      ui_url: {{ .AuthFlowURLs.Login }}
       lifespan: 10m
 
     registration:
       lifespan: 10m
-      ui_url: {{ if .TLS.Domain }}https://{{ .TLS.Domain }}{{ else }}{{ if .TLS.Enabled }}https{{ else }}http{{ end }}://localhost:{{ .Server.Port }}{{ end }}/auth/registration
+      ui_url: {{ .AuthFlowURLs.Registration }}
       after:
         password:
           hooks:
