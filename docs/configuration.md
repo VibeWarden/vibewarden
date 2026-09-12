@@ -291,6 +291,17 @@ List of OAuth2/OIDC social login providers (used with `auth.mode: kratos`).
 | `auth.ui.settings_url` | string | `""` | Custom account settings page URL |
 | `auth.ui.recovery_url` | string | `""` | Custom account recovery page URL |
 
+In `built-in` mode VibeWarden serves the auth pages itself at
+`/_vibewarden/login`, `/_vibewarden/registration`, `/_vibewarden/recovery`,
+`/_vibewarden/verification` and `/_vibewarden/settings`, and points the
+generated `kratos/kratos.yml` flows at them.
+
+In `custom` mode the generated flows point at your `auth.ui.*_url` values
+instead. Absolute URLs are used as-is; a path such as `/login` is resolved
+against your public base URL (`tls.domain`, else `localhost:<server.port>`).
+The verification and error flows have no key of their own and fall back to
+`auth.ui.login_url`, as does any `*_url` you leave empty.
+
 ---
 
 ## `kratos`

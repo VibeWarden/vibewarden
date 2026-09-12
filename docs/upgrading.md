@@ -191,6 +191,50 @@ troubleshooting entry for the recovery procedure.
 
 ---
 
+### Generated `kratos.yml` auth UI URLs: `/auth/*` → `/_vibewarden/*`
+
+Up to and including v0.21.0, `vibew generate` / `vibew bundle` wrote every
+`selfservice.flows.*.ui_url` in `kratos/kratos.yml` as `/auth/login`,
+`/auth/registration`, `/auth/recovery`, `/auth/settings`, `/auth/verification`
+and `/auth/error`. The built-in auth UI has never served those paths — it serves
+`/_vibewarden/login`, `/_vibewarden/registration`, `/_vibewarden/recovery`,
+`/_vibewarden/verification` and `/_vibewarden/settings`.
+
+**Symptom:** anything Kratos redirects on its own (an expired login flow, the
+logout return URL, the error page) lands on a path VibeWarden does not route, so
+the request falls through to your app and you get your app's 404 instead of a
+login page. Clicking a link to `/_vibewarden/login` yourself still works, which
+is why this can hide for a while.
+
+**Migration:** regenerate. No `vibewarden.yaml` change is needed.
+
+```bash
+vibew generate     # or: vibew bundle
+docker compose up -d --force-recreate kratos
+```
+
+If you pinned a hand-written Kratos config with `overrides.kratos_config`,
+VibeWarden copies that file verbatim and cannot fix it for you — update the
+`ui_url` values in your own file to the `/_vibewarden/*` paths above.
+
+**If you serve your own auth pages,** set `auth.ui.mode: custom` and the
+`auth.ui.*_url` keys. The generated `kratos.yml` then points the flows at your
+URLs instead. Absolute URLs are used as-is; a path such as `/login` is resolved
+against your public base URL. Flows with no key of their own
+(`verification`, `error`) fall back to `auth.ui.login_url`.
+
+```yaml
+auth:
+  ui:
+    mode: custom
+    login_url: https://myapp.example.com/login
+    registration_url: https://myapp.example.com/register
+    settings_url: https://myapp.example.com/settings
+    recovery_url: https://myapp.example.com/recovery
+```
+
+---
+
 ### `metrics:` → `telemetry:` (deprecated)
 
 The `metrics:` block was replaced by `telemetry:` to reflect VibeWarden's move to

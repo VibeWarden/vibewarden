@@ -351,12 +351,14 @@ func TestGenerate_Integration_KratosBaseURL(t *testing.T) {
 	}
 }
 
-// TestGenerate_Integration_KratosUIUrlsUseAuthPrefix verifies that the
-// generated kratos.yml uses /auth/ prefix for all ui_url entries so that
-// Kratos redirects to the sidecar's auth UI routes.
+// TestGenerate_Integration_KratosUIUrlsUseBuiltInUIPaths verifies that the
+// generated kratos.yml points every ui_url at a /_vibewarden/ path the
+// sidecar's built-in auth UI actually serves.
 //
-// Regression test for #977.
-func TestGenerate_Integration_KratosUIUrlsUseAuthPrefix(t *testing.T) {
+// Regression test for #977 (redirects must reach the sidecar, not the app)
+// and #1516 (the prefix was /auth/, which the built-in UI never served, so
+// every Kratos-initiated redirect fell through to the upstream app).
+func TestGenerate_Integration_KratosUIUrlsUseBuiltInUIPaths(t *testing.T) {
 	renderer := template.NewRenderer(templates.FS)
 	svc := generate.NewService(renderer)
 
@@ -375,13 +377,12 @@ func TestGenerate_Integration_KratosUIUrlsUseAuthPrefix(t *testing.T) {
 	}
 
 	wantPaths := []string{
-		"ui_url: http://localhost:8080/auth/error",
-		"ui_url: http://localhost:8080/auth/settings",
-		"ui_url: http://localhost:8080/auth/recovery",
-		"ui_url: http://localhost:8080/auth/verification",
-		"ui_url: http://localhost:8080/auth/login",
-		"ui_url: http://localhost:8080/auth/registration",
-		"default_browser_return_url: http://localhost:8080/auth/login",
+		"ui_url: http://localhost:8080/_vibewarden/settings",
+		"ui_url: http://localhost:8080/_vibewarden/recovery",
+		"ui_url: http://localhost:8080/_vibewarden/verification",
+		"ui_url: http://localhost:8080/_vibewarden/login",
+		"ui_url: http://localhost:8080/_vibewarden/registration",
+		"default_browser_return_url: http://localhost:8080/_vibewarden/login",
 	}
 
 	for _, want := range wantPaths {
@@ -390,8 +391,17 @@ func TestGenerate_Integration_KratosUIUrlsUseAuthPrefix(t *testing.T) {
 		}
 	}
 
-	// Ensure old paths without /auth/ prefix are NOT present.
+	// No page is served at /_vibewarden/error, so the error flow must land on
+	// the login page rather than on a path that falls through to the app.
+	if bytes.Contains(data, []byte("/_vibewarden/error")) {
+		t.Errorf("kratos.yml references /_vibewarden/error, which the sidecar does not serve\n--- content ---\n%s", data)
+	}
+
+	// Ensure the /auth/ paths (never served by the built-in UI) are gone, as
+	// are the bare paths they replaced.
 	unwantedPaths := []string{
+		"ui_url: http://localhost:8080/auth/",
+		"default_browser_return_url: http://localhost:8080/auth/",
 		"ui_url: http://localhost:8080/login",
 		"ui_url: http://localhost:8080/registration",
 		"ui_url: http://localhost:8080/recovery",
@@ -402,8 +412,50 @@ func TestGenerate_Integration_KratosUIUrlsUseAuthPrefix(t *testing.T) {
 
 	for _, unwanted := range unwantedPaths {
 		if bytes.Contains(data, []byte(unwanted)) {
-			t.Errorf("kratos.yml contains old path without /auth/ prefix: %q\n--- content ---\n%s", unwanted, data)
+			t.Errorf("kratos.yml contains stale ui_url path %q\n--- content ---\n%s", unwanted, data)
 		}
+	}
+}
+
+// TestGenerate_Integration_KratosUIUrlsCustomMode verifies that auth.ui.mode
+// "custom" renders the operator's own URLs into kratos.yml instead of the
+// built-in /_vibewarden/ paths, with login_url as the fallback for flows that
+// have no URL of their own.
+//
+// Regression test for #1516.
+func TestGenerate_Integration_KratosUIUrlsCustomMode(t *testing.T) {
+	renderer := template.NewRenderer(templates.FS)
+	svc := generate.NewService(renderer)
+
+	outputDir := t.TempDir()
+	cfg := minimalConfig()
+	cfg.Server.Port = 8080
+	cfg.Auth.UI.Mode = config.AuthUIModeCustom
+	cfg.Auth.UI.LoginURL = "https://app.example.com/signin"
+	cfg.Auth.UI.RegistrationURL = "/register"
+
+	if err := svc.Generate(context.Background(), cfg.ToGeneratorInput(), outputDir); err != nil {
+		t.Fatalf("Generate() unexpected error: %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(outputDir, "kratos", "kratos.yml"))
+	if err != nil {
+		t.Fatalf("reading kratos.yml: %v", err)
+	}
+
+	wantPaths := []string{
+		"ui_url: https://app.example.com/signin",
+		"ui_url: http://localhost:8080/register",
+		"default_browser_return_url: https://app.example.com/signin",
+	}
+	for _, want := range wantPaths {
+		if !bytes.Contains(data, []byte(want)) {
+			t.Errorf("kratos.yml missing expected custom URL %q\n--- content ---\n%s", want, data)
+		}
+	}
+
+	if bytes.Contains(data, []byte("/_vibewarden/")) {
+		t.Errorf("kratos.yml uses built-in UI paths in custom mode\n--- content ---\n%s", data)
 	}
 }
 

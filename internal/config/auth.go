@@ -469,7 +469,7 @@ func validateAuth(c *Config) []string {
 
 	// Auth UI validation.
 	ui := c.Auth.UI
-	if ui.Mode != "" && ui.Mode != "built-in" && ui.Mode != "custom" {
+	if ui.Mode != "" && ui.Mode != AuthUIModeBuiltIn && ui.Mode != AuthUIModeCustom {
 		errs = append(errs, fmt.Sprintf("auth.ui.mode %q is invalid; accepted values: \"built-in\", \"custom\"", ui.Mode))
 	}
 	if ui.PrimaryColor != "" && !hexColorRE.MatchString(ui.PrimaryColor) {
@@ -478,7 +478,7 @@ func validateAuth(c *Config) []string {
 	if ui.BackgroundColor != "" && !hexColorRE.MatchString(ui.BackgroundColor) {
 		errs = append(errs, fmt.Sprintf("auth.ui.background_color %q is not a valid hex color (expected #RGB or #RRGGBB)", ui.BackgroundColor))
 	}
-	if ui.Mode == "custom" && ui.LoginURL == "" {
+	if ui.Mode == AuthUIModeCustom && ui.LoginURL == "" {
 		errs = append(errs, "auth.ui.login_url is required when auth.ui.mode is \"custom\"")
 	}
 
