@@ -129,8 +129,9 @@ type ProxyConfig struct {
 
 // ResponseHeadersConfig holds configuration for arbitrary response header modifications.
 // Operations are applied in the order: remove, then set, then add.
-// This handler is applied after security headers so that it can override or
-// extend any header set by the security-headers plugin.
+// This handler runs on the catch-all app-proxied route only, after the global
+// security-headers route, so it can override or extend any header set there —
+// but only for app responses, not for VibeWarden's own routes (#1540).
 type ResponseHeadersConfig struct {
 	// Enabled toggles response header modification.
 	Enabled bool

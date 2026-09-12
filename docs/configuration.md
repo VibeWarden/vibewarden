@@ -396,8 +396,12 @@ Only read when `store` is `redis`.
 The headers are applied to every response the sidecar serves, not just proxied
 app responses: the built-in login UI (`/_vibewarden/login`), the admin API
 (`/_vibewarden/admin/*`, including its `401` responses), and the Kratos
-self-service surface (`/self-service/*`) all carry the same set. Operator rules
-under `response_headers` are applied after these and win on conflict.
+self-service surface (`/self-service/*`) all carry the same set.
+
+Operator rules under `response_headers` still win on conflict, but only on the
+app-proxied route: `response_headers` is not applied to VibeWarden's own routes,
+so it cannot override or strip a security header on the login UI, the admin API
+or the Kratos proxy.
 
 ---
 

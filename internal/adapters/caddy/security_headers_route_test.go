@@ -3,6 +3,7 @@ package caddy
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -11,6 +12,7 @@ import (
 
 	gocaddy "github.com/caddyserver/caddy/v2"
 
+	"github.com/vibewarden/vibewarden/internal/plugins/securityheaders"
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
 
@@ -240,4 +242,91 @@ func waitForHTTP(client *http.Client, url string, timeout time.Duration) error {
 		time.Sleep(50 * time.Millisecond)
 	}
 	return fmt.Errorf("server at %s not ready within %s: %w", url, timeout, lastErr)
+}
+
+// TestSecurityHeaders_ResponseHeadersOverrideOnAppRoute pins the documented
+// precedence between the global security-headers route and the operator's
+// response_headers rules, with the security-headers plugin wired in exactly as
+// the serve path wires it (ExtraHandlers built from
+// registry.CaddyContributors()).
+//
+// Two things are asserted, both behavioural:
+//
+//   - On the app-proxied route, operator response_headers win: the plugin must
+//     not contribute a second copy of the security-headers handler, because
+//     ExtraHandlers are inserted into the catch-all chain after the
+//     response_headers handler and would therefore run last and override it.
+//   - On VibeWarden's own routes, response_headers are not applied at all —
+//     they are wired into the catch-all chain only — so those routes keep the
+//     security_headers value.
+func TestSecurityHeaders_ResponseHeadersOverrideOnAppRoute(t *testing.T) {
+	mockApp := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		fmt.Fprint(w, "app-ok")
+	}))
+	defer mockApp.Close()
+
+	listenAddr := fmt.Sprintf("127.0.0.1:%d", freeTCPPort(t))
+
+	secCfg := ports.SecurityHeadersConfig{
+		Enabled:            true,
+		ContentTypeNosniff: true,
+		FrameOption:        "SAMEORIGIN",
+	}
+
+	// The production wiring appends every CaddyContributor's handlers to
+	// ExtraHandlers; the security-headers plugin must contribute none.
+	plugin := securityheaders.New(securityheaders.Config{
+		Enabled:            secCfg.Enabled,
+		ContentTypeNosniff: secCfg.ContentTypeNosniff,
+		FrameOption:        secCfg.FrameOption,
+	}, false, slog.New(slog.DiscardHandler))
+
+	cfg := &ports.ProxyConfig{
+		ListenAddr:      listenAddr,
+		UpstreamAddr:    mockApp.Listener.Addr().String(),
+		SecurityHeaders: secCfg,
+		ResponseHeaders: ports.ResponseHeadersConfig{
+			Enabled: true,
+			Set:     map[string]string{"X-Frame-Options": "DENY"},
+		},
+		ExtraHandlers: plugin.ContributeCaddyHandlers(),
+	}
+
+	startCaddyForTest(t, cfg)
+
+	client := &http.Client{
+		Timeout:       5 * time.Second,
+		CheckRedirect: func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse },
+	}
+	baseURL := "http://" + listenAddr
+
+	if err := waitForHTTP(client, baseURL+"/", 10*time.Second); err != nil {
+		t.Fatalf("proxy server did not start: %v", err)
+	}
+
+	tests := []struct {
+		name            string
+		path            string
+		wantFrameOption string
+	}{
+		{"app route: operator response_headers win", "/", "DENY"},
+		{"vibewarden route: response_headers not applied", "/_vibewarden/health", "SAMEORIGIN"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			resp, err := client.Get(baseURL + tt.path)
+			if err != nil {
+				t.Fatalf("GET %s: %v", tt.path, err)
+			}
+			defer resp.Body.Close() //nolint:errcheck // test cleanup
+
+			if got := resp.Header.Get("X-Frame-Options"); got != tt.wantFrameOption {
+				t.Errorf("GET %s: X-Frame-Options = %q, want %q", tt.path, got, tt.wantFrameOption)
+			}
+			if got := resp.Header.Get("X-Content-Type-Options"); got != "nosniff" {
+				t.Errorf("GET %s: X-Content-Type-Options = %q, want %q", tt.path, got, "nosniff")
+			}
+		})
+	}
 }
