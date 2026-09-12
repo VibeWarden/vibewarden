@@ -338,7 +338,7 @@ VibeWarden injects these headers into the upstream request:
 | Header | Source | Notes |
 |--------|--------|-------|
 | `X-User-Id` | `identity.id` | Kratos identity UUID. Omitted if empty. |
-| `X-User-Email` | `identity.traits.email` | Omitted if the trait is absent or not a string. |
+| `X-User-Email` | `identity.verifiable_addresses`, else `identity.traits.email` | Value of the first `email` verifiable address, verified or not; falls back to the trait only when there is no such address. Omitted when neither exists. |
 | `X-User-Verified` | `identity.verifiable_addresses` | `"true"` or `"false"` for the `email` address. Always set. |
 | `X-User-Role` | `identity.traits.role` | `user`, `admin`, or `moderator`. Always set; defaults to `user` when the trait is absent, empty, or unrecognised (an unrecognised value is logged as a warning). |
 
@@ -719,7 +719,7 @@ deployment-time concern.
   "provider_examples": ["auth0", "keycloak", "firebase", "cognito", "okta", "supabase"],
   "kratos_headers": {
     "X-User-Id": "identity.id",
-    "X-User-Email": "identity.traits.email",
+    "X-User-Email": "identity.verifiable_addresses[via=email].value, else identity.traits.email",
     "X-User-Verified": "identity.verifiable_addresses (true/false)",
     "X-User-Role": "identity.traits.role (user|admin|moderator, default user)"
   },

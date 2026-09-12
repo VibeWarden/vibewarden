@@ -464,7 +464,9 @@ When neither build nor image is set, VibeWarden falls back to host.docker.intern
   these headers are injected into the upstream request:
 
     X-User-Id        identity.id                    Kratos identity UUID; omitted if empty
-    X-User-Email     identity.traits.email          Omitted if the trait is absent or not a string
+    X-User-Email     verifiable_addresses, else     Value of the first email verifiable address (verified
+                     identity.traits.email          or not); falls back to the trait only when there is no
+                                                    such address; omitted when neither exists
     X-User-Verified  identity.verifiable_addresses  "true"/"false" for the email address; always set
     X-User-Role      identity.traits.role           user, admin, or moderator; always set, defaults
                                                     to user when absent, empty, or unrecognised
