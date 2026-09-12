@@ -475,3 +475,134 @@ func TestAdminAuthMiddleware_UICarveOut_NoTraversalBypass(t *testing.T) {
 		})
 	}
 }
+
+// TestAdminAuthMiddleware_TokenHeaderForms covers both accepted ways of
+// presenting the admin token: the VibeWarden-specific X-Admin-Key header and
+// the standard Authorization: Bearer header (#1513). The MCP tools and the
+// documented curl examples use the Bearer form.
+func TestAdminAuthMiddleware_TokenHeaderForms(t *testing.T) {
+	const token = "correct-token"
+	cfg := ports.AdminAuthConfig{Enabled: true, Token: token}
+	mw := AdminAuthMiddleware(cfg, nil, nil)
+
+	tests := []struct {
+		name     string
+		headers  map[string]string
+		wantCode int
+	}{
+		{
+			name:     "x-admin-key",
+			headers:  map[string]string{adminKeyHeader: token},
+			wantCode: http.StatusOK,
+		},
+		{
+			name:     "authorization bearer",
+			headers:  map[string]string{authorizationHeader: "Bearer " + token},
+			wantCode: http.StatusOK,
+		},
+		{
+			name:     "authorization bearer lowercase scheme",
+			headers:  map[string]string{authorizationHeader: "bearer " + token},
+			wantCode: http.StatusOK,
+		},
+		{
+			name:     "authorization bearer extra whitespace",
+			headers:  map[string]string{authorizationHeader: "Bearer   " + token + " "},
+			wantCode: http.StatusOK,
+		},
+		{
+			name:     "both headers agree",
+			headers:  map[string]string{adminKeyHeader: token, authorizationHeader: "Bearer " + token},
+			wantCode: http.StatusOK,
+		},
+		{
+			name:     "x-admin-key wins over unrelated authorization",
+			headers:  map[string]string{adminKeyHeader: token, authorizationHeader: "Bearer app-jwt"},
+			wantCode: http.StatusOK,
+		},
+		{
+			name:     "x-admin-key wrong, authorization right",
+			headers:  map[string]string{adminKeyHeader: "wrong", authorizationHeader: "Bearer " + token},
+			wantCode: http.StatusUnauthorized,
+		},
+		{
+			name:     "authorization bearer wrong token",
+			headers:  map[string]string{authorizationHeader: "Bearer wrong-token"},
+			wantCode: http.StatusUnauthorized,
+		},
+		{
+			name:     "authorization basic scheme rejected",
+			headers:  map[string]string{authorizationHeader: "Basic " + token},
+			wantCode: http.StatusUnauthorized,
+		},
+		{
+			name:     "authorization bare token rejected",
+			headers:  map[string]string{authorizationHeader: token},
+			wantCode: http.StatusUnauthorized,
+		},
+		{
+			name:     "authorization bearer empty credential",
+			headers:  map[string]string{authorizationHeader: "Bearer "},
+			wantCode: http.StatusUnauthorized,
+		},
+		{
+			name:     "no headers",
+			headers:  nil,
+			wantCode: http.StatusUnauthorized,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			nextCalled := false
+			next := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				nextCalled = true
+				w.WriteHeader(http.StatusOK)
+			})
+
+			req := httptest.NewRequest(http.MethodGet, "/_vibewarden/admin/users", nil)
+			for k, v := range tt.headers {
+				req.Header.Set(k, v)
+			}
+			w := httptest.NewRecorder()
+			mw(next).ServeHTTP(w, req)
+
+			if w.Code != tt.wantCode {
+				t.Errorf("status = %d, want %d", w.Code, tt.wantCode)
+			}
+			if got := nextCalled; got != (tt.wantCode == http.StatusOK) {
+				t.Errorf("next called = %v, want %v", got, tt.wantCode == http.StatusOK)
+			}
+		})
+	}
+}
+
+func TestExtractAdminToken(t *testing.T) {
+	tests := []struct {
+		name    string
+		headers map[string]string
+		want    string
+	}{
+		{"no headers", nil, ""},
+		{"x-admin-key only", map[string]string{adminKeyHeader: "tok"}, "tok"},
+		{"bearer only", map[string]string{authorizationHeader: "Bearer tok"}, "tok"},
+		{"bearer mixed case", map[string]string{authorizationHeader: "BeArEr tok"}, "tok"},
+		{"x-admin-key precedence", map[string]string{adminKeyHeader: "a", authorizationHeader: "Bearer b"}, "a"},
+		{"empty x-admin-key falls back", map[string]string{adminKeyHeader: "", authorizationHeader: "Bearer b"}, "b"},
+		{"basic scheme", map[string]string{authorizationHeader: "Basic dXNlcjpwdw=="}, ""},
+		{"scheme only", map[string]string{authorizationHeader: "Bearer"}, ""},
+		{"empty credential", map[string]string{authorizationHeader: "Bearer  "}, ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, "/_vibewarden/admin/users", nil)
+			for k, v := range tt.headers {
+				req.Header.Set(k, v)
+			}
+			if got := extractAdminToken(req); got != tt.want {
+				t.Errorf("extractAdminToken() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}

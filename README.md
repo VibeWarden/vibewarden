@@ -216,7 +216,7 @@ It never holds external secrets or connects directly to third-party APIs.
 | Observability | Prometheus metrics, OpenTelemetry traces + logs, Grafana dashboards, Jaeger/Tempo |
 | AI-readable logs | Versioned JSON schema: `schema_version`, `event_type`, `ai_summary`, `payload` |
 | Audit log sinks | JSON file, OTel logs, webhook (HMAC-signed) with retry |
-| Admin API | User management at `/_vibewarden/admin/*` (bearer-token protected) |
+| Admin API | User management at `/_vibewarden/admin/*` (token-protected — `X-Admin-Key` or `Authorization: Bearer`) |
 | Docker images | Multi-arch: `linux/amd64` and `linux/arm64` (Apple Silicon, AWS Graviton) |
 | Docker Compose | Profile-based: `--profile observability` |
 | IP filter | Allowlist / blocklist by IP or CIDR range |

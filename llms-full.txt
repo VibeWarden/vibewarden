@@ -1039,7 +1039,8 @@ metrics, ready) are always exempt so probes keep working during downtime.
 ### admin
 
   admin.enabled  bool    false    Admin API at /_vibewarden/admin/*
-  admin.token    string  ""       Bearer token for admin API auth
+  admin.token    string  ""       Admin API token. Send as "X-Admin-Key: <token>" or
+                                   "Authorization: Bearer <token>"; X-Admin-Key wins if both.
   (admin UI)     -       -        Browser console at /_vibewarden/admin/ui/ (served when admin.enabled)
 
 

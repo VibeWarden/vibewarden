@@ -23,8 +23,16 @@ const (
 	// "/_vibewarden/admin/ui/" (with trailing slash, for assets and the index).
 	adminUIPrefix = "/_vibewarden/admin/ui"
 
-	// adminKeyHeader is the request header carrying the bearer token.
+	// adminKeyHeader is the request header carrying the admin token.
 	adminKeyHeader = "X-Admin-Key"
+
+	// authorizationHeader is the standard header carrying the admin token when
+	// it is presented with the Bearer scheme.
+	authorizationHeader = "Authorization"
+
+	// bearerScheme is the RFC 6750 authentication scheme accepted on the
+	// Authorization header. Scheme matching is case-insensitive (RFC 7235).
+	bearerScheme = "bearer"
 )
 
 // AdminAuthMiddleware returns HTTP middleware that protects all
@@ -43,10 +51,14 @@ const (
 //   - When cfg.Enabled is true but cfg.Token is empty, all admin requests
 //     (except the UI carve-out) receive 500 Internal Server Error to surface the
 //     misconfiguration.
-//   - When the X-Admin-Key header is absent or does not match cfg.Token the
-//     middleware responds with 401 Unauthorized and a WWW-Authenticate hint.
-//   - When the X-Admin-Key header matches cfg.Token the request is forwarded
-//     to the next handler.
+//   - The token may be presented either as X-Admin-Key: <token> or as the
+//     standard Authorization: Bearer <token>. Both are accepted; X-Admin-Key
+//     wins when both are present and non-empty.
+//   - When no token is presented, or the presented token does not match
+//     cfg.Token, the middleware responds with 401 Unauthorized and a
+//     WWW-Authenticate hint.
+//   - When the presented token matches cfg.Token the request is forwarded to
+//     the next handler.
 //
 // The comparison is constant-time to prevent timing attacks.
 //
@@ -130,8 +142,8 @@ func AdminAuthMiddleware(
 				}
 			}
 
-			// Validate the X-Admin-Key header.
-			provided := r.Header.Get(adminKeyHeader)
+			// Validate the presented token (X-Admin-Key or Authorization: Bearer).
+			provided := extractAdminToken(r)
 			if !secureEqual(provided, cfg.Token) {
 				var st ports.LockoutStatus
 				if clientIP != "" {
@@ -156,6 +168,33 @@ func AdminAuthMiddleware(
 			next.ServeHTTP(w, r)
 		})
 	}
+}
+
+// extractAdminToken returns the admin token presented on the request, or "" if
+// none is present.
+//
+// Two header forms are accepted:
+//
+//	X-Admin-Key: <token>
+//	Authorization: Bearer <token>
+//
+// X-Admin-Key takes precedence when both carry a value: it is the
+// VibeWarden-specific header, so a caller that sets it means it, and the
+// Authorization header may be populated for an unrelated reason. The Bearer
+// scheme is matched case-insensitively per RFC 7235; surrounding whitespace in
+// the credential is trimmed. Any other scheme (Basic, Digest, …) yields "",
+// which fails the constant-time compare below like any wrong token.
+func extractAdminToken(r *http.Request) string {
+	if key := r.Header.Get(adminKeyHeader); key != "" {
+		return key
+	}
+
+	authz := r.Header.Get(authorizationHeader)
+	scheme, credentials, found := strings.Cut(authz, " ")
+	if !found || !strings.EqualFold(scheme, bearerScheme) {
+		return ""
+	}
+	return strings.TrimSpace(credentials)
 }
 
 // matchesConfigPath reports whether path is protected by the config-path gate.

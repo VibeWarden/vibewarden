@@ -4,9 +4,10 @@ info:
   version: "1.0"
   description: |
     The VibeWarden Admin API provides user management operations for the
-    local security sidecar. All endpoints require the X-Admin-Key header
-    containing the configured admin bearer token, except for the health
-    check and this API spec endpoint.
+    local security sidecar. All endpoints require the configured admin token,
+    sent either as `X-Admin-Key: <token>` or as `Authorization: Bearer
+    <token>`, except for the health check and this API spec endpoint. When both
+    headers are present, X-Admin-Key wins.
 
     The sidecar always runs locally next to your application. It is never
     hosted remotely.
@@ -74,6 +75,7 @@ paths:
       tags: [users]
       security:
         - AdminKey: []
+        - AdminBearer: []
       parameters:
         - $ref: "#/components/parameters/PageParam"
         - $ref: "#/components/parameters/PerPageParam"
@@ -103,6 +105,7 @@ paths:
       tags: [users]
       security:
         - AdminKey: []
+        - AdminBearer: []
       requestBody:
         required: true
         content:
@@ -149,6 +152,7 @@ paths:
       tags: [users]
       security:
         - AdminKey: []
+        - AdminBearer: []
       responses:
         "200":
           description: User found.
@@ -176,6 +180,7 @@ paths:
       tags: [users]
       security:
         - AdminKey: []
+        - AdminBearer: []
       responses:
         "200":
           description: User deactivated.
@@ -203,8 +208,16 @@ components:
       in: header
       name: X-Admin-Key
       description: |
-        Bearer token configured in vibewarden.yaml under `admin.token`.
-        Required for all /_vibewarden/admin/* endpoints.
+        Admin token configured in vibewarden.yaml under `admin.token`.
+        Required for all /_vibewarden/admin/* endpoints. Equivalent to
+        AdminBearer; supply one of the two. X-Admin-Key wins if both are sent.
+    AdminBearer:
+      type: http
+      scheme: bearer
+      description: |
+        The same admin token (`admin.token`) presented with the standard
+        Authorization header: `Authorization: Bearer <token>`. Equivalent to
+        AdminKey; supply one of the two.
 
   parameters:
     UserIDParam:
@@ -367,7 +380,7 @@ components:
 
   responses:
     Unauthorized:
-      description: Missing or invalid X-Admin-Key header.
+      description: "Missing or invalid admin token (X-Admin-Key or Authorization: Bearer)."
       content:
         application/json:
           schema:

@@ -701,7 +701,8 @@ log:
 admin:
   # Enable admin API
   enabled: false
-  # Bearer token for authentication (use env var VIBEWARDEN_ADMIN_TOKEN in production)
+  # Admin API token (use env var VIBEWARDEN_ADMIN_TOKEN in production).
+  # Clients may send it as "X-Admin-Key: <token>" or "Authorization: Bearer <token>".
   token: ""
 
 # DEPRECATED: Use telemetry: section instead.

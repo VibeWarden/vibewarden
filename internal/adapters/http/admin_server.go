@@ -13,7 +13,7 @@ import (
 // AdminServer is an internal HTTP server that serves the admin API handlers on
 // a localhost-only listener. Caddy reverse-proxies the public
 // /_vibewarden/admin/* routes to this server after the AdminAuthHandler has
-// already verified the X-Admin-Key bearer token.
+// already verified the admin token (X-Admin-Key or Authorization: Bearer).
 //
 // The server also mounts the embedded admin UI (AdminUIHandler) at
 // /_vibewarden/admin/ui/. UI assets are served without a token because the

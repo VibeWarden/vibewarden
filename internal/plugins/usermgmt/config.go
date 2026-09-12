@@ -16,7 +16,8 @@ type Config struct {
 	Enabled bool
 
 	// AdminToken is the static bearer token clients must supply in the
-	// X-Admin-Key request header to access /_vibewarden/admin/* endpoints.
+	// X-Admin-Key request header (or as Authorization: Bearer <token>) to
+	// access /_vibewarden/admin/* endpoints.
 	// Required when Enabled is true.
 	// Can be set via VIBEWARDEN_ADMIN_TOKEN env var.
 	AdminToken string

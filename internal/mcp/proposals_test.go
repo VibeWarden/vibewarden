@@ -126,13 +126,11 @@ func TestMCPGetProposal_MissingProposalID(t *testing.T) {
 }
 
 func TestMCPProposeAction_WithFakeServer(t *testing.T) {
-	srv := startFakeAdminServer(t, func(w http.ResponseWriter, r *http.Request) {
+	// Behind the real admin auth gate: the tool authenticates with
+	// Authorization: Bearer, and the middleware must accept it (#1513).
+	srv := newGatedAdminServer(t, "secret-token", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/_vibewarden/admin/proposals" || r.Method != http.MethodPost {
 			http.NotFound(w, r)
-			return
-		}
-		if r.Header.Get("Authorization") != "Bearer secret-token" {
-			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -146,7 +144,7 @@ func TestMCPProposeAction_WithFakeServer(t *testing.T) {
 			"expires_at": "2026-01-01T01:00:00Z",
 			"source":     "mcp_agent",
 		})
-	})
+	}))
 
 	s := newTestServer()
 	RegisterDefaultTools(s, ToolDeps{})

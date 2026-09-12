@@ -786,6 +786,16 @@ Each entry in `webhooks.endpoints`:
 | `admin.enabled` | bool | `false` | Enable the admin API at `/_vibewarden/admin/*` |
 | `admin.token` | string | `""` | Bearer token for admin API authentication |
 
+The token is accepted in either header form, so use whichever your client
+prefers:
+
+```bash
+curl -H "X-Admin-Key: $VIBEWARDEN_ADMIN_TOKEN" https://localhost:8443/_vibewarden/admin/users
+curl -H "Authorization: Bearer $VIBEWARDEN_ADMIN_TOKEN" https://localhost:8443/_vibewarden/admin/users
+```
+
+If both headers are present, `X-Admin-Key` wins.
+
 Admin-token authentication has a built-in, non-configurable brute-force
 lockout: 10 consecutive failed attempts from one client IP within 1 minute lock
 that IP out for 1 minute. During the lockout the token is not compared and

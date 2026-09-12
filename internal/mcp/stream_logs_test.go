@@ -50,15 +50,14 @@ func streamLogsFixture(now time.Time) string {
 }`, twoMinsAgo, thirtySecsAgo, twoMinsAgo, thirtySecsAgo)
 }
 
+// newStreamLogsServer starts a fake events endpoint behind the real admin auth
+// gate, so the tool's Authorization: Bearer header is validated by production
+// code rather than by a hand-rolled check.
 func newStreamLogsServer(t *testing.T, body func() string) *httptest.Server {
 	t.Helper()
-	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	return newGatedAdminServer(t, "test-token", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/_vibewarden/admin/events" {
 			w.WriteHeader(http.StatusNotFound)
-			return
-		}
-		if r.Header.Get("Authorization") != "Bearer test-token" {
-			w.WriteHeader(http.StatusUnauthorized)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
