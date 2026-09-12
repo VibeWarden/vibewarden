@@ -1,0 +1,38 @@
+{{/*
+Shared branding partials for every built-in auth page. They render nothing
+when the matching auth.ui.* config keys are empty, so an unbranded install
+looks exactly as it did before.
+
+  branding-title   page-title prefix, e.g. "Acme Corp · Log In"
+  branding-head    emitted last in <head>: favicon, brand styles, and the
+                   operator stylesheet (last so its rules win)
+  branding-header  emitted at the top of the card, above the page heading
+
+This file is never served as a page; it only contributes these definitions to
+the shared template namespace.
+*/}}
+{{define "branding-title"}}{{if .AppName}}{{.AppName}} · {{end}}{{end}}
+
+{{define "branding-head"}}{{if .FaviconURL}}<link rel="icon" href="{{.FaviconURL}}">
+  {{end}}<style>
+    .vw-brand {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.5rem;
+      margin-bottom: 1.5rem;
+    }
+    .vw-brand-logo { max-height: 56px; max-width: 100%; }
+    .vw-brand-name {
+      font-size: 1rem;
+      font-weight: 600;
+      color: var(--vw-text);
+      text-align: center;
+    }
+  </style>
+  {{if .CustomCSSURL}}<link rel="stylesheet" href="{{.CustomCSSURL}}">{{end}}{{end}}
+
+{{define "branding-header"}}{{if or .LogoURL .AppName}}<div class="vw-brand">
+    {{if .LogoURL}}<img class="vw-brand-logo" src="{{.LogoURL}}" alt="{{if .AppName}}{{.AppName}}{{else}}Logo{{end}}">{{end}}
+    {{if .AppName}}<div class="vw-brand-name">{{.AppName}}</div>{{end}}
+  </div>{{end}}{{end}}

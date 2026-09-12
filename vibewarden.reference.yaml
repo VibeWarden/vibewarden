@@ -554,6 +554,42 @@ auth:
   #       label: "Company SSO"
   social_providers: []
 
+  # Built-in authentication pages (login, registration, recovery,
+  # verification, settings). Only relevant when mode is "kratos".
+  #
+  # ui:
+  #   # "built-in" (default) — VibeWarden serves the pages at
+  #   #   /_vibewarden/{login,registration,recovery,verification,settings}.
+  #   # "custom"   — you serve your own pages; set login_url below. The
+  #   #   sidecar then serves no auth pages and points the generated
+  #   #   kratos.yml flows at your URLs.
+  #   mode: "built-in"
+  #
+  #   # Branding for the built-in pages. app_name prefixes the page title and
+  #   # is shown above the form; logo_url renders as an image above it;
+  #   # favicon_url is linked as the page icon; custom_css_url is linked after
+  #   # the built-in styles so its rules win.
+  #   #
+  #   # logo_url, favicon_url and custom_css_url must each be an absolute
+  #   # http(s) URL or a root-relative path ("/static/logo.svg"). Assets served
+  #   # by your own app need a matching auth.public_paths entry, otherwise the
+  #   # login page cannot load them while the visitor is unauthenticated.
+  #   app_name: "My App"
+  #   logo_url: "/static/logo.svg"
+  #   favicon_url: "/static/favicon.ico"
+  #   custom_css_url: "/static/auth.css"
+  #
+  #   # Theme colors (hex, #RGB or #RRGGBB).
+  #   primary_color: "#7C3AED"
+  #   background_color: "#1a1a2e"
+  #
+  #   # Custom page URLs — only used when mode is "custom".
+  #   # login_url is required in that mode; the others fall back to it.
+  #   login_url: "https://app.example.com/signin"
+  #   registration_url: ""
+  #   settings_url: ""
+  #   recovery_url: ""
+
 # Request body size limiting
 # VibeWarden can reject oversized request bodies before they reach the upstream.
 # This protects against payload-based denial-of-service attacks and enforces

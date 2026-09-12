@@ -483,7 +483,9 @@ When neither build nor image is set, VibeWarden falls back to host.docker.intern
 
   auth.ui.mode              string    built-in    built-in or custom
   auth.ui.app_name          string    ""          App name on login pages
-  auth.ui.logo_url          string    ""          Logo URL for built-in pages
+  auth.ui.logo_url          string    ""          Logo image URL for built-in pages
+  auth.ui.favicon_url       string    ""          Favicon URL for built-in pages
+  auth.ui.custom_css_url    string    ""          Extra stylesheet, loaded last
   auth.ui.primary_color     string    #7C3AED     Accent color
   auth.ui.background_color  string    #1a1a2e     Background color
   auth.ui.login_url         string    ""          Custom login URL (mode: custom)
@@ -497,6 +499,15 @@ When neither build nor image is set, VibeWarden falls back to host.docker.intern
   flows point at auth.ui.*_url instead: absolute URLs are used as-is, a path
   like /login is resolved against the public base URL, and the verification and
   error flows (plus any empty *_url) fall back to auth.ui.login_url.
+
+  Branding applies to all five built-in pages: app_name prefixes the <title>
+  and is shown above the form, logo_url renders as an image above it,
+  favicon_url is linked as the page icon, and custom_css_url is linked after
+  the built-in styles so its rules win. logo_url, favicon_url and
+  custom_css_url must each be an absolute http(s) URL or a root-relative path
+  (/static/logo.svg); javascript:, data: and //host values are rejected at
+  validation. Assets served by the app itself need a public_paths entry or the
+  login page cannot load them.
 
 
 ### kratos (used when auth.mode: kratos)

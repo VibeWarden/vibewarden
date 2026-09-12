@@ -259,6 +259,19 @@ func RegisterBuiltinPlugins(
 			Header:     cfg.Auth.APIKey.Header,
 			ScopeRules: apiKeyScopeRules,
 		},
+		UI: authplugin.UIConfig{
+			Mode:            cfg.Auth.UI.Mode,
+			LoginURL:        cfg.Auth.UI.LoginURL,
+			RegistrationURL: cfg.Auth.UI.RegistrationURL,
+			SettingsURL:     cfg.Auth.UI.SettingsURL,
+			RecoveryURL:     cfg.Auth.UI.RecoveryURL,
+			AppName:         cfg.Auth.UI.AppName,
+			LogoURL:         cfg.Auth.UI.LogoURL,
+			FaviconURL:      cfg.Auth.UI.FaviconURL,
+			CustomCSSURL:    cfg.Auth.UI.CustomCSSURL,
+			PrimaryColor:    cfg.Auth.UI.PrimaryColor,
+			BackgroundColor: cfg.Auth.UI.BackgroundColor,
+		},
 	}, logger, authIdentityProvider))
 
 	// User management — priority 60

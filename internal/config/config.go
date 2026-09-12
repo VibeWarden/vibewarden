@@ -352,6 +352,8 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("auth.ui.mode", "built-in")
 	v.SetDefault("auth.ui.app_name", "")
 	v.SetDefault("auth.ui.logo_url", "")
+	v.SetDefault("auth.ui.favicon_url", "")
+	v.SetDefault("auth.ui.custom_css_url", "")
 	v.SetDefault("auth.ui.primary_color", "#7C3AED")
 	v.SetDefault("auth.ui.background_color", "#1a1a2e")
 	v.SetDefault("auth.ui.login_url", "")

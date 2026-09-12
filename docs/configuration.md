@@ -283,7 +283,9 @@ List of OAuth2/OIDC social login providers (used with `auth.mode: kratos`).
 |-------|------|---------|-------------|
 | `auth.ui.mode` | string | `built-in` | `built-in` or `custom` |
 | `auth.ui.app_name` | string | `""` | Application name on built-in login pages |
-| `auth.ui.logo_url` | string | `""` | Logo URL for built-in pages |
+| `auth.ui.logo_url` | string | `""` | Logo image URL shown above the form on built-in pages |
+| `auth.ui.favicon_url` | string | `""` | Favicon URL for built-in pages |
+| `auth.ui.custom_css_url` | string | `""` | Extra stylesheet loaded last on built-in pages |
 | `auth.ui.primary_color` | string | `#7C3AED` | Accent color for built-in pages |
 | `auth.ui.background_color` | string | `#1a1a2e` | Background color for built-in pages |
 | `auth.ui.login_url` | string | `""` | Custom login page URL (when `mode: custom`) |
@@ -295,6 +297,16 @@ In `built-in` mode VibeWarden serves the auth pages itself at
 `/_vibewarden/login`, `/_vibewarden/registration`, `/_vibewarden/recovery`,
 `/_vibewarden/verification` and `/_vibewarden/settings`, and points the
 generated `kratos/kratos.yml` flows at them.
+
+Branding applies to all five pages: `app_name` prefixes the `<title>` and is
+shown above the form, `logo_url` renders as an image above it, `favicon_url`
+is linked as the page icon, and `custom_css_url` is linked after the built-in
+styles so its rules win. `logo_url`, `favicon_url` and `custom_css_url` must
+each be an absolute `http(s)` URL or a root-relative path such as
+`/static/logo.svg`; anything else (including `javascript:` and `data:` URIs)
+is rejected at config validation. Assets served from your own app need a
+`public_paths` entry, otherwise the login page cannot load them while the
+visitor is still unauthenticated.
 
 In `custom` mode the generated flows point at your `auth.ui.*_url` values
 instead. Absolute URLs are used as-is; a path such as `/login` is resolved

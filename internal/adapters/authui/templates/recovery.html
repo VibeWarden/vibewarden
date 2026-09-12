@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Recover Account</title>
+  <title>{{template "branding-title" .}}Recover Account</title>
   <style>
     :root {
       --vw-primary: {{.PrimaryColor}};
@@ -113,9 +113,11 @@
     .links a:hover { text-decoration: underline; }
     @media (max-width: 480px) { .card { padding: 2rem 1.25rem; } }
   </style>
+  {{template "branding-head" .}}
 </head>
 <body>
 <div class="card">
+  {{template "branding-header" .}}
   <h1>Recover account</h1>
   <p class="subtitle">Enter your email and we'll send you a recovery link.</p>
 

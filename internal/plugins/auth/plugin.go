@@ -174,6 +174,10 @@ func (p *Plugin) Init(_ context.Context) error {
 		if uiMode == "built-in" {
 			uiCfg := authui.AuthUIConfig{
 				Mode:            uiMode,
+				AppName:         p.cfg.UI.AppName,
+				LogoURL:         p.cfg.UI.LogoURL,
+				FaviconURL:      p.cfg.UI.FaviconURL,
+				CustomCSSURL:    p.cfg.UI.CustomCSSURL,
 				PrimaryColor:    p.cfg.UI.PrimaryColor,
 				BackgroundColor: p.cfg.UI.BackgroundColor,
 				TextColor:       p.cfg.UI.TextColor,
