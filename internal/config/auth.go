@@ -139,6 +139,31 @@ type AuthUIConfig struct {
 	// RecoveryURL is the URL of the custom account recovery page.
 	// Only used when Mode is "custom".
 	RecoveryURL string `mapstructure:"recovery_url"`
+
+	// ShowRegistration controls self-service registration. It drives both the
+	// "Register" link (and page) of the built-in UI and
+	// selfservice.flows.registration.enabled in the generated kratos.yml, so
+	// closed-registration deployments need a single setting.
+	// Nil (unset) means enabled.
+	ShowRegistration *bool `mapstructure:"show_registration"`
+
+	// ShowRecovery controls self-service account recovery. It drives both the
+	// "Forgot password?" link (and page) of the built-in UI and
+	// selfservice.flows.recovery.enabled in the generated kratos.yml.
+	// Nil (unset) means enabled.
+	ShowRecovery *bool `mapstructure:"show_recovery"`
+}
+
+// IsRegistrationEnabled reports whether self-service registration is enabled.
+// It returns true when auth.ui.show_registration is unset.
+func (ui AuthUIConfig) IsRegistrationEnabled() bool {
+	return ui.ShowRegistration == nil || *ui.ShowRegistration
+}
+
+// IsRecoveryEnabled reports whether self-service account recovery is enabled.
+// It returns true when auth.ui.show_recovery is unset.
+func (ui AuthUIConfig) IsRecoveryEnabled() bool {
+	return ui.ShowRecovery == nil || *ui.ShowRecovery
 }
 
 // AuthMode selects the active authentication strategy for incoming requests.

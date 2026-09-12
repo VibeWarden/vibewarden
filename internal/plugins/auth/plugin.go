@@ -173,15 +173,17 @@ func (p *Plugin) Init(_ context.Context) error {
 		// Start the built-in auth UI server when the mode is "built-in" (default).
 		if uiMode == "built-in" {
 			uiCfg := authui.AuthUIConfig{
-				Mode:            uiMode,
-				AppName:         p.cfg.UI.AppName,
-				LogoURL:         p.cfg.UI.LogoURL,
-				FaviconURL:      p.cfg.UI.FaviconURL,
-				CustomCSSURL:    p.cfg.UI.CustomCSSURL,
-				PrimaryColor:    p.cfg.UI.PrimaryColor,
-				BackgroundColor: p.cfg.UI.BackgroundColor,
-				TextColor:       p.cfg.UI.TextColor,
-				ErrorColor:      p.cfg.UI.ErrorColor,
+				Mode:             uiMode,
+				AppName:          p.cfg.UI.AppName,
+				LogoURL:          p.cfg.UI.LogoURL,
+				FaviconURL:       p.cfg.UI.FaviconURL,
+				CustomCSSURL:     p.cfg.UI.CustomCSSURL,
+				PrimaryColor:     p.cfg.UI.PrimaryColor,
+				BackgroundColor:  p.cfg.UI.BackgroundColor,
+				TextColor:        p.cfg.UI.TextColor,
+				ErrorColor:       p.cfg.UI.ErrorColor,
+				ShowRegistration: p.cfg.UI.ShowRegistration,
+				ShowRecovery:     p.cfg.UI.ShowRecovery,
 			}
 			h, err := authui.NewHandler(uiCfg, p.logger)
 			if err != nil {

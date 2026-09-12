@@ -207,6 +207,14 @@ type UIConfig struct {
 	// Defaults to "#DC2626" when empty.
 	// Only used when Mode is "built-in".
 	ErrorColor string
+
+	// ShowRegistration controls whether the built-in pages offer self-service
+	// registration. Nil (unset) means enabled.
+	ShowRegistration *bool
+
+	// ShowRecovery controls whether the built-in pages offer self-service
+	// account recovery. Nil (unset) means enabled.
+	ShowRecovery *bool
 }
 
 // defaultSessionCookieName is used when SessionCookieName is not set.

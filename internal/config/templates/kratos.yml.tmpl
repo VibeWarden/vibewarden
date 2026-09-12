@@ -106,7 +106,7 @@ selfservice:
       required_aal: highest_available
 
     recovery:
-      enabled: true
+      enabled: {{ .Auth.UI.IsRecoveryEnabled }}
       ui_url: {{ .AuthFlowURLs.Recovery }}
 
     verification:
@@ -124,6 +124,7 @@ selfservice:
       lifespan: 10m
 
     registration:
+      enabled: {{ .Auth.UI.IsRegistrationEnabled }}
       lifespan: 10m
       ui_url: {{ .AuthFlowURLs.Registration }}
       after:

@@ -73,6 +73,18 @@ type AuthUIConfig struct {
 	// ErrorColor is the CSS value for the --vw-error custom property.
 	// Defaults to "#DC2626" when empty.
 	ErrorColor string
+
+	// ShowRegistration controls self-service registration. When false the
+	// login page omits the "Register" link and the registration page returns
+	// 404, matching the disabled Kratos registration flow.
+	// Nil (unset) means enabled.
+	ShowRegistration *bool
+
+	// ShowRecovery controls self-service account recovery. When false the
+	// login page omits the "Forgot password?" link and the recovery page
+	// returns 404, matching the disabled Kratos recovery flow.
+	// Nil (unset) means enabled.
+	ShowRecovery *bool
 }
 
 // templateData is passed to every HTML template at render time.
@@ -97,6 +109,10 @@ type templateData struct {
 	// (including the leading "?") to append to inter-page links so the
 	// original destination is preserved. Empty string when not set.
 	ReturnToQuery string
+	// ShowRegistration reports whether the registration link is rendered.
+	ShowRegistration bool
+	// ShowRecovery reports whether the account-recovery link is rendered.
+	ShowRecovery bool
 }
 
 // Handler serves the built-in auth UI pages and implements
@@ -189,13 +205,25 @@ func (h *Handler) handleLogin(w http.ResponseWriter, r *http.Request) {
 	h.renderPage(w, r, "login.html")
 }
 
-// handleRegistration renders the registration page.
+// handleRegistration renders the registration page. It returns 404 when
+// self-service registration is disabled, because the Kratos registration flow
+// is disabled with it and the page could not complete.
 func (h *Handler) handleRegistration(w http.ResponseWriter, r *http.Request) {
+	if !*h.cfg.ShowRegistration {
+		http.NotFound(w, r)
+		return
+	}
 	h.renderPage(w, r, "registration.html")
 }
 
-// handleRecovery renders the account recovery page.
+// handleRecovery renders the account recovery page. It returns 404 when
+// self-service recovery is disabled, because the Kratos recovery flow is
+// disabled with it and the page could not complete.
 func (h *Handler) handleRecovery(w http.ResponseWriter, r *http.Request) {
+	if !*h.cfg.ShowRecovery {
+		http.NotFound(w, r)
+		return
+	}
 	h.renderPage(w, r, "recovery.html")
 }
 
@@ -230,6 +258,9 @@ func (h *Handler) renderPage(w http.ResponseWriter, r *http.Request, tmplName st
 		TextColor:       h.cfg.TextColor,
 		ErrorColor:      h.cfg.ErrorColor,
 		ReturnToQuery:   returnToQuery(r),
+
+		ShowRegistration: *h.cfg.ShowRegistration,
+		ShowRecovery:     *h.cfg.ShowRecovery,
 	}
 
 	var buf bytes.Buffer
@@ -290,7 +321,17 @@ func applyDefaults(cfg *AuthUIConfig) {
 	if cfg.ErrorColor == "" {
 		cfg.ErrorColor = "#DC2626"
 	}
+	if cfg.ShowRegistration == nil {
+		cfg.ShowRegistration = boolPtr(true)
+	}
+	if cfg.ShowRecovery == nil {
+		cfg.ShowRecovery = boolPtr(true)
+	}
 }
+
+// boolPtr returns a pointer to b. Used to materialise the "unset means
+// enabled" defaults of the flow toggles.
+func boolPtr(b bool) *bool { return &b }
 
 // returnToQuery extracts the return_to query parameter from r and returns
 // a ready-to-append query string fragment like "?return_to=%2Fdashboard",
