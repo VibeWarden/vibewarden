@@ -932,7 +932,10 @@ waf:
     # Detect shell command-injection metacharacters.
     command_injection: true
 
-# Security headers added to all proxied responses
+# Security headers added to every response the sidecar serves, not just proxied
+# app responses: the built-in login UI, the admin API and the Kratos
+# self-service surface carry the same set.
+# response_headers below can override them, but only on the app-proxied route.
 security_headers:
   # Enable security headers middleware (recommended: true)
   enabled: true

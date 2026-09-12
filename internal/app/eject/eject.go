@@ -93,7 +93,7 @@ func buildProxyConfig(cfg *config.Config, extraHandlers []ports.CaddyHandler) *p
 			HSTSPreload:                  cfg.SecurityHeaders.HSTSPreload,
 			ContentTypeNosniff:           cfg.SecurityHeaders.ContentTypeNosniff,
 			FrameOption:                  cfg.SecurityHeaders.FrameOption,
-			ContentSecurityPolicy:        cfg.SecurityHeaders.ContentSecurityPolicy,
+			ContentSecurityPolicy:        cfg.SecurityHeaders.ResolvedCSP(),
 			ReferrerPolicy:               cfg.SecurityHeaders.ReferrerPolicy,
 			PermissionsPolicy:            cfg.SecurityHeaders.PermissionsPolicy,
 			CrossOriginOpenerPolicy:      cfg.SecurityHeaders.CrossOriginOpenerPolicy,

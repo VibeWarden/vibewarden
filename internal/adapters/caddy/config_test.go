@@ -882,22 +882,34 @@ func TestBuildCaddyConfig_SecurityHeaders(t *testing.T) {
 	if !ok {
 		t.Fatal("routes not found in server config")
 	}
-	if len(routes) < 3 {
-		t.Fatalf("expected at least 3 routes (health + ready + proxy), got %d", len(routes))
+	if len(routes) < 4 {
+		t.Fatalf("expected at least 4 routes (security-headers + health + ready + proxy), got %d", len(routes))
 	}
 
-	handlers, ok := routes[2]["handle"].([]map[string]any)
+	// routes[0] is the global security-headers route: no matcher, a single
+	// "headers" handler with a "response" key. It must come before every
+	// other route so that VibeWarden's own routes carry the headers too (#1540).
+	if _, hasMatch := routes[0]["match"]; hasMatch {
+		t.Error("routes[0] has a matcher — the security-headers route must match every request")
+	}
+	secRouteHandlers, ok := routes[0]["handle"].([]map[string]any)
 	if !ok {
-		t.Fatal("handle not found in proxy route")
+		t.Fatal("handle not found in security-headers route")
+	}
+	if len(secRouteHandlers) != 1 {
+		t.Fatalf("security-headers route has %d handlers, want 1", len(secRouteHandlers))
+	}
+	if secRouteHandlers[0]["handler"] != "headers" {
+		t.Errorf("routes[0].handle[0] type = %v, want 'headers'", secRouteHandlers[0]["handler"])
+	}
+	if _, hasResponse := secRouteHandlers[0]["response"]; !hasResponse {
+		t.Error("routes[0].handle[0] missing 'response' key — expected security headers handler")
 	}
 
-	// Minimum chain: strip_headers + security_headers + admin_auth + reverse_proxy.
-	if len(handlers) < 4 {
-		t.Fatalf("expected at least 4 handlers (strip+security+admin_auth+reverse_proxy), got %d", len(handlers))
-	}
+	// The catch-all app route keeps the user-header strip handler first and must
+	// no longer carry a duplicate security-headers handler.
+	handlers := extractCatchAllHandlers(t, result)
 
-	// handlers[0] must be the user-header strip handler (a "headers" handler with
-	// a "request.delete" key, not a "response" key).
 	stripHandler := handlers[0]
 	if stripHandler["handler"] != "headers" {
 		t.Errorf("handlers[0] type = %v, want 'headers'", stripHandler["handler"])
@@ -910,14 +922,13 @@ func TestBuildCaddyConfig_SecurityHeaders(t *testing.T) {
 		t.Error("handlers[0].request missing 'delete' key — expected user-header strip handler")
 	}
 
-	// handlers[1] must be the security headers handler (a "headers" handler with
-	// a "response" key).
-	secHandler := handlers[1]
-	if secHandler["handler"] != "headers" {
-		t.Errorf("handlers[1] type = %v, want 'headers'", secHandler["handler"])
-	}
-	if _, hasResponse := secHandler["response"]; !hasResponse {
-		t.Error("handlers[1] missing 'response' key — expected security headers handler")
+	for i, h := range handlers {
+		if h["handler"] != "headers" {
+			continue
+		}
+		if _, hasResponse := h["response"]; hasResponse {
+			t.Errorf("catch-all handlers[%d] is a response-headers handler — security headers must live only in the global route", i)
+		}
 	}
 }
 

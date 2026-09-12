@@ -86,22 +86,13 @@ func RegisterBuiltinPlugins(
 
 	// Security headers — priority 20
 	//
-	// resolveCSP picks the raw content_security_policy string when set
-	// (backward compat) and falls back to the structured csp builder otherwise.
+	// The plugin only validates configuration and reports health; the header
+	// values are emitted by the Caddy adapter's global security-headers route,
+	// built from ports.SecurityHeadersConfig (#1540).
 	registry.Register(sechdrs.New(sechdrs.Config{
-		Enabled:                      cfg.SecurityHeaders.Enabled,
-		HSTSMaxAge:                   cfg.SecurityHeaders.HSTSMaxAge,
-		HSTSIncludeSubDomains:        cfg.SecurityHeaders.HSTSIncludeSubDomains,
-		HSTSPreload:                  cfg.SecurityHeaders.HSTSPreload,
-		ContentTypeNosniff:           cfg.SecurityHeaders.ContentTypeNosniff,
-		FrameOption:                  cfg.SecurityHeaders.FrameOption,
-		ContentSecurityPolicy:        resolveCSP(cfg),
-		ReferrerPolicy:               cfg.SecurityHeaders.ReferrerPolicy,
-		PermissionsPolicy:            cfg.SecurityHeaders.PermissionsPolicy,
-		CrossOriginOpenerPolicy:      cfg.SecurityHeaders.CrossOriginOpenerPolicy,
-		CrossOriginResourcePolicy:    cfg.SecurityHeaders.CrossOriginResourcePolicy,
-		PermittedCrossDomainPolicies: cfg.SecurityHeaders.PermittedCrossDomainPolicies,
-		SuppressViaHeader:            cfg.SecurityHeaders.SuppressViaHeader,
+		Enabled:     cfg.SecurityHeaders.Enabled,
+		HSTSMaxAge:  cfg.SecurityHeaders.HSTSMaxAge,
+		FrameOption: cfg.SecurityHeaders.FrameOption,
 	}, cfg.TLS.Enabled, logger))
 
 	// Body size limiting — priority 45

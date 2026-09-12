@@ -1,5 +1,7 @@
 package config
 
+import "github.com/vibewarden/vibewarden/internal/domain/csp"
+
 // SecurityHeadersConfig holds security header settings.
 type SecurityHeadersConfig struct {
 	// Enabled toggles security headers middleware (default: true)
@@ -100,6 +102,40 @@ type CSPConfig struct {
 
 	// BaseURI sets the base-uri directive.
 	BaseURI []string `mapstructure:"base_uri"`
+}
+
+// ResolvedCSP returns the Content-Security-Policy header value to use.
+//
+// The raw content_security_policy string takes precedence for backward
+// compatibility. When it is empty, the structured csp block is passed to
+// csp.Build and the generated string is returned instead. An empty return
+// value means no Content-Security-Policy header should be emitted.
+//
+// This is the single source of truth for CSP resolution: every ProxyConfig
+// builder (serve, eject, multi-site) must call it rather than reading
+// ContentSecurityPolicy directly, or structured-csp-only configs silently
+// lose the header (#1540).
+func (s SecurityHeadersConfig) ResolvedCSP() string {
+	if s.ContentSecurityPolicy != "" {
+		return s.ContentSecurityPolicy
+	}
+	return csp.Build(csp.Config{
+		DefaultSrc:     s.CSP.DefaultSrc,
+		ScriptSrc:      s.CSP.ScriptSrc,
+		StyleSrc:       s.CSP.StyleSrc,
+		ImgSrc:         s.CSP.ImgSrc,
+		ConnectSrc:     s.CSP.ConnectSrc,
+		FontSrc:        s.CSP.FontSrc,
+		FrameSrc:       s.CSP.FrameSrc,
+		MediaSrc:       s.CSP.MediaSrc,
+		ObjectSrc:      s.CSP.ObjectSrc,
+		ManifestSrc:    s.CSP.ManifestSrc,
+		WorkerSrc:      s.CSP.WorkerSrc,
+		ChildSrc:       s.CSP.ChildSrc,
+		FormAction:     s.CSP.FormAction,
+		FrameAncestors: s.CSP.FrameAncestors,
+		BaseURI:        s.CSP.BaseURI,
+	})
 }
 
 // WAFConfig holds Web Application Firewall settings.

@@ -15,7 +15,6 @@ import (
 	ratelimitadapter "github.com/vibewarden/vibewarden/internal/adapters/ratelimit"
 	resilienceadapter "github.com/vibewarden/vibewarden/internal/adapters/resilience"
 	"github.com/vibewarden/vibewarden/internal/config"
-	"github.com/vibewarden/vibewarden/internal/domain/csp"
 	"github.com/vibewarden/vibewarden/internal/plugins"
 	metricsplugin "github.com/vibewarden/vibewarden/internal/plugins/metrics"
 	tlsplugin "github.com/vibewarden/vibewarden/internal/plugins/tls"
@@ -91,7 +90,7 @@ func buildProxyConfig(cfg *config.Config, registry *plugins.Registry, version st
 			ContentTypeNosniff:    cfg.SecurityHeaders.ContentTypeNosniff,
 			FrameOption:           cfg.SecurityHeaders.FrameOption,
 			// Resolve CSP: raw string takes precedence; fall back to structured builder.
-			ContentSecurityPolicy:        resolveCSP(cfg),
+			ContentSecurityPolicy:        cfg.SecurityHeaders.ResolvedCSP(),
 			ReferrerPolicy:               cfg.SecurityHeaders.ReferrerPolicy,
 			PermissionsPolicy:            cfg.SecurityHeaders.PermissionsPolicy,
 			CrossOriginOpenerPolicy:      cfg.SecurityHeaders.CrossOriginOpenerPolicy,
@@ -351,33 +350,6 @@ func wireTLSMetricsCollector(registry *plugins.Registry) {
 	if tlsPlugin != nil && collector != nil {
 		tlsPlugin.SetMetricsCollector(collector)
 	}
-}
-
-// resolveCSP returns the Content-Security-Policy header value to use.
-// The raw content_security_policy string takes precedence for backward
-// compatibility. When it is empty, the structured csp block is passed to
-// csp.Build and the generated string is returned instead.
-func resolveCSP(cfg *config.Config) string {
-	if cfg.SecurityHeaders.ContentSecurityPolicy != "" {
-		return cfg.SecurityHeaders.ContentSecurityPolicy
-	}
-	return csp.Build(csp.Config{
-		DefaultSrc:     cfg.SecurityHeaders.CSP.DefaultSrc,
-		ScriptSrc:      cfg.SecurityHeaders.CSP.ScriptSrc,
-		StyleSrc:       cfg.SecurityHeaders.CSP.StyleSrc,
-		ImgSrc:         cfg.SecurityHeaders.CSP.ImgSrc,
-		ConnectSrc:     cfg.SecurityHeaders.CSP.ConnectSrc,
-		FontSrc:        cfg.SecurityHeaders.CSP.FontSrc,
-		FrameSrc:       cfg.SecurityHeaders.CSP.FrameSrc,
-		MediaSrc:       cfg.SecurityHeaders.CSP.MediaSrc,
-		ObjectSrc:      cfg.SecurityHeaders.CSP.ObjectSrc,
-		ManifestSrc:    cfg.SecurityHeaders.CSP.ManifestSrc,
-		WorkerSrc:      cfg.SecurityHeaders.CSP.WorkerSrc,
-		ChildSrc:       cfg.SecurityHeaders.CSP.ChildSrc,
-		FormAction:     cfg.SecurityHeaders.CSP.FormAction,
-		FrameAncestors: cfg.SecurityHeaders.CSP.FrameAncestors,
-		BaseURI:        cfg.SecurityHeaders.CSP.BaseURI,
-	})
 }
 
 // buildLogger creates an slog.Logger from the log configuration.

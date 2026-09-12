@@ -616,16 +616,24 @@ When neither build nor image is set, VibeWarden falls back to host.docker.intern
   security_headers.permitted_cross_domain_policies string   none
   security_headers.suppress_via_header             bool     true
 
+Applied to every response the sidecar serves, not just proxied app responses:
+the built-in login UI (/_vibewarden/login), the admin API (/_vibewarden/admin/*,
+including its 401 responses) and the Kratos self-service surface
+(/self-service/*) all carry the same set.
+
 
 ### response_headers
 
 Arbitrary response header modification, applied after all other middleware
-(including security_headers). Operations run in the order: remove, then set,
-then add. Values may reference environment variables with ${VAR}.
+(including security_headers) on the app-proxied route. Unlike security_headers,
+it is not applied to VibeWarden's own routes (login UI, admin API, Kratos
+proxy), so it cannot override a security header there. Operations run in the
+order: remove, then set, then add. Values may reference environment variables
+with ${VAR}.
 
   response_headers.set     map     {}    Overwrite (or create) these headers
   response_headers.add     map     {}    Append (or create) these headers
-  response_headers.remove  list    []    Header names deleted from every response
+  response_headers.remove  list    []    Header names deleted from app-proxied responses
 
   response_headers:
     set:
