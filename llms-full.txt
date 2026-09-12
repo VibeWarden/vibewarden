@@ -457,6 +457,30 @@ When neither build nor image is set, VibeWarden falls back to host.docker.intern
           - path: "/admin/*"
             required_scopes: [deploy]
 
+### Identity headers in kratos mode (used when auth.mode: kratos)
+
+  kratos mode has no claims_to_headers equivalent; the header set is fixed.
+  After the session cookie is validated against Kratos GET /sessions/whoami,
+  these headers are injected into the upstream request:
+
+    X-User-Id        identity.id                    Kratos identity UUID; omitted if empty
+    X-User-Email     identity.traits.email          Omitted if the trait is absent or not a string
+    X-User-Verified  identity.verifiable_addresses  "true"/"false" for the email address; always set
+    X-User-Role      identity.traits.role           user, admin, or moderator; always set, defaults
+                                                    to user when absent, empty, or unrecognised
+
+  There is no session header. VibeWarden does NOT inject the Kratos session ID,
+  and no X-Session-ID header exists in any mode.
+
+  On paths listed in auth.public_paths the headers may be absent: a valid
+  session cookie still produces the full set, but a request without one is
+  forwarded with no identity headers rather than redirected. Treat a missing
+  X-User-Id as anonymous, not as an error. On protected paths an
+  unauthenticated request is redirected and never reaches the upstream.
+
+  auth.role_paths is enforced in the sidecar (403 before the upstream sees the
+  request); X-User-Role is set whether or not role_paths is configured.
+
 ### auth.social_providers (used with auth.mode: kratos)
 
   Each entry:

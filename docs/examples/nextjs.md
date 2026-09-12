@@ -235,11 +235,14 @@ without making any additional auth calls.
 
 | Header | Description |
 |---|---|
-| `X-User-ID` | Kratos identity UUID |
+| `X-User-Id` | Kratos identity UUID |
 | `X-User-Email` | Primary email address from the identity traits |
 | `X-User-Verified` | `"true"` if the email address has been verified |
 | `X-User-Role` | User role from the identity traits (`user`, `admin`, or `moderator`). Defaults to `user` when the trait is absent |
-| `X-Session-ID` | Kratos session UUID |
+
+These four headers are the complete `kratos`-mode contract; there is no session
+header. See [Identity headers in `kratos` mode](../identity-providers.md#identity-headers-in-kratos-mode)
+for the full contract, including header stripping and behaviour on public paths.
 
 ### App Router (Next.js 13+)
 

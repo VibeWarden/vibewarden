@@ -260,10 +260,14 @@ to uppercase with an `HTTP_` prefix and hyphens replaced by underscores.
 
 | HTTP Header | Rack env key | Description |
 |---|---|---|
-| `X-User-ID` | `HTTP_X_USER_ID` | Kratos identity UUID |
+| `X-User-Id` | `HTTP_X_USER_ID` | Kratos identity UUID |
 | `X-User-Email` | `HTTP_X_USER_EMAIL` | Primary email address |
 | `X-User-Verified` | `HTTP_X_USER_VERIFIED` | `"true"` if email is verified |
-| `X-Session-ID` | `HTTP_X_SESSION_ID` | Kratos session UUID |
+| `X-User-Role` | `HTTP_X_USER_ROLE` | `user`, `admin`, or `moderator`; defaults to `user` |
+
+These four headers are the complete `kratos`-mode contract; there is no session
+header. See [Identity headers in `kratos` mode](../identity-providers.md#identity-headers-in-kratos-mode)
+for the full contract, including header stripping and behaviour on public paths.
 
 ### Middleware
 
@@ -279,10 +283,10 @@ via `request.env`:
 # Only trust these headers when all requests come through VibeWarden.
 # Never expose your Rails app directly to the internet.
 class VibeWardenIdentity
-  USER_ID_HEADER    = "HTTP_X_USER_ID".freeze
-  EMAIL_HEADER      = "HTTP_X_USER_EMAIL".freeze
-  VERIFIED_HEADER   = "HTTP_X_USER_VERIFIED".freeze
-  SESSION_ID_HEADER = "HTTP_X_SESSION_ID".freeze
+  USER_ID_HEADER  = "HTTP_X_USER_ID".freeze
+  EMAIL_HEADER    = "HTTP_X_USER_EMAIL".freeze
+  VERIFIED_HEADER = "HTTP_X_USER_VERIFIED".freeze
+  ROLE_HEADER     = "HTTP_X_USER_ROLE".freeze
 
   def initialize(app)
     @app = app
@@ -292,7 +296,7 @@ class VibeWardenIdentity
     env[:vw_user_id]    = env[USER_ID_HEADER]
     env[:vw_user_email] = env[EMAIL_HEADER]
     env[:vw_verified]   = env[VERIFIED_HEADER] == "true"
-    env[:vw_session_id] = env[SESSION_ID_HEADER]
+    env[:vw_user_role]  = env[ROLE_HEADER] || "user"
 
     @app.call(env)
   end
@@ -334,10 +338,10 @@ module VibeWardenAuthenticated
     return nil unless request.env[:vw_user_id].present?
 
     @current_vw_user ||= {
-      id:         request.env[:vw_user_id],
-      email:      request.env[:vw_user_email],
-      verified:   request.env[:vw_verified],
-      session_id: request.env[:vw_session_id],
+      id:       request.env[:vw_user_id],
+      email:    request.env[:vw_user_email],
+      verified: request.env[:vw_verified],
+      role:     request.env[:vw_user_role],
     }.freeze
   end
 
@@ -488,9 +492,9 @@ headers, which you can add to Rails' log tags for correlation:
 config.log_tags = [
   :request_id,
   ->(req) { req.env[:vw_user_id]   || "anonymous" },
-  ->(req) { req.env[:vw_session_id] || "no-session" },
+  ->(req) { req.env[:vw_user_role] || "anonymous" },
 ]
 ```
 
-This prepends `[request_id] [user_id] [session_id]` to every Rails log line,
+This prepends `[request_id] [user_id] [user_role]` to every Rails log line,
 making it easy to trace a user's requests across VibeWarden and Rails logs.
