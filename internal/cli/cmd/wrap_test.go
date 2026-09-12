@@ -2,12 +2,21 @@ package cmd_test
 
 import (
 	"bytes"
+	"context"
+	"net/url"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 
+	"gopkg.in/yaml.v3"
+
+	"github.com/vibewarden/vibewarden/internal/adapters/template"
+	"github.com/vibewarden/vibewarden/internal/app/generate"
 	"github.com/vibewarden/vibewarden/internal/cli/cmd"
+	"github.com/vibewarden/vibewarden/internal/config"
+	"github.com/vibewarden/vibewarden/internal/config/templates"
 )
 
 func TestNewWrapCmd_FlagCombinations(t *testing.T) {
@@ -203,9 +212,10 @@ func TestNewWrapCmd_RenderedYAMLValid(t *testing.T) {
 	// This test verifies that rendered vibewarden.yaml is non-empty and contains
 	// expected keys.
 	tests := []struct {
-		name       string
-		args       []string
-		wantInYAML []string
+		name           string
+		args           []string
+		wantInYAML     []string
+		dontWantInYAML []string
 	}{
 		{
 			name:       "default config contains server and upstream sections",
@@ -221,6 +231,19 @@ func TestNewWrapCmd_RenderedYAMLValid(t *testing.T) {
 			name:       "auth flag adds kratos and auth sections with new consolidated fields",
 			args:       []string{"--auth"},
 			wantInYAML: []string{"kratos:", "public_url:", "dsn:", "smtp:", "auth:", "identity_schema:"},
+		},
+		{
+			// #1536: the sidecar dials these URLs from inside its own
+			// container, so a loopback host is unreachable, and an absolute
+			// login_url redirects browsers off the sidecar to a port the
+			// generated stack does not publish.
+			name: "auth flag points kratos at the compose service name and omits login_url",
+			args: []string{"--auth"},
+			wantInYAML: []string{
+				`public_url: "http://kratos:4433"`,
+				`admin_url: "http://kratos:4434"`,
+			},
+			dontWantInYAML: []string{"localhost:4433", "localhost:4434", "login_url:"},
 		},
 		{
 			name:       "rate-limit flag adds rate_limit section",
@@ -270,6 +293,12 @@ func TestNewWrapCmd_RenderedYAMLValid(t *testing.T) {
 			for _, want := range tt.wantInYAML {
 				if !strings.Contains(yamlContent, want) {
 					t.Errorf("vibewarden.yaml does not contain %q\n\nContent:\n%s", want, yamlContent)
+				}
+			}
+
+			for _, dontWant := range tt.dontWantInYAML {
+				if strings.Contains(yamlContent, dontWant) {
+					t.Errorf("vibewarden.yaml contains %q, which it must not\n\nContent:\n%s", dontWant, yamlContent)
 				}
 			}
 		})
@@ -347,4 +376,77 @@ func TestNewWrapCmd_SuccessMessage(t *testing.T) {
 			t.Errorf("success message must not mention 'docker compose up'\n\nOutput:\n%s", out)
 		}
 	})
+}
+
+// TestNewWrapCmd_AuthKratosURLsAreComposeServiceNames runs `vibew wrap --auth`,
+// loads the vibewarden.yaml it writes, generates the stack from it, and
+// requires every sidecar-facing Kratos URL to resolve to a service defined in
+// that same docker-compose.yml. The sidecar dials these URLs from inside its
+// own container, so a loopback host is unreachable by construction: the bug was
+// a 503 from the admin API and a 502 on /self-service/login/browser.
+//
+// Regression test for #1536, the `vibew wrap --auth` half of the documented
+// onboarding path.
+func TestNewWrapCmd_AuthKratosURLsAreComposeServiceNames(t *testing.T) {
+	dir := scaffoldTestDir(t, false)
+
+	root := cmd.NewRootCmd("test")
+	root.SetArgs([]string{"wrap", dir, "--auth"})
+	if err := root.Execute(); err != nil {
+		t.Fatalf("vibew wrap --auth: %v", err)
+	}
+
+	cfg, err := config.Load(filepath.Join(dir, "vibewarden.yaml"))
+	if err != nil {
+		t.Fatalf("loading the config `vibew wrap --auth` produced: %v", err)
+	}
+
+	outputDir := t.TempDir()
+	svc := generate.NewService(template.NewRenderer(templates.FS))
+	if err := svc.Generate(context.Background(), cfg.ToGeneratorInput(), outputDir); err != nil {
+		t.Fatalf("Generate() unexpected error: %v", err)
+	}
+
+	data, err := os.ReadFile(filepath.Join(outputDir, "docker-compose.yml"))
+	if err != nil {
+		t.Fatalf("reading docker-compose.yml: %v", err)
+	}
+	var compose struct {
+		Services map[string]yaml.Node `yaml:"services"`
+	}
+	if err := yaml.Unmarshal(data, &compose); err != nil {
+		t.Fatalf("parsing docker-compose.yml: %v", err)
+	}
+	names := make([]string, 0, len(compose.Services))
+	for name := range compose.Services {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+
+	urls := []struct {
+		key string
+		raw string
+	}{
+		{"kratos.public_url", cfg.Kratos.PublicURL},
+		{"kratos.admin_url", cfg.Kratos.AdminURL},
+	}
+	for _, u := range urls {
+		t.Run(u.key, func(t *testing.T) {
+			parsed, err := url.Parse(u.raw)
+			if err != nil {
+				t.Fatalf("%s = %q is not a URL: %v", u.key, u.raw, err)
+			}
+			if _, ok := compose.Services[parsed.Hostname()]; !ok {
+				t.Errorf("%s = %q: host %q is not a service in the generated docker-compose.yml (services: %v)",
+					u.key, u.raw, parsed.Hostname(), names)
+			}
+		})
+	}
+
+	// An absolute login_url would redirect browsers off the sidecar to a
+	// Kratos port the generated stack does not publish. The middleware's
+	// sidecar-relative default is the only correct value here.
+	if cfg.Auth.LoginURL != "" {
+		t.Errorf("auth.login_url = %q, want empty so the sidecar-relative default applies", cfg.Auth.LoginURL)
+	}
 }
