@@ -100,7 +100,7 @@ Release and verify its SHA-256 checksum before installing it.
     always the VibeWarden release version:
 
     ```bash
-    npm install -g @vibewarden/cli@0.21.0
+    npm install -g @vibewarden/cli@0.22.0
     ```
 
 === "Shell installer"
