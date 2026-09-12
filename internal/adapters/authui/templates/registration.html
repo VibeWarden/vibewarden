@@ -211,58 +211,126 @@
     document.getElementById('error-box').style.display = 'none';
   }
 
+  // fetchFlow loads an existing flow by id. It returns null when Kratos no
+  // longer serves that flow (410 Gone once the lifespan elapses, 404 after the
+  // flow is garbage-collected) so callers can start a fresh one instead of
+  // posting dead state.
+  async function fetchFlow(flowId) {
+    const res = await fetch(kratosBase + '/self-service/registration/flows?id=' + encodeURIComponent(flowId), {
+      headers: { Accept: 'application/json' },
+      credentials: 'include',
+    });
+    if (!res.ok) return null;
+    return await res.json();
+  }
+
+  // startFreshFlow initialises a brand-new browser registration flow. Kratos
+  // rotates the anti-CSRF cookie when it hands out a new flow, so the
+  // csrf_token captured at page load is dead from this point on and every
+  // caller must use the token carried by the returned flow.
+  //
+  // The init endpoint answers a plain browser navigation with a 303 to
+  // ?flow=<id>, but that Location header is unreadable from fetch: with
+  // redirect:'manual' the browser hands back an opaque-redirect response whose
+  // status is 0 and whose header list is empty, so headers.get('location') is
+  // always null. Content-negotiate JSON instead — Kratos then returns the flow
+  // body itself — and fall back to the final URL of a followed redirect if
+  // something in front of Kratos ignores the Accept header.
+  async function startFreshFlow() {
+    const initRes = await fetch(
+      kratosBase + '/self-service/registration/browser?return_to=' + encodeURIComponent(returnTo),
+      { headers: { Accept: 'application/json' }, credentials: 'include' }
+    );
+
+    let flow = null;
+    if (initRes.ok) {
+      try {
+        const body = await initRes.json();
+        if (body && body.ui) flow = body;
+      } catch (_) {
+        flow = null;
+      }
+    }
+    if (!flow) {
+      const m = String(initRes.url || '').match(/[?&]flow=([^&]+)/);
+      if (!m) throw new Error('no_flow_id');
+      flow = await fetchFlow(decodeURIComponent(m[1]));
+      if (!flow) throw new Error('fetch_flow_failed');
+    }
+    if (!flow.id) throw new Error('no_flow_id');
+
+    history.replaceState(null, '', '?flow=' + encodeURIComponent(flow.id) + (returnTo !== '/' ? '&return_to=' + encodeURIComponent(returnTo) : ''));
+    return flow;
+  }
+
+  // currentFlow returns a usable flow: the one referenced by the hidden field
+  // (or the ?flow= query parameter on first load) when Kratos still accepts it,
+  // otherwise a freshly initialised one. forceFresh skips the reuse attempt,
+  // which is what a stale-flow retry needs.
+  async function currentFlow(forceFresh) {
+    const flowId = forceFresh ? '' : (document.getElementById('flow-id').value || params.get('flow') || '');
+    if (flowId) {
+      const flow = await fetchFlow(flowId);
+      if (flow) return flow;
+    }
+    return await startFreshFlow();
+  }
+
   async function initFlow() {
-    let flowId = params.get('flow');
     let flow;
-
     try {
-      if (flowId) {
-        const res = await fetch(kratosBase + '/self-service/registration/flows?id=' + encodeURIComponent(flowId), {
-          headers: { Accept: 'application/json' },
-          credentials: 'include',
-        });
-        if (!res.ok) throw new Error('flow_expired');
-        flow = await res.json();
-      } else {
-        const initRes = await fetch(
-          kratosBase + '/self-service/registration/browser?return_to=' + encodeURIComponent(returnTo),
-          { redirect: 'manual', credentials: 'include' }
-        );
-        const location = initRes.headers.get('location') || '';
-        const m = location.match(/[?&]flow=([^&]+)/);
-        if (!m) throw new Error('no_flow_id');
-        flowId = m[1];
-        history.replaceState(null, '', '?flow=' + flowId + (returnTo !== '/' ? '&return_to=' + encodeURIComponent(returnTo) : ''));
-
-        const res = await fetch(kratosBase + '/self-service/registration/flows?id=' + encodeURIComponent(flowId), {
-          headers: { Accept: 'application/json' },
-          credentials: 'include',
-        });
-        if (!res.ok) throw new Error('fetch_flow_failed');
-        flow = await res.json();
-      }
-    } catch (e) {
-      if (e.message === 'flow_expired') {
-        window.location.href = '/_vibewarden/registration?return_to=' + encodeURIComponent(returnTo);
-        return;
-      }
+      flow = await currentFlow();
+    } catch (_) {
       showError('Could not start registration session. Please try again.');
       return;
     }
-
     applyFlow(flow);
   }
 
-  function applyFlow(flow) {
-    const nodes = (flow.ui && flow.ui.nodes) || [];
+  // csrfOf reads the csrf_token out of a flow's UI nodes. Always read it from
+  // the flow that is about to be posted to: a re-initialised flow comes with a
+  // new anti-CSRF cookie, and the old token would be rejected.
+  function csrfOf(flow) {
+    const nodes = (flow && flow.ui && flow.ui.nodes) || [];
+    const node = nodes.find(n => n.attributes && n.attributes.name === 'csrf_token');
+    return node ? (node.attributes.value || '') : '';
+  }
 
-    const csrfNode = nodes.find(n => n.attributes && n.attributes.name === 'csrf_token');
-    if (csrfNode) {
-      document.getElementById('csrf-token').value = csrfNode.attributes.value || '';
-    }
+  // errorID returns Kratos's machine-readable error id for a plain error
+  // envelope ({"error": {"id": "security_csrf_violation", ...}}). Flow bodies
+  // carry a `ui` section instead and yield "".
+  function errorID(body) {
+    return (body && body.error && body.error.id) || '';
+  }
+
+  // isStaleFlow reports whether a rejected submit means "the flow you posted is
+  // no longer current" — Kratos answers 410 Gone for an expired flow and
+  // security_csrf_violation when the anti-CSRF cookie was rotated under us.
+  function isStaleFlow(res, body) {
+    if (res.status === 410) return true;
+    const id = errorID(body);
+    return id === 'security_csrf_violation' || id === 'self_service_flow_expired';
+  }
+
+  // bindFlow points the form at `flow` — hidden flow id plus the matching CSRF
+  // token. Kept separate from applyFlow so a mid-submit refresh does not
+  // re-render messages or social buttons.
+  function bindFlow(flow) {
+    document.getElementById('csrf-token').value = csrfOf(flow);
     document.getElementById('flow-id').value = flow.id || '';
+  }
 
-    const messages = (flow.ui && flow.ui.messages) || [];
+  function applyFlow(flow) {
+    // Only real flow bodies may be applied. Kratos error envelopes (CSRF
+    // violation, expired flow) have no `ui`; applying one would blank the
+    // hidden flow id and strand the page on "please refresh".
+    if (!flow || !flow.ui) return;
+
+    bindFlow(flow);
+
+    const nodes = flow.ui.nodes || [];
+
+    const messages = flow.ui.messages || [];
     if (messages.length > 0) {
       showError(messages.map(m => m.text).join(' '));
     }
@@ -276,29 +344,34 @@
       }
     }
 
+    // Replace rather than append: applyFlow runs again on every validation
+    // error and on flow re-initialisation.
     const oidcNodes = nodes.filter(n => n.group === 'oidc' && n.attributes && n.attributes.type === 'submit');
     const socialDiv = document.getElementById('social-buttons');
     const divider = document.getElementById('social-divider');
+    socialDiv.replaceChildren();
     for (const node of oidcNodes) {
       const label = (node.meta && node.meta.label && node.meta.label.text) || node.attributes.value;
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'btn-social';
       btn.textContent = 'Continue with ' + label;
-      btn.addEventListener('click', function () { submitOIDC(flow, node.attributes.value); });
+      btn.addEventListener('click', function () { submitOIDC(node.attributes.value); });
       socialDiv.appendChild(btn);
     }
-    if (oidcNodes.length > 0) divider.style.display = 'flex';
+    divider.style.display = oidcNodes.length > 0 ? 'flex' : 'none';
   }
 
-  async function submitOIDC(flow, provider) {
+  async function submitOIDC(provider, retried) {
     try {
+      const flow = await currentFlow(retried);
+      bindFlow(flow);
       const res = await fetch(flow.ui.action, {
         method: flow.ui.method || 'POST',
         headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
         credentials: 'include',
         body: JSON.stringify({
-          csrf_token: document.getElementById('csrf-token').value,
+          csrf_token: csrfOf(flow),
           method: 'oidc',
           provider: provider,
         }),
@@ -307,11 +380,63 @@
         window.location.href = res.url || returnTo;
         return;
       }
-      const body = await res.json();
+      const body = await res.json().catch(() => null);
+      if (!retried && isStaleFlow(res, body)) {
+        await submitOIDC(provider, true);
+        return;
+      }
       applyFlow(body);
     } catch (_) {
       showError('Social login failed. Please try again.');
     }
+  }
+
+  // submitRegistration posts against a flow that was just re-read from Kratos,
+  // so the csrf_token always matches the live anti-CSRF cookie. If the flow
+  // dies between that read and the post, it re-initialises once and retries.
+  // The page is never reloaded, so whatever the user typed survives.
+  async function submitRegistration(traits, retried) {
+    const flow = await currentFlow(retried);
+    bindFlow(flow);
+
+    const res = await fetch(flow.ui.action, {
+      method: flow.ui.method || 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+      credentials: 'include',
+      body: JSON.stringify({
+        csrf_token: csrfOf(flow),
+        method: 'password',
+        'traits.email': traits.email,
+        password: traits.password,
+      }),
+    });
+
+    if (res.ok || res.status === 303) {
+      // Check if verification is required.
+      const body = await res.json().catch(() => null);
+      if (body && body.continue_with) {
+        const verif = body.continue_with.find(c => c.action === 'show_verification_ui');
+        if (verif && verif.flow && verif.flow.id) {
+          window.location.href = '/_vibewarden/verification?flow=' + verif.flow.id;
+          return;
+        }
+      }
+      window.location.href = returnTo;
+      return;
+    }
+
+    const body = await res.json().catch(() => null);
+
+    if (!retried && isStaleFlow(res, body)) {
+      await submitRegistration(traits, true);
+      return;
+    }
+
+    if (body && body.ui) {
+      applyFlow(body);
+      return;
+    }
+    showError('Registration failed. Please try again.');
   }
 
   document.getElementById('reg-form').addEventListener('submit', async function (e) {
@@ -331,55 +456,13 @@
     confirmErr.style.display = 'none';
     document.getElementById('password-confirm').classList.remove('error');
 
-    const flowId = document.getElementById('flow-id').value;
-    if (!flowId) { showError('Registration session expired. Please refresh.'); return; }
-
-    let flow;
     try {
-      const res = await fetch(kratosBase + '/self-service/registration/flows?id=' + encodeURIComponent(flowId), {
-        headers: { Accept: 'application/json' },
-        credentials: 'include',
-      });
-      flow = await res.json();
-    } catch (_) {
-      showError('Registration session expired. Please refresh.');
-      return;
-    }
-
-    const payload = {
-      csrf_token: document.getElementById('csrf-token').value,
-      method: 'password',
-      'traits.email': form['traits.email'].value,
-      password: pw,
-    };
-
-    try {
-      const res = await fetch(flow.ui.action, {
-        method: flow.ui.method || 'POST',
-        headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-        credentials: 'include',
-        body: JSON.stringify(payload),
-      });
-      if (res.status === 422 || res.status === 400) {
-        const body = await res.json();
-        applyFlow(body);
+      await submitRegistration({ email: form['traits.email'].value, password: pw }, false);
+    } catch (err) {
+      if (err && (err.message === 'no_flow_id' || err.message === 'fetch_flow_failed')) {
+        showError('Could not start registration session. Please try again.');
         return;
       }
-      if (res.ok || res.status === 303) {
-        // Check if verification is required.
-        const body = await res.json().catch(() => null);
-        if (body && body.continue_with) {
-          const verif = body.continue_with.find(c => c.action === 'show_verification_ui');
-          if (verif && verif.flow && verif.flow.id) {
-            window.location.href = '/_vibewarden/verification?flow=' + verif.flow.id;
-            return;
-          }
-        }
-        window.location.href = returnTo;
-        return;
-      }
-      showError('Registration failed. Please try again.');
-    } catch (_) {
       showError('Network error. Please check your connection and try again.');
     }
   });
