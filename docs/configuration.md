@@ -332,8 +332,8 @@ Used when `auth.mode` is `kratos`.
 
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
-| `kratos.public_url` | string | `http://127.0.0.1:4433` | Kratos public API URL |
-| `kratos.admin_url` | string | `http://127.0.0.1:4434` | Kratos admin API URL |
+| `kratos.public_url` | string | `http://127.0.0.1:4433` | Kratos public API URL. In the generated Docker Compose stack, use `http://kratos:4433` |
+| `kratos.admin_url` | string | `http://127.0.0.1:4434` | Kratos admin API URL. In the generated Docker Compose stack, use `http://kratos:4434` |
 | `kratos.dsn` | string | `""` | Kratos database DSN (postgres URL) |
 | `kratos.external` | bool | `false` | Connect to a user-managed Kratos instance instead of starting one |
 | `kratos.smtp.host` | string | `localhost` | SMTP server host |

@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 
+	"gopkg.in/yaml.v3"
+
 	"github.com/vibewarden/vibewarden/internal/adapters/yamlmod"
 	"github.com/vibewarden/vibewarden/internal/domain/scaffold"
 )
@@ -185,10 +187,13 @@ func TestToggler_EnableFeature(t *testing.T) {
 		preserveStr string // string that must survive in the output
 	}{
 		{
-			name:       "enable auth adds kratos and auth sections",
-			initial:    minimalConfig,
-			feature:    scaffold.FeatureAuth,
-			wantInYAML: []string{"kratos:", "public_url:", "auth:", "session_cookie_name:"},
+			name:    "enable auth adds kratos and auth sections",
+			initial: minimalConfig,
+			feature: scaffold.FeatureAuth,
+			wantInYAML: []string{
+				"kratos:", "public_url:", "auth:", "session_cookie_name:",
+				"http://kratos:4433", "http://kratos:4434",
+			},
 		},
 		{
 			name:      "enable auth twice returns ErrFeatureAlreadyEnabled",
@@ -382,5 +387,62 @@ func TestToggler_EnableFeature_Idempotent(t *testing.T) {
 	after, _ := os.ReadFile(path)
 	if string(original) != string(after) {
 		t.Error("file was modified even though feature was already enabled")
+	}
+}
+
+// TestToggler_EnableAuth_KratosURLsAreComposeReachable pins the shape of the
+// block `vibew add auth` writes: the sidecar runs in a container, so the Kratos
+// URLs must be the Compose service name, and auth.login_url must stay unset so
+// unauthenticated browsers are redirected to a sidecar-relative path rather
+// than to an unpublished Kratos port.
+//
+// Regression test for #1536.
+func TestToggler_EnableAuth_KratosURLsAreComposeReachable(t *testing.T) {
+	tog := yamlmod.NewToggler()
+	path := writeConfig(t, t.TempDir(), minimalConfig)
+
+	if _, err := tog.EnableFeature(context.Background(), path, scaffold.FeatureAuth, scaffold.FeatureOptions{}); err != nil {
+		t.Fatalf("EnableFeature() unexpected error: %v", err)
+	}
+
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("reading updated file: %v", err)
+	}
+
+	var cfg struct {
+		Kratos struct {
+			PublicURL string `yaml:"public_url"`
+			AdminURL  string `yaml:"admin_url"`
+		} `yaml:"kratos"`
+		Auth struct {
+			Mode     string `yaml:"mode"`
+			LoginURL string `yaml:"login_url"`
+		} `yaml:"auth"`
+	}
+	if err := yaml.Unmarshal(content, &cfg); err != nil {
+		t.Fatalf("parsing updated file: %v", err)
+	}
+
+	tests := []struct {
+		name string
+		got  string
+		want string
+	}{
+		{"kratos.public_url", cfg.Kratos.PublicURL, "http://kratos:4433"},
+		{"kratos.admin_url", cfg.Kratos.AdminURL, "http://kratos:4434"},
+		{"auth.mode", cfg.Auth.Mode, "kratos"},
+		{"auth.login_url", cfg.Auth.LoginURL, ""},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.got != tt.want {
+				t.Errorf("%s = %q, want %q\n\nContent:\n%s", tt.name, tt.got, tt.want, content)
+			}
+		})
+	}
+
+	if strings.Contains(string(content), "login_url") {
+		t.Errorf("output still writes login_url\n\nContent:\n%s", content)
 	}
 }

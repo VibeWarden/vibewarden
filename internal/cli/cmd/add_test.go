@@ -55,7 +55,14 @@ func TestAddAuthCmd(t *testing.T) {
 			initial:         minimalVibeWardenYAML,
 			args:            []string{"auth"},
 			wantOutContains: `"auth" enabled successfully`,
-			wantInYAML:      []string{"kratos:", "auth:", "session_cookie_name:"},
+			// The sidecar reaches Kratos over the Compose network, and
+			// unauthenticated browsers must be redirected to a
+			// sidecar-relative login path, not to an unpublished port (#1536).
+			wantInYAML: []string{
+				"kratos:", "auth:", "session_cookie_name:",
+				"http://kratos:4433", "http://kratos:4434",
+			},
+			notInYAML: []string{"localhost:4433", "localhost:4434", "login_url"},
 		},
 		{
 			name:            "already enabled is a no-op with message",
