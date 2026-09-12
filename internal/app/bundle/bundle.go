@@ -305,6 +305,13 @@ func (s *Service) bundleSingleSite(ctx context.Context, cfg *config.Config, conf
 	// Resolve upstream.host on the merged Config for template rendering.
 	resolved := ResolveProdConfig(mergedCfg, projectName, false)
 
+	// SidecarImage/SidecarPullPolicy are computed from the CLI build version
+	// (ADR-106), not loaded from YAML, so LoadMergedConfig above returns them
+	// empty and the bundled docker-compose.yml would render `image:` with no
+	// value — an invalid compose file. Recompute them here from the version
+	// the service was built with (#1535).
+	resolved.SidecarImage, resolved.SidecarPullPolicy = config.SidecarImageRef(s.version)
+
 	// Set deploy mode so the template uses the original App.Build value as
 	// the build context (e.g. ".") instead of the resolved ProjectRoot.
 	resolved.DeployMode = true

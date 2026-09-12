@@ -6,6 +6,8 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"io/fs"
+	"os"
 	"path/filepath"
 	"strings"
 
@@ -59,10 +61,20 @@ var ErrNonTTYVolumesRequiresYes = errors.New("--yes required when not running in
 //  3. Invoke compose.Down with the resolved options.
 //  4. Print a short summary to out.
 //
-// Run is idempotent: invoking it on a stack that is already stopped prints a
-// no-op summary and returns a nil error.
+// Run is idempotent: invoking it on a stack that is already stopped — or in a
+// directory where nothing was ever generated — prints a no-op summary and
+// returns a nil error.
 func (s *DownService) Run(ctx context.Context, opts DownOptions, out io.Writer) error {
 	composeFile := filepath.Join(generatedOutputDir, "docker-compose.yml")
+
+	// Nothing was generated here, so there is no stack to stop and no volume
+	// to remove. Return the no-op summary before touching compose: invoking
+	// `docker compose -f <missing file> down` exits non-zero, which turned
+	// the documented idempotent path into an error (#1535).
+	if _, err := os.Stat(composeFile); errors.Is(err, fs.ErrNotExist) {
+		printDownSummary(ports.DownResult{}, opts, out)
+		return nil
+	}
 
 	if opts.Volumes && !opts.Yes {
 		if !opts.IsTTY {

@@ -104,7 +104,9 @@ integration: ## Run integration tests (requires Docker)
 	@echo "==> Building VibeWarden image for integration tests (vibewarden:local-test)..."
 	docker build --tag vibewarden:local-test .
 	@echo "==> Running integration tests..."
-	go test -race -tags integration ./test/integration/ -v -timeout 300s
+	@# 900s, not 300s: the obs lifecycle test starts the full observability
+	@# profile, and a cold Docker cache has to pull ~1.5GB before it can.
+	go test -race -tags integration ./test/integration/ -v -timeout 900s
 	@echo "==> Integration tests passed!"
 
 # Run all checks + integration tests.
