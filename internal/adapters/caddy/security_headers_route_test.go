@@ -276,9 +276,8 @@ func TestSecurityHeaders_ResponseHeadersOverrideOnAppRoute(t *testing.T) {
 	// The production wiring appends every CaddyContributor's handlers to
 	// ExtraHandlers; the security-headers plugin must contribute none.
 	plugin := securityheaders.New(securityheaders.Config{
-		Enabled:            secCfg.Enabled,
-		ContentTypeNosniff: secCfg.ContentTypeNosniff,
-		FrameOption:        secCfg.FrameOption,
+		Enabled:     secCfg.Enabled,
+		FrameOption: secCfg.FrameOption,
 	}, false, slog.New(slog.DiscardHandler))
 
 	cfg := &ports.ProxyConfig{

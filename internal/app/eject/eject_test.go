@@ -1,11 +1,13 @@
 package eject_test
 
 import (
+	"encoding/json"
 	"errors"
 	"fmt"
 	"testing"
 	"time"
 
+	"github.com/vibewarden/vibewarden/internal/adapters/caddy"
 	"github.com/vibewarden/vibewarden/internal/app/eject"
 	"github.com/vibewarden/vibewarden/internal/config"
 	"github.com/vibewarden/vibewarden/internal/ports"
@@ -718,4 +720,120 @@ func TestService_Eject_ResilienceConfig(t *testing.T) {
 			}
 		})
 	}
+}
+
+// TestService_Eject_ContentSecurityPolicyArtifact pins CSP resolution on the
+// artifact that vibew eject actually writes, not on the intermediate
+// ProxyConfig. The structured security_headers.csp block used to be resolved
+// only by the security-headers plugin, so ejecting a csp-only config emitted
+// no Content-Security-Policy header at all (#1540).
+func TestService_Eject_ContentSecurityPolicyArtifact(t *testing.T) {
+	tests := []struct {
+		name    string
+		headers config.SecurityHeadersConfig
+		want    string // "" means the header must be absent
+	}{
+		{
+			name: "structured csp only",
+			headers: config.SecurityHeadersConfig{
+				Enabled: true,
+				CSP: config.CSPConfig{
+					DefaultSrc: []string{"'self'"},
+					ScriptSrc:  []string{"'self'", "https://cdn.example.com"},
+				},
+			},
+			want: "default-src 'self'; script-src 'self' https://cdn.example.com",
+		},
+		{
+			name: "raw string only",
+			headers: config.SecurityHeadersConfig{
+				Enabled:               true,
+				ContentSecurityPolicy: "default-src 'none'",
+			},
+			want: "default-src 'none'",
+		},
+		{
+			name: "raw string wins over structured block",
+			headers: config.SecurityHeadersConfig{
+				Enabled:               true,
+				ContentSecurityPolicy: "default-src 'none'",
+				CSP: config.CSPConfig{
+					DefaultSrc: []string{"'self'"},
+				},
+			},
+			want: "default-src 'none'",
+		},
+		{
+			name:    "neither set — header absent",
+			headers: config.SecurityHeadersConfig{Enabled: true},
+			want:    "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := minimalConfig()
+			cfg.SecurityHeaders = tt.headers
+
+			svc := eject.NewService(caddy.NewEjectBuilder())
+			result, err := svc.Eject(cfg, nil)
+			if err != nil {
+				t.Fatalf("Eject() error = %v", err)
+			}
+
+			got, found := findCSPHeader(t, result)
+			if tt.want == "" {
+				if found {
+					t.Fatalf("Content-Security-Policy present in ejected config = %q, want absent", got)
+				}
+				return
+			}
+			if !found {
+				t.Fatalf("Content-Security-Policy absent from ejected config, want %q", tt.want)
+			}
+			if got != tt.want {
+				t.Errorf("Content-Security-Policy = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+// findCSPHeader walks the generated Caddy JSON and returns the first
+// Content-Security-Policy value set by any headers handler.
+func findCSPHeader(t *testing.T, cfg map[string]any) (string, bool) {
+	t.Helper()
+
+	data, err := json.Marshal(cfg)
+	if err != nil {
+		t.Fatalf("json.Marshal(ejected config): %v", err)
+	}
+	var generic any
+	if err := json.Unmarshal(data, &generic); err != nil {
+		t.Fatalf("json.Unmarshal(ejected config): %v", err)
+	}
+
+	var walk func(node any) (string, bool)
+	walk = func(node any) (string, bool) {
+		switch n := node.(type) {
+		case map[string]any:
+			if values, ok := n["Content-Security-Policy"].([]any); ok && len(values) > 0 {
+				if s, ok := values[0].(string); ok {
+					return s, true
+				}
+			}
+			for _, v := range n {
+				if got, ok := walk(v); ok {
+					return got, true
+				}
+			}
+		case []any:
+			for _, v := range n {
+				if got, ok := walk(v); ok {
+					return got, true
+				}
+			}
+		}
+		return "", false
+	}
+	return walk(generic)
 }

@@ -935,3 +935,118 @@ func verifyUpstreamInRoutes(t *testing.T, routes []any, upstream string) {
 	}
 	t.Errorf("no route found with upstream %q", upstream)
 }
+
+// TestBuildMultiSiteConfig_ContentSecurityPolicyArtifact pins CSP resolution on
+// the generated multi-site Caddy JSON. The structured security_headers.csp
+// block used to be resolved only by the security-headers plugin, so a
+// csp-only site config emitted no Content-Security-Policy header (#1540).
+func TestBuildMultiSiteConfig_ContentSecurityPolicyArtifact(t *testing.T) {
+	tests := []struct {
+		name    string
+		headers config.SecurityHeadersConfig
+		want    string // "" means the header must be absent
+	}{
+		{
+			name: "structured csp only",
+			headers: config.SecurityHeadersConfig{
+				Enabled: true,
+				CSP: config.CSPConfig{
+					DefaultSrc: []string{"'self'"},
+					ScriptSrc:  []string{"'self'", "https://cdn.example.com"},
+				},
+			},
+			want: "default-src 'self'; script-src 'self' https://cdn.example.com",
+		},
+		{
+			name: "raw string only",
+			headers: config.SecurityHeadersConfig{
+				Enabled:               true,
+				ContentSecurityPolicy: "default-src 'none'",
+			},
+			want: "default-src 'none'",
+		},
+		{
+			name: "raw string wins over structured block",
+			headers: config.SecurityHeadersConfig{
+				Enabled:               true,
+				ContentSecurityPolicy: "default-src 'none'",
+				CSP: config.CSPConfig{
+					DefaultSrc: []string{"'self'"},
+				},
+			},
+			want: "default-src 'none'",
+		},
+		{
+			name:    "neither set — header absent",
+			headers: config.SecurityHeadersConfig{Enabled: true},
+			want:    "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := helperMinimalConfig("app1.example.com", 3000)
+			cfg.SecurityHeaders = tt.headers
+			s := helperNewSite(t, "app1", cfg)
+
+			result, err := BuildMultiSiteConfig([]*site.Site{s}, site.DefaultGlobalConfig(), nil, slog.Default())
+			if err != nil {
+				t.Fatalf("BuildMultiSiteConfig() error = %v", err)
+			}
+
+			got, found := helperFindCSPHeader(t, result)
+			if tt.want == "" {
+				if found {
+					t.Fatalf("Content-Security-Policy present in multi-site config = %q, want absent", got)
+				}
+				return
+			}
+			if !found {
+				t.Fatalf("Content-Security-Policy absent from multi-site config, want %q", tt.want)
+			}
+			if got != tt.want {
+				t.Errorf("Content-Security-Policy = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+// helperFindCSPHeader walks generated Caddy JSON and returns the first
+// Content-Security-Policy value set by any headers handler.
+func helperFindCSPHeader(t *testing.T, cfg map[string]any) (string, bool) {
+	t.Helper()
+
+	data, err := json.Marshal(cfg)
+	if err != nil {
+		t.Fatalf("json.Marshal(caddy config): %v", err)
+	}
+	var generic any
+	if err := json.Unmarshal(data, &generic); err != nil {
+		t.Fatalf("json.Unmarshal(caddy config): %v", err)
+	}
+
+	var walk func(node any) (string, bool)
+	walk = func(node any) (string, bool) {
+		switch n := node.(type) {
+		case map[string]any:
+			if values, ok := n["Content-Security-Policy"].([]any); ok && len(values) > 0 {
+				if v, ok := values[0].(string); ok {
+					return v, true
+				}
+			}
+			for _, v := range n {
+				if got, ok := walk(v); ok {
+					return got, true
+				}
+			}
+		case []any:
+			for _, v := range n {
+				if got, ok := walk(v); ok {
+					return got, true
+				}
+			}
+		}
+		return "", false
+	}
+	return walk(generic)
+}

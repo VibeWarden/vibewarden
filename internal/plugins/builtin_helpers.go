@@ -5,7 +5,6 @@ import (
 	"time"
 
 	"github.com/vibewarden/vibewarden/internal/config"
-	"github.com/vibewarden/vibewarden/internal/domain/csp"
 	egressplugin "github.com/vibewarden/vibewarden/internal/plugins/egress"
 	inputvalidationplugin "github.com/vibewarden/vibewarden/internal/plugins/inputvalidation"
 	secretsplugin "github.com/vibewarden/vibewarden/internal/plugins/secrets"
@@ -291,31 +290,4 @@ func buildEgressPlugin(cfg *config.Config, eventLogger ports.EventLogger, logger
 	}
 
 	return egressplugin.New(pluginCfg, eventLogger, logger)
-}
-
-// resolveCSP returns the Content-Security-Policy header value to use.
-// The raw content_security_policy string takes precedence for backward
-// compatibility. When it is empty, the structured csp block is passed to
-// csp.Build and the generated string is returned instead.
-func resolveCSP(cfg *config.Config) string {
-	if cfg.SecurityHeaders.ContentSecurityPolicy != "" {
-		return cfg.SecurityHeaders.ContentSecurityPolicy
-	}
-	return csp.Build(csp.Config{
-		DefaultSrc:     cfg.SecurityHeaders.CSP.DefaultSrc,
-		ScriptSrc:      cfg.SecurityHeaders.CSP.ScriptSrc,
-		StyleSrc:       cfg.SecurityHeaders.CSP.StyleSrc,
-		ImgSrc:         cfg.SecurityHeaders.CSP.ImgSrc,
-		ConnectSrc:     cfg.SecurityHeaders.CSP.ConnectSrc,
-		FontSrc:        cfg.SecurityHeaders.CSP.FontSrc,
-		FrameSrc:       cfg.SecurityHeaders.CSP.FrameSrc,
-		MediaSrc:       cfg.SecurityHeaders.CSP.MediaSrc,
-		ObjectSrc:      cfg.SecurityHeaders.CSP.ObjectSrc,
-		ManifestSrc:    cfg.SecurityHeaders.CSP.ManifestSrc,
-		WorkerSrc:      cfg.SecurityHeaders.CSP.WorkerSrc,
-		ChildSrc:       cfg.SecurityHeaders.CSP.ChildSrc,
-		FormAction:     cfg.SecurityHeaders.CSP.FormAction,
-		FrameAncestors: cfg.SecurityHeaders.CSP.FrameAncestors,
-		BaseURI:        cfg.SecurityHeaders.CSP.BaseURI,
-	})
 }

@@ -25,15 +25,9 @@ func (noopWriter) Write(p []byte) (int, error) { return len(p), nil }
 
 func defaultConfig() securityheaders.Config {
 	return securityheaders.Config{
-		Enabled:               true,
-		HSTSMaxAge:            31536000,
-		HSTSIncludeSubDomains: true,
-		HSTSPreload:           false,
-		ContentTypeNosniff:    true,
-		FrameOption:           "DENY",
-		ContentSecurityPolicy: "default-src 'self'",
-		ReferrerPolicy:        "strict-origin-when-cross-origin",
-		PermissionsPolicy:     "",
+		Enabled:     true,
+		HSTSMaxAge:  31536000,
+		FrameOption: "DENY",
 	}
 }
 
