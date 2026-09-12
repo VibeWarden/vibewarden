@@ -1,6 +1,6 @@
 # VibeWarden Makefile
 
-.PHONY: build test lint run docker-up docker-down observability-up observability-down grafana-open prometheus-open loki-open clean check integration check-all setup-hooks demo demo-build demo-tls demo-down demo-clean deploy-demo check-npm
+.PHONY: build test lint run docker-up docker-down observability-up observability-down grafana-open prometheus-open loki-open clean check integration check-all setup-hooks demo demo-build demo-tls demo-down demo-clean deploy-demo check-npm check-authui-js
 
 # Build variables
 VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
@@ -70,6 +70,7 @@ check: ## Run all quality checks (lint, build, tests)
 	@test -z "$$(cd examples/demo-app && gofmt -l .)" || (echo "gofmt: these demo-app files need formatting:" && cd examples/demo-app && gofmt -l . && exit 1)
 	cd examples/demo-app && go vet ./... && go build ./... && go test -race ./...
 	@$(MAKE) --no-print-directory check-npm
+	@$(MAKE) --no-print-directory check-authui-js
 	@echo "==> All checks passed!"
 
 # Run the @vibewarden/cli npm package test suite (ADR-112).
@@ -82,6 +83,19 @@ check-npm: ## Run the npm distribution wrapper tests (requires Node >= 22)
 		exit 1; \
 	}
 	node --test 'npm/test/*.test.js'
+
+# Run the auth-UI page-script tests (#1527). The login/registration/settings
+# pages are HTML + inline vanilla JS, which no Go test can execute; these run
+# the real inline script in a Node vm against a fake Kratos.
+# Zero dependencies: Node's built-in test runner, no node_modules, no network.
+check-authui-js: ## Run the built-in auth UI page-script tests (requires Node >= 22)
+	@echo "==> Running auth UI page-script tests (internal/adapters/authui)..."
+	@command -v node >/dev/null 2>&1 || { \
+		echo "error: node is required to test the built-in auth UI page scripts."; \
+		echo "       Install Node.js >= 22: https://nodejs.org/en/download"; \
+		exit 1; \
+	}
+	node --test 'internal/adapters/authui/testdata/js/*.test.mjs'
 
 # Run integration tests (requires Docker running).
 # These are gated behind //go:build integration and test multi-app routing,
