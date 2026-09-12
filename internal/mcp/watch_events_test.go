@@ -35,20 +35,17 @@ const eventsFixture = `{
 }`
 
 func TestHandleWatchEvents_Success(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	// Behind the real admin auth gate: the tool authenticates with
+	// Authorization: Bearer, and the middleware must accept it (#1513).
+	srv := newGatedAdminServer(t, "test-token", http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/_vibewarden/admin/events" {
 			w.WriteHeader(http.StatusNotFound)
-			return
-		}
-		if r.Header.Get("Authorization") != "Bearer test-token" {
-			w.WriteHeader(http.StatusUnauthorized)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(eventsFixture))
 	}))
-	defer srv.Close()
 
 	params, _ := json.Marshal(map[string]any{
 		"url":         srv.URL,

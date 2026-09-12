@@ -30,7 +30,8 @@ type AdminAuthHandlerConfig struct {
 	// Enabled toggles the admin API.
 	Enabled bool `json:"enabled"`
 
-	// Token is the bearer token clients must supply in X-Admin-Key.
+	// Token is the bearer token clients must supply in X-Admin-Key or
+	// Authorization: Bearer.
 	Token string `json:"token"`
 
 	// ConfigPath is an additional path prefix to protect.

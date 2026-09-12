@@ -480,7 +480,7 @@ All `vibewarden.yaml` settings can be overridden via environment variables using
 | `VIBEWARDEN_TLS_KEY_PATH` | `tls.key_path` | Path to private key file (external provider) |
 | `VIBEWARDEN_KRATOS_PUBLIC_URL` | `kratos.public_url` | Kratos public API URL |
 | `VIBEWARDEN_KRATOS_ADMIN_URL` | `kratos.admin_url` | Kratos admin API URL |
-| `VIBEWARDEN_ADMIN_TOKEN` | `admin.token` | Bearer token for the admin API |
+| `VIBEWARDEN_ADMIN_TOKEN` | `admin.token` | Admin API token — send it as `X-Admin-Key: <token>` or `Authorization: Bearer <token>` |
 | `VIBEWARDEN_LOG_LEVEL` | `log.level` | `debug`, `info`, `warn`, `error` |
 | `VIBEWARDEN_LOG_FORMAT` | `log.format` | `json` or `text` |
 

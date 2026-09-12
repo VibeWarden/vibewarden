@@ -30,6 +30,7 @@ import (
 	"github.com/vibewarden/vibewarden/internal/domain/events"
 	"github.com/vibewarden/vibewarden/internal/domain/proposal"
 	"github.com/vibewarden/vibewarden/internal/mcp"
+	"github.com/vibewarden/vibewarden/internal/middleware"
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
 
@@ -451,21 +452,26 @@ type eventItem struct {
 	Payload   map[string]any `json:"payload,omitempty"`
 }
 
+// adminGate returns the production admin-auth middleware configured with the
+// hard-coded "test-token". The fake admin servers below sit behind it so the
+// Authorization: Bearer header the MCP tools send is validated by real code
+// (#1513) instead of a hand-rolled string comparison.
+func adminGate() func(http.Handler) http.Handler {
+	return middleware.AdminAuthMiddleware(
+		ports.AdminAuthConfig{Enabled: true, Token: "test-token"},
+		nil,
+		nil,
+	)
+}
+
 // newAdminEventsServer starts a local httptest.Server that serves the ring
-// buffer contents at GET /_vibewarden/admin/events. It authenticates via a
-// hard-coded "test-token" bearer token so the MCP watch-events handler can
-// call it without a running sidecar.
+// buffer contents at GET /_vibewarden/admin/events, behind the real admin-auth
+// gate, so the MCP watch-events handler can call it without a running sidecar.
 func newAdminEventsServer(t *testing.T, rb ports.EventRingBuffer) *httptest.Server {
 	t.Helper()
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /_vibewarden/admin/events", func(w http.ResponseWriter, r *http.Request) {
-		// Basic auth gate — match what the MCP client sends.
-		if r.Header.Get("Authorization") != "Bearer test-token" {
-			http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
-			return
-		}
-
 		stored, cursor := rb.Query(0, nil, 500)
 
 		items := make([]eventItem, 0, len(stored))
@@ -493,7 +499,7 @@ func newAdminEventsServer(t *testing.T, rb ports.EventRingBuffer) *httptest.Serv
 		}
 	})
 
-	return httptest.NewServer(mux)
+	return httptest.NewServer(adminGate()(mux))
 }
 
 // createProposalRequest mirrors the JSON body expected by
@@ -534,11 +540,6 @@ func newProposalServer(t *testing.T, svc *proposalapp.Service) *httptest.Server 
 
 	// POST /_vibewarden/admin/proposals — create a new proposal.
 	mux.HandleFunc("POST /_vibewarden/admin/proposals", func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("Authorization") != "Bearer test-token" {
-			http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
-			return
-		}
-
 		var req createProposalRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, `{"error":"bad_request"}`, http.StatusBadRequest)
@@ -565,11 +566,6 @@ func newProposalServer(t *testing.T, svc *proposalapp.Service) *httptest.Server 
 
 	// GET /_vibewarden/admin/proposals — list proposals.
 	mux.HandleFunc("GET /_vibewarden/admin/proposals", func(w http.ResponseWriter, r *http.Request) {
-		if r.Header.Get("Authorization") != "Bearer test-token" {
-			http.Error(w, `{"error":"unauthorized"}`, http.StatusUnauthorized)
-			return
-		}
-
 		var status proposal.Status
 		if raw := r.URL.Query().Get("status"); raw != "" {
 			status = proposal.Status(raw)
@@ -594,7 +590,7 @@ func newProposalServer(t *testing.T, svc *proposalapp.Service) *httptest.Server 
 		}
 	})
 
-	return httptest.NewServer(mux)
+	return httptest.NewServer(adminGate()(mux))
 }
 
 // toProposalResp converts a domain proposal to the wire representation used in

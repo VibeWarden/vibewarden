@@ -80,7 +80,7 @@ It is never hosted remotely.
 | Observability | Prometheus metrics, OpenTelemetry traces + logs, Grafana dashboards, Jaeger/Tempo |
 | AI-readable logs | Versioned JSON schema: `schema_version`, `event_type`, `ai_summary`, `payload` |
 | Audit log sinks | JSON file, OTel logs, webhook (HMAC-signed) with retry |
-| Admin API | User management at `/_vibewarden/admin/*` (bearer-token protected), plus a browser admin console at `/_vibewarden/admin/ui/` |
+| Admin API | User management at `/_vibewarden/admin/*` (token-protected — `X-Admin-Key` or `Authorization: Bearer`), plus a browser admin console at `/_vibewarden/admin/ui/` |
 | Docker Compose | Profile-based: `vibew obs up` / `vibew obs down` (observability); demo app via `vibew dev` |
 
 ---
