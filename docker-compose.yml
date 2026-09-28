@@ -195,7 +195,7 @@ services:
     # stops it reopening weekly.
     # Kept in sync with internal/config/templates/docker-compose.yml.tmpl
     # (enforced by TestTemplateImagePins_MatchDevCompose).
-    image: quay.io/openbao/openbao:2.5.5
+    image: quay.io/openbao/openbao:2.7.0
     container_name: vibewarden-openbao
     cap_add:
       - IPC_LOCK
