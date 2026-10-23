@@ -343,6 +343,16 @@ No config change is required — this takes effect on upgrade, without a
 
 ---
 
+### JWT mode: JWKS RSA keys larger than 4096 bits are rejected (v0.22.1)
+
+v0.22.1 moves to `go-jose` 4.1.6, which fixes GHSA-mgcc-cww5-fp2q by
+refusing to parse JWK RSA keys with a modulus above 4096 bits. If your
+identity provider's JWKS endpoint serves such a key, tokens signed with it now
+fail verification. No config change is required for 2048-, 3072- or 4096-bit
+keys, which is what mainstream providers issue.
+
+---
+
 ### `metrics:` → `telemetry:` (deprecated)
 
 The `metrics:` block was replaced by `telemetry:` to reflect VibeWarden's move to
