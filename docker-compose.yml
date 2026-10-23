@@ -225,7 +225,7 @@ services:
   # Re-run after "docker compose down -v" to regenerate credentials.
   # --------------------------------------------------------------------------
   openbao-bootstrap:
-    image: curlimages/curl:8.22.0
+    image: curlimages/curl:8.23.0
     container_name: vibewarden-openbao-bootstrap
     environment:
       BAO_ADDR: http://openbao:8200
@@ -285,7 +285,7 @@ services:
   #   docker compose --profile observability up -d
   # --------------------------------------------------------------------------
   prometheus:
-    image: prom/prometheus:v3.14.0
+    image: prom/prometheus:v3.15.0
     container_name: vibewarden-prometheus
     profiles:
       - observability
@@ -362,7 +362,7 @@ services:
   #   docker compose --profile observability up -d
   # --------------------------------------------------------------------------
   loki:
-    image: grafana/loki:3.7.7
+    image: grafana/loki:3.7.8
     container_name: vibewarden-loki
     profiles:
       - observability

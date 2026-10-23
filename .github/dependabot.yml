@@ -175,6 +175,13 @@ updates:
         update-types:
           - version-update:semver-minor
           - version-update:semver-major
+      # Same image, same hold. Dependabot reports the quay.io pin without its
+      # registry host, so the rule above did not match and #1557 proposed
+      # 2.7.1 anyway. Keep both names until the hold is lifted.
+      - dependency-name: "openbao/openbao"
+        update-types:
+          - version-update:semver-minor
+          - version-update:semver-major
 
   # GitHub Actions — keep CI actions pinned to latest.
   - package-ecosystem: github-actions
