@@ -1450,6 +1450,10 @@ input_validation:
 
   # Maximum byte length of any single header value.
   # Zero disables this check. Default: 8192
+  #
+  # Independent of this block, the embedded Caddy server caps the whole
+  # request header block at 16 KiB and answers 431 Request Header Fields
+  # Too Large above that, so raising these limits past 16 KiB has no effect.
   max_header_size: 8192
 
   # Per-path overrides — first matching entry wins.

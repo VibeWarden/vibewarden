@@ -727,7 +727,9 @@ body_size, which covers the request body. Violations return 400 Bad Request.
   input_validation.max_header_size           int     8192    Max bytes in any single header value
   input_validation.path_overrides            list    []      Per-path overrides, first match wins
 
-  Zero disables an individual check.
+  Zero disables an individual check. Independent of these checks, the
+  embedded Caddy server caps the whole request header block at 16 KiB and
+  answers 431 Request Header Fields Too Large above that.
 
   Each override: path (glob, path.Match syntax) plus any of max_url_length,
   max_query_string_length, max_header_count, max_header_size. Zero fields
