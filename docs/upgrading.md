@@ -343,6 +343,18 @@ No config change is required — this takes effect on upgrade, without a
 
 ---
 
+### Request headers are capped at 16 KiB in total (v0.22.2)
+
+v0.22.2 moves the embedded Caddy to 2.11.7, which caps the whole request
+header block at 16 KiB (it was Go's 1 MB default). A request whose headers
+exceed that, for example from oversized cookies or a very large bearer token,
+now gets `431 Request Header Fields Too Large` before any VibeWarden
+middleware runs. This also bounds `input_validation.max_header_size` and
+`max_header_count`: raising them past 16 KiB has no effect. No config change
+is required for typical session cookies and JWTs.
+
+---
+
 ### JWT mode: JWKS RSA keys larger than 4096 bits are rejected (v0.22.1)
 
 v0.22.1 moves to `go-jose` 4.1.6, which fixes GHSA-mgcc-cww5-fp2q by

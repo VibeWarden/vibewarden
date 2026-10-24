@@ -12,6 +12,8 @@ This initial entry was written by hand to summarise the work leading up to v0.1.
 
 ## [Unreleased]
 
+## [v0.22.2] — 2026-10-24
+
 ### Changed
 
 - **chore(deps): OpenTelemetry Go 1.46 -> 1.47, with the logs API and SDK at their first stable release (supersedes #1566).** Deferred from the v0.22.1 batch. `go.opentelemetry.io/otel/log` and `otel/sdk/log` go from 0.22.0 to 1.47.0, so the "OTel log SDK is still maturing (v0.x)" risk recorded in ADR-015 is retired: those two modules now carry upstream's v1 stability guarantee. The OTLP log exporter (`otlploghttp` 0.23.0), the Prometheus exporter (0.69.0) and the `otelslog` bridge (0.21.0) stay on v0 lines. Release notes checked against the code: the deprecated `otel/log/global` package is not used (the `LoggerProvider` is injected into the bridge, never set globally), the removed `OTEL_GO_X_METRIC_EXPORT_BATCH_SIZE` variable is not read or emitted anywhere, and the contrib breaking changes are confined to `otelhttp` client labelers and message events, which VibeWarden does not import (it reaches `otelhttp` only indirectly through Caddy, whose module stays at its own pin). One behaviour change reaches VibeWarden: span and log record attribute values are now cut at a nesting depth of 64, far beyond any structured event payload VibeWarden emits. Also fixed upstream and relevant here: a data race in `NewPeriodicReader` and precision loss for large `int64` sums and histograms. No new module paths, so no new licenses. No code changes were needed.
