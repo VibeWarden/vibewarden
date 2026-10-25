@@ -343,6 +343,17 @@ No config change is required — this takes effect on upgrade, without a
 
 ---
 
+### Observability stack: Grafana image is now `grafana/grafana` (v0.22.3)
+
+Grafana Labs stopped publishing `grafana/grafana-oss` after 13.0.2, so the
+generated compose file now pins `grafana/grafana:13.0.11`, the same Open Source
+edition with nine patch releases of security fixes. This only affects projects
+running the `observability` profile. Regenerate to pick it up; the existing
+`grafana-data` volume is reused as is. The old image can then be removed with
+`docker image rm grafana/grafana-oss:13.0.2`.
+
+---
+
 ### Request headers are capped at 16 KiB in total (v0.22.2)
 
 v0.22.2 moves the embedded Caddy to 2.11.7, which caps the whole request
