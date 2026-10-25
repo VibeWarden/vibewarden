@@ -320,7 +320,10 @@ services:
   #   docker compose --profile observability up -d
   # --------------------------------------------------------------------------
   grafana:
-    image: grafana/grafana-oss:13.0.2
+    # grafana/grafana, not grafana/grafana-oss: Grafana Labs stopped publishing
+    # grafana-oss after 13.0.2, so that pin froze while 13.0.x security
+    # releases shipped only under this name (same Open Source edition).
+    image: grafana/grafana:13.0.11
     container_name: vibewarden-grafana
     profiles:
       - observability
