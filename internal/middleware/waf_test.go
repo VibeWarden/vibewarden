@@ -3,8 +3,12 @@ package middleware
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -437,5 +441,60 @@ func TestWAFMiddleware_Header_Attack_Blocked(t *testing.T) {
 
 	if rr.Code != http.StatusForbidden {
 		t.Errorf("header attack: status = %d, want 403", rr.Code)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Body read failures
+// ---------------------------------------------------------------------------
+
+// failingBody is a request body whose first Read returns err.
+type failingBody struct{ err error }
+
+func (b failingBody) Read([]byte) (int, error) { return 0, b.err }
+func (b failingBody) Close() error             { return nil }
+
+// TestWAFMiddleware_BodyReadTimeout_Returns408 verifies that a body read cut
+// by the server's read deadline (the client stalled mid-upload) is answered
+// with 408 instead of being forwarded with a dead body.
+func TestWAFMiddleware_BodyReadTimeout_Returns408(t *testing.T) {
+	for name, err := range map[string]error{
+		"http/1.1 net.OpError":        &net.OpError{Op: "read", Net: "tcp", Err: os.ErrDeadlineExceeded},
+		"http/2 wrapped deadline":     errors.Join(errors.New("http2: stream read"), os.ErrDeadlineExceeded),
+		"bare os.ErrDeadlineExceeded": os.ErrDeadlineExceeded,
+	} {
+		t.Run(name, func(t *testing.T) {
+			h := buildWAFHandler(t, defaultWAFCfg(), &fakeWAFCollector{}, &fakeWAFAuditLogger{})
+			req := httptest.NewRequest(http.MethodPost, "/upload", nil)
+			req.Body = io.NopCloser(failingBody{err: err})
+			req.ContentLength = 1000
+			rec := httptest.NewRecorder()
+			h.ServeHTTP(rec, req)
+
+			if rec.Code != http.StatusRequestTimeout {
+				t.Fatalf("status = %d, want 408; body %q", rec.Code, rec.Body.String())
+			}
+			var body ErrorResponse
+			if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+				t.Fatalf("response is not JSON: %v (%q)", err, rec.Body.String())
+			}
+			if body.Error != "request_timeout" {
+				t.Errorf("error code = %q, want request_timeout", body.Error)
+			}
+		})
+	}
+}
+
+// TestWAFMiddleware_OtherBodyError_FailsOpen verifies that a body read error
+// that is not a timeout keeps the documented fail-open behaviour.
+func TestWAFMiddleware_OtherBodyError_FailsOpen(t *testing.T) {
+	h := buildWAFHandler(t, defaultWAFCfg(), &fakeWAFCollector{}, &fakeWAFAuditLogger{})
+	req := httptest.NewRequest(http.MethodPost, "/upload", nil)
+	req.Body = io.NopCloser(failingBody{err: errors.New("connection reset by peer")})
+	rec := httptest.NewRecorder()
+	h.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Errorf("status = %d, want 200 (fail open)", rec.Code)
 	}
 }

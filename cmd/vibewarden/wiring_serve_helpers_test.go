@@ -15,44 +15,65 @@ import (
 	"github.com/vibewarden/vibewarden/internal/config"
 	"github.com/vibewarden/vibewarden/internal/domain/authguard"
 	"github.com/vibewarden/vibewarden/internal/plugins"
+	"github.com/vibewarden/vibewarden/internal/ports"
 )
 
 func TestBuildServerTimeoutsConfig(t *testing.T) {
+	const off = ports.TimeoutDisabled
+
 	tests := []struct {
-		name      string
-		serverCfg config.ServerConfig
-		wantRead  time.Duration
-		wantWrite time.Duration
-		wantIdle  time.Duration
+		name           string
+		serverCfg      config.ServerConfig
+		wantRead       time.Duration
+		wantWrite      time.Duration
+		wantIdle       time.Duration
+		wantReadHeader time.Duration
+		wantReadIdle   time.Duration
+		wantWriteIdle  time.Duration
 	}{
 		{
-			name:      "empty strings use defaults",
-			serverCfg: config.ServerConfig{},
-			wantRead:  30 * time.Second,
-			wantWrite: 60 * time.Second,
-			wantIdle:  120 * time.Second,
+			name:           "empty strings use defaults",
+			serverCfg:      config.ServerConfig{},
+			wantRead:       30 * time.Second,
+			wantWrite:      60 * time.Second,
+			wantIdle:       120 * time.Second,
+			wantReadHeader: time.Minute,
+			wantReadIdle:   time.Minute,
+			wantWriteIdle:  time.Minute,
 		},
 		{
-			name: "explicit zero disables timeout",
+			name: "explicit zero disables every timeout",
 			serverCfg: config.ServerConfig{
-				ReadTimeout:  "0",
-				WriteTimeout: "0",
-				IdleTimeout:  "0",
+				ReadTimeout:       "0",
+				WriteTimeout:      "0",
+				IdleTimeout:       "0",
+				ReadHeaderTimeout: "0",
+				ReadIdleTimeout:   "0",
+				WriteIdleTimeout:  "0",
 			},
-			wantRead:  0,
-			wantWrite: 0,
-			wantIdle:  0,
+			wantRead:       off,
+			wantWrite:      off,
+			wantIdle:       off,
+			wantReadHeader: off,
+			wantReadIdle:   off,
+			wantWriteIdle:  off,
 		},
 		{
 			name: "custom valid durations are parsed",
 			serverCfg: config.ServerConfig{
-				ReadTimeout:  "10s",
-				WriteTimeout: "20s",
-				IdleTimeout:  "90s",
+				ReadTimeout:       "10s",
+				WriteTimeout:      "20s",
+				IdleTimeout:       "90s",
+				ReadHeaderTimeout: "15s",
+				ReadIdleTimeout:   "5m",
+				WriteIdleTimeout:  "45s",
 			},
-			wantRead:  10 * time.Second,
-			wantWrite: 20 * time.Second,
-			wantIdle:  90 * time.Second,
+			wantRead:       10 * time.Second,
+			wantWrite:      20 * time.Second,
+			wantIdle:       90 * time.Second,
+			wantReadHeader: 15 * time.Second,
+			wantReadIdle:   5 * time.Minute,
+			wantWriteIdle:  45 * time.Second,
 		},
 		{
 			name: "invalid read timeout falls back to default",
@@ -61,9 +82,12 @@ func TestBuildServerTimeoutsConfig(t *testing.T) {
 				WriteTimeout: "60s",
 				IdleTimeout:  "120s",
 			},
-			wantRead:  30 * time.Second,
-			wantWrite: 60 * time.Second,
-			wantIdle:  120 * time.Second,
+			wantRead:       30 * time.Second,
+			wantWrite:      60 * time.Second,
+			wantIdle:       120 * time.Second,
+			wantReadHeader: time.Minute,
+			wantReadIdle:   time.Minute,
+			wantWriteIdle:  time.Minute,
 		},
 		{
 			name: "invalid write timeout falls back to default",
@@ -72,9 +96,12 @@ func TestBuildServerTimeoutsConfig(t *testing.T) {
 				WriteTimeout: "bad",
 				IdleTimeout:  "120s",
 			},
-			wantRead:  30 * time.Second,
-			wantWrite: 60 * time.Second,
-			wantIdle:  120 * time.Second,
+			wantRead:       30 * time.Second,
+			wantWrite:      60 * time.Second,
+			wantIdle:       120 * time.Second,
+			wantReadHeader: time.Minute,
+			wantReadIdle:   time.Minute,
+			wantWriteIdle:  time.Minute,
 		},
 		{
 			name: "invalid idle timeout falls back to default",
@@ -83,9 +110,26 @@ func TestBuildServerTimeoutsConfig(t *testing.T) {
 				WriteTimeout: "60s",
 				IdleTimeout:  "bad",
 			},
-			wantRead:  30 * time.Second,
-			wantWrite: 60 * time.Second,
-			wantIdle:  120 * time.Second,
+			wantRead:       30 * time.Second,
+			wantWrite:      60 * time.Second,
+			wantIdle:       120 * time.Second,
+			wantReadHeader: time.Minute,
+			wantReadIdle:   time.Minute,
+			wantWriteIdle:  time.Minute,
+		},
+		{
+			name: "invalid idle limits fall back to one minute",
+			serverCfg: config.ServerConfig{
+				ReadHeaderTimeout: "soon",
+				ReadIdleTimeout:   "later",
+				WriteIdleTimeout:  "never",
+			},
+			wantRead:       30 * time.Second,
+			wantWrite:      60 * time.Second,
+			wantIdle:       120 * time.Second,
+			wantReadHeader: time.Minute,
+			wantReadIdle:   time.Minute,
+			wantWriteIdle:  time.Minute,
 		},
 		{
 			name: "minute durations are accepted",
@@ -94,9 +138,12 @@ func TestBuildServerTimeoutsConfig(t *testing.T) {
 				WriteTimeout: "2m",
 				IdleTimeout:  "5m",
 			},
-			wantRead:  time.Minute,
-			wantWrite: 2 * time.Minute,
-			wantIdle:  5 * time.Minute,
+			wantRead:       time.Minute,
+			wantWrite:      2 * time.Minute,
+			wantIdle:       5 * time.Minute,
+			wantReadHeader: time.Minute,
+			wantReadIdle:   time.Minute,
+			wantWriteIdle:  time.Minute,
 		},
 	}
 
@@ -104,16 +151,29 @@ func TestBuildServerTimeoutsConfig(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			cfg := &config.Config{Server: tt.serverCfg}
 			got := buildServerTimeoutsConfig(cfg)
-			if got.ReadTimeout != tt.wantRead {
-				t.Errorf("ReadTimeout = %v, want %v", got.ReadTimeout, tt.wantRead)
+			want := ports.ServerTimeoutsConfig{
+				ReadTimeout:       tt.wantRead,
+				WriteTimeout:      tt.wantWrite,
+				IdleTimeout:       tt.wantIdle,
+				ReadHeaderTimeout: tt.wantReadHeader,
+				ReadIdleTimeout:   tt.wantReadIdle,
+				WriteIdleTimeout:  tt.wantWriteIdle,
 			}
-			if got.WriteTimeout != tt.wantWrite {
-				t.Errorf("WriteTimeout = %v, want %v", got.WriteTimeout, tt.wantWrite)
-			}
-			if got.IdleTimeout != tt.wantIdle {
-				t.Errorf("IdleTimeout = %v, want %v", got.IdleTimeout, tt.wantIdle)
+			if got != want {
+				t.Errorf("buildServerTimeoutsConfig() = %+v, want %+v", got, want)
 			}
 		})
+	}
+}
+
+// TestBuildProxyConfig_MaxHeaderBytes verifies server.max_header_bytes reaches
+// the proxy config unchanged (0 leaves the embedded proxy's 16 KiB default).
+func TestBuildProxyConfig_MaxHeaderBytes(t *testing.T) {
+	for _, want := range []int{0, 65536} {
+		cfg := &config.Config{Server: config.ServerConfig{MaxHeaderBytes: want}}
+		if got := buildProxyConfig(cfg, plugins.NewRegistry(slog.Default()), "test").MaxHeaderBytes; got != want {
+			t.Errorf("MaxHeaderBytes = %d, want %d", got, want)
+		}
 	}
 }
 

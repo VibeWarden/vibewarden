@@ -11,6 +11,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -381,5 +382,142 @@ func TestAdapter_Integration_MaxConnections(t *testing.T) {
 	defer stopCancel()
 	if err := adapter.Stop(stopCtx); err != nil {
 		t.Errorf("Stop() error: %v", err)
+	}
+}
+
+// startTestProxy starts an adapter for cfg, waits until it answers on
+// plain HTTP, and registers its shutdown with t.Cleanup.
+func startTestProxy(t *testing.T, cfg *ports.ProxyConfig) string {
+	t.Helper()
+	adapter := NewAdapter(cfg, slog.Default(), nil)
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() { _ = adapter.Start(ctx) }()
+	t.Cleanup(func() {
+		cancel()
+		stopCtx, stopCancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer stopCancel()
+		_ = adapter.Stop(stopCtx)
+	})
+	proxyURL := "http://" + cfg.ListenAddr
+	if err := waitForServer(proxyURL, 5*time.Second); err != nil {
+		t.Fatalf("proxy did not start: %v", err)
+	}
+	return proxyURL
+}
+
+// TestAdapter_Integration_MaxHeaderBytes verifies that the embedded Caddy's
+// request header cap is live by default (16 KiB, answered with 431 over
+// HTTP/1.1) and that ProxyConfig.MaxHeaderBytes raises it.
+func TestAdapter_Integration_MaxHeaderBytes(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer upstream.Close()
+
+	// 24 KiB: past the 16 KiB cap plus the 4 KiB of slack net/http allows
+	// around it, so the default rejects it deterministically.
+	bigHeader := strings.Repeat("a", 24*1024)
+
+	for _, tc := range []struct {
+		name           string
+		maxHeaderBytes int
+		wantStatus     int
+	}{
+		{name: "default cap rejects a 24 KiB header", maxHeaderBytes: 0, wantStatus: http.StatusRequestHeaderFieldsTooLarge},
+		{name: "raised cap accepts it", maxHeaderBytes: 64 * 1024, wantStatus: http.StatusOK},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			proxyURL := startTestProxy(t, &ports.ProxyConfig{
+				ListenAddr:     fmt.Sprintf("127.0.0.1:%d", findFreePort(t)),
+				UpstreamAddr:   upstream.Listener.Addr().String(),
+				MaxHeaderBytes: tc.maxHeaderBytes,
+			})
+
+			req, err := http.NewRequest(http.MethodGet, proxyURL+"/", nil)
+			if err != nil {
+				t.Fatalf("building request: %v", err)
+			}
+			req.Header.Set("X-Big", bigHeader)
+			resp, err := http.DefaultClient.Do(req)
+			if err != nil {
+				t.Fatalf("GET with 24 KiB header: %v", err)
+			}
+			defer resp.Body.Close()
+			if resp.StatusCode != tc.wantStatus {
+				t.Errorf("status = %d, want %d", resp.StatusCode, tc.wantStatus)
+			}
+		})
+	}
+}
+
+// TestAdapter_Integration_ReadIdleTimeout verifies ReadIdleTimeout reaches the
+// embedded Caddy: when a client stops sending its request body, the upstream's
+// copy of that body is cut after the configured idle time (2 s here) instead
+// of Caddy's 1-minute default.
+func TestAdapter_Integration_ReadIdleTimeout(t *testing.T) {
+	bodyEnded := make(chan time.Duration, 1)
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			// Readiness probes from startTestProxy; not the stalled upload.
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+		start := time.Now()
+		_, _ = io.Copy(io.Discard, r.Body)
+		bodyEnded <- time.Since(start)
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer upstream.Close()
+
+	listenAddr := fmt.Sprintf("127.0.0.1:%d", findFreePort(t))
+	startTestProxy(t, &ports.ProxyConfig{
+		ListenAddr:     listenAddr,
+		UpstreamAddr:   upstream.Listener.Addr().String(),
+		ServerTimeouts: ports.ServerTimeoutsConfig{ReadIdleTimeout: 2 * time.Second},
+	})
+
+	conn, err := net.Dial("tcp", listenAddr)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer conn.Close()
+	// Announce 1000 body bytes, send 10, then go silent.
+	fmt.Fprintf(conn, "POST /upload HTTP/1.1\r\nHost: localhost\r\nContent-Length: 1000\r\nContent-Type: text/plain\r\n\r\n%s", strings.Repeat("x", 10))
+
+	select {
+	case took := <-bodyEnded:
+		if took > 15*time.Second {
+			t.Errorf("upstream body read ended after %v, want about 2s", took)
+		}
+		t.Logf("upstream body read ended after %v", took.Round(100*time.Millisecond))
+	case <-time.After(30 * time.Second):
+		t.Fatal("upstream body read still blocked after 30s: read_idle_timeout not applied")
+	}
+}
+
+// TestAdapter_Integration_DisabledTimeoutsAccepted verifies that the -1
+// emitted for ports.TimeoutDisabled is accepted by Caddy and the proxy serves.
+func TestAdapter_Integration_DisabledTimeoutsAccepted(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer upstream.Close()
+
+	off := ports.TimeoutDisabled
+	proxyURL := startTestProxy(t, &ports.ProxyConfig{
+		ListenAddr:   fmt.Sprintf("127.0.0.1:%d", findFreePort(t)),
+		UpstreamAddr: upstream.Listener.Addr().String(),
+		ServerTimeouts: ports.ServerTimeoutsConfig{
+			ReadTimeout: off, WriteTimeout: off, IdleTimeout: off,
+			ReadHeaderTimeout: off, ReadIdleTimeout: off, WriteIdleTimeout: off,
+		},
+	})
+	resp, err := http.Get(proxyURL + "/")
+	if err != nil {
+		t.Fatalf("GET: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Errorf("status = %d, want 200", resp.StatusCode)
 	}
 }

@@ -123,18 +123,39 @@
         },
         "read_timeout": {
           "type": "string",
-          "description": "Maximum duration for reading the entire incoming request including body, as a Go duration string (e.g. '30s'). '0' or '' disables the timeout. Default: '30s'.",
+          "description": "Maximum duration for reading the entire incoming request including body, as a Go duration string (e.g. '30s'). '0' disables the timeout; '' uses the default. Default: '30s'.",
           "default": "30s"
         },
         "write_timeout": {
           "type": "string",
-          "description": "Maximum duration before timing out writes of the response, as a Go duration string (e.g. '60s'). '0' or '' disables the timeout. Default: '60s'.",
+          "description": "Maximum duration before timing out writes of the response, as a Go duration string (e.g. '60s'). '0' disables the timeout; '' uses the default. Default: '60s'.",
           "default": "60s"
         },
         "idle_timeout": {
           "type": "string",
-          "description": "Maximum amount of time to wait for the next request when keep-alives are enabled, as a Go duration string (e.g. '120s'). '0' or '' disables the timeout. Default: '120s'.",
+          "description": "Maximum amount of time to wait for the next request when keep-alives are enabled, as a Go duration string (e.g. '120s'). '0' disables the timeout; '' uses the default. Default: '120s'.",
           "default": "120s"
+        },
+        "read_header_timeout": {
+          "type": "string",
+          "description": "How long a client may take to send the request headers, as a Go duration string. '0' disables the limit; '' uses the default. Default: '1m'.",
+          "default": "1m"
+        },
+        "read_idle_timeout": {
+          "type": "string",
+          "description": "Aborts a request whose body stops arriving for this long. Only a stalled read counts; a slow but steady upload is unaffected. '0' disables the limit; '' uses the default. Default: '1m'.",
+          "default": "1m"
+        },
+        "write_idle_timeout": {
+          "type": "string",
+          "description": "Aborts a response when a write to the client makes no progress for this long (for example the client stopped reading). A pause between writes, as in a quiet SSE stream, does not count. '0' disables the limit; '' uses the default. Default: '1m'.",
+          "default": "1m"
+        },
+        "max_header_bytes": {
+          "type": "integer",
+          "description": "Cap on the size of a request's header block, in bytes. Larger requests get 431 over HTTP/1.1 and a protocol error over HTTP/2. 0 uses the default. Default: 16384 (16 KiB).",
+          "default": 16384,
+          "minimum": 0
         }
       }
     },

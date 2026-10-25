@@ -3,6 +3,7 @@ package caddy
 import (
 	"fmt"
 	"log/slog"
+	"time"
 
 	"github.com/vibewarden/vibewarden/internal/ports"
 )
@@ -235,6 +236,7 @@ func buildMainServer(cfg *ports.ProxyConfig, routes []map[string]any) map[string
 
 	applyServerTimeouts(server, cfg.ServerTimeouts)
 	applyConnectionLimit(server, cfg.MaxConnections)
+	applyMaxHeaderBytes(server, cfg.MaxHeaderBytes)
 	applyAutomaticHTTPS(server, cfg.TLS)
 
 	if cfg.TLS.Enabled {
@@ -243,18 +245,37 @@ func buildMainServer(cfg *ports.ProxyConfig, routes []map[string]any) map[string
 	return server
 }
 
-// applyServerTimeouts sets read_timeout, write_timeout, and idle_timeout on
-// the server map when the corresponding ProxyConfig field is non-zero.
+// applyServerTimeouts sets the Caddy server timeouts. A positive duration is
+// emitted as nanoseconds. A negative one (ports.TimeoutDisabled) is emitted as
+// -1: Caddy fills in its own default for a missing or zero idle_timeout (5m),
+// read_header_timeout, read_idle_timeout and write_idle_timeout (1m each), so
+// omitting the key would not turn the timeout off. Zero omits the key and
+// leaves that default in place.
 func applyServerTimeouts(server map[string]any, timeouts ports.ServerTimeoutsConfig) {
-	if timeouts.ReadTimeout > 0 {
-		server["read_timeout"] = int64(timeouts.ReadTimeout)
+	for key, d := range map[string]time.Duration{
+		"read_timeout":        timeouts.ReadTimeout,
+		"write_timeout":       timeouts.WriteTimeout,
+		"idle_timeout":        timeouts.IdleTimeout,
+		"read_header_timeout": timeouts.ReadHeaderTimeout,
+		"read_idle_timeout":   timeouts.ReadIdleTimeout,
+		"write_idle_timeout":  timeouts.WriteIdleTimeout,
+	} {
+		switch {
+		case d > 0:
+			server[key] = int64(d)
+		case d < 0:
+			server[key] = int64(-1)
+		}
 	}
-	if timeouts.WriteTimeout > 0 {
-		server["write_timeout"] = int64(timeouts.WriteTimeout)
+}
+
+// applyMaxHeaderBytes caps the request header block. Zero or less omits the
+// key and leaves the embedded Caddy's 16 KiB default.
+func applyMaxHeaderBytes(server map[string]any, maxBytes int) {
+	if maxBytes <= 0 {
+		return
 	}
-	if timeouts.IdleTimeout > 0 {
-		server["idle_timeout"] = int64(timeouts.IdleTimeout)
-	}
+	server["max_header_bytes"] = maxBytes
 }
 
 // applyConnectionLimit adds the vibewarden_conn_limit listener wrapper to the
