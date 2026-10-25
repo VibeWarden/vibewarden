@@ -12,6 +12,10 @@ This initial entry was written by hand to summarise the work leading up to v0.1.
 
 ## [Unreleased]
 
+### Security
+
+- **chore(deps): Grafana `grafana/grafana-oss:13.0.2` -> `grafana/grafana:13.0.11`, a pin Dependabot could never move.** Grafana Labs stopped publishing the `grafana-oss` repository after 13.0.2 (2026-06-02); every later release, 13.0.3 to 13.0.11 and the 13.1 and 13.2 lines, exists only under `grafana/grafana`. Dependabot saw no newer tag under the old name, so the observability stack sat four months and nine patch releases behind, missing the fixes for 15 CVEs listed in the 13.0.7 to 13.0.11 release notes. The move stays on the 13.0 patch line so this change is only the rename plus security patches; 13.1 and 13.2 are left for Dependabot to propose on the new name and get their own review. Verified on the real image: `grafana/grafana:13.0.11` reports `edition: Open Source` in `buildInfo` (the same build `grafana-oss` shipped), keeps the `/run.sh` entrypoint and uid 472, still ships `wget` so the compose healthcheck runs unchanged, and with the provisioning files rendered from `internal/config/templates/observability/` it returns `/api/health` `"database": "ok"`, loads the `vibewarden-overview` dashboard and the Prometheus, Loki and Jaeger datasources. Bumped at both pin sites (dev `docker-compose.yml` and `docker-compose.yml.tmpl`) so `TestTemplateImagePins_MatchDevCompose` stays green. Regenerating picks up the new image, which only affects projects running the `observability` profile.
+
 ## [v0.22.2] — 2026-10-24
 
 ### Changed
