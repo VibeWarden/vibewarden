@@ -121,6 +121,8 @@ What your app must do:
 | Setting | Effect on a streaming response |
 |---|---|
 | `resilience.timeout` (default `30s`) | Counts the **whole response** as one request. A stream held open longer than the timeout is cut when the deadline fires. Raise it, or set `"0"` to disable, if you serve long-lived SSE. |
+| `server.write_timeout` (default `60s`) | The listener's own ceiling on one response, so it cuts a stream after 60 s even with `resilience.timeout` disabled. Raise it, or set `"0"`, together with the setting above. |
+| `server.write_idle_timeout` (default `1m`) | Fires only when a write to the client makes **no progress**, for example because the client stopped reading. A quiet stream is safe: the deadline covers a write in flight, not the pause between events. Leave it on. |
 | `resilience.retry.enabled` (default `false`) | Buffers the entire response in memory so a failed attempt can be discarded. A stream never "completes", so the client sees nothing and memory grows. Leave retry off when streaming. |
 | egress `response_validation.enabled` (default `false`) | Buffers the upstream body to validate it against the JSON Schema. Applies to any egress route you enable it on, in both addressing modes: transparent (`HTTP_PROXY` + `X-Egress-URL`) and named (`/_egress/{route}`). See [Egress](egress.md). |
 
@@ -151,4 +153,4 @@ A failed upgrade due to rate limiting is logged as
 | Timeouts | Not applied to established connections; only to the upgrade handshake |
 | Frame inspection | Not performed; Caddy bridges the raw TCP stream |
 | SSE / chunked streaming | Flushed through unbuffered; `resilience.retry` and egress `response_validation` buffer by design |
-| Config changes needed | None (raise `resilience.timeout` for long-lived streams) |
+| Config changes needed | None (raise or disable `resilience.timeout` and `server.write_timeout` for long-lived streams) |

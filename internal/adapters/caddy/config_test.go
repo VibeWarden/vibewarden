@@ -2263,6 +2263,17 @@ func TestBuildCaddyConfig_ServerTimeouts(t *testing.T) {
 			wantWriteTimeout: 0,
 			wantIdleTimeout:  0,
 		},
+		{
+			name: "explicitly disabled timeouts are emitted as -1, not omitted",
+			serverTimeouts: ports.ServerTimeoutsConfig{
+				ReadTimeout:  ports.TimeoutDisabled,
+				WriteTimeout: ports.TimeoutDisabled,
+				IdleTimeout:  ports.TimeoutDisabled,
+			},
+			wantReadTimeout:  -1,
+			wantWriteTimeout: -1,
+			wantIdleTimeout:  -1,
+		},
 	}
 
 	for _, tt := range tests {
@@ -2751,4 +2762,36 @@ func TestBuildCaddyConfig_LetsEncryptFullJSON(t *testing.T) {
 
 	// Log the full JSON for debugging if any assertions fail.
 	t.Logf("full letsencrypt Caddy JSON:\n%s", jsonStr)
+}
+
+// TestBuildCaddyConfig_IdleLimitsAndHeaderCap verifies the Caddy 2.11.6+
+// progress-based limits and the request header cap reach the server block.
+func TestBuildCaddyConfig_IdleLimitsAndHeaderCap(t *testing.T) {
+	cfg := &ports.ProxyConfig{
+		ListenAddr:   "127.0.0.1:8080",
+		UpstreamAddr: "127.0.0.1:3000",
+		ServerTimeouts: ports.ServerTimeoutsConfig{
+			ReadHeaderTimeout: 30 * time.Second,
+			ReadIdleTimeout:   ports.TimeoutDisabled,
+			WriteIdleTimeout:  2 * time.Minute,
+		},
+		MaxHeaderBytes: 32 * 1024,
+	}
+	result, err := BuildCaddyConfig(cfg)
+	if err != nil {
+		t.Fatalf("BuildCaddyConfig() unexpected error: %v", err)
+	}
+	server := extractServer(t, result)
+
+	want := map[string]any{
+		"read_header_timeout": int64(30 * time.Second),
+		"read_idle_timeout":   int64(-1),
+		"write_idle_timeout":  int64(2 * time.Minute),
+		"max_header_bytes":    32 * 1024,
+	}
+	for k, v := range want {
+		if server[k] != v {
+			t.Errorf("server[%q] = %v (%T), want %v (%T)", k, server[k], server[k], v, v)
+		}
+	}
 }

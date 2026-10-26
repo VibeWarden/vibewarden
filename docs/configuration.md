@@ -38,6 +38,13 @@ Settings for the VibeWarden HTTP listener.
 |-------|------|---------|-------------|
 | `server.host` | string | `127.0.0.1` | Host/IP to bind to |
 | `server.port` | int | `8443` | Port to listen on |
+| `server.read_timeout` | string | `30s` | Hard ceiling on reading one request, headers and body. `"0"` disables. |
+| `server.write_timeout` | string | `60s` | Hard ceiling on writing one response. Cuts a stream that runs longer than this; `"0"` disables. See [streaming](websockets.md#server-sent-events-and-streaming-responses). |
+| `server.idle_timeout` | string | `120s` | How long a keep-alive connection may sit idle between requests. `"0"` disables. |
+| `server.read_header_timeout` | string | `1m` | Time a client may take to send the request headers. `"0"` disables. |
+| `server.read_idle_timeout` | string | `1m` | Aborts a request whose body stops arriving for this long. A slow but steady upload is unaffected. `"0"` disables. |
+| `server.write_idle_timeout` | string | `1m` | Aborts a response when a write makes no progress for this long (the client stopped reading). A quiet stream is unaffected. `"0"` disables. |
+| `server.max_header_bytes` | int | `16384` | Cap on the request header block. Above it: `431` over HTTP/1.1, a protocol error over HTTP/2. `0` uses the default. Negative values are rejected by `vibew validate`. |
 | `server.max_connections` | int | `1000` | Maximum concurrent inbound connections per listener. `0` disables the cap. Negative values are rejected by `vibew validate`. |
 | `server.mem_limit` | string | `512MB` | Memory cap for the **sidecar container** in the generated compose file. `"0"` or `""` disables the cap. Generate-time only. |
 | `server.cpu_limit` | float | `1.0` | CPU cap for the sidecar container, in cores (`0.5` = half a core). `0` disables the cap. Generate-time only. |
@@ -47,6 +54,13 @@ Settings for the VibeWarden HTTP listener.
 server:
   host: 0.0.0.0
   port: 8443
+  read_timeout: "30s"
+  write_timeout: "60s"
+  idle_timeout: "120s"
+  read_header_timeout: "1m"
+  read_idle_timeout: "1m"
+  write_idle_timeout: "1m"
+  max_header_bytes: 16384
   max_connections: 1000
   mem_limit: "512MB"
   cpu_limit: 1.0
@@ -429,7 +443,7 @@ for common attack patterns in-process, with no external dependencies.
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `waf.enabled` | bool | `true` | Enable the WAF middleware |
-| `waf.mode` | string | `detect` | Detection mode: `block` (reject with 400) or `detect` (pass through and log) |
+| `waf.mode` | string | `detect` | Detection mode: `block` (reject with 403) or `detect` (pass through and log) |
 
 ### `waf.rules`
 

@@ -364,15 +364,35 @@ running the `observability` profile. Regenerate to pick it up; the existing
 
 ---
 
-### Request headers are capped at 16 KiB in total (v0.22.2)
+### Request headers capped at 16 KiB, stalled transfers cut after 1 minute (v0.22.2)
 
-v0.22.2 moves the embedded Caddy to 2.11.7, which caps the whole request
-header block at 16 KiB (it was Go's 1 MB default). A request whose headers
-exceed that, for example from oversized cookies or a very large bearer token,
-now gets `431 Request Header Fields Too Large` before any VibeWarden
-middleware runs. This also bounds `input_validation.max_header_size` and
-`max_header_count`: raising them past 16 KiB has no effect. No config change
-is required for typical session cookies and JWTs.
+v0.22.2 moves the embedded Caddy to 2.11.7, which brings three limits that
+were not there before:
+
+- **Request header block capped at 16 KiB** (it was Go's 1 MB default). Over
+  HTTP/1.1 a larger request, for example from oversized cookies or a very
+  large bearer token, gets `431 Request Header Fields Too Large` before any
+  VibeWarden middleware runs. Over HTTP/2 the client sees a protocol error with
+  no status code, so a browser reports a network error rather than a 431.
+  `input_validation.max_header_size` and `max_header_count` have no effect
+  above this cap.
+- **Stalled uploads are cut after 1 minute.** A request whose body stops
+  arriving for a minute is aborted. A slow but steady upload is not affected,
+  only one that makes no progress at all. v0.22.2 itself failed open here: the
+  WAF logged the timeout at error level and passed the request through to the
+  upstream with an already-broken body. A later fix makes VibeWarden answer
+  `408 Request Timeout` instead.
+- **Clients that stop reading are cut after 1 minute.** A response write that
+  makes no progress for a minute is aborted. A quiet SSE stream is not
+  affected; only a client that has stopped draining its socket is.
+
+No config change is required for typical session cookies, JWTs and clients.
+Each limit has a key under `server:` (`max_header_bytes`, `read_idle_timeout`,
+`write_idle_timeout`, and `read_header_timeout` for the header phase), with
+`"0"` disabling a timeout; see [Configuration](configuration.md#server). The
+keys are not available on v0.22.2 itself, where the limits are fixed. The
+same change makes `server.idle_timeout: "0"` actually disable the keep-alive
+timeout; before, the key was dropped and Caddy's 5-minute default applied.
 
 ---
 

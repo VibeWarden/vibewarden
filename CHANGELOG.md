@@ -12,6 +12,19 @@ This initial entry was written by hand to summarise the work leading up to v0.1.
 
 ## [Unreleased]
 
+### Added
+
+- **feat(server): `server.read_header_timeout`, `read_idle_timeout`, `write_idle_timeout` and `max_header_bytes` (#1573).** Caddy 2.11.6+ caps the request header block at 16 KiB and cuts a transfer that makes no progress for a minute, in either direction. Both were fixed values in v0.22.2; they are now keys under `server:` with Caddy's defaults, so an app with large cookies or clients on flaky links can raise them, and `"0"` turns a timeout off. Checked against the embedded Caddy in `internal/adapters/caddy` integration tests: a 24 KiB header gets 431 by default and 200 with `max_header_bytes: 65536`, and a stalled upload is cut after `read_idle_timeout` instead of a minute.
+
+### Fixed
+
+- **fix(server): `idle_timeout: "0"` now disables the keep-alive timeout (#1573).** The key was omitted from the Caddy JSON, so Caddy applied its own 5-minute default. An explicit `"0"` (or any zero duration such as `"0s"`) is now emitted as a negative duration, which Caddy treats as off; the same applies to the three new timeouts. The `read_timeout`, `write_timeout` and `idle_timeout` docs also no longer claim that an empty value disables the timeout: it takes the default.
+- **fix(waf): a request whose body stalls past the read deadline gets `408 Request Timeout` (#1573)** instead of an error-level `waf middleware: scanning request ... i/o timeout` log line and a pass-through to the upstream with a dead body. Other body read errors still fail open.
+
+### Changed
+
+- **docs: a streaming response is also bounded by `server.write_timeout` (60 s), not only `resilience.timeout`.** `docs/websockets.md` now lists both, plus `write_idle_timeout` and why a quiet stream is safe from it. The upgrade notes describe all three Caddy 2.11.7 limits, including the HTTP/2 behaviour of the header cap (a protocol error, not a 431). `server.read_timeout`, `write_timeout` and `idle_timeout` were missing from `vibewarden.reference.yaml`, `docs/configuration.md` and `llms-full.txt` and are now documented there.
+
 ## [v0.22.4] - 2026-10-26
 
 ### Security

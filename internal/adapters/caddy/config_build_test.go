@@ -245,41 +245,80 @@ func TestAssembleTopLevelConfig_StoragePath(t *testing.T) {
 	})
 }
 
-// TestApplyServerTimeouts verifies that timeout fields are set when non-zero and
-// absent when zero.
+// TestApplyServerTimeouts verifies the three ways a timeout reaches the Caddy
+// server map: a positive duration is emitted in nanoseconds, zero omits the key
+// (Caddy's own default applies), and ports.TimeoutDisabled is emitted as -1 so
+// Caddy does not substitute its default for a key it would otherwise see as
+// missing.
 func TestApplyServerTimeouts(t *testing.T) {
+	keys := []string{"read_timeout", "write_timeout", "idle_timeout",
+		"read_header_timeout", "read_idle_timeout", "write_idle_timeout"}
+
 	t.Run("zero values — no fields set", func(t *testing.T) {
 		server := map[string]any{}
 		applyServerTimeouts(server, ports.ServerTimeoutsConfig{})
-		if _, ok := server["read_timeout"]; ok {
-			t.Error("read_timeout should not be set for zero value")
-		}
-		if _, ok := server["write_timeout"]; ok {
-			t.Error("write_timeout should not be set for zero value")
-		}
-		if _, ok := server["idle_timeout"]; ok {
-			t.Error("idle_timeout should not be set for zero value")
+		for _, k := range keys {
+			if _, ok := server[k]; ok {
+				t.Errorf("%s should not be set for zero value", k)
+			}
 		}
 	})
 
 	t.Run("non-zero values — all fields set", func(t *testing.T) {
 		server := map[string]any{}
 		cfg := ports.ServerTimeoutsConfig{
-			ReadTimeout:  5 * time.Second,
-			WriteTimeout: 10 * time.Second,
-			IdleTimeout:  60 * time.Second,
+			ReadTimeout:       5 * time.Second,
+			WriteTimeout:      10 * time.Second,
+			IdleTimeout:       60 * time.Second,
+			ReadHeaderTimeout: 15 * time.Second,
+			ReadIdleTimeout:   20 * time.Second,
+			WriteIdleTimeout:  25 * time.Second,
 		}
 		applyServerTimeouts(server, cfg)
-		if server["read_timeout"] != int64(5*time.Second) {
-			t.Errorf("read_timeout = %v, want %v", server["read_timeout"], int64(5*time.Second))
+		want := map[string]int64{
+			"read_timeout":        int64(5 * time.Second),
+			"write_timeout":       int64(10 * time.Second),
+			"idle_timeout":        int64(60 * time.Second),
+			"read_header_timeout": int64(15 * time.Second),
+			"read_idle_timeout":   int64(20 * time.Second),
+			"write_idle_timeout":  int64(25 * time.Second),
 		}
-		if server["write_timeout"] != int64(10*time.Second) {
-			t.Errorf("write_timeout = %v, want %v", server["write_timeout"], int64(10*time.Second))
-		}
-		if server["idle_timeout"] != int64(60*time.Second) {
-			t.Errorf("idle_timeout = %v, want %v", server["idle_timeout"], int64(60*time.Second))
+		for k, v := range want {
+			if server[k] != v {
+				t.Errorf("%s = %v, want %v", k, server[k], v)
+			}
 		}
 	})
+
+	t.Run("disabled values — emitted as -1", func(t *testing.T) {
+		server := map[string]any{}
+		off := ports.TimeoutDisabled
+		applyServerTimeouts(server, ports.ServerTimeoutsConfig{
+			ReadTimeout: off, WriteTimeout: off, IdleTimeout: off,
+			ReadHeaderTimeout: off, ReadIdleTimeout: off, WriteIdleTimeout: off,
+		})
+		for _, k := range keys {
+			if server[k] != int64(-1) {
+				t.Errorf("%s = %v, want -1", k, server[k])
+			}
+		}
+	})
+}
+
+// TestApplyMaxHeaderBytes verifies the header cap is emitted only when set.
+func TestApplyMaxHeaderBytes(t *testing.T) {
+	for _, in := range []int{0, -1} {
+		server := map[string]any{}
+		applyMaxHeaderBytes(server, in)
+		if _, ok := server["max_header_bytes"]; ok {
+			t.Errorf("max_header_bytes should be absent for %d", in)
+		}
+	}
+	server := map[string]any{}
+	applyMaxHeaderBytes(server, 65536)
+	if server["max_header_bytes"] != 65536 {
+		t.Errorf("max_header_bytes = %v, want 65536", server["max_header_bytes"])
+	}
 }
 
 // TestApplyConnectionLimit verifies the emitted listener_wrappers list: the

@@ -72,6 +72,7 @@ func buildProxyConfig(cfg *config.Config, registry *plugins.Registry, version st
 		Version:        version,
 		ServerTimeouts: buildServerTimeoutsConfig(cfg),
 		MaxConnections: cfg.Server.MaxConnections,
+		MaxHeaderBytes: cfg.Server.MaxHeaderBytes,
 		TLS: ports.TLSConfig{
 			Enabled:     cfg.TLS.Enabled,
 			Provider:    ports.TLSProvider(cfg.TLS.Provider),
@@ -185,16 +186,20 @@ func buildBodySizePortsConfig(cfg *config.Config) ports.BodySizeConfig {
 }
 
 // buildServerTimeoutsConfig parses the server-level timeout duration strings and
-// returns a ports.ServerTimeoutsConfig. Unparseable values fall back to the
-// documented defaults (read: 30s, write: 60s, idle: 120s). A value of "0" or ""
-// disables that particular timeout (no limit).
+// returns a ports.ServerTimeoutsConfig. An empty field takes its documented
+// default (read: 30s, write: 60s, idle: 120s, read_header, read_idle and
+// write_idle: 1m); unparseable values fall back to the same default with a
+// warning. An explicit "0" yields ports.TimeoutDisabled, which the Caddy
+// adapter emits as a negative duration so the proxy applies no default of
+// its own.
 func buildServerTimeoutsConfig(cfg *config.Config) ports.ServerTimeoutsConfig {
-	result := ports.ServerTimeoutsConfig{}
-
 	parseTimeout := func(raw, name, defaultVal string) time.Duration {
-		if raw == "0" || raw == "" {
+		if raw == "" {
+			raw = defaultVal
+		}
+		if raw == "0" {
 			// Caller explicitly disabled the timeout.
-			return 0
+			return ports.TimeoutDisabled
 		}
 		d, err := time.ParseDuration(raw)
 		if err != nil {
@@ -204,29 +209,22 @@ func buildServerTimeoutsConfig(cfg *config.Config) ports.ServerTimeoutsConfig {
 			)
 			d, _ = time.ParseDuration(defaultVal)
 		}
+		if d == 0 {
+			// "0s", "0ms" and friends mean the same as "0": a zero duration would
+			// drop the key from the Caddy JSON and let Caddy restore its own default.
+			return ports.TimeoutDisabled
+		}
 		return d
 	}
 
-	// Apply defaults when the field is empty (not explicitly set to "0").
-	readRaw := cfg.Server.ReadTimeout
-	if readRaw == "" {
-		readRaw = "30s"
+	return ports.ServerTimeoutsConfig{
+		ReadTimeout:       parseTimeout(cfg.Server.ReadTimeout, "read_timeout", "30s"),
+		WriteTimeout:      parseTimeout(cfg.Server.WriteTimeout, "write_timeout", "60s"),
+		IdleTimeout:       parseTimeout(cfg.Server.IdleTimeout, "idle_timeout", "120s"),
+		ReadHeaderTimeout: parseTimeout(cfg.Server.ReadHeaderTimeout, "read_header_timeout", "1m"),
+		ReadIdleTimeout:   parseTimeout(cfg.Server.ReadIdleTimeout, "read_idle_timeout", "1m"),
+		WriteIdleTimeout:  parseTimeout(cfg.Server.WriteIdleTimeout, "write_idle_timeout", "1m"),
 	}
-	result.ReadTimeout = parseTimeout(readRaw, "read_timeout", "30s")
-
-	writeRaw := cfg.Server.WriteTimeout
-	if writeRaw == "" {
-		writeRaw = "60s"
-	}
-	result.WriteTimeout = parseTimeout(writeRaw, "write_timeout", "60s")
-
-	idleRaw := cfg.Server.IdleTimeout
-	if idleRaw == "" {
-		idleRaw = "120s"
-	}
-	result.IdleTimeout = parseTimeout(idleRaw, "idle_timeout", "120s")
-
-	return result
 }
 
 // buildResiliencePortsConfig parses the resilience duration strings and returns

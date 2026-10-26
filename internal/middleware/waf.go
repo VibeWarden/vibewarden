@@ -1,9 +1,12 @@
 package middleware
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
+	"os"
 	"strings"
 
 	"github.com/vibewarden/vibewarden/internal/domain/audit"
@@ -94,8 +97,20 @@ func WAFMiddleware(
 
 			detections, err := rs.ScanRequest(r)
 			if err != nil {
-				// Scanning failed (unlikely — only body read errors reach here).
-				// Fail open: log and pass through.
+				if isReadTimeout(err) {
+					// The server's read deadline fired while the body was still
+					// arriving: the client stalled. The body is unusable from
+					// here on, so forwarding would only fail again upstream.
+					logger.Warn("waf middleware: request body stalled, answering 408",
+						slog.String("path", r.URL.Path),
+						slog.String("error", err.Error()),
+					)
+					WriteErrorResponse(w, r, http.StatusRequestTimeout, "request_timeout",
+						"request body was not received in time")
+					return
+				}
+				// Any other scan failure (unlikely — only body read errors reach
+				// here). Fail open: log and pass through.
 				logger.Error("waf middleware: scanning request", slog.String("error", err.Error()))
 				next.ServeHTTP(w, r)
 				return
@@ -206,4 +221,16 @@ func extractClientIPOrEmpty(r *http.Request) string {
 		return addr[:idx]
 	}
 	return addr
+}
+
+// isReadTimeout reports whether a request body read failed because a read
+// deadline expired. net/http surfaces this as os.ErrDeadlineExceeded (wrapped
+// in a *net.OpError over HTTP/1.1, directly over HTTP/2); the net.Error check
+// covers any other transport that only implements Timeout().
+func isReadTimeout(err error) bool {
+	if errors.Is(err, os.ErrDeadlineExceeded) {
+		return true
+	}
+	var netErr net.Error
+	return errors.As(err, &netErr) && netErr.Timeout()
 }

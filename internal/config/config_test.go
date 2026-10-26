@@ -3931,3 +3931,61 @@ func TestLoadStrict_ServerResourceLimits(t *testing.T) {
 		})
 	}
 }
+
+// TestValidate_ServerMaxHeaderBytes verifies that a negative request header
+// cap is rejected with an error naming the field, while 0 (the embedded
+// proxy's default) and positive values are accepted.
+func TestValidate_ServerMaxHeaderBytes(t *testing.T) {
+	tests := []struct {
+		name    string
+		max     int
+		wantErr bool
+		errMsg  string
+	}{
+		{name: "omitted (zero value) is valid", max: 0},
+		{name: "positive value is valid", max: 65536},
+		{
+			name:    "negative value is rejected",
+			max:     -1,
+			wantErr: true,
+			errMsg:  "server.max_header_bytes must be >= 0 (0 uses the 16 KiB default), got -1",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			cfg := config.Config{Server: config.ServerConfig{MaxHeaderBytes: tt.max}}
+			err := cfg.Validate()
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("Validate() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if tt.wantErr && !strings.Contains(err.Error(), tt.errMsg) {
+				t.Errorf("Validate() error = %q, want it to contain %q", err.Error(), tt.errMsg)
+			}
+		})
+	}
+}
+
+// TestLoadStrict_ServerIdleLimits verifies the strict loader accepts the
+// server keys that map to the embedded proxy's progress-based limits and
+// header cap, and that their values survive loading.
+func TestLoadStrict_ServerIdleLimits(t *testing.T) {
+	yaml := "server:\n" +
+		"  read_header_timeout: \"30s\"\n" +
+		"  read_idle_timeout: \"0\"\n" +
+		"  write_idle_timeout: \"2m\"\n" +
+		"  max_header_bytes: 65536\n"
+	path := filepath.Join(t.TempDir(), "vibewarden.yaml")
+	if err := os.WriteFile(path, []byte(yaml), 0600); err != nil {
+		t.Fatalf("writing yaml: %v", err)
+	}
+
+	cfg, err := config.LoadStrict(path, "")
+	if err != nil {
+		t.Fatalf("LoadStrict() error = %v", err)
+	}
+	got := cfg.Server
+	if got.ReadHeaderTimeout != "30s" || got.ReadIdleTimeout != "0" || got.WriteIdleTimeout != "2m" || got.MaxHeaderBytes != 65536 {
+		t.Errorf("server = %+v, want read_header_timeout 30s, read_idle_timeout 0, write_idle_timeout 2m, max_header_bytes 65536", got)
+	}
+}

@@ -28,20 +28,42 @@ type ProxyServer interface {
 // (which only covers the time waiting for the upstream to respond).
 type ServerTimeoutsConfig struct {
 	// ReadTimeout is the maximum duration for reading the entire incoming request,
-	// including the body. A zero value means no timeout.
+	// including the body. Zero or TimeoutDisabled means no timeout.
 	// Default: 30s.
 	ReadTimeout time.Duration
 
 	// WriteTimeout is the maximum duration before timing out writes of the
-	// response. A zero value means no timeout.
+	// response. Zero or TimeoutDisabled means no timeout.
 	// Default: 60s.
 	WriteTimeout time.Duration
 
 	// IdleTimeout is the maximum amount of time to wait for the next request
-	// when keep-alives are enabled. A zero value means no timeout.
+	// when keep-alives are enabled. Zero leaves the proxy's default (5m);
+	// TimeoutDisabled turns it off.
 	// Default: 120s.
 	IdleTimeout time.Duration
+
+	// ReadHeaderTimeout bounds reading the request headers. Zero leaves the
+	// proxy's default (1m); TimeoutDisabled turns it off.
+	ReadHeaderTimeout time.Duration
+
+	// ReadIdleTimeout aborts a request body read that makes no progress for
+	// this long. It does not bound a slow but steady upload. Zero leaves the
+	// proxy's default (1m); TimeoutDisabled turns it off.
+	ReadIdleTimeout time.Duration
+
+	// WriteIdleTimeout aborts a response write that makes no progress for this
+	// long, for example because the client stopped reading. A pause between
+	// writes (a quiet SSE stream) does not count. Zero leaves the proxy's
+	// default (1m); TimeoutDisabled turns it off.
+	WriteIdleTimeout time.Duration
 }
+
+// TimeoutDisabled is the ServerTimeoutsConfig value for a timeout the operator
+// turned off explicitly ("0" in vibewarden.yaml). It is distinct from the zero
+// value, which leaves the proxy's own default in place for the timeouts that
+// have one.
+const TimeoutDisabled time.Duration = -1
 
 // ProxyConfig holds configuration for the proxy server.
 // This is a domain-agnostic configuration that ports can depend on.
@@ -66,6 +88,10 @@ type ProxyConfig struct {
 	// A value of 0 disables the cap. Negative values are rejected by config
 	// validation and treated as 0 here.
 	MaxConnections int
+
+	// MaxHeaderBytes caps the size of a request's header block in bytes. Zero
+	// or less leaves the proxy's default (16 KiB).
+	MaxHeaderBytes int
 
 	// TLS configuration
 	TLS TLSConfig

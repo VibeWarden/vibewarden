@@ -11,21 +11,49 @@ type ServerConfig struct {
 
 	// ReadTimeout is the maximum duration for reading the entire incoming
 	// request including body, expressed as a Go duration string (e.g. "30s").
-	// A value of "0" or "" disables the timeout (no limit).
+	// A value of "0" disables the timeout (no limit); "" uses the default.
 	// Default: "30s".
 	ReadTimeout string `mapstructure:"read_timeout"`
 
 	// WriteTimeout is the maximum duration before timing out writes of the
 	// response, expressed as a Go duration string (e.g. "60s").
-	// A value of "0" or "" disables the timeout (no limit).
+	// A value of "0" disables the timeout (no limit); "" uses the default.
 	// Default: "60s".
 	WriteTimeout string `mapstructure:"write_timeout"`
 
 	// IdleTimeout is the maximum amount of time to wait for the next request
 	// when keep-alives are enabled, expressed as a Go duration string (e.g. "120s").
-	// A value of "0" or "" disables the timeout (no limit).
+	// A value of "0" disables the timeout (no limit); "" uses the default.
 	// Default: "120s".
 	IdleTimeout string `mapstructure:"idle_timeout"`
+
+	// ReadHeaderTimeout bounds how long a client may take to send the request
+	// headers, expressed as a Go duration string (e.g. "1m").
+	// A value of "0" disables the limit; "" uses the default.
+	// Default: "1m" (the embedded Caddy's own default).
+	ReadHeaderTimeout string `mapstructure:"read_header_timeout"`
+
+	// ReadIdleTimeout aborts a request whose body stops arriving for this
+	// long. Unlike ReadTimeout it only fires when a read makes no progress at
+	// all, so a slow but steady upload is unaffected and a stalled one is cut.
+	// Go duration string; "0" disables the limit, "" uses the default.
+	// Default: "1m".
+	ReadIdleTimeout string `mapstructure:"read_idle_timeout"`
+
+	// WriteIdleTimeout aborts a response when a write to the client makes no
+	// progress for this long, for example because the client stopped reading.
+	// A quiet stream (SSE with no events) is unaffected: the deadline only
+	// covers a write in flight. Go duration string; "0" disables the limit,
+	// "" uses the default.
+	// Default: "1m".
+	WriteIdleTimeout string `mapstructure:"write_idle_timeout"`
+
+	// MaxHeaderBytes caps the size of a request's header block, in bytes.
+	// Larger requests get 431 over HTTP/1.1 and a protocol error over HTTP/2,
+	// before any VibeWarden middleware runs. 0 uses the default; negative
+	// values are rejected by validation.
+	// Default: 16384 (16 KiB).
+	MaxHeaderBytes int `mapstructure:"max_header_bytes"`
 
 	// MaxConnections caps concurrent inbound connections to the sidecar's
 	// listener. When the cap is reached, new connections are refused
@@ -317,6 +345,14 @@ func validateSidecar(c *Config) []string {
 		errs = append(errs, fmt.Sprintf(
 			"server.max_connections must be >= 0 (0 disables the limit), got %d",
 			c.Server.MaxConnections,
+		))
+	}
+
+	// server.max_header_bytes validation.
+	if c.Server.MaxHeaderBytes < 0 {
+		errs = append(errs, fmt.Sprintf(
+			"server.max_header_bytes must be >= 0 (0 uses the 16 KiB default), got %d",
+			c.Server.MaxHeaderBytes,
 		))
 	}
 

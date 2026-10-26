@@ -569,7 +569,11 @@ func TestConfigSchemaAcceptsValidDocuments(t *testing.T) {
 					"port": 443,
 					"read_timeout": "30s",
 					"write_timeout": "60s",
-					"idle_timeout": "120s"
+					"idle_timeout": "120s",
+					"read_header_timeout": "30s",
+					"read_idle_timeout": "0",
+					"write_idle_timeout": "2m",
+					"max_header_bytes": 65536
 				}
 			}`,
 		},
@@ -626,6 +630,10 @@ func TestConfigSchemaRejectsInvalidDocuments(t *testing.T) {
 		{
 			name: "server port above maximum",
 			json: `{"server": {"port": 65536}}`,
+		},
+		{
+			name: "server max_header_bytes negative",
+			json: `{"server": {"max_header_bytes": -1}}`,
 		},
 		{
 			name: "invalid tls provider",
