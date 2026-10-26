@@ -378,8 +378,10 @@ were not there before:
   above this cap.
 - **Stalled uploads are cut after 1 minute.** A request whose body stops
   arriving for a minute is aborted. A slow but steady upload is not affected,
-  only one that makes no progress at all. With the WAF enabled (the default)
-  VibeWarden answers `408 Request Timeout`.
+  only one that makes no progress at all. v0.22.2 itself failed open here: the
+  WAF logged the timeout at error level and passed the request through to the
+  upstream with an already-broken body. A later fix makes VibeWarden answer
+  `408 Request Timeout` instead.
 - **Clients that stop reading are cut after 1 minute.** A response write that
   makes no progress for a minute is aborted. A quiet SSE stream is not
   affected; only a client that has stopped draining its socket is.

@@ -277,47 +277,54 @@ Example: database.external_url: "postgres://user:${DB_PASSWORD}@db:5432/vw"
 
 ### server
 
-  server.host             string    127.0.0.1    Host/IP to bind to
-  server.port             int       8443         Port to listen on
-  server.read_timeout     string    30s          Hard ceiling on reading one request, headers and body.
-                                                 "0" disables.
-  server.write_timeout    string    60s          Hard ceiling on writing one response; cuts a stream that
-                                                 runs longer. "0" disables (needed for long-lived SSE).
-  server.idle_timeout     string    120s         Keep-alive idle time between requests. "0" disables.
-  server.read_header_timeout  string  1m         Time a client may take to send the request headers.
-                                                 "0" disables.
-  server.read_idle_timeout    string  1m         Aborts a request whose body stops arriving for this long;
-                                                 a slow but steady upload is unaffected. "0" disables.
-  server.write_idle_timeout   string  1m         Aborts a response when a write to the client makes no
-                                                 progress for this long (client stopped reading); a quiet
-                                                 stream is unaffected. "0" disables.
-  server.max_header_bytes     int     16384      Cap on the request header block. Above it: 431 over
-                                                 HTTP/1.1, a protocol error over HTTP/2. 0 = default;
-                                                 input_validation.max_header_size has no effect above it.
-  server.max_connections  int       1000         Max concurrent inbound connections per listener; over-cap
-                                                 connections are refused (accepted and immediately closed).
-                                                 0 disables the cap; negative values fail validation.
-                                                 Per listener, so the ceiling is 2x this while the port-80
-                                                 redirect server runs. Does not apply to HTTP/3.
-  server.mem_limit        string    512MB        Memory cap for the vibewarden SIDECAR CONTAINER in the
-                                                 generated docker-compose.yml (compose mem_limit). Accepts
-                                                 "512MB", "512M", "1GB" or a plain byte count. GOMEMLIMIT is
-                                                 derived at 90% of it and set on the container. "0"/"" omits
-                                                 the key. GENERATE-TIME ONLY: the running sidecar never
-                                                 reads it.
-  server.cpu_limit        float     1.0          CPU cap for the sidecar container in cores (compose cpus);
-                                                 0.5 = half a core. 0 omits the key. Generate-time only.
-  server.pids_limit       int       200          Cap on processes/OS threads the sidecar container may
-                                                 create (compose pids_limit). 0 omits the key.
-                                                 Generate-time only.
-                                                 The three caps apply to the vibewarden service ONLY — app,
-                                                 kratos, postgres, redis and openbao stay uncapped. They are
-                                                 not injected when overrides.compose_file is set. See
-                                                 ADR-111.
+  server.host                 string    127.0.0.1    Host/IP to bind to
+  server.port                 int       8443         Port to listen on
+  server.read_timeout         string    30s          Hard ceiling on reading one request, headers and body.
+                                                     "0" disables.
+  server.write_timeout        string    60s          Hard ceiling on writing one response; cuts a stream that
+                                                     runs longer. "0" disables (needed for long-lived SSE).
+  server.idle_timeout         string    120s         Keep-alive idle time between requests. "0" disables.
+  server.read_header_timeout  string    1m           Time a client may take to send the request headers.
+                                                     "0" disables.
+  server.read_idle_timeout    string    1m           Aborts a request whose body stops arriving for this long;
+                                                     a slow but steady upload is unaffected. "0" disables.
+  server.write_idle_timeout   string    1m           Aborts a response when a write to the client makes no
+                                                     progress for this long (client stopped reading); a quiet
+                                                     stream is unaffected. "0" disables.
+  server.max_header_bytes     int       16384        Cap on the request header block. Above it: 431 over
+                                                     HTTP/1.1, a protocol error over HTTP/2. 0 = default;
+                                                     input_validation.max_header_size has no effect above it.
+  server.max_connections      int       1000         Max concurrent inbound connections per listener; over-cap
+                                                     connections are refused (accepted and immediately closed).
+                                                     0 disables the cap; negative values fail validation.
+                                                     Per listener, so the ceiling is 2x this while the port-80
+                                                     redirect server runs. Does not apply to HTTP/3.
+  server.mem_limit            string    512MB        Memory cap for the vibewarden SIDECAR CONTAINER in the
+                                                     generated docker-compose.yml (compose mem_limit). Accepts
+                                                     "512MB", "512M", "1GB" or a plain byte count. GOMEMLIMIT is
+                                                     derived at 90% of it and set on the container. "0"/"" omits
+                                                     the key. GENERATE-TIME ONLY: the running sidecar never
+                                                     reads it.
+  server.cpu_limit            float     1.0          CPU cap for the sidecar container in cores (compose cpus);
+                                                     0.5 = half a core. 0 omits the key. Generate-time only.
+  server.pids_limit           int       200          Cap on processes/OS threads the sidecar container may
+                                                     create (compose pids_limit). 0 omits the key.
+                                                     Generate-time only.
+                                                     The three caps apply to the vibewarden service ONLY — app,
+                                                     kratos, postgres, redis and openbao stay uncapped. They are
+                                                     not injected when overrides.compose_file is set. See
+                                                     ADR-111.
 
   server:
     host: 0.0.0.0
     port: 8443
+    read_timeout: "30s"
+    write_timeout: "60s"
+    idle_timeout: "120s"
+    read_header_timeout: "1m"
+    read_idle_timeout: "1m"
+    write_idle_timeout: "1m"
+    max_header_bytes: 16384
     max_connections: 1000
     mem_limit: "512MB"
     cpu_limit: 1.0

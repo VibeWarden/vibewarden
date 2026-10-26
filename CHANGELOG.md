@@ -24,6 +24,7 @@ This initial entry was written by hand to summarise the work leading up to v0.1.
 ### Changed
 
 - **docs: a streaming response is also bounded by `server.write_timeout` (60 s), not only `resilience.timeout`.** `docs/websockets.md` now lists both, plus `write_idle_timeout` and why a quiet stream is safe from it. The upgrade notes describe all three Caddy 2.11.7 limits, including the HTTP/2 behaviour of the header cap (a protocol error, not a 431). `server.read_timeout`, `write_timeout` and `idle_timeout` were missing from `vibewarden.reference.yaml`, `docs/configuration.md` and `llms-full.txt` and are now documented there.
+
 ## [v0.22.4] - 2026-10-26
 
 ### Security
