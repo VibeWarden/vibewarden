@@ -12,6 +12,8 @@ This initial entry was written by hand to summarise the work leading up to v0.1.
 
 ## [Unreleased]
 
+## [v0.22.4] - 2026-10-26
+
 ### Security
 
 - **chore(deps): batch the Dependabot PRs of 2026-10-26 (supersedes #1576, #1577, #1578, #1579).** All four Dependabot PRs bumped only the dev `docker-compose.yml`, not `internal/config/templates/docker-compose.yml.tmpl`, so each would have failed `TestTemplateImagePins_MatchDevCompose` on its own; both pin sites move together here.

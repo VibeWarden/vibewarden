@@ -343,7 +343,7 @@ No config change is required — this takes effect on upgrade, without a
 
 ---
 
-### Observability stack: Grafana 13.2 (Unreleased)
+### Observability stack: Grafana 13.2 (v0.22.4)
 
 The generated compose file now pins `grafana/grafana:13.2.4`. This only affects
 projects running the `observability` profile. Regenerate to pick it up. Grafana
