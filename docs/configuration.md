@@ -443,7 +443,7 @@ for common attack patterns in-process, with no external dependencies.
 | Field | Type | Default | Description |
 |-------|------|---------|-------------|
 | `waf.enabled` | bool | `true` | Enable the WAF middleware |
-| `waf.mode` | string | `detect` | Detection mode: `block` (reject with 400) or `detect` (pass through and log) |
+| `waf.mode` | string | `detect` | Detection mode: `block` (reject with 403) or `detect` (pass through and log) |
 
 ### `waf.rules`
 

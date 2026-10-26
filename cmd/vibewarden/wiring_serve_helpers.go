@@ -209,6 +209,11 @@ func buildServerTimeoutsConfig(cfg *config.Config) ports.ServerTimeoutsConfig {
 			)
 			d, _ = time.ParseDuration(defaultVal)
 		}
+		if d == 0 {
+			// "0s", "0ms" and friends mean the same as "0": a zero duration would
+			// drop the key from the Caddy JSON and let Caddy restore its own default.
+			return ports.TimeoutDisabled
+		}
 		return d
 	}
 

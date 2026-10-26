@@ -59,6 +59,23 @@ func TestBuildServerTimeoutsConfig(t *testing.T) {
 			wantWriteIdle:  off,
 		},
 		{
+			name: "zero durations with a unit disable too",
+			serverCfg: config.ServerConfig{
+				ReadTimeout:       "0s",
+				WriteTimeout:      "0ms",
+				IdleTimeout:       "0m",
+				ReadHeaderTimeout: "0s",
+				ReadIdleTimeout:   "0h",
+				WriteIdleTimeout:  "0s",
+			},
+			wantRead:       off,
+			wantWrite:      off,
+			wantIdle:       off,
+			wantReadHeader: off,
+			wantReadIdle:   off,
+			wantWriteIdle:  off,
+		},
+		{
 			name: "custom valid durations are parsed",
 			serverCfg: config.ServerConfig{
 				ReadTimeout:       "10s",

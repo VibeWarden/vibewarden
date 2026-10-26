@@ -486,7 +486,7 @@ func TestAdapter_Integration_ReadIdleTimeout(t *testing.T) {
 
 	select {
 	case took := <-bodyEnded:
-		if took > 15*time.Second {
+		if took < time.Second || took > 15*time.Second {
 			t.Errorf("upstream body read ended after %v, want about 2s", took)
 		}
 		t.Logf("upstream body read ended after %v", took.Round(100*time.Millisecond))
