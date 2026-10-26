@@ -285,7 +285,7 @@ services:
   #   docker compose --profile observability up -d
   # --------------------------------------------------------------------------
   prometheus:
-    image: prom/prometheus:v3.15.0
+    image: prom/prometheus:v3.15.1
     container_name: vibewarden-prometheus
     profiles:
       - observability
@@ -323,7 +323,7 @@ services:
     # grafana/grafana, not grafana/grafana-oss: Grafana Labs stopped publishing
     # grafana-oss after 13.0.2, so that pin froze while 13.0.x security
     # releases shipped only under this name (same Open Source edition).
-    image: grafana/grafana:13.0.11
+    image: grafana/grafana:13.2.4
     container_name: vibewarden-grafana
     profiles:
       - observability
@@ -365,7 +365,7 @@ services:
   #   docker compose --profile observability up -d
   # --------------------------------------------------------------------------
   loki:
-    image: grafana/loki:3.7.8
+    image: grafana/loki:3.7.9
     container_name: vibewarden-loki
     profiles:
       - observability
