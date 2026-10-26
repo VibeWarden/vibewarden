@@ -343,6 +343,16 @@ No config change is required — this takes effect on upgrade, without a
 
 ---
 
+### Observability stack: Grafana 13.2 (Unreleased)
+
+The generated compose file now pins `grafana/grafana:13.2.4`. This only affects
+projects running the `observability` profile. Regenerate to pick it up. Grafana
+migrates the `grafana-data` volume forward on first start, so returning to 13.0
+afterwards needs a fresh volume (`docker volume rm <project>_grafana-data`); the
+provisioned datasources and dashboard are recreated from the generated files.
+
+---
+
 ### Observability stack: Grafana image is now `grafana/grafana` (v0.22.3)
 
 Grafana Labs stopped publishing `grafana/grafana-oss` after 13.0.2, so the

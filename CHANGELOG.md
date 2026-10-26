@@ -12,6 +12,14 @@ This initial entry was written by hand to summarise the work leading up to v0.1.
 
 ## [Unreleased]
 
+### Security
+
+- **chore(deps): batch the Dependabot PRs of 2026-10-26 (supersedes #1576, #1577, #1578, #1579).** All four Dependabot PRs bumped only the dev `docker-compose.yml`, not `internal/config/templates/docker-compose.yml.tmpl`, so each would have failed `TestTemplateImagePins_MatchDevCompose` on its own; both pin sites move together here.
+  - **`prom/prometheus` v3.15.0 -> v3.15.1.** Security-only release: built with Go 1.27.3 and `x/net` 0.60.0 (the same HTTP/2 advisories GO-2026-6611, -6612, -6617 the v0.22.1 batch fixed in our own binary) and CA bundle updated to distrust the compromised eMudhra and Comodo AAA roots.
+  - **`grafana/loki` 3.7.8 -> 3.7.9.** Patch release: Go 1.26.10, containerd and OTel security bumps, request-body limits on the ruler and LogQL analyzer APIs, and a fix for concurrent WAL `Append()` corrupting the ingester WAL. No config change; `loki-config.yml.tmpl` is untouched.
+  - **`grafana/grafana` 13.0.11 -> 13.2.4.** The 13.1 and 13.2 lines deferred by v0.22.3 for their own review; this is that review. The breaking changes listed in the 13.1.0 and 13.2.0 notes (Azure and SigV4 auth removed from core Prometheus, Zipkin out of core, `alertingSaveStateCompressed` flag removed) do not touch anything we provision. The one structural change that does: Prometheus, Loki and Jaeger are no longer core plugins in `public/app/plugins/datasource` and now ship as catalog plugins under `data/plugins-bundled` in the full (non-slim) image. Checked against the published `linux/amd64` image through the registry API (no local Docker on the upkeep host): `data/plugins-bundled/{prometheus,loki,jaeger}/plugin.json` are present with the same plugin IDs `grafana-datasources.yml.tmpl` uses, the config still sets `User: 472` and `Entrypoint: /run.sh`, the default Dockerfile stage is still alpine (the new distroless target is opt-in), and busybox `wget` is still at `/usr/bin/wget`, so the compose healthcheck runs unchanged. Not verified: a live `observability` profile start with dashboards loading; Grafana runs forward-only DB migrations on the existing `grafana-data` volume, so going back to 13.0 needs a fresh volume.
+  - **`spring-boot-starter-parent` 4.1.1 -> 4.1.2 (`examples/spring-boot`).** Bug-fix release (JWT `issuer-uri`/`jwk-set-uri` handling, graceful shutdown races); the example inherits its Java version from the parent and nothing else changes.
+
 ## [v0.22.3] - 2026-10-25
 
 ### Security
