@@ -12,6 +12,8 @@ This initial entry was written by hand to summarise the work leading up to v0.1.
 
 ## [Unreleased]
 
+## [v0.23.0] - 2026-10-27
+
 ### Added
 
 - **feat(server): `server.read_header_timeout`, `read_idle_timeout`, `write_idle_timeout` and `max_header_bytes` (#1573).** Caddy 2.11.6+ caps the request header block at 16 KiB and cuts a transfer that makes no progress for a minute, in either direction. Both were fixed values in v0.22.2; they are now keys under `server:` with Caddy's defaults, so an app with large cookies or clients on flaky links can raise them, and `"0"` turns a timeout off. Checked against the embedded Caddy in `internal/adapters/caddy` integration tests: a 24 KiB header gets 431 by default and 200 with `max_header_bytes: 65536`, and a stalled upload is cut after `read_idle_timeout` instead of a minute.

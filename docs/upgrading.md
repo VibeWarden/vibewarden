@@ -380,7 +380,7 @@ were not there before:
   arriving for a minute is aborted. A slow but steady upload is not affected,
   only one that makes no progress at all. v0.22.2 itself failed open here: the
   WAF logged the timeout at error level and passed the request through to the
-  upstream with an already-broken body. A later fix makes VibeWarden answer
+  upstream with an already-broken body. From v0.23.0 VibeWarden answers
   `408 Request Timeout` instead.
 - **Clients that stop reading are cut after 1 minute.** A response write that
   makes no progress for a minute is aborted. A quiet SSE stream is not
@@ -390,8 +390,8 @@ No config change is required for typical session cookies, JWTs and clients.
 Each limit has a key under `server:` (`max_header_bytes`, `read_idle_timeout`,
 `write_idle_timeout`, and `read_header_timeout` for the header phase), with
 `"0"` disabling a timeout; see [Configuration](configuration.md#server). The
-keys are not available on v0.22.2 itself, where the limits are fixed. The
-same change makes `server.idle_timeout: "0"` actually disable the keep-alive
+keys arrive in v0.23.0; on v0.22.2 to v0.22.4 the limits are fixed. v0.23.0
+also makes `server.idle_timeout: "0"` actually disable the keep-alive
 timeout; before, the key was dropped and Caddy's 5-minute default applied.
 
 ---
