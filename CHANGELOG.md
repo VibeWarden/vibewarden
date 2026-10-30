@@ -12,6 +12,10 @@ This initial entry was written by hand to summarise the work leading up to v0.1.
 
 ## [Unreleased]
 
+### Security
+
+- **chore(deps): `golang.org/x/net` 0.61.0 -> 0.62.0.** Released 2026-10-27, the day after the weekly Dependabot run, with fixes for two `x/net/html` advisories: GO-2026-6866 (CVE-2026-97045, `Render` could emit raw text that re-parses in a different foreign namespace) and GO-2026-6860 (CVE-2026-78661, quadratic allocation in `Parse` on many short text runs). Neither is reachable: VibeWarden imports only `x/net/publicsuffix` itself, and `x/net/html` arrives through Caddy and smallstep, where govulncheck reports both as imported but never called. Bumped to clear them from the binary. The rest of the release is bounds-check and nil-parse panic fixes in `ipv4`/`ipv6` and per-path connection IDs in `quic`. It requires the `x/crypto`, `x/sys`, `x/term` and `x/text` versions already pinned, so no other module moves and no new licenses. Still open and unfixed upstream: GO-2026-5932 in `x/crypto` (no fixed version), also imported but not called.
+
 ## [v0.23.0] - 2026-10-27
 
 ### Added
