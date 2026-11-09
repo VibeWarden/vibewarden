@@ -2,7 +2,7 @@ module github.com/vibewarden/demo-app
 
 go 1.27
 
-require modernc.org/sqlite v1.61.0
+require modernc.org/sqlite v1.61.1
 
 require (
 	github.com/dustin/go-humanize v1.1.0 // indirect
