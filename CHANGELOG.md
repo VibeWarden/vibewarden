@@ -12,6 +12,10 @@ This initial entry was written by hand to summarise the work leading up to v0.1.
 
 ## [Unreleased]
 
+### Changed
+
+- **chore(deps): `testcontainers-go` and its `postgres`/`redis` modules 0.44.0 -> 0.45.0 (supersedes #1589).** Test-only. The release's breaking changes move client adapters for the CockroachDB, Dex and Cosmos DB modules into separate `examples` modules; we use only `postgres` and `redis`, whose `Run` APIs are unchanged. `GenericContainer` and `WithWaitStrategy`, which our integration tests call, are not deprecated. Pulls `moby/moby/client` 0.6.2, `docker/go-connections` 0.8.2, `moby/go-archive` 0.3.3, `magiconair/properties` 1.18.12 and a newer `Azure/go-ansiterm`, all test-only, existing module paths, no new licenses. Verified with `go vet -tags integration` on every package that uses testcontainers; the integration run itself is CI's.
+
 ### Security
 
 - **chore(deps): `golang.org/x/net` 0.61.0 -> 0.62.0.** Released 2026-10-27, the day after the weekly Dependabot run, with fixes for two `x/net/html` advisories: GO-2026-6866 (CVE-2026-97045, `Render` could emit raw text that re-parses in a different foreign namespace) and GO-2026-6860 (CVE-2026-78661, quadratic allocation in `Parse` on many short text runs). Neither is reachable: VibeWarden imports only `x/net/publicsuffix` itself, and `x/net/html` arrives through Caddy and smallstep, where govulncheck reports both as imported but never called. Bumped to clear them from the binary. The rest of the release is bounds-check and nil-parse panic fixes in `ipv4`/`ipv6` and per-path connection IDs in `quic`. It requires the `x/crypto`, `x/sys`, `x/term` and `x/text` versions already pinned, so no other module moves and no new licenses. Still open and unfixed upstream: GO-2026-5932 in `x/crypto` (no fixed version), also imported but not called.
