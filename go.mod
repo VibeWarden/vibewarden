@@ -2,7 +2,7 @@ module github.com/vibewarden/vibewarden
 
 go 1.27
 
-toolchain go1.27.3
+toolchain go1.27.4
 
 require (
 	github.com/caddyserver/caddy/v2 v2.11.9
