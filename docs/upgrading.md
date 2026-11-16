@@ -345,7 +345,7 @@ No config change is required — this takes effect on upgrade, without a
 
 ### Observability stack: Grafana 13.3 (v0.23.1)
 
-The generated compose file now pins `grafana/grafana:13.3.0`, which carries ten
+The generated compose file now pins `grafana/grafana:13.3.1`, which carries sixteen
 CVE fixes. This only affects projects running the `observability` profile.
 Regenerate to pick it up. As with 13.2, Grafana migrates the `grafana-data`
 volume forward on first start, so going back to 13.2 needs a fresh volume. If you
